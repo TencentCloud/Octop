@@ -78,8 +78,8 @@ class _MemoryCache:
         # harness-memory's optional dependencies aren't fully installed
         # in some dev sandboxes — the dashboard endpoints just 503 in
         # that case rather than the whole server failing to boot.
+        from harness_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
         from harness_memory.core import Memory  # noqa: PLC0415
-        from harness_memory.lightclaw.bridge.handlers import Bridge  # noqa: PLC0415
 
         path_str = str(db_path)
         with self._lock:
