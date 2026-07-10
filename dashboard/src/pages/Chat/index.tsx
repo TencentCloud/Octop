@@ -36,6 +36,7 @@ import ChatBrowserBottomPanel from "./components/ChatBrowserBottomPanel";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
+import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
 import styles from "./index.module.less";
 
 export default function ChatPage() {
@@ -382,6 +383,11 @@ function ChatPageInner() {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      if (promptNeedsUserInput(text)) {
+        prefillInputRef.current = trimmed;
+        chatInputRef.current?.setPrefillText(trimmed);
+        return;
+      }
       wrappedHandleSend(trimmed);
     },
     [wrappedHandleSend],

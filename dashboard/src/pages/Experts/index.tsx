@@ -2,12 +2,15 @@
  * Experts page — redesigned as Agents Management Centre.
  *
  * Tab A: user's experts, shown as a card grid with start/stop/edit/delete.
- * Tab B: expert templates, shown as a card grid with create-from-template drawer.
+ * Tab B: featured expert templates, shown as a card grid with create-from-template drawer.
+ * Tab C: SkillHub expert market, shown as remote skillset cards.
  *
  * API (all via request() which already prefixes /api):
  *   GET  /experts                         → ExpertSummary[]
+ *   GET  /experts/hub/skillsets           → SkillHub market expert cards
  *   GET  /agents                          → via AgentContext
  *   POST /agents/from-expert/{id}         → create agent (via CreateFromExpertDrawer)
+ *   POST /agents/from-expert-market/skillsets/{slug}
  *   POST /agents/{id}/start|stop          → lifecycle (via AgentCard)
  *   PATCH /agents/{id}                    → edit (via EditAgentDrawer)
  *   DELETE /agents/{id}                   → delete (via AgentCard)
@@ -28,9 +31,10 @@ import type { ExpertSummary } from "./components/ExpertCard";
 import EditAgentDrawer from "./components/EditAgentDrawer";
 import CreateFromExpertDrawer from "./components/CreateFromExpertDrawer";
 import AgentExpertsTable from "./components/AgentExpertsTable";
+import ExpertMarketTab from "./components/ExpertMarketTab";
 import styles from "./index.module.less";
 
-type TabKey = "my" | "library";
+type TabKey = "my" | "library" | "market";
 type ViewMode = "card" | "table";
 const VIEW_STORAGE_KEY = "octop:experts-view";
 
@@ -89,7 +93,7 @@ export default function ExpertsPage() {
     localStorage.setItem(VIEW_STORAGE_KEY, mode);
   };
 
-  // ── Expert library ─────────────────────────────────────────────
+  // ── Featured expert library ────────────────────────────────────
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
   const [expertLoading, setExpertLoading] = useState(false);
 
@@ -161,16 +165,16 @@ export default function ExpertsPage() {
     [refreshAgents],
   );
 
-  // ── Create-from-expert Drawer ──────────────────────────────────
+  // ── Create-from-expert Drawer / Market create success ──────────
   const [createExpert, setCreateExpert] = useState<ExpertSummary | null>(null);
 
-  const handleCreated = (agentId: string) => {
+  const handleCreated = useCallback((agentId: string) => {
     setCreateExpert(null);
     void refreshAgents({ silent: true });
     setActiveTab("my");
     setNewAgentId(agentId);
     setTimeout(() => setNewAgentId(null), 1000);
-  };
+  }, [refreshAgents]);
 
   const openExpertLibrary = useCallback(() => {
     setActiveTab("library");
@@ -180,7 +184,7 @@ export default function ExpertsPage() {
   const [agentExpertIds, setAgentExpertIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (activeTab !== "library") return;
+    if (activeTab !== "library" && activeTab !== "market") return;
     let cancelled = false;
     fetchInstalledExpertIds()
       .then((ids) => {
@@ -194,20 +198,23 @@ export default function ExpertsPage() {
     };
   }, [activeTab, localAgents.length]);
 
-  const refreshButton = (
-    <Tooltip title={t("common.refresh")}>
-      <button
-        className={styles.toolbarIconBtn}
-        onClick={() => void handleRefresh()}
-        disabled={refreshing}
-        type="button"
-      >
-        <RefreshCw
-          size={14}
-          className={refreshing ? styles.spinning : undefined}
-        />
-      </button>
-    </Tooltip>
+  const refreshButton = useMemo(
+    () => (
+      <Tooltip title={t("common.refresh")}>
+        <button
+          className={styles.toolbarIconBtn}
+          onClick={() => void handleRefresh()}
+          disabled={refreshing}
+          type="button"
+        >
+          <RefreshCw
+            size={14}
+            className={refreshing ? styles.spinning : undefined}
+          />
+        </button>
+      </Tooltip>
+    ),
+    [handleRefresh, refreshing, t],
   );
 
   // ── Render helpers ─────────────────────────────────────────────
@@ -366,6 +373,17 @@ export default function ExpertsPage() {
     );
   }, [experts, expertLoading, lang, agentExpertIds, refreshButton, t]);
 
+  const marketContent = useMemo(
+    () => (
+      <ExpertMarketTab
+        lang={lang}
+        installedExpertIds={agentExpertIds}
+        onCreated={handleCreated}
+      />
+    ),
+    [agentExpertIds, handleCreated, lang],
+  );
+
   return (
     <PageShell
       title={t("pageShell.experts.title")}
@@ -384,6 +402,11 @@ export default function ExpertsPage() {
             key: "library",
             label: t("experts.expertLibrary"),
             children: libraryContent,
+          },
+          {
+            key: "market",
+            label: t("experts.expertMarket"),
+            children: marketContent,
           },
         ]}
       />

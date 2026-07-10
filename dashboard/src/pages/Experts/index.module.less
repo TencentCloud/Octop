@@ -1,6 +1,7 @@
 /* ================================================================
    Experts page — redesigned as Agents Management Centre.
-   Two-tab layout: 我的专家 (agent grid) + 专家库 (template grid).
+   Three-tab layout: 我的专家 (agent grid) + 精选专家 (template grid)
+   + 专家市场 (SkillHub skillset grid).
    ================================================================ */
 
 /* ── Card Grid ─────────────────────────────────────────────────── */
@@ -581,6 +582,102 @@
   .expertTemplateCard:hover & {
     color: var(--expert-accent, var(--fn-color-brand));
   }
+}
+
+/* ── Expert Market ─────────────────────────────────────────────── */
+
+.marketContainer {
+  min-width: 0;
+}
+
+.marketSearch {
+  width: 280px;
+
+  @media (max-width: 640px) {
+    width: 100%;
+  }
+}
+
+.marketIconImg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.marketCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  min-width: 0;
+
+  @media (max-width: 640px) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.marketMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  white-space: nowrap;
+}
+
+.marketDrawerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.marketTagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketDrawerDesc {
+  margin: 0;
+  color: var(--fn-text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.marketSectionTitle {
+  margin-bottom: 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.marketSkillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketWorkflowPreview {
+  min-height: 160px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 12px;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ── Toolbar row above grid ─────────────────────────────────────── */

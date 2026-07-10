@@ -7,15 +7,27 @@ POST /api/agents/from-expert/{id} → create agent and seed workspace files
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import (
     build_create_spec_from_expert,
     preview_file_paths,
+)
+from octop.infra.agents.experts.market_creation import (
+    SkillHubMarketAgentCreateOptions,
+)
+from octop.infra.agents.experts.market_creation import (
+    create_agent_from_skillhub_skillset as create_skillhub_market_agent,
+)
+from octop.infra.agents.experts.skillhub_market import (
+    SkillHubMarketError,
+    fetch_skillset,
+    fetch_skillsets,
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
@@ -29,6 +41,58 @@ class FromExpertBody(BaseModel):
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+
+
+class LocalizedTextResponse(BaseModel):
+    zh: str = ""
+    en: str = ""
+
+
+class QuickPromptResponse(BaseModel):
+    title: LocalizedTextResponse
+    description: LocalizedTextResponse
+    prompt: LocalizedTextResponse
+    color: str = "#e8f4ff"
+    icon_name: str | None = None
+
+
+class SkillHubSkillsetResponse(BaseModel):
+    id: str
+    slug: str
+    label: LocalizedTextResponse
+    description: LocalizedTextResponse
+    scene: str = ""
+    sub_scene: str = ""
+    icon_url: str | None = None
+    icon_name: str | None = None
+    color: str | None = None
+    skill_slugs: list[str] = Field(default_factory=list)
+    skill_count: int = 0
+    source: str = "skillhub"
+    content: LocalizedTextResponse | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
+
+
+class MarketCreateSourceResponse(BaseModel):
+    source: str
+    kind: str
+    slug: str
+    quick_prompts_generated: bool
+
+
+class MarketCreateResponse(BaseModel):
+    id: int | str
+    agent_id: str
+    user_id: int
+    name: str
+    description: str | None = None
+    default_model: str | None = None
+    state: str
+    expert_id: str
+    icon_name: str | None = None
+    color: str | None = None
+    market: MarketCreateSourceResponse
+    bootstrap_pending: bool
 
 
 def _quick_prompt_dict(p: Any) -> dict[str, Any]:
@@ -87,6 +151,40 @@ async def list_experts(
     return [_summary_dict(s) for s in catalog.list_summaries()]
 
 
+@router.get(
+    "/experts/hub/skillsets",
+    response_model=list[SkillHubSkillsetResponse],
+    summary="List SkillHub expert market skillsets",
+)
+async def list_skillhub_skillsets(
+    q: str = "",
+    _: Any = Depends(current_user),
+) -> list[dict[str, Any]]:
+    """List SkillHub skillsets normalized as market expert cards."""
+    try:
+        items = await asyncio.to_thread(fetch_skillsets, q)
+    except SkillHubMarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return [item.api_dict(include_content=False) for item in items]
+
+
+@router.get(
+    "/experts/hub/skillsets/{slug}",
+    response_model=SkillHubSkillsetResponse,
+    summary="Get SkillHub expert market skillset detail",
+)
+async def get_skillhub_skillset(
+    slug: str,
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """SkillHub skillset detail, including workflow prompt and default quick prompts."""
+    try:
+        item = await asyncio.to_thread(fetch_skillset, slug)
+    except SkillHubMarketError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return item.api_dict(include_content=True)
+
+
 @router.get("/experts/{expert_id}")
 async def get_expert(
     expert_id: str,
@@ -98,6 +196,57 @@ async def get_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     return _expert_dict(expert, catalog, include_file_contents=True)
+
+
+@router.post(
+    "/agents/from-expert-market/skillsets/{slug}",
+    status_code=201,
+    response_model=MarketCreateResponse,
+    summary="Create an agent from a SkillHub expert market skillset",
+)
+async def create_agent_from_skillhub_skillset(
+    slug: str,
+    body: FromExpertBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Create an agent from a SkillHub skillset-backed expert template."""
+    try:
+        result = await create_skillhub_market_agent(
+            server=server,
+            user=user,
+            slug=slug,
+            options=SkillHubMarketAgentCreateOptions(
+                name=body.name,
+                description=body.description,
+                providers=body.providers,
+                default_model=body.default_model,
+                backend=body.backend,
+            ),
+        )
+    except SkillHubMarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    row = result.row
+    return {
+        "id": row.id,
+        "agent_id": row.agent_id,
+        "user_id": row.user_id,
+        "name": row.name,
+        "description": row.description,
+        "default_model": row.default_model,
+        "state": row.last_state or "unknown",
+        "expert_id": result.expert_id,
+        "icon_name": result.icon_name,
+        "color": result.color,
+        "market": {
+            "source": "skillhub",
+            "kind": "skillset",
+            "slug": result.slug,
+            "quick_prompts_generated": result.quick_prompts_generated,
+        },
+        "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(row.agent_id),
+    }
 
 
 @router.post("/agents/from-expert/{expert_id}", status_code=201)
