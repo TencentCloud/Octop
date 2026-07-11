@@ -271,6 +271,13 @@ Do **not** use gettext (`.po` files). Do **not** embed user-visible English in `
 - Document non-obvious fields with `Field(..., description="…")`; name models clearly.
 - Spot-check `/api/docs` after API changes — a route that renders as an empty card or untyped blob is unfinished.
 
+**Cross-platform tests:** Octop CI runs on both Linux and Windows, so tests must not assume a single platform:
+
+- Guard POSIX-only behavior with the repo convention `@pytest.mark.skipif(os.name != "posix", reason="…")`; prefer a module-level `posix_only = pytest.mark.skipif(os.name != "posix", reason="…")` alias.
+- Do not hard-code POSIX paths (`/`, `/proc`, `/etc`, `/root`, `~` → HOME) in assertions that run on every platform — they resolve differently on Windows (e.g. `/` → `D:\`).
+- Prefer `tmp_path` / `tmp_path_factory` and `pathlib` over OS-specific literals; use `Path.as_posix()` / `os.sep` when path string formatting matters.
+- When a feature's semantics are inherently POSIX-only (e.g. the host root_dir denied prefixes in `infra/utils/host_dirs.py`), keep the source guards (`os.name != "posix"` short-circuit) and mirror them in the tests.
+
 ## 8. Do not
 
 Boundary rules are in [§5](#5-module-boundaries). Additionally:

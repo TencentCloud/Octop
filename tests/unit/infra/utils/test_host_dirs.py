@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,12 @@ from octop.infra.utils.host_dirs import (
     probe_host_root_dir,
 )
 
+# These tests assert POSIX path semantics (/proc, /etc, /root, "/" root, "~" home).
+# The denied-prefix logic and "/" root probe are intentionally POSIX-only.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only path semantics")
 
+
+@posix_only
 def test_normalize_host_path_expands_user_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -39,21 +45,25 @@ def test_list_host_subdirs_rejects_missing_path(tmp_path: Path) -> None:
         list_host_subdirs(str(tmp_path / "missing"))
 
 
+@posix_only
 def test_assert_safe_host_path_rejects_proc() -> None:
     with pytest.raises(ValueError, match="not allowed"):
         assert_safe_host_path("/proc")
 
 
+@posix_only
 def test_assert_safe_host_path_rejects_etc() -> None:
     with pytest.raises(ValueError, match="not allowed"):
         assert_safe_host_path("/etc/passwd")
 
 
+@posix_only
 def test_assert_safe_host_path_rejects_root() -> None:
     with pytest.raises(ValueError, match="not allowed"):
         assert_safe_host_path("/root")
 
 
+@posix_only
 def test_probe_host_root_dir_skips_write_for_slash() -> None:
     result = probe_host_root_dir("/")
     assert result == {"ok": True, "path": "/"}

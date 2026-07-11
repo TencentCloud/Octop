@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX root '/' probe behavior")
 
 
 @pytest.mark.asyncio
@@ -65,6 +68,7 @@ async def test_probe_host_dir_requires_auth(
 
 
 @pytest.mark.asyncio
+@posix_only
 async def test_probe_host_dir_ok_for_slash(
     env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
 ) -> None:
