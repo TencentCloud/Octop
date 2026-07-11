@@ -4,6 +4,21 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
+## [0.9.4] - 2026-07-11
+
+### 新增
+- 新增 agent backend 的主机 root_dir 浏览器与权限探测能力
+- 改进聊天流式滚动行为与思考计时器
+
+### 修复
+- 修复 Windows 下 sqlite 路径测试、媒体路径与 POSIX 专属测试导致的 CI 失败
+- 修复 Windows 测试收集问题（惰性导入 pwd 模块）
+- 修复 harness-memory Bridge 导入路径
+- 修复 CI 流水线并让测试套件通过，项目重命名为 Octop
+
+### 变更
+- Windows 兼容：默认 agent backend 限定到 workspace，并集中 POSIX 专属 stdlib 调用以适配 Windows mypy CI
+
 ## [0.9.1] - 2026-07-08
 
 ### 新增
