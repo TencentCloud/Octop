@@ -357,7 +357,11 @@ async def resolve_preview_payload(
     if not abs_path or not _abs_path_allowed(abs_path, workspace=workspace_dir):
         return None
 
-    data = await workspace.adownload_bytes(abs_path)
+    data = None
+    try:
+        data = await workspace.adownload_bytes(abs_path)
+    except PermissionError:
+        data = None
     if data is None:
         try:
             data = await asyncio.to_thread(Path(abs_path).read_bytes)

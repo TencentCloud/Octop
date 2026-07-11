@@ -69,7 +69,7 @@ def test_database_env_sqlite_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("OCTOP_DATABASE_SQLITE_PATH", "/tmp/octop-test.db")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.database.sqlite_path == "/tmp/octop-test.db"
-    assert cfg.database.resolve_sqlite_path(tmp_path) == Path("/tmp/octop-test.db").resolve()
+    assert cfg.database.resolve_sqlite_path(tmp_path) == Path("/tmp/octop-test.db")
 
 
 def test_database_env_url_postgresql(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
