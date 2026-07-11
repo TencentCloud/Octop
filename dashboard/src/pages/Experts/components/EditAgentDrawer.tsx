@@ -35,6 +35,9 @@ import {
   buildBackendSpec,
   DEFAULT_BACKEND,
   parseBackendSpec,
+  probeRootDir,
+  rootDirProbeMessage,
+  shouldProbeRootDir,
   validatePathMappings,
   type PathMapping,
 } from "./agentBackendForm";
@@ -243,6 +246,15 @@ function EditAgentDrawerBody({
       const pathError = validatePathMappings(pathMappings, t);
       if (pathError) {
         message.error(pathError);
+        return;
+      }
+    }
+    if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+      const probe = await probeRootDir(values.root_dir ?? "/");
+      if (!probe.ok) {
+        message.error(
+          `${rootDirProbeMessage(probe, t)}\n${t("experts.rootDirProbe.guidance")}`,
+        );
         return;
       }
     }

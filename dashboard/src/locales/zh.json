@@ -385,7 +385,16 @@
     "goToAdmin": "前往配置",
     "backendLabel": "存储后端",
     "backendRootDir": "存储根目录",
-    "backendRootDirDesc": "后端可访问的主机文件系统根路径，默认为 /。工作区内的文件路径均相对此目录解析；修改前请确认权限范围。",
+    "backendRootDirPlaceholder": "从 / 起选择子目录",
+    "backendRootDirDesc": "从文件系统根目录 / 浏览并选择 Agent 可访问的目录；选择非 / 路径时，保存前会检测 Octop 服务是否具备读、写、执行权限。",
+    "rootDirListFailed": "无法列出子目录，请检查权限或选择其他路径。",
+    "rootDirProbe": {
+      "not_directory": "所选路径不是有效目录。",
+      "not_allowed": "不允许使用该路径作为存储根目录。",
+      "permission_denied": "Octop 服务对该目录没有完整的读、写、执行权限。",
+      "write_failed": "无法在该目录创建测试文件：{{detail}}",
+      "guidance": "请改用有权限的目录，或调整目录所有权/权限（例如 chown、chmod）后重试。"
+    },
     "backendPlaceholder": "选择存储后端类型",
     "backendModes": {
       "localShell": "本地完整环境（文件系统+指令执行）",

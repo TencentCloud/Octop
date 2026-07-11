@@ -386,7 +386,16 @@
     "goToAdmin": "Go to Admin",
     "backendLabel": "Storage Backend",
     "backendRootDir": "Storage Root Dir",
-    "backendRootDirDesc": "Host filesystem root the backend may access, default `/`. Workspace file paths resolve relative to this directory; confirm permission scope before changing.",
+    "backendRootDirPlaceholder": "Browse subdirectories from /",
+    "backendRootDirDesc": "Browse from filesystem root `/` and pick a directory the agent may access. When you choose a path other than `/`, Octop checks read/write/execute access before saving.",
+    "rootDirListFailed": "Could not list subdirectories. Check permissions or choose another path.",
+    "rootDirProbe": {
+      "not_directory": "The selected path is not a valid directory.",
+      "not_allowed": "This path cannot be used as a storage root.",
+      "permission_denied": "The Octop service does not have full read, write, and execute access to this directory.",
+      "write_failed": "Could not create a test file in this directory: {{detail}}",
+      "guidance": "Choose a directory with sufficient permissions, or adjust ownership/permissions (e.g. chown, chmod) and try again."
+    },
     "backendPlaceholder": "Select a backend type",
     "backendPathMappings": "Path Mappings (optional)",
     "addPathMapping": "Add path mapping",

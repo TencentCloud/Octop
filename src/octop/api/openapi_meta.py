@@ -92,6 +92,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "admin", "description": "Server-wide admin operations (audit log, storage, usage)."},
     {"name": "storage-backends", "description": "User-visible remote storage backend connections."},
+    {
+        "name": "filesystem",
+        "description": "Host filesystem directory browsing for dashboard forms.",
+    },
     {"name": "mbti", "description": "MBTI persona presets applied to agent personality."},
     {"name": "experts", "description": "Bundled expert templates for creating specialized agents."},
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},

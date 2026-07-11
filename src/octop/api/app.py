@@ -123,6 +123,7 @@ def build_app(server: OctopServer) -> FastAPI:
         voice,
         workspace,
     )
+    from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
     from octop.api.routers.security import router as security_router
@@ -162,6 +163,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(
                 storage_backends_user_router, "/api/storage-backends", ["storage-backends"]
             ),
+            _RouterMount(filesystem_router, "/api/filesystem", ["filesystem"]),
             _RouterMount(mbti.router, "/api", ["mbti"]),
             _RouterMount(experts.router, "/api", ["experts"]),
             _RouterMount(workspace.router, "/api", ["workspace"]),
