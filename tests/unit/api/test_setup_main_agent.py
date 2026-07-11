@@ -35,6 +35,7 @@ def test_bootstrap_main_spec_has_no_custom_backend() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="POSIX virtual_mode without root_dir behavior")
 async def test_workspace_scoped_virtual_backend_creates_nested_paths() -> None:
     """Broken layout when backend is {local_shell, virtual_mode} without root_dir='/'."""
     with tempfile.TemporaryDirectory() as ws_dir:

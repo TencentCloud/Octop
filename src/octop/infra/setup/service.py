@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import platform
-import pwd
 import shutil
 import subprocess
 import sys
@@ -18,7 +17,9 @@ from pathlib import Path
 from typing import Literal
 
 from octop.config import load_config
+from octop.infra.utils import posix_compat as pwd
 from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.posix_compat import chown, geteuid, getuid, is_root
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +92,6 @@ def detect_platform_mode() -> ServiceMode | None:
     return None
 
 
-def is_root() -> bool:
-    """Return True if the current process has uid 0 (root)."""
-    try:
-        return os.geteuid() == 0
-    except AttributeError:  # pragma: no cover - non-POSIX
-        return False
-
-
 def _auto_service_scope() -> ServiceScope:
     """Infer install scope based on the effective uid.
 
@@ -146,7 +139,7 @@ def launchd_domain(scope: ServiceScope) -> str:
     domain-target form (no service id), use :func:`launchd_bootstrap_target`.
     """
     if scope == "user":
-        return f"gui/{os.getuid()}/{LAUNCHD_LABEL}"
+        return f"gui/{getuid()}/{LAUNCHD_LABEL}"
     return f"system/{LAUNCHD_LABEL}"
 
 
@@ -158,7 +151,7 @@ def launchd_bootstrap_target(scope: ServiceScope) -> str:
     by launchd on modern macOS — you must qualify user with a uid.
     """
     if scope == "user":
-        return f"gui/{os.getuid()}"
+        return f"gui/{getuid()}"
     return "system"
 
 
@@ -465,7 +458,7 @@ def _needs_sudo(path: Path) -> bool:
 
 
 def _run_cmd(cmd: list[str], *, use_sudo: bool) -> subprocess.CompletedProcess[str]:
-    full = ["sudo", *cmd] if use_sudo and os.geteuid() != 0 else cmd
+    full = ["sudo", *cmd] if use_sudo and geteuid() != 0 else cmd
     # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; systemctl/launchctl service management)
     return subprocess.run(full, capture_output=True, text=True, check=False)
 
@@ -482,7 +475,7 @@ def _write_unit(runtime: ServiceRuntime) -> None:
         render_systemd_unit(runtime) if runtime.mode == "systemd" else render_launchd_plist(runtime)
     )
     use_sudo = _needs_sudo(destination)
-    if use_sudo and os.geteuid() != 0:
+    if use_sudo and geteuid() != 0:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as tmp:
             tmp.write(content)
             tmp.flush()
@@ -506,7 +499,7 @@ def _write_unit(runtime: ServiceRuntime) -> None:
     destination.write_text(content, encoding="utf-8")
     destination.chmod(0o644)
     if is_root() and runtime.run_as_user != "root":
-        os.chown(destination, pwd.getpwnam(runtime.run_as_user).pw_uid, -1)
+        chown(destination, pwd.getpwnam(runtime.run_as_user).pw_uid, -1)
 
 
 def _launchctl_run(scope: ServiceScope, *args: str) -> subprocess.CompletedProcess[str]:
@@ -515,7 +508,7 @@ def _launchctl_run(scope: ServiceScope, *args: str) -> subprocess.CompletedProce
     `user` scope runs unsudo'd (gui/$UID is writable by the current user);
     `system` scope falls back to sudo when not running as root.
     """
-    use_sudo = scope == "system" and os.geteuid() != 0
+    use_sudo = scope == "system" and geteuid() != 0
     return _run_cmd(["launchctl", *args], use_sudo=use_sudo)
 
 

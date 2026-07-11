@@ -17,7 +17,11 @@ from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
-from octop.infra.backend.resolver import backend_spec_supports_execution, resolve_agent_backend_spec
+from octop.infra.backend.resolver import (
+    backend_spec_supports_execution,
+    default_agent_backend_spec,
+    resolve_agent_backend_spec,
+)
 from octop.infra.connectors.builder import (
     build_mcp_server_configs_for_user,
     inject_missing_gateway_tools,
@@ -820,12 +824,11 @@ class AgentManager:
         return cfg
 
     def _backend_spec_for_row(self, row: AgentRow) -> Any:
-        from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
-
         cfg = self._agent_config_dict(row)
         backend_spec = cfg.get("backend")
         if backend_spec is None:
-            return DEFAULT_BACKEND_SPEC
+            workspace_dir = self._paths.ensure_agent_workspace(row.agent_id)
+            return default_agent_backend_spec(workspace_dir)
         return resolve_agent_backend_spec(
             backend_spec,
             repo=self._repos.storage_backend_repo,

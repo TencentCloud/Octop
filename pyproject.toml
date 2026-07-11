@@ -165,6 +165,14 @@ disallow_untyped_defs = false
 module = "octop.api.app"
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = "octop.infra.utils.posix_compat"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "octop.infra.utils.subprocess_io_win"
+disable_error_code = ["attr-defined"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

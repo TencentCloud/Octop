@@ -46,20 +46,17 @@ async def test_resolve_preview_from_outbound_screenshots() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_preview_from_tmp_screenshot() -> None:
-    with tempfile.TemporaryDirectory() as ws:
-        png = Path("/tmp") / f"orca-test-preview-{time.time_ns()}.png"
+    with tempfile.TemporaryDirectory() as ws, tempfile.TemporaryDirectory() as ext_dir:
+        png = Path(ext_dir) / f"orca-test-preview-{time.time_ns()}.png"
         png.write_bytes(b"\x89PNG\r\n")
-        try:
-            backend = LocalShellBackend(root_dir=ws, virtual_mode=True)
-            workspace = BackendWorkspace(backend, ws)
-            payload = await resolve_preview_payload(
-                source=png.as_uri(),
-                workspace=workspace,
-                mime_hint="image/png",
-            )
-            assert payload is not None
-            data, mime = payload
-            assert data == b"\x89PNG\r\n"
-            assert mime == "image/png"
-        finally:
-            png.unlink(missing_ok=True)
+        backend = LocalShellBackend(root_dir=ws, virtual_mode=True)
+        workspace = BackendWorkspace(backend, ws)
+        payload = await resolve_preview_payload(
+            source=png.as_uri(),
+            workspace=workspace,
+            mime_hint="image/png",
+        )
+        assert payload is not None
+        data, mime = payload
+        assert data == b"\x89PNG\r\n"
+        assert mime == "image/png"

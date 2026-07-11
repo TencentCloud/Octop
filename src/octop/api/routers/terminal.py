@@ -57,7 +57,6 @@ import platform
 import shutil
 import signal
 import socket
-import struct
 import subprocess
 import tempfile
 import uuid
@@ -68,6 +67,7 @@ from starlette.websockets import WebSocketState
 
 from octop.api.deps import current_user, get_server, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils import posix_compat
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +106,8 @@ def terminal_supported() -> tuple[bool, str]:
 
 def _set_winsize(fd: int, cols: int, rows: int) -> None:
     """ioctl TIOCSWINSZ on the master fd. Errors are non-fatal."""
-    import fcntl
-    import termios
-
     try:
-        winsize = struct.pack("HHHH", rows, cols, 0, 0)
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+        posix_compat.set_winsize(fd, cols, rows)
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("failed to set winsize: %s", exc)
 
@@ -134,11 +130,10 @@ def _detect_shell() -> str:
     if shell and os.path.exists(shell):
         return shell
     try:
-        import pwd
-
-        entry = pwd.getpwuid(os.getuid())
-        if entry.pw_shell and os.path.exists(entry.pw_shell):
-            return entry.pw_shell
+        entry = posix_compat.getpwuid(posix_compat.getuid())
+        shell = str(entry.pw_shell)
+        if shell and os.path.exists(shell):
+            return shell
     except Exception:  # pragma: no cover - non-posix
         pass
     return "/bin/bash"
@@ -244,12 +239,15 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
         if proc.poll() is not None:
             return
         with contextlib.suppress(ProcessLookupError, OSError):
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            posix_compat.killpg(posix_compat.getpgid(proc.pid), signal.SIGTERM)
         try:
             proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
             with contextlib.suppress(ProcessLookupError, OSError):
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                posix_compat.killpg(
+                    posix_compat.getpgid(proc.pid),
+                    posix_compat.sigkill(),
+                )
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=1)
     except Exception as exc:  # pragma: no cover - defensive
@@ -266,13 +264,9 @@ def _spawn_pty_session(
     persistent: bool,
 ) -> _PtySession:
     """Create a PTY pair, spawn the shell at ``workspace_dir``, start the pump."""
-    import fcntl
-    import pty
-
-    master_fd, slave_fd = pty.openpty()
+    master_fd, slave_fd = posix_compat.openpty()
     _set_winsize(master_fd, cols, rows)
-    flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-    fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    posix_compat.set_nonblock(master_fd)
 
     shell = _detect_shell()
     # Interactive flag so rc files (.bashrc / .zshrc) load.
@@ -289,7 +283,7 @@ def _spawn_pty_session(
         stdout=slave_fd,
         stderr=slave_fd,
         close_fds=True,
-        preexec_fn=os.setsid,  # separate process group for clean teardown
+        preexec_fn=posix_compat.setsid,  # separate process group for clean teardown
         env=env,
         cwd=workspace_dir,
     )

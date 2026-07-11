@@ -162,11 +162,12 @@ def extract_workspace_rel(path: str) -> str | None:
     """Return ``outbound/…`` or ``inbound/…`` when present in *path* (any common shape)."""
     raw = path.strip()
     fs_path = file_url_to_abs_path(raw) if raw.startswith("file://") else raw.lstrip("/")
-    if fs_path.startswith(("outbound/", "inbound/")):
-        return fs_path
+    normalized = fs_path.replace("\\", "/")
+    if normalized.startswith(("outbound/", "inbound/")):
+        return normalized
     for marker in ("/outbound/", "/inbound/"):
-        if marker in fs_path:
-            return fs_path[fs_path.index(marker) + 1 :]
+        if marker in normalized:
+            return normalized[normalized.index(marker) + 1 :]
     return None
 
 
@@ -356,7 +357,11 @@ async def resolve_preview_payload(
     if not abs_path or not _abs_path_allowed(abs_path, workspace=workspace_dir):
         return None
 
-    data = await workspace.adownload_bytes(abs_path)
+    data = None
+    try:
+        data = await workspace.adownload_bytes(abs_path)
+    except PermissionError:
+        data = None
     if data is None:
         try:
             data = await asyncio.to_thread(Path(abs_path).read_bytes)
@@ -418,7 +423,12 @@ async def ensure_workspace_media_path(
     abs_path = file_url_to_abs_path(file_url)
     dest = _outbound_dest_rel(filename=filename, abs_path=abs_path, mime=mime)
 
-    data = await workspace.adownload_bytes(abs_path)
+    data = None
+    if abs_path:
+        try:
+            data = await workspace.adownload_bytes(abs_path)
+        except PermissionError:
+            data = None
     if data is None and abs_path and Path(abs_path).is_file():
         try:
             data = await asyncio.to_thread(Path(abs_path).read_bytes)

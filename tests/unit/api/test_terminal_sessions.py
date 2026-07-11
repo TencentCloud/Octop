@@ -408,6 +408,9 @@ def test_detect_shell_cmd_no_login_flag(monkeypatch) -> None:
     """Shell command must NOT include -l (login flag) to avoid trailing '%' on zsh exit."""
     import shutil
 
+    if os.name != "posix":
+        pytest.skip("POSIX shells only")
+
     for shell_name in ("bash", "zsh"):
         shell_path = shutil.which(shell_name)
         if shell_path is None:

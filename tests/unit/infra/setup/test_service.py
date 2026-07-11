@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import getpass
 import json
-import pwd
+import os
 import shutil
 import sys
 from dataclasses import replace
@@ -27,6 +27,9 @@ from octop.infra.setup.service import (
     stop_service,
     unit_path,
 )
+from octop.infra.utils import posix_compat as pwd
+
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX service management")
 
 
 def _runtime(tmp_path: Path) -> ServiceRuntime:

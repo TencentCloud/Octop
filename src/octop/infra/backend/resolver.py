@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from octop.infra.backend.adapter import row_to_backend_spec
+
+
+def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
+    """Harness backend for agents with no explicit ``backend`` in config.
+
+    On POSIX this matches harness ``DEFAULT_BACKEND_SPEC`` (host-rooted virtual
+    paths). On Windows ``root_dir='/'`` resolves to the process current-drive
+    root, which often differs from the drive hosting ``workspace_dir`` — scope
+    the default to the agent workspace instead.
+    """
+    from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
+
+    if os.name == "nt":
+        return {
+            "type": "local_shell",
+            "root_dir": str(workspace_dir.resolve()),
+            "virtual_mode": True,
+        }
+    return dict(DEFAULT_BACKEND_SPEC)
 
 
 def resolve_agent_backend_spec(

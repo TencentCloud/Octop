@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import re
 import tempfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ from octop.api.routers.chat.models import ChatTurnBody
 from octop.api.routers.chat.turn import (
     content_parts_from_dashboard_turn,
 )
+from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.gateway.media.attachment_hints import content_blocks_need_vision
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.harness_request import build_content_from_message
@@ -148,12 +150,13 @@ async def test_file_in_workspace_preview_only_drops_image_for_llm() -> None:
 
 @pytest.mark.asyncio
 async def test_default_backend_materialize_still_inlines_image() -> None:
-    """Production default backend (root=/): vision materialize via BackendWorkspace still works."""
-    from harness_agent.backends import DEFAULT_BACKEND_SPEC, resolve_backend
+    """Production default backend: vision materialize via BackendWorkspace still works."""
+    from harness_agent.backends import resolve_backend
 
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = BackendWorkspace(
-            resolve_backend(DEFAULT_BACKEND_SPEC, workspace_dir=ws_dir), ws_dir
+            resolve_backend(default_agent_backend_spec(Path(ws_dir)), workspace_dir=ws_dir),
+            ws_dir,
         )
         stored = await save_attachment(
             workspace,

@@ -185,50 +185,47 @@ def test_iter_media_blocks_dict_content() -> None:
 
 @pytest.mark.asyncio
 async def test_enrich_send_file_dict_content() -> None:
-    with tempfile.TemporaryDirectory() as ws:
-        png = Path("/tmp") / f"orca-test-send-file-{time.time_ns()}.png"
+    with tempfile.TemporaryDirectory() as ws, tempfile.TemporaryDirectory() as ext_dir:
+        png = Path(ext_dir) / f"orca-test-send-file-{time.time_ns()}.png"
         png.write_bytes(b"\x89PNG\r\n")
-        try:
-            workspace = _workspace(ws, virtual_mode=True)
-            chunk = {
-                "type": "tool_result",
-                "messages": [
-                    {
-                        "content": {
-                            "type": "image",
-                            "source": {
-                                "type": "url",
-                                "url": png.as_uri(),
-                                "media_type": "image/png",
-                            },
-                            "filename": png.name,
+        workspace = _workspace(ws, virtual_mode=True)
+        chunk = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "content": {
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": png.as_uri(),
+                            "media_type": "image/png",
                         },
+                        "filename": png.name,
                     },
-                ],
-            }
-            enriched = await enrich_tool_result_with_backend(
-                chunk,
+                },
+            ],
+        }
+        enriched = await enrich_tool_result_with_backend(
+            chunk,
+            agent_id="agent-1",
+            workspace=workspace,
+        )
+        content = enriched["messages"][0]["content"]
+        assert isinstance(content, dict)
+        assert content.get("preview_url")
+        assert content["source"]["url"] == content["preview_url"]
+        assert content["filename"] == png.name
+        assert not str(content.get("path") or "").startswith("/api/")
+        assert "/home/" not in json.dumps(content, ensure_ascii=False)
+        frames = [
+            f
+            async for f in attachment_frames_from_tool_result(
+                enriched,
                 agent_id="agent-1",
                 workspace=workspace,
             )
-            content = enriched["messages"][0]["content"]
-            assert isinstance(content, dict)
-            assert content.get("preview_url")
-            assert content["source"]["url"] == content["preview_url"]
-            assert content["filename"] == png.name
-            assert not str(content.get("path") or "").startswith("/api/")
-            assert "/home/" not in json.dumps(content, ensure_ascii=False)
-            frames = [
-                f
-                async for f in attachment_frames_from_tool_result(
-                    enriched,
-                    agent_id="agent-1",
-                    workspace=workspace,
-                )
-            ]
-            assert len(frames) == 1
-        finally:
-            png.unlink(missing_ok=True)
+        ]
+        assert len(frames) == 1
 
 
 def test_agent_backed_media_backend_inbound_fragments() -> None:
