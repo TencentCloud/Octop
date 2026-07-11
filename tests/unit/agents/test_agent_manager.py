@@ -14,12 +14,18 @@ from octop.config import OctopConfig
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.experts.catalog import default_library_root
 from octop.infra.agents.manager import AgentManager
+from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import DBPool
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import build_shared_services
 from octop.infra.errors import OctopError
 from octop.infra.utils.paths import PathLayout
+
+
+def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, str | bool]:
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    return default_agent_backend_spec(ws)
 
 
 @pytest.fixture
@@ -127,8 +133,9 @@ def test_build_harness_config_without_cron_manager_has_no_extra_tools(
 
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
-    assert cfg.backend == {"type": "local_shell", "root_dir": "/", "virtual_mode": True}
-    assert str(cfg.workspace_dir).endswith("agents/AGT001")
+    assert cfg.backend == _expected_default_backend(manager, "AGT001")
+    assert cfg.workspace_dir.name == "AGT001"
+    assert cfg.workspace_dir.parent.name == "agents"
     assert cfg.bootstrap_enabled is True
     assert cfg.permissions is None
 
@@ -307,7 +314,7 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     cfg = manager._build_harness_config(_row())
     assert cfg.name == "agent_01AGENT"
     assert cfg.system_prompt is None
-    assert cfg.backend == {"type": "local_shell", "root_dir": "/", "virtual_mode": True}
+    assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
 def test_build_harness_config_auto_expert_omits_providers_and_default(
@@ -343,7 +350,7 @@ def test_build_harness_config_passes_default_model_without_embedded_providers(
 
 def test_build_harness_config_tolerates_bad_config_json(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(config_json="{not-json"))
-    assert cfg.backend == {"type": "local_shell", "root_dir": "/", "virtual_mode": True}
+    assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
 @pytest.mark.asyncio

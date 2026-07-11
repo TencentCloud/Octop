@@ -10,6 +10,7 @@ import base64
 import os
 import re
 import tempfile
+from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
@@ -20,6 +21,7 @@ from harness_gateway.models import ImageContent, InboundMessage
 
 from octop.api.common.attachments import save_attachment
 from octop.infra.agents.middleware.binary_read_guard import read_file_block_reason
+from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.gateway.media.attachment_hints import format_attachment_path_hint
 from octop.infra.gateway.media.inbound_store import resolve_inbound_attachment_path, write_inbound
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
@@ -29,8 +31,9 @@ from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 
 def _octop_default_agent_workspace(ws_dir: str) -> BackendWorkspace:
-    """Mirror production: DEFAULT_BACKEND_SPEC + workspace_dir for BackendWorkspace I/O."""
-    backend = resolve_backend(DEFAULT_BACKEND_SPEC, workspace_dir=ws_dir)
+    """Mirror production default backend for BackendWorkspace I/O."""
+    ws_path = Path(ws_dir)
+    backend = resolve_backend(default_agent_backend_spec(ws_path), workspace_dir=ws_dir)
     return BackendWorkspace(backend, ws_dir)
 
 
@@ -77,6 +80,7 @@ async def test_hint_uses_backend_resolve_path_absolute() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="Documents POSIX default root_dir=/ behavior")
 async def test_octop_default_backend_tool_path_misses_uploaded_file() -> None:
     """Production: file on disk under workspace, but ls/read_file use host /inbound/…"""
     with tempfile.TemporaryDirectory() as ws_dir:
@@ -125,9 +129,12 @@ def test_read_file_blocked_for_pdf_inbound_even_with_correct_path() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="Documents POSIX default root_dir=/ behavior")
 async def test_default_backend_execute_cwd_is_host_root_not_workspace() -> None:
     with tempfile.TemporaryDirectory() as ws_dir:
-        workspace = _octop_default_agent_workspace(ws_dir)
+        workspace = BackendWorkspace(
+            resolve_backend(DEFAULT_BACKEND_SPEC, workspace_dir=ws_dir), ws_dir
+        )
         assert str(workspace.backend.cwd) == "/"
 
 
