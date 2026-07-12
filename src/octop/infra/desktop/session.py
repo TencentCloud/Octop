@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -63,6 +64,21 @@ async def clear_user_stream(user_id: str, disconnect: DisconnectHandler) -> None
             _active_disconnects.pop(user_id, None)
 
 
+async def disconnect_all_streams() -> None:
+    """Close every active desktop WebSocket and release capture sessions."""
+    async with _lock:
+        handlers = list(_active_disconnects.values())
+        sessions = list(_sessions.values())
+        _active_disconnects.clear()
+        _sessions.clear()
+    for handler in handlers:
+        with contextlib.suppress(Exception):
+            await handler()
+    for session in sessions:
+        with contextlib.suppress(Exception):
+            session.close()
+
+
 async def acquire_session(
     *,
     user_id: str,
@@ -81,10 +97,7 @@ async def acquire_session(
                 active=len(_sessions),
             )
 
-        try:
-            session = DesktopSession(display=display, monitor=monitor)
-        except Exception:
-            raise
+        session = DesktopSession(display=display, monitor=monitor)
 
         _sessions[user_id] = session
         return session

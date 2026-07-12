@@ -4,12 +4,78 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from octop.i18n import tr
 from octop.infra.desktop.setup import (
+    _desktop_uninstall_succeeded,
+    _sanitize_subprocess_log,
     desktop_status,
     parse_geometry,
+    python_deps_install_cmd,
     read_geometry,
     vnc_listens_localhost_only,
 )
+
+
+def test_sanitize_subprocess_log_filters_script_paths() -> None:
+    assert (
+        _sanitize_subprocess_log(
+            "Running /workspace/src/octop/infra/desktop/scripts/linux/v1.0/install.sh ..."
+        )
+        is None
+    )
+    assert _sanitize_subprocess_log("Starting desktop services via /opt/foo/start.sh") is None
+    assert (
+        _sanitize_subprocess_log("Package installed successfully")
+        == "Package installed successfully"
+    )
+
+
+def test_desktop_uninstall_succeeded_when_deps_gone() -> None:
+    with patch("octop.infra.desktop.setup._python_deps_available", return_value=False):
+        assert _desktop_uninstall_succeeded() is True
+
+
+def test_desktop_uninstall_succeeded_linux_stack_removed_with_host_ready() -> None:
+    with (
+        patch("octop.infra.desktop.setup.platform.system", return_value="Linux"),
+        patch("octop.infra.desktop.setup._python_deps_available", return_value=True),
+        patch("octop.infra.desktop.setup._linux_virtual_desktop_present", return_value=False),
+        patch(
+            "octop.infra.desktop.setup.desktop_status",
+            return_value=type("S", (), {"setup_state": "ready"})(),
+        ),
+    ):
+        assert _desktop_uninstall_succeeded() is True
+
+
+def test_desktop_uninstall_failed_linux_stack_remains() -> None:
+    with (
+        patch("octop.infra.desktop.setup.platform.system", return_value="Linux"),
+        patch("octop.infra.desktop.setup._python_deps_available", return_value=True),
+        patch("octop.infra.desktop.setup._linux_virtual_desktop_present", return_value=True),
+    ):
+        assert _desktop_uninstall_succeeded() is False
+
+
+def test_allowed_script_path_rejects_outside_bundle(tmp_path, monkeypatch) -> None:
+    from octop.infra.desktop.setup import _allowed_script_path, bundled_scripts_dir
+
+    outside = tmp_path / "evil.sh"
+    outside.write_text("#!/bin/bash\n", encoding="utf-8")
+    assert _allowed_script_path(outside) is False
+
+    inside = bundled_scripts_dir() / "install.sh"
+    assert inside.is_file()
+    assert _allowed_script_path(inside) is True
+
+
+def test_script_path_from_env_rejects_outside_bundle(tmp_path, monkeypatch) -> None:
+    from octop.infra.desktop.setup import _script_path_from_env
+
+    outside = tmp_path / "evil.sh"
+    outside.write_text("#!/bin/bash\n", encoding="utf-8")
+    monkeypatch.setenv("OCTOP_DESKTOP_INSTALL_SCRIPT", str(outside))
+    assert _script_path_from_env("OCTOP_DESKTOP_INSTALL_SCRIPT") is None
 
 
 def test_parse_geometry() -> None:
@@ -30,6 +96,37 @@ def test_desktop_status_deps_missing() -> None:
     assert status.setup_state == "deps_missing"
 
 
+def test_python_deps_install_cmd_prefers_uv(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "octop.infra.desktop.setup.shutil.which",
+        lambda name: "/usr/bin/uv" if name == "uv" else None,
+    )
+    monkeypatch.setattr("octop.infra.desktop.setup.sys.executable", "/venv/bin/python3")
+    cmd = python_deps_install_cmd()
+    assert cmd is not None
+    assert cmd[:5] == ["/usr/bin/uv", "pip", "install", "--python", "/venv/bin/python3"]
+    assert "mss>=9.0" in cmd
+
+
+def test_python_deps_install_cmd_falls_back_to_pip(monkeypatch) -> None:
+    monkeypatch.setattr("octop.infra.desktop.setup.shutil.which", lambda _name: None)
+    monkeypatch.setattr("octop.infra.desktop.setup.sys.executable", "/venv/bin/python3")
+    monkeypatch.setattr(
+        "octop.infra.desktop.setup.importlib.util.find_spec",
+        lambda name: object() if name == "pip" else None,
+    )
+    cmd = python_deps_install_cmd()
+    assert cmd == [
+        "/venv/bin/python3",
+        "-m",
+        "pip",
+        "install",
+        "mss>=9.0",
+        "pynput>=1.7",
+        "pillow>=10.0",
+    ]
+
+
 def test_desktop_status_deps_missing_darwin_omits_linux_cmds() -> None:
     with (
         patch("octop.infra.desktop.setup._python_deps_available", return_value=False),
@@ -42,7 +139,20 @@ def test_desktop_status_deps_missing_darwin_omits_linux_cmds() -> None:
     assert status.install_script == ""
     assert status.start_command == ""
     assert status.permissions_needed == ()
-    assert "octop[desktop]" in status.reason
+    assert status.reason == tr("desktop.deps_reason", "en")
+
+
+def test_desktop_status_darwin_missing_perms_not_ok() -> None:
+    with (
+        patch("octop.infra.desktop.setup._python_deps_available", return_value=True),
+        patch("octop.infra.desktop.setup.platform.system", return_value="Darwin"),
+        patch("octop.infra.desktop.setup._mac_screen_recording_granted", return_value=False),
+        patch("octop.infra.desktop.setup._mac_accessibility_granted", return_value=True),
+    ):
+        status = desktop_status()
+    assert status.setup_state == "ready"
+    assert status.ok is False
+    assert status.permissions_needed == ("screen_recording",)
 
 
 def test_desktop_status_ready_darwin_omits_linux_cmds() -> None:
@@ -71,12 +181,34 @@ def test_desktop_status_darwin_reports_only_missing_perms() -> None:
     assert status.permissions_needed == ("screen_recording",)
 
 
-def test_desktop_status_linux_keeps_install_cmds() -> None:
+def test_desktop_status_linux_deps_missing() -> None:
     with (
         patch("octop.infra.desktop.setup._python_deps_available", return_value=False),
         patch("octop.infra.desktop.setup.platform.system", return_value="Linux"),
     ):
         status = desktop_status()
     assert status.setup_state == "deps_missing"
-    assert status.install_script == "scripts/desktop/linux/v1.0/install.sh"
-    assert "systemctl start" in status.start_command
+    assert status.install_script == ""
+    assert status.start_command == ""
+
+
+def test_bundled_install_script_exists() -> None:
+    from octop.infra.desktop.setup import bundled_scripts_dir, resolve_install_script_path
+
+    install = bundled_scripts_dir() / "install.sh"
+    assert install.is_file()
+    assert resolve_install_script_path() == install
+
+
+def test_python_deps_uninstall_cmd_prefers_uv(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "octop.infra.desktop.setup.shutil.which",
+        lambda name: "/usr/bin/uv" if name == "uv" else None,
+    )
+    monkeypatch.setattr("octop.infra.desktop.setup.sys.executable", "/venv/bin/python3")
+    from octop.infra.desktop.setup import python_deps_uninstall_cmd
+
+    cmd = python_deps_uninstall_cmd()
+    assert cmd is not None
+    assert cmd[:4] == ["/usr/bin/uv", "pip", "uninstall", "-y"]
+    assert "mss" in cmd

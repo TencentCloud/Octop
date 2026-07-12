@@ -317,6 +317,33 @@
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。"
   },
+  "desktop": {
+    "install_log_deps": "正在安装 Python 依赖…",
+    "install_log_system": "正在安装虚拟桌面服务…",
+    "install_log_start": "正在启动桌面服务…",
+    "install_log_ready": "桌面环境已就绪。",
+    "install_log_host_ready": "本机桌面已就绪。",
+    "install_log_closing_streams": "正在关闭远程桌面连接…",
+    "install_log_removed": "远程桌面环境已移除。",
+    "install_log_remove_python": "正在移除 Python 依赖…",
+    "install_log_remove_system": "正在移除虚拟桌面文件与服务…",
+    "install_log_stop_services": "正在停止桌面服务…",
+    "install_log_stop_skipped": "桌面服务已停止。",
+    "deps_reason": "远程桌面所需的 Python 依赖尚未安装。",
+    "error_script_missing": "安装脚本未随 Octop 包分发，无法安装。",
+    "error_start_script_missing": "未找到桌面启动脚本。",
+    "error_stop_script_missing": "未找到桌面停止脚本。",
+    "error_sudo_required": "安装虚拟桌面需要 root 或无密码 sudo 权限。",
+    "error_sudo_uninstall_required": "卸载虚拟桌面需要 root 或无密码 sudo 权限。",
+    "error_command_failed": "命令执行失败（退出码 {exit_code}）。",
+    "error_pip_unavailable": "无法使用 pip/uv 安装桌面依赖。",
+    "error_pip_install_failed": "Python 依赖安装失败（退出码 {exit_code}）。",
+    "error_pip_remove_failed": "Python 依赖移除失败（退出码 {exit_code}）。",
+    "error_pip_remove_skipped": "pip/uv 不可用，跳过 Python 依赖移除。",
+    "error_setup_timeout": "桌面环境安装超时，请刷新状态后重试。",
+    "error_uninstall_incomplete": "远程桌面卸载未完成。",
+    "error_vnc_exposed": "VNC 端口暴露在网络上，请使用 -localhost yes 仅监听 127.0.0.1 后重启。"
+  },
   "tls": {
     "preflight": {
       "domain": {

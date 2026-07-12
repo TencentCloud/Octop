@@ -4,7 +4,7 @@
 # Adapted from agent-bridge scripts/desktop/v1.0 (TigerVNC + openbox stack).
 #
 # Usage:
-#   sudo bash scripts/desktop/linux/v1.0/install.sh [--geometry 1920x1080]
+#   sudo bash install.sh [--geometry 1920x1080]
 #
 # Output (last line):
 #   {"installed": true}
@@ -18,7 +18,7 @@ INSTALL_ROOT="/opt/octop-desktop"
 CONF_DIR="/etc/octop-desktop"
 DISPLAY_NUM=":99"
 GEOMETRY="${GEOMETRY:-1920x1080}"
-WALLPAPER_URL="${WALLPAPER_URL:-https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/4.png}"
+WALLPAPER_URL="${WALLPAPER_URL:-https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png}"
 VNC_PORT=5900
 OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
 DESKTOP_STATE_DIR="${OCTOP_HOME}/desktop"

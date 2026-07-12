@@ -82,7 +82,8 @@ function streamDesktopSse(
 }
 
 export const desktopApi = {
-  status: () => request<DesktopStatusResponse>("/desktop/status"),
+  status: () =>
+    request<DesktopStatusResponse>("/desktop/status", { cache: "no-store" }),
 
   setGeometry: (geometry: string) =>
     request<{ ok: boolean; geometry: string; width: number; height: number }>(
@@ -98,4 +99,9 @@ export const desktopApi = {
     onLog: (line: string) => void,
     onDone: (success: boolean) => void,
   ): AbortController => streamDesktopSse("/desktop/install", onLog, onDone),
+
+  uninstallDesktop: (
+    onLog: (line: string) => void,
+    onDone: (success: boolean) => void,
+  ): AbortController => streamDesktopSse("/desktop/uninstall", onLog, onDone),
 };

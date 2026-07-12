@@ -28,6 +28,7 @@ from octop.infra.desktop.session import (
 from octop.infra.desktop.setup import desktop_status
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
+from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ async def _stream_loop(
     quality: int,
     max_fps: float,
     frame_dims: list[int],
+    locale: str,
 ) -> None:
     loop = asyncio.get_running_loop()
     monitors = await loop.run_in_executor(
@@ -126,7 +128,7 @@ async def _stream_loop(
             if miss_streak == 1:
                 logger.warning("desktop capture returned no frame (display=%s)", session.display)
             if miss_streak >= 30:
-                err = OctopError.localized(ErrorCode.DESKTOP_CAPTURE_FAILED, "en")
+                err = OctopError.localized(ErrorCode.DESKTOP_CAPTURE_FAILED, locale)
                 await _send_json(
                     ws,
                     {
@@ -235,8 +237,9 @@ async def desktop_stream_ws(
     token: str | None = Query(default=None),
 ) -> None:
     server = websocket.app.state.octop_server
-    status = desktop_status()
-    if status.setup_state != "ready":
+    locale = resolve_request_locale(websocket)
+    status = desktop_status(locale=locale)
+    if status.setup_state != "ready" or not status.ok:
         await websocket.close(code=4003, reason=status.reason or status.setup_state)
         return
 
@@ -302,7 +305,7 @@ async def desktop_stream_ws(
         except DesktopSessionLimitError as exc:
             err = OctopError.localized(
                 ErrorCode.DESKTOP_SESSION_LIMIT,
-                "en",
+                locale,
                 details={"limit": exc.limit},
             )
             await _send_json(
@@ -326,6 +329,7 @@ async def desktop_stream_ws(
                 quality=quality,
                 max_fps=max_fps,
                 frame_dims=frame_dims,
+                locale=locale,
             )
         )
 

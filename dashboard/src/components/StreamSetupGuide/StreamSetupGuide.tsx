@@ -15,6 +15,7 @@ export interface SetupGuideAction {
   disabled?: boolean;
   icon?: ReactNode;
   type?: "primary" | "default";
+  danger?: boolean;
 }
 
 interface StreamSetupGuideProps {
@@ -62,6 +63,7 @@ export default function StreamSetupGuide({
             {primaryAction ? (
               <Button
                 type={primaryAction.type ?? "primary"}
+                danger={primaryAction.danger}
                 icon={primaryAction.icon}
                 loading={primaryAction.loading}
                 disabled={primaryAction.disabled}
@@ -73,6 +75,7 @@ export default function StreamSetupGuide({
             {secondaryAction ? (
               <Button
                 type={secondaryAction.type ?? "default"}
+                danger={secondaryAction.danger}
                 icon={secondaryAction.icon}
                 loading={secondaryAction.loading}
                 disabled={secondaryAction.disabled}

@@ -6,6 +6,47 @@
   gap: 12px;
 }
 
+.installProgress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: min(520px, 92%);
+  padding: 24px 20px;
+}
+
+.installProgressTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  text-align: center;
+}
+
+.installLog {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border-secondary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  color: var(--fn-text-secondary);
+}
+
+.installLogCompact {
+  max-height: 160px;
+}
+
+.installProgressActions {
+  display: flex;
+  justify-content: center;
+}
+
 .viewport {
   flex: 1;
   min-height: 240px;

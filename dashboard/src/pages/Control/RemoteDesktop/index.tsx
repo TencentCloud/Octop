@@ -21,6 +21,7 @@ import {
   PlugZap,
   RefreshCw,
   Terminal,
+  Trash2,
   Unplug,
   X,
 } from "lucide-react";
@@ -76,6 +77,7 @@ export default function RemoteDesktopPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const installAbortRef = useRef<AbortController | null>(null);
+  const uninstallAbortRef = useRef<AbortController | null>(null);
   const installLogRef = useRef<HTMLDivElement | null>(null);
 
   const [envStatus, setEnvStatus] = useState<DesktopStatusResponse | null>(
@@ -88,6 +90,8 @@ export default function RemoteDesktopPage() {
   const closeControlsDrawer = useCallback(() => setControlsOpen(false), []);
   const [installPhase, setInstallPhase] = useState<InstallPhase>("idle");
   const [installLogs, setInstallLogs] = useState<string[]>([]);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [uninstallLogs, setUninstallLogs] = useState<string[]>([]);
   const [screenSize, setScreenSize] = useState({ width: 1920, height: 1080 });
   const screenSizeRef = useRef({ width: 1920, height: 1080 });
   const [resolution, setResolution] = useState<DesktopResolution>(() => {
@@ -115,7 +119,11 @@ export default function RemoteDesktopPage() {
   const [frameReady, setFrameReady] = useState(false);
   const { status, connect, sendEvent, disconnect } = useDesktopStream();
 
-  const envReady = envStatus?.setup_state === "ready";
+  const envReady = envStatus?.setup_state === "ready" && envStatus.ok;
+  const canUninstall =
+    Boolean(envStatus) &&
+    envStatus?.setup_state !== "deps_missing" &&
+    envStatus?.setup_state !== "unsupported";
   const isStreaming =
     status === "streaming" ||
     status === "connecting" ||
@@ -148,12 +156,14 @@ export default function RemoteDesktopPage() {
     try {
       const data = await desktopApi.status();
       setEnvStatus(data);
+      return data;
     } catch (err) {
       showApiError(
         err,
         t("remoteDesktop.statusFailed", "获取远程桌面状态失败"),
         t,
       );
+      return null;
     } finally {
       setEnvLoading(false);
     }
@@ -172,6 +182,7 @@ export default function RemoteDesktopPage() {
   useEffect(
     () => () => {
       installAbortRef.current?.abort();
+      uninstallAbortRef.current?.abort();
     },
     [],
   );
@@ -179,15 +190,87 @@ export default function RemoteDesktopPage() {
   const startInstall = useCallback(() => {
     setInstallPhase("installing");
     setInstallLogs([]);
+    setEnvModalOpen(false);
     installAbortRef.current = desktopApi.installDesktop(
       (line) => setInstallLogs((prev) => [...prev, line]),
       (success) => {
         installAbortRef.current = null;
-        setInstallPhase(success ? "install_success" : "install_failed");
-        if (success) void refreshEnv();
+        if (!success) {
+          setInstallPhase("install_failed");
+          setEnvModalOpen(true);
+          return;
+        }
+        setInstallPhase("idle");
+        setEnvModalOpen(false);
+        void refreshEnv();
+        message.success(t("remoteDesktop.installSuccess", "桌面环境已就绪"));
       },
     );
-  }, [refreshEnv]);
+  }, [refreshEnv, t]);
+
+  const handleUninstall = useCallback(() => {
+    if (!canUninstall || uninstalling) return;
+    const confirmText = envStatus?.native_capture
+      ? t(
+          "remoteDesktop.uninstallConfirmNative",
+          "将移除远程桌面所需的 Python 组件，是否继续？",
+        )
+      : t(
+          "remoteDesktop.uninstallConfirmLinux",
+          "将停止虚拟桌面服务并移除已安装组件，是否继续？",
+        );
+    Modal.confirm({
+      title: t("remoteDesktop.uninstallTitle", "卸载远程桌面"),
+      content: confirmText,
+      okText: t("remoteDesktop.uninstall", "卸载"),
+      okButtonProps: { danger: true },
+      cancelText: t("common.cancel"),
+      onOk: () =>
+        new Promise<void>((resolve, reject) => {
+          if (isStreaming) {
+            disconnect();
+          }
+          setUninstalling(true);
+          setUninstallLogs([]);
+          const hide = message.loading(
+            t("remoteDesktop.uninstalling", "正在卸载…"),
+            0,
+          );
+          uninstallAbortRef.current = desktopApi.uninstallDesktop(
+            (line) => setUninstallLogs((prev) => [...prev, line]),
+            (success) => {
+              uninstallAbortRef.current = null;
+              setUninstalling(false);
+              hide();
+              void refreshEnv().then((data) => {
+                const removed =
+                  success ||
+                  data?.setup_state === "deps_missing" ||
+                  data?.setup_state === "needs_install";
+                if (removed) {
+                  setUninstallLogs([]);
+                  message.success(
+                    t("remoteDesktop.uninstallSuccess", "远程桌面已卸载"),
+                  );
+                  resolve();
+                  return;
+                }
+                message.error(t("remoteDesktop.uninstallFailed", "卸载失败"));
+                reject(new Error("uninstall failed"));
+              });
+            },
+          );
+        }),
+    });
+  }, [
+    canUninstall,
+    disconnect,
+    envStatus?.native_capture,
+    isStreaming,
+    refreshEnv,
+    t,
+    uninstalling,
+  ]);
 
   const openEnvModal = useCallback(() => {
     setEnvModalOpen(true);
@@ -568,25 +651,59 @@ export default function RemoteDesktopPage() {
     </div>
   );
 
-  const renderInstallLog = (maxHeight = 180) => (
+  const cancelInstall = useCallback(() => {
+    installAbortRef.current?.abort();
+    installAbortRef.current = null;
+    setInstallPhase("idle");
+    setInstallLogs([]);
+    message.info(
+      t(
+        "remoteDesktop.installCancelHint",
+        "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
+      ),
+    );
+  }, [t]);
+
+  const renderInstallLog = (maxHeight?: number, extraClass?: string) => (
     <div
       ref={installLogRef}
-      style={{
-        maxHeight,
-        overflow: "auto",
-        fontFamily: "monospace",
-        fontSize: 12,
-        background: "var(--fn-bg-secondary)",
-        padding: 8,
-        borderRadius: 6,
-        whiteSpace: "pre-wrap",
-      }}
+      className={`${styles.installLog} ${extraClass ?? ""}`}
+      style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
         <div>{t("remoteDesktop.installing", "正在启动安装...")}</div>
       ) : (
         installLogs.map((line, i) => <div key={i}>{line}</div>)
       )}
+    </div>
+  );
+
+  const renderViewportUninstallProgress = () => (
+    <div className={styles.installProgress}>
+      <RefreshCw size={32} className={styles.streamLoadingIcon} />
+      <div className={styles.installProgressTitle}>
+        {t("remoteDesktop.uninstalling", "正在卸载…")}
+      </div>
+      <div className={styles.installLog}>
+        {uninstallLogs.length === 0 ? (
+          <div>{t("remoteDesktop.uninstalling", "正在卸载…")}</div>
+        ) : (
+          uninstallLogs.map((line, i) => <div key={i}>{line}</div>)
+        )}
+      </div>
+    </div>
+  );
+
+  const renderViewportInstallProgress = () => (
+    <div className={styles.installProgress}>
+      <RefreshCw size={32} className={styles.streamLoadingIcon} />
+      <div className={styles.installProgressTitle}>
+        {t("remoteDesktop.installProgress", "正在安装中…")}
+      </div>
+      {renderInstallLog()}
+      <div className={styles.installProgressActions}>
+        <Button onClick={cancelInstall}>{t("common.cancel")}</Button>
+      </div>
     </div>
   );
 
@@ -635,9 +752,6 @@ export default function RemoteDesktopPage() {
             subTitle={t("remoteDesktop.installFailedHint")}
             style={{ padding: "8px 0" }}
           />
-          {envStatus?.install_script ? (
-            <Text code>sudo bash {envStatus.install_script}</Text>
-          ) : null}
           {installLogs.length > 0 && (
             <details open>
               <summary
@@ -649,7 +763,7 @@ export default function RemoteDesktopPage() {
               >
                 {t("remoteDesktop.installLog", "安装日志")}
               </summary>
-              {renderInstallLog(160)}
+              {renderInstallLog(160, styles.installLogCompact)}
             </details>
           )}
         </Space>
@@ -691,18 +805,6 @@ export default function RemoteDesktopPage() {
           message={t("remoteDesktop.resourceWarningTitle", "资源占用提示")}
           description={t("remoteDesktop.resourceWarningDesc")}
         />
-        <Alert
-          type={envStatus?.setup_state === "unsupported" ? "error" : "warning"}
-          showIcon
-          message={t("remoteDesktop.setupTitle", "需要配置远程桌面环境")}
-          description={envStatus?.reason}
-        />
-        {envStatus?.install_script ? (
-          <Text code>sudo bash {envStatus.install_script}</Text>
-        ) : null}
-        {envStatus?.start_command ? (
-          <Text code>{envStatus.start_command}</Text>
-        ) : null}
       </Space>
     );
   };
@@ -863,76 +965,93 @@ export default function RemoteDesktopPage() {
           }`}
         >
           {!showStream ? (
-            <StreamSetupGuide
-              icon={<Monitor size={48} strokeWidth={1.5} />}
-              title={
-                envReady
-                  ? t("remoteDesktop.connectTitle", "连接远程桌面")
-                  : t("remoteDesktop.setupTitle", "需要配置远程桌面环境")
-              }
-              description={
-                envReady
-                  ? t(
-                      "remoteDesktop.connectIdleDesc",
-                      "完成环境检查后，可在右上角连接并实时操控主机桌面",
-                    )
-                  : envStatus?.reason ||
-                    t(
-                      "remoteDesktop.setupDesc",
-                      "按以下步骤完成环境配置，即可在浏览器中远程操控主机桌面",
-                    )
-              }
-              steps={
-                envReady
-                  ? [
-                      {
-                        label: t(
-                          "remoteDesktop.idleStep1",
-                          "点击右上角「连接」建立远程桌面会话",
-                        ),
-                      },
-                      {
-                        label: t(
-                          "remoteDesktop.idleStep2",
-                          "在画面中点击、拖动与输入，即可操控远程桌面",
-                        ),
-                      },
-                    ]
-                  : [
-                      {
-                        label: t(
-                          "remoteDesktop.setupStep1",
-                          "点击「检查」，检测 Python 依赖与桌面环境状态",
-                        ),
-                      },
-                      {
-                        label: t(
-                          "remoteDesktop.setupStep2",
-                          "若未安装，在弹窗中按引导完成安装（Linux 无图形服务器可一键搭建虚拟桌面）",
-                        ),
-                      },
-                      {
-                        label: t(
-                          "remoteDesktop.setupStep3",
-                          "环境就绪后，点击「连接」开始实时看屏与键鼠操控",
-                        ),
-                      },
-                    ]
-              }
-              primaryAction={
-                envReady
-                  ? {
-                      label: t("remoteDesktop.connect", "连接"),
-                      onClick: handleConnect,
-                      icon: <PlugZap size={14} />,
-                    }
-                  : {
-                      label: t("remoteDesktop.checkInstallShort", "检查"),
-                      onClick: openEnvModal,
-                      icon: <Monitor size={14} />,
-                    }
-              }
-            />
+            installPhase === "installing" ? (
+              renderViewportInstallProgress()
+            ) : uninstalling ? (
+              renderViewportUninstallProgress()
+            ) : (
+              <StreamSetupGuide
+                icon={<Monitor size={48} strokeWidth={1.5} />}
+                title={
+                  envReady
+                    ? t("remoteDesktop.connectTitle", "连接远程桌面")
+                    : t("remoteDesktop.subtitle", "控制 Octop 主机操作系统桌面")
+                }
+                description={
+                  envReady
+                    ? t(
+                        "remoteDesktop.connectIdleDesc",
+                        "点击下方「连接」开始实时操控主机桌面",
+                      )
+                    : t(
+                        "remoteDesktop.setupDesc",
+                        "按以下步骤完成环境配置，即可在浏览器中远程操控主机桌面",
+                      )
+                }
+                steps={
+                  envReady
+                    ? [
+                        {
+                          label: t(
+                            "remoteDesktop.idleStep1",
+                            "点击「连接」建立远程桌面会话",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.idleStep2",
+                            "在画面中点击、拖动与输入，即可操控远程桌面",
+                          ),
+                        },
+                      ]
+                    : [
+                        {
+                          label: t(
+                            "remoteDesktop.setupStep1",
+                            "点击「检查」，检测 Python 依赖与桌面环境状态",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.setupStep2",
+                            "若未安装，在弹窗中按引导完成安装（Linux 无图形服务器可一键搭建虚拟桌面）",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.setupStep3",
+                            "环境就绪后，点击「连接」开始实时看屏与键鼠操控",
+                          ),
+                        },
+                      ]
+                }
+                primaryAction={
+                  envReady
+                    ? {
+                        label: t("remoteDesktop.connect", "连接"),
+                        onClick: handleConnect,
+                        icon: <PlugZap size={14} />,
+                      }
+                    : {
+                        label: t("remoteDesktop.checkInstallShort", "检查"),
+                        onClick: openEnvModal,
+                        icon: <Monitor size={14} />,
+                      }
+                }
+                secondaryAction={
+                  envReady && canUninstall
+                    ? {
+                        label: t("remoteDesktop.uninstall", "卸载"),
+                        onClick: handleUninstall,
+                        icon: <Trash2 size={14} />,
+                        loading: uninstalling,
+                        disabled: uninstalling || envLoading,
+                        danger: true,
+                      }
+                    : undefined
+                }
+              />
+            )
           ) : (
             <div className={styles.streamSurface}>
               {isStreaming && !frameReady && (

@@ -85,10 +85,13 @@ include = [
     "src/octop/**/*.json",
     "src/octop/**/*.md",
     "src/octop/**/*.sql",
+    "src/octop/**/*.sh",
+    "src/octop/**/*.png",
     "src/octop/dashboard/**/*",
     "src/octop/infra/agents/experts/library/**/*",
     "src/octop/infra/agents/subagents/library/**/*",
     "src/octop/infra/agents/subagents/divisions.json",
+    "src/octop/infra/desktop/scripts/**/*",
 ]
 artifacts = [
     "src/octop/dashboard/**/*",

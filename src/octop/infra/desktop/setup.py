@@ -16,7 +16,46 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from octop.i18n import tr
 from octop.infra.utils.posix_compat import geteuid
+
+_SCRIPT_LOG_RE = re.compile(
+    r"(install\.sh|start\.sh|stop\.sh|Running /|Starting desktop services via /|Stopping desktop services via /)",
+)
+
+
+def _install_log(locale: str, key: str, **kwargs: object) -> str:
+    text = tr(f"desktop.{key}", locale)
+    return text.format(**kwargs) if kwargs else text
+
+
+def _allowed_script_path(path: Path) -> bool:
+    try:
+        return bundled_scripts_dir().resolve() in path.resolve().parents
+    except OSError:
+        return False
+
+
+def _script_path_from_env(env_var: str) -> Path | None:
+    override = os.environ.get(env_var, "").strip()
+    if not override:
+        return None
+    path = Path(override)
+    if not path.is_file() or not _allowed_script_path(path):
+        return None
+    return path
+
+
+def _bundled_script(name: str) -> Path | None:
+    path = bundled_scripts_dir() / name
+    return path if path.is_file() else None
+
+
+def _sanitize_subprocess_log(text: str) -> str | None:
+    t = text.strip()
+    if not t or _SCRIPT_LOG_RE.search(t):
+        return None
+    return t
 
 
 def octop_home() -> Path:
@@ -39,66 +78,24 @@ def system_install_root() -> Path:
     return Path("/opt/octop-desktop")
 
 
-def install_script_rel() -> str:
-    return "scripts/desktop/linux/v1.0/install.sh"
-
-
-def start_script_rel() -> str:
-    return "scripts/desktop/linux/v1.0/start.sh"
-
-
-def _repo_candidates() -> list[Path]:
-    out: list[Path] = []
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "pyproject.toml").is_file():
-            out.append(parent)
-            break
-    cwd = Path.cwd()
-    if (cwd / "pyproject.toml").is_file():
-        out.append(cwd)
-    return out
+def bundled_scripts_dir() -> Path:
+    return Path(__file__).resolve().parent / "scripts" / "linux" / "v1.0"
 
 
 def resolve_install_script_path() -> Path | None:
-    override = os.environ.get("OCTOP_DESKTOP_INSTALL_SCRIPT", "").strip()
-    if override:
-        path = Path(override)
-        return path if path.is_file() else None
-    for root in _repo_candidates():
-        path = root / install_script_rel()
-        if path.is_file():
-            return path
-    return None
+    return _script_path_from_env("OCTOP_DESKTOP_INSTALL_SCRIPT") or _bundled_script("install.sh")
 
 
 def resolve_start_script_path() -> Path | None:
-    override = os.environ.get("OCTOP_DESKTOP_START_SCRIPT", "").strip()
-    if override:
-        path = Path(override)
-        return path if path.is_file() else None
-    for root in _repo_candidates():
-        path = root / start_script_rel()
-        if path.is_file():
-            return path
-    return None
+    return _script_path_from_env("OCTOP_DESKTOP_START_SCRIPT") or _bundled_script("start.sh")
+
+
+def resolve_stop_script_path() -> Path | None:
+    return _script_path_from_env("OCTOP_DESKTOP_STOP_SCRIPT") or _bundled_script("stop.sh")
 
 
 def resolve_resize_script_path() -> Path | None:
-    override = os.environ.get("OCTOP_DESKTOP_RESIZE_SCRIPT", "").strip()
-    if override:
-        path = Path(override)
-        return path if path.is_file() else None
-    install = resolve_install_script_path()
-    if install is not None:
-        path = install.parent / "resize.sh"
-        if path.is_file():
-            return path
-    for root in _repo_candidates():
-        path = root / "scripts/desktop/linux/v1.0/resize.sh"
-        if path.is_file():
-            return path
-    return None
+    return _script_path_from_env("OCTOP_DESKTOP_RESIZE_SCRIPT") or _bundled_script("resize.sh")
 
 
 _DEFAULT_VNC_PORT = 5900
@@ -260,7 +257,27 @@ SetupState = Literal[
     "permission_denied",
 ]
 
-_DEPS_REASON = "Install Python extras: pip install 'octop[desktop]'"
+
+def python_deps_install_cmd() -> list[str] | None:
+    """Build install command for desktop optional Python packages."""
+    packages = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        return [uv_bin, "pip", "install", "--python", sys.executable, *packages]
+    if importlib.util.find_spec("pip") is not None:
+        return [sys.executable, "-m", "pip", "install", *packages]
+    return None
+
+
+def python_deps_uninstall_cmd() -> list[str] | None:
+    """Build uninstall command for desktop optional Python packages."""
+    packages = ["mss", "pynput", "pillow"]
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        return [uv_bin, "pip", "uninstall", "-y", *packages, "--python", sys.executable]
+    if importlib.util.find_spec("pip") is not None:
+        return [sys.executable, "-m", "pip", "uninstall", "-y", *packages]
+    return None
 
 
 @dataclass(frozen=True)
@@ -344,6 +361,21 @@ def _virtual_desktop_installed() -> bool:
     return system_conf_dir().is_dir() or desktop_env_file().is_file()
 
 
+def _linux_virtual_desktop_present() -> bool:
+    return (
+        _virtual_desktop_installed() or system_install_root().is_dir() or system_conf_dir().is_dir()
+    )
+
+
+def _desktop_uninstall_succeeded() -> bool:
+    """True when optional Python deps and the Linux virtual stack are gone."""
+    if not _python_deps_available():
+        return True
+    if platform.system().lower() == "linux":
+        return not _linux_virtual_desktop_present()
+    return False
+
+
 def _xvnc_service_active() -> bool:
     if shutil.which("systemctl") and Path("/run/systemd/system").is_dir():
         try:
@@ -370,13 +402,10 @@ def _xvnc_service_active() -> bool:
         return False
 
 
-def _check_vnc_localhost() -> tuple[bool | None, str]:
+def _check_vnc_localhost(*, locale: str = "en") -> tuple[bool | None, str]:
     bound = vnc_listens_localhost_only()
     if bound is False:
-        return (
-            False,
-            "VNC port is exposed on the network; restart with -localhost yes (only 127.0.0.1)",
-        )
+        return False, _install_log(locale, "error_vnc_exposed")
     return bound, ""
 
 
@@ -387,8 +416,8 @@ def _display_usable(display: str) -> bool:
     return _display_socket_ok(display) and _xvnc_process_ok(display)
 
 
-def _resolve_linux_setup() -> tuple[SetupState, str | None, str, bool | None]:
-    vnc_local, vnc_reason = _check_vnc_localhost()
+def _resolve_linux_setup(*, locale: str = "en") -> tuple[SetupState, str | None, str, bool | None]:
+    vnc_local, vnc_reason = _check_vnc_localhost(locale=locale)
     display = os.environ.get("DISPLAY", "").strip() or _display_from_env_file()
     if display and _display_usable(display):
         if vnc_local is False:
@@ -413,14 +442,14 @@ def _resolve_linux_setup() -> tuple[SetupState, str | None, str, bool | None]:
         return (
             "needs_start",
             None,
-            "Virtual desktop installed but not running; start octop-desktop services",
+            "",
             vnc_local,
         )
 
     return (
         "needs_install",
         None,
-        "No graphical display; install the Linux virtual desktop stack",
+        "",
         vnc_local,
     )
 
@@ -466,15 +495,8 @@ def _mac_permissions() -> tuple[str, ...]:
     return tuple(missing)
 
 
-def desktop_status() -> DesktopStatus:
+def desktop_status(*, locale: str = "en") -> DesktopStatus:
     system = platform.system().lower()
-    # Linux virtual-desktop install/start commands only — never surface on Mac/Windows.
-    linux_install_script = install_script_rel() if system == "linux" else ""
-    linux_start_cmd = (
-        "sudo systemctl start octop-desktop-xvnc octop-desktop-openbox octop-desktop-session"
-        if system == "linux"
-        else ""
-    )
     geometry = read_geometry()
 
     if not _python_deps_available():
@@ -484,16 +506,16 @@ def desktop_status() -> DesktopStatus:
             setup_state="deps_missing",
             platform=system,
             display=None,
-            reason=_DEPS_REASON,
-            install_script=linux_install_script,
-            start_command=linux_start_cmd,
+            reason=_install_log(locale, "deps_reason"),
+            install_script="",
+            start_command="",
             geometry=geometry,
             # Defer TCC probes until desktop deps are present.
             permissions_needed=(),
         )
 
     if system == "linux":
-        setup_state, display, reason, vnc_local = _resolve_linux_setup()
+        setup_state, display, reason, vnc_local = _resolve_linux_setup(locale=locale)
         supported = setup_state in {"ready", "needs_start"}
         return DesktopStatus(
             ok=setup_state == "ready",
@@ -502,8 +524,8 @@ def desktop_status() -> DesktopStatus:
             platform=system,
             display=display,
             reason=reason,
-            install_script=linux_install_script,
-            start_command=linux_start_cmd,
+            install_script="",
+            start_command="",
             geometry=geometry,
             vnc_localhost_only=vnc_local,
         )
@@ -524,7 +546,7 @@ def desktop_status() -> DesktopStatus:
     if system == "darwin":
         perms = _mac_permissions()
         return DesktopStatus(
-            ok=True,
+            ok=not perms,
             desktop_supported=True,
             setup_state="ready",
             platform=system,
@@ -558,7 +580,19 @@ def _sse(event: dict[str, object]) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-async def _stream_subprocess(cmd: list[str], *, cwd: Path | None = None) -> AsyncIterator[str]:
+@dataclass
+class _SubprocessRun:
+    exit_code: int | None = None
+
+
+async def _stream_subprocess(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    emit_done: bool = True,
+    result: _SubprocessRun | None = None,
+    sanitize_paths: bool = False,
+) -> AsyncIterator[str]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -572,24 +606,80 @@ async def _stream_subprocess(cmd: list[str], *, cwd: Path | None = None) -> Asyn
             break
         text = line.decode("utf-8", errors="replace").rstrip()
         if text:
+            if sanitize_paths:
+                sanitized = _sanitize_subprocess_log(text)
+                if sanitized is None:
+                    continue
+                text = sanitized
             yield _sse({"log": text})
     code = await proc.wait()
-    yield _sse({"done": True, "success": code == 0, "exit_code": code})
+    if result is not None:
+        result.exit_code = code
+    if emit_done:
+        yield _sse({"done": True, "success": code == 0, "exit_code": code})
 
 
-async def install_python_deps_stream() -> AsyncIterator[str]:
-    yield _sse({"log": "Installing Python packages: mss, pynput, pillow..."})
-    cmd = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "mss>=9.0",
-        "pynput>=1.7",
-        "pillow>=10.0",
-    ]
-    async for chunk in _stream_subprocess(cmd):
+async def _install_failure(message: str) -> AsyncIterator[str]:
+    yield _sse({"log": message})
+    yield _sse({"done": True, "success": False, "error": message})
+
+
+async def _probe_desktop_status(*, locale: str = "en") -> DesktopStatus:
+    return await asyncio.to_thread(desktop_status, locale=locale)
+
+
+async def _run_script_step(
+    script: Path | None,
+    *,
+    locale: str,
+    missing_error_key: str,
+    log_message_key: str,
+    tolerate_exit_code: bool = False,
+) -> AsyncIterator[str]:
+    if script is None:
+        async for chunk in _install_failure(_install_log(locale, missing_error_key)):
+            yield chunk
+        return
+    cmd = _install_cmd_for_script(script)
+    if cmd is None:
+        async for chunk in _install_failure(_install_log(locale, "error_sudo_required")):
+            yield chunk
+        return
+    yield _sse({"log": _install_log(locale, log_message_key)})
+    run = _SubprocessRun()
+    async for chunk in _stream_subprocess(
+        cmd,
+        cwd=script.parent,
+        emit_done=False,
+        result=run,
+        sanitize_paths=True,
+    ):
         yield chunk
+    if run.exit_code != 0:
+        if tolerate_exit_code:
+            yield _sse({"log": _install_log(locale, "install_log_stop_skipped")})
+            return
+        async for chunk in _install_failure(
+            _install_log(locale, "error_command_failed", exit_code=run.exit_code)
+        ):
+            yield chunk
+
+
+async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
+    cmd = python_deps_install_cmd()
+    if cmd is None:
+        async for chunk in _install_failure(_install_log(locale, "error_pip_unavailable")):
+            yield chunk
+        return
+    yield _sse({"log": _install_log(locale, "install_log_deps")})
+    run = _SubprocessRun()
+    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run):
+        yield chunk
+    if run.exit_code != 0:
+        async for chunk in _install_failure(
+            _install_log(locale, "error_pip_install_failed", exit_code=run.exit_code)
+        ):
+            yield chunk
 
 
 def _install_cmd_for_script(script: Path) -> list[str] | None:
@@ -600,90 +690,210 @@ def _install_cmd_for_script(script: Path) -> list[str] | None:
     return None
 
 
-async def install_system_desktop_stream() -> AsyncIterator[str]:
-    script = resolve_install_script_path()
-    if script is None:
-        yield _sse(
-            {
-                "done": True,
-                "success": False,
-                "error": "install script not found; run scripts/desktop/linux/v1.0/install.sh manually",
-            }
-        )
-        return
+def _sudo_shell_cmd(script: str) -> list[str] | None:
+    if geteuid() == 0:
+        return ["/bin/bash", "-c", script]
+    if shutil.which("sudo"):
+        return ["sudo", "-n", "/bin/bash", "-c", script]
+    return None
 
-    cmd = _install_cmd_for_script(script)
-    if cmd is None:
-        yield _sse(
-            {
-                "done": True,
-                "success": False,
-                "error": f"root or passwordless sudo required: sudo bash {script}",
-            }
-        )
-        return
 
-    yield _sse({"log": f"Running {script} ..."})
-    async for chunk in _stream_subprocess(cmd, cwd=script.parent):
+_LINUX_UNINSTALL_SHELL = """
+set -euo pipefail
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  systemctl disable octop-desktop-xvnc octop-desktop-openbox octop-desktop-session 2>/dev/null || true
+  systemctl stop octop-desktop-xvnc octop-desktop-openbox octop-desktop-session 2>/dev/null || true
+  systemctl reset-failed octop-desktop-xvnc octop-desktop-openbox octop-desktop-session 2>/dev/null || true
+  systemctl daemon-reload 2>/dev/null || true
+fi
+rm -f /etc/systemd/system/octop-desktop-xvnc.service \\
+      /etc/systemd/system/octop-desktop-openbox.service \\
+      /etc/systemd/system/octop-desktop-session.service
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload 2>/dev/null || true
+fi
+rm -rf /opt/octop-desktop /etc/octop-desktop
+rm -f /usr/share/backgrounds/octop-desktop-wallpaper.png \\
+      /usr/share/backgrounds/octop-desktop-wallpaper.svg 2>/dev/null || true
+pkill -9 -f 'import -display :99' 2>/dev/null || true
+pkill -9 -f 'Xvnc :99' 2>/dev/null || true
+pkill -9 -f '/opt/octop-desktop/' 2>/dev/null || true
+rm -f /tmp/.X99-lock
+rm -rf /tmp/.X11-unix/X99 /tmp/octop-desktop-dbus-env /tmp/runtime-octop-desktop
+"""
+
+
+def _remove_local_desktop_state() -> None:
+    shutil.rmtree(desktop_state_dir(), ignore_errors=True)
+
+
+async def install_system_desktop_stream(locale: str) -> AsyncIterator[str]:
+    async for chunk in _run_script_step(
+        resolve_install_script_path(),
+        locale=locale,
+        missing_error_key="error_script_missing",
+        log_message_key="install_log_system",
+    ):
         yield chunk
 
 
-async def start_desktop_stream() -> AsyncIterator[str]:
-    script = resolve_start_script_path()
-    if script is None:
-        yield _sse(
-            {
-                "done": True,
-                "success": False,
-                "error": "start script not found",
-            }
-        )
-        return
-
-    cmd = _install_cmd_for_script(script)
-    if cmd is None:
-        yield _sse(
-            {
-                "done": True,
-                "success": False,
-                "error": f"root or passwordless sudo required: sudo bash {script}",
-            }
-        )
-        return
-
-    yield _sse({"log": f"Starting desktop services via {script} ..."})
-    async for chunk in _stream_subprocess(cmd, cwd=script.parent):
+async def start_desktop_stream(locale: str) -> AsyncIterator[str]:
+    async for chunk in _run_script_step(
+        resolve_start_script_path(),
+        locale=locale,
+        missing_error_key="error_start_script_missing",
+        log_message_key="install_log_start",
+    ):
         yield chunk
 
 
-async def install_desktop_stream() -> AsyncIterator[str]:
-    status = desktop_status()
+def _sse_done(chunk: str) -> dict[str, object] | None:
+    if not chunk.startswith("data: "):
+        return None
+    payload = json.loads(chunk[6:].strip())
+    return payload if payload.get("done") else None
 
-    if status.setup_state == "deps_missing":
-        async for chunk in install_python_deps_stream():
+
+async def install_desktop_stream(*, locale: str = "en") -> AsyncIterator[str]:
+    for _attempt in range(6):
+        status = await _probe_desktop_status(locale=locale)
+
+        if status.setup_state == "ready":
+            yield _sse({"log": _install_log(locale, "install_log_ready")})
+            yield _sse({"done": True, "success": True})
+            return
+
+        if status.setup_state == "deps_missing":
+            async for chunk in install_python_deps_stream(locale):
+                yield chunk
+                done = _sse_done(chunk)
+                if done is not None and not done.get("success"):
+                    return
+            await asyncio.sleep(0.3)
+            continue
+
+        if status.platform != "linux":
+            yield _sse({"log": _install_log(locale, "install_log_host_ready")})
+            yield _sse({"done": True, "success": status.ok})
+            return
+
+        if status.setup_state == "needs_install":
+            async for chunk in install_system_desktop_stream(locale):
+                yield chunk
+                done = _sse_done(chunk)
+                if done is not None and not done.get("success"):
+                    return
+            await asyncio.sleep(2)
+            continue
+
+        if status.setup_state == "needs_start":
+            async for chunk in start_desktop_stream(locale):
+                yield chunk
+                done = _sse_done(chunk)
+                if done is not None and not done.get("success"):
+                    return
+            await asyncio.sleep(1)
+            continue
+
+        async for chunk in _install_failure(status.reason or status.setup_state):
             yield chunk
-            if chunk.startswith("data: "):
-                payload = json.loads(chunk[6:].strip())
-                if payload.get("done"):
-                    if not payload.get("success"):
-                        return
-                    break
-        status = desktop_status()
-
-    if status.platform != "linux":
-        yield _sse({"log": "Host desktop is ready on this platform."})
-        yield _sse({"done": True, "success": status.setup_state == "ready"})
         return
 
-    if status.setup_state == "needs_install":
-        async for chunk in install_system_desktop_stream():
+    for _ in range(15):
+        status = await _probe_desktop_status(locale=locale)
+        if status.setup_state == "ready":
+            yield _sse({"log": _install_log(locale, "install_log_ready")})
+            yield _sse({"done": True, "success": True})
+            return
+        await asyncio.sleep(1)
+
+    status = await _probe_desktop_status(locale=locale)
+    if status.setup_state == "ready":
+        yield _sse({"log": _install_log(locale, "install_log_ready")})
+        yield _sse({"done": True, "success": True})
+        return
+    async for chunk in _install_failure(_install_log(locale, "error_setup_timeout")):
+        yield chunk
+
+
+async def uninstall_python_deps_stream(locale: str) -> AsyncIterator[str]:
+    if not _python_deps_available():
+        return
+    cmd = python_deps_uninstall_cmd()
+    if cmd is None:
+        yield _sse({"log": _install_log(locale, "error_pip_remove_skipped")})
+        return
+    yield _sse({"log": _install_log(locale, "install_log_remove_python")})
+    run = _SubprocessRun()
+    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run):
+        yield chunk
+    if run.exit_code not in {0, None} and _python_deps_available():
+        async for chunk in _install_failure(
+            _install_log(locale, "error_pip_remove_failed", exit_code=run.exit_code)
+        ):
+            yield chunk
+
+
+async def uninstall_linux_stack_stream(locale: str) -> AsyncIterator[str]:
+    if not _linux_virtual_desktop_present():
+        return
+
+    stop = resolve_stop_script_path()
+    if stop is not None:
+        async for chunk in _run_script_step(
+            stop,
+            locale=locale,
+            missing_error_key="error_stop_script_missing",
+            log_message_key="install_log_stop_services",
+            tolerate_exit_code=True,
+        ):
+            yield chunk
+            done = _sse_done(chunk)
+            if done is not None and not done.get("success"):
+                return
+
+    cmd = _sudo_shell_cmd(_LINUX_UNINSTALL_SHELL)
+    if cmd is None:
+        async for chunk in _install_failure(_install_log(locale, "error_sudo_uninstall_required")):
             yield chunk
         return
 
-    if status.setup_state == "needs_start":
-        async for chunk in start_desktop_stream():
+    yield _sse({"log": _install_log(locale, "install_log_remove_system")})
+    run = _SubprocessRun()
+    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run, sanitize_paths=True):
+        yield chunk
+    if run.exit_code != 0:
+        async for chunk in _install_failure(
+            _install_log(locale, "error_command_failed", exit_code=run.exit_code)
+        ):
             yield chunk
-        return
 
-    yield _sse({"log": "Desktop environment is already ready."})
-    yield _sse({"done": True, "success": status.setup_state == "ready"})
+
+async def uninstall_desktop_stream(*, locale: str = "en") -> AsyncIterator[str]:
+    from octop.infra.desktop.session import disconnect_all_streams
+
+    yield _sse({"log": _install_log(locale, "install_log_closing_streams")})
+    await disconnect_all_streams()
+
+    status = await _probe_desktop_status(locale=locale)
+    if status.platform == "linux":
+        async for chunk in uninstall_linux_stack_stream(locale):
+            yield chunk
+            done = _sse_done(chunk)
+            if done is not None and not done.get("success"):
+                return
+
+    _remove_local_desktop_state()
+
+    async for chunk in uninstall_python_deps_stream(locale):
+        yield chunk
+        done = _sse_done(chunk)
+        if done is not None and not done.get("success"):
+            return
+
+    if _desktop_uninstall_succeeded():
+        yield _sse({"log": _install_log(locale, "install_log_removed")})
+        yield _sse({"done": True, "success": True})
+        return
+    async for chunk in _install_failure(_install_log(locale, "error_uninstall_incomplete")):
+        yield chunk
