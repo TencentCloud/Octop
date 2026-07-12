@@ -822,6 +822,7 @@ export default function RemoteDesktopPage() {
 
       <div className={styles.remoteDesktopPage}>
         {envReady &&
+          !showStream &&
           envStatus?.platform === "darwin" &&
           envStatus.permissions_needed.length > 0 && (
             <Alert
@@ -831,13 +832,20 @@ export default function RemoteDesktopPage() {
                 "remoteDesktop.macPermissionsTitle",
                 "需要 macOS 系统权限",
               )}
-              description={t(
-                "remoteDesktop.macPermissionsDesc",
-                "请在「系统设置 → 隐私与安全性」中为运行 Octop 的终端或应用开启「屏幕录制」和「辅助功能」，然后重新连接。",
-              )}
+              description={t("remoteDesktop.macPermissionsDesc", {
+                permissions: envStatus.permissions_needed
+                  .map((p) =>
+                    p === "screen_recording"
+                      ? t("remoteDesktop.permScreenRecording", "屏幕录制")
+                      : p === "accessibility"
+                      ? t("remoteDesktop.permAccessibility", "辅助功能")
+                      : p,
+                  )
+                  .join(t("remoteDesktop.permJoin", "、")),
+              })}
             />
           )}
-        {envReady && envStatus?.native_capture && (
+        {envReady && !showStream && envStatus?.native_capture && (
           <Alert
             type="success"
             showIcon

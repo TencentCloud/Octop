@@ -423,31 +423,71 @@ def _resolve_linux_setup() -> tuple[SetupState, str | None, str, bool | None]:
     )
 
 
+def _mac_screen_recording_granted() -> bool | None:
+    """Return True/False from TCC, or None if the probe API is unavailable."""
+    try:
+        from Quartz import CGPreflightScreenCaptureAccess  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    try:
+        return bool(CGPreflightScreenCaptureAccess())
+    except Exception:
+        return None
+
+
+def _mac_accessibility_granted() -> bool | None:
+    """Return True/False from TCC, or None if the probe API is unavailable."""
+    try:
+        from ApplicationServices import AXIsProcessTrusted  # type: ignore[import-untyped]
+    except ImportError:
+        try:
+            from HIServices import AXIsProcessTrusted  # type: ignore[import-untyped]
+        except ImportError:
+            return None
+    try:
+        return bool(AXIsProcessTrusted())
+    except Exception:
+        return None
+
+
 def _mac_permissions() -> tuple[str, ...]:
+    """Only list macOS TCC grants that are actually missing (probe, do not prompt)."""
     if platform.system() != "Darwin":
         return ()
-    return ("screen_recording", "accessibility")
+    missing: list[str] = []
+    screen = _mac_screen_recording_granted()
+    if screen is False:
+        missing.append("screen_recording")
+    access = _mac_accessibility_granted()
+    if access is False:
+        missing.append("accessibility")
+    return tuple(missing)
 
 
 def desktop_status() -> DesktopStatus:
     system = platform.system().lower()
-    install_script = install_script_rel()
-    start_cmd = (
+    # Linux virtual-desktop install/start commands only — never surface on Mac/Windows.
+    linux_install_script = install_script_rel() if system == "linux" else ""
+    linux_start_cmd = (
         "sudo systemctl start octop-desktop-xvnc octop-desktop-openbox octop-desktop-session"
+        if system == "linux"
+        else ""
     )
     geometry = read_geometry()
 
     if not _python_deps_available():
         return DesktopStatus(
             ok=False,
-            desktop_supported=False,
+            desktop_supported=system in {"linux", "darwin", "windows"},
             setup_state="deps_missing",
             platform=system,
             display=None,
             reason=_DEPS_REASON,
-            install_script=install_script,
-            start_command=start_cmd,
+            install_script=linux_install_script,
+            start_command=linux_start_cmd,
             geometry=geometry,
+            # Defer TCC probes until desktop deps are present.
+            permissions_needed=(),
         )
 
     if system == "linux":
@@ -460,8 +500,8 @@ def desktop_status() -> DesktopStatus:
             platform=system,
             display=display,
             reason=reason,
-            install_script=install_script,
-            start_command=start_cmd,
+            install_script=linux_install_script,
+            start_command=linux_start_cmd,
             geometry=geometry,
             vnc_localhost_only=vnc_local,
         )
@@ -474,7 +514,7 @@ def desktop_status() -> DesktopStatus:
             platform=system,
             display=None,
             reason="",
-            install_script=install_script,
+            install_script="",
             start_command="",
             permissions_needed=(),
         )
@@ -488,7 +528,7 @@ def desktop_status() -> DesktopStatus:
             platform=system,
             display=None,
             reason="",
-            install_script=install_script,
+            install_script="",
             start_command="",
             permissions_needed=perms,
         )
@@ -500,8 +540,8 @@ def desktop_status() -> DesktopStatus:
         platform=system,
         display=None,
         reason=f"Unsupported platform: {system}",
-        install_script=install_script,
-        start_command=start_cmd,
+        install_script="",
+        start_command="",
     )
 
 
