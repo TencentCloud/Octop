@@ -11,6 +11,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   Alert,
   Button,
+  Drawer,
   Input,
   Modal,
   Result,
@@ -29,6 +30,7 @@ import {
   CheckCircle2,
   Globe,
   Maximize2,
+  Play,
   Plus,
   RotateCcw,
   Square,
@@ -39,6 +41,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
+import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import PageShell from "../../../layouts/PageShell";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
@@ -68,6 +72,7 @@ import {
   type ViewportMode,
 } from "../../../hooks/useViewportMode";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { useLandscapeFullscreen } from "../../../hooks/useLandscapeFullscreen";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -278,6 +283,7 @@ export default function RemoteBrowserPage() {
   const [installPhase, setInstallPhase] = useState<InstallPhase>("idle");
   const [installLogs, setInstallLogs] = useState<string[]>([]);
   const [envModalOpen, setEnvModalOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const installAbortRef = useRef<AbortController | null>(null);
 
@@ -604,7 +610,7 @@ export default function RemoteBrowserPage() {
       clearInterval(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
-    if (session && refreshInterval > 0 && !isStreaming) {
+    if (session && refreshInterval > 0 && status === "stopped") {
       refreshTimerRef.current = setInterval(
         () => void refreshView(),
         refreshInterval,
@@ -613,7 +619,7 @@ export default function RemoteBrowserPage() {
     return () => {
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
     };
-  }, [session, refreshInterval, refreshView, isStreaming]);
+  }, [session, refreshInterval, refreshView, status]);
 
   // Reconnect when viewport preset changes (desktop fixed modes only).
   useEffect(() => {
@@ -829,9 +835,10 @@ export default function RemoteBrowserPage() {
 
   const {
     handleWheel: handleCanvasWheel,
-    onMouseDown: handleCanvasMouseDown,
+    onPointerDown: handleCanvasPointerDown,
     onDoubleClick: handleCanvasDblClick,
     isDragging,
+    pointerStyle,
   } = useBrowserCanvasInteraction({
     enabled: !!session,
     canvasRef,
@@ -1140,25 +1147,66 @@ export default function RemoteBrowserPage() {
     [sendAction],
   );
 
-  const handleFullscreen = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void el.requestFullscreen();
-    }
-  }, []);
+  const handleFullscreen = useLandscapeFullscreen(containerRef, {
+    isMobile,
+    onError: () =>
+      antMessage.error(t("remoteBrowser.fullscreenFailed", "无法进入全屏")),
+  });
+
+  const openControlsDrawer = useCallback(() => setControlsOpen(true), []);
+  const closeControlsDrawer = useCallback(() => setControlsOpen(false), []);
+
+  const renderControlsDrawer = () => (
+    <div className={styles.controlsDrawer}>
+      <div className={styles.controlsSection}>
+        <span className={styles.controlsLabel}>
+          {t("remoteBrowser.autoRefresh", "自动刷新")}
+        </span>
+        <Select
+          size="middle"
+          className={styles.controlsSelectFull}
+          value={refreshInterval}
+          onChange={handleRefreshIntervalChange}
+          options={refreshSelectOptions}
+        />
+      </div>
+      <div className={styles.controlsSection}>
+        <span className={styles.controlsLabel}>
+          {t("remoteBrowser.viewportMode", "视口模式")}
+        </span>
+        <Select
+          size="middle"
+          className={styles.controlsSelectFull}
+          value={viewportMode}
+          onChange={handleViewportChange}
+          options={viewportSelectOptions}
+        />
+      </div>
+      <div className={styles.controlsActions}>
+        <Button
+          block
+          icon={<Maximize2 size={14} />}
+          onClick={() => {
+            closeControlsDrawer();
+            void handleFullscreen();
+          }}
+        >
+          {t("remoteBrowser.fullscreen", "全屏")}
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <PageShell
-      title={t("pageShell.browser.title", "远程浏览器")}
+      title={t("pageShell.browser.title", "浏览器 AI+")}
       subtitle={t(
         "pageShell.browser.subtitle",
         "基于 Chromium 的无头浏览器会话",
       )}
+      fill
       actions={
-        <Space>
+        <Space size={8} wrap>
           <Tooltip
             title={t(
               "remoteBrowser.checkInstallTip",
@@ -1166,11 +1214,12 @@ export default function RemoteBrowserPage() {
             )}
           >
             <Button
+              size={isMobile ? "small" : "middle"}
               icon={<Globe size={14} />}
               onClick={openEnvModal}
               type={envReady ? "default" : "primary"}
             >
-              {t("remoteBrowser.checkInstall", "检测浏览器")}
+              {t("remoteBrowser.checkInstallShort", "检查")}
               {envReady && !envLoading && (
                 <CheckCircle2
                   size={14}
@@ -1182,15 +1231,55 @@ export default function RemoteBrowserPage() {
               )}
             </Button>
           </Tooltip>
+          {session ? (
+            <Tooltip title={t("remoteBrowser.stop", "停止")}>
+              <Button
+                size={isMobile ? "small" : "middle"}
+                danger
+                icon={<Square size={14} />}
+                onClick={closeSession}
+                aria-label={t("remoteBrowser.stop", "停止")}
+              >
+                {!isMobile && t("remoteBrowser.stop", "停止")}
+              </Button>
+            </Tooltip>
+          ) : (
+            <Tooltip
+              title={
+                envReady
+                  ? undefined
+                  : t(
+                      "remoteBrowser.startBrowserDisabled",
+                      "请先完成浏览器环境检查与安装",
+                    )
+              }
+            >
+              <Button
+                size={isMobile ? "small" : "middle"}
+                type="primary"
+                icon={<Play size={14} />}
+                loading={creating}
+                disabled={!envReady}
+                onClick={() => void createSession()}
+                aria-label={t("remoteBrowser.startBrowser", "启动浏览器")}
+              >
+                {!isMobile &&
+                  (creating
+                    ? t("remoteBrowser.ai.startingBrowser", "正在启动...")
+                    : t("remoteBrowser.startBrowser", "启动浏览器"))}
+              </Button>
+            </Tooltip>
+          )}
         </Space>
       }
     >
       <Modal
-        title={t("remoteBrowser.checkInstall", "检测浏览器")}
+        title={t("remoteBrowser.checkInstall", "检查浏览器")}
         open={envModalOpen}
         onCancel={closeEnvModal}
         footer={envModalFooter()}
-        width={520}
+        width={isMobile ? "100%" : 520}
+        style={isMobile ? { top: 20, maxWidth: "100vw" } : undefined}
         destroyOnClose
         maskClosable={installPhase !== "installing"}
       >
@@ -1203,6 +1292,19 @@ export default function RemoteBrowserPage() {
         onStartRecording={handleStartRecording}
         envReady={envReady}
       />
+
+      <Drawer
+        title={t("remoteBrowser.controlsTitle", "控制面板")}
+        placement={isMobile ? "bottom" : "right"}
+        open={controlsOpen}
+        onClose={closeControlsDrawer}
+        height={isMobile ? "min(70vh, 520px)" : undefined}
+        width={isMobile ? "100%" : 320}
+        destroyOnClose={false}
+        styles={{ body: { padding: "12px 16px 16px" } }}
+      >
+        {renderControlsDrawer()}
+      </Drawer>
 
       <div className={styles.pageBody}>
         {session && (
@@ -1327,6 +1429,7 @@ export default function RemoteBrowserPage() {
               />
               <Input
                 size="small"
+                className={styles.urlInput}
                 value={navUrl}
                 onChange={(e) => setNavUrl(e.target.value)}
                 onFocus={() => {
@@ -1338,56 +1441,47 @@ export default function RemoteBrowserPage() {
                 placeholder={t("remoteBrowser.urlPlaceholderExtended")}
                 onPressEnter={() => goto()}
                 prefix={<Globe size={13} />}
-                style={{ flex: 1 }}
+                suffix={
+                  <Tooltip
+                    title={
+                      currentBookmarked
+                        ? t("remoteBrowser.bookmarkRemove", "移除书签")
+                        : t("remoteBrowser.bookmarkAdd", "添加书签")
+                    }
+                  >
+                    <button
+                      type="button"
+                      className={`${styles.urlBarBookmark} ${
+                        currentBookmarked ? styles.urlBarBookmarkActive : ""
+                      }`}
+                      disabled={!navUrlNormalized}
+                      aria-label={
+                        currentBookmarked
+                          ? t("remoteBrowser.bookmarkRemove", "移除书签")
+                          : t("remoteBrowser.bookmarkAdd", "添加书签")
+                      }
+                      onClick={() => toggle(navUrl, activeTabTitle)}
+                    >
+                      <Star
+                        size={14}
+                        fill={currentBookmarked ? "currentColor" : "none"}
+                      />
+                    </button>
+                  </Tooltip>
+                }
               />
               <Button size="small" type="primary" onClick={() => goto()}>
                 {t("remoteBrowser.go")}
-              </Button>
-              <Tooltip
-                title={
-                  currentBookmarked
-                    ? t("remoteBrowser.bookmarkRemove", "移除书签")
-                    : t("remoteBrowser.bookmarkAdd", "添加书签")
-                }
-              >
-                <Button
-                  size="small"
-                  icon={
-                    <Star
-                      size={14}
-                      fill={currentBookmarked ? "currentColor" : "none"}
-                    />
-                  }
-                  disabled={!navUrlNormalized}
-                  type={currentBookmarked ? "primary" : "default"}
-                  onClick={() => toggle(navUrl, activeTabTitle)}
-                />
-              </Tooltip>
-              {!isMobile && (
-                <Select
-                  size="small"
-                  value={viewportMode}
-                  onChange={handleViewportChange}
-                  style={{ width: 90 }}
-                  options={viewportSelectOptions}
-                />
-              )}
-              <Button
-                size="small"
-                danger
-                icon={<Square size={14} />}
-                onClick={closeSession}
-                title={t("remoteBrowser.closeSession")}
-              >
-                {t("remoteBrowser.stop", "停止")}
               </Button>
               <Button
                 size="small"
                 type={isAiPanelOpen ? "primary" : "default"}
                 icon={<Bot size={14} />}
                 onClick={handleAiPanelToggle}
+                aria-label={t("remoteBrowser.ai.title", "AI 助手")}
+                title={t("remoteBrowser.ai.title", "AI 助手")}
               >
-                {t("remoteBrowser.ai.title", "AI 助手")}
+                {isMobile ? null : t("remoteBrowser.ai.title", "AI 助手")}
               </Button>
               <Tooltip
                 title={t(
@@ -1399,16 +1493,13 @@ export default function RemoteBrowserPage() {
                   size="small"
                   icon={<Sparkles size={14} />}
                   onClick={openSkillGuide}
+                  aria-label={t("skillRecordGuide.buttonLabel", "技能录制")}
                 >
-                  {t("skillRecordGuide.buttonLabel", "技能录制")}
+                  {isMobile
+                    ? null
+                    : t("skillRecordGuide.buttonLabel", "技能录制")}
                 </Button>
               </Tooltip>
-              <Button
-                size="small"
-                icon={<Maximize2 size={14} />}
-                onClick={handleFullscreen}
-                title={t("remoteBrowser.fullscreen", "全屏")}
-              />
             </div>
             {/* Bookmark bar */}
             {bookmarks.length > 0 && (
@@ -1449,39 +1540,24 @@ export default function RemoteBrowserPage() {
                     }`}
                     style={{
                       cursor: isDragging ? "grabbing" : "grab",
+                      ...pointerStyle,
                     }}
-                    onMouseDown={handleCanvasMouseDown}
+                    onPointerDown={handleCanvasPointerDown}
                     onDoubleClick={handleCanvasDblClick}
                     onWheel={handleCanvasWheel}
                     onKeyDown={handleCanvasKeyDown}
                   />
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: 10,
-                      right: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      background: "rgba(0,0,0,0.45)",
-                      backdropFilter: "blur(4px)",
-                      borderRadius: 6,
-                      padding: "4px 8px",
-                    }}
-                  >
-                    <span
-                      style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}
-                    >
-                      {t("remoteBrowser.autoRefresh")}
-                    </span>
-                    <Select
-                      size="small"
-                      value={refreshInterval}
-                      onChange={handleRefreshIntervalChange}
-                      style={{ width: 74 }}
-                      options={refreshSelectOptions}
-                    />
-                  </div>
+                  <StreamEdgeControls
+                    visible={Boolean(session)}
+                    isMobile={isMobile}
+                    fullscreenLabel={t("remoteBrowser.fullscreen", "全屏")}
+                    controlsLabel={t(
+                      "remoteBrowser.openControls",
+                      "控制与快捷操作",
+                    )}
+                    onFullscreen={() => void handleFullscreen()}
+                    onOpenControls={openControlsDrawer}
+                  />
                 </div>
 
                 <div
@@ -1515,173 +1591,84 @@ export default function RemoteBrowserPage() {
                 </div>
               </div>
             ) : (
-              <div
-                ref={containerRef}
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  border: "1px solid var(--fn-border-secondary)",
-                  borderRadius: 6,
-                  background: "var(--fn-bg-secondary)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "40px 48px",
-                    background: "var(--fn-bg-primary)",
-                    borderRadius: 12,
-                    boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
-                    textAlign: "center",
-                    minWidth: 320,
-                  }}
-                >
-                  <svg
-                    width="48"
-                    height="48"
-                    viewBox="0 0 48 48"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    style={{ opacity: 0.25 }}
-                  >
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="21"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                    />
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="8"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                    />
-                    <path
-                      d="M24 3 A21 21 0 0 1 42.2 34.5"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M42.2 34.5 A21 21 0 0 1 5.8 34.5"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M5.8 34.5 A21 21 0 0 1 24 3"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 600,
-                      color: "var(--fn-text-primary)",
-                    }}
-                  >
-                    {t("remoteBrowser.startBrowserTitle", "启动浏览器")}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "var(--fn-text-tertiary)",
-                      lineHeight: 1.6,
-                      maxWidth: 260,
-                    }}
-                  >
-                    {t(
-                      "remoteBrowser.startBrowserDesc",
-                      "点击启动浏览器，然后输入网址，实时查看并操控远端浏览器",
-                    )}
-                  </div>
-                  {envReady && (
-                    <Button
-                      type="primary"
-                      icon={
-                        creating ? undefined : (
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 48 48"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            style={{
-                              display: "inline-block",
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <circle
-                              cx="24"
-                              cy="24"
-                              r="21"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                            />
-                            <circle
-                              cx="24"
-                              cy="24"
-                              r="8"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                            />
-                            <path
-                              d="M24 3 A21 21 0 0 1 42.2 34.5"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                              strokeLinecap="round"
-                            />
-                            <path
-                              d="M42.2 34.5 A21 21 0 0 1 5.8 34.5"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                              strokeLinecap="round"
-                            />
-                            <path
-                              d="M5.8 34.5 A21 21 0 0 1 24 3"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                              strokeLinecap="round"
-                            />
-                          </svg>
+              <div ref={containerRef} className={styles.idleViewport}>
+                <StreamSetupGuide
+                  icon={<Globe size={48} strokeWidth={1.5} />}
+                  title={
+                    envReady
+                      ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
+                      : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
+                  }
+                  description={
+                    envReady
+                      ? t(
+                          "remoteBrowser.startBrowserDesc",
+                          "环境已就绪，按以下步骤开始远程浏览与操控",
                         )
-                      }
-                      loading={creating}
-                      onClick={() => void createSession()}
-                      style={{
-                        marginTop: 4,
-                        background: "linear-gradient(135deg, #e85d75, #f5738a)",
-                        borderColor: "transparent",
-                        borderRadius: 8,
-                        fontWeight: 500,
-                      }}
-                    >
-                      {creating
-                        ? t("remoteBrowser.ai.startingBrowser", "正在启动...")
-                        : t("remoteBrowser.startBrowser", "启动浏览器")}
-                    </Button>
-                  )}
-                </div>
+                      : envStatus?.error ||
+                        t(
+                          "remoteBrowser.setupDesc",
+                          "按以下步骤完成 Playwright / Chromium 环境配置",
+                        )
+                  }
+                  steps={
+                    envReady
+                      ? [
+                          {
+                            label: t(
+                              "remoteBrowser.startBrowserIdleStep1",
+                              "点击右上角「启动浏览器」建立会话",
+                            ),
+                          },
+                          {
+                            label: t(
+                              "remoteBrowser.startBrowserIdleStep2",
+                              "在地址栏输入网址并访问，也可使用收藏夹与 AI 助手",
+                            ),
+                          },
+                        ]
+                      : [
+                          {
+                            label: t(
+                              "remoteBrowser.setupStep1",
+                              "点击「检查」，检测 Playwright 与 Chromium 是否可用",
+                            ),
+                          },
+                          {
+                            label: t(
+                              "remoteBrowser.setupStep2",
+                              "若组件缺失，在弹窗中一键安装浏览器环境",
+                            ),
+                          },
+                          {
+                            label: t(
+                              "remoteBrowser.setupStep3",
+                              "安装完成后，点击「启动浏览器」开始会话",
+                            ),
+                          },
+                        ]
+                  }
+                  primaryAction={
+                    envReady
+                      ? {
+                          label: creating
+                            ? t(
+                                "remoteBrowser.ai.startingBrowser",
+                                "正在启动...",
+                              )
+                            : t("remoteBrowser.startBrowser", "启动浏览器"),
+                          onClick: () => void createSession(),
+                          loading: creating,
+                          disabled: !envReady,
+                          icon: <Play size={14} />,
+                        }
+                      : {
+                          label: t("remoteBrowser.checkInstallShort", "检查"),
+                          onClick: openEnvModal,
+                          icon: <Globe size={14} />,
+                        }
+                  }
+                />
               </div>
             )}
           </div>

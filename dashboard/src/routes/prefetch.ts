@@ -9,6 +9,7 @@ const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/channels": () => import("../pages/Control/Channels"),
   "/terminal": () => import("../pages/Control/Terminal"),
   "/remote-browser": () => import("../pages/Control/RemoteBrowser"),
+  "/remote-desktop": () => import("../pages/Control/RemoteDesktop"),
   "/acp": () => import("../pages/Agent/ACP"),
   "/subagents": () => import("../pages/Control/Subagents"),
   "/mbti": () => import("../pages/Agent/MBTI"),

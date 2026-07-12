@@ -78,3 +78,18 @@ export function apiErrorMessage(
   }
   return fallback;
 }
+
+/** Resolve a desktop/browser WebSocket error payload for display. */
+export function wsStreamErrorMessage(
+  error: { code?: string; message: string; details?: Record<string, unknown> },
+  fallback: string,
+  t?: TFunction,
+): string {
+  if (error.code && t) {
+    const key = `apiErrors.${error.code}`;
+    const translated = t(key, { ...(error.details ?? {}), defaultValue: "" });
+    if (translated && translated !== key) return translated;
+  }
+  if (error.message.trim()) return error.message;
+  return fallback;
+}

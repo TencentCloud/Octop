@@ -50,6 +50,9 @@ export function useBrowserCanvasInteraction({
   return {
     getCoords,
     handleWheel,
-    ...pan,
+    onPointerDown: pan.onPointerDown,
+    onDoubleClick: pan.onDoubleClick,
+    isDragging: pan.isDragging,
+    pointerStyle: pan.pointerStyle,
   };
 }

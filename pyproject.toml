@@ -58,6 +58,7 @@ browser = [
     "harness-browser>=0.7.3",
 ]
 channels-feishu = ["harness-browser>=0.7.0"]
+desktop = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the

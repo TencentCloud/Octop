@@ -17,7 +17,7 @@ interface PanScrollOptions {
 
 /**
  * Canvas pointer handlers: click, or press-drag to scroll (inverted delta).
- * Attaches window-level move/up listeners while dragging.
+ * Uses Pointer Events so mouse and touch share one code path.
  */
 export function useCanvasPanScroll({
   enabled = true,
@@ -74,17 +74,19 @@ export function useCanvasPanScroll({
     [],
   );
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLElement>) => {
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
       if (!enabled || e.button !== 0) return;
       e.preventDefault();
+      const target = e.currentTarget;
+      target.setPointerCapture(e.pointerId);
       const c = getCoords(e);
       draggingRef.current = true;
       movedRef.current = false;
       lastRef.current = c;
       anchorRef.current = c;
 
-      const onMove = (ev: MouseEvent) => {
+      const onMove = (ev: PointerEvent) => {
         if (!draggingRef.current) return;
         const cur = getCoords(ev);
         const dx = cur.x - lastRef.current.x;
@@ -102,12 +104,13 @@ export function useCanvasPanScroll({
         }
       };
 
-      const onUp = (ev: MouseEvent) => {
+      const onUp = (ev: PointerEvent) => {
         if (!draggingRef.current) return;
         draggingRef.current = false;
         setIsDragging(false);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
+        target.removeEventListener("pointermove", onMove);
+        target.removeEventListener("pointerup", onUp);
+        target.removeEventListener("pointercancel", onUp);
         if (rafRef.current !== null) {
           cancelAnimationFrame(rafRef.current);
           flushScroll();
@@ -129,8 +132,9 @@ export function useCanvasPanScroll({
         }
       };
 
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      target.addEventListener("pointermove", onMove);
+      target.addEventListener("pointerup", onUp);
+      target.addEventListener("pointercancel", onUp);
     },
     [
       enabled,
@@ -158,5 +162,10 @@ export function useCanvasPanScroll({
     [enabled, getCoords, onDoubleClick],
   );
 
-  return { onMouseDown, onDoubleClick: onDoubleClickHandler, isDragging };
+  return {
+    onPointerDown,
+    onDoubleClick: onDoubleClickHandler,
+    isDragging,
+    pointerStyle: { touchAction: "none" as const },
+  };
 }

@@ -334,7 +334,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
 
   const {
     handleWheel,
-    onMouseDown: handlePanMouseDown,
+    onPointerDown: handlePanPointerDown,
     onDoubleClick: handleDoubleClick,
     isDragging,
   } = useBrowserCanvasInteraction({
@@ -752,7 +752,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
                 ? "grab"
                 : "default",
             }}
-            onMouseDown={handlePanMouseDown}
+            onPointerDown={handlePanPointerDown}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
           />

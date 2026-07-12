@@ -36,7 +36,9 @@ def _qr_matrix_from_image_bytes(img_bytes: bytes) -> list[list[int]] | None:
     threshold = 128
 
     def is_dark(x: int, y: int) -> bool:
-        return int(px[x, y]) < threshold
+        raw = px[x, y]
+        luma = sum(int(v) for v in raw) // len(raw) if isinstance(raw, tuple) else int(raw)
+        return luma < threshold
 
     left = 0
     while left < w and not any(is_dark(left, y) for y in range(h)):

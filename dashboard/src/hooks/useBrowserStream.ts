@@ -69,6 +69,7 @@ export interface StreamSessionInfo {
 export function useBrowserStream() {
   const wsRef = useRef<WebSocket | null>(null);
   const callbacksRef = useRef<BrowserStreamCallbacks | null>(null);
+  const statusRef = useRef<BrowserStreamState>("idle");
   const [status, setStatus] = useState<BrowserStreamState>("idle");
   const [currentUrl, setCurrentUrl] = useState("");
   const [tabs, setTabs] = useState<BrowserTab[]>([]);
@@ -77,6 +78,7 @@ export function useBrowserStream() {
   );
 
   const updateStatus = useCallback((s: BrowserStreamState) => {
+    statusRef.current = s;
     setStatus(s);
     callbacksRef.current?.onStatusChange?.(s);
   }, []);
@@ -148,6 +150,7 @@ export function useBrowserStream() {
           } else if (msg.type === "error") {
             console.error("[BrowserStream] Server error:", msg.message);
             callbacksRef.current?.onError?.(msg.message ?? "Unknown error");
+            updateStatus("error");
           } else if (msg.type === "session_update") {
             // Real-time session state pushed by the backend
             const info: StreamSessionInfo = {
@@ -179,7 +182,11 @@ export function useBrowserStream() {
       };
 
       ws.onclose = () => {
-        if (status !== "stopped" && status !== "idle") {
+        if (
+          statusRef.current !== "stopped" &&
+          statusRef.current !== "idle" &&
+          statusRef.current !== "error"
+        ) {
           updateStatus("stopped");
         }
         // Don't clear tabs on close — this preserves the tab bar state
@@ -188,7 +195,7 @@ export function useBrowserStream() {
 
       wsRef.current = ws;
     },
-    [updateStatus, status],
+    [updateStatus],
   );
 
   /** Send a user input event to the remote browser. */

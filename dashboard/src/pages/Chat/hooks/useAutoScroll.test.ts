@@ -58,7 +58,9 @@ describe("useAutoScroll", () => {
     );
 
     act(() => {
-      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -40, bubbles: true }));
+      container.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -40, bubbles: true }),
+      );
     });
 
     expect(result.current.showScrollBtn).toBe(true);
@@ -77,7 +79,9 @@ describe("useAutoScroll", () => {
     );
 
     act(() => {
-      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -40, bubbles: true }));
+      container.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -40, bubbles: true }),
+      );
     });
     expect(result.current.showScrollBtn).toBe(true);
 
@@ -98,7 +102,9 @@ describe("useAutoScroll", () => {
     );
 
     act(() => {
-      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -40, bubbles: true }));
+      container.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -40, bubbles: true }),
+      );
     });
     expect(result.current.showScrollBtn).toBe(true);
 

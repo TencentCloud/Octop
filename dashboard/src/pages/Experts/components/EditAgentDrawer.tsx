@@ -253,7 +253,9 @@ function EditAgentDrawerBody({
       const probe = await probeRootDir(values.root_dir ?? "/");
       if (!probe.ok) {
         message.error(
-          `${rootDirProbeMessage(probe, t)}\n${t("experts.rootDirProbe.guidance")}`,
+          `${rootDirProbeMessage(probe, t)}\n${t(
+            "experts.rootDirProbe.guidance",
+          )}`,
         );
         return;
       }

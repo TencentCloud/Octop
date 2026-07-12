@@ -112,6 +112,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "browser",
         "description": "Remote browser sessions: navigate, screenshot, live stream.",
     },
+    {
+        "name": "desktop",
+        "description": "Remote OS desktop stream and input injection (admin only).",
+    },
     {"name": "ollama", "description": "Local Ollama model discovery and download management."},
 ]
 

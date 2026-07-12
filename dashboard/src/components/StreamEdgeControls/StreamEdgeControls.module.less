@@ -1,0 +1,81 @@
+.edgeRail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.edgeRailLeft {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 6px;
+}
+
+.edgeRailRight {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 6px;
+}
+
+.edgeRailHidden {
+  display: none;
+}
+
+.edgeFab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 999px;
+  background: var(--fn-bg-glass);
+  color: var(--fn-text-primary);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--fn-shadow-md);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-elevated);
+    border-color: var(--fn-border-input);
+  }
+}
+
+.edgeFabLeft {
+  transform: translateX(-14px);
+}
+
+.edgeFabRight {
+  transform: translateX(14px);
+}
+
+.edgeRailLeft:hover .edgeFabLeft,
+.edgeRailLeft:focus-within .edgeFabLeft {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.edgeRailRight:hover .edgeFabRight,
+.edgeRailRight:focus-within .edgeFabRight {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.edgeRailMobileVisible .edgeFabRight {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
