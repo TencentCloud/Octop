@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import base64
-import io
+import sys
+import types
 from unittest.mock import MagicMock
 
 from octop.infra.desktop.capture import CaptureFrame, ScreenCapture
 
 
+def _force_linux(monkeypatch) -> None:
+    monkeypatch.setattr("octop.infra.desktop.capture.sys.platform", "linux")
+
+
 def test_prefer_import_on_linux_virtual_display(monkeypatch) -> None:
+    _force_linux(monkeypatch)
     cap = ScreenCapture(display=":99")
     monkeypatch.setattr(
         "octop.infra.desktop.capture.shutil.which",
@@ -25,6 +31,11 @@ def test_prefer_import_false_on_non_linux(monkeypatch) -> None:
 
 
 def test_capture_prefers_import_on_linux_virtual_display(monkeypatch) -> None:
+    _force_linux(monkeypatch)
+    monkeypatch.setattr(
+        "octop.infra.desktop.capture.shutil.which",
+        lambda name: "/usr/bin/import" if name == "import" else None,
+    )
     frame = CaptureFrame(jpeg_b64="abc", width=100, height=80)
     cap = ScreenCapture(display=":99", monitor=0)
     mss_calls: list[int] = []
@@ -45,6 +56,7 @@ def test_capture_prefers_import_on_linux_virtual_display(monkeypatch) -> None:
 
 
 def test_capture_prefers_mss_on_non_virtual_display(monkeypatch) -> None:
+    _force_linux(monkeypatch)
     frame = CaptureFrame(jpeg_b64="abc", width=100, height=80)
     cap = ScreenCapture(display=":0", monitor=0)
     import_calls: list[int] = []
@@ -61,11 +73,17 @@ def test_capture_prefers_mss_on_non_virtual_display(monkeypatch) -> None:
 
 
 def test_import_jpeg_passthrough_without_reencode(monkeypatch) -> None:
-    from PIL import Image
+    # Avoid requiring octop[desktop] / Pillow in default CI installs.
+    raw = b"\xff\xd8" + b"\x00" * 32 + b"\xff\xd9"
+    fake_img = MagicMock()
+    fake_img.size = (64, 48)
 
-    jpeg_buf = io.BytesIO()
-    Image.new("RGB", (64, 48), color=(10, 20, 30)).save(jpeg_buf, format="JPEG", quality=80)
-    raw = jpeg_buf.getvalue()
+    pil = types.ModuleType("PIL")
+    pil_image = types.ModuleType("PIL.Image")
+    pil_image.open = lambda *_a, **_k: fake_img  # type: ignore[attr-defined]
+    pil.Image = pil_image  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    monkeypatch.setitem(sys.modules, "PIL.Image", pil_image)
 
     cap = ScreenCapture(display=":99", monitor=0)
 
