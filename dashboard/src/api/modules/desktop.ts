@@ -60,7 +60,11 @@ function streamDesktopSse(
               error?: string;
             };
             if (payload.done) {
-              if (payload.error) onLog(payload.error);
+              if (payload.log !== undefined) {
+                onLog(payload.log);
+              } else if (payload.error) {
+                onLog(payload.error);
+              }
               onDone(Boolean(payload.success));
               return;
             }

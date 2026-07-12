@@ -19,6 +19,9 @@ from typing import Literal
 from octop.i18n import tr
 from octop.infra.utils.posix_compat import geteuid
 
+_SUBPROCESS_READ_CHUNK = 4096
+_SUBPROCESS_MAX_LINE = 512 * 1024
+_APT_LOCK_RE = re.compile(r"lock-frontend|dpkg.*lock", re.I)
 _SCRIPT_LOG_RE = re.compile(
     r"(install\.sh|start\.sh|stop\.sh|Running /|Starting desktop services via /|Stopping desktop services via /)",
 )
@@ -56,6 +59,49 @@ def _sanitize_subprocess_log(text: str) -> str | None:
     if not t or _SCRIPT_LOG_RE.search(t):
         return None
     return t
+
+
+def _friendly_install_log_line(text: str, locale: str) -> str | None:
+    t = text.strip()
+    if not t:
+        return None
+    if _APT_LOCK_RE.search(t):
+        return _install_log(locale, "error_apt_locked")
+    if t.startswith("{") and t.endswith("}"):
+        try:
+            payload = json.loads(t)
+        except json.JSONDecodeError:
+            return t
+        err = str(payload.get("error") or "").strip()
+        if payload.get("installed") is False and err:
+            if "apt" in err.lower():
+                return _install_log(locale, "error_apt_failed")
+            return err
+    return t
+
+
+async def _iter_subprocess_lines(stream: asyncio.StreamReader) -> AsyncIterator[str]:
+    """Read subprocess stdout in chunks (apt/debconf may emit very long lines)."""
+    buffer = b""
+    while True:
+        chunk = await stream.read(_SUBPROCESS_READ_CHUNK)
+        if not chunk:
+            if buffer:
+                text = buffer.decode("utf-8", errors="replace").rstrip()
+                if text:
+                    yield text
+            return
+        buffer += chunk
+        while b"\n" in buffer:
+            raw, buffer = buffer.split(b"\n", 1)
+            text = raw.decode("utf-8", errors="replace").rstrip()
+            if text:
+                yield text
+        if len(buffer) > _SUBPROCESS_MAX_LINE:
+            text = buffer.decode("utf-8", errors="replace").rstrip()
+            if text:
+                yield text
+            buffer = b""
 
 
 def octop_home() -> Path:
@@ -592,6 +638,7 @@ async def _stream_subprocess(
     emit_done: bool = True,
     result: _SubprocessRun | None = None,
     sanitize_paths: bool = False,
+    locale: str = "en",
 ) -> AsyncIterator[str]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -600,19 +647,25 @@ async def _stream_subprocess(
         cwd=str(cwd) if cwd else None,
     )
     assert proc.stdout is not None
-    while True:
-        line = await proc.stdout.readline()
-        if not line:
-            break
-        text = line.decode("utf-8", errors="replace").rstrip()
-        if text:
+    stream_error = False
+    try:
+        async for line in _iter_subprocess_lines(proc.stdout):
+            text = line
             if sanitize_paths:
                 sanitized = _sanitize_subprocess_log(text)
                 if sanitized is None:
                     continue
                 text = sanitized
-            yield _sse({"log": text})
+            friendly = _friendly_install_log_line(text, locale)
+            if friendly is None:
+                continue
+            yield _sse({"log": friendly})
+    except Exception:
+        stream_error = True
+        yield _sse({"log": _install_log(locale, "error_subprocess_stream")})
     code = await proc.wait()
+    if stream_error and code == 0:
+        code = 1
     if result is not None:
         result.exit_code = code
     if emit_done:
@@ -620,8 +673,7 @@ async def _stream_subprocess(
 
 
 async def _install_failure(message: str) -> AsyncIterator[str]:
-    yield _sse({"log": message})
-    yield _sse({"done": True, "success": False, "error": message})
+    yield _sse({"done": True, "success": False, "error": message, "log": message})
 
 
 async def _probe_desktop_status(*, locale: str = "en") -> DesktopStatus:
@@ -653,6 +705,7 @@ async def _run_script_step(
         emit_done=False,
         result=run,
         sanitize_paths=True,
+        locale=locale,
     ):
         yield chunk
     if run.exit_code != 0:
@@ -673,7 +726,7 @@ async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
         return
     yield _sse({"log": _install_log(locale, "install_log_deps")})
     run = _SubprocessRun()
-    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run):
+    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run, locale=locale):
         yield chunk
     if run.exit_code != 0:
         async for chunk in _install_failure(
@@ -825,7 +878,7 @@ async def uninstall_python_deps_stream(locale: str) -> AsyncIterator[str]:
         return
     yield _sse({"log": _install_log(locale, "install_log_remove_python")})
     run = _SubprocessRun()
-    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run):
+    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run, locale=locale):
         yield chunk
     if run.exit_code not in {0, None} and _python_deps_available():
         async for chunk in _install_failure(
@@ -860,7 +913,9 @@ async def uninstall_linux_stack_stream(locale: str) -> AsyncIterator[str]:
 
     yield _sse({"log": _install_log(locale, "install_log_remove_system")})
     run = _SubprocessRun()
-    async for chunk in _stream_subprocess(cmd, emit_done=False, result=run, sanitize_paths=True):
+    async for chunk in _stream_subprocess(
+        cmd, emit_done=False, result=run, sanitize_paths=True, locale=locale
+    ):
         yield chunk
     if run.exit_code != 0:
         async for chunk in _install_failure(

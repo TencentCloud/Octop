@@ -194,20 +194,23 @@ export default function ExpertsPage() {
     };
   }, [activeTab, localAgents.length]);
 
-  const refreshButton = (
-    <Tooltip title={t("common.refresh")}>
-      <button
-        className={styles.toolbarIconBtn}
-        onClick={() => void handleRefresh()}
-        disabled={refreshing}
-        type="button"
-      >
-        <RefreshCw
-          size={14}
-          className={refreshing ? styles.spinning : undefined}
-        />
-      </button>
-    </Tooltip>
+  const refreshButton = useMemo(
+    () => (
+      <Tooltip title={t("common.refresh")}>
+        <button
+          className={styles.toolbarIconBtn}
+          onClick={() => void handleRefresh()}
+          disabled={refreshing}
+          type="button"
+        >
+          <RefreshCw
+            size={14}
+            className={refreshing ? styles.spinning : undefined}
+          />
+        </button>
+      </Tooltip>
+    ),
+    [handleRefresh, refreshing, t],
   );
 
   // ── Render helpers ─────────────────────────────────────────────

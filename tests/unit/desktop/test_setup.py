@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import patch
+
+import pytest
 
 from octop.i18n import tr
 from octop.infra.desktop.setup import (
@@ -14,6 +17,38 @@ from octop.infra.desktop.setup import (
     read_geometry,
     vnc_listens_localhost_only,
 )
+
+
+def test_friendly_install_log_line_maps_apt_lock() -> None:
+    from octop.i18n import tr
+    from octop.infra.desktop.setup import _friendly_install_log_line
+
+    raw = "E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend)"
+    friendly = _friendly_install_log_line(raw, "en")
+    assert friendly == tr("desktop.error_apt_locked", "en")
+
+
+def test_friendly_install_log_line_maps_install_json() -> None:
+    from octop.i18n import tr
+    from octop.infra.desktop.setup import _friendly_install_log_line
+
+    raw = '{"installed": false, "error": "apt install failed"}'
+    friendly = _friendly_install_log_line(raw, "en")
+    assert friendly == tr("desktop.error_apt_failed", "en")
+
+
+@pytest.mark.asyncio
+async def test_iter_subprocess_lines_handles_long_line_without_newline() -> None:
+    from octop.infra.desktop.setup import _iter_subprocess_lines
+
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader(loop=loop)
+    reader.feed_data(b"x" * 100_000)
+    reader.feed_eof()
+
+    lines = [line async for line in _iter_subprocess_lines(reader)]
+    assert len(lines) == 1
+    assert len(lines[0]) == 100_000
 
 
 def test_sanitize_subprocess_log_filters_script_paths() -> None:

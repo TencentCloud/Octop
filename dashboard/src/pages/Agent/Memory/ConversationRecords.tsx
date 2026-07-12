@@ -289,11 +289,11 @@ export default function ConversationRecords({
     scrollHeightBeforePrependRef.current = null;
   }, [messages]);
 
-  const closeDrawer = () => {
+  const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
     setSelectedThread(null);
     resetHistoryState();
-  };
+  }, [resetHistoryState]);
 
   const handleDelete = useCallback(
     async (thread: OctopThread) => {
@@ -313,7 +313,7 @@ export default function ConversationRecords({
         setDeletingId(null);
       }
     },
-    [agentId, selectedThread?.thread_id, t],
+    [agentId, closeDrawer, selectedThread?.thread_id, t],
   );
 
   const confirmDelete = useCallback(

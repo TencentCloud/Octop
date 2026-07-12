@@ -190,7 +190,7 @@ export function useAutoScroll({
     scrollToBottom(smooth);
   }, [scrollToBottom, smooth]);
 
-  const handleAtBottomChange = useCallback((_bottom: boolean) => {
+  const handleAtBottomChange = useCallback(() => {
     // Virtuoso may report at-bottom after programmatic follow scrolls.
     // Resuming follow is handled only by user scroll/wheel/touch listeners.
   }, []);
