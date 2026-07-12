@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from octop.infra.utils.posix_compat import geteuid
+
 
 def octop_home() -> Path:
     return Path(os.environ.get("OCTOP_HOME", Path.home() / ".octop"))
@@ -221,7 +223,7 @@ def apply_geometry(geometry: str) -> None:
     resize_script = resolve_resize_script_path()
     if resize_script is not None:
         cmd: list[str]
-        if os.geteuid() == 0:
+        if geteuid() == 0:
             cmd = ["/bin/bash", str(resize_script), geometry]
         elif shutil.which("sudo"):
             cmd = ["sudo", "-n", "/bin/bash", str(resize_script), geometry]
@@ -239,7 +241,7 @@ def apply_geometry(geometry: str) -> None:
         raise RuntimeError("desktop resize script not found")
     cmd = (
         ["/bin/bash", str(start_script)]
-        if os.geteuid() == 0
+        if geteuid() == 0
         else ["sudo", "-n", "/bin/bash", str(start_script)]
     )
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
@@ -426,7 +428,7 @@ def _resolve_linux_setup() -> tuple[SetupState, str | None, str, bool | None]:
 def _mac_screen_recording_granted() -> bool | None:
     """Return True/False from TCC, or None if the probe API is unavailable."""
     try:
-        from Quartz import CGPreflightScreenCaptureAccess  # type: ignore[import-untyped]
+        from Quartz import CGPreflightScreenCaptureAccess
     except ImportError:
         return None
     try:
@@ -438,10 +440,10 @@ def _mac_screen_recording_granted() -> bool | None:
 def _mac_accessibility_granted() -> bool | None:
     """Return True/False from TCC, or None if the probe API is unavailable."""
     try:
-        from ApplicationServices import AXIsProcessTrusted  # type: ignore[import-untyped]
+        from ApplicationServices import AXIsProcessTrusted
     except ImportError:
         try:
-            from HIServices import AXIsProcessTrusted  # type: ignore[import-untyped]
+            from HIServices import AXIsProcessTrusted
         except ImportError:
             return None
     try:
@@ -591,7 +593,7 @@ async def install_python_deps_stream() -> AsyncIterator[str]:
 
 
 def _install_cmd_for_script(script: Path) -> list[str] | None:
-    if os.geteuid() == 0:
+    if geteuid() == 0:
         return ["/bin/bash", str(script)]
     if shutil.which("sudo"):
         return ["sudo", "-n", "/bin/bash", str(script)]
