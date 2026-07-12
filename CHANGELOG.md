@@ -4,6 +4,17 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
+## [0.9.5] - 2026-07-12
+
+### 新增
+- 新增 Linux、Windows、macOS 三端的远程桌面串流能力
+- 完善远程桌面的安装/卸载交互，并打包 Linux 端安装脚本
+
+### 修复
+- 修复 Windows 与 Linux CI 下桌面配置/捕获/输入相关单测与 mypy 报错
+- 修复 Mac 端远程桌面安装时误导性的提示文案
+- 加固桌面安装 SSE 流式推送并清理 dashboard 端 lint 问题
+
 ## [0.9.4] - 2026-07-11
 
 ### 新增
