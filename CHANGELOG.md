@@ -4,6 +4,17 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+## [0.9.6] - 2026-07-13
+
+### 新增
+- 新增远程桌面（Remote Desktop）功能，支持跨 Linux、Windows、macOS 的桌面串流 (#7)
+
+### 修复
+- 从 .dockerignore 中移除 uv.lock，修正 Docker 构建无法 COPY 锁文件的问题 (#9)
+- 修复远程桌面、浏览器、终端及安装向导的本地化（i18n）问题 (#11)
+
 ## [0.9.5] - 2026-07-12
 
 ### 新增
