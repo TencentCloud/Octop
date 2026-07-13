@@ -134,6 +134,17 @@ def is_allowed_host_temp_path(resolved: Path) -> bool:
                 continue
         return False
 
+    # POSIX: /tmp and macOS /private/tmp, plus the process temp dir
+    # (macOS TemporaryDirectory uses /var/folders/…, not /tmp).
+    candidates = []
+    with contextlib.suppress(OSError):
+        candidates.append(Path(tempfile.gettempdir()).resolve())
+    for root in candidates:
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
     norm = str(resolved).replace("\\", "/")
     return norm.startswith(("/tmp/", "/private/tmp/"))
 
