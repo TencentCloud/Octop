@@ -18,7 +18,6 @@ import {
   Select,
   Space,
   Spin,
-  Tag,
   Tooltip,
   Typography,
   message as antMessage,
@@ -32,11 +31,13 @@ import {
   Maximize2,
   Play,
   Plus,
+  RefreshCw,
   RotateCcw,
   Square,
   Sparkles,
   Star,
   Terminal,
+  Trash2,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -95,6 +96,11 @@ interface EnvStatus {
   playwright: boolean;
   browsers_ok: boolean;
   harness_browser: boolean;
+  /** True when Playwright-managed Chromium dirs exist (uninstall target). */
+  playwright_chromium?: boolean;
+  chrome_path?: string | null;
+  /** "system" | "playwright" when browsers_ok */
+  chrome_source?: "system" | "playwright" | null;
   error: string | null;
 }
 
@@ -282,10 +288,15 @@ export default function RemoteBrowserPage() {
 
   const [installPhase, setInstallPhase] = useState<InstallPhase>("idle");
   const [installLogs, setInstallLogs] = useState<string[]>([]);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [uninstallLogs, setUninstallLogs] = useState<string[]>([]);
   const [envModalOpen, setEnvModalOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const installLogRef = useRef<HTMLDivElement | null>(null);
   const installAbortRef = useRef<AbortController | null>(null);
+  const uninstallAbortRef = useRef<AbortController | null>(null);
 
   const { bookmarks, isBookmarked, toggle, remove } =
     useRemoteBrowserBookmarks();
@@ -403,11 +414,16 @@ export default function RemoteBrowserPage() {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [installLogs]);
+    installLogRef.current?.scrollTo({
+      top: installLogRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [installLogs, uninstallLogs]);
 
   useEffect(
     () => () => {
       installAbortRef.current?.abort();
+      uninstallAbortRef.current?.abort();
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
       disconnect();
     },
@@ -416,6 +432,7 @@ export default function RemoteBrowserPage() {
 
   const handleFrame = useCallback((base64Data: string) => {
     paintBase64JpegToCanvas(canvasRef.current, base64Data);
+    setFrameReady(true);
   }, []);
 
   const resolveDimensions = useCallback(() => {
@@ -440,6 +457,7 @@ export default function RemoteBrowserPage() {
 
   const startStream = useCallback(
     (profileId: string, targetUrl = "") => {
+      setFrameReady(false);
       const { width, height } = resolveDimensions();
       connect(
         targetUrl,
@@ -467,13 +485,15 @@ export default function RemoteBrowserPage() {
     if (!urlEditingRef.current && view.url) setNavUrl(view.url);
   }, [streamTabs]);
 
-  const refreshEnv = useCallback(async () => {
+  const refreshEnv = useCallback(async (): Promise<EnvStatus | null> => {
     setEnvLoading(true);
     try {
       const env = await request<EnvStatus>("/browser/env-status");
       setEnvStatus(env);
+      return env;
     } catch (err: unknown) {
       showApiError(err, t("remoteBrowser.envProbeFailed"), t);
+      return null;
     } finally {
       setEnvLoading(false);
     }
@@ -500,20 +520,105 @@ export default function RemoteBrowserPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- install ---
+  // --- install / uninstall ---
 
   const startInstall = useCallback(() => {
     setInstallPhase("installing");
     setInstallLogs([]);
+    setEnvModalOpen(false);
     installAbortRef.current = browserApi.installBrowser(
       (line) => setInstallLogs((p) => [...p, line]),
       (success) => {
         installAbortRef.current = null;
-        setInstallPhase(success ? "install_success" : "install_failed");
-        if (success) void refreshEnv();
+        if (!success) {
+          setInstallPhase("install_failed");
+          setEnvModalOpen(true);
+          return;
+        }
+        setInstallPhase("idle");
+        setEnvModalOpen(false);
+        void refreshEnv();
+        antMessage.success(
+          t("remoteBrowser.installSuccess", "浏览器安装成功"),
+        );
       },
     );
-  }, [refreshEnv]);
+  }, [refreshEnv, t]);
+
+  const cancelInstall = useCallback(() => {
+    installAbortRef.current?.abort();
+    installAbortRef.current = null;
+    setInstallPhase("idle");
+    setInstallLogs([]);
+    antMessage.info(
+      t(
+        "remoteBrowser.installCancelHint",
+        "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
+      ),
+    );
+  }, [t]);
+
+  const handleUninstall = useCallback(() => {
+    if (!envStatus?.playwright_chromium || uninstalling) return;
+    Modal.confirm({
+      title: t("remoteBrowser.uninstallTitle", "卸载远程浏览器"),
+      content: t(
+        "remoteBrowser.uninstallConfirm",
+        "将关闭 Octop 浏览器会话，并删除通过 Playwright 安装的 Chromium。不会影响本机已有的 Chrome/Chromium。是否继续？",
+      ),
+      okText: t("remoteBrowser.uninstall", "卸载"),
+      okButtonProps: { danger: true },
+      cancelText: t("common.cancel"),
+      onOk: () =>
+        new Promise<void>((resolve, reject) => {
+          if (session) {
+            disconnect();
+            profileIdRef.current = null;
+            setSession(null);
+            setFrameReady(false);
+          }
+          setUninstalling(true);
+          setUninstallLogs([]);
+          const hide = antMessage.loading(
+            t("remoteBrowser.uninstalling", "正在卸载…"),
+            0,
+          );
+          uninstallAbortRef.current = browserApi.uninstallBrowser(
+            (line) => setUninstallLogs((prev) => [...prev, line]),
+            (success) => {
+              uninstallAbortRef.current = null;
+              setUninstalling(false);
+              hide();
+              void refreshEnv().then((data) => {
+                const removed = success || !data?.playwright_chromium;
+                if (removed) {
+                  setUninstallLogs([]);
+                  antMessage.success(
+                    t(
+                      "remoteBrowser.uninstallSuccess",
+                      "已删除 Playwright Chromium",
+                    ),
+                  );
+                  resolve();
+                  return;
+                }
+                antMessage.error(
+                  t("remoteBrowser.uninstallFailed", "卸载失败"),
+                );
+                reject(new Error("uninstall failed"));
+              });
+            },
+          );
+        }),
+    });
+  }, [
+    disconnect,
+    envStatus?.playwright_chromium,
+    refreshEnv,
+    session,
+    t,
+    uninstalling,
+  ]);
 
   const openEnvModal = useCallback(() => {
     setEnvModalOpen(true);
@@ -539,16 +644,6 @@ export default function RemoteBrowserPage() {
       setInstallLogs([]);
     }
   }, [installPhase]);
-
-  useEffect(() => {
-    if (installPhase !== "install_success" || !envModalOpen) return;
-    const timer = setTimeout(() => {
-      setEnvModalOpen(false);
-      setInstallPhase("idle");
-      setInstallLogs([]);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [installPhase, envModalOpen]);
 
   // --- session ---
 
@@ -589,6 +684,7 @@ export default function RemoteBrowserPage() {
     disconnect();
     profileIdRef.current = null;
     setSession(null);
+    setFrameReady(false);
     try {
       localStorage.removeItem(PROFILE_STORAGE_KEY);
     } catch {
@@ -929,28 +1025,49 @@ export default function RemoteBrowserPage() {
   }, [t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
+  const showEdgeControls = Boolean(session) && isStreaming && frameReady;
 
-  const renderInstallLog = (maxHeight = 220) => (
+  const renderInstallLog = (maxHeight?: number, extraClass?: string) => (
     <div
-      style={{
-        background: "var(--fn-bg-secondary,#f5f5f5)",
-        borderRadius: 8,
-        padding: "10px 14px",
-        maxHeight,
-        overflowY: "auto",
-        fontFamily: "monospace",
-        fontSize: 12,
-        lineHeight: 1.6,
-      }}
+      ref={installLogRef}
+      className={`${styles.installLog} ${extraClass ?? ""}`}
+      style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
-        <Text type="secondary">
-          {t("remoteBrowser.installing", "正在启动安装...")}
-        </Text>
+        <div>{t("remoteBrowser.installing", "正在启动安装...")}</div>
       ) : (
         installLogs.map((line, i) => <div key={i}>{line}</div>)
       )}
       <div ref={logEndRef} />
+    </div>
+  );
+
+  const renderViewportUninstallProgress = () => (
+    <div className={styles.installProgress}>
+      <RefreshCw size={32} className={styles.streamLoadingIcon} />
+      <div className={styles.installProgressTitle}>
+        {t("remoteBrowser.uninstalling", "正在卸载…")}
+      </div>
+      <div className={styles.installLog}>
+        {uninstallLogs.length === 0 ? (
+          <div>{t("remoteBrowser.uninstalling", "正在卸载…")}</div>
+        ) : (
+          uninstallLogs.map((line, i) => <div key={i}>{line}</div>)
+        )}
+      </div>
+    </div>
+  );
+
+  const renderViewportInstallProgress = () => (
+    <div className={styles.installProgress}>
+      <RefreshCw size={32} className={styles.streamLoadingIcon} />
+      <div className={styles.installProgressTitle}>
+        {t("remoteBrowser.installProgress", "正在安装中…")}
+      </div>
+      {renderInstallLog()}
+      <div className={styles.installProgressActions}>
+        <Button onClick={cancelInstall}>{t("common.cancel")}</Button>
+      </div>
     </div>
   );
 
@@ -1532,12 +1649,36 @@ export default function RemoteBrowserPage() {
                 }}
               >
                 <div ref={containerRef} className={styles.canvasViewport}>
+                  {!frameReady && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        zIndex: 1,
+                      }}
+                    >
+                      <RefreshCw
+                        size={28}
+                        className={styles.streamLoadingIcon}
+                      />
+                      <Text type="secondary">
+                        {isStreaming
+                          ? t("remoteBrowser.streaming", "推流中")
+                          : t("remoteBrowser.connecting", "连接中")}
+                      </Text>
+                    </div>
+                  )}
                   <canvas
                     ref={canvasRef}
                     tabIndex={0}
                     className={`${styles.canvas} ${
                       isMobile ? styles.canvasMobile : ""
-                    }`}
+                    } ${!frameReady ? styles.canvasHidden : ""}`}
                     style={{
                       cursor: isDragging ? "grabbing" : "grab",
                       ...pointerStyle,
@@ -1548,13 +1689,18 @@ export default function RemoteBrowserPage() {
                     onKeyDown={handleCanvasKeyDown}
                   />
                   <StreamEdgeControls
-                    visible={Boolean(session)}
+                    visible={showEdgeControls}
                     isMobile={isMobile}
                     fullscreenLabel={t("remoteBrowser.fullscreen", "全屏")}
                     controlsLabel={t(
                       "remoteBrowser.openControls",
                       "控制与快捷操作",
                     )}
+                    streamingLabel={
+                      isStreaming
+                        ? t("remoteBrowser.streaming", "推流中")
+                        : t("remoteBrowser.connecting", "连接中")
+                    }
                     onFullscreen={() => void handleFullscreen()}
                     onOpenControls={openControlsDrawer}
                   />
@@ -1572,19 +1718,7 @@ export default function RemoteBrowserPage() {
                     justifyContent: "space-between",
                   }}
                 >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 6 }}
-                  >
-                    <Tag
-                      color={isStreaming ? "processing" : "default"}
-                      style={{ fontSize: 10, margin: 0 }}
-                    >
-                      {isStreaming
-                        ? t("remoteBrowser.streaming", "推流中")
-                        : t("remoteBrowser.connecting", "连接中")}
-                    </Tag>
-                    <span>{tabs.length} tabs</span>
-                  </div>
+                  <span>{tabs.length} tabs</span>
                   <span style={{ color: "var(--fn-text-quaternary, #bbb)" }}>
                     {session.id}
                   </span>
@@ -1592,83 +1726,107 @@ export default function RemoteBrowserPage() {
               </div>
             ) : (
               <div ref={containerRef} className={styles.idleViewport}>
-                <StreamSetupGuide
-                  icon={<Globe size={48} strokeWidth={1.5} />}
-                  title={
-                    envReady
-                      ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
-                      : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
-                  }
-                  description={
-                    envReady
-                      ? t(
-                          "remoteBrowser.startBrowserDesc",
-                          "环境已就绪，按以下步骤开始远程浏览与操控",
-                        )
-                      : envStatus?.error ||
-                        t(
-                          "remoteBrowser.setupDesc",
-                          "按以下步骤完成 Playwright / Chromium 环境配置",
-                        )
-                  }
-                  steps={
-                    envReady
-                      ? [
-                          {
+                {installPhase === "installing" ? (
+                  renderViewportInstallProgress()
+                ) : uninstalling ? (
+                  renderViewportUninstallProgress()
+                ) : (
+                  <StreamSetupGuide
+                    icon={<Globe size={48} strokeWidth={1.5} />}
+                    title={
+                      envReady
+                        ? t(
+                            "remoteBrowser.startBrowserTitle",
+                            "启动远程浏览器",
+                          )
+                        : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
+                    }
+                    description={
+                      envReady
+                        ? t(
+                            "remoteBrowser.startBrowserDesc",
+                            "环境已就绪，按以下步骤开始远程浏览与操控",
+                          )
+                        : envStatus?.error ||
+                          t(
+                            "remoteBrowser.setupDesc",
+                            "按以下步骤完成 Playwright / Chromium 环境配置",
+                          )
+                    }
+                    steps={
+                      envReady
+                        ? [
+                            {
+                              label: t(
+                                "remoteBrowser.startBrowserIdleStep1",
+                                "点击右上角「启动浏览器」建立会话",
+                              ),
+                            },
+                            {
+                              label: t(
+                                "remoteBrowser.startBrowserIdleStep2",
+                                "在地址栏输入网址并访问，也可使用收藏夹与 AI 助手",
+                              ),
+                            },
+                          ]
+                        : [
+                            {
+                              label: t(
+                                "remoteBrowser.setupStep1",
+                                "点击「检查」，检测 Playwright 与 Chromium 是否可用",
+                              ),
+                            },
+                            {
+                              label: t(
+                                "remoteBrowser.setupStep2",
+                                "若组件缺失，在弹窗中一键安装浏览器环境",
+                              ),
+                            },
+                            {
+                              label: t(
+                                "remoteBrowser.setupStep3",
+                                "安装完成后，点击「启动浏览器」开始会话",
+                              ),
+                            },
+                          ]
+                    }
+                    primaryAction={
+                      envReady
+                        ? {
+                            label: creating
+                              ? t(
+                                  "remoteBrowser.ai.startingBrowser",
+                                  "正在启动...",
+                                )
+                              : t("remoteBrowser.startBrowser", "启动浏览器"),
+                            onClick: () => void createSession(),
+                            loading: creating,
+                            disabled: !envReady,
+                            icon: <Play size={14} />,
+                          }
+                        : {
                             label: t(
-                              "remoteBrowser.startBrowserIdleStep1",
-                              "点击右上角「启动浏览器」建立会话",
+                              "remoteBrowser.checkInstallShort",
+                              "检查",
                             ),
-                          },
-                          {
-                            label: t(
-                              "remoteBrowser.startBrowserIdleStep2",
-                              "在地址栏输入网址并访问，也可使用收藏夹与 AI 助手",
-                            ),
-                          },
-                        ]
-                      : [
-                          {
-                            label: t(
-                              "remoteBrowser.setupStep1",
-                              "点击「检查」，检测 Playwright 与 Chromium 是否可用",
-                            ),
-                          },
-                          {
-                            label: t(
-                              "remoteBrowser.setupStep2",
-                              "若组件缺失，在弹窗中一键安装浏览器环境",
-                            ),
-                          },
-                          {
-                            label: t(
-                              "remoteBrowser.setupStep3",
-                              "安装完成后，点击「启动浏览器」开始会话",
-                            ),
-                          },
-                        ]
-                  }
-                  primaryAction={
-                    envReady
-                      ? {
-                          label: creating
-                            ? t(
-                                "remoteBrowser.ai.startingBrowser",
-                                "正在启动...",
-                              )
-                            : t("remoteBrowser.startBrowser", "启动浏览器"),
-                          onClick: () => void createSession(),
-                          loading: creating,
-                          disabled: !envReady,
-                          icon: <Play size={14} />,
-                        }
-                      : {
-                          label: t("remoteBrowser.checkInstallShort", "检查"),
-                          onClick: openEnvModal,
-                          icon: <Globe size={14} />,
-                        }
-                  }
-                />
+                            onClick: openEnvModal,
+                            icon: <Globe size={14} />,
+                          }
+                    }
+                    secondaryAction={
+                      envStatus?.playwright_chromium
+                        ? {
+                            label: t("remoteBrowser.uninstall", "卸载"),
+                            onClick: handleUninstall,
+                            icon: <Trash2 size={14} />,
+                            loading: uninstalling,
+                            disabled: uninstalling || envLoading,
+                            danger: true,
+                          }
+                        : undefined
+                    }
+                  />
+                )}
               </div>
             )}
           </div>

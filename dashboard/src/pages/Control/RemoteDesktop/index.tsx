@@ -1178,15 +1178,6 @@ export default function RemoteDesktopPage() {
                   </Text>
                 </div>
               )}
-              {isStreaming && frameReady && (
-                <div className={styles.viewportOverlay}>
-                  <Tag color="green" style={{ margin: 0, fontSize: 11 }}>
-                    {status === "streaming"
-                      ? t("remoteDesktop.streaming", "推流中")
-                      : t("remoteDesktop.connecting", "连接中")}
-                  </Tag>
-                </div>
-              )}
               <StreamEdgeControls
                 visible={showEdgeControls}
                 isMobile={isMobile}
@@ -1195,6 +1186,11 @@ export default function RemoteDesktopPage() {
                   "remoteDesktop.openControls",
                   "控制与快捷操作",
                 )}
+                streamingLabel={
+                  status === "streaming"
+                    ? t("remoteDesktop.streaming", "推流中")
+                    : t("remoteDesktop.connecting", "连接中")
+                }
                 onFullscreen={() => void handleFullscreen()}
                 onOpenControls={openControlsDrawer}
               />

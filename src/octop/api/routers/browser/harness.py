@@ -101,6 +101,13 @@ async def resolve_harness_session(
 
         shots = agent_outbound_screenshots_dir(server.paths, agent_id)
         harness_settings = harness_settings_for_screenshots_dir(shots)
+
+    from octop.infra.browser.setup import (  # noqa: PLC0415
+        prepare_harness_profile_for_launch,
+    )
+
+    await prepare_harness_profile_for_launch(profile)
+
     try:
         sess = await BrowserSession.create(
             profile=profile,
@@ -108,11 +115,39 @@ async def resolve_harness_session(
             settings=harness_settings,
         )
     except Exception as exc:
-        raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            f"failed to attach browser profile {profile!r}: {exc}",
-            status=503,
-        ) from exc
+        # Chrome exit 21 / ProcessSingleton usually means a stale lock or a
+        # non-writable profile left by a previous root/non-root mismatch.
+        msg = str(exc)
+        if (
+            "returncode=21" in msg
+            or "ProcessSingleton" in msg
+            or "SingletonLock" in msg
+            or "profile directory" in msg.lower()
+        ):
+            logger.warning(
+                "Browser launch failed for %r (%s); recovering profile and retrying",
+                profile,
+                exc,
+            )
+            await prepare_harness_profile_for_launch(profile, force_recover=True)
+            try:
+                sess = await BrowserSession.create(
+                    profile=profile,
+                    mode="auto",
+                    settings=harness_settings,
+                )
+            except Exception as retry_exc:
+                raise OctopError(
+                    ErrorCode.INTERNAL_ERROR,
+                    f"failed to attach browser profile {profile!r}: {retry_exc}",
+                    status=503,
+                ) from retry_exc
+        else:
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"failed to attach browser profile {profile!r}: {exc}",
+                status=503,
+            ) from exc
     _registry[profile] = sess
     return sess
 
