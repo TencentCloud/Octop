@@ -14,6 +14,13 @@ _xvnc_alive() {
 }
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  for unit in octop-desktop-xvnc octop-desktop-session octop-desktop-openbox; do
+    if [ ! -f "/etc/systemd/system/${unit}.service" ]; then
+      echo "systemd unit ${unit}.service is missing; re-run the desktop install" >&2
+      exit 1
+    fi
+  done
+  systemctl daemon-reload
   systemctl start octop-desktop-xvnc octop-desktop-session octop-desktop-openbox
 else
   OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"

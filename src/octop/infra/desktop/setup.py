@@ -403,13 +403,45 @@ def _xdpyinfo_ok(display: str) -> bool:
     return proc.returncode == 0
 
 
+def _systemd_available() -> bool:
+    return shutil.which("systemctl") is not None and Path("/run/systemd/system").is_dir()
+
+
+def _systemd_unit_files() -> tuple[Path, ...]:
+    return (
+        Path("/etc/systemd/system/octop-desktop-xvnc.service"),
+        Path("/etc/systemd/system/octop-desktop-session.service"),
+        Path("/etc/systemd/system/octop-desktop-openbox.service"),
+    )
+
+
+def _systemd_unit_files_present() -> bool:
+    return all(path.is_file() for path in _systemd_unit_files())
+
+
+def _runtime_scripts_present() -> bool:
+    root = system_install_root()
+    return (root / "start-openbox.sh").is_file() and (root / "start-session.sh").is_file()
+
+
 def _virtual_desktop_installed() -> bool:
-    return system_conf_dir().is_dir() or desktop_env_file().is_file()
+    """True when the stack is complete enough to start (not a partial leftover)."""
+    if not _runtime_scripts_present():
+        return False
+    if not (system_conf_dir().is_dir() or desktop_env_file().is_file()):
+        return False
+    if _systemd_available():
+        return _systemd_unit_files_present()
+    return True
 
 
 def _linux_virtual_desktop_present() -> bool:
+    """True when any virtual-desktop leftover exists (including partial installs)."""
     return (
-        _virtual_desktop_installed() or system_install_root().is_dir() or system_conf_dir().is_dir()
+        system_conf_dir().is_dir()
+        or system_install_root().is_dir()
+        or desktop_env_file().is_file()
+        or _systemd_unit_files_present()
     )
 
 

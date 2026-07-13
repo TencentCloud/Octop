@@ -11,7 +11,7 @@
 #   {"installed": false, "error": "..."}
 
 if [ -z "${BASH_VERSION:-}" ]; then exec /bin/bash "$0" "$@"; fi
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_VERSION="v1.0"
 INSTALL_ROOT="/opt/octop-desktop"
@@ -497,6 +497,10 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 UNIT_EOF
+
+    for unit in "$SVC_XVNC" "$SVC_SESSION" "$SVC_OPENBOX"; do
+        [ -f "/etc/systemd/system/${unit}.service" ] || fail "failed to write ${unit}.service"
+    done
 }
 
 write_desktop_env() {
@@ -512,8 +516,10 @@ EOF
 start_services() {
     if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
         systemctl daemon-reload
-        systemctl enable "$SVC_XVNC" "$SVC_SESSION" "$SVC_OPENBOX"
-        systemctl restart "$SVC_XVNC" "$SVC_SESSION" "$SVC_OPENBOX"
+        systemctl enable "$SVC_XVNC" "$SVC_SESSION" "$SVC_OPENBOX" \
+            || fail "systemctl enable failed"
+        systemctl restart "$SVC_XVNC" "$SVC_SESSION" "$SVC_OPENBOX" \
+            || fail "systemctl restart failed"
         sleep 2
         systemctl is-active --quiet "$SVC_XVNC" || fail "octop-desktop-xvnc not active"
         sleep 4

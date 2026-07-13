@@ -216,6 +216,49 @@ def test_desktop_status_darwin_reports_only_missing_perms() -> None:
     assert status.permissions_needed == ("screen_recording",)
 
 
+def test_virtual_desktop_installed_requires_complete_stack() -> None:
+    from octop.infra.desktop.setup import _virtual_desktop_installed
+
+    with (
+        patch("octop.infra.desktop.setup._runtime_scripts_present", return_value=True),
+        patch("octop.infra.desktop.setup.system_conf_dir") as conf,
+        patch("octop.infra.desktop.setup.desktop_env_file") as env,
+        patch("octop.infra.desktop.setup._systemd_available", return_value=True),
+        patch("octop.infra.desktop.setup._systemd_unit_files_present", return_value=False),
+    ):
+        conf.return_value.is_dir.return_value = True
+        env.return_value.is_file.return_value = False
+        assert _virtual_desktop_installed() is False
+
+
+def test_virtual_desktop_installed_ok_with_units() -> None:
+    from octop.infra.desktop.setup import _virtual_desktop_installed
+
+    with (
+        patch("octop.infra.desktop.setup._runtime_scripts_present", return_value=True),
+        patch("octop.infra.desktop.setup.system_conf_dir") as conf,
+        patch("octop.infra.desktop.setup.desktop_env_file") as env,
+        patch("octop.infra.desktop.setup._systemd_available", return_value=True),
+        patch("octop.infra.desktop.setup._systemd_unit_files_present", return_value=True),
+    ):
+        conf.return_value.is_dir.return_value = True
+        env.return_value.is_file.return_value = False
+        assert _virtual_desktop_installed() is True
+
+
+def test_resolve_linux_partial_install_needs_reinstall() -> None:
+    from octop.infra.desktop.setup import _resolve_linux_setup
+
+    with (
+        patch("octop.infra.desktop.setup._check_vnc_localhost", return_value=(None, "")),
+        patch.dict("os.environ", {"DISPLAY": ""}, clear=False),
+        patch("octop.infra.desktop.setup._display_from_env_file", return_value=None),
+        patch("octop.infra.desktop.setup._virtual_desktop_installed", return_value=False),
+    ):
+        state, _display, _reason, _vnc = _resolve_linux_setup(locale="en")
+    assert state == "needs_install"
+
+
 def test_desktop_status_linux_deps_missing() -> None:
     with (
         patch("octop.infra.desktop.setup._python_deps_available", return_value=False),
