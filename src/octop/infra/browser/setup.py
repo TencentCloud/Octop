@@ -24,31 +24,66 @@ def _sse(event: dict[str, object]) -> str:
 
 
 def ensure_chrome_runtime_env() -> Path:
-    """Ensure ``XDG_RUNTIME_DIR`` is a writable directory for the current uid.
+    """Force a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
 
-    Chrome on Linux often tries ``/run/user/<uid>``. On headless / root /
-    container hosts that path may be missing or unwritable (``mkdir: cannot
-    create directory '/run/user/0': Permission denied``). Point the process
-    env at a private ``/tmp`` runtime dir instead.
+    Chrome defaults to ``/run/user/<uid>``, which is often missing or
+    unwritable on headless / root / container hosts (``mkdir: cannot create
+    directory '/run/user/0': Permission denied``). Always point at a private
+    ``/tmp`` directory owned by the current process.
     """
     uid = os.getuid() if hasattr(os, "getuid") else 0
-    current = (os.environ.get("XDG_RUNTIME_DIR") or "").strip()
-    if current:
-        path = Path(current)
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-            os.chmod(path, 0o700)
-            if os.access(path, os.W_OK | os.X_OK):
-                return path
-        except OSError:
-            pass
-
     path = Path(f"/tmp/runtime-harness-browser-{uid}")
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(path, 0o700)
     os.environ["XDG_RUNTIME_DIR"] = str(path)
     return path
+
+
+def _x11_socket_path(display: str) -> Path | None:
+    raw = display.strip()
+    if not raw.startswith(":"):
+        return None
+    num = raw[1:].split(".", 1)[0]
+    if not num.isdigit():
+        return None
+    return Path(f"/tmp/.X11-unix/X{num}")
+
+
+def resolve_browser_display() -> str | None:
+    """Pick a usable X11 display for headed Chrome (virtual desktop or env).
+
+    When Octop's Linux virtual desktop (Xvnc ``:99``) is running, inject
+    ``DISPLAY`` into the process env so harness-browser ``mode=auto`` becomes
+    headed and the window appears on the remote desktop.
+    """
+    if sys.platform != "linux":
+        current = (os.environ.get("DISPLAY") or "").strip()
+        return current or None
+
+    candidates: list[str] = []
+    current = (os.environ.get("DISPLAY") or "").strip()
+    if current:
+        candidates.append(current)
+    try:
+        from octop.infra.desktop.setup import _display_from_env_file  # noqa: PLC0415
+
+        from_file = _display_from_env_file()
+        if from_file and from_file not in candidates:
+            candidates.append(from_file)
+    except Exception:  # noqa: BLE001
+        pass
+    if ":99" not in candidates:
+        candidates.append(":99")
+
+    for display in candidates:
+        sock = _x11_socket_path(display)
+        if sock is not None and sock.exists():
+            os.environ["DISPLAY"] = display
+            logger.info("Browser will use DISPLAY=%s (socket %s)", display, sock)
+            return display
+
+    return (os.environ.get("DISPLAY") or "").strip() or None
 
 
 def clear_profile_locks(profile_dir: Path) -> list[str]:
@@ -58,6 +93,9 @@ def clear_profile_locks(profile_dir: Path) -> list[str]:
         lock_path = profile_dir / lock_name
         try:
             if lock_path.exists() or lock_path.is_symlink():
+                with contextlib.suppress(OSError):
+                    if not lock_path.is_symlink():
+                        lock_path.chmod(0o644)
                 lock_path.unlink()
                 cleared.append(lock_name)
         except FileNotFoundError:
@@ -65,6 +103,156 @@ def clear_profile_locks(profile_dir: Path) -> list[str]:
         except OSError as exc:
             logger.warning("Failed to remove stale %s: %s", lock_name, exc)
     return cleared
+
+
+def _probe_dir_writable(directory: Path) -> bool:
+    """Return True when we can create and delete a file in *directory*."""
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / f".octop-write-{os.getpid()}"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _try_fix_ownership(path: Path) -> None:
+    """Best-effort chmod/chown so the current uid can write *path*."""
+    uid = os.getuid() if hasattr(os, "getuid") else None
+    gid = os.getgid() if hasattr(os, "getgid") else None
+    with contextlib.suppress(OSError):
+        if uid is not None and gid is not None:
+            os.chown(path, uid, gid)
+    with contextlib.suppress(OSError):
+        path.chmod(0o700)
+
+
+def ensure_profile_writable(profile_dir: Path) -> Path:
+    """Ensure *profile_dir* is writable by the current process.
+
+    If the existing tree cannot be written (common after root/non-root mix),
+    wipe it and recreate empty. Returns the usable directory path.
+    """
+    profile_dir = Path(profile_dir)
+    parents = [profile_dir, *list(profile_dir.parents)[:3]]
+    for parent in reversed(parents):
+        if parent.exists():
+            _try_fix_ownership(parent)
+
+    if _probe_dir_writable(profile_dir):
+        return profile_dir
+
+    logger.warning(
+        "Browser profile %s is not writable; recreating",
+        profile_dir,
+    )
+    if profile_dir.exists():
+        stamp = int(time.time())
+        stale = profile_dir.with_name(f"{profile_dir.name}.stale-{stamp}")
+        try:
+            profile_dir.rename(stale)
+        except OSError:
+            with contextlib.suppress(OSError):
+                shutil.rmtree(profile_dir)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    _try_fix_ownership(profile_dir)
+    if not _probe_dir_writable(profile_dir):
+        # Last resort: alternate under /tmp (and point harness-browser at it).
+        uid = os.getuid() if hasattr(os, "getuid") else 0
+        alt_root = Path(f"/tmp/harness-browser-profiles-{uid}")
+        alt_root.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            os.chmod(alt_root, 0o700)
+        os.environ["BROWSER_USE_PROFILES_DIR"] = str(alt_root)
+        with contextlib.suppress(Exception):
+            from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
+
+            hb_settings.profiles_dir = alt_root
+        alt = alt_root / profile_dir.name
+        alt.mkdir(parents=True, exist_ok=True)
+        logger.warning(
+            "Falling back to writable profiles dir %s (set BROWSER_USE_PROFILES_DIR)",
+            alt_root,
+        )
+        return alt
+    return profile_dir
+
+
+def recover_stale_profile(profile_dir: Path) -> None:
+    """Last-resort: move/wipe an unusable profile so Chrome can start fresh."""
+    if not profile_dir.exists():
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        _try_fix_ownership(profile_dir)
+        return
+    stamp = int(time.time())
+    stale = profile_dir.with_name(f"{profile_dir.name}.stale-{stamp}")
+    try:
+        profile_dir.rename(stale)
+        logger.warning("Moved unusable browser profile %s → %s", profile_dir, stale)
+    except OSError as exc:
+        logger.warning("Could not rename stale profile %s: %s", profile_dir, exc)
+        clear_profile_locks(profile_dir)
+        with contextlib.suppress(OSError):
+            shutil.rmtree(profile_dir)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    _try_fix_ownership(profile_dir)
+    ensure_profile_writable(profile_dir)
+
+
+async def prepare_harness_profile_for_launch(
+    profile_name: str,
+    *,
+    force_recover: bool = False,
+) -> Path:
+    """Make a harness-browser profile safe to (re)launch Chrome against.
+
+    - Forces a writable ``XDG_RUNTIME_DIR``
+    - Injects virtual-desktop ``DISPLAY`` when Xvnc is up
+    - If CDP is already listening, leaves the running browser alone
+    - Otherwise kills leftover Chrome for this profile and clears Singleton locks
+    - Ensures the profile directory is writable (chmod / recreate if needed)
+    """
+    ensure_chrome_runtime_env()
+    resolve_browser_display()
+
+    data_dir = await asyncio.to_thread(_profile_data_dir, profile_name)
+    data_dir = await asyncio.to_thread(ensure_profile_writable, data_dir)
+
+    port = await asyncio.to_thread(_profile_port, profile_name)
+    if port is not None and await _cdp_port_listening(port):
+        return data_dir
+
+    killed = await asyncio.to_thread(pkill_chrome_profile, data_dir)
+    if killed:
+        await asyncio.sleep(0.4)
+    cleared = await asyncio.to_thread(clear_profile_locks, data_dir)
+    if cleared:
+        logger.info(
+            "Cleared stale Chrome locks for profile %r: %s",
+            profile_name,
+            ", ".join(cleared),
+        )
+
+    if force_recover or not _probe_dir_writable(data_dir):
+        await asyncio.to_thread(recover_stale_profile, data_dir)
+        data_dir = await asyncio.to_thread(ensure_profile_writable, data_dir)
+    else:
+        remaining = [
+            name
+            for name in _LOCK_NAMES
+            if (data_dir / name).exists() or (data_dir / name).is_symlink()
+        ]
+        if remaining:
+            logger.warning(
+                "Chrome locks still present for %r (%s); recovering profile dir",
+                profile_name,
+                ", ".join(remaining),
+            )
+            await asyncio.to_thread(recover_stale_profile, data_dir)
+            data_dir = await asyncio.to_thread(ensure_profile_writable, data_dir)
+
+    return data_dir
 
 
 def pkill_chrome_profile(profile_dir: Path) -> bool:
@@ -182,74 +370,6 @@ def _profile_data_dir(profile_name: str) -> Path:
         return Path(ProfileManager().get_or_create(profile_name).data_dir)
     except Exception:  # noqa: BLE001
         return _profiles_root() / profile_name
-
-
-def recover_stale_profile(profile_dir: Path) -> None:
-    """Last-resort: move an unusable profile aside so Chrome can start fresh."""
-    if not profile_dir.exists():
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        return
-    stamp = int(time.time())
-    stale = profile_dir.with_name(f"{profile_dir.name}.stale-{stamp}")
-    try:
-        profile_dir.rename(stale)
-        logger.warning("Moved unusable browser profile %s → %s", profile_dir, stale)
-    except OSError as exc:
-        logger.warning("Could not rename stale profile %s: %s", profile_dir, exc)
-        # Best effort wipe of lock files only; leave the rest.
-        clear_profile_locks(profile_dir)
-    profile_dir.mkdir(parents=True, exist_ok=True)
-
-
-async def prepare_harness_profile_for_launch(
-    profile_name: str,
-    *,
-    force_recover: bool = False,
-) -> Path:
-    """Make a harness-browser profile safe to (re)launch Chrome against.
-
-    - Ensures a writable ``XDG_RUNTIME_DIR``
-    - If CDP is already listening, leaves the running browser alone
-    - Otherwise kills leftover Chrome for this profile and clears Singleton locks
-    - Optionally recovers a non-writable / corrupt profile directory
-    """
-    ensure_chrome_runtime_env()
-    data_dir = await asyncio.to_thread(_profile_data_dir, profile_name)
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    port = await asyncio.to_thread(_profile_port, profile_name)
-    if port is not None and await _cdp_port_listening(port):
-        return data_dir
-
-    killed = await asyncio.to_thread(pkill_chrome_profile, data_dir)
-    if killed:
-        await asyncio.sleep(0.4)
-    cleared = await asyncio.to_thread(clear_profile_locks, data_dir)
-    if cleared:
-        logger.info(
-            "Cleared stale Chrome locks for profile %r: %s",
-            profile_name,
-            ", ".join(cleared),
-        )
-
-    if force_recover or not os.access(data_dir, os.W_OK):
-        await asyncio.to_thread(recover_stale_profile, data_dir)
-    else:
-        # If locks still remain (Permission denied), recover so launch can proceed.
-        remaining = [
-            name
-            for name in _LOCK_NAMES
-            if (data_dir / name).exists() or (data_dir / name).is_symlink()
-        ]
-        if remaining:
-            logger.warning(
-                "Chrome locks still present for %r (%s); recovering profile dir",
-                profile_name,
-                ", ".join(remaining),
-            )
-            await asyncio.to_thread(recover_stale_profile, data_dir)
-
-    return data_dir
 
 
 async def _close_harness_registry() -> int:

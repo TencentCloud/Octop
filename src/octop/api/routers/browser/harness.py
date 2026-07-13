@@ -104,15 +104,27 @@ async def resolve_harness_session(
 
     from octop.infra.browser.setup import (  # noqa: PLC0415
         prepare_harness_profile_for_launch,
+        resolve_browser_display,
     )
 
     await prepare_harness_profile_for_launch(profile)
+    # Virtual desktop (Xvnc :99) → headed Chrome so the window shows on
+    # remote desktop; otherwise keep auto (headless on servers without X).
+    display = resolve_browser_display()
+    launch_mode = "headed" if display else "auto"
+
+    # Fresh ProfileManager picks up any BROWSER_USE_PROFILES_DIR relocation
+    # done by prepare (default singleton is bound at import time).
+    from harness_browser.profile import ProfileManager  # noqa: PLC0415
+
+    profile_manager = ProfileManager()
 
     try:
         sess = await BrowserSession.create(
             profile=profile,
-            mode="auto",
+            mode=launch_mode,  # type: ignore[arg-type]
             settings=harness_settings,
+            profile_manager=profile_manager,
         )
     except Exception as exc:
         # Chrome exit 21 / ProcessSingleton usually means a stale lock or a
@@ -130,11 +142,15 @@ async def resolve_harness_session(
                 exc,
             )
             await prepare_harness_profile_for_launch(profile, force_recover=True)
+            display = resolve_browser_display()
+            launch_mode = "headed" if display else "auto"
+            profile_manager = ProfileManager()
             try:
                 sess = await BrowserSession.create(
                     profile=profile,
-                    mode="auto",
+                    mode=launch_mode,  # type: ignore[arg-type]
                     settings=harness_settings,
+                    profile_manager=profile_manager,
                 )
             except Exception as retry_exc:
                 raise OctopError(

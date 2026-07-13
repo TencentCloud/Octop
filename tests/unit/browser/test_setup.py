@@ -9,10 +9,13 @@ from pathlib import Path
 import pytest
 
 from octop.infra.browser.setup import (
+    _probe_dir_writable,
     chrome_source_for_path,
     clear_profile_locks,
     ensure_chrome_runtime_env,
+    ensure_profile_writable,
     recover_stale_profile,
+    resolve_browser_display,
     uninstall_browser_stream,
 )
 
@@ -110,13 +113,71 @@ def test_recover_stale_profile_renames_and_recreates(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_ensure_chrome_runtime_env_creates_writable_dir(
+def test_ensure_chrome_runtime_env_forces_tmp_dir(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
-    runtime = tmp_path / "runtime"
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")
     path = ensure_chrome_runtime_env()
-    assert path == runtime
-    assert runtime.is_dir()
-    assert os.access(runtime, os.W_OK | os.X_OK)
+    assert path == Path(f"/tmp/runtime-harness-browser-{os.getuid()}")
+    assert os.environ["XDG_RUNTIME_DIR"] == str(path)
+    assert path.is_dir()
+    assert os.access(path, os.W_OK | os.X_OK)
+
+
+@posix_only
+def test_resolve_browser_display_uses_x_socket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.browser import setup as browser_setup
+
+    monkeypatch.setattr(browser_setup.sys, "platform", "linux")
+    sock_dir = tmp_path / "X11"
+    sock_dir.mkdir()
+    (sock_dir / "X99").touch()
+    monkeypatch.setattr(
+        browser_setup,
+        "_x11_socket_path",
+        lambda display: (
+            sock_dir / f"X{display.lstrip(':').split('.')[0]}"
+            if display.startswith(":")
+            else None
+        ),
+    )
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setattr(
+        "octop.infra.desktop.setup._display_from_env_file",
+        lambda: ":99",
+    )
+    display = resolve_browser_display()
+    assert display == ":99"
+    assert os.environ["DISPLAY"] == ":99"
+
+
+def test_ensure_profile_writable_recreates_when_not_writable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.browser import setup as browser_setup
+
+    profile = tmp_path / "default"
+    profile.mkdir()
+    (profile / "Preferences").write_text("{}")
+
+    # Simulate unwritable dir by making probe always fail once, then succeed
+    # after recreate — easier: chmod 0 if posix.
+    if os.name == "posix":
+        os.chmod(profile, 0o000)
+        monkeypatch.setattr(
+            browser_setup,
+            "_try_fix_ownership",
+            lambda _p: None,
+        )
+        try:
+            result = ensure_profile_writable(profile)
+            assert result == profile or "harness-browser-profiles" in str(result)
+            assert _probe_dir_writable(result)
+        finally:
+            os.chmod(profile, 0o700)
+            if profile.exists():
+                os.chmod(profile, 0o700)
+    else:
+        assert ensure_profile_writable(profile) == profile
