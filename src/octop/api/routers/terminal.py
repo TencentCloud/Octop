@@ -126,16 +126,25 @@ def _detect_shell() -> str:
             return powershell
         return "cmd.exe"
 
+    def _usable(path: str) -> bool:
+        name = os.path.basename(path).lower()
+        if name in {"nologin", "false", "true", "sync"}:
+            return False
+        return bool(path) and os.path.exists(path)
+
     shell = os.environ.get("SHELL", "").strip()
-    if shell and os.path.exists(shell):
+    if _usable(shell):
         return shell
     try:
         entry = posix_compat.getpwuid(posix_compat.getuid())
         shell = str(entry.pw_shell)
-        if shell and os.path.exists(shell):
+        if _usable(shell):
             return shell
     except Exception:  # pragma: no cover - non-posix
         pass
+    for candidate in ("/bin/bash", "/bin/sh"):
+        if os.path.exists(candidate):
+            return candidate
     return "/bin/bash"
 
 
@@ -263,7 +272,12 @@ def _spawn_pty_session(
     rows: int,
     persistent: bool,
 ) -> _PtySession:
-    """Create a PTY pair, spawn the shell at ``workspace_dir``, start the pump."""
+    """Create a PTY pair, spawn the shell at ``workspace_dir`` (pump not started).
+
+    Caller must subscribe then call :meth:`_PtySession.start_pump` so an
+    immediately-exiting shell cannot race the empty subscriber set under
+    ``_sessions_lock``.
+    """
     master_fd, slave_fd = posix_compat.openpty()
     _set_winsize(master_fd, cols, rows)
     posix_compat.set_nonblock(master_fd)
@@ -277,6 +291,19 @@ def _spawn_pty_session(
     if "zsh" in shell:
         zdotdir = _zsh_web_zdotdir()
         env["ZDOTDIR"] = zdotdir
+
+    cwd = workspace_dir
+    if not os.path.isdir(cwd):
+        # Fall back rather than fail the whole WebSocket — mkdir races or a
+        # deleted workspace should still yield a usable shell.
+        cwd = os.path.expanduser("~") or "/"
+        logger.warning(
+            "terminal cwd missing, falling back: agent=%s wanted=%s using=%s",
+            agent_id,
+            workspace_dir,
+            cwd,
+        )
+
     proc = subprocess.Popen(
         cmd,
         stdin=slave_fd,
@@ -285,24 +312,29 @@ def _spawn_pty_session(
         close_fds=True,
         preexec_fn=posix_compat.setsid,  # separate process group for clean teardown
         env=env,
-        cwd=workspace_dir,
+        cwd=cwd,
     )
     os.close(slave_fd)
 
     session = _PtySession(
         sid, agent_id, user_id, proc, master_fd, cols, rows, persistent, zdotdir=zdotdir
     )
-    session.pump_task = asyncio.create_task(_pump_pty(session))
-    logger.info(
+    logger.warning(
         "terminal opened: agent=%s sid=%s pid=%s shell=%s cwd=%s persistent=%s",
         agent_id,
         sid,
         proc.pid,
         shell,
-        workspace_dir,
+        cwd,
         persistent,
     )
     return session
+
+
+def _start_session_pump(session: _PtySession) -> None:
+    """Begin PTY fan-out after the first subscriber is attached."""
+    if session.pump_task is None and not session.closed:
+        session.pump_task = asyncio.create_task(_pump_pty(session))
 
 
 async def _pump_pty(session: _PtySession) -> None:
@@ -515,7 +547,7 @@ async def terminal_ws(
         return
 
     await websocket.accept()
-    logger.info(
+    logger.warning(
         "terminal ws accepted: agent=%s user=%s session_id=%s",
         agent_id,
         user.id,
@@ -533,6 +565,8 @@ async def terminal_ws(
     is_reattach = False
     cap_exceeded = False
     wrong_owner = False
+    spawn_error: str | None = None
+    just_spawned = False
 
     try:
         async with _sessions_lock:
@@ -552,17 +586,38 @@ async def terminal_ws(
                 if len(_sessions) >= _MAX_SESSIONS:
                     cap_exceeded = True
                 else:
-                    session = _spawn_pty_session(
-                        sid, agent_id, user.id, workspace_dir, cols, rows, persistent
-                    )
-                    _sessions[key] = session
+                    try:
+                        session = _spawn_pty_session(
+                            sid, agent_id, user.id, workspace_dir, cols, rows, persistent
+                        )
+                        _sessions[key] = session
+                        just_spawned = True
+                    except Exception as spawn_exc:
+                        logger.exception(
+                            "terminal spawn failed: agent=%s sid=%s cwd=%s",
+                            agent_id,
+                            sid,
+                            workspace_dir,
+                        )
+                        spawn_error = str(spawn_exc)
             # Snapshot scrollback, then subscribe — both sync, no await in
             # between, so the pump can neither duplicate nor drop output at
             # the replay/live boundary.
             if session is not None:
                 snapshot = bytes(session.scrollback)
                 session.subscribers.add(queue)
+                # Start the pump only after the first subscriber is attached
+                # (and only for newly spawned shells — re-attach keeps the
+                # existing pump).
+                if just_spawned:
+                    _start_session_pump(session)
 
+        if spawn_error is not None:
+            await websocket.send_text(
+                json.dumps({"type": "error", "message": f"failed to start shell: {spawn_error}"})
+            )
+            await websocket.close(code=1011, reason="spawn failed")
+            return
         if wrong_owner:
             await websocket.send_text(
                 json.dumps({"type": "error", "message": "session owned by another user"})
@@ -576,7 +631,7 @@ async def terminal_ws(
             await websocket.close(code=4029, reason="too many sessions")
             return
 
-        logger.info(
+        logger.warning(
             "terminal %s: agent=%s sid=%s active=%d",
             "re-attached" if is_reattach else "started",
             agent_id,
@@ -677,7 +732,7 @@ async def terminal_ws(
                 await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
     finally:
         close_sid = sid if "sid" in locals() else (session_id or "-")
-        logger.info(
+        logger.warning(
             "terminal ws closing: agent=%s sid=%s persistent=%s",
             agent_id,
             close_sid,

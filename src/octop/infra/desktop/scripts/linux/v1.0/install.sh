@@ -270,17 +270,101 @@ _icon_or_theme() {
     fi
 }
 
+install_start_menu_logo() {
+    # Copy the Octop PWA logo shipped next to this install.sh into the system
+    # install root. Uninstall removes /opt/octop-desktop; reinstall restores it.
+    mkdir -p "${INSTALL_ROOT}/icons"
+    local bundled_logo script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    bundled_logo="${script_dir}/start-menu.png"
+    if [ ! -f "$bundled_logo" ] || [ ! -s "$bundled_logo" ]; then
+        echo "start-menu logo missing next to install.sh (${bundled_logo})" >&2
+        return 1
+    fi
+    if command -v convert >/dev/null 2>&1; then
+        convert "$bundled_logo" -resize 48x48 \
+            "${INSTALL_ROOT}/icons/start-menu.png" 2>/dev/null \
+            || cp -f "$bundled_logo" "${INSTALL_ROOT}/icons/start-menu.png"
+    else
+        cp -f "$bundled_logo" "${INSTALL_ROOT}/icons/start-menu.png"
+    fi
+    chmod 0644 "${INSTALL_ROOT}/icons/start-menu.png"
+    mkdir -p /usr/share/icons/hicolor/48x48/apps
+    cp -f "${INSTALL_ROOT}/icons/start-menu.png" \
+        /usr/share/icons/hicolor/48x48/apps/octop-start-menu.png
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+    echo "installed start-menu logo -> ${INSTALL_ROOT}/icons/start-menu.png"
+}
+
 write_default_panel_layout() {
-    # Seed a bottom panel with Applications menu so headless installs are not panel-less.
-    mkdir -p /root/.config/xfce4/panel /root/.config/xfce4/xfconf/xfce-perchannel-xml
-    cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANEL_EOF'
+    # Seed a top panel. Use an appfinder *launcher* as the start button —
+    # applicationsmenu/whiskermenu often fail to load on minimal headless installs.
+    # ensure-panel.sh re-applies this layout on every session start (xfce can
+    # rewrite XML on exit and drop a broken plugin-1 slot).
+    mkdir -p "$INSTALL_ROOT/icons" /root/.config/xfce4/panel/launcher-1 \
+        /root/.config/xfce4/xfconf/xfce-perchannel-xml
+
+    install_start_menu_logo || true
+
+    cat > "$INSTALL_ROOT/ensure-panel.sh" << 'ENSURE_PANEL_EOF'
+#!/bin/bash
+# Rewrite the Octop default panel (appfinder launcher + tasklist + clock).
+# Safe to run while the VNC session is up; restarts xfce4-panel afterwards.
+set -euo pipefail
+export HOME=/root
+export XDG_CONFIG_HOME=/root/.config
+export XDG_DATA_HOME=/root/.local/share
+export DISPLAY="${DISPLAY:-:99}"
+NO_START=false
+if [ "${1:-}" = "--no-start" ]; then
+    NO_START=true
+fi
+
+mkdir -p /root/.config/xfce4/panel/launcher-1 \
+    /root/.config/xfce4/xfconf/xfce-perchannel-xml
+
+if [ "$NO_START" = false ]; then
+    # Stop panel first so xfconf cannot rewrite our XML on shutdown.
+    pkill -x xfce4-panel >/dev/null 2>&1 || true
+    sleep 0.3
+fi
+
+# Prefer Octop logo for the start button; fall back to a generic search icon.
+START_ICON="/opt/octop-desktop/icons/start-menu.png"
+if [ ! -s "$START_ICON" ]; then
+    if [ -e /usr/share/icons/hicolor/48x48/apps/octop-start-menu.png ]; then
+        START_ICON="/usr/share/icons/hicolor/48x48/apps/octop-start-menu.png"
+    else
+        START_ICON="system-search"
+    fi
+fi
+
+cat > /root/.config/xfce4/panel/launcher-1/appfinder.desktop << LAUNCHER_EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Applications
+Name[zh_CN]=应用程序
+Comment=Open the application finder
+Comment[zh_CN]=打开应用程序菜单
+Exec=xfce4-appfinder
+Icon=${START_ICON}
+Terminal=false
+Categories=Utility;X-XFCE;X-Xfce-Toplevel;
+StartupNotify=true
+LAUNCHER_EOF
+chmod 0644 /root/.config/xfce4/panel/launcher-1/appfinder.desktop
+
+cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANEL_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-panel" version="1.0">
   <property name="configver" type="int" value="2"/>
   <property name="panels" type="array">
     <value type="int" value="1"/>
     <property name="panel-1" type="empty">
-      <property name="position" type="string" value="p=8;x=0;y=0"/>
+      <property name="position" type="string" value="p=6;x=0;y=0"/>
       <property name="length" type="uint" value="100"/>
       <property name="position-locked" type="bool" value="true"/>
       <property name="size" type="uint" value="36"/>
@@ -294,8 +378,10 @@ write_default_panel_layout() {
     </property>
   </property>
   <property name="plugins" type="empty">
-    <property name="plugin-1" type="string" value="applicationsmenu">
-      <property name="button-title" type="string" value="Applications"/>
+    <property name="plugin-1" type="string" value="launcher">
+      <property name="items" type="array">
+        <value type="string" value="appfinder.desktop"/>
+      </property>
     </property>
     <property name="plugin-2" type="string" value="tasklist"/>
     <property name="plugin-3" type="string" value="separator">
@@ -307,14 +393,32 @@ write_default_panel_layout() {
   </property>
 </channel>
 PANEL_EOF
-    # Prefer whiskermenu when the plugin is installed.
-    if [ -f /usr/lib/x86_64-linux-gnu/xfce4/panel/plugins/libwhiskermenu.so ] \
-        || [ -f /usr/lib/aarch64-linux-gnu/xfce4/panel/plugins/libwhiskermenu.so ] \
-        || ls /usr/lib/*/xfce4/panel/plugins/libwhiskermenu.so >/dev/null 2>&1; then
-        sed -i 's/value="applicationsmenu"/value="whiskermenu"/' \
-            /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml || true
+chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+rm -rf /root/.cache/xfce4/xfconf 2>/dev/null || true
+
+if [ "$NO_START" = true ]; then
+    echo "ensure-panel seeded"
+    exit 0
+fi
+
+if [ -f /tmp/octop-desktop-dbus-env ]; then
+    # shellcheck disable=SC1091
+    source /tmp/octop-desktop-dbus-env || true
+fi
+
+if command -v xfce4-panel >/dev/null 2>&1; then
+    nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
+    sleep 1
+    if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
+        nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
+        sleep 1
     fi
-    chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+fi
+echo "ensure-panel ok"
+ENSURE_PANEL_EOF
+    chmod +x "$INSTALL_ROOT/ensure-panel.sh"
+    # Seed files only during install (DISPLAY may not be up yet).
+    /bin/bash "$INSTALL_ROOT/ensure-panel.sh" --no-start >/dev/null 2>&1 || true
 }
 
 download_wallpaper() {
@@ -651,9 +755,12 @@ if command -v xfdesktop >/dev/null 2>&1; then
     xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
 fi
 
-# Ensure the panel (start menu) is running after settings settle.
-if command -v xfce4-panel >/dev/null 2>&1; then
-    if ! pgrep -f "xfce4-panel" >/dev/null 2>&1; then
+# Re-apply start-button panel layout if the helper exists; otherwise just
+# make sure xfce4-panel is alive.
+if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
+    /opt/octop-desktop/ensure-panel.sh || true
+elif command -v xfce4-panel >/dev/null 2>&1; then
+    if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
         nohup xfce4-panel --display="\$DISPLAY" >/dev/null 2>&1 &
         sleep 1
     fi
@@ -680,10 +787,15 @@ xfsettingsd --display=:99 --replace &>/dev/null &
 sleep 0.5
 command -v xfdesktop >/dev/null 2>&1 && xfdesktop --display=:99 &>/dev/null &
 sleep 1
-# Panel provides the start/applications menu — restart cleanly if a stale one exists.
-pkill -x xfce4-panel >/dev/null 2>&1 || true
-sleep 0.3
-xfce4-panel --display=:99 &>/dev/null &
+# Panel provides the start button — rewrite layout every boot so a broken
+# applicationsmenu/whiskermenu slot cannot leave the left side empty.
+if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
+    /opt/octop-desktop/ensure-panel.sh || true
+else
+    pkill -x xfce4-panel >/dev/null 2>&1 || true
+    sleep 0.3
+    xfce4-panel --display=:99 &>/dev/null &
+fi
 command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
 (
     for i in $(seq 1 40); do
@@ -691,7 +803,11 @@ command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
         sleep 0.5
     done
     if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
-        xfce4-panel --display=:99 &>/dev/null &
+        if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
+            /opt/octop-desktop/ensure-panel.sh || true
+        else
+            xfce4-panel --display=:99 &>/dev/null &
+        fi
     fi
     for i in $(seq 1 40); do
         pgrep -f "xfdesktop --display=:99" >/dev/null 2>&1 && break

@@ -12,6 +12,12 @@ interface StreamEdgeControlsProps {
   onOpenControls: () => void;
 }
 
+/**
+ * Corner FABs for fullscreen / controls.
+ *
+ * Intentionally NOT full-height edge rails — those stole pointer events along
+ * the left/right of the remote desktop and blocked OS chrome (start menu, etc.).
+ */
 export default function StreamEdgeControls({
   visible = true,
   isMobile,
@@ -25,34 +31,34 @@ export default function StreamEdgeControls({
   return (
     <>
       <div
-        className={`${styles.edgeRail} ${styles.edgeRailLeft} ${
-          isMobile ? styles.edgeRailHidden : ""
+        className={`${styles.cornerFab} ${styles.cornerFabLeft} ${
+          isMobile ? styles.cornerFabHidden : ""
         }`}
       >
-        <Tooltip title={fullscreenLabel}>
+        <Tooltip title={fullscreenLabel} placement="right">
           <button
             type="button"
-            className={`${styles.edgeFab} ${styles.edgeFabLeft}`}
+            className={styles.fab}
             aria-label={fullscreenLabel}
             onClick={onFullscreen}
           >
-            <Maximize2 size={18} />
+            <Maximize2 size={16} />
           </button>
         </Tooltip>
       </div>
       <div
-        className={`${styles.edgeRail} ${styles.edgeRailRight} ${
-          isMobile ? styles.edgeRailMobileVisible : ""
+        className={`${styles.cornerFab} ${styles.cornerFabRight} ${
+          isMobile ? styles.cornerFabMobileVisible : ""
         }`}
       >
-        <Tooltip title={controlsLabel}>
+        <Tooltip title={controlsLabel} placement="left">
           <button
             type="button"
-            className={`${styles.edgeFab} ${styles.edgeFabRight}`}
+            className={styles.fab}
             aria-label={controlsLabel}
             onClick={onOpenControls}
           >
-            <SlidersHorizontal size={18} />
+            <SlidersHorizontal size={16} />
           </button>
         </Tooltip>
       </div>

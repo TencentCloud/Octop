@@ -1,36 +1,31 @@
-.edgeRail {
+/* Small corner hit-targets only — never a full-height rail that blocks the
+ * remote desktop's left/right edges (start menu, scrollbars, window chrome). */
+.cornerFab {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 40px;
+  top: 10px;
   z-index: 5;
-  display: flex;
-  align-items: center;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
-.edgeRailLeft {
-  left: 0;
-  justify-content: flex-start;
-  padding-left: 6px;
+.cornerFabLeft {
+  left: 10px;
 }
 
-.edgeRailRight {
-  right: 0;
-  justify-content: flex-end;
-  padding-right: 6px;
+.cornerFabRight {
+  right: 10px;
 }
 
-.edgeRailHidden {
+.cornerFabHidden {
   display: none;
 }
 
-.edgeFab {
+.fab {
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--fn-border-primary);
   border-radius: 999px;
   background: var(--fn-bg-glass);
@@ -38,44 +33,22 @@
   backdrop-filter: blur(8px);
   box-shadow: var(--fn-shadow-md);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.45;
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease,
+    opacity 0.15s ease,
     background 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    transform 0.15s ease;
 
-  &:hover {
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
     background: var(--fn-bg-elevated);
     border-color: var(--fn-border-input);
+    transform: scale(1.05);
   }
 }
 
-.edgeFabLeft {
-  transform: translateX(-14px);
-}
-
-.edgeFabRight {
-  transform: translateX(14px);
-}
-
-.edgeRailLeft:hover .edgeFabLeft,
-.edgeRailLeft:focus-within .edgeFabLeft {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-.edgeRailRight:hover .edgeFabRight,
-.edgeRailRight:focus-within .edgeFabRight {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-.edgeRailMobileVisible .edgeFabRight {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
+.cornerFabMobileVisible .fab {
+  opacity: 0.85;
 }

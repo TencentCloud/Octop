@@ -223,10 +223,15 @@ def _patch_user(monkeypatch, user_id: int = 1) -> None:
 def _patch_spawn(monkeypatch, spawned: list[terminal._PtySession]) -> None:
     def fake_spawn(sid, agent_id, user_id, workspace_dir, cols, rows, persistent):
         s = _make_session(sid, agent_id, user_id, persistent)
+        # Keep the mock process "alive" so a started pump would not reap it;
+        # tests still stub the pump out below.
+        s.proc.poll.return_value = None
         spawned.append(s)
         return s
 
     monkeypatch.setattr(terminal, "_spawn_pty_session", fake_spawn)
+    # Avoid driving a real pump against the fake /dev/null master fd.
+    monkeypatch.setattr(terminal, "_start_session_pump", lambda _s: None)
 
 
 async def test_ws_missing_token_closes_4001(monkeypatch) -> None:
@@ -431,10 +436,12 @@ async def test_ws_input_frame_writes_to_pty_fd(monkeypatch) -> None:
 
     def fake_spawn(sid, agent_id, user_id, workspace_dir, cols, rows, persistent):
         s = _make_session(sid, agent_id, user_id, persistent, master_fd=w)
+        s.proc.poll.return_value = None
         spawned.append(s)
         return s
 
     monkeypatch.setattr(terminal, "_spawn_pty_session", fake_spawn)
+    monkeypatch.setattr(terminal, "_start_session_pump", lambda _s: None)
 
     frame = json.dumps({"type": "input", "data": "echo hi\n"})
     ws = _FakeWS(server, received=(frame,))
