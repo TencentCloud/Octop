@@ -89,7 +89,9 @@ function generateId(): string {
 function buildWsUrl(agentId: string, sessionId: string): string {
   const token = getAuthToken();
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const base = `${protocol}://${window.location.host}/api/agents/${encodeURIComponent(agentId)}/terminal/ws`;
+  const base = `${protocol}://${
+    window.location.host
+  }/api/agents/${encodeURIComponent(agentId)}/terminal/ws`;
   const params = new URLSearchParams();
   if (token) params.set("token", token);
   // Opt into backend session persistence: same id re-attaches to the shell.

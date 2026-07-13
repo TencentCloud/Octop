@@ -125,8 +125,8 @@ export default function RemoteDesktopPage() {
     p === "screen_recording"
       ? t("remoteDesktop.permScreenRecording", "屏幕录制")
       : p === "accessibility"
-        ? t("remoteDesktop.permAccessibility", "辅助功能")
-        : p,
+      ? t("remoteDesktop.permAccessibility", "辅助功能")
+      : p,
   );
   const needsMacPermissions =
     Boolean(setupInstalled) &&
@@ -885,7 +885,11 @@ export default function RemoteDesktopPage() {
       return (
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
-          <Button type="primary" loading={envLoading} onClick={() => void refreshEnv()}>
+          <Button
+            type="primary"
+            loading={envLoading}
+            onClick={() => void refreshEnv()}
+          >
             {t("remoteDesktop.recheck", "重新检测")}
           </Button>
         </Space>
@@ -937,11 +941,11 @@ export default function RemoteDesktopPage() {
             envReady
               ? undefined
               : needsMacPermissions
-                ? t(
-                    "remoteDesktop.connectDisabledPerms",
-                    "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
-                  )
-                : t("remoteDesktop.connectDisabled")
+              ? t(
+                  "remoteDesktop.connectDisabledPerms",
+                  "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
+                )
+              : t("remoteDesktop.connectDisabled")
           }
         >
           <Button
@@ -1010,7 +1014,11 @@ export default function RemoteDesktopPage() {
             })}
             style={{ marginBottom: 12 }}
             action={
-              <Button size="small" loading={envLoading} onClick={() => void refreshEnv()}>
+              <Button
+                size="small"
+                loading={envLoading}
+                onClick={() => void refreshEnv()}
+              >
                 {t("remoteDesktop.recheck", "重新检测")}
               </Button>
             }
@@ -1045,14 +1053,11 @@ export default function RemoteDesktopPage() {
                   envReady
                     ? t("remoteDesktop.connectTitle", "连接远程桌面")
                     : needsMacPermissions
-                      ? t(
-                          "remoteDesktop.macPermissionsTitle",
-                          "需要 macOS 系统权限",
-                        )
-                      : t(
-                          "remoteDesktop.subtitle",
-                          "控制 Octop 主机操作系统桌面",
-                        )
+                    ? t(
+                        "remoteDesktop.macPermissionsTitle",
+                        "需要 macOS 系统权限",
+                      )
+                    : t("remoteDesktop.subtitle", "控制 Octop 主机操作系统桌面")
                 }
                 description={
                   envReady
@@ -1061,15 +1066,15 @@ export default function RemoteDesktopPage() {
                         "点击下方「连接」开始实时操控主机桌面",
                       )
                     : needsMacPermissions
-                      ? t("remoteDesktop.macPermissionsGuideDesc", {
-                          permissions: permissionLabels.join(
-                            t("remoteDesktop.permJoin", "、"),
-                          ),
-                        })
-                      : t(
-                          "remoteDesktop.setupDesc",
-                          "按以下步骤完成环境配置，即可在浏览器中远程操控主机桌面",
-                        )
+                    ? t("remoteDesktop.macPermissionsGuideDesc", {
+                        permissions: permissionLabels.join(
+                          t("remoteDesktop.permJoin", "、"),
+                        ),
+                      })
+                    : t(
+                        "remoteDesktop.setupDesc",
+                        "按以下步骤完成环境配置，即可在浏览器中远程操控主机桌面",
+                      )
                 }
                 steps={
                   envReady
@@ -1088,47 +1093,47 @@ export default function RemoteDesktopPage() {
                         },
                       ]
                     : needsMacPermissions
-                      ? [
-                          {
-                            label: t(
-                              "remoteDesktop.macPermStep1",
-                              "打开「系统设置 → 隐私与安全性」",
+                    ? [
+                        {
+                          label: t(
+                            "remoteDesktop.macPermStep1",
+                            "打开「系统设置 → 隐私与安全性」",
+                          ),
+                        },
+                        {
+                          label: t("remoteDesktop.macPermStep2", {
+                            permissions: permissionLabels.join(
+                              t("remoteDesktop.permJoin", "、"),
                             ),
-                          },
-                          {
-                            label: t("remoteDesktop.macPermStep2", {
-                              permissions: permissionLabels.join(
-                                t("remoteDesktop.permJoin", "、"),
-                              ),
-                            }),
-                          },
-                          {
-                            label: t(
-                              "remoteDesktop.macPermStep3",
-                              "重启 Octop（octop run），再回到本页点击「重新检测」",
-                            ),
-                          },
-                        ]
-                      : [
-                          {
-                            label: t(
-                              "remoteDesktop.setupStep1",
-                              "点击「检查」，检测 Python 依赖与桌面环境状态",
-                            ),
-                          },
-                          {
-                            label: t(
-                              "remoteDesktop.setupStep2",
-                              "若未安装，在弹窗中按引导完成安装（Linux 无图形服务器可一键搭建虚拟桌面）",
-                            ),
-                          },
-                          {
-                            label: t(
-                              "remoteDesktop.setupStep3",
-                              "环境就绪后，点击「连接」开始实时看屏与键鼠操控",
-                            ),
-                          },
-                        ]
+                          }),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.macPermStep3",
+                            "重启 Octop（octop run），再回到本页点击「重新检测」",
+                          ),
+                        },
+                      ]
+                    : [
+                        {
+                          label: t(
+                            "remoteDesktop.setupStep1",
+                            "点击「检查」，检测 Python 依赖与桌面环境状态",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.setupStep2",
+                            "若未安装，在弹窗中按引导完成安装（Linux 无图形服务器可一键搭建虚拟桌面）",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.setupStep3",
+                            "环境就绪后，点击「连接」开始实时看屏与键鼠操控",
+                          ),
+                        },
+                      ]
                 }
                 primaryAction={
                   envReady
@@ -1138,17 +1143,17 @@ export default function RemoteDesktopPage() {
                         icon: <PlugZap size={14} />,
                       }
                     : needsMacPermissions
-                      ? {
-                          label: t("remoteDesktop.recheck", "重新检测"),
-                          onClick: () => void refreshEnv(),
-                          icon: <RefreshCw size={14} />,
-                          loading: envLoading,
-                        }
-                      : {
-                          label: t("remoteDesktop.checkInstallShort", "检查"),
-                          onClick: openEnvModal,
-                          icon: <Monitor size={14} />,
-                        }
+                    ? {
+                        label: t("remoteDesktop.recheck", "重新检测"),
+                        onClick: () => void refreshEnv(),
+                        icon: <RefreshCw size={14} />,
+                        loading: envLoading,
+                      }
+                    : {
+                        label: t("remoteDesktop.checkInstallShort", "检查"),
+                        onClick: openEnvModal,
+                        icon: <Monitor size={14} />,
+                      }
                 }
                 secondaryAction={
                   (envReady || needsMacPermissions) && canUninstall

@@ -1,9 +1,11 @@
-/* Quiet top HUD: invisible until the pointer enters a thin top hotzone. */
+/* Quiet top HUD: only a centered top strip captures hover — not the full width. */
 .topHoverZone {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Match HUD width so left/right page chrome stays click-through to the stream. */
+  width: min(320px, calc(100% - 24px));
   height: 12px;
   z-index: 5;
   display: flex;
