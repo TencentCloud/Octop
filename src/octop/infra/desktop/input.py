@@ -299,28 +299,30 @@ VoidRunner = Callable[[InputInjector], None]
 
 
 def _action_display_env(display: str | None) -> dict[str, str]:
+    """Env for spawned desktop helpers (DISPLAY + session D-Bus + HOME)."""
     env = os.environ.copy()
     if display:
         env["DISPLAY"] = display
-    # Virtual desktop sessions run as root with a dedicated D-Bus; pick it up
-    # so spawned XFCE tools (appfinder, thunar, …) can talk to the panel.
-    dbus_env = Path("/tmp/octop-desktop-dbus-env")
-    if dbus_env.is_file():
-        try:
-            for line in dbus_env.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line.startswith("export "):
-                    line = line[len("export ") :]
-                if "=" not in line or line.startswith("#"):
-                    continue
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip().strip("'").strip('"')
-                if key and value:
-                    env[key] = value
-        except OSError:
-            pass
     env.setdefault("HOME", "/root")
+    # Session bus is written by start-session.sh as:
+    #   export DBUS_SESSION_BUS_ADDRESS="..."
+    #   export DBUS_SESSION_BUS_PID="..."
+    dbus_env = Path("/tmp/octop-desktop-dbus-env")
+    if not dbus_env.is_file():
+        return env
+    try:
+        for line in dbus_env.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[len("export ") :]
+            if not line.startswith("DBUS_SESSION_BUS_"):
+                continue
+            key, _, value = line.partition("=")
+            value = value.strip().strip("'").strip('"')
+            if key and value:
+                env[key] = value
+    except OSError:
+        pass
     return env
 
 
@@ -347,9 +349,9 @@ def _xdotool_key(combo: str, *, display: str | None) -> bool:
     try:
         proc = subprocess.run(
             ["xdotool", "key", combo],
-            env=_action_display_env(display),
+            env=_xdotool_env(display),
             capture_output=True,
-            timeout=3,
+            timeout=_XDOTOOL_TIMEOUT_S,
             check=False,
         )
         return proc.returncode == 0
@@ -390,20 +392,12 @@ def _linux_runners(display: str | None) -> dict[str, ActionRunner]:
         return _run
 
     def open_menu() -> ActionRunner:
-        """Open the applications finder (same as the panel start button)."""
-        spawn = spawn_first(
-            [
-                ["xfce4-appfinder"],
-                ["xfce4-popup-applicationsmenu"],
-                ["xfce4-popup-whiskermenu"],
-            ]
-        )
+        """Open appfinder (same binary as the panel start button)."""
+        spawn = spawn_first([["xfce4-appfinder"]])
         keys = key_combo("alt+F1", ["Alt", "F1"])
 
         def _run(injector: InputInjector) -> bool:
-            if spawn(injector):
-                return True
-            return keys(injector)
+            return spawn(injector) or keys(injector)
 
         return _run
 

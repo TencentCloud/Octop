@@ -101,9 +101,6 @@ install_packages() {
             fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
             fonts-wqy-zenhei locales xclip xsel autocutsel xdg-utils libglib2.0-bin wget curl \
             || fail "apt install failed"
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-            xfce4-whiskermenu-plugin \
-            || true
         # Adwaita ships SVG icons; without the gdk-pixbuf SVG loader they render as tiny stubs.
         if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
             gdk-pixbuf-query-loaders --update-cache >/dev/null 2>&1 || true
@@ -432,28 +429,6 @@ if command -v xfce4-panel >/dev/null 2>&1; then
     nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
     sleep 1
     if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
-        nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
-        sleep 1
-    fi
-fi
-
-# Verify the launcher plugin is present in the live channel when xfconf is up.
-if command -v xfconf-query >/dev/null 2>&1 \
-    && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-    for _ in $(seq 1 20); do
-        if xfconf-query -c xfce4-panel -p /plugins/plugin-1 >/dev/null 2>&1; then
-            break
-        fi
-        sleep 0.25
-    done
-    plugin="$(xfconf-query -c xfce4-panel -p /plugins/plugin-1 2>/dev/null || true)"
-    if [ "$plugin" != "launcher" ]; then
-        echo "ensure-panel: plugin-1 is '${plugin:-missing}', rewriting once more" >&2
-        pkill -9 -x xfce4-panel >/dev/null 2>&1 || true
-        pkill -x xfconfd >/dev/null 2>&1 || true
-        sleep 0.2
-        write_panel_files
-        rm -rf /root/.cache/xfce4/xfconf 2>/dev/null || true
         nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
         sleep 1
     fi
@@ -856,16 +831,13 @@ else
 fi
 command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
 (
-    for i in $(seq 1 40); do
+    # Wait for panel from the foreground ensure-panel; retry once if it died.
+    for i in $(seq 1 20); do
         pgrep -x xfce4-panel >/dev/null 2>&1 && break
         sleep 0.5
     done
-    if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
-        if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
-            /opt/octop-desktop/ensure-panel.sh || true
-        else
-            xfce4-panel --display=:99 &>/dev/null &
-        fi
+    if ! pgrep -x xfce4-panel >/dev/null 2>&1 && [ -x /opt/octop-desktop/ensure-panel.sh ]; then
+        /opt/octop-desktop/ensure-panel.sh || true
     fi
     for i in $(seq 1 40); do
         pgrep -f "xfdesktop --display=:99" >/dev/null 2>&1 && break
@@ -873,17 +845,9 @@ command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
     done
     [ -x /opt/octop-desktop/apply-wallpaper.sh ] && /opt/octop-desktop/apply-wallpaper.sh
     [ -x /opt/octop-desktop/apply-icon-size.sh ] && /opt/octop-desktop/apply-icon-size.sh
-    # Re-assert start button after settings settle (xfconf races on cold boot).
-    sleep 2
-    if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
+    if command -v xfconf-query >/dev/null 2>&1; then
         # shellcheck disable=SC1091
         [ -f /tmp/octop-desktop-dbus-env ] && source /tmp/octop-desktop-dbus-env || true
-        plugin="$(xfconf-query -c xfce4-panel -p /plugins/plugin-1 2>/dev/null || true)"
-        if [ "$plugin" != "launcher" ] || ! pgrep -x xfce4-panel >/dev/null 2>&1; then
-            /opt/octop-desktop/ensure-panel.sh || true
-        fi
-    fi
-    if command -v xfconf-query >/dev/null 2>&1; then
         xfconf-query -c xfce4-screensaver -p /screensaver/enabled --create -t bool -s false 2>/dev/null || true
         xfconf-query -c xfce4-screensaver -p /lock/enabled --create -t bool -s false 2>/dev/null || true
         xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled --create -t bool -s false 2>/dev/null || true

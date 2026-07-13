@@ -104,21 +104,15 @@ function pickAgentId(
   currentAgentId: string,
   validAgentIds: ReadonlySet<string>,
 ): string {
-  const stored = session.agentId;
-  if (stored && validAgentIds.has(stored)) return stored;
-  if (stored) {
-    for (const id of validAgentIds) {
-      if (id.endsWith(stored)) return id;
+  const resolve = (id: string) => {
+    if (!id) return "";
+    if (validAgentIds.has(id)) return id;
+    for (const full of validAgentIds) {
+      if (full.endsWith(id)) return full;
     }
-  }
-  if (currentAgentId && validAgentIds.has(currentAgentId))
-    return currentAgentId;
-  if (currentAgentId) {
-    for (const id of validAgentIds) {
-      if (id.endsWith(currentAgentId)) return id;
-    }
-  }
-  return "";
+    return "";
+  };
+  return resolve(session.agentId) || resolve(currentAgentId);
 }
 
 /** Restore persisted tabs into the sessions map, returning their ids. */

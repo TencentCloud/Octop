@@ -319,7 +319,7 @@ def _spawn_pty_session(
     session = _PtySession(
         sid, agent_id, user_id, proc, master_fd, cols, rows, persistent, zdotdir=zdotdir
     )
-    logger.warning(
+    logger.info(
         "terminal opened: agent=%s sid=%s pid=%s shell=%s cwd=%s persistent=%s",
         agent_id,
         sid,
@@ -519,20 +519,17 @@ async def terminal_ws(
         # the agent runtime is stopped/disabled.
         candidates: list[Any] = []
         agent_repo = getattr(server.services, "agent_repo", None)
-        list_all = getattr(agent_repo, "list_all", None)
-        if callable(list_all):
+        if agent_repo is not None:
             with contextlib.suppress(Exception):
-                candidates = list(list_all(include_disabled=True))
+                candidates = list(agent_repo.list_all(include_disabled=True))
         if not candidates:
-            list_rows = getattr(registry, "list_rows", None)
-            if callable(list_rows):
-                with contextlib.suppress(Exception):
-                    candidates = list(list_rows())
+            with contextlib.suppress(Exception):
+                candidates = list(registry.list_rows())
         for row in candidates:
-            row_id = getattr(row, "agent_id", "")
-            if row_id == agent_id or str(row_id).endswith(agent_id):
+            row_id = str(getattr(row, "agent_id", "") or "")
+            if row_id == agent_id or row_id.endswith(agent_id):
                 agent_row = row
-                agent_id = str(row_id)
+                agent_id = row_id
                 break
     if agent_row is None:
         await websocket.close(code=4404, reason="agent not found")
@@ -547,7 +544,7 @@ async def terminal_ws(
         return
 
     await websocket.accept()
-    logger.warning(
+    logger.info(
         "terminal ws accepted: agent=%s user=%s session_id=%s",
         agent_id,
         user.id,
@@ -631,7 +628,7 @@ async def terminal_ws(
             await websocket.close(code=4029, reason="too many sessions")
             return
 
-        logger.warning(
+        logger.info(
             "terminal %s: agent=%s sid=%s active=%d",
             "re-attached" if is_reattach else "started",
             agent_id,
@@ -732,7 +729,7 @@ async def terminal_ws(
                 await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
     finally:
         close_sid = sid if "sid" in locals() else (session_id or "-")
-        logger.warning(
+        logger.info(
             "terminal ws closing: agent=%s sid=%s persistent=%s",
             agent_id,
             close_sid,
