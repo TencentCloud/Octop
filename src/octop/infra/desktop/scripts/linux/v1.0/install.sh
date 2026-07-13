@@ -96,10 +96,18 @@ install_packages() {
             tigervnc-standalone-server tigervnc-tools x11-xserver-utils x11-utils openbox \
             dbus dbus-x11 xdotool xauth imagemagick \
             xfce4-panel xfce4-terminal xfce4-settings xfdesktop4 thunar mousepad \
-            adwaita-icon-theme hicolor-icon-theme \
+            adwaita-icon-theme hicolor-icon-theme librsvg2-common \
             fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
             fonts-wqy-zenhei locales xclip xsel autocutsel xdg-utils libglib2.0-bin wget curl \
             || fail "apt install failed"
+        # Adwaita ships SVG icons; without the gdk-pixbuf SVG loader they render as tiny stubs.
+        if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
+            gdk-pixbuf-query-loaders --update-cache >/dev/null 2>&1 || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -f /usr/share/icons/Adwaita >/dev/null 2>&1 || true
+            gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+        fi
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             chromium \
             || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
@@ -110,7 +118,7 @@ install_packages() {
         command -v dnf >/dev/null 2>&1 || pkg=yum
         $pkg install -y tigervnc-server openbox dbus dbus-x11 xdotool xorg-x11-xauth \
             xfce4-panel xfce4-terminal xfce4-settings xfdesktop thunar mousepad \
-            adwaita-icon-theme hicolor-icon-theme \
+            adwaita-icon-theme hicolor-icon-theme librsvg2 \
             fcitx fcitx-pinyin fcitx-gtk3 \
             google-noto-cjk-fonts ImageMagick xclip xsel xdg-utils \
             || fail "yum/dnf install failed"
@@ -145,6 +153,7 @@ write_xfconf_desktop_defaults() {
     local wallpaper="$WALLPAPER_PNG"
     [ -f "$wallpaper" ] || wallpaper="$WALLPAPER_FILE"
     mkdir -p "$(dirname "$XFCONF_DESKTOP_XML")"
+    mkdir -p /root/.config/xfce4/xfconf/xfce-perchannel-xml
     cat > "$XFCONF_DESKTOP_XML" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-desktop" version="1.0">
@@ -176,6 +185,73 @@ write_xfconf_desktop_defaults() {
 </channel>
 EOF
     chmod 0644 "$XFCONF_DESKTOP_XML"
+
+    # Static xsettings so icon theme/DPI apply even before xfconf-query works.
+    cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Adwaita"/>
+    <property name="IconThemeName" type="string" value="Adwaita"/>
+  </property>
+  <property name="Xft" type="empty">
+    <property name="DPI" type="int" value="${VNC_DPI}"/>
+  </property>
+  <property name="Gdk" type="empty">
+    <property name="WindowScalingFactor" type="int" value="1"/>
+  </property>
+</channel>
+EOF
+    chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
+}
+
+# Render theme SVGs to PNGs so desktop launchers do not depend on SVG loaders.
+materialize_launcher_icons() {
+    local icon_dir="${INSTALL_ROOT}/icons"
+    local size="${DESKTOP_ICON_SIZE}"
+    mkdir -p "$icon_dir"
+
+    _render_icon() {
+        local name="$1" dest="$2" src=""
+        for src in \
+            "/usr/share/icons/Adwaita/scalable/apps/${name}.svg" \
+            "/usr/share/icons/Adwaita/scalable/places/${name}.svg" \
+            "/usr/share/icons/Adwaita/scalable/devices/${name}.svg" \
+            "/usr/share/icons/hicolor/scalable/apps/${name}.svg" \
+            "/usr/share/icons/hicolor/48x48/apps/${name}.png" \
+            "/usr/share/pixmaps/${name}.png" \
+            "/usr/share/pixmaps/${name}.xpm"; do
+            [ -f "$src" ] || continue
+            if [[ "$src" == *.svg ]] && command -v convert >/dev/null 2>&1; then
+                convert -background none -resize "${size}x${size}" "$src" "$dest" 2>/dev/null \
+                    && [ -s "$dest" ] && return 0
+            elif [[ "$src" == *.svg ]] && command -v rsvg-convert >/dev/null 2>&1; then
+                rsvg-convert -w "$size" -h "$size" -o "$dest" "$src" 2>/dev/null \
+                    && [ -s "$dest" ] && return 0
+            elif [[ "$src" != *.svg ]]; then
+                if command -v convert >/dev/null 2>&1; then
+                    convert "$src" -resize "${size}x${size}" "$dest" 2>/dev/null \
+                        && [ -s "$dest" ] && return 0
+                fi
+                cp -f "$src" "$dest" 2>/dev/null && [ -s "$dest" ] && return 0
+            fi
+        done
+        # Solid fallback tile so launchers never show a 1px stub.
+        if command -v convert >/dev/null 2>&1; then
+            convert -size "${size}x${size}" "xc:#4C6FFF" -gravity center \
+                -fill white -pointsize $((size / 4)) -annotate 0 "${name:0:1}" \
+                "$dest" 2>/dev/null || true
+        fi
+        [ -s "$dest" ]
+    }
+
+    _render_icon utilities-terminal "${icon_dir}/terminal.png" || true
+    _render_icon system-file-manager "${icon_dir}/files.png" || true
+    _render_icon accessories-text-editor "${icon_dir}/editor.png" || true
+    _render_icon web-browser "${icon_dir}/browser.png" || true
+    _render_icon chromium "${icon_dir}/chromium.png" || true
+    _render_icon firefox "${icon_dir}/firefox.png" || true
+    _render_icon google-chrome "${icon_dir}/chrome.png" || true
 }
 
 download_wallpaper() {
@@ -243,15 +319,22 @@ configure_desktop_environment() {
 
     download_wallpaper
     write_xfconf_desktop_defaults
+    materialize_launcher_icons
 
     if [ -n "$browser_bin" ]; then
+        local browser_icon_path="${INSTALL_ROOT}/icons/browser.png"
+        case "$browser_bin" in
+            *chromium*) [ -f "${INSTALL_ROOT}/icons/chromium.png" ] && browser_icon_path="${INSTALL_ROOT}/icons/chromium.png" ;;
+            *firefox*) [ -f "${INSTALL_ROOT}/icons/firefox.png" ] && browser_icon_path="${INSTALL_ROOT}/icons/firefox.png" ;;
+            *chrome*) [ -f "${INSTALL_ROOT}/icons/chrome.png" ] && browser_icon_path="${INSTALL_ROOT}/icons/chrome.png" ;;
+        esac
         cat > "${INSTALL_ROOT}/octop-browser.desktop" << BROWSER_EOF
 [Desktop Entry]
 Type=Application
 Name=${browser_name}
 GenericName=Web Browser
 Exec=${browser_bin} --no-sandbox --disable-dev-shm-usage --no-first-run --no-default-browser-check %U
-Icon=${browser_icon}
+Icon=${browser_icon_path}
 Terminal=false
 Categories=Network;WebBrowser;
 MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
@@ -262,36 +345,36 @@ BROWSER_EOF
     fi
 
     if command -v xfce4-terminal >/dev/null 2>&1; then
-        cat > "${DESKTOP_DIR}/terminal.desktop" << 'TERM_EOF'
+        cat > "${DESKTOP_DIR}/terminal.desktop" << TERM_EOF
 [Desktop Entry]
 Type=Application
 Name=Terminal
 Exec=xfce4-terminal
-Icon=utilities-terminal
+Icon=${INSTALL_ROOT}/icons/terminal.png
 Terminal=false
 TERM_EOF
         chmod 0755 "${DESKTOP_DIR}/terminal.desktop"
     fi
 
     if command -v thunar >/dev/null 2>&1; then
-        cat > "${DESKTOP_DIR}/files.desktop" << 'FILES_EOF'
+        cat > "${DESKTOP_DIR}/files.desktop" << FILES_EOF
 [Desktop Entry]
 Type=Application
 Name=File Manager
 Exec=thunar
-Icon=system-file-manager
+Icon=${INSTALL_ROOT}/icons/files.png
 Terminal=false
 FILES_EOF
         chmod 0755 "${DESKTOP_DIR}/files.desktop"
     fi
 
     if command -v mousepad >/dev/null 2>&1; then
-        cat > "${DESKTOP_DIR}/editor.desktop" << 'EDIT_EOF'
+        cat > "${DESKTOP_DIR}/editor.desktop" << EDIT_EOF
 [Desktop Entry]
 Type=Application
 Name=Text Editor
 Exec=mousepad
-Icon=accessories-text-editor
+Icon=${INSTALL_ROOT}/icons/editor.png
 Terminal=false
 EDIT_EOF
         chmod 0755 "${DESKTOP_DIR}/editor.desktop"
@@ -430,55 +513,74 @@ APPLY_EOF
     cat > "$APPLY_ICONS_SH" << ICONS_EOF
 #!/bin/bash
 set -euo pipefail
+LOG="${INSTALL_ROOT}/apply-icons.log"
+exec >>"\$LOG" 2>&1
+echo "---- \$(date -Is) apply-icon-size ----"
+
 export DISPLAY="\${DISPLAY:-:99}"
 export HOME="\${HOME:-/root}"
 export XDG_CONFIG_HOME="\${XDG_CONFIG_HOME:-/root/.config}"
-[ -f /tmp/octop-desktop-dbus-env ] && source /tmp/octop-desktop-dbus-env || true
+
+if [ ! -f /tmp/octop-desktop-dbus-env ]; then
+    echo "missing /tmp/octop-desktop-dbus-env (desktop session not ready)"
+    exit 1
+fi
+# shellcheck disable=SC1091
+source /tmp/octop-desktop-dbus-env
+if [ -z "\${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    echo "DBUS_SESSION_BUS_ADDRESS empty"
+    exit 1
+fi
+echo "DISPLAY=\$DISPLAY DBUS=\$DBUS_SESSION_BUS_ADDRESS"
 
 ICON_SIZE="${DESKTOP_ICON_SIZE}"
 DPI="${VNC_DPI}"
-command -v xfconf-query >/dev/null 2>&1 || exit 0
+command -v xfconf-query >/dev/null 2>&1 || { echo "xfconf-query missing"; exit 1; }
 
 # Wait for xfconfd on the session bus.
+ok=false
 for _ in \$(seq 1 40); do
-    xfconf-query -c xfce4-desktop -l >/dev/null 2>&1 && break
+    if xfconf-query -c xfce4-desktop -l >/dev/null 2>&1; then
+        ok=true
+        break
+    fi
     sleep 0.25
 done
-
-# Icon theme is required: --no-install-recommends often leaves xfdesktop with tiny stubs.
-if [ -d /usr/share/icons/Adwaita ]; then
-    xfconf-query -c xsettings -p /Net/IconThemeName --create -t string -s Adwaita >/dev/null 2>&1 || true
-elif [ -d /usr/share/icons/hicolor ]; then
-    xfconf-query -c xsettings -p /Net/IconThemeName --create -t string -s hicolor >/dev/null 2>&1 || true
-fi
-
-# Pin DPI so fonts and desktop icons stay in proportion on headless TigerVNC.
-xfconf-query -c xsettings -p /Xft/DPI --create -t int -s "\$DPI" >/dev/null 2>&1 || true
-xfconf-query -c xsettings -p /Gdk/WindowScalingFactor --create -t int -s 1 >/dev/null 2>&1 || true
-
-# Replace any stale/wrong-typed property, then pin size + file-icon style.
-xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -r >/dev/null 2>&1 || true
-xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size --create -t int -s "\$ICON_SIZE"
-xfconf-query -c xfce4-desktop -p /desktop-icons/style --create -t int -s 2 >/dev/null 2>&1 || true
-xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash --create -t bool -s true >/dev/null 2>&1 || true
-xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home --create -t bool -s true >/dev/null 2>&1 || true
-xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem --create -t bool -s true >/dev/null 2>&1 || true
-
-current="\$(xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size 2>/dev/null || true)"
-if [ "\$current" != "\$ICON_SIZE" ]; then
-    echo "failed to set desktop icon-size (got: \${current:-unset}, want: \$ICON_SIZE)" >&2
+if [ "\$ok" != true ]; then
+    echo "xfconfd not reachable on session bus"
     exit 1
 fi
 
-# Hard restart so xfdesktop reloads theme + size ( --reload is not always enough ).
+if [ -d /usr/share/icons/Adwaita ]; then
+    xfconf-query -c xsettings -p /Net/IconThemeName --create -t string -s Adwaita
+elif [ -d /usr/share/icons/hicolor ]; then
+    xfconf-query -c xsettings -p /Net/IconThemeName --create -t string -s hicolor
+fi
+
+xfconf-query -c xsettings -p /Xft/DPI --create -t int -s "\$DPI"
+xfconf-query -c xsettings -p /Gdk/WindowScalingFactor --create -t int -s 1
+
+xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -r >/dev/null 2>&1 || true
+xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size --create -t int -s "\$ICON_SIZE"
+xfconf-query -c xfce4-desktop -p /desktop-icons/style --create -t int -s 2
+xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash --create -t bool -s true
+xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home --create -t bool -s true
+xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem --create -t bool -s true
+
+current="\$(xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size)"
+echo "icon-size=\$current theme=\$(xfconf-query -c xsettings -p /Net/IconThemeName) dpi=\$(xfconf-query -c xsettings -p /Xft/DPI)"
+if [ "\$current" != "\$ICON_SIZE" ]; then
+    echo "failed to set desktop icon-size (got: \$current, want: \$ICON_SIZE)"
+    exit 1
+fi
+
 if command -v xfdesktop >/dev/null 2>&1; then
-    pkill -f "xfdesktop --display=\${DISPLAY}" >/dev/null 2>&1 || true
-    pkill -f "xfdesktop --display \${DISPLAY}" >/dev/null 2>&1 || true
+    pkill -f "xfdesktop --display" >/dev/null 2>&1 || true
     sleep 0.5
     nohup xfdesktop --display="\$DISPLAY" >/dev/null 2>&1 &
     sleep 1
 fi
-echo "desktop icon-size=\$ICON_SIZE dpi=\$DPI theme=\$(xfconf-query -c xsettings -p /Net/IconThemeName 2>/dev/null || echo unknown)"
+echo "apply-icon-size ok"
 ICONS_EOF
     chmod +x "$APPLY_ICONS_SH"
 
