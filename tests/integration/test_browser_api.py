@@ -13,6 +13,7 @@ flip a feature flag and let ``test_create_session_happy_path`` run.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -112,9 +113,14 @@ def test_probe_env_accepts_system_chrome() -> None:
 def test_verify_browser_binary_ok(tmp_path: Path) -> None:
     from octop.api.routers.browser import sessions as br
 
-    exe = tmp_path / "fake-chrome"
-    exe.write_text("#!/bin/sh\necho 'Chrome 1.0'\n")
-    exe.chmod(0o755)
+    if os.name == "nt":
+        # Windows cannot exec a shebang script; use a .bat that ignores args.
+        exe = tmp_path / "fake-chrome.bat"
+        exe.write_text("@echo Chrome 1.0\r\n", encoding="utf-8")
+    else:
+        exe = tmp_path / "fake-chrome"
+        exe.write_text("#!/bin/sh\necho 'Chrome 1.0'\n", encoding="utf-8")
+        exe.chmod(0o755)
     ok, msg = br._verify_browser_binary(str(exe))
     assert ok is True
     assert "Chrome" in msg
