@@ -311,7 +311,12 @@ write_default_panel_layout() {
     cat > "$INSTALL_ROOT/ensure-panel.sh" << 'ENSURE_PANEL_EOF'
 #!/bin/bash
 # Rewrite the Octop default panel (appfinder launcher + tasklist + clock).
-# Safe to run while the VNC session is up; restarts xfce4-panel afterwards.
+#
+# XFCE keeps panel state in xfconfd's memory. Overwriting xfce4-panel.xml while
+# xfconfd is alive is ignored; killing the panel gracefully can also flush a
+# broken in-memory layout back to disk (which is why the start button vanishes
+# after a service restart). Always: SIGKILL panel → kill xfconfd → write files
+# → clear cache → start panel.
 set -euo pipefail
 export HOME=/root
 export XDG_CONFIG_HOME=/root/.config
@@ -323,25 +328,20 @@ if [ "${1:-}" = "--no-start" ]; then
 fi
 
 mkdir -p /root/.config/xfce4/panel/launcher-1 \
-    /root/.config/xfce4/xfconf/xfce-perchannel-xml
+    /root/.config/xfce4/xfconf/xfce-perchannel-xml \
+    /opt/octop-desktop/panel
 
-if [ "$NO_START" = false ]; then
-    # Stop panel first so xfconf cannot rewrite our XML on shutdown.
-    pkill -x xfce4-panel >/dev/null 2>&1 || true
-    sleep 0.3
-fi
-
-# Prefer Octop logo for the start button; fall back to a generic search icon.
-START_ICON="/opt/octop-desktop/icons/start-menu.png"
-if [ ! -s "$START_ICON" ]; then
-    if [ -e /usr/share/icons/hicolor/48x48/apps/octop-start-menu.png ]; then
-        START_ICON="/usr/share/icons/hicolor/48x48/apps/octop-start-menu.png"
-    else
-        START_ICON="system-search"
+write_panel_files() {
+    local start_icon="/opt/octop-desktop/icons/start-menu.png"
+    if [ ! -s "$start_icon" ]; then
+        if [ -e /usr/share/icons/hicolor/48x48/apps/octop-start-menu.png ]; then
+            start_icon="/usr/share/icons/hicolor/48x48/apps/octop-start-menu.png"
+        else
+            start_icon="system-search"
+        fi
     fi
-fi
 
-cat > /root/.config/xfce4/panel/launcher-1/appfinder.desktop << LAUNCHER_EOF
+    cat > /root/.config/xfce4/panel/launcher-1/appfinder.desktop << LAUNCHER_EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -350,14 +350,15 @@ Name[zh_CN]=应用程序
 Comment=Open the application finder
 Comment[zh_CN]=打开应用程序菜单
 Exec=xfce4-appfinder
-Icon=${START_ICON}
+Icon=${start_icon}
 Terminal=false
 Categories=Utility;X-XFCE;X-Xfce-Toplevel;
 StartupNotify=true
 LAUNCHER_EOF
-chmod 0644 /root/.config/xfce4/panel/launcher-1/appfinder.desktop
+    chmod 0644 /root/.config/xfce4/panel/launcher-1/appfinder.desktop
 
-cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANEL_EOF'
+    # Canonical copy under /opt survives user config wipes / bad xfconf flushes.
+    cat > /opt/octop-desktop/panel/xfce4-panel.xml << 'PANEL_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-panel" version="1.0">
   <property name="configver" type="int" value="2"/>
@@ -393,13 +394,34 @@ cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANEL_E
   </property>
 </channel>
 PANEL_EOF
-chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
-rm -rf /root/.cache/xfce4/xfconf 2>/dev/null || true
+    cp -f /opt/octop-desktop/panel/xfce4-panel.xml \
+        /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+    chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
+        /opt/octop-desktop/panel/xfce4-panel.xml
+}
 
 if [ "$NO_START" = true ]; then
+    write_panel_files
     echo "ensure-panel seeded"
     exit 0
 fi
+
+# 1) Hard-kill panel so it cannot flush a broken layout back to xfconf.
+pkill -9 -x xfce4-panel >/dev/null 2>&1 || true
+sleep 0.2
+# 2) Drop in-memory xfconf channel so the next start reloads from our XML.
+pkill -x xfconfd >/dev/null 2>&1 || true
+sleep 0.2
+# 3) Write canonical files while xfconfd is down.
+write_panel_files
+rm -rf /root/.cache/xfce4/xfconf 2>/dev/null || true
+# 4) If xfsettingsd already respawned xfconfd, kill again after the write.
+pkill -x xfconfd >/dev/null 2>&1 || true
+sleep 0.2
+# Re-copy in case a racing xfconfd rewrote the channel file from an empty bus.
+cp -f /opt/octop-desktop/panel/xfce4-panel.xml \
+    /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+rm -rf /root/.cache/xfce4/xfconf 2>/dev/null || true
 
 if [ -f /tmp/octop-desktop-dbus-env ]; then
     # shellcheck disable=SC1091
@@ -410,6 +432,28 @@ if command -v xfce4-panel >/dev/null 2>&1; then
     nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
     sleep 1
     if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
+        nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
+        sleep 1
+    fi
+fi
+
+# Verify the launcher plugin is present in the live channel when xfconf is up.
+if command -v xfconf-query >/dev/null 2>&1 \
+    && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    for _ in $(seq 1 20); do
+        if xfconf-query -c xfce4-panel -p /plugins/plugin-1 >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.25
+    done
+    plugin="$(xfconf-query -c xfce4-panel -p /plugins/plugin-1 2>/dev/null || true)"
+    if [ "$plugin" != "launcher" ]; then
+        echo "ensure-panel: plugin-1 is '${plugin:-missing}', rewriting once more" >&2
+        pkill -9 -x xfce4-panel >/dev/null 2>&1 || true
+        pkill -x xfconfd >/dev/null 2>&1 || true
+        sleep 0.2
+        write_panel_files
+        rm -rf /root/.cache/xfce4/xfconf 2>/dev/null || true
         nohup xfce4-panel --display="$DISPLAY" >/dev/null 2>&1 &
         sleep 1
     fi
@@ -770,11 +814,10 @@ if command -v xfdesktop >/dev/null 2>&1; then
     xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
 fi
 
-# Re-apply start-button panel layout if the helper exists; otherwise just
-# make sure xfce4-panel is alive.
-if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
-    /opt/octop-desktop/ensure-panel.sh || true
-elif command -v xfce4-panel >/dev/null 2>&1; then
+# Do NOT call ensure-panel here: rewriting the panel while xfconfd is live
+# races and can drop the start-button launcher after service restarts.
+# start-openbox.sh owns panel layout; we only revive a dead panel process.
+if command -v xfce4-panel >/dev/null 2>&1; then
     if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
         nohup xfce4-panel --display="\$DISPLAY" >/dev/null 2>&1 &
         sleep 1
@@ -802,13 +845,13 @@ xfsettingsd --display=:99 --replace &>/dev/null &
 sleep 0.5
 command -v xfdesktop >/dev/null 2>&1 && xfdesktop --display=:99 &>/dev/null &
 sleep 1
-# Panel provides the start button — rewrite layout every boot so a broken
-# applicationsmenu/whiskermenu slot cannot leave the left side empty.
+# Seed panel once after xfsettingsd is up. ensure-panel SIGKILLs the panel and
+# restarts xfconfd so our XML wins over any stale in-memory channel.
 if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
     /opt/octop-desktop/ensure-panel.sh || true
 else
-    pkill -x xfce4-panel >/dev/null 2>&1 || true
-    sleep 0.3
+    pkill -9 -x xfce4-panel >/dev/null 2>&1 || true
+    sleep 0.2
     xfce4-panel --display=:99 &>/dev/null &
 fi
 command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
@@ -830,6 +873,16 @@ command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
     done
     [ -x /opt/octop-desktop/apply-wallpaper.sh ] && /opt/octop-desktop/apply-wallpaper.sh
     [ -x /opt/octop-desktop/apply-icon-size.sh ] && /opt/octop-desktop/apply-icon-size.sh
+    # Re-assert start button after settings settle (xfconf races on cold boot).
+    sleep 2
+    if [ -x /opt/octop-desktop/ensure-panel.sh ]; then
+        # shellcheck disable=SC1091
+        [ -f /tmp/octop-desktop-dbus-env ] && source /tmp/octop-desktop-dbus-env || true
+        plugin="$(xfconf-query -c xfce4-panel -p /plugins/plugin-1 2>/dev/null || true)"
+        if [ "$plugin" != "launcher" ] || ! pgrep -x xfce4-panel >/dev/null 2>&1; then
+            /opt/octop-desktop/ensure-panel.sh || true
+        fi
+    fi
     if command -v xfconf-query >/dev/null 2>&1; then
         xfconf-query -c xfce4-screensaver -p /screensaver/enabled --create -t bool -s false 2>/dev/null || true
         xfconf-query -c xfce4-screensaver -p /lock/enabled --create -t bool -s false 2>/dev/null || true
