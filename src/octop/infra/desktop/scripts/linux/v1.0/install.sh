@@ -159,6 +159,7 @@ write_xfconf_desktop_defaults() {
     </property>
   </property>
   <property name="desktop-icons" type="empty">
+    <property name="icon-size" type="int" value="48"/>
     <property name="file-icons" type="empty">
       <property name="show-trash" type="bool" value="true"/>
       <property name="show-home" type="bool" value="true"/>
@@ -172,29 +173,49 @@ EOF
 
 download_wallpaper() {
     mkdir -p /usr/share/backgrounds
-    local url ok=false
-    for url in \
-        "${WALLPAPER_URL}" \
-        "https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png"; do
-        [ -n "$url" ] || continue
-        if command -v wget >/dev/null 2>&1; then
-            wget --timeout=20 --tries=2 -qO "$WALLPAPER_PNG" "$url" 2>/dev/null \
-                && [ -s "$WALLPAPER_PNG" ] && { ok=true; break; }
+    local ok=false
+    local bundled
+    bundled="$(cd "$(dirname "$0")" && pwd)/wallpaper.png"
+
+    # Prefer the wallpaper shipped next to this install script.
+    if [ -f "$bundled" ] && [ -s "$bundled" ]; then
+        if command -v convert >/dev/null 2>&1; then
+            convert "$bundled" -resize '1920x1080^' -gravity center -extent 1920x1080 \
+                "$WALLPAPER_PNG" 2>/dev/null \
+                && [ -s "$WALLPAPER_PNG" ] && ok=true
         fi
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL --connect-timeout 20 --max-time 60 "$url" -o "$WALLPAPER_PNG" 2>/dev/null \
-                && [ -s "$WALLPAPER_PNG" ] && { ok=true; break; }
+        if [ "$ok" = false ]; then
+            cp -f "$bundled" "$WALLPAPER_PNG" 2>/dev/null \
+                && [ -s "$WALLPAPER_PNG" ] && ok=true
         fi
-    done
+    fi
+
+    if [ "$ok" = false ]; then
+        local url
+        for url in \
+            "${WALLPAPER_URL}" \
+            "https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png"; do
+            [ -n "$url" ] || continue
+            if command -v wget >/dev/null 2>&1; then
+                wget --timeout=20 --tries=2 -qO "$WALLPAPER_PNG" "$url" 2>/dev/null \
+                    && [ -s "$WALLPAPER_PNG" ] && { ok=true; break; }
+            fi
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsSL --connect-timeout 20 --max-time 60 "$url" -o "$WALLPAPER_PNG" 2>/dev/null \
+                    && [ -s "$WALLPAPER_PNG" ] && { ok=true; break; }
+            fi
+        done
+    fi
+
     if [ "$ok" = false ]; then
         cat > "$WALLPAPER_FILE" << 'WALL_EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="100%" height="100%" fill="#1a1a2e"/></svg>
 WALL_EOF
         if command -v convert >/dev/null 2>&1; then
-            convert "$WALLPAPER_FILE" -resize 1920x1080! "$WALLPAPER_PNG" 2>/dev/null || ok=false
+            convert "$WALLPAPER_FILE" -resize 1920x1080! "$WALLPAPER_PNG" 2>/dev/null || true
         fi
     fi
-    [ -s "$WALLPAPER_PNG" ] && chmod 0644 "$WALLPAPER_PNG"
+    [ -s "$WALLPAPER_PNG" ] && chmod 0644 "$WALLPAPER_PNG" || true
 }
 
 configure_desktop_environment() {
@@ -422,6 +443,7 @@ command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
     done
     [ -x /opt/octop-desktop/apply-wallpaper.sh ] && /opt/octop-desktop/apply-wallpaper.sh
     if command -v xfconf-query >/dev/null 2>&1; then
+        xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size --create -t int -s 48 2>/dev/null || true
         xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash --create -t bool -s true 2>/dev/null || true
         xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home --create -t bool -s true 2>/dev/null || true
         xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem --create -t bool -s true 2>/dev/null || true
