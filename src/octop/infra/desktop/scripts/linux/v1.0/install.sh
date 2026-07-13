@@ -19,7 +19,7 @@ CONF_DIR="/etc/octop-desktop"
 DISPLAY_NUM=":99"
 GEOMETRY="${GEOMETRY:-1920x1080}"
 # Absolute pixel size for xfdesktop icons (not scaled with GTK window scaling).
-DESKTOP_ICON_SIZE="${DESKTOP_ICON_SIZE:-96}"
+DESKTOP_ICON_SIZE="${DESKTOP_ICON_SIZE:-48}"
 WALLPAPER_URL="${WALLPAPER_URL:-https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png}"
 VNC_PORT=5900
 VNC_DPI="${VNC_DPI:-96}"
@@ -94,12 +94,16 @@ install_packages() {
         DEBIAN_FRONTEND=noninteractive apt-get update -qq || fail "apt-get update failed"
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             tigervnc-standalone-server tigervnc-tools x11-xserver-utils x11-utils openbox \
-            dbus dbus-x11 xdotool xauth imagemagick \
+            dbus dbus-x11 xdotool xauth imagemagick librsvg2-bin \
             xfce4-panel xfce4-terminal xfce4-settings xfdesktop4 thunar mousepad \
+            xfce4-appfinder \
             adwaita-icon-theme hicolor-icon-theme librsvg2-common \
             fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
             fonts-wqy-zenhei locales xclip xsel autocutsel xdg-utils libglib2.0-bin wget curl \
             || fail "apt install failed"
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            xfce4-whiskermenu-plugin \
+            || true
         # Adwaita ships SVG icons; without the gdk-pixbuf SVG loader they render as tiny stubs.
         if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
             gdk-pixbuf-query-loaders --update-cache >/dev/null 2>&1 || true
@@ -205,7 +209,7 @@ EOF
     chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
 }
 
-# Render theme SVGs to PNGs so desktop launchers do not depend on SVG loaders.
+# Prefer real theme PNGs/SVGs rendered to PNG. Never invent letter tiles.
 materialize_launcher_icons() {
     local icon_dir="${INSTALL_ROOT}/icons"
     local size="${DESKTOP_ICON_SIZE}"
@@ -214,21 +218,27 @@ materialize_launcher_icons() {
     _render_icon() {
         local name="$1" dest="$2" src=""
         for src in \
+            "/usr/share/icons/hicolor/${size}x${size}/apps/${name}.png" \
+            "/usr/share/icons/hicolor/48x48/apps/${name}.png" \
+            "/usr/share/icons/hicolor/64x64/apps/${name}.png" \
+            "/usr/share/icons/Adwaita/${size}x${size}/apps/${name}.png" \
+            "/usr/share/icons/Adwaita/48x48/apps/${name}.png" \
             "/usr/share/icons/Adwaita/scalable/apps/${name}.svg" \
             "/usr/share/icons/Adwaita/scalable/places/${name}.svg" \
             "/usr/share/icons/Adwaita/scalable/devices/${name}.svg" \
             "/usr/share/icons/hicolor/scalable/apps/${name}.svg" \
-            "/usr/share/icons/hicolor/48x48/apps/${name}.png" \
-            "/usr/share/pixmaps/${name}.png" \
-            "/usr/share/pixmaps/${name}.xpm"; do
+            "/usr/share/pixmaps/${name}.png"; do
             [ -f "$src" ] || continue
-            if [[ "$src" == *.svg ]] && command -v convert >/dev/null 2>&1; then
-                convert -background none -resize "${size}x${size}" "$src" "$dest" 2>/dev/null \
-                    && [ -s "$dest" ] && return 0
-            elif [[ "$src" == *.svg ]] && command -v rsvg-convert >/dev/null 2>&1; then
-                rsvg-convert -w "$size" -h "$size" -o "$dest" "$src" 2>/dev/null \
-                    && [ -s "$dest" ] && return 0
-            elif [[ "$src" != *.svg ]]; then
+            if [[ "$src" == *.svg ]]; then
+                if command -v rsvg-convert >/dev/null 2>&1; then
+                    rsvg-convert -w "$size" -h "$size" -o "$dest" "$src" 2>/dev/null \
+                        && [ -s "$dest" ] && return 0
+                fi
+                if command -v convert >/dev/null 2>&1; then
+                    convert -background none -resize "${size}x${size}" "$src" "$dest" 2>/dev/null \
+                        && [ -s "$dest" ] && return 0
+                fi
+            else
                 if command -v convert >/dev/null 2>&1; then
                     convert "$src" -resize "${size}x${size}" "$dest" 2>/dev/null \
                         && [ -s "$dest" ] && return 0
@@ -236,22 +246,75 @@ materialize_launcher_icons() {
                 cp -f "$src" "$dest" 2>/dev/null && [ -s "$dest" ] && return 0
             fi
         done
-        # Solid fallback tile so launchers never show a 1px stub.
-        if command -v convert >/dev/null 2>&1; then
-            convert -size "${size}x${size}" "xc:#4C6FFF" -gravity center \
-                -fill white -pointsize $((size / 4)) -annotate 0 "${name:0:1}" \
-                "$dest" 2>/dev/null || true
-        fi
-        [ -s "$dest" ]
+        return 1
     }
 
     _render_icon utilities-terminal "${icon_dir}/terminal.png" || true
+    _render_icon org.xfce.terminal "${icon_dir}/terminal.png" || true
     _render_icon system-file-manager "${icon_dir}/files.png" || true
+    _render_icon org.xfce.thunar "${icon_dir}/files.png" || true
     _render_icon accessories-text-editor "${icon_dir}/editor.png" || true
+    _render_icon org.xfce.mousepad "${icon_dir}/editor.png" || true
     _render_icon web-browser "${icon_dir}/browser.png" || true
     _render_icon chromium "${icon_dir}/chromium.png" || true
     _render_icon firefox "${icon_dir}/firefox.png" || true
     _render_icon google-chrome "${icon_dir}/chrome.png" || true
+}
+
+_icon_or_theme() {
+    local png="$1" theme_name="$2"
+    if [ -s "$png" ]; then
+        echo "$png"
+    else
+        echo "$theme_name"
+    fi
+}
+
+write_default_panel_layout() {
+    # Seed a bottom panel with Applications menu so headless installs are not panel-less.
+    mkdir -p /root/.config/xfce4/panel /root/.config/xfce4/xfconf/xfce-perchannel-xml
+    cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANEL_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-panel" version="1.0">
+  <property name="configver" type="int" value="2"/>
+  <property name="panels" type="array">
+    <value type="int" value="1"/>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=8;x=0;y=0"/>
+      <property name="length" type="uint" value="100"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="size" type="uint" value="36"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="1"/>
+        <value type="int" value="2"/>
+        <value type="int" value="3"/>
+        <value type="int" value="4"/>
+        <value type="int" value="5"/>
+      </property>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-1" type="string" value="applicationsmenu">
+      <property name="button-title" type="string" value="Applications"/>
+    </property>
+    <property name="plugin-2" type="string" value="tasklist"/>
+    <property name="plugin-3" type="string" value="separator">
+      <property name="expand" type="bool" value="true"/>
+      <property name="style" type="uint" value="0"/>
+    </property>
+    <property name="plugin-4" type="string" value="systray"/>
+    <property name="plugin-5" type="string" value="clock"/>
+  </property>
+</channel>
+PANEL_EOF
+    # Prefer whiskermenu when the plugin is installed.
+    if [ -f /usr/lib/x86_64-linux-gnu/xfce4/panel/plugins/libwhiskermenu.so ] \
+        || [ -f /usr/lib/aarch64-linux-gnu/xfce4/panel/plugins/libwhiskermenu.so ] \
+        || ls /usr/lib/*/xfce4/panel/plugins/libwhiskermenu.so >/dev/null 2>&1; then
+        sed -i 's/value="applicationsmenu"/value="whiskermenu"/' \
+            /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml || true
+    fi
+    chmod 0644 /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 }
 
 download_wallpaper() {
@@ -314,19 +377,21 @@ configure_desktop_environment() {
 
     mkdir -p "$DESKTOP_DIR" "$AUTOSTART_DIR" /root/.config /usr/share/backgrounds
 
-    # Drop stale icon layout / cache from earlier installs (keeps tiny icons otherwise).
+    # Drop stale icon layout / cache / bad generated letter-tile icons from earlier installs.
     rm -rf /root/.config/xfce4/desktop /root/.cache/xfce4/xfdesktop 2>/dev/null || true
+    rm -rf "${INSTALL_ROOT}/icons" 2>/dev/null || true
 
     download_wallpaper
     write_xfconf_desktop_defaults
     materialize_launcher_icons
 
     if [ -n "$browser_bin" ]; then
-        local browser_icon_path="${INSTALL_ROOT}/icons/browser.png"
+        local browser_icon_path
+        browser_icon_path="$(_icon_or_theme "${INSTALL_ROOT}/icons/browser.png" "$browser_icon")"
         case "$browser_bin" in
-            *chromium*) [ -f "${INSTALL_ROOT}/icons/chromium.png" ] && browser_icon_path="${INSTALL_ROOT}/icons/chromium.png" ;;
-            *firefox*) [ -f "${INSTALL_ROOT}/icons/firefox.png" ] && browser_icon_path="${INSTALL_ROOT}/icons/firefox.png" ;;
-            *chrome*) [ -f "${INSTALL_ROOT}/icons/chrome.png" ] && browser_icon_path="${INSTALL_ROOT}/icons/chrome.png" ;;
+            *chromium*) browser_icon_path="$(_icon_or_theme "${INSTALL_ROOT}/icons/chromium.png" chromium)" ;;
+            *firefox*) browser_icon_path="$(_icon_or_theme "${INSTALL_ROOT}/icons/firefox.png" firefox)" ;;
+            *chrome*) browser_icon_path="$(_icon_or_theme "${INSTALL_ROOT}/icons/chrome.png" google-chrome)" ;;
         esac
         cat > "${INSTALL_ROOT}/octop-browser.desktop" << BROWSER_EOF
 [Desktop Entry]
@@ -345,40 +410,48 @@ BROWSER_EOF
     fi
 
     if command -v xfce4-terminal >/dev/null 2>&1; then
+        local term_icon
+        term_icon="$(_icon_or_theme "${INSTALL_ROOT}/icons/terminal.png" utilities-terminal)"
         cat > "${DESKTOP_DIR}/terminal.desktop" << TERM_EOF
 [Desktop Entry]
 Type=Application
 Name=Terminal
 Exec=xfce4-terminal
-Icon=${INSTALL_ROOT}/icons/terminal.png
+Icon=${term_icon}
 Terminal=false
 TERM_EOF
         chmod 0755 "${DESKTOP_DIR}/terminal.desktop"
     fi
 
     if command -v thunar >/dev/null 2>&1; then
+        local files_icon
+        files_icon="$(_icon_or_theme "${INSTALL_ROOT}/icons/files.png" system-file-manager)"
         cat > "${DESKTOP_DIR}/files.desktop" << FILES_EOF
 [Desktop Entry]
 Type=Application
 Name=File Manager
 Exec=thunar
-Icon=${INSTALL_ROOT}/icons/files.png
+Icon=${files_icon}
 Terminal=false
 FILES_EOF
         chmod 0755 "${DESKTOP_DIR}/files.desktop"
     fi
 
     if command -v mousepad >/dev/null 2>&1; then
+        local editor_icon
+        editor_icon="$(_icon_or_theme "${INSTALL_ROOT}/icons/editor.png" accessories-text-editor)"
         cat > "${DESKTOP_DIR}/editor.desktop" << EDIT_EOF
 [Desktop Entry]
 Type=Application
 Name=Text Editor
 Exec=mousepad
-Icon=${INSTALL_ROOT}/icons/editor.png
+Icon=${editor_icon}
 Terminal=false
 EDIT_EOF
         chmod 0755 "${DESKTOP_DIR}/editor.desktop"
     fi
+
+    write_default_panel_layout
 
     if [ -f "${INSTALL_ROOT}/octop-browser.desktop" ]; then
         cat > /root/.config/mimeapps.list << 'MIME_EOF'
@@ -575,10 +648,15 @@ if [ "\$current" != "\$ICON_SIZE" ]; then
 fi
 
 if command -v xfdesktop >/dev/null 2>&1; then
-    pkill -f "xfdesktop --display" >/dev/null 2>&1 || true
-    sleep 0.5
-    nohup xfdesktop --display="\$DISPLAY" >/dev/null 2>&1 &
-    sleep 1
+    xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
+fi
+
+# Ensure the panel (start menu) is running after settings settle.
+if command -v xfce4-panel >/dev/null 2>&1; then
+    if ! pgrep -f "xfce4-panel" >/dev/null 2>&1; then
+        nohup xfce4-panel --display="\$DISPLAY" >/dev/null 2>&1 &
+        sleep 1
+    fi
 fi
 echo "apply-icon-size ok"
 ICONS_EOF
@@ -599,11 +677,22 @@ xset -display :99 s off s noblank s 0 0 2>/dev/null || true
 xset -display :99 dpms 0 0 0 2>/dev/null || true
 xset -display :99 -dpms 2>/dev/null || true
 xfsettingsd --display=:99 --replace &>/dev/null &
+sleep 0.5
 command -v xfdesktop >/dev/null 2>&1 && xfdesktop --display=:99 &>/dev/null &
 sleep 1
+# Panel provides the start/applications menu — restart cleanly if a stale one exists.
+pkill -x xfce4-panel >/dev/null 2>&1 || true
+sleep 0.3
 xfce4-panel --display=:99 &>/dev/null &
 command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
 (
+    for i in $(seq 1 40); do
+        pgrep -x xfce4-panel >/dev/null 2>&1 && break
+        sleep 0.5
+    done
+    if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
+        xfce4-panel --display=:99 &>/dev/null &
+    fi
     for i in $(seq 1 40); do
         pgrep -f "xfdesktop --display=:99" >/dev/null 2>&1 && break
         sleep 0.5

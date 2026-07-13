@@ -802,11 +802,16 @@ rm -f /usr/share/backgrounds/octop-desktop-wallpaper.png \\
       /usr/share/backgrounds/octop-desktop-wallpaper.svg 2>/dev/null || true
 # Stale xfconf/icon layout survives a package reinstall and keeps tiny icons.
 rm -rf /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \\
+       /root/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml \\
+       /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \\
        /root/.config/xfce4/desktop \\
+       /root/.config/xfce4/panel \\
        /root/.cache/xfce4/xfdesktop 2>/dev/null || true
 pkill -9 -f 'import -display :99' 2>/dev/null || true
 pkill -9 -f 'Xvnc :99' 2>/dev/null || true
 pkill -9 -f '/opt/octop-desktop/' 2>/dev/null || true
+pkill -x xfce4-panel 2>/dev/null || true
+pkill -f 'xfdesktop --display' 2>/dev/null || true
 rm -f /tmp/.X99-lock
 rm -rf /tmp/.X11-unix/X99 /tmp/octop-desktop-dbus-env /tmp/runtime-octop-desktop
 """

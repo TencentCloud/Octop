@@ -480,8 +480,30 @@ async def terminal_ws(
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return
     assert server.app_runtime is not None
-    if server.app_runtime.agent_registry.get_row(agent_id) is None:
-        await websocket.close(code=4404, reason="no agents for user")
+    registry = server.app_runtime.agent_registry
+    agent_row = registry.get_row(agent_id)
+    if agent_row is None:
+        # Allow short suffixes; include disabled agents so terminal works even when
+        # the agent runtime is stopped/disabled.
+        candidates: list[Any] = []
+        agent_repo = getattr(server.services, "agent_repo", None)
+        list_all = getattr(agent_repo, "list_all", None)
+        if callable(list_all):
+            with contextlib.suppress(Exception):
+                candidates = list(list_all(include_disabled=True))
+        if not candidates:
+            list_rows = getattr(registry, "list_rows", None)
+            if callable(list_rows):
+                with contextlib.suppress(Exception):
+                    candidates = list(list_rows())
+        for row in candidates:
+            row_id = getattr(row, "agent_id", "")
+            if row_id == agent_id or str(row_id).endswith(agent_id):
+                agent_row = row
+                agent_id = str(row_id)
+                break
+    if agent_row is None:
+        await websocket.close(code=4404, reason="agent not found")
         return
     workspace_dir = str(server.services.paths.ensure_agent_workspace(agent_id))
 
@@ -493,6 +515,12 @@ async def terminal_ws(
         return
 
     await websocket.accept()
+    logger.info(
+        "terminal ws accepted: agent=%s user=%s session_id=%s",
+        agent_id,
+        user.id,
+        session_id or "-",
+    )
 
     # --- resolve session (re-attach vs create) --------------------------
     persistent = bool(session_id and session_id.strip())
@@ -648,6 +676,13 @@ async def terminal_ws(
             with contextlib.suppress(WebSocketDisconnect):
                 await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
     finally:
+        close_sid = sid if "sid" in locals() else (session_id or "-")
+        logger.info(
+            "terminal ws closing: agent=%s sid=%s persistent=%s",
+            agent_id,
+            close_sid,
+            bool(session.persistent) if session is not None else False,
+        )
         # Detach this connection. Persistent shells are kept alive for the
         # grace period so a reconnect can re-attach; ephemeral shells are
         # reaped immediately (original behaviour).
@@ -661,7 +696,7 @@ async def terminal_ws(
         if websocket.application_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close()
-        logger.info("terminal websocket closed: agent=%s sid=%s", agent_id, sid)
+        logger.info("terminal websocket closed: agent=%s sid=%s", agent_id, close_sid)
 
 
 def _read_nonblock(fd: int | None) -> bytes | None:
