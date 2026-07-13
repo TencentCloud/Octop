@@ -7,6 +7,7 @@ import { ensureLocaleBundle } from "../../i18n";
 import { storeUiLocale, type UiLocale } from "../../utils/locale";
 
 import { authApi } from "../../api/modules/auth";
+import { preferencesApi } from "../../api/modules/preferences";
 import { useTheme } from "../../context/ThemeContext";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
@@ -156,6 +157,13 @@ export default function SetupPage() {
     const locale: UiLocale = lang.startsWith("zh") ? "zh" : "en";
     storeUiLocale(locale);
     void ensureLocaleBundle(locale).then(() => i18n.changeLanguage(locale));
+    // If admin already exists mid-wizard, persist the user's explicit choice.
+    const setupJwt = wizardSession.loadSetupJwt();
+    if (setupJwt) {
+      void preferencesApi.setLocale(locale).catch(() => {
+        /* best-effort; FinishStep login still applies stored UI locale via create */
+      });
+    }
   };
 
   const stepItems = passwordRequired

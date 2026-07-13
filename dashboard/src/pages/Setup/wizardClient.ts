@@ -17,6 +17,8 @@ export interface CreateAdminBody {
   username: string;
   display_name: string | null;
   password: string;
+  /** UI locale for the initial admin (zh|en). */
+  locale?: string;
 }
 
 export interface WizardProviderModel {

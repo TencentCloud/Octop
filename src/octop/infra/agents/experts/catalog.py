@@ -400,13 +400,22 @@ def build_create_spec_from_expert(
 ) -> AgentCreateSpec:
     """Build :class:`AgentCreateSpec` for ``AgentManager.create`` from a catalog entry."""
     resolved_name = resolve_expert_agent_name(expert, expert_id, locale=locale, override=name)
-    resolved_description = (
-        description
-        or expert.summary.description_zh
-        or expert.summary.label_zh
-        or expert.summary.description_en
-        or expert.summary.label_en
-    )
+    if description:
+        resolved_description = description
+    elif locale == "zh":
+        resolved_description = (
+            expert.summary.description_zh
+            or expert.summary.label_zh
+            or expert.summary.description_en
+            or expert.summary.label_en
+        )
+    else:
+        resolved_description = (
+            expert.summary.description_en
+            or expert.summary.label_en
+            or expert.summary.description_zh
+            or expert.summary.label_zh
+        )
     return AgentCreateSpec(
         agent_id=agent_id,
         name=resolved_name,
