@@ -27,9 +27,7 @@ def test_users_table_has_locale_default_zh(db: DBPool):
 
 
 def test_user_repo_create_accepts_explicit_locale(db: DBPool):
-    uid = UserRepo(db).create(
-        username="en-user", password_hash="h", role="admin", locale="en"
-    )
+    uid = UserRepo(db).create(username="en-user", password_hash="h", role="admin", locale="en")
     row = UserRepo(db).get(uid)
     assert row is not None
     assert row.locale == "en"

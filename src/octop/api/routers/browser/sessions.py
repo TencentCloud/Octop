@@ -341,24 +341,12 @@ async def install(_: Any = Depends(current_user)) -> StreamingResponse:
 
             chrome = find_chrome()
             if chrome:
-                yield (
-                    "data: "
-                    + json.dumps({"log": f"Found browser: {chrome}"})
-                    + "\n\n"
-                )
-                yield (
-                    "data: "
-                    + json.dumps({"log": "Verifying installation ..."})
-                    + "\n\n"
-                )
+                yield ("data: " + json.dumps({"log": f"Found browser: {chrome}"}) + "\n\n")
+                yield ("data: " + json.dumps({"log": "Verifying installation ..."}) + "\n\n")
                 ok, msg = _verify_browser_binary(chrome)
                 if ok:
                     yield "data: " + json.dumps({"log": msg}) + "\n\n"
-                    yield (
-                        "data: "
-                        + json.dumps({"done": True, "success": True})
-                        + "\n\n"
-                    )
+                    yield ("data: " + json.dumps({"done": True, "success": True}) + "\n\n")
                     return
                 yield (
                     "data: "

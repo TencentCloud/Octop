@@ -50,13 +50,7 @@ def test_chrome_source_classifies_playwright_and_system(
 
     cache = tmp_path / "ms-playwright"
     pw_chrome = (
-        cache
-        / "chromium-123"
-        / "chrome-mac"
-        / "Chromium.app"
-        / "Contents"
-        / "MacOS"
-        / "Chromium"
+        cache / "chromium-123" / "chrome-mac" / "Chromium.app" / "Contents" / "MacOS" / "Chromium"
     )
     pw_chrome.parent.mkdir(parents=True)
     pw_chrome.write_text("x")
@@ -138,9 +132,7 @@ def test_resolve_browser_display_uses_x_socket(
         browser_setup,
         "_x11_socket_path",
         lambda display: (
-            sock_dir / f"X{display.lstrip(':').split('.')[0]}"
-            if display.startswith(":")
-            else None
+            sock_dir / f"X{display.lstrip(':').split('.')[0]}" if display.startswith(":") else None
         ),
     )
     monkeypatch.delenv("DISPLAY", raising=False)
@@ -171,6 +163,7 @@ def test_ensure_profile_writable_recreates_when_not_writable(
             "_try_fix_ownership",
             lambda _p: None,
         )
+        monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
         try:
             result = ensure_profile_writable(profile)
             assert result == profile or "harness-browser-profiles" in str(result)
@@ -181,3 +174,25 @@ def test_ensure_profile_writable_recreates_when_not_writable(
                 os.chmod(profile, 0o700)
     else:
         assert ensure_profile_writable(profile) == profile
+
+
+@posix_only
+def test_ensure_profile_writable_relocates_root_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.browser import setup as browser_setup
+
+    profile = tmp_path / "under-root" / "default"
+    profile.mkdir(parents=True)
+    (profile / "Preferences").write_text("{}")
+    monkeypatch.setattr(browser_setup.sys, "platform", "linux")
+    monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: True)
+    monkeypatch.setattr(
+        browser_setup,
+        "_relocate_profiles_root",
+        lambda p: (tmp_path / "relocated" / p.name),
+    )
+    (tmp_path / "relocated" / "default").mkdir(parents=True)
+
+    result = ensure_profile_writable(profile)
+    assert result == tmp_path / "relocated" / "default"

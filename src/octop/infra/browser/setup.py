@@ -106,13 +106,26 @@ def clear_profile_locks(profile_dir: Path) -> list[str]:
 
 
 def _probe_dir_writable(directory: Path) -> bool:
-    """Return True when we can create and delete a file in *directory*."""
+    """Return True when we can create a file and a symlink in *directory*."""
     try:
         directory.mkdir(parents=True, exist_ok=True)
         probe = directory / f".octop-write-{os.getpid()}"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
+        # Chrome ProcessSingleton creates a symlink (SingletonLock).
+        link = directory / f".octop-link-{os.getpid()}"
+        link.symlink_to("probe-target")
+        link.unlink()
         return True
+    except OSError:
+        return False
+
+
+def _under_root_home(path: Path) -> bool:
+    try:
+        path = path.resolve()
+        root_home = Path("/root").resolve()
+        return path == root_home or root_home in path.parents
     except OSError:
         return False
 
@@ -128,17 +141,50 @@ def _try_fix_ownership(path: Path) -> None:
         path.chmod(0o700)
 
 
-def ensure_profile_writable(profile_dir: Path) -> Path:
-    """Ensure *profile_dir* is writable by the current process.
+def _relocate_profiles_root(profile_dir: Path) -> Path:
+    """Move profiles off an unsafe root (e.g. ``/root/.harness-browser``)."""
+    uid = os.getuid() if hasattr(os, "getuid") else 0
+    alt_root = Path(f"/tmp/harness-browser-profiles-{uid}")
+    alt_root.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        os.chmod(alt_root, 0o700)
+    os.environ["BROWSER_USE_PROFILES_DIR"] = str(alt_root)
+    with contextlib.suppress(Exception):
+        from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
 
-    If the existing tree cannot be written (common after root/non-root mix),
-    wipe it and recreate empty. Returns the usable directory path.
+        hb_settings.profiles_dir = alt_root
+    alt = alt_root / profile_dir.name
+    alt.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        alt.chmod(0o700)
+    logger.warning(
+        "Falling back to writable profiles dir %s (set BROWSER_USE_PROFILES_DIR)",
+        alt_root,
+    )
+    return alt
+
+
+def ensure_profile_writable(profile_dir: Path) -> Path:
+    """Ensure *profile_dir* is writable by the current process and by Chrome.
+
+    Profiles under ``/root/...`` are relocated to ``/tmp`` proactively: host
+    security agents (e.g. YunJing) often allow Python writes but deny the
+    Chrome binary, which surfaces as ``SingletonLock: Permission denied``.
     """
     profile_dir = Path(profile_dir)
     parents = [profile_dir, *list(profile_dir.parents)[:3]]
     for parent in reversed(parents):
         if parent.exists():
             _try_fix_ownership(parent)
+
+    # Chrome on hardened CVM images cannot write under /root even as uid 0.
+    if sys.platform.startswith("linux") and _under_root_home(profile_dir):
+        if profile_dir.exists():
+            stamp = int(time.time())
+            stale = profile_dir.with_name(f"{profile_dir.name}.stale-{stamp}")
+            with contextlib.suppress(OSError):
+                profile_dir.rename(stale)
+        return _relocate_profiles_root(profile_dir)
 
     if _probe_dir_writable(profile_dir):
         return profile_dir
@@ -158,24 +204,7 @@ def ensure_profile_writable(profile_dir: Path) -> Path:
     profile_dir.mkdir(parents=True, exist_ok=True)
     _try_fix_ownership(profile_dir)
     if not _probe_dir_writable(profile_dir):
-        # Last resort: alternate under /tmp (and point harness-browser at it).
-        uid = os.getuid() if hasattr(os, "getuid") else 0
-        alt_root = Path(f"/tmp/harness-browser-profiles-{uid}")
-        alt_root.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            os.chmod(alt_root, 0o700)
-        os.environ["BROWSER_USE_PROFILES_DIR"] = str(alt_root)
-        with contextlib.suppress(Exception):
-            from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
-
-            hb_settings.profiles_dir = alt_root
-        alt = alt_root / profile_dir.name
-        alt.mkdir(parents=True, exist_ok=True)
-        logger.warning(
-            "Falling back to writable profiles dir %s (set BROWSER_USE_PROFILES_DIR)",
-            alt_root,
-        )
-        return alt
+        return _relocate_profiles_root(profile_dir)
     return profile_dir
 
 

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -116,8 +117,9 @@ async def resolve_harness_session(
     # Fresh ProfileManager picks up any BROWSER_USE_PROFILES_DIR relocation
     # done by prepare (default singleton is bound at import time).
     from harness_browser.profile import ProfileManager  # noqa: PLC0415
+    from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
 
-    profile_manager = ProfileManager()
+    profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
 
     try:
         sess = await BrowserSession.create(
@@ -135,6 +137,7 @@ async def resolve_harness_session(
             or "ProcessSingleton" in msg
             or "SingletonLock" in msg
             or "profile directory" in msg.lower()
+            or "/run/user/" in msg
         ):
             logger.warning(
                 "Browser launch failed for %r (%s); recovering profile and retrying",
@@ -144,7 +147,7 @@ async def resolve_harness_session(
             await prepare_harness_profile_for_launch(profile, force_recover=True)
             display = resolve_browser_display()
             launch_mode = "headed" if display else "auto"
-            profile_manager = ProfileManager()
+            profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
             try:
                 sess = await BrowserSession.create(
                     profile=profile,

@@ -340,9 +340,7 @@ async def finish(
     admin = next((u for u in users if u.is_admin), users[0] if users else None)
     if admin is not None:
         try:
-            await _bootstrap_default_agent(
-                server, user_id=admin.id, locale=admin.locale
-            )
+            await _bootstrap_default_agent(server, user_id=admin.id, locale=admin.locale)
         except Exception as exc:  # pragma: no cover
             logger.warning("could not auto-create default agent: %s", exc)
     if wizard_token is not None:

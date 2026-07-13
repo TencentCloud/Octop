@@ -38,7 +38,7 @@ dependencies = [
     "acme>=5.6.0",
     "josepy>=2.2.0",
     "boto3>=1.40.61",
-    "harness-browser>=0.7.2",
+    "harness-browser>=0.7.4",
 ]
 
 [project.optional-dependencies]
@@ -55,7 +55,7 @@ dev = [
 ]
 browser = [
     "playwright>=1.40",
-    "harness-browser>=0.7.3",
+    "harness-browser>=0.7.4",
 ]
 channels-feishu = ["harness-browser>=0.7.0"]
 desktop = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
