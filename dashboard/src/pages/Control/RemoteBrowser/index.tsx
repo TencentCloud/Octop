@@ -113,6 +113,8 @@ type InstallPhase =
 const REFRESH_STORAGE_KEY = "octop:remote-browser:refresh-interval";
 const PROFILE_STORAGE_KEY = "octop:remote-browser:harness-profile";
 const LEGACY_SESSION_STORAGE_KEY = "octop:remote-browser:session-id";
+/** Whether the user left the remote-browser stream open last time. */
+const STREAM_ACTIVE_KEY = "octop:remote-browser:stream-active";
 const DEFAULT_REFRESH_INTERVAL = 500;
 const DEFAULT_START_URL = "https://cloud.tencent.com";
 const BROWSER_AI_PANEL_KEY = "octop:remote-browser:ai-panel-open";
@@ -138,6 +140,26 @@ function persistProfile(profile: string) {
   try {
     localStorage.setItem(PROFILE_STORAGE_KEY, profile);
     localStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readStreamActive(): boolean {
+  try {
+    return localStorage.getItem(STREAM_ACTIVE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setStreamActive(active: boolean) {
+  try {
+    if (active) {
+      localStorage.setItem(STREAM_ACTIVE_KEY, "1");
+    } else {
+      localStorage.removeItem(STREAM_ACTIVE_KEY);
+    }
   } catch {
     /* ignore */
   }
@@ -458,6 +480,7 @@ export default function RemoteBrowserPage() {
   const startStream = useCallback(
     (profileId: string, targetUrl = "") => {
       setFrameReady(false);
+      setStreamActive(true);
       const { width, height } = resolveDimensions();
       connect(
         targetUrl,
@@ -504,7 +527,9 @@ export default function RemoteBrowserPage() {
       const resp = await browserApi.getSessions();
       const sessions = resp.ok ? resp.sessions : [];
       const profile = pickProfile(sessions, threadFromUrl, readStoredProfile());
-      if (threadFromUrl || sessions.length > 0 || readStoredProfile()) {
+      // Restore stream only when the user left it open, or when deep-linked
+      // via ?thread=… — do not auto-open just because Chrome is still alive.
+      if (threadFromUrl || readStreamActive()) {
         startStream(profile);
         return profile;
       }
@@ -538,9 +563,7 @@ export default function RemoteBrowserPage() {
         setInstallPhase("idle");
         setEnvModalOpen(false);
         void refreshEnv();
-        antMessage.success(
-          t("remoteBrowser.installSuccess", "浏览器安装成功"),
-        );
+        antMessage.success(t("remoteBrowser.installSuccess", "浏览器安装成功"));
       },
     );
   }, [refreshEnv, t]);
@@ -685,6 +708,7 @@ export default function RemoteBrowserPage() {
     profileIdRef.current = null;
     setSession(null);
     setFrameReady(false);
+    setStreamActive(false);
     try {
       localStorage.removeItem(PROFILE_STORAGE_KEY);
     } catch {
@@ -1735,10 +1759,7 @@ export default function RemoteBrowserPage() {
                     icon={<Globe size={48} strokeWidth={1.5} />}
                     title={
                       envReady
-                        ? t(
-                            "remoteBrowser.startBrowserTitle",
-                            "启动远程浏览器",
-                          )
+                        ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
                         : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
                     }
                     description={
@@ -1805,10 +1826,7 @@ export default function RemoteBrowserPage() {
                             icon: <Play size={14} />,
                           }
                         : {
-                            label: t(
-                              "remoteBrowser.checkInstallShort",
-                              "检查",
-                            ),
+                            label: t("remoteBrowser.checkInstallShort", "检查"),
                             onClick: openEnvModal,
                             icon: <Globe size={14} />,
                           }
