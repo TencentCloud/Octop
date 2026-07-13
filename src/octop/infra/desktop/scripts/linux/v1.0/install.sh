@@ -20,7 +20,7 @@ DISPLAY_NUM=":99"
 GEOMETRY="${GEOMETRY:-1920x1080}"
 # Absolute pixel size for xfdesktop icons (not scaled with GTK window scaling).
 DESKTOP_ICON_SIZE="${DESKTOP_ICON_SIZE:-48}"
-WALLPAPER_URL="${WALLPAPER_URL:-https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png}"
+WALLPAPER_URL="${WALLPAPER_URL:-}"
 VNC_PORT=5900
 VNC_DPI="${VNC_DPI:-96}"
 OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
@@ -441,15 +441,21 @@ ENSURE_PANEL_EOF
 }
 
 download_wallpaper() {
-    mkdir -p /usr/share/backgrounds
+    # Install the Octop wallpaper shipped next to this script (packaged in the
+    # wheel under infra/desktop/scripts/linux/v1.0/wallpaper.png).
+    mkdir -p /usr/share/backgrounds "${INSTALL_ROOT}"
     local ok=false
-    local bundled
-    bundled="$(cd "$(dirname "$0")" && pwd)/wallpaper.png"
+    local bundled script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    bundled="${script_dir}/wallpaper.png"
 
-    # Prefer the wallpaper shipped next to this install script.
     if [ -f "$bundled" ] && [ -s "$bundled" ]; then
+        # Keep a canonical copy under /opt; xfdesktop reads from /usr/share.
+        cp -f "$bundled" "${INSTALL_ROOT}/wallpaper.png"
+        # Shrink to 1080p when possible, but never center-crop — branding sits
+        # in the lower-right corner of the shipped asset.
         if command -v convert >/dev/null 2>&1; then
-            convert "$bundled" -resize '1920x1080^' -gravity center -extent 1920x1080 \
+            convert "$bundled" -resize '1920x1080>' \
                 "$WALLPAPER_PNG" 2>/dev/null \
                 && [ -s "$WALLPAPER_PNG" ] && ok=true
         fi
@@ -457,32 +463,33 @@ download_wallpaper() {
             cp -f "$bundled" "$WALLPAPER_PNG" 2>/dev/null \
                 && [ -s "$WALLPAPER_PNG" ] && ok=true
         fi
+        if [ "$ok" = true ]; then
+            echo "installed bundled wallpaper -> $WALLPAPER_PNG"
+        fi
+    else
+        echo "bundled wallpaper missing next to install.sh (${bundled})" >&2
     fi
 
-    if [ "$ok" = false ]; then
-        local url
-        for url in \
-            "${WALLPAPER_URL}" \
-            "https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png"; do
-            [ -n "$url" ] || continue
-            if command -v wget >/dev/null 2>&1; then
-                wget --timeout=20 --tries=2 -qO "$WALLPAPER_PNG" "$url" 2>/dev/null \
-                    && [ -s "$WALLPAPER_PNG" ] && { ok=true; break; }
-            fi
-            if command -v curl >/dev/null 2>&1; then
-                curl -fsSL --connect-timeout 20 --max-time 60 "$url" -o "$WALLPAPER_PNG" 2>/dev/null \
-                    && [ -s "$WALLPAPER_PNG" ] && { ok=true; break; }
-            fi
-        done
+    # Optional override only when the packaged asset is unavailable.
+    if [ "$ok" = false ] && [ -n "${WALLPAPER_URL:-}" ]; then
+        if command -v wget >/dev/null 2>&1; then
+            wget --timeout=20 --tries=2 -qO "$WALLPAPER_PNG" "$WALLPAPER_URL" 2>/dev/null \
+                && [ -s "$WALLPAPER_PNG" ] && ok=true
+        fi
+        if [ "$ok" = false ] && command -v curl >/dev/null 2>&1; then
+            curl -fsSL --connect-timeout 20 --max-time 60 "$WALLPAPER_URL" -o "$WALLPAPER_PNG" 2>/dev/null \
+                && [ -s "$WALLPAPER_PNG" ] && ok=true
+        fi
     fi
 
     if [ "$ok" = false ]; then
         cat > "$WALLPAPER_FILE" << 'WALL_EOF'
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="100%" height="100%" fill="#1a1a2e"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="100%" height="100%" fill="#000000"/></svg>
 WALL_EOF
         if command -v convert >/dev/null 2>&1; then
             convert "$WALLPAPER_FILE" -resize 1920x1080! "$WALLPAPER_PNG" 2>/dev/null || true
         fi
+        echo "wallpaper fallback: solid black" >&2
     fi
     [ -s "$WALLPAPER_PNG" ] && chmod 0644 "$WALLPAPER_PNG" || true
 }
@@ -684,6 +691,7 @@ export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/root/.config}"
 [ -f /tmp/octop-desktop-dbus-env ] && source /tmp/octop-desktop-dbus-env || true
 
 WALLPAPER="/usr/share/backgrounds/octop-desktop-wallpaper.png"
+[ -f "$WALLPAPER" ] || WALLPAPER="/opt/octop-desktop/wallpaper.png"
 [ -f "$WALLPAPER" ] || WALLPAPER="/usr/share/backgrounds/octop-desktop-wallpaper.svg"
 [ -f "$WALLPAPER" ] || exit 0
 command -v xfconf-query >/dev/null 2>&1 || exit 0
