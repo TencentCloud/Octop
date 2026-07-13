@@ -190,7 +190,7 @@ def test_ensure_profile_writable_relocates_root_home(
     monkeypatch.setattr(
         browser_setup,
         "_relocate_profiles_root",
-        lambda p: (tmp_path / "relocated" / p.name),
+        lambda p: tmp_path / "relocated" / p.name,
     )
     (tmp_path / "relocated" / "default").mkdir(parents=True)
 
