@@ -132,11 +132,13 @@ def _under_root_home(path: Path) -> bool:
 
 def _try_fix_ownership(path: Path) -> None:
     """Best-effort chmod/chown so the current uid can write *path*."""
-    uid = os.getuid() if hasattr(os, "getuid") else None
-    gid = os.getgid() if hasattr(os, "getgid") else None
-    with contextlib.suppress(OSError):
-        if uid is not None and gid is not None:
-            os.chown(path, uid, gid)
+    from octop.infra.utils.posix_compat import chown, getuid  # noqa: PLC0415
+
+    uid = getuid()
+    # getuid returns -1 on non-POSIX; skip chown there.
+    if uid >= 0:
+        with contextlib.suppress(OSError):
+            chown(path, uid)
     with contextlib.suppress(OSError):
         path.chmod(0o700)
 
