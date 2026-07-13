@@ -18,6 +18,8 @@ INSTALL_ROOT="/opt/octop-desktop"
 CONF_DIR="/etc/octop-desktop"
 DISPLAY_NUM=":99"
 GEOMETRY="${GEOMETRY:-1920x1080}"
+# Absolute pixel size for xfdesktop icons (not scaled with GTK window scaling).
+DESKTOP_ICON_SIZE="${DESKTOP_ICON_SIZE:-72}"
 WALLPAPER_URL="${WALLPAPER_URL:-https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png}"
 VNC_PORT=5900
 OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
@@ -33,6 +35,7 @@ START_SESSION_SH="${INSTALL_ROOT}/start-session.sh"
 OPENBOX_XML="${INSTALL_ROOT}/openbox.xml"
 TRUST_ICONS_HELPER="${INSTALL_ROOT}/trust-desktop-icons.sh"
 APPLY_WALLPAPER_SH="${INSTALL_ROOT}/apply-wallpaper.sh"
+APPLY_ICONS_SH="${INSTALL_ROOT}/apply-icon-size.sh"
 
 DESKTOP_DIR="/root/Desktop"
 AUTOSTART_DIR="/root/.config/autostart"
@@ -159,7 +162,8 @@ write_xfconf_desktop_defaults() {
     </property>
   </property>
   <property name="desktop-icons" type="empty">
-    <property name="icon-size" type="int" value="48"/>
+    <property name="style" type="int" value="2"/>
+    <property name="icon-size" type="int" value="${DESKTOP_ICON_SIZE}"/>
     <property name="file-icons" type="empty">
       <property name="show-trash" type="bool" value="true"/>
       <property name="show-home" type="bool" value="true"/>
@@ -230,6 +234,9 @@ configure_desktop_environment() {
     esac
 
     mkdir -p "$DESKTOP_DIR" "$AUTOSTART_DIR" /root/.config /usr/share/backgrounds
+
+    # Drop stale icon layout / cache from earlier installs (keeps tiny icons otherwise).
+    rm -rf /root/.config/xfce4/desktop /root/.cache/xfce4/xfdesktop 2>/dev/null || true
 
     download_wallpaper
     write_xfconf_desktop_defaults
@@ -417,6 +424,47 @@ xfdesktop --display="$DISPLAY" --reload 2>/dev/null || true
 APPLY_EOF
     chmod +x "$APPLY_WALLPAPER_SH"
 
+    cat > "$APPLY_ICONS_SH" << ICONS_EOF
+#!/bin/bash
+set -euo pipefail
+export DISPLAY="\${DISPLAY:-:99}"
+export HOME="\${HOME:-/root}"
+export XDG_CONFIG_HOME="\${XDG_CONFIG_HOME:-/root/.config}"
+[ -f /tmp/octop-desktop-dbus-env ] && source /tmp/octop-desktop-dbus-env || true
+
+ICON_SIZE="${DESKTOP_ICON_SIZE}"
+command -v xfconf-query >/dev/null 2>&1 || exit 0
+
+# Wait for xfconfd on the session bus.
+for _ in \$(seq 1 40); do
+    xfconf-query -c xfce4-desktop -l >/dev/null 2>&1 && break
+    sleep 0.25
+done
+
+# Replace any stale/wrong-typed property, then pin size + file-icon style.
+xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -r >/dev/null 2>&1 || true
+xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size --create -t int -s "\$ICON_SIZE"
+xfconf-query -c xfce4-desktop -p /desktop-icons/style --create -t int -s 2 >/dev/null 2>&1 || true
+xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash --create -t bool -s true >/dev/null 2>&1 || true
+xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home --create -t bool -s true >/dev/null 2>&1 || true
+xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem --create -t bool -s true >/dev/null 2>&1 || true
+
+# Keep GTK window scaling at 1x so desktop icon pixels match panel/UI.
+xfconf-query -c xsettings -p /Gdk/WindowScalingFactor --create -t int -s 1 >/dev/null 2>&1 || true
+
+current="\$(xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size 2>/dev/null || true)"
+if [ "\$current" != "\$ICON_SIZE" ]; then
+    echo "failed to set desktop icon-size (got: \${current:-unset}, want: \$ICON_SIZE)" >&2
+    exit 1
+fi
+
+if command -v xfdesktop >/dev/null 2>&1; then
+    xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
+fi
+echo "desktop icon-size=\$ICON_SIZE"
+ICONS_EOF
+    chmod +x "$APPLY_ICONS_SH"
+
     cat > "$START_OPENBOX_SH" << 'SCRIPT_EOF'
 #!/bin/bash
 export DISPLAY=:99 HOME=/root XDG_RUNTIME_DIR=/tmp/runtime-octop-desktop
@@ -442,11 +490,8 @@ command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d &>/dev/null &
         sleep 0.5
     done
     [ -x /opt/octop-desktop/apply-wallpaper.sh ] && /opt/octop-desktop/apply-wallpaper.sh
+    [ -x /opt/octop-desktop/apply-icon-size.sh ] && /opt/octop-desktop/apply-icon-size.sh
     if command -v xfconf-query >/dev/null 2>&1; then
-        xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size --create -t int -s 48 2>/dev/null || true
-        xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash --create -t bool -s true 2>/dev/null || true
-        xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home --create -t bool -s true 2>/dev/null || true
-        xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem --create -t bool -s true 2>/dev/null || true
         xfconf-query -c xfce4-screensaver -p /screensaver/enabled --create -t bool -s false 2>/dev/null || true
         xfconf-query -c xfce4-screensaver -p /lock/enabled --create -t bool -s false 2>/dev/null || true
         xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled --create -t bool -s false 2>/dev/null || true
@@ -546,6 +591,7 @@ start_services() {
         systemctl is-active --quiet "$SVC_XVNC" || fail "octop-desktop-xvnc not active"
         sleep 4
         DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_WALLPAPER_SH}" 2>/dev/null || true
+        DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_ICONS_SH}" 2>/dev/null || true
         return
     fi
 
@@ -585,6 +631,7 @@ start_services() {
 
     sleep 4
     DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_WALLPAPER_SH}" 2>/dev/null || true
+    DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_ICONS_SH}" 2>/dev/null || true
 }
 
 parse_args() {
