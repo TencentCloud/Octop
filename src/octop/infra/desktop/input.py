@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from octop.infra.desktop.capture import display_env, is_linux_virtual_display
@@ -301,6 +302,25 @@ def _action_display_env(display: str | None) -> dict[str, str]:
     env = os.environ.copy()
     if display:
         env["DISPLAY"] = display
+    # Virtual desktop sessions run as root with a dedicated D-Bus; pick it up
+    # so spawned XFCE tools (appfinder, thunar, …) can talk to the panel.
+    dbus_env = Path("/tmp/octop-desktop-dbus-env")
+    if dbus_env.is_file():
+        try:
+            for line in dbus_env.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("export "):
+                    line = line[len("export ") :]
+                if "=" not in line or line.startswith("#"):
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip("'").strip('"')
+                if key and value:
+                    env[key] = value
+        except OSError:
+            pass
+    env.setdefault("HOME", "/root")
     return env
 
 
@@ -369,9 +389,27 @@ def _linux_runners(display: str | None) -> dict[str, ActionRunner]:
 
         return _run
 
+    def open_menu() -> ActionRunner:
+        """Open the applications finder (same as the panel start button)."""
+        spawn = spawn_first(
+            [
+                ["xfce4-appfinder"],
+                ["xfce4-popup-applicationsmenu"],
+                ["xfce4-popup-whiskermenu"],
+            ]
+        )
+        keys = key_combo("alt+F1", ["Alt", "F1"])
+
+        def _run(injector: InputInjector) -> bool:
+            if spawn(injector):
+                return True
+            return keys(injector)
+
+        return _run
+
     return {
         "show_desktop": key_combo("ctrl+alt+d", ["Control", "Alt", "d"]),
-        "open_menu": key_combo("alt+F1", ["Alt", "F1"]),
+        "open_menu": open_menu(),
         "close_window": key_combo("alt+F4", ["Alt", "F4"]),
         "open_terminal": spawn_first([["xfce4-terminal"], ["x-terminal-emulator"], ["xterm"]]),
         "open_files": spawn_first([["thunar"], ["nautilus"], ["pcmanfm"]]),

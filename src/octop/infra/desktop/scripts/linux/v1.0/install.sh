@@ -299,7 +299,7 @@ install_start_menu_logo() {
 }
 
 write_default_panel_layout() {
-    # Seed a top panel. Use an appfinder *launcher* as the start button —
+    # Seed a bottom panel. Use an appfinder *launcher* as the start button —
     # applicationsmenu/whiskermenu often fail to load on minimal headless installs.
     # ensure-panel.sh re-applies this layout on every session start (xfce can
     # rewrite XML on exit and drop a broken plugin-1 slot).
@@ -364,7 +364,7 @@ cat > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANEL_E
   <property name="panels" type="array">
     <value type="int" value="1"/>
     <property name="panel-1" type="empty">
-      <property name="position" type="string" value="p=6;x=0;y=0"/>
+      <property name="position" type="string" value="p=8;x=0;y=0"/>
       <property name="length" type="uint" value="100"/>
       <property name="position-locked" type="bool" value="true"/>
       <property name="size" type="uint" value="36"/>
@@ -621,7 +621,22 @@ write_runtime_scripts() {
     mkdir -p "$INSTALL_ROOT" "$CONF_DIR" "$DESKTOP_STATE_DIR"
 
     cat > "$OPENBOX_XML" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?><openbox_config><desktops><number>1</number></desktops></openbox_config>
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config>
+  <desktops><number>1</number></desktops>
+  <keyboard>
+    <!-- Match the panel start button: open xfce4-appfinder -->
+    <keybind key="A-F1">
+      <action name="Execute"><command>xfce4-appfinder</command></action>
+    </keybind>
+    <keybind key="Super_L">
+      <action name="Execute"><command>xfce4-appfinder</command></action>
+    </keybind>
+    <keybind key="Super_R">
+      <action name="Execute"><command>xfce4-appfinder</command></action>
+    </keybind>
+  </keyboard>
+</openbox_config>
 EOF
 
     cat > "$START_SESSION_SH" << SCRIPT_EOF
