@@ -19,9 +19,10 @@ CONF_DIR="/etc/octop-desktop"
 DISPLAY_NUM=":99"
 GEOMETRY="${GEOMETRY:-1920x1080}"
 # Absolute pixel size for xfdesktop icons (not scaled with GTK window scaling).
-DESKTOP_ICON_SIZE="${DESKTOP_ICON_SIZE:-72}"
+DESKTOP_ICON_SIZE="${DESKTOP_ICON_SIZE:-96}"
 WALLPAPER_URL="${WALLPAPER_URL:-https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/wallpaper/1.png}"
 VNC_PORT=5900
+VNC_DPI="${VNC_DPI:-96}"
 OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
 DESKTOP_STATE_DIR="${OCTOP_HOME}/desktop"
 DESKTOP_ENV="${DESKTOP_STATE_DIR}/desktop.env"
@@ -95,6 +96,7 @@ install_packages() {
             tigervnc-standalone-server tigervnc-tools x11-xserver-utils x11-utils openbox \
             dbus dbus-x11 xdotool xauth imagemagick \
             xfce4-panel xfce4-terminal xfce4-settings xfdesktop4 thunar mousepad \
+            adwaita-icon-theme hicolor-icon-theme \
             fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
             fonts-wqy-zenhei locales xclip xsel autocutsel xdg-utils libglib2.0-bin wget curl \
             || fail "apt install failed"
@@ -108,6 +110,7 @@ install_packages() {
         command -v dnf >/dev/null 2>&1 || pkg=yum
         $pkg install -y tigervnc-server openbox dbus dbus-x11 xdotool xorg-x11-xauth \
             xfce4-panel xfce4-terminal xfce4-settings xfdesktop thunar mousepad \
+            adwaita-icon-theme hicolor-icon-theme \
             fcitx fcitx-pinyin fcitx-gtk3 \
             google-noto-cjk-fonts ImageMagick xclip xsel xdg-utils \
             || fail "yum/dnf install failed"
@@ -433,6 +436,7 @@ export XDG_CONFIG_HOME="\${XDG_CONFIG_HOME:-/root/.config}"
 [ -f /tmp/octop-desktop-dbus-env ] && source /tmp/octop-desktop-dbus-env || true
 
 ICON_SIZE="${DESKTOP_ICON_SIZE}"
+DPI="${VNC_DPI}"
 command -v xfconf-query >/dev/null 2>&1 || exit 0
 
 # Wait for xfconfd on the session bus.
@@ -440,6 +444,17 @@ for _ in \$(seq 1 40); do
     xfconf-query -c xfce4-desktop -l >/dev/null 2>&1 && break
     sleep 0.25
 done
+
+# Icon theme is required: --no-install-recommends often leaves xfdesktop with tiny stubs.
+if [ -d /usr/share/icons/Adwaita ]; then
+    xfconf-query -c xsettings -p /Net/IconThemeName --create -t string -s Adwaita >/dev/null 2>&1 || true
+elif [ -d /usr/share/icons/hicolor ]; then
+    xfconf-query -c xsettings -p /Net/IconThemeName --create -t string -s hicolor >/dev/null 2>&1 || true
+fi
+
+# Pin DPI so fonts and desktop icons stay in proportion on headless TigerVNC.
+xfconf-query -c xsettings -p /Xft/DPI --create -t int -s "\$DPI" >/dev/null 2>&1 || true
+xfconf-query -c xsettings -p /Gdk/WindowScalingFactor --create -t int -s 1 >/dev/null 2>&1 || true
 
 # Replace any stale/wrong-typed property, then pin size + file-icon style.
 xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -r >/dev/null 2>&1 || true
@@ -449,19 +464,21 @@ xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-trash --create -
 xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-home --create -t bool -s true >/dev/null 2>&1 || true
 xfconf-query -c xfce4-desktop -p /desktop-icons/file-icons/show-filesystem --create -t bool -s true >/dev/null 2>&1 || true
 
-# Keep GTK window scaling at 1x so desktop icon pixels match panel/UI.
-xfconf-query -c xsettings -p /Gdk/WindowScalingFactor --create -t int -s 1 >/dev/null 2>&1 || true
-
 current="\$(xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size 2>/dev/null || true)"
 if [ "\$current" != "\$ICON_SIZE" ]; then
     echo "failed to set desktop icon-size (got: \${current:-unset}, want: \$ICON_SIZE)" >&2
     exit 1
 fi
 
+# Hard restart so xfdesktop reloads theme + size ( --reload is not always enough ).
 if command -v xfdesktop >/dev/null 2>&1; then
-    xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
+    pkill -f "xfdesktop --display=\${DISPLAY}" >/dev/null 2>&1 || true
+    pkill -f "xfdesktop --display \${DISPLAY}" >/dev/null 2>&1 || true
+    sleep 0.5
+    nohup xfdesktop --display="\$DISPLAY" >/dev/null 2>&1 &
+    sleep 1
 fi
-echo "desktop icon-size=\$ICON_SIZE"
+echo "desktop icon-size=\$ICON_SIZE dpi=\$DPI theme=\$(xfconf-query -c xsettings -p /Net/IconThemeName 2>/dev/null || echo unknown)"
 ICONS_EOF
     chmod +x "$APPLY_ICONS_SH"
 
@@ -525,7 +542,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStartPre=-/bin/rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
-ExecStart=${xvnc_bin} :99 -depth 24 -geometry ${GEOMETRY} -rfbport ${VNC_PORT} -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth ${CONF_DIR}/rfbauth
+ExecStart=${xvnc_bin} :99 -depth 24 -geometry ${GEOMETRY} -dpi ${VNC_DPI} -rfbport ${VNC_PORT} -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth ${CONF_DIR}/rfbauth
 Restart=on-failure
 RestartSec=2
 
@@ -612,7 +629,7 @@ start_services() {
     printf '%s' "$vnc_password" | "$vncpasswd_cmd" -f > "${CONF_DIR}/rfbauth"
     chmod 600 "${CONF_DIR}/rfbauth"
 
-  nohup "$xvnc_bin" :99 -depth 24 -geometry "${GEOMETRY}" -rfbport "${VNC_PORT}" \
+  nohup "$xvnc_bin" :99 -depth 24 -geometry "${GEOMETRY}" -dpi "${VNC_DPI}" -rfbport "${VNC_PORT}" \
         -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth "${CONF_DIR}/rfbauth" \
         > "${DESKTOP_STATE_DIR}/xvnc.log" 2>&1 &
     echo $! > "${DESKTOP_STATE_DIR}/pids/xvnc.pid"

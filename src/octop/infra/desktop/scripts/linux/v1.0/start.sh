@@ -28,7 +28,7 @@ else
   DISPLAY_NUM=":99"
   if ! _xvnc_alive "Xvnc.*${DISPLAY_NUM}"; then
     rm -f "/tmp/.X${DISPLAY_NUM#:}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM#:}"
-    nohup "$(command -v Xvnc || command -v Xtigervnc)" :99 -depth 24 -geometry 1920x1080 \
+    nohup "$(command -v Xvnc || command -v Xtigervnc)" :99 -depth 24 -geometry 1920x1080 -dpi 96 \
       -rfbport 5900 -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth \
       -rfbauth /etc/octop-desktop/rfbauth \
       > "${OCTOP_HOME}/desktop/xvnc.log" 2>&1 &
