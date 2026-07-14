@@ -73,7 +73,9 @@ async def _assert_expert_files_on_disk(
         assert disk_path.is_file(), f"{expert_id}: missing on disk: {rel_path}"
         actual = disk_path.read_text(encoding="utf-8")
         assert actual == expected, f"{expert_id}: content mismatch for {rel_path}"
-        assert len(actual.strip()) > 0, f"{expert_id}: empty file {rel_path}"
+        # Package markers (__init__.py) may be newline-only; other seeds must be substantive.
+        if Path(rel_path).name != "__init__.py":
+            assert len(actual.strip()) > 0, f"{expert_id}: empty file {rel_path}"
 
 
 async def _assert_expert_files_via_workspace(
