@@ -59,3 +59,60 @@ jobs:
 
       - name: Test
         run: make test
+
+  live-tests:
+    name: "Live tests (real credentials)"
+    runs-on: ubuntu-latest
+    # Only the main repo may access secrets; fork PRs get none and must skip.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: make install
+
+      # Secrets are injected as env vars. Missing secrets => empty values =>
+      # the live tests auto-skip (CI stays green). Never `echo`/print secrets.
+      - name: Run live tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.LIVE_OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.LIVE_OPENAI_BASE_URL }}
+          OPENAI_MODEL_NAME: ${{ secrets.LIVE_OPENAI_MODEL_NAME }}
+          OSS_KIND: ${{ secrets.LIVE_OSS_KIND }}
+          OSS_ENDPOINT: ${{ secrets.LIVE_OSS_ENDPOINT }}
+          OSS_ACCESS_KEY: ${{ secrets.LIVE_OSS_ACCESS_KEY }}
+          OSS_SECRET_KEY: ${{ secrets.LIVE_OSS_SECRET_KEY }}
+          OSS_BUCKET: ${{ secrets.LIVE_OSS_BUCKET }}
+          OSS_REGION: ${{ secrets.LIVE_OSS_REGION }}
+          OSS_PREFIX: ${{ secrets.LIVE_OSS_PREFIX }}
+          ALI_OSS_KIND: ${{ secrets.LIVE_ALI_OSS_KIND }}
+          ALI_OSS_ENDPOINT: ${{ secrets.LIVE_ALI_OSS_ENDPOINT }}
+          ALI_OSS_ACCESS_KEY: ${{ secrets.LIVE_ALI_OSS_ACCESS_KEY }}
+          ALI_OSS_SECRET_KEY: ${{ secrets.LIVE_ALI_OSS_SECRET_KEY }}
+          ALI_OSS_BUCKET: ${{ secrets.LIVE_ALI_OSS_BUCKET }}
+          ALI_OSS_REGION: ${{ secrets.LIVE_ALI_OSS_REGION }}
+          ALI_OSS_PREFIX: ${{ secrets.LIVE_ALI_OSS_PREFIX }}
+          CONNECTOR_TENCENT_DOCS_TOKEN: ${{ secrets.LIVE_CONNECTOR_TENCENT_DOCS_TOKEN }}
+          CONNECTOR_TENCENT_MEETING_TOKEN: ${{ secrets.LIVE_CONNECTOR_TENCENT_MEETING_TOKEN }}
+          CONNECTOR_TENCENT_WEIYUN_TOKEN: ${{ secrets.LIVE_CONNECTOR_TENCENT_WEIYUN_TOKEN }}
+          CONNECTOR_YOUDAO_NOTE_TOKEN: ${{ secrets.LIVE_CONNECTOR_YOUDAO_NOTE_TOKEN }}
+          CONNECTOR_TENCENT_NEWS_TOKEN: ${{ secrets.LIVE_CONNECTOR_TENCENT_NEWS_TOKEN }}
+          CONNECTOR_WECHAT_READING_TOKEN: ${{ secrets.LIVE_CONNECTOR_WECHAT_READING_TOKEN }}
+          CONNECTOR_QQ_MUSIC_TOKEN: ${{ secrets.LIVE_CONNECTOR_QQ_MUSIC_TOKEN }}
+          CONNECTOR_FLIGGY_TOKEN: ${{ secrets.LIVE_CONNECTOR_FLIGGY_TOKEN }}
+          CONNECTOR_BAIDU_MAP_TOKEN: ${{ secrets.LIVE_CONNECTOR_BAIDU_MAP_TOKEN }}
+          CONNECTOR_CTRIP_WENDAO_TOKEN: ${{ secrets.LIVE_CONNECTOR_CTRIP_WENDAO_TOKEN }}
+          CONNECTOR_TENCENT_IMA_TOKEN: ${{ secrets.LIVE_CONNECTOR_TENCENT_IMA_TOKEN }}
+          CONNECTOR_TENCENT_IMA_CLIENT_ID: ${{ secrets.LIVE_CONNECTOR_TENCENT_IMA_CLIENT_ID }}
+          CONNECTOR_TENCENT_LEXIANG_TOKEN: ${{ secrets.LIVE_CONNECTOR_TENCENT_LEXIANG_TOKEN }}
+          CONNECTOR_TENCENT_LEXIANG_COMPANY_FROM: ${{ secrets.LIVE_CONNECTOR_TENCENT_LEXIANG_COMPANY_FROM }}
+          CONNECTOR_MEITUAN_TRAVEL_TOKEN: ${{ secrets.LIVE_CONNECTOR_MEITUAN_TRAVEL_TOKEN }}
+          CONNECTOR_YUANDIAN_TOKEN: ${{ secrets.LIVE_CONNECTOR_YUANDIAN_TOKEN }}
+        run: make test-live
