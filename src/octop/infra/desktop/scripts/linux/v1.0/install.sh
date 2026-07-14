@@ -88,6 +88,19 @@ detect_vncpasswd_bin() {
     return 1
 }
 
+# TigerVNC 1.8 (EL7): `-localhost` is a boolean flag (no value).
+# Modern TigerVNC: requires `-localhost yes|no`.
+detect_xvnc_localhost_args() {
+    local bin="$1"
+    local help
+    help="$("$bin" -help 2>&1 || true)"
+    if echo "$help" | grep -qE 'localhost[[:space:]]+-[[:space:]]+Only allow'; then
+        echo "-localhost"
+    else
+        echo "-localhost yes"
+    fi
+}
+
 install_python_build_deps() {
     local family="$1"
     if [ "$family" = debian ]; then
@@ -750,7 +763,13 @@ for i in $(seq 1 30); do
 done
 apply_to_monitor "$MON"
 [ "$MON" != "VNC-0" ] && apply_to_monitor "VNC-0"
-xfdesktop --display="$DISPLAY" --reload 2>/dev/null || true
+# Older xfdesktop (EL7) may keep --reload in the foreground; never block install.
+if command -v timeout >/dev/null 2>&1; then
+    timeout 5 xfdesktop --display="$DISPLAY" --reload 2>/dev/null || true
+else
+    xfdesktop --display="$DISPLAY" --reload 2>/dev/null &
+    sleep 1
+fi
 APPLY_EOF
     chmod +x "$APPLY_WALLPAPER_SH"
 
@@ -819,7 +838,12 @@ if [ "\$current" != "\$ICON_SIZE" ]; then
 fi
 
 if command -v xfdesktop >/dev/null 2>&1; then
-    xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 5 xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 || true
+    else
+        xfdesktop --display="\$DISPLAY" --reload >/dev/null 2>&1 &
+        sleep 1
+    fi
 fi
 
 # Do NOT call ensure-panel here: rewriting the panel while xfconfd is live
@@ -898,7 +922,9 @@ write_systemd_units() {
     local xvnc_bin="$1"
     local vnc_password="${VNC_PASSWORD:-octop-desktop}"
     local vncpasswd_cmd
+    local localhost_args
     vncpasswd_cmd=$(detect_vncpasswd_bin) || fail "vncpasswd not found"
+    localhost_args=$(detect_xvnc_localhost_args "$xvnc_bin")
 
     echo "$vnc_password" > "${CONF_DIR}/vnc_password"
     chmod 600 "${CONF_DIR}/vnc_password"
@@ -914,7 +940,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStartPre=-/bin/rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
-ExecStart=${xvnc_bin} :99 -depth 24 -geometry ${GEOMETRY} -dpi ${VNC_DPI} -rfbport ${VNC_PORT} -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth ${CONF_DIR}/rfbauth
+ExecStart=${xvnc_bin} :99 -depth 24 -geometry ${GEOMETRY} -dpi ${VNC_DPI} -rfbport ${VNC_PORT} ${localhost_args} -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth ${CONF_DIR}/rfbauth
 Restart=on-failure
 RestartSec=2
 
@@ -979,8 +1005,9 @@ start_services() {
         sleep 2
         systemctl is-active --quiet "$SVC_XVNC" || fail "octop-desktop-xvnc not active"
         sleep 4
-        DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_WALLPAPER_SH}" 2>/dev/null || true
-        DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_ICONS_SH}" 2>/dev/null || true
+        # Wallpaper/icon helpers can hang on older xfdesktop; cap wait time.
+        timeout 30 env DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_WALLPAPER_SH}" 2>/dev/null || true
+        timeout 30 env DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_ICONS_SH}" 2>/dev/null || true
         return
     fi
 
@@ -997,12 +1024,15 @@ start_services() {
     xvnc_bin=$(detect_xvnc_bin) || fail "Xvnc not found"
     local vnc_password="${VNC_PASSWORD:-octop-desktop}"
     local vncpasswd_cmd
+    local localhost_args
     vncpasswd_cmd=$(detect_vncpasswd_bin) || fail "vncpasswd not found"
+    localhost_args=$(detect_xvnc_localhost_args "$xvnc_bin")
     printf '%s' "$vnc_password" | "$vncpasswd_cmd" -f > "${CONF_DIR}/rfbauth"
     chmod 600 "${CONF_DIR}/rfbauth"
 
-  nohup "$xvnc_bin" :99 -depth 24 -geometry "${GEOMETRY}" -dpi "${VNC_DPI}" -rfbport "${VNC_PORT}" \
-        -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth "${CONF_DIR}/rfbauth" \
+    # shellcheck disable=SC2086
+    nohup "$xvnc_bin" :99 -depth 24 -geometry "${GEOMETRY}" -dpi "${VNC_DPI}" -rfbport "${VNC_PORT}" \
+        ${localhost_args} -AlwaysShared -maxclients 256 -SecurityTypes VncAuth -rfbauth "${CONF_DIR}/rfbauth" \
         > "${DESKTOP_STATE_DIR}/xvnc.log" 2>&1 &
     echo $! > "${DESKTOP_STATE_DIR}/pids/xvnc.pid"
     sleep 1
