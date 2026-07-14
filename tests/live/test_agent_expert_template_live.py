@@ -84,13 +84,18 @@ async def _assert_expert_files_via_workspace(
     expert_id: str,
     contents: dict[str, str],
 ) -> None:
-    """Read via ``HarnessAgent.workspace`` (not ``backend`` with host ``/`` paths)."""
+    """Compare exact bytes via ``adownload_bytes``.
+
+    ``aread_text`` injects a ``System reminder`` for empty/whitespace-only files
+    (e.g. package ``__init__.py``), so it is not a faithful copy check.
+    """
     workspace = agent.workspace  # type: ignore[attr-defined]
     for rel_path, expected in contents.items():
         rel = rel_path.lstrip("/")
-        content = await workspace.aread_text(rel)
-        assert content is not None, f"{expert_id}: workspace missing {rel}"
-        assert content == expected, f"{expert_id}: workspace mismatch for {rel}"
+        raw = await workspace.adownload_bytes(rel)
+        assert raw is not None, f"{expert_id}: workspace missing {rel}"
+        actual = raw.decode("utf-8")
+        assert actual == expected, f"{expert_id}: workspace mismatch for {rel}"
 
 
 @pytest.mark.asyncio
