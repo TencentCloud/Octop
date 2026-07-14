@@ -35,7 +35,7 @@ echo Usage: install.bat [OPTIONS]
 echo   -Version ^<VER^>     Install specific version
 echo   -FromSource        Install from source
 echo   -SourceDir ^<DIR^>   Local source directory
-echo   -Extras ^<EXTRAS^>  e.g. browser,channels-feishu
+echo   -Extras ^<EXTRAS^>  Extra components (e.g. desktop); browser/playwright always installed
 echo   -UvPath ^<PATH^>     Pre-installed uv.exe
 exit /b 0
 
@@ -60,8 +60,8 @@ if not exist "%VENV_PYTHON%" (echo [octop] ERROR: venv python missing & exit /b 
 for /f "delims=" %%v in ('"%VENV_PYTHON%" --version 2^>^&1') do set "PY_VERSION=%%v"
 echo [octop] Python environment ready (%PY_VERSION%)
 
-set "EXTRAS_SUFFIX="
-if defined ARG_EXTRAS set "EXTRAS_SUFFIX=[%ARG_EXTRAS%]"
+set "EXTRAS_SUFFIX=[browser]"
+if defined ARG_EXTRAS set "EXTRAS_SUFFIX=[browser,%ARG_EXTRAS%]"
 set "VENV_OCTOP=%OCTOP_VENV%\Scripts\octop.exe"
 
 if "%ARG_FROM_SOURCE%"=="1" goto :install_from_source

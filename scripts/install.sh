@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Octop 安装脚本 (macOS / Linux)
 # 用法: bash scripts/install.sh              # 从 PyPI 安装（默认）
-#   或: source scripts/install.sh            # 安装后 PATH 立即在当前终端生效
 #   或: bash scripts/install.sh --from-source  # 从本地源码安装
 #   或: curl -fsSL <url>/install.sh | bash   # 远程安装
 #
 # 将 Octop 安装到 ~/.octop，使用 uv 管理 Python 环境。
 # 用户无需预先安装 Python — uv 会处理一切。
+# 安装后会尽量把 octop 链接到已在 PATH 中的目录（如 /usr/local/bin），
+# 当前终端无需 source / 重开即可直接使用。
 set -euo pipefail
 
 # ── 默认配置 ──────────────────────────────────────────────────────────────────
@@ -78,13 +79,12 @@ while [[ $# -gt 0 ]]; do
 Octop 安装脚本 (macOS / Linux)
 
 用法: bash install.sh [选项]
-  或: source install.sh [选项]   # 安装后 PATH 立即在当前终端生效，无需重开终端
 
 选项:
   --version <版本>      安装指定版本（例如 0.1.0）[仅限 PyPI]
   --from-source [目录]  从源码安装；未指定目录时从 git 仓库克隆
   --from-pypi           从 PyPI 安装（默认）
-  --extras <附加组件>   逗号分隔的可选附加组件（例如 browser,channels-feishu）
+  --extras <附加组件>   额外可选组件（例如 desktop）；browser/playwright 默认安装
   --mirror <镜像URL>    指定 PyPI 镜像（例如 https://mirrors.aliyun.com/pypi/simple）
   -h, --help            显示此帮助
 
@@ -94,13 +94,13 @@ Octop 安装脚本 (macOS / Linux)
   OCTOP_REPO              源码克隆地址（--from-source 且无本地目录时使用）
   HARNESS_AGENT_REPO      harness-agent 仓库（默认从 OCTOP_REPO 推导）
   HARNESS_GATEWAY_REPO    harness-gateway 仓库（默认从 OCTOP_REPO 推导）
-  HARNESS_BROWSER_REPO    harness-browser 仓库（browser extra 源码安装时使用）
+  HARNESS_BROWSER_REPO    harness-browser 仓库（源码安装时使用）
   PLAYWRIGHT_DOWNLOAD_HOST  Playwright 下载镜像（可选，用于加速）
 
 说明:
   本脚本在隔离虚拟环境（~/.octop/venv）中安装，不会影响系统 Python。
-  本安装脚本会自动安装：
-  1. Playwright Chromium 浏览器（支持所有操作系统）
+  默认会自动安装：
+  1. Playwright Chromium 浏览器及 Python 包
   2. 系统级依赖（Linux: apt/dnf/yum/pacman/zypper）
   3. CJK 字体用于中文网页渲染
 EOF
@@ -247,22 +247,189 @@ _select_fastest_pypi_mirror() {
     _FASTEST_MIRROR="$best_mirror"
 }
 
+# ── glibc / 旧发行版：部分依赖（如 tiktoken）仅提供 manylinux_2_28+ wheel ──
+_glibc_major_minor() {
+    # 输出如 2.17；非 Linux / 无法检测时返回空
+    [ "$OS" = "Linux" ] || { echo ""; return; }
+    local ver
+    ver="$(ldd --version 2>&1 | head -n1 | awk '{print $NF}')"
+    echo "$ver"
+}
+
+_glibc_too_old_for_wheels() {
+    # manylinux_2_28 要求 glibc >= 2.28（CentOS 7 = 2.17）
+    local ver
+    ver="$(_glibc_major_minor)"
+    [ -n "$ver" ] || return 1
+    local major minor
+    major="${ver%%.*}"
+    minor="${ver#*.}"
+    minor="${minor%%.*}"
+    [ "$major" -lt 2 ] 2>/dev/null && return 0
+    [ "$major" -eq 2 ] && [ "$minor" -lt 28 ] 2>/dev/null && return 0
+    return 1
+}
+
+_ensure_rustc() {
+    if command -v rustc &>/dev/null; then
+        info "已找到 rustc: $(command -v rustc) ($(rustc --version 2>/dev/null | awk '{print $2}'))"
+        return 0
+    fi
+    for candidate in "$HOME/.cargo/bin/rustc"; do
+        if [ -x "$candidate" ]; then
+            export PATH="$(dirname "$candidate"):$PATH"
+            info "已找到 rustc: $candidate"
+            return 0
+        fi
+    done
+
+    info "正在安装 Rust 工具链（rustup）以便从源码编译部分依赖..."
+    if curl -LsSf --connect-timeout 30 https://sh.rustup.rs 2>/dev/null | sh -s -- -y --default-toolchain stable 2>/dev/null; then
+        # shellcheck disable=SC1091
+        . "$HOME/.cargo/env" 2>/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
+        command -v rustc &>/dev/null && return 0
+    fi
+    return 1
+}
+
+_ensure_c_build_tools() {
+    if command -v cc &>/dev/null || command -v gcc &>/dev/null; then
+        return 0
+    fi
+    info "正在安装 C 编译工具（gcc/make）..."
+    if command -v apt-get &>/dev/null; then
+        if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+            sudo apt-get update -qq 2>/dev/null || true
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential 2>/dev/null || true
+        elif [ "$(id -u)" -eq 0 ]; then
+            apt-get update -qq 2>/dev/null || true
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential 2>/dev/null || true
+        fi
+    elif command -v yum &>/dev/null; then
+        if [ "$(id -u)" -eq 0 ]; then
+            yum install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
+        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+            sudo yum install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
+        fi
+    elif command -v dnf &>/dev/null; then
+        if [ "$(id -u)" -eq 0 ]; then
+            dnf install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
+        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+            sudo dnf install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
+        fi
+    fi
+    command -v cc &>/dev/null || command -v gcc &>/dev/null
+}
+
+_cxx_major() {
+    local v
+    v="$(${CXX:-g++} -dumpversion 2>/dev/null || true)"
+    echo "${v%%.*}"
+}
+
+_fix_centos7_scl_repos() {
+    # CentOS 7 EOL：mirrorlist.centos.org 已失效，改用 vault
+    local f
+    for f in /etc/yum.repos.d/CentOS-SCLo*.repo; do
+        [ -f "$f" ] || continue
+        sed -i \
+            -e 's|^mirrorlist=|#mirrorlist=|g' \
+            -e 's|^#[[:space:]]*baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
+            -e 's|^baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
+            "$f" 2>/dev/null || true
+    done
+}
+
+_ensure_modern_cxx() {
+    # playwright → greenlet 等需较新 C++；CentOS 7 自带 gcc 4.8 不够
+    local major
+    major="$(_cxx_major)"
+    if [ -n "$major" ] && [ "$major" -ge 7 ] 2>/dev/null; then
+        info "C++ 编译器就绪: $(${CXX:-g++} --version 2>/dev/null | head -n1)"
+        return 0
+    fi
+
+    if ! command -v yum &>/dev/null; then
+        warn "系统 gcc 过旧且无 yum，greenlet/playwright 源码编译可能失败"
+        return 1
+    fi
+
+    info "系统 gcc 过旧（需 >=7），正在安装 devtoolset-9..."
+    local yum_cmd=(yum)
+    if [ "$(id -u)" -ne 0 ]; then
+        if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+            yum_cmd=(sudo yum)
+        else
+            warn "需要 root/sudo 安装 devtoolset-9"
+            return 1
+        fi
+    fi
+
+    "${yum_cmd[@]}" install -y centos-release-scl 2>/dev/null || true
+    _fix_centos7_scl_repos
+    if ! "${yum_cmd[@]}" install -y devtoolset-9-gcc devtoolset-9-gcc-c++ make 2>/dev/null; then
+        warn "devtoolset-9 安装失败，greenlet/playwright 可能无法编译"
+        return 1
+    fi
+
+    if [ -f /opt/rh/devtoolset-9/enable ]; then
+        # enable 脚本会读未定义的 MANPATH；临时关闭 nounset
+        set +u
+        # shellcheck disable=SC1091
+        . /opt/rh/devtoolset-9/enable
+        set -u
+        export CC=gcc CXX=g++
+        info "已启用 devtoolset-9: $(g++ --version 2>/dev/null | head -n1)"
+        return 0
+    fi
+    return 1
+}
+
+_ensure_old_glibc_build_toolchain() {
+    # CentOS 7 / 旧 RHEL：无 manylinux_2_28 wheel 时需源码编译 Rust/C++ 扩展
+    if ! _glibc_too_old_for_wheels; then
+        return 0
+    fi
+    local ver
+    ver="$(_glibc_major_minor)"
+    warn "检测到 glibc $ver（< 2.28，如 CentOS 7）：部分依赖需本地编译"
+    _ensure_c_build_tools || warn "未找到 gcc，源码编译可能失败"
+    _ensure_modern_cxx || warn "未启用新版 g++，playwright 依赖（greenlet）可能编译失败"
+    if ! _ensure_rustc; then
+        die "当前系统 glibc=$ver，无法使用预编译 wheel，且 Rust 安装失败。请升级到 CentOS/RHEL 8+、Ubuntu 20.04+，或手动安装 rustup 后重试。"
+    fi
+}
+
 # ── 步骤 2: 创建/更新虚拟环境 ────────────────────────────────────────────────
-if [ -d "$OCTOP_VENV" ]; then
+if [ -x "$OCTOP_VENV/bin/python" ]; then
     info "发现已有环境，正在升级..."
 else
     info "正在创建 Python $PYTHON_VERSION 环境..."
+    uv venv "$OCTOP_VENV" --python "$PYTHON_VERSION" --quiet --seed
 fi
-
-uv venv "$OCTOP_VENV" --python "$PYTHON_VERSION" --quiet --seed
 [ -x "$OCTOP_VENV/bin/python" ] || die "虚拟环境创建失败"
 info "Python 环境就绪 ($("$OCTOP_VENV/bin/python" --version))"
 
+_ensure_old_glibc_build_toolchain
+
 # ── 步骤 3: 安装 Octop ───────────────────────────────────────────────────────
-EXTRAS_SUFFIX=""
-if [ -n "$EXTRAS" ]; then
-    EXTRAS_SUFFIX="[$EXTRAS]"
-fi
+# browser/playwright 为默认安装内容；其它 --extras 追加合并
+_merge_install_extras() {
+    local result="browser"
+    if [ -n "$EXTRAS" ]; then
+        local IFS=','
+        local part
+        for part in $EXTRAS; do
+            case "$part" in
+                ""|browser|channels-feishu) continue ;;
+                *) result="${result},${part}" ;;
+            esac
+        done
+    fi
+    echo "$result"
+}
+EXTRAS_MERGED="$(_merge_install_extras)"
+EXTRAS_SUFFIX="[$EXTRAS_MERGED]"
 
 _EXTRA_MIRROR="${PYPI_MIRROR:-${OCTOP_PYPI_MIRROR:-}}"
 if [ -z "$_EXTRA_MIRROR" ]; then
@@ -318,17 +485,8 @@ _clone_source_workspace() {
     info "正在克隆 harness-agent / harness-gateway / Octop 源码..."
     git clone --depth 1 "$HARNESS_AGENT_REPO" "$workdir/harness-agent"
     git clone --depth 1 "$HARNESS_GATEWAY_REPO" "$workdir/harness-gateway"
-    if _wants_browser; then
-        git clone --depth 1 "$HARNESS_BROWSER_REPO" "$workdir/harness-browser"
-    fi
+    git clone --depth 1 "$HARNESS_BROWSER_REPO" "$workdir/harness-browser"
     git clone --depth 1 "$OCTOP_REPO" "$workdir/orca"
-}
-
-_wants_browser() {
-    case ",$EXTRAS," in
-        *,browser,*|*,browser|*,channels-feishu,*|*,channels-feishu) return 0 ;;
-        *) return 1 ;;
-    esac
 }
 
 if [ "$FROM_SOURCE" = true ]; then
@@ -387,16 +545,26 @@ _install_playwright_system_deps() {
         if "$OCTOP_VENV/bin/python" -m playwright install-deps chromium --with-deps 2>/dev/null; then
             return
         fi
-        # 回退：手动安装
-        sudo apt-get update 2>/dev/null || true
-        sudo apt-get install -y \
-            libgconf-2-4 libnss3 libxss1 libappindicator1 libindicator7 \
-            libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libxrender1 \
-            libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
-            libexpat1 libfontconfig1 libfreetype6 libgbm1 libgdk-pixbuf2.0-0 \
-            libglib2.0-0 libgtk-3-0 libpango-1.0-0 libpangocairo-1.0-0 \
-            libxfixes3 libxft2 libxinerama1 libxrandr2 libxrender1 libxt6 \
-            zlib1g fonts-noto-cjk 2>/dev/null || warn "部分系统依赖安装失败，可稍后手动运行: playwright install-deps chromium"
+        # 回退：手动安装（Ubuntu 24+ 部分包名为 *t64）
+        local _apt="apt-get"
+        if command -v sudo &>/dev/null && [ "$(id -u)" -ne 0 ]; then
+            _apt="sudo apt-get"
+        fi
+        $_apt update 2>/dev/null || true
+        # 逐包尝试，兼容 Ubuntu 22/24 包名差异
+        local pkg
+        for pkg in \
+            libnss3 libxss1 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 \
+            libxrender1 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
+            libexpat1 libfontconfig1 libfreetype6 libgbm1 libglib2.0-0 \
+            libgtk-3-0 libpango-1.0-0 libpangocairo-1.0-0 libxfixes3 \
+            libxinerama1 libxt6 zlib1g fonts-noto-cjk \
+            libasound2t64 libasound2 \
+            libatk-bridge2.0-0t64 libatk-bridge2.0-0 \
+            libgdk-pixbuf-2.0-0 libgdk-pixbuf2.0-0 \
+            ; do
+            $_apt install -y "$pkg" 2>/dev/null || true
+        done
         return
     fi
 
@@ -450,6 +618,11 @@ _install_playwright_system_deps() {
 }
 
 _install_playwright_browsers() {
+    if _glibc_too_old_for_wheels; then
+        warn "当前 glibc=$(_glibc_major_minor)（如 CentOS 7）无法运行 Playwright 自带的 Node/Chromium（需 glibc ≥ 2.28）"
+        warn "已安装 playwright Python 包，但跳过 Chromium；建议使用 Ubuntu 20.04+ / CentOS/RHEL 8+"
+        return 1
+    fi
     info "正在安装 Playwright Chromium 浏览器..."
     if "$OCTOP_VENV/bin/python" -m playwright install chromium; then
         info "✓ Playwright Chromium 安装成功"
@@ -460,9 +633,13 @@ _install_playwright_browsers() {
     return 1
 }
 
-# 默认安装 Playwright 系统依赖和 Chromium 浏览器
-_install_playwright_system_deps
-_install_playwright_browsers || true
+# 默认安装 Playwright 系统依赖和 Chromium
+if "$OCTOP_VENV/bin/python" -c "import playwright" 2>/dev/null; then
+    _install_playwright_system_deps
+    _install_playwright_browsers || true
+else
+    warn "playwright 未安装到虚拟环境，跳过 Chromium；可稍后: uv pip install playwright --python $OCTOP_VENV/bin/python"
+fi
 
 # ── 步骤 4: 创建包装脚本 ─────────────────────────────────────────────────────
 mkdir -p "$OCTOP_BIN"
@@ -487,13 +664,97 @@ WRAPPER
 chmod +x "$OCTOP_BIN/octop"
 info "包装脚本已创建: $OCTOP_BIN/octop"
 
-# ── 步骤 5: 更新 shell PATH ───────────────────────────────────────────────────
-PATH_ENTRY="export PATH=\"\$HOME/.octop/bin:\$PATH\""
+# ── 步骤 5: 让 octop 立即可用（无需 source）──────────────────────────────────
+# 子进程无法修改父 shell 的 PATH。要让 curl|bash / bash install.sh 后立刻可用，
+# 只能把可执行文件放进「当前 PATH 里已有」的目录（常见为 /usr/local/bin）。
+
+_can_write_dir() {
+    local dir="$1"
+    [ -d "$dir" ] && [ -w "$dir" ]
+}
+
+_sudo_nopass() {
+    command -v sudo &>/dev/null && sudo -n true 2>/dev/null
+}
+
+_try_symlink() {
+    # 在 target_dir 创建指向包装脚本的 octop 符号链接。成功返回 0。
+    local target_dir="$1"
+    local link_path="$target_dir/octop"
+    local src="$OCTOP_BIN/octop"
+
+    mkdir -p "$target_dir" 2>/dev/null || true
+
+    if _can_write_dir "$target_dir"; then
+        ln -sfn "$src" "$link_path" && return 0
+    fi
+    if _sudo_nopass; then
+        sudo mkdir -p "$target_dir" 2>/dev/null || true
+        sudo ln -sfn "$src" "$link_path" && return 0
+    fi
+    return 1
+}
+
+_path_contains() {
+    case ":$PATH:" in
+        *":$1:"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+LINKED_PATH=""
+_link_into_existing_path() {
+    local candidates=()
+    case "$OS" in
+        Darwin)
+            # Apple Silicon Homebrew 优先，再退回传统 /usr/local/bin
+            candidates=(/opt/homebrew/bin /usr/local/bin)
+            ;;
+        *)
+            candidates=(/usr/local/bin)
+            ;;
+    esac
+
+    local dir
+    for dir in "${candidates[@]}"; do
+        if _path_contains "$dir" && _try_symlink "$dir"; then
+            LINKED_PATH="$dir/octop"
+            return 0
+        fi
+    done
+
+    # 回退：~/.local/bin（Ubuntu/Debian 的 ~/.profile 会在目录存在时加入 PATH；
+    # 若当前会话 PATH 尚无该目录，仍无法免 source，仅作持久化兜底）
+    if _try_symlink "$HOME/.local/bin"; then
+        LINKED_PATH="$HOME/.local/bin/octop"
+        if _path_contains "$HOME/.local/bin"; then
+            return 0
+        fi
+        # 目录刚创建、尚未在当前 PATH 中：本会话仍依赖下方 profile / 手动 PATH
+        return 1
+    fi
+    return 1
+}
+
+IMMEDIATE_OK=false
+if _link_into_existing_path; then
+    IMMEDIATE_OK=true
+    info "已链接到 $LINKED_PATH（当前终端可直接运行 octop）"
+elif [ -n "$LINKED_PATH" ]; then
+    info "已链接到 $LINKED_PATH"
+fi
+
+# ── 步骤 6: 更新 shell / 系统 profile（新开终端持久生效）─────────────────────
+PATH_ENTRY="export PATH=\"${OCTOP_BIN}:\$PATH\""
 
 add_to_profile() {
     local profile="$1"
     local create="$2"
-    if [ -f "$profile" ] && grep -qF '.octop/bin' "$profile"; then
+    if [ -f "$profile" ] && grep -qF "$OCTOP_BIN" "$profile" 2>/dev/null; then
+        return 0
+    fi
+    # 兼容旧版标记（仅含 .octop/bin 字样）
+    if [ -f "$profile" ] && grep -qF '.octop/bin' "$profile" 2>/dev/null; then
         return 0
     fi
     if [ -f "$profile" ] || [ "$create" = "create" ]; then
@@ -504,15 +765,43 @@ add_to_profile() {
     return 1
 }
 
+_write_profile_d() {
+    # CentOS / Ubuntu 登录 shell 会加载 /etc/profile.d/*.sh
+    local dest="/etc/profile.d/octop.sh"
+    local content="# Octop CLI
+export PATH=\"${OCTOP_BIN}:\$PATH\"
+"
+    if [ -d /etc/profile.d ]; then
+        if [ -w /etc/profile.d ] || _can_write_dir /etc/profile.d; then
+            printf '%s' "$content" > "$dest" && chmod 644 "$dest" && {
+                info "已写入 $dest"
+                return 0
+            }
+        fi
+        if _sudo_nopass; then
+            printf '%s' "$content" | sudo tee "$dest" >/dev/null && sudo chmod 644 "$dest" && {
+                info "已写入 $dest"
+                return 0
+            }
+        fi
+    fi
+    return 1
+}
+
 UPDATED_PROFILE=false
 case "$OS" in
     Darwin)
         add_to_profile "$HOME/.zshrc" "create" && UPDATED_PROFILE=true
         add_to_profile "$HOME/.bash_profile" "no-create" || true
+        add_to_profile "$HOME/.bashrc" "no-create" || true
         ;;
     Linux)
+        # CentOS/RHEL：SSH 登录读 .bash_profile；Ubuntu：登录读 .profile，交互读 .bashrc
         add_to_profile "$HOME/.bashrc" "create" && UPDATED_PROFILE=true
+        add_to_profile "$HOME/.bash_profile" "no-create" || true
+        add_to_profile "$HOME/.profile" "no-create" || true
         add_to_profile "$HOME/.zshrc" "no-create" || true
+        _write_profile_d || true
         ;;
 esac
 
@@ -524,6 +813,9 @@ printf "${GREEN}${BOLD}Octop 安装成功！${RESET}\n"
 echo ""
 printf "  安装位置:          ${BOLD}%s${RESET}\n" "$OCTOP_HOME"
 printf "  Python:            ${BOLD}%s${RESET}\n" "$("$OCTOP_VENV/bin/python" --version 2>&1)"
+if [ -n "$LINKED_PATH" ]; then
+    printf "  CLI 链接:          ${BOLD}%s${RESET}\n" "$LINKED_PATH"
+fi
 if [ "$_CONSOLE_AVAILABLE" = 1 ]; then
     printf "  控制台 (Web UI):   ${GREEN}可用${RESET}\n"
 else
@@ -531,28 +823,26 @@ else
 fi
 echo ""
 
-if [ "$UPDATED_PROFILE" = true ]; then
-    # 检测脚本是否以 source 方式运行（此时 BASH_SOURCE[0] == $0 为 false）
-    if [ -n "${BASH_SOURCE[0]:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
-        # source 方式：直接导出到当前 shell
-        export PATH="$OCTOP_BIN:$PATH"
-        info "PATH 已更新，octop 命令即刻可用"
-    else
-        # bash script.sh 方式：子进程无法修改父 shell，打印最简单的单行命令
-        echo "当前终端执行以下命令立即可用（新开终端无需此步骤）:"
-        echo ""
-        printf "  ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n" "$OCTOP_BIN"
-        echo ""
+if [ "$IMMEDIATE_OK" = true ]; then
+    info "octop 命令已就绪，当前终端可直接使用（无需 source）"
+elif [ -n "${BASH_SOURCE[0]:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    export PATH="$OCTOP_BIN:$PATH"
+    info "PATH 已更新，octop 命令即刻可用"
+else
+    warn "未能写入已在 PATH 中的目录（如 /usr/local/bin）。当前终端请执行:"
+    echo ""
+    printf "  ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n" "$OCTOP_BIN"
+    echo ""
+    if [ "$UPDATED_PROFILE" = true ]; then
+        echo "新开终端无需此步骤。"
     fi
 fi
 echo ""
 echo "然后运行:"
 echo ""
-printf "  ${BOLD}octop init${RESET}      # 初始化数据库与管理员账号\n"
 printf "  ${BOLD}octop run${RESET}       # 前台启动（API + Web 控制台）\n"
 printf "  ${BOLD}octop service start${RESET}  # 安装并后台守护运行（systemd / launchd）\n"
 printf "  ${BOLD}open http://127.0.0.1:8088${RESET}\n"
 echo ""
-printf "可选附加组件: ${BOLD}--extras channels-feishu${RESET}（飞书频道）\n"
-printf "Playwright 浏览器已默认安装；如需重装: ${BOLD}$OCTOP_VENV/bin/python -m playwright install chromium${RESET}\n"
 printf "升级: 重新运行本安装脚本。清理: ${BOLD}octop clean${RESET}\n"
+printf "Playwright 重装: ${BOLD}$OCTOP_VENV/bin/python -m playwright install chromium${RESET}\n"

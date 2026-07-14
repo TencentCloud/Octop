@@ -36,7 +36,7 @@ Options:
   -Version <VER>        Install a specific version (e.g. 0.1.0)
   -FromSource           Install from source (requires git, or use -SourceDir)
   -SourceDir <DIR>      Local source directory (used with -FromSource)
-  -Extras <EXTRAS>      Comma-separated extras (e.g. browser, channels-feishu)
+  -Extras <EXTRAS>      Extra optional components (e.g. desktop); browser/playwright is always installed
   -UvPath <PATH>        Path to a pre-installed uv.exe
   -Help                 Show this help
 
@@ -156,7 +156,16 @@ function Test-Install {
     Write-Info "Install verification passed"
 }
 
-$ExtrasSuffix = if ($Extras) { "[$Extras]" } else { "" }
+$ExtrasSuffix = "[browser]"
+if ($Extras) {
+    $parts = @("browser")
+    foreach ($p in ($Extras -split ",")) {
+        $t = $p.Trim()
+        if (-not $t -or $t -eq "browser" -or $t -eq "channels-feishu") { continue }
+        $parts += $t
+    }
+    $ExtrasSuffix = "[" + ($parts -join ",") + "]"
+}
 $script:ConsoleAvailable = $false
 
 function Prepare-Console {
