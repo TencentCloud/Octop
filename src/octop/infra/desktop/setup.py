@@ -719,12 +719,13 @@ async def _run_script_step(
     missing_error_key: str,
     log_message_key: str,
     tolerate_exit_code: bool = False,
+    script_args: tuple[str, ...] = (),
 ) -> AsyncIterator[str]:
     if script is None:
         async for chunk in _install_failure(_install_log(locale, missing_error_key)):
             yield chunk
         return
-    cmd = _install_cmd_for_script(script)
+    cmd = _install_cmd_for_script(script, *script_args)
     if cmd is None:
         async for chunk in _install_failure(_install_log(locale, "error_sudo_required")):
             yield chunk
@@ -751,6 +752,22 @@ async def _run_script_step(
 
 
 async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
+    if platform.system() == "Linux":
+        build_deps_failed = False
+        async for chunk in _run_script_step(
+            resolve_install_script_path(),
+            locale=locale,
+            missing_error_key="error_script_missing",
+            log_message_key="install_log_build_deps",
+            script_args=("--build-deps-only",),
+        ):
+            yield chunk
+            done = _sse_done(chunk)
+            if done is not None and not done.get("success"):
+                build_deps_failed = True
+        if build_deps_failed:
+            return
+
     cmd = python_deps_install_cmd()
     if cmd is None:
         async for chunk in _install_failure(_install_log(locale, "error_pip_unavailable")):
@@ -767,11 +784,11 @@ async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
             yield chunk
 
 
-def _install_cmd_for_script(script: Path) -> list[str] | None:
+def _install_cmd_for_script(script: Path, *script_args: str) -> list[str] | None:
     if geteuid() == 0:
-        return ["/bin/bash", str(script)]
+        return ["/bin/bash", str(script), *script_args]
     if shutil.which("sudo"):
-        return ["sudo", "-n", "/bin/bash", str(script)]
+        return ["sudo", "-n", "/bin/bash", str(script), *script_args]
     return None
 
 

@@ -319,6 +319,7 @@
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
+    "install_log_build_deps": "Installing Python build dependencies…",
     "install_log_system": "Installing virtual desktop services…",
     "install_log_start": "Starting desktop services…",
     "install_log_ready": "Desktop environment is ready.",

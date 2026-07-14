@@ -88,10 +88,35 @@ detect_vncpasswd_bin() {
     return 1
 }
 
-install_packages() {
+install_python_build_deps() {
     local family="$1"
     if [ "$family" = debian ]; then
         DEBIAN_FRONTEND=noninteractive apt-get update -qq || fail "apt-get update failed"
+        local py_dev="python3-dev"
+        if command -v python3 >/dev/null 2>&1; then
+            local py_minor
+            py_minor=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)
+            if [ -n "$py_minor" ] && apt-cache show "python${py_minor}-dev" >/dev/null 2>&1; then
+                py_dev="python${py_minor}-dev"
+            fi
+        fi
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            build-essential "$py_dev" \
+            || fail "apt install failed (python build deps)"
+    elif [ "$family" = rhel ]; then
+        local pkg=dnf
+        command -v dnf >/dev/null 2>&1 || pkg=yum
+        $pkg install -y gcc python3-devel \
+            || fail "yum/dnf install failed (python build deps)"
+    else
+        fail "unsupported distro"
+    fi
+}
+
+install_packages() {
+    local family="$1"
+    install_python_build_deps "$family"
+    if [ "$family" = debian ]; then
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             tigervnc-standalone-server tigervnc-tools x11-xserver-utils x11-utils openbox \
             dbus dbus-x11 xdotool xauth imagemagick librsvg2-bin \
@@ -998,12 +1023,15 @@ start_services() {
     DISPLAY="${DISPLAY_NUM}" HOME=/root "${APPLY_ICONS_SH}" 2>/dev/null || true
 }
 
+BUILD_DEPS_ONLY=0
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --geometry) GEOMETRY="$2"; shift 2 ;;
             --password) VNC_PASSWORD="$2"; shift 2 ;;
             --wallpaper-url) WALLPAPER_URL="$2"; shift 2 ;;
+            --build-deps-only) BUILD_DEPS_ONLY=1; shift ;;
             *) shift ;;
         esac
     done
@@ -1015,6 +1043,12 @@ main() {
     local family xvnc_bin
     family=$(detect_distro)
     [ "$family" != unknown ] || fail "unsupported distro"
+
+    if [ "$BUILD_DEPS_ONLY" = 1 ]; then
+        install_python_build_deps "$family"
+        echo '{"installed": true, "build_deps_only": true}'
+        exit 0
+    fi
 
     install_packages "$family"
     configure_locale_and_fonts

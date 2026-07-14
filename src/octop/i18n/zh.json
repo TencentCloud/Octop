@@ -319,6 +319,7 @@
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
+    "install_log_build_deps": "正在安装 Python 编译依赖…",
     "install_log_system": "正在安装虚拟桌面服务…",
     "install_log_start": "正在启动桌面服务…",
     "install_log_ready": "桌面环境已就绪。",

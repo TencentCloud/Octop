@@ -10,6 +10,7 @@ def test_desktop_keys_parity() -> None:
     zh_keys = {k for k in all_keys_for_locale("zh") if k.startswith("desktop.")}
     assert en_keys == zh_keys
     assert "desktop.install_log_system" in en_keys
+    assert "desktop.install_log_build_deps" in en_keys
 
 
 def test_desktop_error_interpolation() -> None:
