@@ -104,7 +104,7 @@ ignore = ["E501"]
 "src/octop/api/**" = ["B008"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 files = ["src/octop"]

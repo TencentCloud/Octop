@@ -94,8 +94,14 @@ def _auth_header(api_key: str) -> str:
     return api_key if api_key.startswith("Bearer ") else f"Bearer {api_key}"
 
 
-def _sha256_hex(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _request_digest(material: str) -> str:
+    """SHA-256 hex digest for Fliggy request-signing canonicalization.
+
+    Digests go into the HMAC-SHA256 signing string (protocol), not password
+    storage or key derivation — SHA-256 here matches Fliggy's public CLI.
+    """
+    # codeql[py/weak-sensitive-data-hashing]
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def _x_ff_ctx() -> str:
@@ -121,6 +127,8 @@ def _x_ff_ctx() -> str:
         },
     }
     raw = gzip.compress(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    # Derive AES key from the published Fliggy client secret (protocol material).
+    # codeql[py/weak-sensitive-data-hashing]
     key = hashlib.sha256(_SIGN_SECRET.encode("utf-8")).digest()
     iv = os.urandom(12)
     ct = AESGCM(key).encrypt(iv, raw, None)
@@ -129,7 +137,11 @@ def _x_ff_ctx() -> str:
 
 def _sign_headers(*, body: str, authorization: str, timestamp_ms: str) -> dict[str, str]:
     nonce = secrets.token_hex(16)
-    msg = f"POST\n/mcp\n{timestamp_ms}\n{nonce}\n{_sha256_hex(body)}\n{_sha256_hex(authorization)}"
+    # Fliggy canonical string includes digests of body + Authorization header.
+    msg = (
+        f"POST\n/mcp\n{timestamp_ms}\n{nonce}\n"
+        f"{_request_digest(body)}\n{_request_digest(authorization)}"
+    )
     sig = (
         base64.urlsafe_b64encode(
             hmac.new(_SIGN_SECRET.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).digest()
@@ -188,12 +200,14 @@ def _format_tool_result(result: Any) -> str:
         content = result.get("content")
         if isinstance(content, list) and content:
             first = content[0]
-            if isinstance(first, dict) and isinstance(first.get("text"), str):
-                text = first["text"].strip()
-                if text:
-                    try:
-                        return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
-                    except json.JSONDecodeError:
-                        return text
+            if isinstance(first, dict):
+                raw_text = first.get("text")
+                if isinstance(raw_text, str):
+                    text = raw_text.strip()
+                    if text:
+                        try:
+                            return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+                        except json.JSONDecodeError:
+                            return text
         return json.dumps(result, ensure_ascii=False, indent=2)
     return json.dumps(result, ensure_ascii=False, indent=2)
