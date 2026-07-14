@@ -1,4 +1,4 @@
-"""tests/integration/test_chat_sse.py — dashboard WebSocket chat + thread CRUD."""
+"""tests/integration/test_chat_ws.py — dashboard WebSocket chat + thread CRUD."""
 
 from __future__ import annotations
 

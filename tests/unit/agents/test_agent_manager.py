@@ -454,45 +454,6 @@ async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
     manager._harness_manager.close()
 
 
-@pytest.mark.skip(reason="_ensure_bootstrap_harness removed; bootstrap handled via init_workspace")
-@pytest.mark.asyncio
-async def test_ensure_bootstrap_harness_reloads_stale_system_prompt(manager: AgentManager) -> None:
-    """Onboarding must not run with a harness compiled using expert system_prompt."""
-    from dataclasses import replace
-
-    from harness_agent import HarnessAgentManager
-
-    from octop.infra.agents.experts.catalog import ExpertCatalog
-    from octop.infra.agents.manager import AgentCreateSpec
-
-    catalog = ExpertCatalog(default_library_root())
-    catalog.refresh()
-    expert = catalog.get("general-assistant")
-    assert expert is not None
-
-    manager._expert_catalog = catalog
-    _seed_test_provider(manager)
-    manager._harness_manager = HarnessAgentManager(
-        providers=manager.providers.build_harness_configs(),
-    )
-    row = await manager.create(
-        AgentCreateSpec(
-            name="bootstrap-stale",
-            template_name="general-assistant",
-            system_prompt=expert.system_prompt,
-        ),
-    )
-    entry = manager._harness_manager.get_agent(row.agent_id)
-    entry.agent._config = replace(entry.agent.config, system_prompt=expert.system_prompt)
-    assert manager._harness_bootstrap_config_stale(row.agent_id)
-
-    await manager._ensure_bootstrap_harness(row.agent_id)
-    cfg = manager._harness_manager.get_agent(row.agent_id).agent.config
-    assert cfg.system_prompt is None
-    assert cfg.memory == ()
-    manager._harness_manager.close()
-
-
 @pytest.mark.asyncio
 async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     """create() must seed harness workspace (BOOTSTRAP.md, AGENTS.md, …) before start."""
