@@ -139,9 +139,6 @@ function openAuthorizeLabel(
   kind: string,
   t: (key: string, fallback: string) => string,
 ): string {
-  if (kind === "baidu-netdisk") {
-    return t("connectors.openAuthorizePage", "打开授权页");
-  }
   if (kind === "tencent-ima") {
     return t("connectors.openAuthorizePage", "打开授权页");
   }
@@ -153,7 +150,7 @@ function authCodeGuideLabel(
   t: (key: string, fallback: string) => string,
 ): string {
   if (kind === "tencent-news") {
-    return t("connectors.newsAuthGuide", "如何获取腾讯新闻授权码");
+    return t("connectors.newsAuthGuide", "如何获取腾讯新闻 API Key");
   }
   return t("connectors.authCodeDoc", "查看如何获取授权码");
 }
@@ -352,7 +349,9 @@ function ConnectorConfigDrawer({
       window.addEventListener("message", onMessage);
     } catch (e) {
       console.error(e);
-      message.error(t("connectors.oauthStartFailed", "无法启动 OAuth"));
+      message.error(
+        apiErrorMessage(e, t("connectors.oauthStartFailed", "无法启动 OAuth")),
+      );
     }
   };
 
@@ -586,9 +585,7 @@ function ConnectorConfigDrawer({
                 configuredExtra(preview, "token_configured", t) ??
                 (manualUrl ? (
                   <a href={manualUrl} target="_blank" rel="noreferrer">
-                    {entry.kind === "baidu-netdisk"
-                      ? t("connectors.baiduAuthGuide", "如何获取百度网盘授权码")
-                      : t("connectors.getTokenAt", "前往获取 Token")}
+                    {t("connectors.getTokenAt", "前往获取 Token")}
                   </a>
                 ) : (
                   <a href={entry.doc_url} target="_blank" rel="noreferrer">

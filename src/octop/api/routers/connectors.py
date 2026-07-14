@@ -111,17 +111,6 @@ async def _prepare_credentials(
             extra=extra or None,
         )
         cred_payload.update(exchanged)
-    elif entry.kind == "baidu-netdisk" and entry.auth_kind == "personal_token":
-        from octop.infra.connectors.oauth.baidu import resolve_baidu_pasted_credential
-
-        raw = str(cred_payload.get("token") or cred_payload.get("access_token") or "").strip()
-        if raw:
-            exchanged = await resolve_baidu_pasted_credential(
-                raw=raw,
-                settings_repo=settings_repo,
-            )
-            cred_payload.pop("token", None)
-            cred_payload.update(exchanged)
     elif entry.kind == "tencent-weiyun" and entry.auth_kind == "personal_token":
         raw = str(cred_payload.get("token") or cred_payload.get("access_token") or "").strip()
         token = normalize_weiyun_mcp_token(raw)
@@ -170,6 +159,9 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
             preview["knowledge_base_id"] = str(creds["knowledge_base_id"])
     elif entry.auth_kind == "api_key":
         if str(creds.get("api_key") or "").strip():
+            preview["api_key_configured"] = True
+        # Legacy tencent-news instances stored the key as ``cookie``.
+        if kind == "tencent-news" and str(creds.get("cookie") or "").strip():
             preview["api_key_configured"] = True
         if kind == "tencent-ima" and creds.get("client_id"):
             preview["client_id"] = str(creds["client_id"])
@@ -543,7 +535,13 @@ async def oauth_start(
             settings_repo=server.services.settings_repo,
         )
     except ValueError as exc:
-        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, str(exc)) from exc
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("oauth start failed for %s", kind)
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            f"无法启动 OAuth: {exc}",
+        ) from exc
 
     server.services.repos.connector_repo.create_oauth_state(
         state_id=state_id,

@@ -44,6 +44,8 @@ export const HIDE_INLINE_FIELD_GUIDE_KINDS = new Set([
   "tencent-news",
   "wechat-reading",
   "youdao-note",
+  "meituan-travel",
+  "yuandian",
 ]);
 
 export function mailProviderById(id: string | undefined) {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -16,11 +17,10 @@ from octop.infra.connectors.builder import (
 )
 from octop.infra.connectors.catalog import ConnectorCatalogEntry, get_catalog_entry
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
+from octop.infra.connectors.gateway.registry import probe_gateway_credentials
 from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request
 
 logger = logging.getLogger(__name__)
-
-_REMOTE_STATIC_TOOL_KINDS = frozenset({"baidu-netdisk", "tencent-weiyun"})
 
 
 def normalize_tools(raw: list[Any] | None) -> list[dict[str, str]]:
@@ -62,11 +62,7 @@ def static_probe_tools(kind: str) -> list[dict[str, str]]:
         entry = get_catalog_entry(kind)
         if entry and entry.allowed_tools:
             return [{"name": name, "description": ""} for name in entry.allowed_tools]
-    if kind not in _REMOTE_STATIC_TOOL_KINDS:
-        return []
-    from octop.infra.connectors.baidu_token import baidu_probe_tools
-
-    return baidu_probe_tools()
+    return []
 
 
 async def prepare_probe_credentials(
@@ -96,16 +92,19 @@ async def prepare_probe_credentials(
     return validate_create_credentials(kind, credentials)
 
 
-async def probe_youdao_note(api_key: str) -> dict[str, Any]:
-    """Probe Youdao Note via MCP SSE (streamable HTTP POST is not supported)."""
+async def _probe_mcp_sse(
+    url: str,
+    headers: dict[str, str] | None = None,
+    *,
+    kind: str,
+) -> dict[str, Any]:
+    """Probe a remote MCP server over SSE transport."""
     from mcp import ClientSession
     from mcp.client.sse import sse_client
 
-    url = "https://open.mail.163.com/api/ynote/mcp/sse"
-    headers = {"x-api-key": api_key}
     try:
         async with (
-            sse_client(url, headers, timeout=20, sse_read_timeout=20) as (read, write),
+            sse_client(url, headers or {}, timeout=20, sse_read_timeout=20) as (read, write),
             ClientSession(read, write) as session,
         ):
             await session.initialize()
@@ -115,16 +114,39 @@ async def probe_youdao_note(api_key: str) -> dict[str, Any]:
             )
             return {"ok": True, "tool_count": len(tools), "tools": tools}
     except httpx.HTTPStatusError as exc:
-        return _probe_youdao_note_http_error(exc)
+        if kind == "youdao-note":
+            return _probe_youdao_note_http_error(exc)
+        err = http_error_message(exc.response)
+        return {
+            "ok": False,
+            "error": err or str(exc),
+            "status_code": exc.response.status_code,
+        }
     except BaseExceptionGroup as exc:
         for sub in exc.exceptions:
             if isinstance(sub, httpx.HTTPStatusError):
-                return _probe_youdao_note_http_error(sub)
-        logger.exception("youdao-note SSE probe failed")
+                if kind == "youdao-note":
+                    return _probe_youdao_note_http_error(sub)
+                err = http_error_message(sub.response)
+                return {
+                    "ok": False,
+                    "error": err or str(sub),
+                    "status_code": sub.response.status_code,
+                }
+        logger.exception("%s SSE probe failed", kind)
         return {"ok": False, "error": str(exc)}
     except Exception as exc:
-        logger.exception("youdao-note SSE probe failed")
+        logger.exception("%s SSE probe failed", kind)
         return {"ok": False, "error": str(exc)}
+
+
+async def probe_youdao_note(api_key: str) -> dict[str, Any]:
+    """Probe Youdao Note via MCP SSE (streamable HTTP POST is not supported)."""
+    return await _probe_mcp_sse(
+        "https://open.mail.163.com/api/ynote/mcp/sse",
+        {"x-api-key": api_key},
+        kind="youdao-note",
+    )
 
 
 def _probe_youdao_note_http_error(exc: httpx.HTTPStatusError) -> dict[str, Any]:
@@ -148,6 +170,62 @@ def _probe_youdao_note_http_error(exc: httpx.HTTPStatusError) -> dict[str, Any]:
     }
 
 
+_STREAMABLE_HTTP_PROBE_KINDS = frozenset({"notion"})
+
+# Connectors whose tool list is known statically (from the catalog
+# ``allowed_tools``); a failing ``tools/list`` during probe is tolerated for
+# these because :func:`static_probe_tools` supplies the fallback list.
+_REMOTE_STATIC_TOOL_KINDS = frozenset({"tencent-weiyun"})
+
+
+async def probe_streamable_http_mcp(
+    url: str,
+    headers: dict[str, str],
+    *,
+    kind: str,
+) -> dict[str, Any]:
+    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE)."""
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    try:
+        async with (
+            streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
+                read,
+                write,
+                _get_session_id,
+            ),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            listed = await session.list_tools()
+            tools = normalize_tools(
+                [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+            )
+            return {"ok": True, "tool_count": len(tools), "tools": tools}
+    except httpx.HTTPStatusError as exc:
+        err = http_error_message(exc.response)
+        return {
+            "ok": False,
+            "error": err or str(exc),
+            "status_code": exc.response.status_code,
+        }
+    except BaseExceptionGroup as exc:
+        for sub in exc.exceptions:
+            if isinstance(sub, httpx.HTTPStatusError):
+                err = http_error_message(sub.response)
+                return {
+                    "ok": False,
+                    "error": err or str(sub),
+                    "status_code": sub.response.status_code,
+                }
+        logger.exception("streamable HTTP MCP probe failed for %s", kind)
+        return {"ok": False, "error": str(exc)}
+    except Exception as exc:
+        logger.exception("streamable HTTP MCP probe failed for %s", kind)
+        return {"ok": False, "error": str(exc)}
+
+
 async def probe_connector(
     entry: ConnectorCatalogEntry,
     cred_payload: dict[str, Any],
@@ -156,6 +234,11 @@ async def probe_connector(
     config: OctopConfig,
 ) -> dict[str, Any]:
     if entry.mcp_mode == "gateway":
+        try:
+            await asyncio.to_thread(probe_gateway_credentials, entry.kind, cred_payload)
+        except Exception as exc:
+            logger.info("gateway credential probe failed for %s: %s", entry.kind, exc)
+            return {"ok": False, "error": str(exc)}
         resp = handle_mcp_request(
             kind=entry.kind,
             creds=cred_payload,
@@ -167,16 +250,6 @@ async def probe_connector(
         tools = normalize_tools(
             (resp.get("result") or {}).get("tools") if isinstance(resp, dict) else None
         )
-        return {"ok": True, "tool_count": len(tools), "tools": tools}
-
-    if entry.kind == "baidu-netdisk":
-        from octop.infra.connectors.baidu_token import validate_baidu_access_token
-
-        token = str(cred_payload.get("access_token") or cred_payload.get("token") or "")
-        ok, err = await validate_baidu_access_token(token)
-        if not ok:
-            return {"ok": False, "error": err or "百度 Token 无效"}
-        tools = static_probe_tools(entry.kind)
         return {"ok": True, "tool_count": len(tools), "tools": tools}
 
     if entry.kind == "youdao-note":
@@ -198,6 +271,10 @@ async def probe_connector(
     )
     headers = dict(spec.get("headers") or {})
     url = str(spec["url"])
+
+    if entry.kind in _STREAMABLE_HTTP_PROBE_KINDS:
+        return await probe_streamable_http_mcp(url, headers, kind=entry.kind)
+
     try:
         r = await safe_request(
             "POST",
