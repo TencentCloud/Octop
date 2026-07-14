@@ -76,31 +76,19 @@ async def _assert_expert_files_on_disk(
         assert len(actual.strip()) > 0, f"{expert_id}: empty file {rel_path}"
 
 
-async def _read_backend_text(backend: object, vpath: str) -> str:
-    result = await backend.aread(vpath)  # type: ignore[attr-defined]
-    if getattr(result, "error", None):
-        msg = f"backend read failed for {vpath}: {result.error}"
-        raise AssertionError(msg)
-    file_data = getattr(result, "file_data", None)
-    if isinstance(file_data, dict) and "content" in file_data:
-        return str(file_data["content"])
-    content = getattr(result, "content", None)
-    if isinstance(content, str):
-        return content
-    return str(result)
-
-
-async def _assert_expert_files_via_backend(
+async def _assert_expert_files_via_workspace(
     *,
     agent: object,
     expert_id: str,
     contents: dict[str, str],
 ) -> None:
-    backend = agent.backend  # type: ignore[attr-defined]
+    """Read via ``HarnessAgent.workspace`` (not ``backend`` with host ``/`` paths)."""
+    workspace = agent.workspace  # type: ignore[attr-defined]
     for rel_path, expected in contents.items():
-        vpath = rel_path if rel_path.startswith("/") else f"/{rel_path}"
-        content = await _read_backend_text(backend, vpath)
-        assert content == expected, f"{expert_id}: backend mismatch for {vpath}"
+        rel = rel_path.lstrip("/")
+        content = await workspace.aread_text(rel)
+        assert content is not None, f"{expert_id}: workspace missing {rel}"
+        assert content == expected, f"{expert_id}: workspace mismatch for {rel}"
 
 
 @pytest.mark.asyncio
@@ -140,7 +128,7 @@ async def test_skill_experts_copy_md_and_skill_files(
             )
 
             agent = live_agent_manager.get_agent(row.agent_id)
-            await _assert_expert_files_via_backend(
+            await _assert_expert_files_via_workspace(
                 agent=agent,
                 expert_id=expert_id,
                 contents=contents,

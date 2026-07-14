@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
-import time
+import uuid
 from typing import Any
 
 import httpx
 
 OPENAPI_SEARCH_URL = "https://openapi.inews.qq.com/api/v1/agent/search"
+# Match tencent-news-cli ≥1.0.14 (Caller-Skill + Skill-Request-Id are required by some keys).
+_CALLER_SKILL = "octop_tencent-news_0.1"
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -56,11 +58,15 @@ def search_news(creds: dict[str, Any], args: dict[str, Any]) -> str:
     if not query:
         raise ValueError("query is required")
     limit = max(1, min(limit, 50))
+    request_id = str(uuid.uuid4())
     headers = {
         "Authorization": f"Bearer {_api_key(creds)}",
         "Content-Type": "application/json",
         "Accept": "application/json",
         "User-Agent": "octop-connector/0.1",
+        # Required by openapi.inews.qq.com for newer API-key cohorts (error 4010).
+        "Skill-Request-Id": request_id,
+        "Caller-Skill": _CALLER_SKILL,
     }
     # Official tencent-news-cli body shape (not a flat query string).
     body = {
@@ -68,7 +74,7 @@ def search_news(creds: dict[str, Any], args: dict[str, Any]) -> str:
         "page_size": limit,
         "is_show_content": 0,
         "query": {
-            "query_id": str(int(time.time() * 1000)),
+            "query_id": request_id,
             "search": query,
         },
         "article_types": [0],

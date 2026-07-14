@@ -408,6 +408,8 @@ def test_gateway_search_news_passes_query(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_tencent_news_search_body_matches_official_cli(monkeypatch: pytest.MonkeyPatch):
+    import uuid
+
     import httpx
 
     from octop.infra.connectors.gateway.adapters import tencent_news
@@ -447,8 +449,13 @@ def test_tencent_news_search_body_matches_official_cli(monkeypatch: pytest.Monke
     assert body["article_types"] == [0]
     assert isinstance(body["query"], dict)
     assert body["query"]["search"] == "热点"
-    assert str(body["query"]["query_id"]).isdigit()
-    assert captured["headers"]["Authorization"] == "Bearer news-key"
+    assert uuid.UUID(str(body["query"]["query_id"]))
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer news-key"
+    assert headers["Caller-Skill"] == tencent_news._CALLER_SKILL
+    assert uuid.UUID(str(headers["Skill-Request-Id"]))
+    assert headers["Skill-Request-Id"] == body["query"]["query_id"]
 
 
 def test_tencent_news_probe_rejects_bad_api_key(monkeypatch: pytest.MonkeyPatch):
