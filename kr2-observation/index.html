@@ -1,0 +1,246 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subagent 上下文命中观测 · KR2</title>
+</head><body><style>
+  :root {
+    color-scheme: light;
+    --bg: #fbfbfa;
+    --surface: #ffffff;
+    --line: #e4e3df;
+    --ink: #17181a;
+    --ink-2: #55565c;
+    --ink-3: #8a8b91;
+    --parent: #2a78d6;      /* series 1 · 父 agent */
+    --sub: #008300;         /* series 2 · 子 agent */
+    --parent-soft: #d5e5f8;
+    --sub-soft: #d3ecd3;
+    --shared: #b9b8b2;      /* 共同样板（非类别色） */
+    --mark-radius: 4px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --bg: #131416;
+      --surface: #1b1c1f;
+      --line: #33343a;
+      --ink: #f2f2f0;
+      --ink-2: #b6b7bd;
+      --ink-3: #7f8087;
+      --parent: #3987e5;
+      --sub: #3fae3f;
+      --parent-soft: #1e3a5c;
+      --sub-soft: #1e3d1e;
+      --shared: #5c5d63;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #131416;
+    --surface: #1b1c1f;
+    --line: #33343a;
+    --ink: #f2f2f0;
+    --ink-2: #b6b7bd;
+    --ink-3: #7f8087;
+    --parent: #3987e5;
+    --sub: #3fae3f;
+    --parent-soft: #1e3a5c;
+    --sub-soft: #1e3d1e;
+    --shared: #5c5d63;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #fbfbfa;
+    --surface: #ffffff;
+    --line: #e4e3df;
+    --ink: #17181a;
+    --ink-2: #55565c;
+    --ink-3: #8a8b91;
+    --parent: #2a78d6;
+    --sub: #008300;
+    --parent-soft: #d5e5f8;
+    --sub-soft: #d3ecd3;
+    --shared: #b9b8b2;
+  }
+
+  body { background: var(--bg); color: var(--ink);
+    font: 15px/1.65 -apple-system, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    margin: 0; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 72px; }
+  .mono, td.num, .tick, .bar-label { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; font-family: ui-monospace, monospace; }
+  h1 { font-size: 27px; line-height: 1.3; margin: 0 0 6px; text-wrap: balance; font-weight: 700; }
+  .sub-h { color: var(--ink-2); margin: 0 0 36px; max-width: 62ch; }
+  h2 { font-size: 18px; margin: 52px 0 6px; font-weight: 650; }
+  h2 + p.note { margin: 0 0 20px; color: var(--ink-2); max-width: 68ch; }
+  a { color: var(--parent); }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 28px 0 6px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+  .tile .v { font-size: 26px; font-weight: 700; font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .tile .k { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.45; }
+
+  figure { margin: 20px 0 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px 20px 14px; overflow-x: auto; }
+  figcaption { font-size: 12.5px; color: var(--ink-3); margin-top: 10px; }
+  svg { display: block; max-width: 100%; height: auto; }
+  svg text { fill: var(--ink-2); font-size: 11.5px; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  svg .lbl-strong { fill: var(--ink); font-weight: 600; }
+  svg .grid { stroke: var(--line); stroke-width: 1; }
+  svg .axis-t { fill: var(--ink-3); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 12.5px; color: var(--ink-2); margin: 14px 2px 0; }
+  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+  table { border-collapse: collapse; width: 100%; margin-top: 20px; font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 14px; border-top: 1px solid var(--line); }
+  thead th { border-top: none; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); background: color-mix(in oklab, var(--surface) 96%, var(--ink) 4%); }
+  td.num { text-align: right; }
+  .chip { display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+  .chip.p { background: var(--parent-soft); color: var(--parent); }
+  .chip.s { background: var(--sub-soft); color: var(--sub); }
+
+  .finding { border-left: 3px solid var(--parent); background: var(--surface); border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .finding b.t { display: block; margin-bottom: 3px; }
+  .meta { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--line); margin-top: 56px; padding-top: 18px; line-height: 2; }
+  .meta code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Octop · KR2 · Langfuse Trace 观测</p>
+  <h1>Subagent 上下文命中观测：一次真实的 task 委派</h1>
+  <p class="sub-h">隔离仿真复刻线上 Agent <span class="mono">0E3ZZN</span>（同 workspace 内容、同 provider <span class="mono">glm-5.2</span>），执行一次 <span class="mono">task(subagent_type="academic-anthropologist")</span>，全链路经本地 Langfuse 追踪。核心问题：<b>子 agent 的上下文命中了父 agent system prompt 的多少？</b></p>
+
+  <div class="tiles">
+    <div class="tile"><div class="v">0 字符</div><div class="k">父/子 system prompt 公共前缀 —— KV 缓存意义上的命中为零</div></div>
+    <div class="tile"><div class="v">10.0%</div><div class="k">父 system prompt 内容在子侧复现的比例，且全部是框架样板，非人格/记忆</div></div>
+    <div class="tile"><div class="v">25.5 s</div><div class="k">单次委派端到端耗时，其中子 agent 环节占 13.9 s（54%）</div></div>
+    <div class="tile"><div class="v">34,529</div><div class="k">父 agent 两轮输入 token 合计，缓存命中 0 —— 每轮全量 prefill</div></div>
+  </div>
+
+  <h2>① Trace 时间线 — 委派的三段式结构</h2>
+  <p class="note">父 agent 决策发起 task → 子 agent 独立完成一个完整 episode → 父 agent 恢复并转发结果。三段串行，父 agent 在子 episode 期间完全阻塞。</p>
+  <figure>
+    <svg viewBox="0 0 840 168" role="img" aria-label="三次 LLM 调用的时间线，总长 25.5 秒">
+      <!-- x: 0..25.545s → 130..810 px  (26.62 px/s) -->
+      <line class="grid" x1="130" y1="16" x2="130" y2="128"/>
+      <line class="grid" x1="263" y1="16" x2="263" y2="128"/>
+      <line class="grid" x1="396" y1="16" x2="396" y2="128"/>
+      <line class="grid" x1="529" y1="16" x2="529" y2="128"/>
+      <line class="grid" x1="662" y1="16" x2="662" y2="128"/>
+      <line class="grid" x1="796" y1="16" x2="796" y2="128"/>
+      <text class="axis-t" x="130" y="146" text-anchor="middle">0s</text>
+      <text class="axis-t" x="263" y="146" text-anchor="middle">5s</text>
+      <text class="axis-t" x="396" y="146" text-anchor="middle">10s</text>
+      <text class="axis-t" x="529" y="146" text-anchor="middle">15s</text>
+      <text class="axis-t" x="662" y="146" text-anchor="middle">20s</text>
+      <text class="axis-t" x="796" y="146" text-anchor="middle">25s</text>
+
+      <text x="122" y="36" text-anchor="end">父 · 第1轮</text>
+      <rect x="130" y="24" width="173" height="18" rx="4" fill="var(--parent)">
+        <title>父 agent 第1轮：决策并发起 task 调用 — 6.49s，输入 17,125 tok（缓存 0）</title>
+      </rect>
+      <text class="bar-label" x="309" y="37">6.49s</text>
+
+      <text x="122" y="78" text-anchor="end">子 · episode</text>
+      <rect x="303" y="66" width="370" height="18" rx="4" fill="var(--sub)">
+        <title>子 agent academic-anthropologist 完整 episode — 13.88s，输入 5,459 tok（其中缓存命中 2,624）</title>
+      </rect>
+      <text class="bar-label" x="679" y="79">13.88s（54%）</text>
+
+      <text x="122" y="120" text-anchor="end">父 · 第2轮</text>
+      <rect x="673" y="108" width="137" height="18" rx="4" fill="var(--parent)">
+        <title>父 agent 第2轮：接收子结果并回复用户 — 5.14s，输入 17,404 tok（缓存 0）</title>
+      </rect>
+      <text class="bar-label" x="700" y="102">5.14s</text>
+    </svg>
+    <figcaption>trace <span class="mono">dda8dc…c31e58</span> 的三次 GENERATION，按真实起止时间绘制（总长 25.5s）。</figcaption>
+  </figure>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--parent)"></span>父 agent（glm-5.2）</span>
+    <span><span class="sw" style="background:var(--sub)"></span>子 agent academic-anthropologist（glm-5.2）</span>
+  </div>
+
+  <h2>② 输入 token 的构成 — 缓存几乎没帮上忙</h2>
+  <p class="note">父 agent 每轮都携带全部 28,198 字符的 system prompt + 工具 schema + 历史，两轮共 34.5k token 输入，<b>缓存读取为 0</b>；子 agent 反而拿到 2,624 个缓存 token（占其输入的 48%）。父/子请求虽然 system prompt 前缀互不重叠，但<b>前 8 个工具 schema（约 14.5k 字符 ≈ 4~5k token）逐字节相同</b>——子的命中来自这段共享前导区中已提交的缓存块（见结论 2 的重放实验）。</p>
+  <figure>
+    <svg viewBox="0 0 840 158" role="img" aria-label="三次调用的输入 token 构成，区分新计算与缓存命中">
+      <!-- x: 0..18000 tok → 130..796 px (0.037 px/tok) -->
+      <line class="grid" x1="130" y1="12" x2="130" y2="118"/>
+      <line class="grid" x1="315" y1="12" x2="315" y2="118"/>
+      <line class="grid" x1="500" y1="12" x2="500" y2="118"/>
+      <line class="grid" x1="685" y1="12" x2="685" y2="118"/>
+      <text class="axis-t" x="130" y="136" text-anchor="middle">0</text>
+      <text class="axis-t" x="315" y="136" text-anchor="middle">5k</text>
+      <text class="axis-t" x="500" y="136" text-anchor="middle">10k</text>
+      <text class="axis-t" x="685" y="136" text-anchor="middle">15k</text>
+
+      <text x="122" y="31" text-anchor="end">父 · 第1轮</text>
+      <rect x="130" y="18" width="634" height="17" rx="4" fill="var(--parent)">
+        <title>父 第1轮输入 17,125 tok — 全部新 prefill，缓存 0</title>
+      </rect>
+      <text class="bar-label" x="770" y="31">17,125 · 缓存 0</text>
+
+      <text x="122" y="70" text-anchor="end">子 · episode</text>
+      <rect x="130" y="57" width="105" height="17" rx="4" fill="var(--sub)">
+        <title>子 agent 新 prefill 2,835 tok</title>
+      </rect>
+      <rect x="237" y="57" width="95" height="17" rx="4" fill="var(--sub-soft)" stroke="var(--sub)" stroke-dasharray="3 2">
+        <title>子 agent 缓存命中 2,624 tok（48%）— GLM 块级缓存</title>
+      </rect>
+      <text class="bar-label" x="340" y="70">5,459 · 缓存 2,624（48%）</text>
+
+      <text x="122" y="109" text-anchor="end">父 · 第2轮</text>
+      <rect x="130" y="96" width="644" height="17" rx="4" fill="var(--parent)">
+        <title>父 第2轮输入 17,404 tok — 与第1轮前缀几乎相同，缓存仍为 0</title>
+      </rect>
+      <text class="bar-label" x="780" y="109">17,404 · 缓存 0</text>
+    </svg>
+    <figcaption>实线 = 新计算的 prefill；虚线框 = 服务端缓存命中（input_cache_read）。同一色相区分同一角色。</figcaption>
+  </figure>
+
+  <h2>③ System prompt 重叠图 — 内容层面的"命中"</h2>
+  <p class="note">把父（28,198 字符）与子（5,441 字符）的 system prompt 逐字符对齐：公共前缀 0；仅两段 ≥80 字符的公共块（合计 2,821 字符），都是 deepagents 框架样板（<span class="mono">write_todos</span> 工具说明、"Following Conventions" 行为准则）。父的人格、记忆文件（AGENTS.md / MEMORY.md）、用户指令——在子侧一个字都没有。</p>
+  <figure>
+    <svg viewBox="0 0 840 150" role="img" aria-label="父与子 system prompt 的公共内容块位置图">
+      <!-- parent strip: 28198ch → 660px  (0.0234 px/ch), x=150 -->
+      <text x="142" y="34" text-anchor="end">父 28,198 字符</text>
+      <rect x="150" y="22" width="660" height="20" rx="4" fill="var(--parent)"><title>父 system prompt：deepagents 基础指令 + 记忆文件 + 工具说明</title></rect>
+      <rect x="202" y="22" width="33" height="20" fill="var(--shared)"><title>公共块 A：write_todos 工具样板（1,377 字符，位于父 2,258–3,635）</title></rect>
+      <rect x="480" y="22" width="34" height="20" fill="var(--shared)"><title>公共块 B：Following Conventions 样板（1,444 字符，位于父 14,118–15,562）</title></rect>
+
+      <!-- sub strip: 5441ch → 127px, x=150 -->
+      <text x="142" y="88" text-anchor="end">子 5,441 字符</text>
+      <rect x="150" y="76" width="127" height="20" rx="4" fill="var(--sub)"><title>子 system prompt：markdown 正文（人类学家人格）+ 框架样板</title></rect>
+      <rect x="211" y="76" width="32" height="20" fill="var(--shared)"><title>公共块 A 在子侧的位置（2,620–3,997）</title></rect>
+      <rect x="243" y="76" width="34" height="20" fill="var(--shared)"><title>公共块 B 在子侧的位置（3,997–5,441）</title></rect>
+
+      <!-- connectors -->
+      <path d="M 218 42 L 227 76" stroke="var(--shared)" stroke-width="1.5" fill="none"/>
+      <path d="M 497 42 L 260 76" stroke="var(--shared)" stroke-width="1.5" fill="none"/>
+
+      <text x="150" y="122">灰色 = 公共框架样板 2,821 字符（父占比 10.0%，子占比 51.9%）；彩色 = 各自独有内容，互不出现。</text>
+    </svg>
+    <figcaption>按字符位置等比绘制；两条彩色区域之间不存在任何 ≥80 字符的其他公共块，公共前缀为 0。</figcaption>
+  </figure>
+
+  <h2>④ 观测明细</h2>
+  <table>
+    <thead><tr><th>调用</th><th>模型</th><th class="num">时延</th><th class="num">输入 tok</th><th class="num">缓存命中</th><th class="num">输出 tok</th><th class="num">system 字符</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip p">父 · 第1轮</span> 决策发起 task</td><td class="mono">glm-5.2</td><td class="num">6.49s</td><td class="num">17,125</td><td class="num">0</td><td class="num">52</td><td class="num">28,198</td></tr>
+      <tr><td><span class="chip s">子 · episode</span> academic-anthropologist</td><td class="mono">glm-5.2</td><td class="num">13.88s</td><td class="num">5,459</td><td class="num">2,624</td><td class="num">112</td><td class="num">5,441</td></tr>
+      <tr><td><span class="chip p">父 · 第2轮</span> 转发结果</td><td class="mono">glm-5.2</td><td class="num">5.14s</td><td class="num">17,404</td><td class="num">0</td><td class="num">111</td><td class="num">28,198</td></tr>
+    </tbody>
+  </table>
+
+  <h2>⑤ 结论</h2>
+  <div class="finding"><b class="t">1 · 子 agent 对父 system prompt 的命中：结构上为零。</b>公共前缀 0 字符，KV/前缀缓存无法跨父子复用。内容层面仅 10% 重现，且全部是 deepagents 框架自带样板——父的人格设定、workspace 记忆（AGENTS.md/MEMORY.md）、对话历史，子 agent 完全看不到。这是隔离设计的预期行为，但代价是每次委派都是一次冷启动。</div>
+  <div class="finding"><b class="t">2 · 缓存不是"没开"，而是"命中不稳定"——重放实验（cache_probe.py）实锤。</b>把父第 1 轮请求原样重放 3 次：cached_tokens = 0 → 2,624 → <b>17,024</b>（异步分块提交，64-token 块粒度）；缓存焐热后重放父第 2 轮（前缀扩展）：命中 <b>17,088 / 17,291</b>，证明服务端<b>支持前缀匹配</b>，且暖缓存把时延从 6.5s 降到 2.9s（−55%）。客户端序列化已验证逐字节稳定（两轮工具顺序与内容完全一致），因此原始运行中父第 2 轮的 0 命中是服务端问题：缓存提交延迟 + 网关多副本无会话亲和，命中与否近乎抽签。KR2 行动项：与 tokenhub/GLM 侧确认路由亲和与缓存提交语义；KR1 的 PolicyRouter 应把"缓存亲和度"纳入路由决策并把 cached_tokens 命中率记为 provider 健康指标。</div>
+  <div class="finding"><b class="t">3 · 委派的时间结构：子 episode 占 54%，父被完全阻塞。</b>25.5s 里有 13.9s 在等子 agent 串行跑完（含其内部推理与工具轮次）。KR2 规划中的有界并行调度 + 子 agent 进度流式透出，直接改善的就是这一段。</div>
+
+  <p class="meta">
+    <b>复现方式</b>：隔离仿真（不触碰线上实例）— workspace 复制自 <code>~/.octop/agents/0E3ZZN</code>（剔除 memory/checkpoint），HarnessAgent 配置与线上一致（bootstrap 已完成、system_prompt 为空、memory 默认扫描）。<br>
+    <b>Langfuse</b>：本地 <code>http://localhost:3000</code>（登录 <code>admin@octop.local</code> / <code>octop-langfuse-2026</code>），trace ID <code>dda8dc3eb22682c4c136a11e97c31e58</code>，session <code>sim-kr2-trace-1</code>。<br>
+    <b>脚本</b>：<code>sim_task_langfuse.py</code>（仿真）、<code>analyze_trace.py</code>（重叠分析），位于会话 scratchpad，可改造为 KR2 基线工具。观测时间：2026-07-15。
+  </p>
+</div>
+</body></html>
