@@ -759,7 +759,7 @@ async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
             locale=locale,
             missing_error_key="error_script_missing",
             log_message_key="install_log_build_deps",
-            script_args=("--build-deps-only",),
+            script_args=("--build-deps-only", "--python", sys.executable),
         ):
             yield chunk
             done = _sse_done(chunk)

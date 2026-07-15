@@ -14,6 +14,7 @@ import {
 } from "antd";
 import {
   CheckCircle2,
+  Copy,
   FolderOpen,
   LayoutGrid,
   Maximize2,
@@ -45,6 +46,7 @@ import {
 import { useDesktopCanvasInteraction } from "../../../hooks/useDesktopCanvasInteraction";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useLandscapeFullscreen } from "../../../hooks/useLandscapeFullscreen";
+import { copyText } from "../../../utils/copyText";
 import { showApiError } from "../../../utils/showApiToast";
 import { wsStreamErrorMessage } from "../../../utils/apiError";
 import {
@@ -685,6 +687,16 @@ export default function RemoteDesktopPage() {
     );
   }, [t]);
 
+  const handleCopyInstallLog = useCallback(async () => {
+    if (installLogs.length === 0) return;
+    const ok = await copyText(installLogs.join("\n"));
+    if (ok) {
+      message.success(t("common.copied", "Copied to clipboard"));
+    } else {
+      message.error(t("common.copyFailed", "Failed to copy to clipboard"));
+    }
+  }, [installLogs, t]);
+
   const renderInstallLog = (maxHeight?: number, extraClass?: string) => (
     <div
       ref={installLogRef}
@@ -774,18 +786,43 @@ export default function RemoteDesktopPage() {
             style={{ padding: "8px 0" }}
           />
           {installLogs.length > 0 && (
-            <details open>
-              <summary
+            <div>
+              <div
                 style={{
-                  cursor: "pointer",
-                  fontSize: 12,
-                  color: "var(--fn-text-tertiary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
                 }}
               >
-                {t("remoteDesktop.installLog", "安装日志")}
-              </summary>
+                <span
+                  style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}
+                >
+                  {t("remoteDesktop.installLog", "安装日志")}
+                </span>
+                <Button
+                  size="small"
+                  icon={<Copy size={14} />}
+                  onClick={() => void handleCopyInstallLog()}
+                >
+                  {t("common.copy", "Copy")}
+                </Button>
+              </div>
               {renderInstallLog(160, styles.installLogCompact)}
-            </details>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  color: "var(--fn-text-secondary)",
+                }}
+              >
+                {t(
+                  "common.askOctopHint",
+                  "If the install keeps failing, copy the log and ask Octop to help you troubleshoot.",
+                )}
+              </div>
+            </div>
           )}
         </Space>
       );

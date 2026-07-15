@@ -35,5 +35,18 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
 };
 
 export function getConnectorLogo(kind: string): string | undefined {
-  return CONNECTOR_LOGOS[kind];
+  if (!kind) return undefined;
+  const direct = CONNECTOR_LOGOS[kind];
+  if (direct) return direct;
+  // Tolerate minor kind drift between a connector instance and the catalog
+  // (e.g. a dev-era "baidu_map" persisted on an instance vs the finalized
+  // "baidu-map" used as the logo key). Without this, the chat connector
+  // picker (which renders instance.kind) falls back to a placeholder while
+  // the catalog grid (entry.kind) still shows the logo.
+  const normalized = kind.toLowerCase().replace(/[_\s]+/g, "-");
+  if (normalized !== kind) {
+    const fallback = CONNECTOR_LOGOS[normalized];
+    if (fallback) return fallback;
+  }
+  return undefined;
 }
