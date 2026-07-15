@@ -579,6 +579,7 @@
     "read_file": "读取文件",
     "write_file": "写入文件",
     "edit_file": "编辑文件",
+    "execute": "执行",
     "current_time": "当前时间",
     "task": "子智能体任务",
     "ls": "列出目录",
