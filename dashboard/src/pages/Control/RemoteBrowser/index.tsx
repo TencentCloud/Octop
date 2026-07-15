@@ -27,6 +27,7 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
+  Copy,
   Globe,
   Maximize2,
   Play,
@@ -66,6 +67,7 @@ import { useBrowserCanvasInteraction } from "../../../hooks/useBrowserCanvasInte
 import { useBrowserStream } from "../../../hooks/useBrowserStream";
 import { useRemoteBrowserBookmarks } from "../../../hooks/useRemoteBrowserBookmarks";
 import type { RemoteBrowserBookmark } from "../../../api/modules/preferences";
+import { copyText } from "../../../utils/copyText";
 import { showApiError } from "../../../utils/showApiToast";
 import {
   useViewportMode,
@@ -580,6 +582,16 @@ export default function RemoteBrowserPage() {
       ),
     );
   }, [t]);
+
+  const handleCopyInstallLog = useCallback(async () => {
+    if (installLogs.length === 0) return;
+    const ok = await copyText(installLogs.join("\n"));
+    if (ok) {
+      antMessage.success(t("common.copied", "Copied to clipboard"));
+    } else {
+      antMessage.error(t("common.copyFailed", "Failed to copy to clipboard"));
+    }
+  }, [installLogs, t]);
 
   const handleUninstall = useCallback(() => {
     if (!envStatus?.playwright_chromium || uninstalling) return;
@@ -1147,19 +1159,43 @@ export default function RemoteBrowserPage() {
             style={{ padding: "8px 0" }}
           />
           {installLogs.length > 0 && (
-            <details open>
-              <summary
+            <div>
+              <div
                 style={{
-                  cursor: "pointer",
-                  fontSize: 12,
-                  color: "var(--fn-text-tertiary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginBottom: 6,
                 }}
               >
-                {t("remoteBrowser.installLog", "安装日志")}
-              </summary>
+                <span
+                  style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}
+                >
+                  {t("remoteBrowser.installLog", "安装日志")}
+                </span>
+                <Button
+                  size="small"
+                  icon={<Copy size={14} />}
+                  onClick={() => void handleCopyInstallLog()}
+                >
+                  {t("common.copy", "Copy")}
+                </Button>
+              </div>
               {renderInstallLog(180)}
-            </details>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  color: "var(--fn-text-secondary)",
+                }}
+              >
+                {t(
+                  "common.askOctopHint",
+                  "If the install keeps failing, copy the log and ask Octop to help you troubleshoot.",
+                )}
+              </div>
+            </div>
           )}
         </div>
       );

@@ -14,6 +14,9 @@ if [ -z "${BASH_VERSION:-}" ]; then exec /bin/bash "$0" "$@"; fi
 set -euo pipefail
 
 SCRIPT_VERSION="v1.0"
+# Python interpreter the desktop deps are installed into (the Octop venv), used to
+# pick matching pythonX.Y-dev headers. Falls back to system `python3`.
+TARGET_PYTHON="python3"
 INSTALL_ROOT="/opt/octop-desktop"
 CONF_DIR="/etc/octop-desktop"
 DISPLAY_NUM=":99"
@@ -101,21 +104,29 @@ detect_xvnc_localhost_args() {
     fi
 }
 
+# Minor version (X.Y) of the Python interpreter desktop deps build against.
+# Must match the venv Python (e.g. 3.12), not the system default `python3`,
+# otherwise the wrong -dev headers are installed and evdev fails with
+# "Python.h: No such file or directory".
+detect_python_minor() {
+    local py="${1:-python3}"
+    "$py" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true
+}
+
 install_python_build_deps() {
     local family="$1"
+    local target_py="${TARGET_PYTHON:-python3}"
     if [ "$family" = debian ]; then
         DEBIAN_FRONTEND=noninteractive apt-get update -qq || fail "apt-get update failed"
         local py_dev="python3-dev"
-        if command -v python3 >/dev/null 2>&1; then
-            local py_minor
-            py_minor=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)
-            if [ -n "$py_minor" ] && apt-cache show "python${py_minor}-dev" >/dev/null 2>&1; then
-                py_dev="python${py_minor}-dev"
-            fi
+        local py_minor
+        py_minor=$(detect_python_minor "$target_py")
+        if [ -n "$py_minor" ] && apt-cache show "python${py_minor}-dev" >/dev/null 2>&1; then
+            py_dev="python${py_minor}-dev"
         fi
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             build-essential "$py_dev" \
-            || fail "apt install failed (python build deps)"
+            || fail "apt install failed (python build deps): $py_dev"
     elif [ "$family" = rhel ]; then
         local pkg=dnf
         command -v dnf >/dev/null 2>&1 || pkg=yum
@@ -699,6 +710,14 @@ write_runtime_scripts() {
     <keybind key="Super_R">
       <action name="Execute"><command>xfce4-appfinder</command></action>
     </keybind>
+    <!-- Close focused window (matches desktop shortcut "关闭窗口"). -->
+    <keybind key="A-F4">
+      <action name="Close"/>
+    </keybind>
+    <!-- Toggle show desktop (matches desktop shortcut "进入桌面"). -->
+    <keybind key="C-A-D">
+      <action name="ToggleShowDesktop"/>
+    </keybind>
   </keyboard>
 </openbox_config>
 EOF
@@ -1062,6 +1081,7 @@ parse_args() {
             --password) VNC_PASSWORD="$2"; shift 2 ;;
             --wallpaper-url) WALLPAPER_URL="$2"; shift 2 ;;
             --build-deps-only) BUILD_DEPS_ONLY=1; shift ;;
+            --python) TARGET_PYTHON="$2"; shift 2 ;;
             *) shift ;;
         esac
     done

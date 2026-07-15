@@ -30,6 +30,7 @@
     "copied": "已复制到剪贴板",
     "copy": "复制",
     "copyFailed": "复制到剪贴板失败",
+    "askOctopHint": "若安装始终失败，可复制日志后询问 Octop，让它帮你排查原因。",
     "close": "关闭",
     "contentPlaceholder": "输入内容...",
     "gotIt": "知道了",

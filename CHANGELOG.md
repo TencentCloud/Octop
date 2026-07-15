@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-07-15
+
+### 新增
+- 远程浏览器/远程桌面安装日志面板新增「复制日志」按钮，并在安装失败时提示可将日志交给 Octop 协助排查
+- 新增前端 `copyText` 工具，在非安全上下文（如 plain-http 管理页）下通过临时 textarea + execCommand 回退，保证剪贴板复制可用
+- 桌面安装脚本新增 `A-F4`（关闭窗口）与 `C-A-D`（显示桌面）openbox 快捷键，对应桌面快捷键
+
+### 修复
+- 修复桌面安装脚本的 Python 构建依赖检测：改用 venv Python（而非系统 `python3`）解析 `pythonX.Y-dev`，避免 evdev 编译时找不到 `Python.h`；`setup.py` 安装构建依赖时显式传入 `--python` 指向当前 venv Python
+- 修复连接器类型漂移导致聊天弹窗 logo 解析失败的问题
+
+### 变更
+- Docker 构建与 `make build-frontend` 的 `NODE_OPTIONS --max-old-space-size` 由 4096 调低为 2048，降低构建内存占用
+- 新增 `docker-publish.yml` 工作流，构建并推送镜像到 Docker Hub
+- 移除 `release.yml` 中多余的 `id-token: write` 权限
+- 删除已与现行 Docker Hub 发版流程脱节的离线部署脚本 `docker_deploy.sh`，并清理 `docker/README.md`、`README_CN.md` 中的相关章节
+- 修正 `docker/README.md` 标题笔误（`ODocker` → `Octop`）
+
 ## [0.9.7] - 2026-07-14
 
 ### 新增

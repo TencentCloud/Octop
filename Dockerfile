@@ -46,7 +46,7 @@ COPY dashboard/ ./
 RUN mkdir -p ../src/octop/dashboard
 
 # 镜像构建跳过完整 tsc；生产打包由 vite/esbuild 完成
-RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=4096" npx vite build
+RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npx vite build
 
 
 # ---------------------------------------------------------------------------

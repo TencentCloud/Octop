@@ -30,6 +30,7 @@
     "copied": "Copied to clipboard",
     "copy": "Copy",
     "copyFailed": "Failed to copy to clipboard",
+    "askOctopHint": "If the install keeps failing, copy the log and ask Octop to help you troubleshoot.",
     "close": "Close",
     "contentPlaceholder": "Enter content...",
     "gotIt": "Got it",
