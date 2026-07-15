@@ -329,14 +329,13 @@ export default function RemoteBrowserPage() {
   const [creating, setCreating] = useState(false);
   const [navUrl, setNavUrl] = useState(DEFAULT_START_URL);
   const urlEditingRef = useRef(false);
+  // Default to closed; only auto-open when the user explicitly opened it last
+  // time (so the choice survives page switches via localStorage).
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(() => {
     try {
-      if (typeof window !== "undefined" && window.innerWidth < 768) {
-        return false;
-      }
-      return localStorage.getItem(BROWSER_AI_PANEL_KEY) !== "false";
+      return localStorage.getItem(BROWSER_AI_PANEL_KEY) === "true";
     } catch {
-      return true;
+      return false;
     }
   });
   const [aiPanelWidth, setAiPanelWidth] = useState(() => {

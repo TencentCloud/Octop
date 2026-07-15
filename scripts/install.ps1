@@ -40,6 +40,9 @@ Options:
   -UvPath <PATH>        Path to a pre-installed uv.exe
   -Help                 Show this help
 
+Note: if a system Chrome/Chromium is already installed (common on GUI systems
+like Windows / macOS), the bundled Playwright Chromium download is skipped.
+
 Environment:
   OCTOP_HOME            Installation directory (default: ~/.octop)
   OCTOP_REPO            Git clone URL for -FromSource without -SourceDir
@@ -238,12 +241,42 @@ if (-not $script:ConsoleAvailable) {
     if ($check -eq "yes") { $script:ConsoleAvailable = $true }
 }
 
-Write-Info "Installing Playwright Chromium browser..."
-& $VenvPython -m playwright install chromium 2>$null
-if ($LASTEXITCODE -eq 0) {
-    Write-Info "Playwright Chromium installed"
+function Find-SystemChrome {
+    # Prefer harness-browser's detector (same path used at runtime)
+    try {
+        $p = & $VenvPython -c "from harness_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" 2>$null
+        if ($p) { return $p }
+    } catch { }
+    # Common commands
+    foreach ($c in @("chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser")) {
+        $cmd = Get-Command $c -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+    }
+    # Well-known GUI install paths
+    foreach ($p in @(
+        (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Google\Chrome\Application\chrome.exe"),
+        (Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe"),
+        (Join-Path $env:ProgramFiles "Chromium\Application\chrome.exe")
+    )) {
+        if (Test-Path $p) { return $p }
+    }
+    return $null
+}
+
+$systemChrome = Find-SystemChrome
+if ($systemChrome) {
+    Write-Info "Found system Chrome/Chromium: $systemChrome"
+    Write-Info "Using system browser; skipping Playwright Chromium download."
+    Write-Info "To use Playwright's bundled Chromium instead, run: $VenvPython -m playwright install chromium"
 } else {
-    Write-Warn "Playwright install failed. Run later: $VenvPython -m playwright install chromium"
+    Write-Info "Installing Playwright Chromium browser..."
+    & $VenvPython -m playwright install chromium 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Info "Playwright Chromium installed"
+    } else {
+        Write-Warn "Playwright install failed. Run later: $VenvPython -m playwright install chromium"
+    }
 }
 
 New-Item -ItemType Directory -Path $OctopBin -Force | Out-Null

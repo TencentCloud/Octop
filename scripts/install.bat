@@ -37,6 +37,9 @@ echo   -FromSource        Install from source
 echo   -SourceDir ^<DIR^>   Local source directory
 echo   -Extras ^<EXTRAS^>  Extra components (e.g. desktop); browser/playwright always installed
 echo   -UvPath ^<PATH^>     Pre-installed uv.exe
+echo.
+echo   Note: if a system Chrome/Chromium is installed (common on GUI systems like
+echo         Windows / macOS), the bundled Playwright Chromium download is skipped.
 exit /b 0
 
 :done_args
@@ -112,11 +115,19 @@ if "%CONSOLE_AVAILABLE%"=="0" (
     if "!_UI!"=="yes" set "CONSOLE_AVAILABLE=1"
 )
 
+call :detect_chrome
+if defined OCTOP_SYSTEM_CHROME (
+    echo [octop] Found system Chrome/Chromium: %OCTOP_SYSTEM_CHROME%
+    echo [octop] Using system browser; skipping Playwright Chromium download.
+    echo [octop] To use bundled Chromium instead, run: "%VENV_PYTHON%" -m playwright install chromium
+    goto :after_browser
+)
 echo [octop] Installing Playwright Chromium browser...
 "%VENV_PYTHON%" -m playwright install chromium
 if errorlevel 1 (
     echo [octop] WARNING: Playwright install failed. Run later: "%VENV_PYTHON%" -m playwright install chromium
 )
+:after_browser
 
 if not exist "%OCTOP_BIN%" mkdir "%OCTOP_BIN%"
 
@@ -144,6 +155,37 @@ echo   octop init
 echo   octop run
 echo   octop service start
 echo   http://127.0.0.1:8088
+exit /b 0
+
+::detect_chrome
+set "OCTOP_SYSTEM_CHROME="
+REM Prefer harness-browser's own detector (same path used at runtime)
+"%VENV_PYTHON%" -c "from harness_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" > "%TEMP%\_octop_chrome.tmp" 2>nul
+if not errorlevel 1 (
+    set /p _CHROME=<"%TEMP%\_octop_chrome.tmp"
+)
+del "%TEMP%\_octop_chrome.tmp" >nul 2>&1
+if defined _CHROME (
+    set "OCTOP_SYSTEM_CHROME=%_CHROME%"
+    goto :detect_chrome_done
+)
+REM Fallback: common commands on PATH
+for %%c in (chrome google-chrome google-chrome-stable chromium chromium-browser) do (
+    where %%c >nul 2>&1
+    if not errorlevel 1 (
+        for /f "delims=" %%p in ('where %%c') do (set "OCTOP_SYSTEM_CHROME=%%p" & goto :detect_chrome_done)
+    )
+)
+REM Fallback: well-known GUI install paths
+for %%p in (
+    "%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+    "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+    "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
+    "%ProgramFiles%\Chromium\Application\chrome.exe"
+) do (
+    if exist %%p (set "OCTOP_SYSTEM_CHROME=%%~p" & goto :detect_chrome_done)
+)
+:detect_chrome_done
 exit /b 0
 
 :ensure_uv

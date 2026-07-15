@@ -72,7 +72,7 @@ Octop is a self-hosted AI assistant platform for households and small teams. It 
 
 Octop is built on the Harness stack — a set of focused runtimes that Octop composes into one process:
 
-- **harness-agent** — LangGraph-based agent runtime: model routing, tools, skills, and conversation checkpointing.
+- **harness-agent** — Agent runtime: model routing, tools, skills, and conversation checkpointing.
 - **harness-gateway** — multi-platform IM channel bridge that normalizes incoming messages into a single processing pipeline.
 - **harness-memory** — hierarchical recall with full-text search, so an agent's memory travels with its workspace.
 - **harness-browser** — CDP-based browser automation with persistent profiles for web tasks.
@@ -364,7 +364,7 @@ OctopServer
  ├─ UserManager
  │   └─ HarnessAgentManager (per user)
  │       └─ AgentRuntime (per agent)
- │           ├─ HarnessAgent      LangGraph runtime (harness-agent)
+ │           ├─ HarnessAgent      Agent runtime (harness-agent)
  │           ├─ HarnessProcessor  IM / UI / cron entry point
  │           ├─ ChannelManager    IM connections (harness-gateway)
  │           └─ CronManager       APScheduler

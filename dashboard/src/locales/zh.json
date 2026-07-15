@@ -1787,6 +1787,7 @@
   },
   "chatWelcome": {
     "greeting": "嗨！你专属的智能伙伴来啦～",
+    "mascotSwitchHint": "点一下换个表情～",
     "descriptionWithAgentSuffix": "无论工作还是生活，说出你的想法",
     "description": "无论工作还是生活，说出你的想法，我来搞定",
     "newChat": "新建对话",
@@ -2457,6 +2458,7 @@
     "bookmarkSaveFailed": "保存收藏失败",
     "ai": {
       "title": "AI 助手",
+      "expert": "专家",
       "agent": "助手",
       "profile": "Profile",
       "currentUrl": "当前网页",
@@ -2506,6 +2508,7 @@
     "installing": "正在启动安装...",
     "installProgress": "正在安装中…",
     "installCancelHint": "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
+    "hideInstall": "隐藏进度",
     "installSuccess": "桌面环境已就绪",
     "installSuccessHint": "可以返回页面点击连接，开始远程操控。",
     "installFailed": "安装失败",

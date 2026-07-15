@@ -43,6 +43,13 @@ import {
   useDesktopStream,
   type DesktopStreamError,
 } from "../../../hooks/useDesktopStream";
+import {
+  useDesktopInstall,
+  startDesktopInstall,
+  cancelDesktopInstall,
+  resetDesktopInstall,
+  type DesktopInstallPhase,
+} from "../../../hooks/useDesktopInstall";
 import { useDesktopCanvasInteraction } from "../../../hooks/useDesktopCanvasInteraction";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useLandscapeFullscreen } from "../../../hooks/useLandscapeFullscreen";
@@ -67,18 +74,11 @@ const FPS_STORAGE_KEY = "octop:remote-desktop:max-fps";
 const DEFAULT_RESOLUTION: DesktopResolution = "1920x1080";
 const DEFAULT_MAX_FPS = 10;
 
-type InstallPhase =
-  | "idle"
-  | "installing"
-  | "install_success"
-  | "install_failed";
-
 export default function RemoteDesktopPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const installAbortRef = useRef<AbortController | null>(null);
   const uninstallAbortRef = useRef<AbortController | null>(null);
   const installLogRef = useRef<HTMLDivElement | null>(null);
 
@@ -90,8 +90,7 @@ export default function RemoteDesktopPage() {
   const [controlsOpen, setControlsOpen] = useState(false);
   const openControlsDrawer = useCallback(() => setControlsOpen(true), []);
   const closeControlsDrawer = useCallback(() => setControlsOpen(false), []);
-  const [installPhase, setInstallPhase] = useState<InstallPhase>("idle");
-  const [installLogs, setInstallLogs] = useState<string[]>([]);
+  const { phase: installPhase, logs: installLogs } = useDesktopInstall();
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallLogs, setUninstallLogs] = useState<string[]>([]);
   const [screenSize, setScreenSize] = useState({ width: 1920, height: 1080 });
@@ -195,32 +194,34 @@ export default function RemoteDesktopPage() {
 
   useEffect(
     () => () => {
-      installAbortRef.current?.abort();
       uninstallAbortRef.current?.abort();
     },
     [],
   );
 
-  const startInstall = useCallback(() => {
-    setInstallPhase("installing");
-    setInstallLogs([]);
-    setEnvModalOpen(false);
-    installAbortRef.current = desktopApi.installDesktop(
-      (line) => setInstallLogs((prev) => [...prev, line]),
-      (success) => {
-        installAbortRef.current = null;
-        if (!success) {
-          setInstallPhase("install_failed");
-          setEnvModalOpen(true);
-          return;
-        }
-        setInstallPhase("idle");
-        setEnvModalOpen(false);
-        void refreshEnv();
+  // React to install completion. The install runs in a module-level store, so
+  // this fires whenever a mounted page observes the terminal phase — including
+  // after navigating back to the page while an install was in progress.
+  const prevInstallPhaseRef = useRef<DesktopInstallPhase>(installPhase);
+  useEffect(() => {
+    const prev = prevInstallPhaseRef.current;
+    prevInstallPhaseRef.current = installPhase;
+    if (installPhase === "install_success") {
+      setEnvModalOpen(false);
+      void refreshEnv();
+      if (prev === "installing") {
         message.success(t("remoteDesktop.installSuccess", "桌面环境已就绪"));
-      },
-    );
-  }, [refreshEnv, t]);
+      }
+      resetDesktopInstall();
+    } else if (installPhase === "install_failed") {
+      setEnvModalOpen(true);
+    }
+  }, [installPhase, refreshEnv, t]);
+
+  const startInstall = useCallback(() => {
+    startDesktopInstall();
+    setEnvModalOpen(false);
+  }, []);
 
   const handleUninstall = useCallback(() => {
     if (!canUninstall || uninstalling) return;
@@ -289,18 +290,12 @@ export default function RemoteDesktopPage() {
   const openEnvModal = useCallback(() => {
     setEnvModalOpen(true);
     if (installPhase !== "installing") {
-      setInstallPhase("idle");
-      setInstallLogs([]);
+      resetDesktopInstall();
     }
     void refreshEnv();
   }, [installPhase, refreshEnv]);
 
   const closeEnvModal = useCallback(() => {
-    if (installPhase === "installing") {
-      installAbortRef.current?.abort();
-      installAbortRef.current = null;
-      setInstallPhase("idle");
-    }
     setEnvModalOpen(false);
     if (
       installPhase === "install_success" ||
@@ -675,10 +670,7 @@ export default function RemoteDesktopPage() {
   );
 
   const cancelInstall = useCallback(() => {
-    installAbortRef.current?.abort();
-    installAbortRef.current = null;
-    setInstallPhase("idle");
-    setInstallLogs([]);
+    cancelDesktopInstall();
     message.info(
       t(
         "remoteDesktop.installCancelHint",
@@ -899,7 +891,11 @@ export default function RemoteDesktopPage() {
 
   const envModalFooter = () => {
     if (installPhase === "installing") {
-      return <Button onClick={closeEnvModal}>{t("common.cancel")}</Button>;
+      return (
+        <Button onClick={closeEnvModal}>
+          {t("remoteDesktop.hideInstall", "隐藏进度")}
+        </Button>
+      );
     }
     if (installPhase === "install_failed") {
       return (

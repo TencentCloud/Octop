@@ -88,6 +88,9 @@ Octop 安装脚本 (macOS / Linux)
   --mirror <镜像URL>    指定 PyPI 镜像（例如 https://mirrors.aliyun.com/pypi/simple）
   -h, --help            显示此帮助
 
+说明: 若系统已安装 Chrome/Chromium（常见于 macOS/Windows 或 Linux 桌面），
+  安装脚本将直接使用它，跳过体积较大的 Playwright 自带 Chromium 下载。
+
 环境变量:
   OCTOP_HOME              安装目录（默认: ~/.octop）
   OCTOP_PYPI_MIRROR       PyPI 镜像地址（与 --mirror 等效）
@@ -99,9 +102,10 @@ Octop 安装脚本 (macOS / Linux)
 
 说明:
   本脚本在隔离虚拟环境（~/.octop/venv）中安装，不会影响系统 Python。
-  默认会自动安装：
-  1. Playwright Chromium 浏览器及 Python 包
-  2. 系统级依赖（Linux: apt/dnf/yum/pacman/zypper）
+  默认会安装 Playwright 相关依赖；若检测到系统已安装 Chrome/Chromium，
+  则跳过 Playwright 自带 Chromium 的下载，直接使用系统浏览器：
+  1. Playwright Chromium 浏览器及 Python 包（已安装系统浏览器时跳过）
+  2. 系统级依赖（Linux: apt/dnf/yum/pacman/zypper；仅下载 Chromium 时需要）
   3. CJK 字体用于中文网页渲染
 EOF
             exit 0 ;;
@@ -392,7 +396,7 @@ _ensure_old_glibc_build_toolchain() {
     fi
     local ver
     ver="$(_glibc_major_minor)"
-    warn "检测到 glibc $ver（< 2.28，如 CentOS 7）：部分依赖需本地编译"
+    warn "检测到 glibc ${ver}（< 2.28，如 CentOS 7）：部分依赖需本地编译"
     _ensure_c_build_tools || warn "未找到 gcc，源码编译可能失败"
     _ensure_modern_cxx || warn "未启用新版 g++，playwright 依赖（greenlet）可能编译失败"
     if ! _ensure_rustc; then
@@ -633,10 +637,59 @@ _install_playwright_browsers() {
     return 1
 }
 
-# 默认安装 Playwright 系统依赖和 Chromium
+# 检测系统是否已安装 Chrome / Chromium。
+# GUI 系统（macOS / Windows / Linux 桌面）通常已自带，无需再下载 Playwright 自带 Chromium。
+_detect_system_chrome() {
+    # 优先复用 harness-browser 的探测器（与运行期 launch 路径一致）
+    local chrome
+    chrome="$("$OCTOP_VENV/bin/python" -c '
+import sys
+try:
+    from harness_browser.cdp.launcher import find_chrome
+except Exception:
+    sys.exit(0)
+p = find_chrome()
+if p:
+    print(p)
+' 2>/dev/null)"
+    [ -n "$chrome" ] && { echo "$chrome"; return 0; }
+
+    # 回退：常见命令
+    local candidate
+    for candidate in google-chrome google-chrome-stable chromium chromium-browser chrome; do
+        if command -v "$candidate" &>/dev/null; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+
+    # 回退：常见安装路径（GUI 系统）
+    local p
+    for p in \
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+        "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+        "/opt/google/chrome/chrome" \
+        "/usr/bin/google-chrome" \
+        "/usr/bin/chromium" \
+        "/usr/bin/chromium-browser" \
+        ; do
+        [ -x "$p" ] && { echo "$p"; return 0; }
+    done
+    return 1
+}
+
+# 默认安装 Playwright 系统依赖和 Chromium，但检测到系统浏览器时跳过下载。
 if "$OCTOP_VENV/bin/python" -c "import playwright" 2>/dev/null; then
-    _install_playwright_system_deps
-    _install_playwright_browsers || true
+    _SYSTEM_CHROME="$(_detect_system_chrome || true)"
+    if [ -n "$_SYSTEM_CHROME" ]; then
+        info "检测到系统已安装 Chrome/Chromium: $_SYSTEM_CHROME"
+        info "将直接使用系统浏览器，跳过 Playwright Chromium 下载（更快、更省空间）。"
+        info "如需改用 Playwright 自带的 Chromium，可运行:"
+        info "  $OCTOP_VENV/bin/python -m playwright install chromium"
+    else
+        _install_playwright_system_deps
+        _install_playwright_browsers || true
+    fi
 else
     warn "playwright 未安装到虚拟环境，跳过 Chromium；可稍后: uv pip install playwright --python $OCTOP_VENV/bin/python"
 fi
@@ -739,7 +792,7 @@ _link_into_existing_path() {
 IMMEDIATE_OK=false
 if _link_into_existing_path; then
     IMMEDIATE_OK=true
-    info "已链接到 $LINKED_PATH（当前终端可直接运行 octop）"
+    info "已链接到 ${LINKED_PATH}（当前终端可直接运行 octop）"
 elif [ -n "$LINKED_PATH" ]; then
     info "已链接到 $LINKED_PATH"
 fi

@@ -1794,6 +1794,7 @@
   },
   "chatWelcome": {
     "greeting": "Hi! Your personal AI sidekick is here",
+    "mascotSwitchHint": "Tap to switch the mascot",
     "descriptionWithAgentSuffix": "— share what's on your mind, work or life",
     "description": "Work or life — just tell me what you need, I'll handle it",
     "newChat": "New Chat",
@@ -2293,6 +2294,7 @@
     "bookmarkSaveFailed": "Failed to save bookmarks",
     "ai": {
       "title": "AI Assistant",
+      "expert": "Expert",
       "agent": "Agent",
       "profile": "Profile",
       "currentUrl": "Current page",
@@ -2342,6 +2344,7 @@
     "installing": "Starting installation...",
     "installProgress": "Installing…",
     "installCancelHint": "Install request cancelled. The server may still be installing — refresh status shortly.",
+    "hideInstall": "Hide progress",
     "installSuccess": "Desktop environment is ready",
     "installSuccessHint": "Return to the page and click Connect to start remote control.",
     "installFailed": "Installation failed",

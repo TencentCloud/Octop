@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { message as antMessage } from "antd";
 
 import type { OctopAgent } from "../context/AgentContext";
+import AgentSelector from "../components/AgentSelector";
 import { useAgentThreadChat } from "../hooks/useAgentThreadChat";
 import { browserApi } from "../api/modules/browser";
 import { request } from "../api/request";
@@ -566,6 +567,9 @@ export default function BrowserAiPanel({
               "浏览器右侧助手会复用当前 Agent 的对话能力。",
             )}
           </div>
+          <div className={styles.emptyAgentPicker}>
+            <AgentSelector variant="select" showLabel={false} />
+          </div>
         </div>
       </div>
     );
@@ -599,13 +603,13 @@ export default function BrowserAiPanel({
       </div>
 
       <div className={styles.contextSection}>
-        <div className={styles.contextGrid}>
+        <div className={styles.expertSelectRow}>
           <span className={styles.contextLabel}>
-            {t("remoteBrowser.ai.agent", "助手")}
+            {t("remoteBrowser.ai.expert", "专家")}
           </span>
-          <span className={styles.contextValue}>
-            {activeAgent?.name ?? t("remoteBrowser.ai.noAgent", "未选择 Agent")}
-          </span>
+          <AgentSelector variant="select" showLabel={false} />
+        </div>
+        <div className={styles.contextGrid}>
           <span className={styles.contextLabel}>
             {t("remoteBrowser.ai.profile", "Profile")}
           </span>

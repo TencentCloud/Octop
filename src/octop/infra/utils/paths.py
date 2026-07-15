@@ -24,8 +24,19 @@ class PathLayout:
         return self.root / "octop.db"
 
     @property
+    def logs_dir(self) -> Path:
+        """Structured runtime logs: ``~/.octop/logs/``."""
+        return self.root / "logs"
+
+    @property
     def log(self) -> Path:
-        return self.root / "octop.log"
+        return self.logs_dir / "octop.log"
+
+    def ensure_logs_dir(self) -> Path:
+        """Create the logs directory and return it."""
+        out = self.logs_dir
+        out.mkdir(parents=True, exist_ok=True)
+        return out
 
     @property
     def config(self) -> Path:

@@ -95,9 +95,9 @@ export default function AgentSelector({
       ) : (
         <Select
           className={styles.select}
-          size="small"
           value={currentId}
           onChange={(id) => setActiveAgent(id)}
+          listHeight={360}
           popupMatchSelectWidth={320}
           optionLabelProp="label"
           options={agents.map((agent) => {

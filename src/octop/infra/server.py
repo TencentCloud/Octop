@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from contextlib import suppress
 from dataclasses import dataclass
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 from octop.config import load_config
@@ -27,6 +29,46 @@ from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+
+def _build_log_handler(log_path: Path, retention_days: int) -> TimedRotatingFileHandler:
+    """Create a daily-rotating file handler that also enforces retention."""
+    handler = TimedRotatingFileHandler(
+        log_path,
+        when="midnight",
+        interval=1,
+        backupCount=retention_days,
+        encoding="utf-8",
+    )
+    # Rotated files get a date suffix, e.g. octop.log.2026-07-16
+    handler.suffix = "%Y-%m-%d"
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
+    return handler
+
+
+def _purge_stale_logs(log_dir: Path, retention_days: int) -> None:
+    """Delete rotated octop log files older than ``retention_days`` (mtime based).
+
+    ``TimedRotatingFileHandler`` only trims by count at rollover time, so a service
+    that is offline for a long stretch can accumulate stale files. This purges them
+    on startup as a safety net.
+    """
+    if retention_days <= 0:
+        return
+    cutoff = time.time() - retention_days * 86400
+    for entry in log_dir.glob("octop.log.*"):
+        if entry.is_file() and entry.stat().st_mtime < cutoff:
+            with suppress(OSError):
+                entry.unlink()
+
+
+def _attach_log_handler(target: logging.Logger, handler: TimedRotatingFileHandler) -> None:
+    """Add ``handler`` to ``target`` only if an equivalent one is not present yet."""
+    if not any(
+        isinstance(h, TimedRotatingFileHandler) and h.baseFilename == handler.baseFilename
+        for h in target.handlers
+    ):
+        target.addHandler(handler)
 
 
 @dataclass
@@ -196,22 +238,30 @@ class OctopServer:
     # ----- helpers -----
 
     def _setup_logging(self) -> None:
+        log_dir = self.paths.logs_dir
+        log_dir.mkdir(parents=True, exist_ok=True)
         log_path = self.paths.log
-        handler = RotatingFileHandler(
-            log_path,
-            maxBytes=10 * 1024 * 1024,
-            backupCount=5,
-            encoding="utf-8",
-        )
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s")
-        )
+
+        # Migrate the legacy single-file log (~/.octop/octop.log) into the new logs dir.
+        legacy = self.paths.root / "octop.log"
+        if legacy.exists() and not log_path.exists():
+            with suppress(OSError):
+                legacy.replace(log_path)
+
+        raw_retention = os.environ.get("OCTOP_LOG_RETENTION_DAYS", "14") or "14"
+        try:
+            retention_days = int(raw_retention)
+        except ValueError:
+            retention_days = 14
+        handler = _build_log_handler(log_path, retention_days)
+        _purge_stale_logs(log_dir, retention_days)
+
         root = logging.getLogger()
-        if not any(
-            isinstance(h, RotatingFileHandler) and h.baseFilename == str(log_path)
-            for h in root.handlers
-        ):
-            root.addHandler(handler)
+        _attach_log_handler(root, handler)
+        # Persist framework (uvicorn) request/error logs into the same file too.
+        for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+            _attach_log_handler(logging.getLogger(name), handler)
+
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
 

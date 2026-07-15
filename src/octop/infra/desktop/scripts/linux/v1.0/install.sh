@@ -585,7 +585,14 @@ MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme
 StartupNotify=true
 BROWSER_EOF
         chmod 0644 "${INSTALL_ROOT}/octop-browser.desktop"
-        ln -sf "${INSTALL_ROOT}/octop-browser.desktop" "${DESKTOP_DIR}/browser.desktop"
+        # Place a real .desktop file on the Desktop (matching terminal/files/editor)
+        # instead of a symlink; xfdesktop renders symlinked launchers with a
+        # "shortcut" link emblem, which makes the browser look inconsistent.
+        # Remove any stale symlink from a previous install first so `cp` does not
+        # write through it and re-create the link.
+        rm -f "${DESKTOP_DIR}/browser.desktop"
+        cp -f "${INSTALL_ROOT}/octop-browser.desktop" "${DESKTOP_DIR}/browser.desktop"
+        chmod 0755 "${DESKTOP_DIR}/browser.desktop"
     fi
 
     if command -v xfce4-terminal >/dev/null 2>&1; then

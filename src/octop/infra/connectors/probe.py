@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
+from mcp.shared.exceptions import McpError
 
 from octop.config import OctopConfig
 from octop.infra.connectors.builder import (
@@ -92,52 +93,137 @@ async def prepare_probe_credentials(
     return validate_create_credentials(kind, credentials)
 
 
+def _probe_mcp_http_error(exc: httpx.HTTPStatusError, *, kind: str) -> dict[str, Any]:
+    """Map an HTTP status error from a remote MCP probe to a clear result.
+
+    ``401``/``403`` are definitive auth rejections (bad key), everything else
+    (5xx, 429, network proxy errors) is treated as a connection/upstream
+    problem so callers can distinguish "key is wrong" from "can't reach host".
+    """
+    status = exc.response.status_code
+    if status in (401, 403):
+        if kind == "youdao-note":
+            return _probe_youdao_note_http_error(exc)
+        err = http_error_message(exc.response)
+        return {
+            "ok": False,
+            "error_type": "auth",
+            "error": err or str(exc),
+            "status_code": status,
+        }
+    err = http_error_message(exc.response)
+    return {
+        "ok": False,
+        "error_type": "connection",
+        "error": err or str(exc),
+        "status_code": status,
+    }
+
+
+def _probe_mcp_mcp_error(exc: McpError, *, kind: str) -> dict[str, Any]:
+    """Map an MCP-level error (e.g. server closing the initialize stream).
+
+    ``Connection closed`` means the upstream dropped the SSE stream — a
+    transport/network issue (proxy timeout, geo/network restriction), NOT an
+    auth rejection. The credential may still be perfectly valid; report it as
+    a connection problem so it is not mistaken for a bad key.
+    """
+    msg = str(exc).lower()
+    if "connection closed" in msg or "connection" in msg:
+        return {
+            "ok": False,
+            "error_type": "connection",
+            "error": "与上游 MCP 服务的连接被中断（可能是网络/代理/地域限制），并非密钥无效",
+        }
+    if kind == "youdao-note":
+        return {
+            "ok": False,
+            "error_type": "auth",
+            "error": "API Key 无效或服务暂时不可用，请检查 Key 或在 MCP 平台重新创建",
+        }
+    return {"ok": False, "error_type": "connection", "error": str(exc)}
+
+
+def _unwrap_probe_exception_group(exc: BaseExceptionGroup, *, kind: str) -> dict[str, Any] | None:
+    """Unwrap a nested TaskGroup exception group to a concrete probe result.
+
+    The mcp SSE client raises nested exception groups whose members are
+    transport-level errors. Surface the most actionable one: HTTP status
+    errors (auth/permission) and MCP errors (server rejected initialize).
+    """
+    for sub in exc.exceptions:
+        if isinstance(sub, httpx.HTTPStatusError):
+            return _probe_mcp_http_error(sub, kind=kind)
+        if isinstance(sub, McpError):
+            return _probe_mcp_mcp_error(sub, kind=kind)
+    for sub in exc.exceptions:
+        if isinstance(sub, BaseExceptionGroup):
+            nested = _unwrap_probe_exception_group(sub, kind=kind)
+            if nested is not None:
+                return nested
+    return None
+
+
 async def _probe_mcp_sse(
     url: str,
     headers: dict[str, str] | None = None,
     *,
     kind: str,
 ) -> dict[str, Any]:
-    """Probe a remote MCP server over SSE transport."""
+    """Probe a remote MCP server over SSE transport.
+
+    A single retry tolerates transient connection drops (e.g. a proxy or the
+    upstream closing the SSE stream on the first ``initialize``). Auth
+    rejections (HTTP 401/403) are definitive and returned immediately so a
+    bad key is never masked by a retry.
+    """
     from mcp import ClientSession
     from mcp.client.sse import sse_client
 
-    try:
-        async with (
-            sse_client(url, headers or {}, timeout=20, sse_read_timeout=20) as (read, write),
-            ClientSession(read, write) as session,
-        ):
-            await session.initialize()
-            listed = await session.list_tools()
-            tools = normalize_tools(
-                [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-            )
-            return {"ok": True, "tool_count": len(tools), "tools": tools}
-    except httpx.HTTPStatusError as exc:
-        if kind == "youdao-note":
-            return _probe_youdao_note_http_error(exc)
-        err = http_error_message(exc.response)
-        return {
-            "ok": False,
-            "error": err or str(exc),
-            "status_code": exc.response.status_code,
-        }
-    except BaseExceptionGroup as exc:
-        for sub in exc.exceptions:
-            if isinstance(sub, httpx.HTTPStatusError):
-                if kind == "youdao-note":
-                    return _probe_youdao_note_http_error(sub)
-                err = http_error_message(sub.response)
-                return {
-                    "ok": False,
-                    "error": err or str(sub),
-                    "status_code": sub.response.status_code,
-                }
-        logger.exception("%s SSE probe failed", kind)
-        return {"ok": False, "error": str(exc)}
-    except Exception as exc:
-        logger.exception("%s SSE probe failed", kind)
-        return {"ok": False, "error": str(exc)}
+    for attempt in range(2):
+        result: dict[str, Any] | None = None
+        try:
+            async with (
+                sse_client(url, headers or {}, timeout=20, sse_read_timeout=20) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                listed = await session.list_tools()
+                tools = normalize_tools(
+                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                )
+                return {"ok": True, "tool_count": len(tools), "tools": tools}
+        except httpx.HTTPStatusError as exc:
+            result = _probe_mcp_http_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s SSE probe connection failure, retrying: %s", kind, exc)
+            continue
+        except McpError as exc:
+            result = _probe_mcp_mcp_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s SSE probe connection failure, retrying: %s", kind, exc)
+            continue
+        except BaseExceptionGroup as exc:
+            result = _unwrap_probe_exception_group(exc, kind=kind)
+            if result is not None:
+                if result.get("error_type") != "connection" or attempt > 0:
+                    return result
+                logger.warning("%s SSE probe connection failure, retrying: %s", kind, exc)
+                continue
+            if attempt == 0:
+                logger.warning("%s SSE probe transient failure, retrying: %s", kind, exc)
+                continue
+            logger.exception("%s SSE probe failed", kind)
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            if attempt == 0:
+                logger.warning("%s SSE probe transient failure, retrying: %s", kind, exc)
+                continue
+            logger.exception("%s SSE probe failed", kind)
+            return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "SSE probe failed after retry"}
 
 
 async def probe_youdao_note(api_key: str) -> dict[str, Any]:
@@ -154,17 +240,24 @@ def _probe_youdao_note_http_error(exc: httpx.HTTPStatusError) -> dict[str, Any]:
         try:
             body = exc.response.json()
             if isinstance(body, dict) and body.get("desc"):
-                return {"ok": False, "error": str(body["desc"]), "status_code": 401}
+                return {
+                    "ok": False,
+                    "error_type": "auth",
+                    "error": str(body["desc"]),
+                    "status_code": 401,
+                }
         except Exception:
             pass
         return {
             "ok": False,
+            "error_type": "auth",
             "error": "API Key 无效，请检查或在 MCP 平台重新创建",
             "status_code": 401,
         }
     err = http_error_message(exc.response)
     return {
         "ok": False,
+        "error_type": "connection",
         "error": err or str(exc),
         "status_code": exc.response.status_code,
     }
@@ -204,21 +297,13 @@ async def probe_streamable_http_mcp(
             )
             return {"ok": True, "tool_count": len(tools), "tools": tools}
     except httpx.HTTPStatusError as exc:
-        err = http_error_message(exc.response)
-        return {
-            "ok": False,
-            "error": err or str(exc),
-            "status_code": exc.response.status_code,
-        }
+        return _probe_mcp_http_error(exc, kind=kind)
+    except McpError as exc:
+        return _probe_mcp_mcp_error(exc, kind=kind)
     except BaseExceptionGroup as exc:
-        for sub in exc.exceptions:
-            if isinstance(sub, httpx.HTTPStatusError):
-                err = http_error_message(sub.response)
-                return {
-                    "ok": False,
-                    "error": err or str(sub),
-                    "status_code": sub.response.status_code,
-                }
+        result = _unwrap_probe_exception_group(exc, kind=kind)
+        if result is not None:
+            return result
         logger.exception("streamable HTTP MCP probe failed for %s", kind)
         return {"ok": False, "error": str(exc)}
     except Exception as exc:

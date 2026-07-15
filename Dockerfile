@@ -22,6 +22,7 @@
 #     --build-arg PIP_TRUSTED_HOST=mirrors.aliyun.com \
 #     --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
 #     --build-arg APT_MIRROR=mirrors.aliyun.com \
+#     --build-arg NODE_MAX_OLD_SPACE_SIZE=1024 \
 #     -t octop:latest .
 #
 # 或使用 Compose:
@@ -34,6 +35,10 @@
 FROM node:20-slim AS frontend-builder
 
 ARG NPM_REGISTRY=
+# Node heap ceiling for the vite build. Lower this (e.g. 1024) on low-memory
+# build hosts (< 4G RAM) to avoid OOM kills — the value only caps the max,
+# it is not pre-allocated.
+ARG NODE_MAX_OLD_SPACE_SIZE=1536
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./
@@ -46,7 +51,7 @@ COPY dashboard/ ./
 RUN mkdir -p ../src/octop/dashboard
 
 # 镜像构建跳过完整 tsc；生产打包由 vite/esbuild 完成
-RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npx vite build
+RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npx vite build
 
 
 # ---------------------------------------------------------------------------

@@ -2243,7 +2243,7 @@ requires-dist = [
     { name = "langchain-core", specifier = ">=1.4.8" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.8" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.9" },
     { name = "pillow", marker = "extra == 'desktop'", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2376,7 +2376,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "0.9.8"
+version = "0.9.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2394,9 +2394,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/0d/89e6f178a3e5545c81bdb4615bcf64f3bebff10f38af6ed2863172c6e454/orcakit_harness_agent-0.9.8.tar.gz", hash = "sha256:6c35e3facf1ccfcef459ed1c8d51f088b111be69b9f9e693d6d313249c04b8d6", size = 1098095 }
+sdist = { url = "https://files.pythonhosted.org/packages/37/8f/ce38a459978cb73ccb90d8c240236e7eb570e5373f680d00ea96e8421902/orcakit_harness_agent-0.9.9.tar.gz", hash = "sha256:febad6e400c8d283fb744ee051fff664e0333ae4b182b080a44e9542f2d70393", size = 1101007 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/45/24a5e2fe6115f023194fbdd110e7cb0dfad9b256a626e49492892735c755/orcakit_harness_agent-0.9.8-py3-none-any.whl", hash = "sha256:b80bbb6081801d371dbe3b3ad62c1e88e2ceaf4a14a25b467c7c291b06b55aae", size = 1316166 },
+    { url = "https://files.pythonhosted.org/packages/76/09/32b99af4e340470dc6dd67f90e4e431f4b7837e9b5f4536d730eca788117/orcakit_harness_agent-0.9.9-py3-none-any.whl", hash = "sha256:87a9c0db58f787d3ec63d08454d872361e5e396664393d50d60c1d7012e35579", size = 1320086 },
 ]
 
 [package.optional-dependencies]

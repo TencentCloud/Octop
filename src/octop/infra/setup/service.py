@@ -408,7 +408,7 @@ def render_launchd_plist(runtime: ServiceRuntime) -> str:
     plists; launchd rejects it for user-domain agents and the agent runs as
     the logged-in user automatically.
     """
-    log_path = runtime.home / "octop.log"
+    log_path = runtime.home / "logs" / "octop.log"
     account_home = _account_home(runtime.run_as_user)
     user_block = (
         f"  <key>UserName</key>\n  <string>{runtime.run_as_user}</string>\n"

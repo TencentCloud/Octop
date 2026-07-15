@@ -11,8 +11,17 @@ def test_root_paths(tmp_path: Path):
     p = PathLayout(tmp_path / ".octop")
     assert p.root == tmp_path / ".octop"
     assert p.db == tmp_path / ".octop" / "octop.db"
-    assert p.log == tmp_path / ".octop" / "octop.log"
+    assert p.logs_dir == tmp_path / ".octop" / "logs"
+    assert p.log == tmp_path / ".octop" / "logs" / "octop.log"
     assert p.config == tmp_path / ".octop" / "config.json"
+
+
+def test_log_dir_creation(tmp_path: Path):
+    p = PathLayout(tmp_path / ".octop")
+    assert not (tmp_path / ".octop" / "logs").exists()
+    p.ensure_logs_dir()
+    assert (tmp_path / ".octop" / "logs").is_dir()
+    assert p.log == tmp_path / ".octop" / "logs" / "octop.log"
 
 
 def test_user_dir_uses_username(tmp_path: Path):

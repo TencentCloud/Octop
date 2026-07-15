@@ -85,6 +85,55 @@
   }
 }
 
+// Mascot image shown above the greeting title
+.welcomeMascot {
+  width: 160px;
+  height: auto;
+  object-fit: contain;
+  margin-bottom: -12px;
+  cursor: pointer;
+  animation: mascotBounceIn 0.5s ease both;
+  transition:
+    transform 0.18s ease,
+    filter 0.18s ease;
+
+  &:hover {
+    transform: scale(1.04) translateY(-2px);
+    filter: drop-shadow(0 6px 16px rgba(232, 93, 117, 0.35));
+  }
+
+  &:active {
+    transform: scale(0.94);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 4px;
+    border-radius: 12px;
+  }
+
+  @media (max-width: 767px) {
+    width: 130px;
+    margin-bottom: -10px;
+  }
+
+  @media (min-width: 1200px) {
+    width: 210px;
+    margin-bottom: -16px;
+  }
+}
+
+@keyframes mascotBounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .welcomeHeading {
   display: flex;
   flex-direction: column;
@@ -157,10 +206,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 50px;
+  margin-top: 28px;
 
   @media (max-width: 767px) {
-    margin-top: 18px;
+    margin-top: 14px;
   }
 }
 
