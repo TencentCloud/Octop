@@ -8,16 +8,14 @@ import { setPendingPrefillText } from "../../Chat/hooks/chatStore";
 import {
   createColumns,
   CronJobCard,
+  ExecuteNowModal,
   JobDrawer,
   JobDetailDrawer,
   useCronJobs,
 } from "./components";
 import type { CronJobFormValues } from "./useCronJobs";
 import { useCardTableView } from "../../../hooks/useCardTableView";
-import {
-  showActionConfirmModal,
-  showConfirmModal,
-} from "../../../utils/confirmModal";
+import { showConfirmModal } from "../../../utils/confirmModal";
 import { TableSkeleton } from "../../../components/Skeleton";
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
@@ -144,6 +142,10 @@ function CronJobsPage() {
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
   const [detailJob, setDetailJob] = useState<CronJob | null>(null);
 
+  // Execute-now confirmation
+  const [executingJob, setExecutingJob] = useState<CronJob | null>(null);
+  const [executing, setExecuting] = useState(false);
+
   const handleDetail = (job: CronJob) => {
     setDetailJob(job);
     setDetailDrawerOpen(true);
@@ -198,19 +200,23 @@ function CronJobsPage() {
   };
 
   const handleExecuteNow = async (job: CronJob) => {
-    showActionConfirmModal(
-      {
-        title: t("cronJobs.executeNowConfirmTitle"),
-        description: t("cronJobs.executeNowConfirmContent"),
-        highlight: job.name,
-        okText: t("cronJobs.executeNowConfirmOk"),
-        cancelText: t("common.cancel"),
-        onOk: async () => {
-          await executeNow(job.id);
-        },
-      },
-      { isMobile },
-    );
+    setExecutingJob(job);
+  };
+
+  const handleExecuteNowConfirm = async () => {
+    if (!executingJob) return;
+    setExecuting(true);
+    try {
+      await executeNow(executingJob.id);
+      setExecutingJob(null);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleExecuteNowCancel = () => {
+    if (executing) return;
+    setExecutingJob(null);
   };
 
   const handleRefresh = async () => {
@@ -371,6 +377,14 @@ function CronJobsPage() {
         open={detailDrawerOpen}
         job={detailJob}
         onClose={handleDetailClose}
+      />
+
+      <ExecuteNowModal
+        open={executingJob !== null}
+        job={executingJob}
+        loading={executing}
+        onCancel={handleExecuteNowCancel}
+        onConfirm={handleExecuteNowConfirm}
       />
     </PageShell>
   );

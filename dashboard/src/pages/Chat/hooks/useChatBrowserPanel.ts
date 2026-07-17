@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
 
-const PANEL_MODE_KEY = "finnie:browser-panel:mode";
-const PANEL_SIZE_KEY = "finnie:browser-panel:size";
+const PANEL_MODE_KEY = "octop:browser-panel:mode";
+const PANEL_SIZE_KEY = "octop:browser-panel:size";
 
 function loadPanelMode(): PanelMode {
   try {

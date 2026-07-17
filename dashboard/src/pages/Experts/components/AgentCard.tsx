@@ -13,9 +13,11 @@ import {
   FolderOpen,
   MessageSquare,
   Bot,
+  Sparkles,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
+import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -77,6 +79,7 @@ export const AgentCard = memo(function AgentCard({
   const [actionLoading, setActionLoading] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
+  const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
   const [mbtiCatalogOpen, setMbtiCatalogOpen] = useState(false);
   const [installedSubagentSlugs, setInstalledSubagentSlugs] = useState<
     Set<string>
@@ -263,13 +266,27 @@ export const AgentCard = memo(function AgentCard({
             </div>
           </div>
 
-          <Switch
-            size="small"
-            checked={switchChecked}
-            loading={isTransient || actionLoading}
-            onChange={(checked) => void handleToggle(checked)}
-            className={styles.agentCard2Switch}
-          />
+          <div className={styles.agentCard2HeaderActions}>
+            <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
+              <button
+                type="button"
+                className={styles.agentCard2EditBtn}
+                disabled={isTransient || actionLoading}
+                onClick={() => void handleReload()}
+                aria-label={t("experts.reloadAgent")}
+              >
+                <RefreshCw size={13} />
+              </button>
+            </Tooltip>
+
+            <Switch
+              size="small"
+              checked={switchChecked}
+              loading={isTransient || actionLoading}
+              onChange={(checked) => void handleToggle(checked)}
+              className={styles.agentCard2Switch}
+            />
+          </div>
         </div>
 
         {/* Description */}
@@ -326,6 +343,17 @@ export const AgentCard = memo(function AgentCard({
             </button>
           </Tooltip>
 
+          <Tooltip title={t("experts.skillsBtn")} mouseEnterDelay={0.5}>
+            <button
+              type="button"
+              className={styles.agentCard2EditBtn}
+              onClick={() => setSkillCatalogOpen(true)}
+              aria-label={t("experts.skillsBtn")}
+            >
+              <Sparkles size={13} />
+            </button>
+          </Tooltip>
+
           <Tooltip title={t("experts.subagentsBtn")} mouseEnterDelay={0.5}>
             <button
               type="button"
@@ -334,17 +362,6 @@ export const AgentCard = memo(function AgentCard({
               aria-label={t("experts.subagentsBtn")}
             >
               <Bot size={13} />
-            </button>
-          </Tooltip>
-
-          <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-            <button
-              type="button"
-              className={styles.agentCard2DelBtn}
-              disabled={isTransient || actionLoading}
-              onClick={() => void handleReload()}
-            >
-              <RefreshCw size={13} />
             </button>
           </Tooltip>
 
@@ -404,6 +421,11 @@ export const AgentCard = memo(function AgentCard({
         onInstalled={() => {
           void reloadInstalledSubagents();
         }}
+      />
+      <SkillCatalogDrawer
+        agentId={agent.agent_id}
+        open={skillCatalogOpen}
+        onClose={() => setSkillCatalogOpen(false)}
       />
       <MbtiCatalogDrawer
         open={mbtiCatalogOpen}

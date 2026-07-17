@@ -59,18 +59,38 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
   return undefined;
 }
 
-/** Extract ``outbound/…`` or ``inbound/…`` from a filesystem or file URL path. */
+/**
+ * Normalize an arbitrary harness-reported file path into a workspace-relative
+ * fragment the backend ``download`` endpoint can resolve.
+ *
+ * Harness tool output often reports an absolute path such as
+ * ``/workspace/report.pdf`` (where ``/workspace`` *is* the workspace root) or a
+ * ``file:///workspace/…`` URL. The workspace tree and the ``media/preview``
+ * endpoint treat such paths as relative to the workspace dir, but the
+ * ``download`` endpoint only strips a leading slash. Mirroring that
+ * normalization here makes chat file cards open exactly like the workspace
+ * viewer, which always passes a relative path such as ``report.pdf``.
+ */
+export function toWorkspaceRel(rawPath: string): string {
+  let p = rawPath.trim();
+  if (!p) return "";
+  if (p.startsWith("file://")) p = p.slice("file://".length);
+  const marker = "/workspace/";
+  const idx = p.lastIndexOf(marker);
+  if (idx >= 0) {
+    p = p.slice(idx + marker.length);
+  } else if (p === "/workspace") {
+    p = "";
+  } else if (p.startsWith("/workspace")) {
+    p = p.slice("/workspace".length);
+  }
+  return p.replace(/^\/+/, "");
+}
+
+/** Extract a workspace-relative fragment from a filesystem / file-URL / tool path. */
 export function extractWorkspaceRel(path: string): string | null {
-  const raw = path.trim();
-  const fsPath = raw.startsWith("file://") ? raw.slice("file://".length) : raw;
-  for (const marker of ["/outbound/", "/inbound/"]) {
-    const idx = fsPath.indexOf(marker);
-    if (idx >= 0) return fsPath.slice(idx + 1);
-  }
-  if (fsPath.startsWith("outbound/") || fsPath.startsWith("inbound/")) {
-    return fsPath.replace(/^\/+/, "");
-  }
-  return null;
+  const rel = toWorkspaceRel(path);
+  return rel || null;
 }
 
 /** Read agent id embedded in ``…/agents/{id}/…`` workspace paths. */
@@ -83,10 +103,11 @@ export function workspaceDownloadUrl(
   agentId: string,
   workspaceRel: string,
 ): string {
-  const rel = workspaceRel.replace(/^\/+/, "");
+  const rel = toWorkspaceRel(workspaceRel);
+  const safe = rel || "";
   return `/api/agents/${encodeURIComponent(
     agentId,
-  )}/workspace/download?path=${encodeURIComponent(`/${rel}`)}`;
+  )}/workspace/download?path=${encodeURIComponent(`/${safe}`)}`;
 }
 
 /**

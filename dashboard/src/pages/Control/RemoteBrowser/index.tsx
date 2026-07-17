@@ -12,7 +12,6 @@ import {
   Alert,
   Button,
   Drawer,
-  Input,
   Modal,
   Result,
   Select,
@@ -23,20 +22,15 @@ import {
   message as antMessage,
 } from "antd";
 import {
-  ArrowLeft,
-  ArrowRight,
   Bot,
   CheckCircle2,
   Copy,
   Globe,
   Maximize2,
   Play,
-  Plus,
   RefreshCw,
-  RotateCcw,
   Square,
   Sparkles,
-  Star,
   Terminal,
   Trash2,
   X,
@@ -48,23 +42,27 @@ import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGu
 import PageShell from "../../../layouts/PageShell";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
+import BrowserViewer, {
+  type BrowserViewerHandle,
+} from "../../../components/BrowserViewer";
 import { useAgent } from "../../../context/AgentContext";
 import { browserApi } from "../../../api/modules/browser";
 import * as chatStore from "../../Chat/hooks/chatStore";
 import type { BrowserSession as HarnessSession } from "../../../api/types/browser";
 import { request } from "../../../api/request";
 import { normalizeUrl } from "../../../utils/normalizeUrl";
-import {
-  clearCanvas,
-  paintBase64JpegToCanvas,
-} from "../../../utils/browserCanvas";
+import { clearCanvas } from "../../../utils/browserCanvas";
 import {
   REFRESH_INTERVAL_PRESETS,
   refreshIntervalLabel,
   viewportModeLabel,
 } from "../../../utils/browserViewport";
-import { useBrowserCanvasInteraction } from "../../../hooks/useBrowserCanvasInteraction";
 import { useBrowserStream } from "../../../hooks/useBrowserStream";
+import { useAutoViewportResize } from "../../../hooks/useAutoViewportResize";
+import {
+  useBrowserViewController,
+  deriveActiveTabUrl,
+} from "../../../hooks/useBrowserViewController";
 import { useRemoteBrowserBookmarks } from "../../../hooks/useRemoteBrowserBookmarks";
 import type { RemoteBrowserBookmark } from "../../../api/modules/preferences";
 import { copyText } from "../../../utils/copyText";
@@ -201,10 +199,9 @@ function tabsFromStream(
 }
 
 function viewFromProfile(profileId: string, tabs: BrowserTab[]): ViewSession {
-  const active = tabs.find((t) => t.active);
   return {
     id: profileId,
-    url: active?.url && active.url !== "about:blank" ? active.url : "",
+    url: deriveActiveTabUrl(tabs),
     tabs,
   };
 }
@@ -415,6 +412,7 @@ export default function RemoteBrowserPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const profileIdRef = useRef<string | null>(null);
+  const viewerRef = useRef<BrowserViewerHandle>(null);
 
   const {
     status,
@@ -453,21 +451,9 @@ export default function RemoteBrowserPage() {
     [disconnect],
   );
 
-  const handleFrame = useCallback((base64Data: string) => {
-    paintBase64JpegToCanvas(canvasRef.current, base64Data);
-    setFrameReady(true);
+  const handleFrameReadyChange = useCallback((ready: boolean) => {
+    setFrameReady(ready);
   }, []);
-
-  const resolveDimensions = useCallback(() => {
-    const containerEl = containerRef.current;
-    const cw = containerEl?.clientWidth ?? 0;
-    const ch = containerEl?.clientHeight ?? 0;
-    if (isMobile) {
-      if (cw > 0 && ch > 0) return { width: cw, height: ch };
-      return { width: 390, height: 700 };
-    }
-    return resolveViewport(cw, ch) ?? { width: 1280, height: 800 };
-  }, [resolveViewport, isMobile]);
 
   const attachProfile = useCallback((profileId: string, tabs: BrowserTab[]) => {
     profileIdRef.current = profileId;
@@ -478,26 +464,24 @@ export default function RemoteBrowserPage() {
     if (view.url) setNavUrl(view.url);
   }, []);
 
-  const startStream = useCallback(
-    (profileId: string, targetUrl = "") => {
+  // Shared stream controller — measures the container, resolves the viewport
+  // (mobile-aware), opens the WebSocket, and paints frames onto the canvas.
+  // The standalone page toggles frame-ready / stream-active flags and attaches
+  // the profile around the connect call.
+  const { startStream } = useBrowserViewController({
+    containerRef,
+    viewerRef,
+    connect,
+    resolveViewport,
+    isMobile,
+    defaultViewport: { width: 1280, height: 800 },
+    onError: (msg) => showApiError(msg, t("browserViewer.connectFailed"), t),
+    onBeforeConnect: (_profileId) => {
       setFrameReady(false);
       setStreamActive(true);
-      const { width, height } = resolveDimensions();
-      connect(
-        targetUrl,
-        width,
-        height,
-        {
-          onFrame: handleFrame,
-          onError: (msg) =>
-            showApiError(msg, t("browserWorkspace.streamError"), t),
-        },
-        { sessionId: profileId },
-      );
-      attachProfile(profileId, []);
     },
-    [attachProfile, connect, handleFrame, resolveDimensions, t],
-  );
+    onAfterConnect: (profileId) => attachProfile(profileId, []),
+  });
 
   // Keep view session in sync with stream tab updates
   useEffect(() => {
@@ -531,7 +515,7 @@ export default function RemoteBrowserPage() {
       // Restore stream only when the user left it open, or when deep-linked
       // via ?thread=… — do not auto-open just because Chrome is still alive.
       if (threadFromUrl || readStreamActive()) {
-        startStream(profile);
+        startStream(profile, "");
         return profile;
       }
       return null;
@@ -732,7 +716,7 @@ export default function RemoteBrowserPage() {
     const profileId = profileIdRef.current;
     if (!profileId) return;
     disconnect();
-    startStream(profileId);
+    startStream(profileId, "");
   }, [disconnect, startStream]);
 
   // Periodic reconnect fallback when stream stalls (manual interval presets)
@@ -761,75 +745,13 @@ export default function RemoteBrowserPage() {
 
   // In auto mode (always on mobile), keep Chrome viewport aligned with the
   // visible canvas area so text stays legible instead of CSS-downscaled.
-  useEffect(() => {
-    if (!session) return;
-    const useAuto = isMobile || viewportMode === "auto";
-    if (!useAuto) return;
-    const containerEl = containerRef.current;
-    if (!containerEl) return;
-
-    let lastSent = { w: 0, h: 0 };
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flushResize = () => {
-      const w = containerEl.clientWidth;
-      const h = containerEl.clientHeight;
-      if (w === 0 || h === 0) return;
-      if (isStreaming && (w !== lastSent.w || h !== lastSent.h)) {
-        lastSent = { w, h };
-        sendEvent({ type: "resize", width: w, height: h });
-      }
-    };
-
-    const onResize = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(flushResize, 150);
-    };
-
-    flushResize();
-    const ro = new ResizeObserver(onResize);
-    ro.observe(containerEl);
-    window.addEventListener("resize", onResize);
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      ro.disconnect();
-      window.removeEventListener("resize", onResize);
-    };
-  }, [isStreaming, isMobile, sendEvent, session, viewportMode]);
-
-  const sendAction = useCallback(
-    (body: Record<string, unknown>) => {
-      const type = body.type as string;
-      if (type === "navigate") {
-        const url = normalizeUrl(String(body.url ?? ""));
-        if (url) streamNavigate(url);
-        return;
-      }
-      sendEvent(body);
-    },
-    [sendEvent, streamNavigate],
-  );
-
-  const handleNewTab = useCallback(() => {
-    if (!session) return;
-    newTab();
-  }, [newTab, session]);
-
-  const handleCloseTab = useCallback(
-    (idx: number) => {
-      const tab = session?.tabs.find((t) => t.idx === idx);
-      if (tab) closeTab(tab.id);
-    },
-    [closeTab, session?.tabs],
-  );
-
-  const handleSwitchTab = useCallback(
-    (idx: number) => {
-      const tab = session?.tabs.find((t) => t.idx === idx);
-      if (tab) switchTab(tab.id);
-    },
-    [session?.tabs, switchTab],
-  );
+  // Delegated to the shared hook also used by BrowserWorkspace.
+  useAutoViewportResize({
+    enabled: !!(session && (isMobile || viewportMode === "auto")),
+    containerRef,
+    isStreaming,
+    sendEvent,
+  });
 
   const handleAiPanelToggle = useCallback(() => {
     setIsAiPanelOpen((prev) => {
@@ -941,43 +863,6 @@ export default function RemoteBrowserPage() {
     [aiPanelHeight, aiPanelWidth, isMobile],
   );
 
-  const sendActionScroll = useCallback(
-    (x: number, y: number, deltaX: number, deltaY: number) => {
-      sendEvent({ type: "scroll", x, y, deltaX, deltaY });
-    },
-    [sendEvent],
-  );
-
-  const sendActionClick = useCallback(
-    (x: number, y: number) => {
-      canvasRef.current?.focus();
-      sendEvent({ type: "click", x, y });
-    },
-    [sendEvent],
-  );
-
-  const sendActionDoubleClick = useCallback(
-    (x: number, y: number) => {
-      canvasRef.current?.focus();
-      sendEvent({ type: "dblclick", x, y });
-    },
-    [sendEvent],
-  );
-
-  const {
-    handleWheel: handleCanvasWheel,
-    onPointerDown: handleCanvasPointerDown,
-    onDoubleClick: handleCanvasDblClick,
-    isDragging,
-    pointerStyle,
-  } = useBrowserCanvasInteraction({
-    enabled: !!session,
-    canvasRef,
-    onScroll: sendActionScroll,
-    onClick: sendActionClick,
-    onDoubleClick: sendActionDoubleClick,
-  });
-
   const handleCanvasKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLCanvasElement>) => {
       e.preventDefault();
@@ -989,13 +874,6 @@ export default function RemoteBrowserPage() {
     },
     [sendEvent],
   );
-
-  const goto = useCallback(() => {
-    const target = normalizeUrl(navUrl);
-    if (!target) return;
-    setNavUrl(target);
-    sendAction({ type: "navigate", url: target });
-  }, [navUrl, sendAction]);
 
   // --- Skill recording guide ---
   const [browserRecording, setBrowserRecording] = useState(false);
@@ -1305,12 +1183,6 @@ export default function RemoteBrowserPage() {
 
   const tabs = useMemo(() => session?.tabs ?? [], [session?.tabs]);
 
-  const activeTabTitle = useMemo(() => {
-    const active = tabs.find((tab) => tab.active);
-    return active?.title ?? "";
-  }, [tabs]);
-
-  const navUrlNormalized = normalizeUrl(navUrl);
   const currentBookmarked = isBookmarked(navUrl);
 
   const openBookmark = useCallback(
@@ -1318,9 +1190,9 @@ export default function RemoteBrowserPage() {
       const target = normalizeUrl(url);
       if (!target) return;
       setNavUrl(target);
-      sendAction({ type: "navigate", url: target });
+      streamNavigate(target);
     },
-    [sendAction],
+    [streamNavigate],
   );
 
   const handleFullscreen = useLandscapeFullscreen(containerRef, {
@@ -1483,308 +1355,90 @@ export default function RemoteBrowserPage() {
       </Drawer>
 
       <div className={styles.pageBody}>
-        {session && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {/* Tab bar */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                background: "var(--fn-bg-secondary)",
-                borderRadius: "6px 6px 0 0",
-                borderBottom: "1px solid var(--fn-border-secondary)",
-                padding: "4px 4px 0",
-                gap: 2,
-                overflowX: "auto",
-                scrollbarWidth: "none",
-              }}
-            >
-              {tabs.map((tab) => (
-                <Tooltip
-                  key={String(tab.id)}
-                  title={tab.url}
-                  mouseEnterDelay={0.8}
-                >
-                  <div
-                    onClick={() => handleSwitchTab(tab.idx)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "4px 10px",
-                      borderRadius: "4px 4px 0 0",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      maxWidth: 200,
-                      fontSize: 12,
-                      background: tab.active
-                        ? "var(--fn-bg-primary)"
-                        : "transparent",
-                      borderTop: tab.active
-                        ? "2px solid var(--fn-color-brand, #635bff)"
-                        : "2px solid transparent",
-                      color: tab.active
-                        ? "var(--fn-text-primary)"
-                        : "var(--fn-text-secondary)",
-                      userSelect: "none",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        minWidth: 0,
-                      }}
-                    >
-                      {tab.title || tab.url || "New Tab"}
-                    </span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCloseTab(tab.idx);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        opacity: 0.5,
-                        borderRadius: 3,
-                        padding: "1px 2px",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <X size={10} />
-                    </span>
-                  </div>
-                </Tooltip>
-              ))}
-              <Tooltip title={t("browserWorkspace.newTab", "新建标签页")}>
-                <button
-                  type="button"
-                  onClick={handleNewTab}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    color: "var(--fn-text-tertiary)",
-                    padding: "4px 6px",
-                    borderRadius: 4,
-                    flexShrink: 0,
-                  }}
-                >
-                  <Plus size={12} />
-                </button>
-              </Tooltip>
-            </div>
-            {/* Navigation bar */}
-            <div
-              className={`${styles.toolbarRow} ${
-                isMobile ? styles.toolbarRowMobile : ""
-              }`}
-            >
-              <Button
-                size="small"
-                icon={<ArrowLeft size={14} />}
-                title={t("remoteBrowser.goBack")}
-                onClick={() => sendAction({ type: "goback" })}
-              />
-              <Button
-                size="small"
-                icon={<ArrowRight size={14} />}
-                title={t("remoteBrowser.goForward")}
-                onClick={() => sendAction({ type: "goforward" })}
-              />
-              <Button
-                size="small"
-                icon={<RotateCcw size={14} />}
-                title={t("remoteBrowser.reloadPage")}
-                onClick={() => sendAction({ type: "reload" })}
-              />
-              <Input
-                size="small"
-                className={styles.urlInput}
-                value={navUrl}
-                onChange={(e) => setNavUrl(e.target.value)}
-                onFocus={() => {
-                  urlEditingRef.current = true;
-                }}
-                onBlur={() => {
-                  urlEditingRef.current = false;
-                }}
-                placeholder={t("remoteBrowser.urlPlaceholderExtended")}
-                onPressEnter={() => goto()}
-                prefix={<Globe size={13} />}
-                suffix={
-                  <Tooltip
-                    title={
-                      currentBookmarked
-                        ? t("remoteBrowser.bookmarkRemove", "移除书签")
-                        : t("remoteBrowser.bookmarkAdd", "添加书签")
-                    }
-                  >
-                    <button
-                      type="button"
-                      className={`${styles.urlBarBookmark} ${
-                        currentBookmarked ? styles.urlBarBookmarkActive : ""
-                      }`}
-                      disabled={!navUrlNormalized}
-                      aria-label={
-                        currentBookmarked
-                          ? t("remoteBrowser.bookmarkRemove", "移除书签")
-                          : t("remoteBrowser.bookmarkAdd", "添加书签")
-                      }
-                      onClick={() => toggle(navUrl, activeTabTitle)}
-                    >
-                      <Star
-                        size={14}
-                        fill={currentBookmarked ? "currentColor" : "none"}
-                      />
-                    </button>
-                  </Tooltip>
-                }
-              />
-              <Button size="small" type="primary" onClick={() => goto()}>
-                {t("remoteBrowser.go")}
-              </Button>
-              <Button
-                size="small"
-                type={isAiPanelOpen ? "primary" : "default"}
-                icon={<Bot size={14} />}
-                onClick={handleAiPanelToggle}
-                aria-label={t("remoteBrowser.ai.title", "AI 助手")}
-                title={t("remoteBrowser.ai.title", "AI 助手")}
-              >
-                {isMobile ? null : t("remoteBrowser.ai.title", "AI 助手")}
-              </Button>
-              <Tooltip
-                title={t(
-                  "skillRecordGuide.buttonTip",
-                  "录制浏览器操作，生成可复用的技能脚本",
-                )}
-              >
-                <Button
-                  size="small"
-                  icon={<Sparkles size={14} />}
-                  onClick={openSkillGuide}
-                  aria-label={t("skillRecordGuide.buttonLabel", "技能录制")}
-                >
-                  {isMobile
-                    ? null
-                    : t("skillRecordGuide.buttonLabel", "技能录制")}
-                </Button>
-              </Tooltip>
-            </div>
-            {/* Bookmark bar */}
-            {bookmarks.length > 0 && (
-              <BookmarkBar
-                bookmarks={bookmarks}
-                onOpen={openBookmark}
-                onRemove={remove}
-              />
-            )}
-          </div>
-        )}
-
         <div
           className={`${styles.mainRow} ${
             isMobile ? styles.mainRowMobile : ""
           }`}
         >
-          <div className={styles.browserColumn}>
+          <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  border: "1px solid var(--fn-border-secondary)",
-                  borderTop: "none",
-                  borderRadius: "0 0 6px 6px",
-                  overflow: "hidden",
-                }}
-              >
-                <div ref={containerRef} className={styles.canvasViewport}>
-                  {!frameReady && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        zIndex: 1,
-                      }}
-                    >
-                      <RefreshCw
-                        size={28}
-                        className={styles.streamLoadingIcon}
-                      />
-                      <Text type="secondary">
-                        {isStreaming
+              <>
+                {bookmarks.length > 0 && (
+                  <BookmarkBar
+                    bookmarks={bookmarks}
+                    onOpen={openBookmark}
+                    onRemove={remove}
+                  />
+                )}
+                <BrowserViewer
+                  ref={viewerRef}
+                  status={status}
+                  tabs={streamTabs}
+                  switchTab={switchTab}
+                  closeTab={closeTab}
+                  newTab={newTab}
+                  sendEvent={sendEvent}
+                  navUrl={navUrl}
+                  onNavUrlChange={setNavUrl}
+                  onNavigate={(url) => streamNavigate(url)}
+                  interactive={Boolean(session)}
+                  bookmarked={currentBookmarked}
+                  onToggleBookmark={toggle}
+                  addressBarExtra={
+                    <>
+                      <Button
+                        size="small"
+                        type={isAiPanelOpen ? "primary" : "default"}
+                        icon={<Bot size={14} />}
+                        onClick={handleAiPanelToggle}
+                        aria-label={t("remoteBrowser.ai.title", "AI 助手")}
+                        title={t("remoteBrowser.ai.title", "AI 助手")}
+                      >
+                        {isMobile ? null : t("remoteBrowser.ai.title", "AI 助手")}
+                      </Button>
+                      <Tooltip
+                        title={t(
+                          "skillRecordGuide.buttonTip",
+                          "录制浏览器操作，生成可复用的技能脚本",
+                        )}
+                      >
+                        <Button
+                          size="small"
+                          icon={<Sparkles size={14} />}
+                          onClick={openSkillGuide}
+                          aria-label={t("skillRecordGuide.buttonLabel", "技能录制")}
+                        >
+                          {isMobile
+                            ? null
+                            : t("skillRecordGuide.buttonLabel", "技能录制")}
+                        </Button>
+                      </Tooltip>
+                    </>
+                  }
+                  overlay={
+                    <StreamEdgeControls
+                      visible={showEdgeControls}
+                      isMobile={isMobile}
+                      fullscreenLabel={t("remoteBrowser.fullscreen", "全屏")}
+                      controlsLabel={t(
+                        "remoteBrowser.openControls",
+                        "控制与快捷操作",
+                      )}
+                      streamingLabel={
+                        isStreaming
                           ? t("remoteBrowser.streaming", "推流中")
-                          : t("remoteBrowser.connecting", "连接中")}
-                      </Text>
-                    </div>
-                  )}
-                  <canvas
-                    ref={canvasRef}
-                    tabIndex={0}
-                    className={`${styles.canvas} ${
-                      isMobile ? styles.canvasMobile : ""
-                    } ${!frameReady ? styles.canvasHidden : ""}`}
-                    style={{
-                      cursor: isDragging ? "grabbing" : "grab",
-                      ...pointerStyle,
-                    }}
-                    onPointerDown={handleCanvasPointerDown}
-                    onDoubleClick={handleCanvasDblClick}
-                    onWheel={handleCanvasWheel}
-                    onKeyDown={handleCanvasKeyDown}
-                  />
-                  <StreamEdgeControls
-                    visible={showEdgeControls}
-                    isMobile={isMobile}
-                    fullscreenLabel={t("remoteBrowser.fullscreen", "全屏")}
-                    controlsLabel={t(
-                      "remoteBrowser.openControls",
-                      "控制与快捷操作",
-                    )}
-                    streamingLabel={
-                      isStreaming
-                        ? t("remoteBrowser.streaming", "推流中")
-                        : t("remoteBrowser.connecting", "连接中")
-                    }
-                    onFullscreen={() => void handleFullscreen()}
-                    onOpenControls={openControlsDrawer}
-                  />
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--fn-text-tertiary)",
-                    padding: "3px 8px",
-                    borderTop: "1px solid var(--fn-border-secondary)",
-                    background: "var(--fn-bg-primary)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>{tabs.length} tabs</span>
-                  <span style={{ color: "var(--fn-text-quaternary, #bbb)" }}>
-                    {session.id}
-                  </span>
-                </div>
-              </div>
+                          : t("remoteBrowser.connecting", "连接中")
+                      }
+                      onFullscreen={() => void handleFullscreen()}
+                      onOpenControls={openControlsDrawer}
+                    />
+                  }
+                  onCanvasKeyDown={handleCanvasKeyDown}
+                  onFrameReadyChange={handleFrameReadyChange}
+                />
+              </>
             ) : (
-              <div ref={containerRef} className={styles.idleViewport}>
+              <div className={styles.idleViewport}>
                 {installPhase === "installing" ? (
                   renderViewportInstallProgress()
                 ) : uninstalling ? (

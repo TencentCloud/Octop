@@ -36,6 +36,7 @@
     "gotIt": "Got it",
     "unknownError": "Unknown error",
     "viewDetail": "View Details",
+    "viewMore": "View More",
     "deleteFailed": "Delete failed",
     "rename": "Rename",
     "unchanged": "Leave blank to keep unchanged",
@@ -444,7 +445,8 @@
     "subagentFilesHint": "Subagents defined in the workspace agents/ directory. The main agent delegates tasks to them via the task tool.",
     "noSubagentFiles": "No subagents in workspace",
     "manageSubagents": "Manage subagents",
-    "subagentsBtn": "Subagents"
+    "subagentsBtn": "Subagents",
+    "skillsBtn": "Skills"
   },
   "subagents": {
     "catalogTitle": "Manage subagents",
@@ -574,7 +576,10 @@
       "rejected": "Rejected by user"
     },
     "openBrowser": "View browser",
-    "openBrowserHint": "Agent is browsing the web"
+    "openBrowserHint": "Agent is browsing the web",
+    "fileWorkspace": "Workspace files",
+    "fileWorkspaceHint": "Agent created or edited a file",
+    "fileSwitch": "Switch file"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -659,6 +664,7 @@
     "archiveModeMerge": "Merge (overwrite same paths, keep other files)",
     "archiveModeReplace": "Replace (clear local workspace, then import)",
     "mediaLoadFailed": "Could not load preview",
+    "docPreviewUnsupported": "Online preview is not available for this document — please download it",
     "deleteConfirm": "Delete this file?",
     "deleteDirConfirm": "Delete this folder and everything inside it?",
     "deleteSuccess": "Deleted",
@@ -2439,6 +2445,22 @@
     },
     "browserStatusActive": "Browser: {{owner}}",
     "browserStatusIdle": "Browser (click to view or take over)"
+  },
+  "browserViewer": {
+    "goBack": "Go back",
+    "goForward": "Go forward",
+    "reload": "Reload",
+    "go": "Go",
+    "urlPlaceholder": "Enter URL or https://…",
+    "bookmarkAdd": "Bookmark this page",
+    "bookmarkRemove": "Remove bookmark",
+    "newTab": "New tab",
+    "closeTab": "Close tab",
+    "connecting": "Connecting",
+    "streaming": "Streaming",
+    "connectFailed": "Failed to connect to browser stream",
+    "reconnect": "Reconnect",
+    "interactiveHint": "🖱️ Click, scroll, and type directly on the browser view"
   },
   "embedding": {
     "title": "Local Embedding Configuration",

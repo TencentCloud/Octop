@@ -36,6 +36,7 @@
     "gotIt": "知道了",
     "unknownError": "未知错误",
     "viewDetail": "查看详情",
+    "viewMore": "查看更多",
     "deleteFailed": "删除失败",
     "rename": "重命名",
     "unchanged": "留空表示保持不变",
@@ -442,7 +443,8 @@
     "subagentFilesHint": "工作区 agents/ 目录下的子智能体定义，主智能体通过 task 工具委派任务。",
     "noSubagentFiles": "工作区中暂无子智能体",
     "manageSubagents": "管理子智能体",
-    "subagentsBtn": "子智能体"
+    "subagentsBtn": "子智能体",
+    "skillsBtn": "技能"
   },
   "subagents": {
     "catalogTitle": "子智能体管理",
@@ -572,7 +574,10 @@
       "rejected": "用户已拒绝"
     },
     "openBrowser": "查看浏览器",
-    "openBrowserHint": "Agent 正在网页中操作"
+    "openBrowserHint": "Agent 正在网页中操作",
+    "fileWorkspace": "工作区文件",
+    "fileWorkspaceHint": "Agent 已生成或编辑文件",
+    "fileSwitch": "切换文件"
   },
   "tools": {
     "unknown": "未知工具",
@@ -656,6 +661,7 @@
     "archiveModeMerge": "合并（覆盖同名文件，保留其他文件）",
     "archiveModeReplace": "替换（清空本地工作区后导入）",
     "mediaLoadFailed": "无法加载预览",
+    "docPreviewUnsupported": "暂不支持在线预览此文档，请下载后查看",
     "deleteConfirm": "确定删除此文件？",
     "deleteDirConfirm": "确定删除此文件夹及其全部内容？",
     "deleteSuccess": "已删除",
@@ -2603,6 +2609,22 @@
     },
     "browserStatusActive": "浏览器：{{owner}}",
     "browserStatusIdle": "浏览器（点击查看/接管）"
+  },
+  "browserViewer": {
+    "goBack": "后退",
+    "goForward": "前进",
+    "reload": "刷新",
+    "go": "访问",
+    "urlPlaceholder": "输入网址或 https://…",
+    "bookmarkAdd": "收藏此页",
+    "bookmarkRemove": "取消收藏",
+    "newTab": "新标签页",
+    "closeTab": "关闭标签页",
+    "connecting": "连接中",
+    "streaming": "推流中",
+    "connectFailed": "浏览器流连接失败",
+    "reconnect": "重新连接",
+    "interactiveHint": "🖱️ 可直接在浏览器上点击、滚动和输入"
   },
   "embedding": {
     "title": "本地 Embedding 配置",

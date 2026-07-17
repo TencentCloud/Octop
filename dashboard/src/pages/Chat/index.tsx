@@ -17,6 +17,7 @@ import { useChatSessionActions } from "./hooks/useChatSessionActions";
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
+import { useChatFileDetection } from "./hooks/useChatFileDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { browserApi } from "../../api/modules/browser";
 import type { TokenUsage } from "../../api/types";
@@ -33,6 +34,7 @@ import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import ChatBrowserPanels from "./components/ChatBrowserPanels";
 import ChatBrowserBottomPanel from "./components/ChatBrowserBottomPanel";
+import ChatFilePanels from "./components/ChatFilePanels";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -197,6 +199,12 @@ function ChatPageInner() {
   } = useBrowserSessionState(threadId, hasBrowserTool);
 
   refreshBrowserRef.current = refreshBrowserSession;
+
+  const { filePaths } = useChatFileDetection(activeThreadId, messages);
+  const [filePanelOpen, setFilePanelOpen] = useState(false);
+  const toggleFilePanel = useCallback(() => {
+    setFilePanelOpen((prev) => !prev);
+  }, []);
 
   const {
     browserPanelOpen,
@@ -601,7 +609,6 @@ function ChatPageInner() {
             browserPanelOpen &&
             browserPanelMode === "bottom" && (
               <ChatBrowserBottomPanel
-                sessionId={browserSessionId ?? activeThreadId ?? null}
                 environment={browserEnvironment}
                 isResizing={isResizing}
                 bottomHeight={panelSizes.bottomHeight}
@@ -620,7 +627,6 @@ function ChatPageInner() {
           isResizing={isResizing}
           panelSizes={panelSizes}
           browserSessionId={browserSessionId}
-          activeThreadId={activeThreadId}
           browserEnvironment={browserEnvironment}
           browserSessionState={browserSessionState}
           browserControlOwner={browserControlOwner}
@@ -628,6 +634,15 @@ function ChatPageInner() {
           onClose={handleBrowserClose}
           onResizeStart={handleResizeStart}
           onTogglePanel={toggleBrowserPanel}
+        />
+
+        <ChatFilePanels
+          filePaths={filePaths}
+          isMobile={isMobile}
+          open={filePanelOpen}
+          agentId={resolvedAgentId ?? ""}
+          onToggle={toggleFilePanel}
+          onClose={() => setFilePanelOpen(false)}
         />
 
         <AgentProfileDrawer

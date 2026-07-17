@@ -43,7 +43,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/Dockerfile
           push: true
           # 默认仅 amd64，构建最快最稳。如需 ARM64（Apple Silicon / Graviton），
           # 改为 "linux/amd64,linux/arm64" 并加上 docker/setup-qemu-action@v3 步骤。

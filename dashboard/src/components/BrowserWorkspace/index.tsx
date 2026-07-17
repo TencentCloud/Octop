@@ -5,21 +5,15 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Button, Input, Select, Tag, Tooltip, Space } from "antd";
+import { Button, Select, Tag, Tooltip, Space } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowLeftRight,
-  ArrowRight,
   Globe,
-  Loader2,
   Monitor,
-  PanelBottom,
-  PanelRight,
-  PictureInPicture2,
   RefreshCw,
   User,
-  X,
 } from "lucide-react";
 import { api } from "../../api";
 import type {
@@ -27,74 +21,54 @@ import type {
   DisplayEnvironment,
 } from "../../api/types/browser";
 import { useBrowserStream } from "../../hooks/useBrowserStream";
+import { useAutoViewportResize } from "../../hooks/useAutoViewportResize";
+import {
+  useBrowserViewController,
+  deriveActiveTabUrl,
+} from "../../hooks/useBrowserViewController";
 import {
   useViewportMode,
   VIEWPORT_MODE_OPTIONS,
 } from "../../hooks/useViewportMode";
 import { normalizeUrl } from "../../utils/normalizeUrl";
-import { paintBase64JpegToCanvas } from "../../utils/browserCanvas";
 import { viewportModeLabel } from "../../utils/browserViewport";
-import { useBrowserCanvasInteraction } from "../../hooks/useBrowserCanvasInteraction";
+import { DEFAULT_BROWSER_PROFILE } from "../../utils/browserProfile";
 import { showApiError } from "../../utils/showApiToast";
+import BrowserViewer, {
+  type BrowserViewerHandle,
+} from "../BrowserViewer";
 import styles from "./index.module.less";
 
 export type PanelMode = "hidden" | "bottom" | "right" | "popup";
 
-const PANEL_MODE_KEY = "finnie:browser-panel:mode";
 const DEFAULT_URL = "https://cloud.tencent.com";
-
-const loadSavedMode = (): PanelMode => {
-  try {
-    const saved = localStorage.getItem(PANEL_MODE_KEY);
-    if (saved === "bottom" || saved === "right" || saved === "popup") {
-      return saved;
-    }
-  } catch {
-    // Ignore
-  }
-  return "popup";
-};
-
-const savePanelMode = (mode: PanelMode) => {
-  try {
-    if (mode !== "hidden") {
-      localStorage.setItem(PANEL_MODE_KEY, mode);
-    }
-  } catch {
-    // Ignore
-  }
-};
 
 interface BrowserWorkspaceProps {
   /** Conversation/session id used to attach the screencast to the agent's
    *  Chrome. Falls back to "default" on the backend when absent. */
   sessionId?: string | null;
   environment?: DisplayEnvironment;
-  initialMode?: PanelMode;
-  onModeChange?: (mode: PanelMode) => void;
-  onClose?: () => void;
   style?: React.CSSProperties;
+  /** Bookmark state for the current URL (forwarded to the address bar). */
+  bookmarked?: boolean;
+  onToggleBookmark?: (url: string, title: string) => void;
 }
 
 const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   sessionId,
   environment = "desktop",
-  initialMode,
-  onModeChange,
-  onClose,
   style,
+  bookmarked = false,
+  onToggleBookmark,
 }) => {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<PanelMode>(
-    () => initialMode ?? loadSavedMode(),
-  );
-  // Chat popup defaults to a fixed 1280×800 — the pane is too small for
-  // ``auto`` to render most desktop sites legibly.
+  // Viewport defaults to a fixed 1280×800 — suitable when the view is small
+  // and ``auto`` would render most desktop sites too small to read.
   const {
     mode: vpMode,
     setMode: setVpMode,
     resolve: resolveViewport,
-  } = useViewportMode("finnie:browser-panel:viewport-mode", "1280x800");
+  } = useViewportMode("octop:browser-panel:viewport-mode", "1280x800");
   const {
     status,
     tabs,
@@ -105,11 +79,10 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     switchTab,
     closeTab,
     newTab,
-    stop,
     disconnect,
   } = useBrowserStream();
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const viewerRef = useRef<BrowserViewerHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -118,20 +91,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   const [session, setSession] = useState<BrowserSession | null>(null);
   const [authAlert, setAuthAlert] = useState<string | null>(null);
 
-  // Popup drag-to-move state
-  const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-  const [isPopupDragging, setIsPopupDragging] = useState(false);
-  const popupDragRef = useRef<{
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-  } | null>(null);
-
   const isStreaming = status === "streaming";
-  const isConnecting = status === "connecting" || status === "browser_started";
 
   const viewportSelectOptions = useMemo(
     () =>
@@ -142,61 +102,35 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     [t],
   );
 
-  // -------------------------------------------------------------------------
-  // Frame rendering — match RemoteBrowser/index.tsx exactly so behaviour stays
-  // identical between the standalone page and the chat popup.
-  // -------------------------------------------------------------------------
-  const handleFrame = useCallback((base64Data: string) => {
-    paintBase64JpegToCanvas(canvasRef.current, base64Data);
-  }, []);
+  // Shared stream controller: measure container, resolve viewport, open the
+  // WebSocket, and paint frames onto the BrowserViewer canvas. The chat panel
+  // defaults to a fixed 1440×900 canvas (the pane is too small for ``auto``).
+  const { startStream } = useBrowserViewController({
+    containerRef: canvasContainerRef,
+    viewerRef,
+    connect,
+    resolveViewport,
+    defaultViewport: { width: 1440, height: 900 },
+    onError: (msg) => showApiError(msg, t("browserViewer.connectFailed"), t),
+  });
 
-  // -------------------------------------------------------------------------
-  // Auto-connect when the panel opens — the user is opening the popup to
-  // *watch* the agent, so don't make them click "start". We pass an empty
-  // url so the backend skips navigation and just attaches to whatever tab
-  // the agent already opened (see screencast.start: only navigates when
-  // initial_url is set and != "about:blank").
-  // -------------------------------------------------------------------------
-  const startStream = useCallback(
-    (targetUrl: string) => {
-      const containerEl = canvasContainerRef.current;
-      const cw = containerEl?.clientWidth ?? 0;
-      const ch = containerEl?.clientHeight ?? 0;
-      const vp = resolveViewport(cw, ch) ?? { width: 1440, height: 900 };
-      connect(
-        targetUrl,
-        vp.width,
-        vp.height,
-        {
-          onFrame: handleFrame,
-          onError: (msg) =>
-            showApiError(msg, t("browserWorkspace.streamError"), t),
-        },
-        { sessionId: sessionId ?? undefined },
-      );
-    },
-    [connect, handleFrame, sessionId, resolveViewport, t],
-  );
-
-  // First connect on mount (or when sessionId / panel mode / viewport mode changes).
+  // Connect on mount and whenever the attached session or viewport mode
+  // changes. The caller controls visibility by mounting/unmounting.
   useEffect(() => {
-    if (mode === "hidden") return;
     // Use empty string to "attach without navigating" — the backend's
     // BrowserStreamSession will pick whichever tab the agent has open.
-    startStream("");
+    startStream(sessionId ?? "", "");
     return () => {
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, sessionId, vpMode]);
+  }, [sessionId, vpMode]);
 
   // Keep the URL bar in sync with the active tab — but never stomp while typing.
   useEffect(() => {
     if (urlEditingRef.current) return;
-    const activeTab = tabs.find((t) => t.active);
-    if (activeTab && activeTab.url && activeTab.url !== "about:blank") {
-      setUrl(activeTab.url);
-    }
+    const target = deriveActiveTabUrl(tabs);
+    if (target) setUrl(target);
   }, [tabs]);
 
   useEffect(() => {
@@ -210,40 +144,13 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   // In ``auto`` mode, forward container size changes so Chrome's viewport
   // tracks the panel size live (no letterboxing, no upscale blur). In fixed
   // modes, the viewport stays pinned to the user's preset; container resize
-  // just rescales the canvas via CSS.
-  useEffect(() => {
-    if (vpMode !== "auto") return;
-    const containerEl = canvasContainerRef.current;
-    if (!containerEl) return;
-
-    let lastSent = { w: 0, h: 0 };
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flushResize = () => {
-      const w = containerEl.clientWidth;
-      const h = containerEl.clientHeight;
-      if (w === 0 || h === 0) return;
-      if (isStreaming && (w !== lastSent.w || h !== lastSent.h)) {
-        lastSent = { w, h };
-        sendEvent({ type: "resize", width: w, height: h });
-      }
-    };
-
-    const onResize = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(flushResize, 150);
-    };
-
-    flushResize();
-    const ro = new ResizeObserver(onResize);
-    ro.observe(containerEl);
-    window.addEventListener("resize", onResize);
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      ro.disconnect();
-      window.removeEventListener("resize", onResize);
-    };
-  }, [isStreaming, sendEvent, vpMode]);
+  // just rescales the canvas via CSS. Shared with /remote-browser via hook.
+  useAutoViewportResize({
+    enabled: vpMode === "auto",
+    containerRef: canvasContainerRef,
+    isStreaming,
+    sendEvent,
+  });
 
   // Apply session_update events from the backend (auth state, control owner).
   useEffect(() => {
@@ -260,7 +167,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
       }
       return {
         session_id: sessionInfo.session_id,
-        profile_name: "default",
+        profile_name: DEFAULT_BROWSER_PROFILE,
         conversation_id: sessionInfo.conversation_id,
         channel_source: sessionInfo.channel_source,
         state: sessionInfo.state || "idle",
@@ -311,40 +218,6 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   const isAuthNeeded =
     stateLabel === "awaiting_user_auth" || stateLabel === "authenticating";
 
-  const sendPanScroll = useCallback(
-    (x: number, y: number, deltaX: number, deltaY: number) => {
-      sendEvent({ type: "scroll", x, y, deltaX, deltaY });
-    },
-    [sendEvent],
-  );
-
-  const sendPanClick = useCallback(
-    (x: number, y: number) => {
-      sendEvent({ type: "click", x, y });
-    },
-    [sendEvent],
-  );
-
-  const sendPanDoubleClick = useCallback(
-    (x: number, y: number) => {
-      sendEvent({ type: "dblclick", x, y });
-    },
-    [sendEvent],
-  );
-
-  const {
-    handleWheel,
-    onPointerDown: handlePanPointerDown,
-    onDoubleClick: handleDoubleClick,
-    isDragging,
-  } = useBrowserCanvasInteraction({
-    enabled: isStreaming && isInteractive,
-    canvasRef,
-    onScroll: sendPanScroll,
-    onClick: sendPanClick,
-    onDoubleClick: sendPanDoubleClick,
-  });
-
   // Keyboard input — only forward when the user is in control.
   useEffect(() => {
     if (!isStreaming || !isInteractive) return;
@@ -373,9 +246,9 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     if (isStreaming) {
       streamNavigate(target);
     } else {
-      startStream(target);
+      startStream(sessionId ?? "", target);
     }
-  }, [url, isStreaming, streamNavigate, startStream]);
+  }, [url, isStreaming, sessionId, streamNavigate, startStream]);
 
   // -------------------------------------------------------------------------
   // Handoff
@@ -395,90 +268,14 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     [sessionId, sessionInfo, t],
   );
 
-  // -------------------------------------------------------------------------
-  // Mode switching + popup drag
-  // -------------------------------------------------------------------------
-  const switchMode = useCallback(
-    (newMode: PanelMode) => {
-      setMode(newMode);
-      savePanelMode(newMode);
-      onModeChange?.(newMode);
-      if (newMode === "popup") setPopupPos(null);
-    },
-    [onModeChange],
-  );
-
-  const handlePopupDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (mode !== "popup" || e.button !== 0) return;
-      const target = e.target as HTMLElement;
-      if (
-        target.closest("button") ||
-        target.closest("input") ||
-        target.closest("a") ||
-        target.closest('[role="button"]')
-      ) {
-        return;
-      }
-      e.preventDefault();
-      setIsPopupDragging(true);
-      const panel = panelRef.current;
-      if (panel) {
-        const rect = panel.getBoundingClientRect();
-        popupDragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: rect.left,
-          origY: rect.top,
-        };
-      }
-    },
-    [mode],
-  );
-
-  useEffect(() => {
-    if (!isPopupDragging) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!popupDragRef.current) return;
-      const dx = e.clientX - popupDragRef.current.startX;
-      const dy = e.clientY - popupDragRef.current.startY;
-      let newX = popupDragRef.current.origX + dx;
-      let newY = popupDragRef.current.origY + dy;
-      const panel = panelRef.current;
-      if (panel) {
-        const w = panel.offsetWidth;
-        const h = panel.offsetHeight;
-        newX = Math.max(0, Math.min(newX, window.innerWidth - w));
-        newY = Math.max(0, Math.min(newY, window.innerHeight - h));
-      }
-      setPopupPos({ x: newX, y: newY });
-    };
-    const handleMouseUp = () => {
-      setIsPopupDragging(false);
-      popupDragRef.current = null;
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isPopupDragging]);
-
-  const handleClose = useCallback(() => {
-    stop();
-    setMode("hidden");
-    onClose?.();
-  }, [stop, onClose]);
-
   const handleRetry = useCallback(() => {
     // Pass an empty url so the backend reattaches to whatever tab the
     // agent already has open instead of force-navigating to DEFAULT_URL.
     // The user can still explicitly navigate via the URL bar (which calls
     // streamNavigate / startStream(finalUrl)).
     disconnect();
-    startStream("");
-  }, [disconnect, startStream]);
+    startStream(sessionId ?? "", "");
+  }, [disconnect, sessionId, startStream]);
 
   const sessionStateLabel = useMemo(() => {
     if (controlOwner === "user") return t("browserWorkspace.userTakeoverShort");
@@ -487,37 +284,17 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     return translated !== key ? translated : stateLabel;
   }, [controlOwner, stateLabel, t]);
 
-  if (mode === "hidden") return null;
-
-  const popupStyle: React.CSSProperties | undefined =
-    mode === "popup" && popupPos
-      ? {
-          ...style,
-          left: popupPos.x,
-          top: popupPos.y,
-          right: "auto",
-          bottom: "auto",
-        }
-      : style;
-
   const hasSession = !!(sessionId ?? sessionInfo?.session_id);
   const currentUrl = session?.current_url ?? sessionInfo?.current_url ?? "";
 
   return (
     <div
       ref={panelRef}
-      className={`${styles.browserWorkspace} ${styles[mode]} ${
-        isPopupDragging ? styles.popupDragging : ""
-      }`}
-      style={popupStyle}
+      className={styles.browserWorkspace}
+      style={style}
     >
-      {/* Header — draggable in popup mode */}
-      <div
-        className={`${styles.header} ${
-          mode === "popup" ? styles.headerDraggable : ""
-        }`}
-        onMouseDown={handlePopupDragStart}
-      >
+      {/* Header — profile / status / viewport controls */}
+      <div className={styles.header}>
         <div className={styles.headerLeft}>
           {hasSession ? (
             <>
@@ -577,41 +354,6 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
               onClick={handleRetry}
             />
           </Tooltip>
-          <Tooltip title={t("browserWorkspace.panelBottom")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<PanelBottom size={14} />}
-              className={mode === "bottom" ? styles.modeActive : ""}
-              onClick={() => switchMode("bottom")}
-            />
-          </Tooltip>
-          <Tooltip title={t("browserWorkspace.panelRight")}>
-            <Button
-              type="text"
-              size="small"
-              icon={
-                <PanelRight size={14} style={{ transform: "rotate(-90deg)" }} />
-              }
-              className={mode === "right" ? styles.modeActive : ""}
-              onClick={() => switchMode("right")}
-            />
-          </Tooltip>
-          <Tooltip title={t("browserWorkspace.panelPopup")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<PictureInPicture2 size={14} />}
-              className={mode === "popup" ? styles.modeActive : ""}
-              onClick={() => switchMode("popup")}
-            />
-          </Tooltip>
-          <Button
-            type="text"
-            size="small"
-            icon={<X size={14} />}
-            onClick={handleClose}
-          />
         </div>
       </div>
 
@@ -629,139 +371,38 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
         </div>
       )}
 
-      {/* URL bar — lets the user navigate the agent's browser when needed */}
-      <div className={styles.urlBar}>
-        <Input
-          className={styles.urlBarInput}
-          size="small"
-          value={url}
-          placeholder={t("browserWorkspace.urlPlaceholder")}
-          onFocus={() => {
-            urlEditingRef.current = true;
-          }}
-          onBlur={() => {
-            urlEditingRef.current = false;
-          }}
-          onChange={(e) => setUrl(e.target.value)}
-          onPressEnter={handleNavigate}
-          suffix={
-            <Tooltip title={t("browserWorkspace.visit")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<ArrowRight size={14} />}
-                onClick={handleNavigate}
-              />
-            </Tooltip>
-          }
-        />
-      </div>
-
-      {/* Tab bar */}
-      {tabs.length > 0 && (
-        <div className={styles.tabBar}>
-          {tabs.map((tab) => {
-            const hostname = tab.url
-              ? tab.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]
-              : "";
-            const label = tab.title || hostname || String(tab.id);
-            return (
-              <div
-                key={tab.id}
-                className={`${styles.tab} ${
-                  tab.active ? styles.tabActive : ""
-                }`}
-                onClick={() => switchTab(tab.id)}
-                title={tab.url}
-              >
-                <Globe size={11} style={{ flexShrink: 0 }} />
-                <span className={styles.tabLabel}>{label}</span>
-                {tabs.length > 1 && (
-                  <span
-                    className={styles.tabClose}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(tab.id);
-                    }}
-                    title={t("common.close")}
-                  >
-                    ×
-                  </span>
-                )}
-              </div>
-            );
-          })}
-          <div
-            className={styles.tabNew}
-            onClick={() => newTab()}
-            title={t("browserWorkspace.newTab")}
-          >
-            +
-          </div>
-        </div>
-      )}
-
-      {/* Viewport — canvas-based, exact same approach as RemoteBrowser */}
+      {/* Shared browser view: tab bar + address bar + canvas preview.
+          Chat-specific chrome (panel mode / drag / close) lives in ChatBrowserPanel. */}
       <div
         ref={canvasContainerRef}
-        className={`${styles.viewportContainer} ${
-          isInteractive ? styles.viewportInteractive : ""
-        }`}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          overflow: "hidden",
+        }}
       >
-        {status === "error" ? (
-          <div className={styles.placeholder}>
-            <AlertTriangle
-              size={24}
-              style={{ marginBottom: 8, color: "#faad14" }}
-            />
-            <div style={{ marginBottom: 12 }}>
-              {t("browserWorkspace.connectFailed")}
-            </div>
-            <Button type="primary" size="small" onClick={handleRetry}>
-              {t("browserWorkspace.reconnect")}
-            </Button>
-          </div>
-        ) : isConnecting ? (
-          <div className={styles.placeholder}>
-            <Loader2 size={24} style={{ marginBottom: 8 }} />
-            <div>
-              {status === "connecting"
-                ? t("browserWorkspace.connecting")
-                : t("browserWorkspace.waitingScreenshot")}
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "rgba(255,255,255,0.45)",
-                marginTop: 4,
-              }}
-            >
-              {hasSession
-                ? t("browserWorkspace.firstConnectHint")
-                : t("browserWorkspace.waitingAgentHint")}
-            </div>
-          </div>
-        ) : (
-          <canvas
-            ref={canvasRef}
-            className={styles.canvas}
-            style={{
-              cursor: isDragging
-                ? "grabbing"
-                : isInteractive
-                ? "grab"
-                : "default",
-            }}
-            onPointerDown={handlePanPointerDown}
-            onDoubleClick={handleDoubleClick}
-            onWheel={handleWheel}
-          />
-        )}
-        {isInteractive && isStreaming && (
-          <div className={styles.interactiveHint}>
-            {t("browserWorkspace.interactiveHint")}
-          </div>
-        )}
+        <BrowserViewer
+          ref={viewerRef}
+          status={status}
+          tabs={tabs}
+          switchTab={switchTab}
+          closeTab={closeTab}
+          newTab={newTab}
+          sendEvent={sendEvent}
+          navUrl={url}
+          onNavUrlChange={setUrl}
+          onNavigate={handleNavigate}
+          interactive={isStreaming && isInteractive}
+          onReconnect={handleRetry}
+          bookmarked={bookmarked}
+          onToggleBookmark={onToggleBookmark}
+          connectingHint={
+            hasSession
+              ? t("browserWorkspace.firstConnectHint")
+              : t("browserWorkspace.waitingAgentHint")
+          }
+        />
       </div>
 
       {/* Footer with handoff actions */}

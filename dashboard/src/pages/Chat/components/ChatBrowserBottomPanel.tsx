@@ -1,11 +1,10 @@
-import BrowserWorkspace, {
-  type PanelMode,
-} from "../../../components/BrowserWorkspace";
+import ChatBrowserPanel from "../../../components/BrowserWorkspace/ChatBrowserPanel";
+import type { PanelMode } from "../../../components/BrowserWorkspace";
 import type { DisplayEnvironment } from "../../../api/types/browser";
+import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import styles from "../index.module.less";
 
 interface ChatBrowserBottomPanelProps {
-  sessionId: string | null;
   environment: DisplayEnvironment;
   isResizing: boolean;
   bottomHeight: number;
@@ -18,7 +17,6 @@ interface ChatBrowserBottomPanelProps {
 }
 
 export default function ChatBrowserBottomPanel({
-  sessionId,
   environment,
   isResizing,
   bottomHeight,
@@ -36,9 +34,10 @@ export default function ChatBrowserBottomPanel({
       >
         <div className={styles.resizerHandle} />
       </div>
-      <BrowserWorkspace
-        sessionId={sessionId}
+      <ChatBrowserPanel
+        sessionId={resolveBrowserProfile()}
         environment={environment}
+        mode="bottom"
         onModeChange={onModeChange}
         onClose={onClose}
         style={{ height: bottomHeight }}

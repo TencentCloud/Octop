@@ -1,9 +1,9 @@
 import { Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import BrowserWorkspace, {
-  type PanelMode,
-} from "../../../components/BrowserWorkspace";
+import ChatBrowserPanel from "../../../components/BrowserWorkspace/ChatBrowserPanel";
+import type { PanelMode } from "../../../components/BrowserWorkspace";
 import type { DisplayEnvironment } from "../../../api/types/browser";
+import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import styles from "../index.module.less";
 
 interface ChatBrowserPanelsProps {
@@ -14,7 +14,6 @@ interface ChatBrowserPanelsProps {
   isResizing: boolean;
   panelSizes: { rightWidth: number; bottomHeight: number };
   browserSessionId: string | null;
-  activeThreadId: string | null;
   browserEnvironment: DisplayEnvironment;
   browserSessionState: string;
   browserControlOwner: "agent" | "user";
@@ -35,7 +34,6 @@ export default function ChatBrowserPanels({
   isResizing,
   panelSizes,
   browserSessionId,
-  activeThreadId,
   browserEnvironment,
   browserSessionState,
   browserControlOwner,
@@ -45,7 +43,13 @@ export default function ChatBrowserPanels({
   onTogglePanel,
 }: ChatBrowserPanelsProps) {
   const { t } = useTranslation();
-  const sessionId = browserSessionId ?? activeThreadId ?? null;
+  // Attach to the shared default harness profile so headed chat browsers stay
+  // consistent with headless/standalone usage (one profile for all
+  // conversations) instead of spawning a per-conversation `thr_*` profile.
+  // The profile identifier has a single source of truth in
+  // browserProfile.resolveBrowserProfile so the panel and any future bubble
+  // logic cannot drift apart.
+  const sessionId = resolveBrowserProfile();
   const isAuth =
     browserSessionState === "awaiting_user_auth" ||
     browserSessionState === "authenticating";
@@ -85,33 +89,31 @@ export default function ChatBrowserPanels({
         </button>
       )}
 
-      {browserPanelOpen && browserPanelMode === "right" && (
+      {browserPanelOpen && (
         <>
-          <div
-            className={`${styles.panelResizer} ${styles.horizontal} ${
-              isResizing ? styles.resizerActive : ""
-            }`}
-            onMouseDown={(e) => onResizeStart(e, "horizontal")}
-          >
-            <div className={styles.resizerHandle} />
-          </div>
-          <BrowserWorkspace
+          {browserPanelMode === "right" && (
+            <div
+              className={`${styles.panelResizer} ${styles.horizontal} ${
+                isResizing ? styles.resizerActive : ""
+              }`}
+              onMouseDown={(e) => onResizeStart(e, "horizontal")}
+            >
+              <div className={styles.resizerHandle} />
+            </div>
+          )}
+          <ChatBrowserPanel
             sessionId={sessionId}
             environment={browserEnvironment}
+            mode={browserPanelMode}
             onModeChange={onModeChange}
             onClose={onClose}
-            style={{ width: panelSizes.rightWidth }}
+            style={
+              browserPanelMode === "right"
+                ? { width: panelSizes.rightWidth }
+                : undefined
+            }
           />
         </>
-      )}
-
-      {browserPanelOpen && browserPanelMode === "popup" && (
-        <BrowserWorkspace
-          sessionId={sessionId}
-          environment={browserEnvironment}
-          onModeChange={onModeChange}
-          onClose={onClose}
-        />
       )}
     </>
   );

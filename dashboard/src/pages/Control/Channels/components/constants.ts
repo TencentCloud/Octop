@@ -280,7 +280,7 @@ export const CHANNEL_BOOLEAN_CONFIG_KEYS = [
 /** Default per-channel display settings (harness-gateway ChannelConfig). */
 export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
   show_thinking: false,
-  show_tool_hints: true,
+  show_tool_hints: false,
 } as const;
 
 /** Required field names per kind — used for "missing creds" UX. */

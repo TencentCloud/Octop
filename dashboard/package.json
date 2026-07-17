@@ -28,6 +28,8 @@
     "antd": "^5.29.1",
     "antd-style": "^3.7.1",
     "build": "^0.1.4",
+    "docx-preview": "^0.3.2",
+    "xlsx": "^0.18.5",
     "i18next": "^25.8.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",

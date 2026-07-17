@@ -5,8 +5,8 @@
 # 阶段 1: 构建 React/TypeScript 前端
 # 阶段 2: Python 运行时 + 预构建前端
 #
-# 用法:
-#   docker build -t octop:latest .
+# 用法（在仓库根目录执行，构建上下文为根目录）:
+#   docker build -f docker/Dockerfile -t octop:latest .
 #   docker run -d -p 8088:8088 -v octop-data:/data/.octop -e HOME=/data octop:latest
 #
 # 国内加速（可选，需 BuildKit，docker/docker_build.sh 默认已开启）:
@@ -18,6 +18,7 @@
 #
 # 或直接传 build-arg:
 #   docker build \
+#     -f docker/Dockerfile \
 #     --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
 #     --build-arg PIP_TRUSTED_HOST=mirrors.aliyun.com \
 #     --build-arg NPM_REGISTRY=https://registry.npmmirror.com \

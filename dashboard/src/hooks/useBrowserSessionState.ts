@@ -3,6 +3,7 @@ import api from "../api";
 import { getWsUrl } from "../api/config";
 import { getAuthToken } from "../api/request";
 import type { BrowserSession, DisplayEnvironment } from "../api/types/browser";
+import { DEFAULT_BROWSER_PROFILE } from "../utils/browserProfile";
 
 /**
  * Session update event pushed over WebSocket from the backend.
@@ -160,7 +161,7 @@ export function useBrowserSessionState(
                 // HTTP fetch to complete.
                 return {
                   session_id: msg.session_id,
-                  profile_name: "default",
+                  profile_name: DEFAULT_BROWSER_PROFILE,
                   conversation_id: msg.conversation_id,
                   channel_source: msg.channel_source,
                   state: msg.state,

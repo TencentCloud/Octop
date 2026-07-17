@@ -136,7 +136,7 @@ export default function ChannelsPage() {
       setLoadingConfig(false);
       const defaults: ChannelFormValues = {
         kind,
-        enabled: true,
+        enabled: false,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
       };
       setDrawerInitialValues(defaults);

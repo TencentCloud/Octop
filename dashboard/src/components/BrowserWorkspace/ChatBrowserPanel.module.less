@@ -1,0 +1,69 @@
+.chatBrowserPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+
+  &.bottom {
+    width: 100%;
+    min-height: 200px;
+    flex-shrink: 0;
+    border-left: none;
+    border-top: none;
+    overflow: hidden;
+  }
+
+  &.right {
+    min-width: 320px;
+    flex-shrink: 0;
+    border-left: none;
+    overflow: hidden;
+  }
+
+  &.popup {
+    position: fixed;
+    right: 80px;
+    bottom: 24px;
+    width: 720px;
+    height: 600px;
+    max-width: calc(100vw - 120px);
+    max-height: calc(100vh - 48px);
+    z-index: 1100;
+    border: 1px solid var(--fn-border-secondary, #e0e0e0);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    resize: both;
+    overflow: auto;
+  }
+
+  /* Disable interaction while dragging so the canvas doesn't swallow moves. */
+  &.popupDragging {
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+  }
+}
+
+/* Chat-only toolbar: layout-mode switch (bottom / right / popup) + close. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--fn-border-secondary, #e0e0e0);
+  background: var(--fn-bg-secondary, #fafafa);
+  flex-shrink: 0;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+/* Active-mode indicator on the layout toggle buttons. */
+.modeActive {
+  color: #1890ff !important;
+  background: rgba(24, 144, 255, 0.08) !important;
+  border-radius: 4px;
+}

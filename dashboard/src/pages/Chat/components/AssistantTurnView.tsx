@@ -128,6 +128,7 @@ export default function AssistantTurnView({
           images={toolMedia.images}
           videos={toolMedia.videos}
           files={toolMedia.files}
+          agentId={agentId}
         />
       )}
       {answerSplit.answerMessage ? (

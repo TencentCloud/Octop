@@ -49,9 +49,11 @@ import { isAgentChatReady } from "../../../../utils/agentError";
 import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { workspaceEntryPath } from "../../../../utils/workspacePath";
-import FilePreview, { getPreviewKind } from "./FilePreview";
-import MediaPreview from "./MediaPreview";
+import FileViewer from "./FileViewer";
+import { getPreviewKind } from "./FilePreview";
 import { getMediaKind } from "../utils/mediaKind";
+import { getDocKind } from "../utils/docKind";
+import { isProbablyText } from "../utils/fileKind";
 import styles from "../index.module.less";
 
 interface FileInfo {
@@ -73,12 +75,6 @@ function nodeKey(t: TreeKey): string {
 function pathFromKey(key: string): TreeKey {
   const sep = key.indexOf(":");
   return { is_dir: key[0] === "d", path: key.slice(sep + 1) };
-}
-
-function isProbablyText(name: string): boolean {
-  return /\.(md|txt|json|jsonl|yaml|yml|toml|py|ts|tsx|js|jsx|css|html|xml|csv|log|sh|env)$/i.test(
-    name,
-  );
 }
 
 function formatModified(ts?: string): string {
@@ -985,8 +981,8 @@ export default function WorkspaceDrawer({
   const selected = selectedKey ? pathFromKey(selectedKey) : null;
   const previewKind =
     selected && !selected.is_dir ? getPreviewKind(selected.path) : null;
-  const mediaKind =
-    selected && !selected.is_dir ? getMediaKind(selected.path) : null;
+  const docKind =
+    selected && !selected.is_dir ? getDocKind(selected.path) : null;
   const showEditButton =
     selected && !selected.is_dir && isProbablyText(selected.path);
   const showPreviewToggle = previewKind !== null && !editMode && content !== "";
@@ -1432,7 +1428,7 @@ export default function WorkspaceDrawer({
                   <div
                     className={styles.viewerBody}
                     style={
-                      showEditButton && editMode
+                      (showEditButton && editMode) || docKind !== null
                         ? {
                             overflow: "hidden",
                             display: "flex",
@@ -1441,57 +1437,15 @@ export default function WorkspaceDrawer({
                         : undefined
                     }
                   >
-                    {fileLoading ? (
-                      <div className={styles.viewerLoading}>
-                        <Spin />
-                      </div>
-                    ) : mediaKind ? (
-                      <MediaPreview
-                        agentId={agentId}
-                        path={selected.path}
-                        kind={mediaKind}
-                      />
-                    ) : showEditButton && editMode ? (
-                      <textarea
-                        className={styles.viewerEditor}
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        style={{
-                          flex: 1,
-                          padding: "14px 16px",
-                          outline: "none",
-                        }}
-                      />
-                    ) : showEditButton && content === "" ? (
-                      <div className={styles.viewerEmpty}>
-                        <p
-                          style={{
-                            color: "var(--fn-text-tertiary)",
-                            margin: 0,
-                          }}
-                        >
-                          {t("workspace.emptyFile", "文件为空")}
-                        </p>
-                      </div>
-                    ) : showEditButton && previewKind && previewMode ? (
-                      <FilePreview kind={previewKind} content={content} />
-                    ) : showEditButton ? (
-                      <pre className={styles.viewerPre}>{content}</pre>
-                    ) : (
-                      <div className={styles.viewerEmpty}>
-                        <p
-                          style={{
-                            color: "var(--fn-text-tertiary)",
-                            margin: 0,
-                          }}
-                        >
-                          {t(
-                            "workspace.binaryHint",
-                            "该文件可能是二进制内容，请使用下载获取",
-                          )}
-                        </p>
-                      </div>
-                    )}
+                    <FileViewer
+                      agentId={agentId}
+                      path={selected.path}
+                      editMode={editMode}
+                      value={content}
+                      onChange={setContent}
+                      fileLoading={fileLoading}
+                      previewMode={previewMode}
+                    />
                   </div>
                 </>
               )}

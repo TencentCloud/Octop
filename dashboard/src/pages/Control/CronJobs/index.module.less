@@ -430,3 +430,68 @@
   align-items: center;
   gap: 4px;
 }
+
+/* ── Execute-now confirmation modal ──────────────────────────── */
+
+.executeModal {
+  :global(.ant-modal-content) {
+    padding: 28px 24px 20px;
+    border-radius: var(--fn-radius-lg);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
+  }
+}
+
+.executeModalBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 4px 4px 0;
+}
+
+.executeModalDesc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+}
+
+.executeModalHighlight {
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-primary);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  word-break: break-word;
+}
+
+.executeModalActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.executeModalCancel,
+.executeModalOk {
+  flex: 1;
+  height: 40px;
+  border-radius: var(--fn-radius-sm);
+}
+
+@media (max-width: 480px) {
+  .executeModalActions {
+    flex-direction: column-reverse;
+  }
+
+  /* `flex: 1` sets flex-basis to 0%, which collapses button height in a
+     column layout — reset it and let the fixed height + full width apply. */
+  .executeModalCancel,
+  .executeModalOk {
+    flex: none;
+    width: 100%;
+  }
+}
