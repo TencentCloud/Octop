@@ -2898,6 +2898,7 @@
     "oauthSuccess": "Authorized — save the connection",
     "oauthFailed": "Failed to fetch OAuth result",
     "oauthStartFailed": "Could not start OAuth",
+    "oauthPopupBlocked": "The authorization window was blocked. Allow pop-ups for this site and try again.",
     "oauthCompleteHint": "Enter a display name and save",
     "chatPicker": "Connectors",
     "chatPickerSearch": "Search connectors",
