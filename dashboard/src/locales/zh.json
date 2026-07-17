@@ -3062,6 +3062,7 @@
     "oauthSuccess": "授权成功，请保存连接",
     "oauthFailed": "获取授权结果失败",
     "oauthStartFailed": "无法启动 OAuth",
+    "oauthPopupBlocked": "授权窗口被浏览器拦截，请允许本站弹出窗口后重试",
     "oauthCompleteHint": "请填写显示名称并保存连接",
     "chatPicker": "连接器",
     "chatPickerSearch": "搜索连接器",
