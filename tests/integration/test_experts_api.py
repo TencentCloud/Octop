@@ -132,15 +132,15 @@ async def test_get_expert_includes_file_contents(env: Any) -> None:
 
 async def test_get_expert_file_contents_limited_to_preview_paths(env: Any) -> None:
     c, _srv, auth = env
-    r = await c.get("/api/experts/clinical-doctor", headers=auth)
+    r = await c.get("/api/experts/stock-assistant", headers=auth)
     assert r.status_code == 200
     body = r.json()
     names = {item["name"] for item in body["file_contents"]}
     assert names == set(body["prompt_files"]) | {
         f for f in body["files"] if f.startswith("skills/")
     }
-    assert "references/cron-presets.json" not in names
-    assert "BOOTSTRAP.md" not in names
+    assert "skills/stock-info/SKILL.md" in names
+    assert "manifest.json" not in names
 
 
 async def test_create_from_expert_stores_icon_color(env: Any) -> None:
