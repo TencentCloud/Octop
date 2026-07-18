@@ -1,18 +1,22 @@
 import { Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import ChatBrowserPanel from "../../../components/BrowserWorkspace/ChatBrowserPanel";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
 import type { DisplayEnvironment } from "../../../api/types/browser";
-import { resolveBrowserProfile } from "../../../utils/browserProfile";
+import type { DockKind } from "../hooks/useChatDockPanel";
 import styles from "../index.module.less";
+import ChatDockPanel from "./ChatDockPanel";
 
-interface ChatBrowserPanelsProps {
+interface ChatDockPanelsProps {
   hasBrowserTool: boolean;
   isMobile: boolean;
-  browserPanelOpen: boolean;
-  browserPanelMode: PanelMode;
+  dockOpen: boolean;
+  dockKind: DockKind;
+  dockMode: PanelMode;
   isResizing: boolean;
   panelSizes: { rightWidth: number; bottomHeight: number };
+  agentId: string;
+  filePaths: string[];
+  initialPath?: string | null;
   browserSessionId: string | null;
   browserEnvironment: DisplayEnvironment;
   browserSessionState: string;
@@ -23,16 +27,27 @@ interface ChatBrowserPanelsProps {
     e: React.PointerEvent,
     direction: "horizontal" | "vertical",
   ) => void;
-  onTogglePanel: () => void;
+  onToggleBrowser: () => void;
+  /** When true, render only the bottom-dock slot (inside chatMain). */
+  slot: "bottom" | "side";
 }
 
-export default function ChatBrowserPanels({
+/**
+ * Shared chat dock host: one shell for file / browser / preview.
+ * ``slot="bottom"`` renders inside ``chatMain``; ``slot="side"`` covers
+ * right + popup plus the floating browser status button.
+ */
+export default function ChatDockPanels({
   hasBrowserTool,
   isMobile,
-  browserPanelOpen,
-  browserPanelMode,
+  dockOpen,
+  dockKind,
+  dockMode,
   isResizing,
   panelSizes,
+  agentId,
+  filePaths,
+  initialPath,
   browserSessionId,
   browserEnvironment,
   browserSessionState,
@@ -40,16 +55,10 @@ export default function ChatBrowserPanels({
   onModeChange,
   onClose,
   onResizeStart,
-  onTogglePanel,
-}: ChatBrowserPanelsProps) {
+  onToggleBrowser,
+  slot,
+}: ChatDockPanelsProps) {
   const { t } = useTranslation();
-  // Attach to the shared default harness profile so headed chat browsers stay
-  // consistent with headless/standalone usage (one profile for all
-  // conversations) instead of spawning a per-conversation `thr_*` profile.
-  // The profile identifier has a single source of truth in
-  // browserProfile.resolveBrowserProfile so the panel and any future bubble
-  // logic cannot drift apart.
-  const sessionId = resolveBrowserProfile();
   const isAuth =
     browserSessionState === "awaiting_user_auth" ||
     browserSessionState === "authenticating";
@@ -63,11 +72,24 @@ export default function ChatBrowserPanels({
       })
     : t("browserWorkspace.browserStatusIdle");
 
-  if (!hasBrowserTool || isMobile) return null;
+  const showStatusBtn =
+    slot === "side" &&
+    hasBrowserTool &&
+    !isMobile &&
+    !(dockOpen && dockKind === "browser");
+
+  const showBottom = slot === "bottom" && dockOpen && dockMode === "bottom";
+  const showSide =
+    slot === "side" &&
+    dockOpen &&
+    !isMobile &&
+    (dockMode === "right" || dockMode === "popup");
+  const showMobilePopup =
+    slot === "side" && isMobile && dockOpen && dockMode === "popup";
 
   return (
     <>
-      {!browserPanelOpen && (
+      {showStatusBtn && (
         <button
           type="button"
           className={`${styles.browserStatusBtn} ${
@@ -75,7 +97,7 @@ export default function ChatBrowserPanels({
           } ${isAuth ? styles.browserStatusAuth : ""} ${
             browserControlOwner === "user" ? styles.browserStatusTakeover : ""
           }`}
-          onClick={onTogglePanel}
+          onClick={onToggleBrowser}
           title={statusTitle}
         >
           <Globe size={14} />
@@ -89,9 +111,33 @@ export default function ChatBrowserPanels({
         </button>
       )}
 
-      {browserPanelOpen && (
+      {showBottom && (
         <>
-          {browserPanelMode === "right" && (
+          <div
+            className={`${styles.panelResizer} ${styles.vertical} ${
+              isResizing ? styles.resizerActive : ""
+            }`}
+            onPointerDown={(e) => onResizeStart(e, "vertical")}
+          >
+            <div className={styles.resizerHandle} />
+          </div>
+          <ChatDockPanel
+            kind={dockKind}
+            mode="bottom"
+            onModeChange={onModeChange}
+            onClose={onClose}
+            style={{ height: panelSizes.bottomHeight }}
+            agentId={agentId}
+            filePaths={filePaths}
+            initialPath={initialPath}
+            browserEnvironment={browserEnvironment}
+          />
+        </>
+      )}
+
+      {(showSide || showMobilePopup) && (
+        <>
+          {dockMode === "right" && !isMobile && (
             <div
               className={`${styles.panelResizer} ${styles.horizontal} ${
                 isResizing ? styles.resizerActive : ""
@@ -101,17 +147,20 @@ export default function ChatBrowserPanels({
               <div className={styles.resizerHandle} />
             </div>
           )}
-          <ChatBrowserPanel
-            sessionId={sessionId}
-            environment={browserEnvironment}
-            mode={browserPanelMode}
+          <ChatDockPanel
+            kind={dockKind}
+            mode={dockMode === "right" && isMobile ? "popup" : dockMode}
             onModeChange={onModeChange}
             onClose={onClose}
             style={
-              browserPanelMode === "right"
+              dockMode === "right" && !isMobile
                 ? { width: panelSizes.rightWidth }
                 : undefined
             }
+            agentId={agentId}
+            filePaths={filePaths}
+            initialPath={initialPath}
+            browserEnvironment={browserEnvironment}
           />
         </>
       )}

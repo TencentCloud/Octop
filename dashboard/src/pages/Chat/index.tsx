@@ -9,7 +9,7 @@ import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
 import { formatRunUsage } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
-import { useChatBrowserPanel } from "./hooks/useChatBrowserPanel";
+import { useChatDockPanel } from "./hooks/useChatDockPanel";
 import { useChatSend } from "./hooks/useChatSend";
 import { useChatNavigation } from "./hooks/useChatNavigation";
 import { useChatSessionActions } from "./hooks/useChatSessionActions";
@@ -32,11 +32,8 @@ import { useSkills } from "../Agent/Skills/useSkills";
 import { useAgent } from "../../context/AgentContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
-import ChatBrowserPanels from "./components/ChatBrowserPanels";
-import ChatBrowserBottomPanel from "./components/ChatBrowserBottomPanel";
-import FilePanel from "./components/FilePanel";
-import FileBottomPanel from "./components/FileBottomPanel";
-import { useChatFilePanel } from "./hooks/useChatFilePanel";
+import ChatDockPanels from "./components/ChatDockPanels";
+import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -68,6 +65,8 @@ function ChatPageInner() {
     sidebarOpen,
     setSidebarOpen,
     sidebarWidth,
+    isSidebarResizing,
+    sidebarElRef,
     handleSidebarResizeStart,
   } = useChatSidebarState(isMobile);
 
@@ -206,28 +205,28 @@ function ChatPageInner() {
 
   const { filePaths } = useChatFileDetection(activeThreadId, messages);
   const {
-    filePanelOpen,
-    filePanelMode,
-    setFilePanelMode,
-    panelSizes: filePanelSizes,
-    isResizing: fileIsResizing,
-    handleResizeStart: fileHandleResizeStart,
-    handleFileClose,
+    dockOpen,
+    dockKind,
+    dockMode,
+    filePath: filePanelPath,
+    panelSizes: dockPanelSizes,
+    isResizing: dockIsResizing,
+    handleResizeStart: dockHandleResizeStart,
+    handleClose: handleDockClose,
+    handleModeChange: handleDockModeChange,
     openFilePanel,
-  } = useChatFilePanel(isMobile);
-
-  const {
-    browserPanelOpen,
-    browserPanelMode,
-    setBrowserPanelMode,
-    panelSizes,
-    isResizing,
-    handleResizeStart,
-    handleBrowserClose,
-    toggleBrowserPanel,
+    openFileAt,
     openBrowserPanel,
+    toggleBrowserPanel,
     resetDismissOnSessionGone,
-  } = useChatBrowserPanel(isMobile);
+  } = useChatDockPanel(isMobile);
+
+  const panelFilePaths = useMemo(() => {
+    if (!filePanelPath) return filePaths;
+    const normalized = filePanelPath;
+    if (filePaths.some((p) => p === normalized)) return filePaths;
+    return [...filePaths, normalized];
+  }, [filePaths, filePanelPath]);
 
   const prevBrowserStateRef = useRef<string>("idle");
   useEffect(() => {
@@ -470,16 +469,18 @@ function ChatPageInner() {
   const hasMessages = messages.length > 0;
 
   return (
-    <>
+    <ChatFilePreviewProvider openFilePreview={openFileAt}>
       <div
         className={`${styles.chatPage} ${
-          fileIsResizing || isResizing ? styles.panelResizeActive : ""
+          dockIsResizing ? styles.panelResizeActive : ""
         }`}
       >
         <ChatSidebarPanel
           isMobile={isMobile}
           sidebarOpen={sidebarOpen}
           sidebarWidth={sidebarWidth}
+          isSidebarResizing={isSidebarResizing}
+          sidebarElRef={sidebarElRef}
           agents={agents}
           sessions={sessions}
           activeThreadId={activeThreadId}
@@ -503,11 +504,7 @@ function ChatPageInner() {
         {/* Main chat area */}
         <div
           className={`${styles.chatMain} ${
-            ((hasBrowserTool &&
-              browserPanelOpen &&
-              browserPanelMode === "bottom") ||
-              (filePanelOpen && filePanelMode === "bottom")) &&
-            !isMobile
+            dockOpen && dockMode === "bottom"
               ? styles.chatMainWithBottomPanel
               : ""
           }`}
@@ -574,7 +571,9 @@ function ChatPageInner() {
                   hasBrowserTool && !isMobile ? openBrowserPanel : undefined
                 }
                 onEditFile={
-                  filePaths.length > 0 && !isMobile ? openFilePanel : undefined
+                  panelFilePaths.length > 0 && !isMobile
+                    ? openFilePanel
+                    : undefined
                 }
               />
             )}
@@ -623,84 +622,51 @@ function ChatPageInner() {
             contextMaxTokens={contextMaxTokens}
           />
 
-          {/* Browser Workspace — bottom panel mode (inside chatMain, desktop only) */}
-          {hasBrowserTool &&
-            !isMobile &&
-            browserPanelOpen &&
-            browserPanelMode === "bottom" && (
-              <ChatBrowserBottomPanel
-                environment={browserEnvironment}
-                isResizing={isResizing}
-                bottomHeight={panelSizes.bottomHeight}
-                onModeChange={setBrowserPanelMode}
-                onClose={handleBrowserClose}
-                onResizeStart={handleResizeStart}
-              />
-            )}
-
-          {/* File viewer/editor — bottom panel mode (inside chatMain, desktop only) */}
-          {!isMobile && filePanelOpen && filePanelMode === "bottom" && (
-            <FileBottomPanel
-              agentId={resolvedAgentId ?? ""}
-              filePaths={filePaths}
-              isResizing={fileIsResizing}
-              bottomHeight={filePanelSizes.bottomHeight}
-              onModeChange={setFilePanelMode}
-              onClose={handleFileClose}
-              onResizeStart={fileHandleResizeStart}
-            />
-          )}
+          {/* Shared dock — bottom slot (file / browser / preview) */}
+          <ChatDockPanels
+            slot="bottom"
+            hasBrowserTool={hasBrowserTool}
+            isMobile={isMobile}
+            dockOpen={dockOpen}
+            dockKind={dockKind}
+            dockMode={dockMode}
+            isResizing={dockIsResizing}
+            panelSizes={dockPanelSizes}
+            agentId={resolvedAgentId ?? ""}
+            filePaths={panelFilePaths}
+            initialPath={filePanelPath}
+            browserSessionId={browserSessionId}
+            browserEnvironment={browserEnvironment}
+            browserSessionState={browserSessionState}
+            browserControlOwner={browserControlOwner}
+            onModeChange={handleDockModeChange}
+            onClose={handleDockClose}
+            onResizeStart={dockHandleResizeStart}
+            onToggleBrowser={toggleBrowserPanel}
+          />
         </div>
 
-        <ChatBrowserPanels
+        <ChatDockPanels
+          slot="side"
           hasBrowserTool={hasBrowserTool}
           isMobile={isMobile}
-          browserPanelOpen={browserPanelOpen}
-          browserPanelMode={browserPanelMode}
-          isResizing={isResizing}
-          panelSizes={panelSizes}
+          dockOpen={dockOpen}
+          dockKind={dockKind}
+          dockMode={dockMode}
+          isResizing={dockIsResizing}
+          panelSizes={dockPanelSizes}
+          agentId={resolvedAgentId ?? ""}
+          filePaths={panelFilePaths}
+          initialPath={filePanelPath}
           browserSessionId={browserSessionId}
           browserEnvironment={browserEnvironment}
           browserSessionState={browserSessionState}
           browserControlOwner={browserControlOwner}
-          onModeChange={setBrowserPanelMode}
-          onClose={handleBrowserClose}
-          onResizeStart={handleResizeStart}
-          onTogglePanel={toggleBrowserPanel}
+          onModeChange={handleDockModeChange}
+          onClose={handleDockClose}
+          onResizeStart={dockHandleResizeStart}
+          onToggleBrowser={toggleBrowserPanel}
         />
-
-        {/* File viewer/editor — right docked panel (desktop only) */}
-        {!isMobile && filePanelOpen && filePanelMode === "right" && (
-          <>
-            <div
-              className={`${styles.panelResizer} ${styles.horizontal} ${
-                fileIsResizing ? styles.resizerActive : ""
-              }`}
-              onPointerDown={(e) => fileHandleResizeStart(e, "horizontal")}
-            >
-              <div className={styles.resizerHandle} />
-            </div>
-            <FilePanel
-              agentId={resolvedAgentId ?? ""}
-              filePaths={filePaths}
-              mode="right"
-              onModeChange={setFilePanelMode}
-              onClose={handleFileClose}
-              style={{ width: filePanelSizes.rightWidth }}
-            />
-          </>
-        )}
-
-        {/* File viewer/editor — floating popup mode (desktop only) */}
-        {!isMobile && filePanelOpen && filePanelMode === "popup" && (
-          <FilePanel
-            agentId={resolvedAgentId ?? ""}
-            filePaths={filePaths}
-            mode="popup"
-            onModeChange={setFilePanelMode}
-            onClose={handleFileClose}
-          />
-        )}
 
         <AgentProfileDrawer
           open={agentProfileOpen}
@@ -709,6 +675,6 @@ function ChatPageInner() {
           onClose={() => setAgentProfileOpen(false)}
         />
       </div>
-    </>
+    </ChatFilePreviewProvider>
   );
 }

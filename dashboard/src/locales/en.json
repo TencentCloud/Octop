@@ -550,9 +550,10 @@
     "expertPickerManage": "Manage experts",
     "composerContextLabel": "Message context",
     "contextWindow": {
-      "tooltip": "Used {{used}} / {{max}} · {{percent}}%",
+      "tooltip": "Context {{used}} / {{max}} · {{percent}}% (last model request)",
       "breakdownTitle": "Context Usage",
       "breakdownPercent": "{{percent}}% Full",
+      "breakdownHint": "Shows current context-window occupancy, not this turn’s billed total. Older threads need one new turn before full segments appear.",
       "segments": {
         "system_prompt": "System prompt",
         "tool_definitions": "Tool definitions",

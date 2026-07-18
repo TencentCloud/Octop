@@ -50,7 +50,11 @@ import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { workspaceEntryPath } from "../../../../utils/workspacePath";
 import FileViewer from "./FileViewer";
-import { getPreviewKind, previewNeedsFillLayout } from "./FilePreview";
+import {
+  getPreviewKind,
+  previewNeedsFillLayout,
+  defaultPreviewMode,
+} from "./FilePreview";
 import { getMediaKind } from "../utils/mediaKind";
 import { getDocKind } from "../utils/docKind";
 import { isProbablyText } from "../utils/fileKind";
@@ -345,7 +349,7 @@ export default function WorkspaceDrawer({
         if (opts?.activateRoot) {
           setSelectedKey(workspaceRootKey());
           setEditMode(false);
-          setPreviewMode(true);
+          setPreviewMode(false);
           setContent("");
           setDirEntries(data);
           setDirLoading(false);
@@ -719,7 +723,7 @@ export default function WorkspaceDrawer({
     const { path, is_dir } = pathFromKey(key);
     setSelectedKey(key);
     setEditMode(false);
-    setPreviewMode(true);
+    setPreviewMode(is_dir ? false : defaultPreviewMode(path));
     setContent("");
     if (is_dir) {
       setDirEntries([]);
@@ -808,6 +812,7 @@ export default function WorkspaceDrawer({
 
   const renderSplitDivider = () => (
     <div
+      data-split-divider=""
       className={`${styles.splitDivider} ${
         treeCollapsed ? styles.splitDividerCollapsed : ""
       }`}
@@ -818,7 +823,7 @@ export default function WorkspaceDrawer({
           role="separator"
           aria-orientation="vertical"
           aria-label={t("workspace.resizeTree", "调整目录宽度")}
-          onMouseDown={onResizeStart}
+          onPointerDown={onResizeStart}
         />
       )}
       <Tooltip

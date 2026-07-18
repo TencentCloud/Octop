@@ -11,7 +11,7 @@ import {
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
-import ChatFileModal from "./ChatFileModal";
+import { useChatFilePreview } from "../ChatFilePreviewContext";
 import styles from "../index.module.less";
 
 /** Files the browser can render inline (vs. pure binary blobs). */
@@ -36,13 +36,15 @@ export function MessageFileCard({
   workspacePath?: string;
 }) {
   const { t } = useTranslation();
+  const filePreview = useChatFilePreview();
   const [loading, setLoading] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const needsAuth = needsAuthBlobFetch(url) || isDataUrl(url);
   const label = filename || url;
 
   const resolvedPath = workspacePath || workspacePathFromAccessUrl(url) || "";
-  const previewable = Boolean(resolvedPath && agentId && isPreviewable(label));
+  const previewable = Boolean(
+    resolvedPath && agentId && isPreviewable(label) && filePreview,
+  );
 
   const handleDownload = useCallback(async () => {
     if (!needsAuth) {
@@ -67,8 +69,10 @@ export function MessageFileCard({
   }, [url, filename, needsAuth, t]);
 
   const openPreview = useCallback(() => {
-    if (previewable) setPreviewOpen(true);
-  }, [previewable]);
+    if (previewable && resolvedPath && filePreview) {
+      filePreview.openFilePreview(resolvedPath);
+    }
+  }, [previewable, resolvedPath, filePreview]);
 
   return (
     <div className={styles.messageFileCard}>
@@ -107,15 +111,6 @@ export function MessageFileCard({
       >
         <Download size={15} strokeWidth={2} />
       </button>
-      {previewOpen && resolvedPath && agentId && (
-        <ChatFileModal
-          agentId={agentId}
-          open={previewOpen}
-          initialPath={resolvedPath}
-          filePaths={[resolvedPath]}
-          onClose={() => setPreviewOpen(false)}
-        />
-      )}
     </div>
   );
 }

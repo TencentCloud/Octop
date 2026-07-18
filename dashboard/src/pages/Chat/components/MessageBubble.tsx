@@ -699,7 +699,10 @@ function MessageBubble({
                     <ImageGallery images={imageAttachments} agentId={agentId} />
                   )}
                   {fileAttachments.length > 0 && (
-                    <FileAttachmentList files={fileAttachments} agentId={agentId} />
+                    <FileAttachmentList
+                      files={fileAttachments}
+                      agentId={agentId}
+                    />
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
@@ -745,7 +748,10 @@ function MessageBubble({
                   <ImageGallery images={imageAttachments} agentId={agentId} />
                 )}
                 {fileAttachments.length > 0 && (
-                  <FileAttachmentList files={fileAttachments} agentId={agentId} />
+                  <FileAttachmentList
+                    files={fileAttachments}
+                    agentId={agentId}
+                  />
                 )}
                 {textContent && (
                   <Markdown

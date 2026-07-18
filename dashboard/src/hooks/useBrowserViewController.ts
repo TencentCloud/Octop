@@ -96,8 +96,13 @@ export function useBrowserViewController({
 
   const startStream = useCallback(
     (sessionId: string, targetUrl = "") => {
-      const { isMobile: mobile, defaultViewport: fallback, onError: err, onBeforeConnect: before, onAfterConnect: after } =
-        cfgRef.current;
+      const {
+        isMobile: mobile,
+        defaultViewport: fallback,
+        onError: err,
+        onBeforeConnect: before,
+        onAfterConnect: after,
+      } = cfgRef.current;
       const containerEl = containerRef.current;
       const cw = containerEl?.clientWidth ?? 0;
       const ch = containerEl?.clientHeight ?? 0;

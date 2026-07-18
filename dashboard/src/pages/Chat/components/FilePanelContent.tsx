@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Select, message, Tooltip, Segmented } from "antd";
-import { Pencil, Save, ArrowDownToLine } from "lucide-react";
+import { Pencil, Save, ArrowDownToLine, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request, requestBlob } from "../../../api/request";
 import FileViewer from "../../Agent/Workspace/components/FileViewer";
@@ -9,9 +9,20 @@ import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import {
   getPreviewKind,
   previewNeedsFillLayout,
+  defaultPreviewMode,
 } from "../../Agent/Workspace/components/FilePreview";
-import { toWorkspaceRelativePath } from "../../../utils/workspacePath";
 import styles from "../index.module.less";
+
+/** Keep tool path shape: absolute stays absolute, relative stays relative. */
+function panelFilePath(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.toLowerCase().startsWith("file://")) {
+    let abs = trimmed.slice("file://".length);
+    if (abs.startsWith("//")) abs = abs.slice(1);
+    return abs.startsWith("/") || /^[A-Za-z]:/.test(abs) ? abs : `/${abs}`;
+  }
+  return trimmed;
+}
 
 interface FilePanelContentProps {
   agentId: string;
@@ -22,10 +33,9 @@ interface FilePanelContentProps {
 }
 
 /**
- * Shared file viewer/editor body used by both the centered ``ChatFileModal``
- * (auth download previews) and the docked ``FilePanel`` (write/edit tool
- * results). Tools may report an absolute on-disk path, which is collapsed to
- * the workspace-relative fragment the file API expects.
+ * Shared file viewer/editor body used by the docked ``FilePanel`` (write/edit
+ * tool results and preview/download cards). Paths are passed through as the
+ * tool reported them — no collapsing absolute → relative.
  */
 export default function FilePanelContent({
   agentId,
@@ -34,18 +44,24 @@ export default function FilePanelContent({
 }: FilePanelContentProps) {
   const { t } = useTranslation();
   const normalizedPaths = useMemo(
-    () => filePaths.map((p) => toWorkspaceRelativePath(p, agentId)),
-    [filePaths, agentId],
+    () => filePaths.map((p) => panelFilePath(p)),
+    [filePaths],
   );
-  const normalizedInitial = initialPath
-    ? toWorkspaceRelativePath(initialPath, agentId)
-    : null;
+  const normalizedInitial = initialPath ? panelFilePath(initialPath) : null;
   const [selectedPath, setSelectedPath] = useState<string>("");
   const [content, setContent] = useState<string>("");
   const [editMode, setEditMode] = useState(false);
   const [previewMode, setPreviewMode] = useState(true);
   const [fileLoading, setFileLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  // Preview/download cards pass a fresh initialPath; sync selection to it.
+  useEffect(() => {
+    if (normalizedInitial) {
+      setSelectedPath(normalizedInitial);
+    }
+  }, [normalizedInitial]);
 
   const resolvedPath =
     selectedPath ||
@@ -60,17 +76,25 @@ export default function FilePanelContent({
   const showPreviewToggle =
     isText && previewKind !== null && !editMode && content !== "";
 
+  const apiFilePath = useMemo(() => {
+    // Absolute tool paths → file:// so the API passes them through unchanged.
+    if (resolvedPath.startsWith("/") || /^[A-Za-z]:/.test(resolvedPath)) {
+      return `file://${resolvedPath}`;
+    }
+    return resolvedPath;
+  }, [resolvedPath]);
+
   useEffect(() => {
     if (!resolvedPath || !agentId) return;
     setEditMode(false);
-    setPreviewMode(true);
+    setPreviewMode(defaultPreviewMode(resolvedPath));
     setContent("");
     if (!isText) return;
     let cancelled = false;
     setFileLoading(true);
     request<{ content: string }>(
       `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
-        resolvedPath,
+        apiFilePath,
       )}`,
     )
       .then((r) => {
@@ -91,7 +115,12 @@ export default function FilePanelContent({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedPath, agentId, isText]);
+  }, [resolvedPath, apiFilePath, agentId, isText, refreshToken]);
+
+  const refresh = useCallback(() => {
+    setEditMode(false);
+    setRefreshToken((n) => n + 1);
+  }, []);
 
   const save = async () => {
     if (!resolvedPath) return;
@@ -99,7 +128,7 @@ export default function FilePanelContent({
     try {
       await request(
         `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
-          resolvedPath,
+          apiFilePath,
         )}`,
         { method: "PUT", body: JSON.stringify({ content }) },
       );
@@ -120,7 +149,7 @@ export default function FilePanelContent({
     try {
       const blob = await requestBlob(
         `/agents/${agentId}/workspace/download?path=${encodeURIComponent(
-          resolvedPath,
+          apiFilePath,
         )}`,
       );
       const a = document.createElement("a");
@@ -142,7 +171,7 @@ export default function FilePanelContent({
     (previewMode && previewNeedsFillLayout(previewKind));
 
   return (
-    <>
+    <div className={styles.filePanelBody}>
       <div className={styles.fileModalToolbar}>
         <div className={styles.fileModalToolbarLeft}>
           {normalizedPaths.length > 1 && (
@@ -171,6 +200,17 @@ export default function FilePanelContent({
               onChange={(v) => setPreviewMode(v === "preview")}
             />
           )}
+          <Tooltip title={t("common.refresh")}>
+            <button
+              type="button"
+              className={styles.fileModalIconBtn}
+              onClick={refresh}
+              disabled={!resolvedPath || fileLoading}
+              aria-label={t("common.refresh")}
+            >
+              <RefreshCw size={16} strokeWidth={2} />
+            </button>
+          </Tooltip>
           <Tooltip title={t("common.download")}>
             <button
               type="button"
@@ -217,9 +257,10 @@ export default function FilePanelContent({
             onChange={setContent}
             fileLoading={fileLoading}
             previewMode={previewMode}
+            refreshToken={refreshToken}
           />
         )}
       </div>
-    </>
+    </div>
   );
 }

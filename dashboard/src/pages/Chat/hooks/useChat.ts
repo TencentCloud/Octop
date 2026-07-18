@@ -372,6 +372,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   //      the accumulated usage to the Turn's final AI message. Preference
   //      is the last plain AI text (no toolData); otherwise fall back to
   //      the last AI message we saw.
+  //   4. Also stash ``last_input_tokens`` = the *latest* call's input size
+  //      (not the sum). Context-window ring must use that — summing N
+  //      model calls easily exceeds the context limit and shows 100%.
   //
   // Net effect: the usage shown under the final reply equals the Turn's
   // run_usage (matches `[Token][Turn Summary]` server logs and
@@ -382,6 +385,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     total_tokens: 0,
   });
   let turnAcc: TokenUsage | null = null;
+  let turnLastInputTokens = 0;
   let turnLastAiIdx: number | null = null;
   let turnLastPlainAiIdx: number | null = null;
 
@@ -394,10 +398,19 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     if (hasAny) {
       const target = turnLastPlainAiIdx ?? turnLastAiIdx;
       if (target !== null) {
-        merged[target] = { ...merged[target], usage: turnAcc };
+        merged[target] = {
+          ...merged[target],
+          usage: {
+            ...turnAcc,
+            ...(turnLastInputTokens > 0
+              ? { last_input_tokens: turnLastInputTokens }
+              : {}),
+          },
+        };
       }
     }
     turnAcc = null;
+    turnLastInputTokens = 0;
     turnLastAiIdx = null;
     turnLastPlainAiIdx = null;
   };
@@ -407,6 +420,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     if (m.role === "user") {
       flushTurn();
       turnAcc = emptyUsage();
+      turnLastInputTokens = 0;
       continue;
     }
     if (m.role !== "assistant") continue;
@@ -417,6 +431,11 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
 
     const u = m.usage;
     if (u) {
+      const callIn =
+        typeof u.input_tokens === "number" && u.input_tokens > 0
+          ? u.input_tokens
+          : 0;
+      if (callIn > 0) turnLastInputTokens = callIn;
       turnAcc.input_tokens =
         (turnAcc.input_tokens || 0) + (u.input_tokens || 0);
       turnAcc.output_tokens =

@@ -89,279 +89,276 @@ function activeTabTitle(tabs: StreamTab[]): string {
  * Personalized features (install flow, AI panel, handoff, panel mode) live in
  * the callers.
  */
-export const BrowserViewer = forwardRef<BrowserViewerHandle, BrowserViewerProps>(
-  function BrowserViewer(
-    {
-      status,
-      tabs,
-      switchTab,
-      closeTab,
-      newTab,
-      sendEvent,
-      navUrl,
-      onNavUrlChange,
-      onNavigate,
-      interactive,
-      bookmarked = false,
-      onToggleBookmark,
-      addressBarExtra,
-      overlay,
-      onCanvasKeyDown,
-      onFrameReadyChange,
-      onReconnect,
-      connectingHint,
+export const BrowserViewer = forwardRef<
+  BrowserViewerHandle,
+  BrowserViewerProps
+>(function BrowserViewer(
+  {
+    status,
+    tabs,
+    switchTab,
+    closeTab,
+    newTab,
+    sendEvent,
+    navUrl,
+    onNavUrlChange,
+    onNavigate,
+    interactive,
+    bookmarked = false,
+    onToggleBookmark,
+    addressBarExtra,
+    overlay,
+    onCanvasKeyDown,
+    onFrameReadyChange,
+    onReconnect,
+    connectingHint,
+  },
+  ref,
+) {
+  const { t } = useTranslation();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [frameReady, setFrameReady] = useState(false);
+
+  const paintFrame = useCallback((base64Data: string) => {
+    paintBase64JpegToCanvas(canvasRef.current, base64Data);
+    setFrameReady(true);
+  }, []);
+
+  useImperativeHandle(ref, () => ({ paintFrame }), [paintFrame]);
+
+  // Notify the parent whenever a frame is painted (parent tracks readiness).
+  useEffect(() => {
+    onFrameReadyChange?.(frameReady);
+  }, [frameReady, onFrameReadyChange]);
+
+  const sendPanScroll = useCallback(
+    (x: number, y: number, deltaX: number, deltaY: number) => {
+      sendEvent({ type: "scroll", x, y, deltaX, deltaY });
     },
-    ref,
-  ) {
-    const { t } = useTranslation();
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const [frameReady, setFrameReady] = useState(false);
+    [sendEvent],
+  );
 
-    const paintFrame = useCallback((base64Data: string) => {
-      paintBase64JpegToCanvas(canvasRef.current, base64Data);
-      setFrameReady(true);
-    }, []);
+  const sendPanClick = useCallback(
+    (x: number, y: number) => {
+      canvasRef.current?.focus();
+      sendEvent({ type: "click", x, y });
+    },
+    [sendEvent],
+  );
 
-    useImperativeHandle(ref, () => ({ paintFrame }), [paintFrame]);
+  const sendPanDoubleClick = useCallback(
+    (x: number, y: number) => {
+      canvasRef.current?.focus();
+      sendEvent({ type: "dblclick", x, y });
+    },
+    [sendEvent],
+  );
 
-    // Notify the parent whenever a frame is painted (parent tracks readiness).
-    useEffect(() => {
-      onFrameReadyChange?.(frameReady);
-    }, [frameReady, onFrameReadyChange]);
+  const {
+    handleWheel,
+    onPointerDown: handlePanPointerDown,
+    onDoubleClick: handlePanDoubleClick,
+    isDragging,
+    pointerStyle,
+  } = useBrowserCanvasInteraction({
+    enabled: interactive,
+    canvasRef,
+    onScroll: sendPanScroll,
+    onClick: sendPanClick,
+    onDoubleClick: sendPanDoubleClick,
+  });
 
-    const sendPanScroll = useCallback(
-      (x: number, y: number, deltaX: number, deltaY: number) => {
-        sendEvent({ type: "scroll", x, y, deltaX, deltaY });
-      },
-      [sendEvent],
-    );
+  const isStreaming = status === "streaming" || status === "browser_started";
+  const isConnecting = status === "connecting" || status === "browser_started";
+  const isError = status === "error";
 
-    const sendPanClick = useCallback(
-      (x: number, y: number) => {
-        canvasRef.current?.focus();
-        sendEvent({ type: "click", x, y });
-      },
-      [sendEvent],
-    );
+  const navUrlNormalized = normalizeUrl(navUrl);
 
-    const sendPanDoubleClick = useCallback(
-      (x: number, y: number) => {
-        canvasRef.current?.focus();
-        sendEvent({ type: "dblclick", x, y });
-      },
-      [sendEvent],
-    );
+  const handleGo = useCallback(() => {
+    const target = normalizeUrl(navUrl);
+    if (!target) return;
+    onNavigate(target);
+  }, [navUrl, onNavigate]);
 
-    const {
-      handleWheel,
-      onPointerDown: handlePanPointerDown,
-      onDoubleClick: handlePanDoubleClick,
-      isDragging,
-      pointerStyle,
-    } = useBrowserCanvasInteraction({
-      enabled: interactive,
-      canvasRef,
-      onScroll: sendPanScroll,
-      onClick: sendPanClick,
-      onDoubleClick: sendPanDoubleClick,
-    });
+  const handleNavInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleGo();
+      }
+    },
+    [handleGo],
+  );
 
-    const isStreaming = status === "streaming" || status === "browser_started";
-    const isConnecting = status === "connecting" || status === "browser_started";
-    const isError = status === "error";
-
-    const navUrlNormalized = normalizeUrl(navUrl);
-
-    const handleGo = useCallback(() => {
-      const target = normalizeUrl(navUrl);
-      if (!target) return;
-      onNavigate(target);
-    }, [navUrl, onNavigate]);
-
-    const handleNavInputKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          handleGo();
-        }
-      },
-      [handleGo],
-    );
-
-    return (
-      <div className={styles.browserViewer}>
-        {/* Tab bar */}
-        <div className={styles.tabBar}>
-          {tabs.map((tab) => (
-            <Tooltip
-              key={String(tab.id)}
-              title={tab.url}
-              mouseEnterDelay={0.8}
-            >
-              <div
-                className={`${styles.tab} ${tab.active ? styles.tabActive : ""}`}
-                onClick={() => switchTab(tab.id)}
-              >
-                <Globe size={11} style={{ flexShrink: 0 }} />
-                <span className={styles.tabLabel}>
-                  {tab.title || tab.url || tab.id}
-                </span>
-                {tabs.length > 1 && (
-                  <span
-                    className={styles.tabClose}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(tab.id);
-                    }}
-                    title={t("browserViewer.closeTab")}
-                  >
-                    <X size={10} />
-                  </span>
-                )}
-              </div>
-            </Tooltip>
-          ))}
-          <Tooltip title={t("browserViewer.newTab")}>
+  return (
+    <div className={styles.browserViewer}>
+      {/* Tab bar */}
+      <div className={styles.tabBar}>
+        {tabs.map((tab) => (
+          <Tooltip key={String(tab.id)} title={tab.url} mouseEnterDelay={0.8}>
             <div
-              className={styles.tabNew}
-              onClick={() => newTab()}
-              title={t("browserViewer.newTab")}
+              className={`${styles.tab} ${tab.active ? styles.tabActive : ""}`}
+              onClick={() => switchTab(tab.id)}
             >
-              <Plus size={12} />
+              <Globe size={11} style={{ flexShrink: 0 }} />
+              <span className={styles.tabLabel}>
+                {tab.title || tab.url || tab.id}
+              </span>
+              {tabs.length > 1 && (
+                <span
+                  className={styles.tabClose}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(tab.id);
+                  }}
+                  title={t("browserViewer.closeTab")}
+                >
+                  <X size={10} />
+                </span>
+              )}
             </div>
           </Tooltip>
-        </div>
+        ))}
+        <Tooltip title={t("browserViewer.newTab")}>
+          <div
+            className={styles.tabNew}
+            onClick={() => newTab()}
+            title={t("browserViewer.newTab")}
+          >
+            <Plus size={12} />
+          </div>
+        </Tooltip>
+      </div>
 
-        {/* Address bar */}
-        <div className={styles.addressBar}>
-          <Tooltip title={t("browserViewer.goBack")}>
-            <Button
-              size="small"
-              icon={<ArrowLeft size={14} />}
-              onClick={() => sendEvent({ type: "goback" })}
-            />
-          </Tooltip>
-          <Tooltip title={t("browserViewer.goForward")}>
-            <Button
-              size="small"
-              icon={<ArrowRight size={14} />}
-              onClick={() => sendEvent({ type: "goforward" })}
-            />
-          </Tooltip>
-          <Tooltip title={t("browserViewer.reload")}>
-            <Button
-              size="small"
-              icon={<RotateCcw size={14} />}
-              onClick={() => sendEvent({ type: "reload" })}
-            />
-          </Tooltip>
-          <Input
+      {/* Address bar */}
+      <div className={styles.addressBar}>
+        <Tooltip title={t("browserViewer.goBack")}>
+          <Button
             size="small"
-            className={styles.urlInput}
-            value={navUrl}
-            placeholder={t("browserViewer.urlPlaceholder")}
-            onChange={(e) => onNavUrlChange(e.target.value)}
-            onKeyDown={handleNavInputKeyDown}
-            prefix={<Globe size={13} />}
-            suffix={
-              onToggleBookmark && (
-                <Tooltip
-                  title={
+            icon={<ArrowLeft size={14} />}
+            onClick={() => sendEvent({ type: "goback" })}
+          />
+        </Tooltip>
+        <Tooltip title={t("browserViewer.goForward")}>
+          <Button
+            size="small"
+            icon={<ArrowRight size={14} />}
+            onClick={() => sendEvent({ type: "goforward" })}
+          />
+        </Tooltip>
+        <Tooltip title={t("browserViewer.reload")}>
+          <Button
+            size="small"
+            icon={<RotateCcw size={14} />}
+            onClick={() => sendEvent({ type: "reload" })}
+          />
+        </Tooltip>
+        <Input
+          size="small"
+          className={styles.urlInput}
+          value={navUrl}
+          placeholder={t("browserViewer.urlPlaceholder")}
+          onChange={(e) => onNavUrlChange(e.target.value)}
+          onKeyDown={handleNavInputKeyDown}
+          prefix={<Globe size={13} />}
+          suffix={
+            onToggleBookmark && (
+              <Tooltip
+                title={
+                  bookmarked
+                    ? t("browserViewer.bookmarkRemove")
+                    : t("browserViewer.bookmarkAdd")
+                }
+              >
+                <button
+                  type="button"
+                  className={`${styles.bookmarkBtn} ${
+                    bookmarked ? styles.bookmarkBtnActive : ""
+                  }`}
+                  disabled={!navUrlNormalized}
+                  aria-label={
                     bookmarked
                       ? t("browserViewer.bookmarkRemove")
                       : t("browserViewer.bookmarkAdd")
                   }
+                  onClick={() => onToggleBookmark(navUrl, activeTabTitle(tabs))}
                 >
-                  <button
-                    type="button"
-                    className={`${styles.bookmarkBtn} ${
-                      bookmarked ? styles.bookmarkBtnActive : ""
-                    }`}
-                    disabled={!navUrlNormalized}
-                    aria-label={
-                      bookmarked
-                        ? t("browserViewer.bookmarkRemove")
-                        : t("browserViewer.bookmarkAdd")
-                    }
-                    onClick={() => onToggleBookmark(navUrl, activeTabTitle(tabs))}
-                  >
-                    <Star
-                      size={14}
-                      fill={bookmarked ? "currentColor" : "none"}
-                    />
-                  </button>
-                </Tooltip>
-              )
-            }
-          />
-          <Button
-            size="small"
-            type="primary"
-            onClick={handleGo}
-            disabled={!navUrlNormalized}
-          >
-            {t("browserViewer.go")}
-          </Button>
-          {addressBarExtra}
-        </div>
-
-        {/* Viewport (canvas screencast) */}
-        <div
-          className={`${styles.viewportContainer} ${
-            interactive ? styles.viewportInteractive : ""
-          }`}
+                  <Star size={14} fill={bookmarked ? "currentColor" : "none"} />
+                </button>
+              </Tooltip>
+            )
+          }
+        />
+        <Button
+          size="small"
+          type="primary"
+          onClick={handleGo}
+          disabled={!navUrlNormalized}
         >
-          {isError ? (
-            <div className={styles.placeholder}>
-              <AlertTriangle size={24} style={{ marginBottom: 8, color: "#faad14" }} />
-              <div style={{ marginBottom: 12 }}>
-                {t("browserViewer.connectFailed")}
-              </div>
-              {onReconnect && (
-                <Button type="primary" size="small" onClick={onReconnect}>
-                  {t("browserViewer.reconnect")}
-                </Button>
-              )}
-            </div>
-          ) : isConnecting && !frameReady ? (
-            <div className={styles.placeholder}>
-              <Loader2 size={24} style={{ marginBottom: 8 }} />
-              <div>
-                {isStreaming
-                  ? t("browserViewer.streaming")
-                  : t("browserViewer.connecting")}
-              </div>
-              {connectingHint && (
-                <div className={styles.placeholderHint}>{connectingHint}</div>
-              )}
-            </div>
-          ) : (
-            <canvas
-              ref={canvasRef}
-              tabIndex={0}
-              className={`${styles.canvas} ${
-                interactive ? styles.canvasInteractive : ""
-              } ${!frameReady ? styles.canvasHidden : ""}`}
-              style={{
-                cursor: isDragging ? "grabbing" : "grab",
-                ...pointerStyle,
-              }}
-              onPointerDown={handlePanPointerDown}
-              onDoubleClick={handlePanDoubleClick}
-              onWheel={handleWheel}
-              onKeyDown={onCanvasKeyDown}
-            />
-          )}
-          {overlay}
-          {interactive && isStreaming && (
-            <div className={styles.interactiveHint}>
-              {t("browserViewer.interactiveHint")}
-            </div>
-          )}
-        </div>
+          {t("browserViewer.go")}
+        </Button>
+        {addressBarExtra}
       </div>
-    );
-  },
-);
+
+      {/* Viewport (canvas screencast) */}
+      <div
+        className={`${styles.viewportContainer} ${
+          interactive ? styles.viewportInteractive : ""
+        }`}
+      >
+        {isError ? (
+          <div className={styles.placeholder}>
+            <AlertTriangle
+              size={24}
+              style={{ marginBottom: 8, color: "#faad14" }}
+            />
+            <div style={{ marginBottom: 12 }}>
+              {t("browserViewer.connectFailed")}
+            </div>
+            {onReconnect && (
+              <Button type="primary" size="small" onClick={onReconnect}>
+                {t("browserViewer.reconnect")}
+              </Button>
+            )}
+          </div>
+        ) : isConnecting && !frameReady ? (
+          <div className={styles.placeholder}>
+            <Loader2 size={24} style={{ marginBottom: 8 }} />
+            <div>
+              {isStreaming
+                ? t("browserViewer.streaming")
+                : t("browserViewer.connecting")}
+            </div>
+            {connectingHint && (
+              <div className={styles.placeholderHint}>{connectingHint}</div>
+            )}
+          </div>
+        ) : (
+          <canvas
+            ref={canvasRef}
+            tabIndex={0}
+            className={`${styles.canvas} ${
+              interactive ? styles.canvasInteractive : ""
+            } ${!frameReady ? styles.canvasHidden : ""}`}
+            style={{
+              cursor: isDragging ? "grabbing" : "grab",
+              ...pointerStyle,
+            }}
+            onPointerDown={handlePanPointerDown}
+            onDoubleClick={handlePanDoubleClick}
+            onWheel={handleWheel}
+            onKeyDown={onCanvasKeyDown}
+          />
+        )}
+        {overlay}
+        {interactive && isStreaming && (
+          <div className={styles.interactiveHint}>
+            {t("browserViewer.interactiveHint")}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export default BrowserViewer;

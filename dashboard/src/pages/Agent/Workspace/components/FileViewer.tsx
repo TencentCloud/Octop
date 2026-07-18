@@ -7,8 +7,9 @@
  *
  *   - media (image / video / audio) -> ``MediaPreview``
  *   - documents (pdf / docx / xlsx) -> ``DocumentPreview``
- *   - markdown / code / json preview -> ``FilePreview``
+ *   - markdown / html preview        -> ``FilePreview``
  *   - editable text in edit mode     -> ``CodeEditor`` (Monaco)
+ *   - other text                     -> plain source (``<pre>``)
  *
  * Text content and edit state are owned by the parent so the toolbar save
  * button (in the drawer) stays in control; the viewer itself stays stateless
@@ -38,6 +39,8 @@ interface FileViewerProps {
   fileLoading?: boolean;
   /** Show rendered preview (markdown/code) vs raw source for text files. */
   previewMode?: boolean;
+  /** Bump to reload media/document previews without unmounting. */
+  refreshToken?: number;
 }
 
 export default function FileViewer({
@@ -48,6 +51,7 @@ export default function FileViewer({
   onChange,
   fileLoading = false,
   previewMode = true,
+  refreshToken = 0,
 }: FileViewerProps) {
   const { t } = useTranslation();
 
@@ -57,11 +61,25 @@ export default function FileViewer({
   const showEditButton = isProbablyText(path);
 
   if (mediaKind) {
-    return <MediaPreview agentId={agentId} path={path} kind={mediaKind} />;
+    return (
+      <MediaPreview
+        agentId={agentId}
+        path={path}
+        kind={mediaKind}
+        refreshToken={refreshToken}
+      />
+    );
   }
 
   if (docKind) {
-    return <DocumentPreview agentId={agentId} path={path} kind={docKind} />;
+    return (
+      <DocumentPreview
+        key={`${path}:${refreshToken}`}
+        agentId={agentId}
+        path={path}
+        kind={docKind}
+      />
+    );
   }
 
   if (fileLoading) {
@@ -83,9 +101,7 @@ export default function FileViewer({
   }
 
   if (editMode) {
-    return (
-      <CodeEditor path={path} value={value} onChange={onChange} />
-    );
+    return <CodeEditor path={path} value={value} onChange={onChange} />;
   }
 
   if (value === "") {

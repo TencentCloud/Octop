@@ -1394,7 +1394,9 @@ export default function RemoteBrowserPage() {
                         aria-label={t("remoteBrowser.ai.title", "AI 助手")}
                         title={t("remoteBrowser.ai.title", "AI 助手")}
                       >
-                        {isMobile ? null : t("remoteBrowser.ai.title", "AI 助手")}
+                        {isMobile
+                          ? null
+                          : t("remoteBrowser.ai.title", "AI 助手")}
                       </Button>
                       <Tooltip
                         title={t(
@@ -1406,7 +1408,10 @@ export default function RemoteBrowserPage() {
                           size="small"
                           icon={<Sparkles size={14} />}
                           onClick={openSkillGuide}
-                          aria-label={t("skillRecordGuide.buttonLabel", "技能录制")}
+                          aria-label={t(
+                            "skillRecordGuide.buttonLabel",
+                            "技能录制",
+                          )}
                         >
                           {isMobile
                             ? null
