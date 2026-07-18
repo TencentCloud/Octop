@@ -610,3 +610,47 @@
     background: var(--fn-bg-hover);
   }
 }
+
+/* A right-docked workspace can narrow the chat without narrowing the viewport.
+   Respond to the chat column itself so composer controls remain usable. */
+@container chat-main (max-width: 560px) {
+  .chatInput {
+    padding-inline: 12px;
+  }
+
+  .inputWrapper {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .actionsRow {
+    gap: 4px;
+  }
+
+  .secondaryActions {
+    flex: 0 1 auto;
+    padding-right: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .inputActions {
+    max-width: 100%;
+    gap: 4px;
+  }
+
+  .secondaryBtn,
+  .newChatBtn,
+  .sendBtn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .modelPickerBtn {
+    max-width: 104px;
+  }
+}

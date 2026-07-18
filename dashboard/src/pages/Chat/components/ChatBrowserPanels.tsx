@@ -20,7 +20,7 @@ interface ChatBrowserPanelsProps {
   onModeChange: (mode: PanelMode) => void;
   onClose: () => void;
   onResizeStart: (
-    e: React.MouseEvent,
+    e: React.PointerEvent,
     direction: "horizontal" | "vertical",
   ) => void;
   onTogglePanel: () => void;
@@ -96,7 +96,7 @@ export default function ChatBrowserPanels({
               className={`${styles.panelResizer} ${styles.horizontal} ${
                 isResizing ? styles.resizerActive : ""
               }`}
-              onMouseDown={(e) => onResizeStart(e, "horizontal")}
+              onPointerDown={(e) => onResizeStart(e, "horizontal")}
             >
               <div className={styles.resizerHandle} />
             </div>

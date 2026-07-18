@@ -50,7 +50,7 @@ import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { workspaceEntryPath } from "../../../../utils/workspacePath";
 import FileViewer from "./FileViewer";
-import { getPreviewKind } from "./FilePreview";
+import { getPreviewKind, previewNeedsFillLayout } from "./FilePreview";
 import { getMediaKind } from "../utils/mediaKind";
 import { getDocKind } from "../utils/docKind";
 import { isProbablyText } from "../utils/fileKind";
@@ -1428,7 +1428,9 @@ export default function WorkspaceDrawer({
                   <div
                     className={styles.viewerBody}
                     style={
-                      (showEditButton && editMode) || docKind !== null
+                      (showEditButton && editMode) ||
+                      docKind !== null ||
+                      (previewMode && previewNeedsFillLayout(previewKind))
                         ? {
                             overflow: "hidden",
                             display: "flex",

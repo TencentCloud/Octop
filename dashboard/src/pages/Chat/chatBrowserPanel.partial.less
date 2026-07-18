@@ -50,39 +50,6 @@
   }
 }
 
-.filePanelBtn {
-  position: fixed;
-  right: 72px;
-  bottom: 24px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--fn-border-secondary);
-  border-radius: var(--fn-radius-full);
-  background: var(--fn-bg-primary);
-  color: var(--fn-text-quaternary);
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-  padding: 0;
-  font-size: 18px;
-
-  &:hover {
-    color: var(--fn-text-brand);
-    background: var(--fn-bg-hover);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-    transform: scale(1.05);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--fn-color-brand);
-    outline-offset: 2px;
-  }
-}
-
 .fileModalToolbar {
   display: flex;
   align-items: center;
@@ -407,6 +374,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
   transition: background 0.15s;
 
   &:hover,
@@ -454,4 +422,10 @@
 
 .resizerActive {
   background: rgba(24, 144, 255, 0.06);
+}
+
+.panelResizeActive {
+  iframe {
+    pointer-events: none;
+  }
 }

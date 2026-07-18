@@ -1,13 +1,13 @@
 /**
- * DocumentPreview — render rich documents (PDF / Word / Excel) inside the
- * workspace viewer.
+ * DocumentPreview — render rich documents (PDF / Word / Excel / PPTX) inside
+ * the workspace viewer.
  *
- * PDFs are shown with the browser's native viewer via an ``<iframe>``.
- * Word (``.docx``) is rendered with ``docx-preview`` and Excel (``.xlsx``)
- * is parsed by SheetJS and rendered as HTML tables. Both heavy libraries are
- * dynamically imported so they only ship when such a file is actually opened.
+ * PDFs use the browser native viewer via an ``<iframe>``. Word (``.docx``)
+ * uses ``docx-preview``, Excel uses SheetJS HTML tables, and PPTX uses
+ * ``@aiden0z/pptx-renderer``. Legacy ``.ppt`` only offers download. Heavy
+ * libraries are dynamically imported so they ship only when opened.
  *
- * The file bytes are fetched through the authenticated ``requestBlob`` helper.
+ * Bytes are fetched through the authenticated ``requestBlob`` helper.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -43,6 +43,7 @@ export default function DocumentPreview({
   const [error, setError] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const objectUrlRef = useRef<string | undefined>(undefined);
+  const pptxViewerRef = useRef<{ destroy: () => void } | null>(null);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -67,7 +68,13 @@ export default function DocumentPreview({
     setLoading(true);
     setError(false);
     setSrc("");
+    pptxViewerRef.current?.destroy();
+    pptxViewerRef.current = null;
     if (containerRef.current) containerRef.current.innerHTML = "";
+    if (kind === "ppt") {
+      setLoading(false);
+      return;
+    }
 
     const load = async () => {
       try {
@@ -115,11 +122,31 @@ export default function DocumentPreview({
               const html = xlsx.utils.sheet_to_html(wb.Sheets[name]);
               return (
                 `<div class="${styles.xlsxSheet}">` +
-                `<div class="${styles.xlsxSheetTitle}">${escapeHtml(name)}</div>` +
+                `<div class="${styles.xlsxSheetTitle}">${escapeHtml(
+                  name,
+                )}</div>` +
                 html +
                 "</div>"
               );
             }).join("");
+          }
+        } else if (kind === "pptx") {
+          const { PptxViewer, RECOMMENDED_ZIP_LIMITS } = await import(
+            "@aiden0z/pptx-renderer"
+          );
+          if (containerRef.current && !cancelled) {
+            const viewer = await PptxViewer.open(buf, containerRef.current, {
+              zipLimits: RECOMMENDED_ZIP_LIMITS,
+              lazySlides: true,
+              lazyMedia: true,
+              listOptions: {
+                windowed: true,
+                initialSlides: 4,
+                batchSize: 4,
+              },
+            });
+            if (cancelled) viewer.destroy();
+            else pptxViewerRef.current = viewer;
           }
         }
         if (!cancelled) setLoading(false);
@@ -139,6 +166,8 @@ export default function DocumentPreview({
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = undefined;
       }
+      pptxViewerRef.current?.destroy();
+      pptxViewerRef.current = null;
     };
   }, [agentId, path, kind]);
 
@@ -152,8 +181,9 @@ export default function DocumentPreview({
     );
   }
 
-  // Presentation files (PPT / PPTX) can't be rendered in-browser without a
-  // heavyweight converter, so offer a download instead of a blank frame.
+  // Legacy binary PPT is not an OOXML ZIP package and cannot be parsed by the
+  // local PPTX renderer. Keep it private and offer a download instead of
+  // sending authenticated workspace content to a third-party online viewer.
   if (kind === "ppt") {
     return (
       <div className={styles.viewerEmpty}>
@@ -197,19 +227,25 @@ export default function DocumentPreview({
     );
   }
 
-  if (loading) {
-    return (
-      <div className={styles.viewerLoading}>
-        <Spin />
-      </div>
-    );
-  }
-
-  // Word and Excel are mounted into this scroll container.
+  // Keep the target mounted while loading: Word, Excel and PPTX renderers write
+  // directly into this element.
   return (
-    <div
-      className={kind === "word" ? styles.docxWrap : styles.xlsxWrap}
-      ref={containerRef}
-    />
+    <div className={styles.documentPreview}>
+      <div
+        className={
+          kind === "word"
+            ? styles.docxWrap
+            : kind === "excel"
+            ? styles.xlsxWrap
+            : styles.pptxWrap
+        }
+        ref={containerRef}
+      />
+      {loading && (
+        <div className={styles.documentLoading}>
+          <Spin />
+        </div>
+      )}
+    </div>
   );
 }

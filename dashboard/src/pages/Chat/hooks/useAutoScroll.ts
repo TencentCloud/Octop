@@ -29,6 +29,9 @@ const MOMENTUM_SETTLE_MS = 200;
 /** px before a touch gesture counts as intentional scroll-up */
 const TOUCH_SCROLL_UP_THRESHOLD = 10;
 
+/** Accumulated overscroll at bottom before firing refresh */
+const OVERSCROLL_BOTTOM_THRESHOLD = 100;
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
 type ScrollMode = "follow" | "free";
@@ -49,6 +52,9 @@ export interface UseAutoScrollOptions {
   scrollerMountKey?: number;
   onNearTop?: () => void;
   nearTopThreshold?: number;
+  /** Fired when the user keeps scrolling down while already at the bottom. */
+  onOverscrollBottom?: () => void;
+  overscrollBottomThreshold?: number;
   /** When true on a deps tick, skip the automatic instant follow scroll. */
   skipNextDepsScrollRef?: React.MutableRefObject<boolean>;
 }
@@ -75,6 +81,8 @@ export function useAutoScroll({
   scrollerMountKey = 0,
   onNearTop,
   nearTopThreshold = AT_BOTTOM_THRESHOLD,
+  onOverscrollBottom,
+  overscrollBottomThreshold = OVERSCROLL_BOTTOM_THRESHOLD,
   skipNextDepsScrollRef,
 }: UseAutoScrollOptions = {}): UseAutoScrollReturn {
   const internalContainerRef = useRef<HTMLDivElement>(null);
@@ -86,6 +94,10 @@ export function useAutoScroll({
   const rafRef = useRef<number | null>(null);
   const isProgrammaticRef = useRef(false);
   const guardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Overscroll-to-refresh state kept in refs so it survives listener effect
+  // re-mounts (e.g. when onOverscrollBottom identity changes mid-refresh).
+  const overscrollAccumRef = useRef(0);
+  const overscrollArmedRef = useRef(true);
   const prevScrollTopRef = useRef(0);
 
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -212,6 +224,33 @@ export function useAutoScroll({
 
     prevScrollTopRef.current = container.scrollTop;
 
+    // Disarmed after one refresh; only re-armed once the user genuinely
+    // leaves the bottom and returns, so a single flick's momentum can't fire
+    // the refresh twice.
+    const resetOverscroll = () => {
+      overscrollAccumRef.current = 0;
+      overscrollArmedRef.current = true;
+    };
+
+    const accumulateOverscroll = (delta: number) => {
+      if (!onOverscrollBottom || !overscrollArmedRef.current || !isAtBottom()) {
+        return;
+      }
+      if (delta <= 0) {
+        overscrollAccumRef.current = Math.max(
+          0,
+          overscrollAccumRef.current + delta,
+        );
+        return;
+      }
+      overscrollAccumRef.current += delta;
+      if (overscrollAccumRef.current >= overscrollBottomThreshold) {
+        overscrollAccumRef.current = 0;
+        overscrollArmedRef.current = false;
+        onOverscrollBottom();
+      }
+    };
+
     const handleScroll = (): void => {
       const cur = container.scrollTop;
       const prev = prevScrollTopRef.current;
@@ -219,7 +258,15 @@ export function useAutoScroll({
 
       const scrolledUp = cur < prev - 1;
 
+      // Load earlier messages whenever we're near the top, regardless of
+      // direction. Must run before the scroll-up early return below, otherwise
+      // scrolling up (the natural way to reach the top) never triggers it.
+      if (!isProgrammaticRef.current && onNearTop && cur <= nearTopThreshold) {
+        onNearTop();
+      }
+
       if (scrolledUp) {
+        resetOverscroll();
         enterFreeMode();
         return;
       }
@@ -228,34 +275,46 @@ export function useAutoScroll({
 
       if (isAtBottom()) {
         enterFollowMode();
-      }
-
-      if (onNearTop && cur <= nearTopThreshold) {
-        onNearTop();
+      } else {
+        resetOverscroll();
       }
     };
 
     const handleWheel = (e: WheelEvent): void => {
       if (e.deltaY < 0) {
+        resetOverscroll();
         enterFreeMode();
         return;
       }
       if (isProgrammaticRef.current) return;
       if (e.deltaY > 0 && isAtBottom()) {
         enterFollowMode();
+        accumulateOverscroll(e.deltaY);
       }
     };
 
     let touchStartY = 0;
+    let touchLastY = 0;
 
     const handleTouchStart = (e: TouchEvent): void => {
       touchStartY = e.touches[0]?.clientY ?? 0;
+      touchLastY = touchStartY;
     };
 
     const handleTouchMove = (e: TouchEvent): void => {
-      const dy = (e.touches[0]?.clientY ?? 0) - touchStartY;
-      if (dy > TOUCH_SCROLL_UP_THRESHOLD) {
+      const y = e.touches[0]?.clientY ?? 0;
+      const dyFromStart = y - touchStartY;
+      const dyStep = touchLastY - y; // positive when finger moves up
+      touchLastY = y;
+      if (dyFromStart > TOUCH_SCROLL_UP_THRESHOLD) {
+        resetOverscroll();
         enterFreeMode();
+        return;
+      }
+      // Finger moves up → content scrolls down; when already at bottom, count
+      // as overscroll toward refresh.
+      if (dyStep > 0 && isAtBottom()) {
+        accumulateOverscroll(dyStep);
       }
     };
 
@@ -263,6 +322,8 @@ export function useAutoScroll({
       setTimeout(() => {
         if (isAtBottom()) {
           enterFollowMode();
+        } else {
+          resetOverscroll();
         }
       }, MOMENTUM_SETTLE_MS);
     };
@@ -304,6 +365,8 @@ export function useAutoScroll({
     enterFreeMode,
     onNearTop,
     nearTopThreshold,
+    onOverscrollBottom,
+    overscrollBottomThreshold,
     scrollerMountKey,
     virtual,
   ]);

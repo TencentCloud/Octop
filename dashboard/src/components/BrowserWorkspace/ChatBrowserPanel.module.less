@@ -44,12 +44,11 @@
   }
 }
 
-/* Chat-only toolbar: layout-mode switch (bottom / right / popup) + close. */
+/* Chat-only toolbar: optional title + layout-mode switch (bottom / right / popup) + close. */
 .toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
+  gap: 8px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--fn-border-secondary, #e0e0e0);
   background: var(--fn-bg-secondary, #fafafa);
@@ -59,6 +58,27 @@
   &:active {
     cursor: grabbing;
   }
+}
+
+.toolbarTitle {
+  flex: 1;
+  min-width: 0;
+  padding-left: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary, #1f1f1f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Active-mode indicator on the layout toggle buttons. */

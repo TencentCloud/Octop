@@ -34,9 +34,7 @@ import { normalizeUrl } from "../../utils/normalizeUrl";
 import { viewportModeLabel } from "../../utils/browserViewport";
 import { DEFAULT_BROWSER_PROFILE } from "../../utils/browserProfile";
 import { showApiError } from "../../utils/showApiToast";
-import BrowserViewer, {
-  type BrowserViewerHandle,
-} from "../BrowserViewer";
+import BrowserViewer, { type BrowserViewerHandle } from "../BrowserViewer";
 import styles from "./index.module.less";
 
 export type PanelMode = "hidden" | "bottom" | "right" | "popup";
@@ -285,14 +283,9 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   }, [controlOwner, stateLabel, t]);
 
   const hasSession = !!(sessionId ?? sessionInfo?.session_id);
-  const currentUrl = session?.current_url ?? sessionInfo?.current_url ?? "";
 
   return (
-    <div
-      ref={panelRef}
-      className={styles.browserWorkspace}
-      style={style}
-    >
+    <div ref={panelRef} className={styles.browserWorkspace} style={style}>
       {/* Header — profile / status / viewport controls */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
@@ -325,9 +318,6 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
                   {t("browserWorkspace.needLogin")}
                 </Tag>
               )}
-              <Tooltip title={currentUrl}>
-                <span className={styles.currentUrl}>{currentUrl}</span>
-              </Tooltip>
             </>
           ) : (
             <span className={styles.emptyHeaderTitle}>

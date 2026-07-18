@@ -19,6 +19,7 @@
     "preview:test": "vite preview --mode test"
   },
   "dependencies": {
+    "@aiden0z/pptx-renderer": "^1.2.4",
     "@mermaid-js/parser": "^1.1.0",
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "0.10.0",
@@ -29,7 +30,6 @@
     "antd-style": "^3.7.1",
     "build": "^0.1.4",
     "docx-preview": "^0.3.2",
-    "xlsx": "^0.18.5",
     "i18next": "^25.8.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
@@ -46,7 +46,8 @@
     "recharts": "^3.8.0",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "xlsx": "^0.18.5"
   },
   "overrides": {
     "serialize-javascript": "^7.0.3",

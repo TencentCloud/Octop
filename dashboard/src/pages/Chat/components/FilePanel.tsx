@@ -2,41 +2,36 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import { PanelBottom, PanelRight, PictureInPicture2, X } from "lucide-react";
-import BrowserWorkspace, { type PanelMode } from "./index";
-import type { DisplayEnvironment } from "../../api/types/browser";
-import styles from "./ChatBrowserPanel.module.less";
+import type { PanelMode } from "../../../components/BrowserWorkspace";
+import FilePanelContent from "./FilePanelContent";
+import styles from "../../../components/BrowserWorkspace/ChatBrowserPanel.module.less";
 
-interface ChatBrowserPanelProps {
-  /** Profile/session id forwarded to the browser view. */
-  sessionId?: string | null;
-  environment?: DisplayEnvironment;
+interface FilePanelProps {
+  agentId: string;
+  /** All workspace files written by the agent in this thread. */
+  filePaths: string[];
+  /** When set, opens on this path instead of the latest written one. */
+  initialPath?: string | null;
   /** Controlled layout mode (owned by the chat shell, persisted there). */
   mode: PanelMode;
   onModeChange: (mode: PanelMode) => void;
   onClose: () => void;
   style?: React.CSSProperties;
-  /** Bookmark state for the current URL (forwarded to the address bar). */
-  bookmarked?: boolean;
-  onToggleBookmark?: (url: string, title: string) => void;
 }
 
 /**
- * Chat-specific chrome around the shared BrowserWorkspace: panel-mode
- * switching (bottom / right / popup), popup drag-to-move, and close.
- *
- * All browser-view logic (connect, paint, session metadata, handoff) stays in
- * BrowserWorkspace so it can be reused by other surfaces without dragging
- * chat-specific UI along.
+ * Docked file viewer/editor for the chat page — mirrors ``ChatBrowserPanel``
+ * (mode switch: bottom / right / popup, popup drag, close) but renders the
+ * shared ``FilePanelContent`` instead of a browser.
  */
-const ChatBrowserPanel: React.FC<ChatBrowserPanelProps> = ({
-  sessionId,
-  environment,
+const FilePanel: React.FC<FilePanelProps> = ({
+  agentId,
+  filePaths,
+  initialPath,
   mode,
   onModeChange,
   onClose,
   style,
-  bookmarked,
-  onToggleBookmark,
 }) => {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -127,9 +122,8 @@ const ChatBrowserPanel: React.FC<ChatBrowserPanelProps> = ({
       }`}
       style={popupStyle}
     >
-      {/* Toolbar: title + layout switch + close. Draggable only in popup mode. */}
       <div className={styles.toolbar} onMouseDown={handlePopupDragStart}>
-        <span className={styles.toolbarTitle}>{t("chat.openBrowser")}</span>
+        <span className={styles.toolbarTitle}>{t("chat.openFile")}</span>
         <div className={styles.toolbarActions}>
           <Tooltip title={t("browserWorkspace.panelBottom")}>
             <Button
@@ -166,15 +160,13 @@ const ChatBrowserPanel: React.FC<ChatBrowserPanelProps> = ({
           />
         </div>
       </div>
-      <BrowserWorkspace
-        sessionId={sessionId}
-        environment={environment}
-        style={{ flex: 1, minHeight: 0 }}
-        bookmarked={bookmarked}
-        onToggleBookmark={onToggleBookmark}
+      <FilePanelContent
+        agentId={agentId}
+        filePaths={filePaths}
+        initialPath={initialPath}
       />
     </div>
   );
 };
 
-export default ChatBrowserPanel;
+export default FilePanel;

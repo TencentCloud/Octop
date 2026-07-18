@@ -494,6 +494,7 @@
     "scrollToBottom": "滚动到底部",
     "loadingEarlierMessages": "正在加载更早的消息…",
     "scrollForEarlierMessages": "向上滚动加载更早的消息",
+    "refreshingMessages": "正在刷新消息…",
     "regenerate": "重新生成",
     "retry": "重试",
     "like": "有帮助",
@@ -575,6 +576,7 @@
     },
     "openBrowser": "查看浏览器",
     "openBrowserHint": "Agent 正在网页中操作",
+    "openFile": "查看文件",
     "fileWorkspace": "工作区文件",
     "fileWorkspaceHint": "Agent 已生成或编辑文件",
     "fileSwitch": "切换文件"

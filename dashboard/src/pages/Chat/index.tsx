@@ -34,7 +34,9 @@ import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import ChatBrowserPanels from "./components/ChatBrowserPanels";
 import ChatBrowserBottomPanel from "./components/ChatBrowserBottomPanel";
-import ChatFilePanels from "./components/ChatFilePanels";
+import FilePanel from "./components/FilePanel";
+import FileBottomPanel from "./components/FileBottomPanel";
+import { useChatFilePanel } from "./hooks/useChatFilePanel";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -172,12 +174,14 @@ function ChatPageInner() {
     historyLoading,
     historyHasMore,
     historyLoadingMore,
+    historyRefreshing,
     contextUsage,
     sendMessage,
     editAndResend,
     cancelStream,
     loadHistory,
     loadMoreHistory,
+    refreshHistory,
     clearMessages,
     resumeHitl,
   } = useChat(activeThreadId, resolvedAgentId);
@@ -201,10 +205,16 @@ function ChatPageInner() {
   refreshBrowserRef.current = refreshBrowserSession;
 
   const { filePaths } = useChatFileDetection(activeThreadId, messages);
-  const [filePanelOpen, setFilePanelOpen] = useState(false);
-  const toggleFilePanel = useCallback(() => {
-    setFilePanelOpen((prev) => !prev);
-  }, []);
+  const {
+    filePanelOpen,
+    filePanelMode,
+    setFilePanelMode,
+    panelSizes: filePanelSizes,
+    isResizing: fileIsResizing,
+    handleResizeStart: fileHandleResizeStart,
+    handleFileClose,
+    openFilePanel,
+  } = useChatFilePanel(isMobile);
 
   const {
     browserPanelOpen,
@@ -461,7 +471,11 @@ function ChatPageInner() {
 
   return (
     <>
-      <div className={styles.chatPage}>
+      <div
+        className={`${styles.chatPage} ${
+          fileIsResizing || isResizing ? styles.panelResizeActive : ""
+        }`}
+      >
         <ChatSidebarPanel
           isMobile={isMobile}
           sidebarOpen={sidebarOpen}
@@ -489,10 +503,11 @@ function ChatPageInner() {
         {/* Main chat area */}
         <div
           className={`${styles.chatMain} ${
-            hasBrowserTool &&
-            !isMobile &&
-            browserPanelOpen &&
-            browserPanelMode === "bottom"
+            ((hasBrowserTool &&
+              browserPanelOpen &&
+              browserPanelMode === "bottom") ||
+              (filePanelOpen && filePanelMode === "bottom")) &&
+            !isMobile
               ? styles.chatMainWithBottomPanel
               : ""
           }`}
@@ -544,7 +559,9 @@ function ChatPageInner() {
                 loading={historyLoading}
                 historyHasMore={historyHasMore}
                 historyLoadingMore={historyLoadingMore}
+                historyRefreshing={historyRefreshing}
                 onLoadMoreHistory={() => void loadMoreHistory()}
+                onRefreshHistory={() => void refreshHistory()}
                 isStreaming={isStreaming}
                 thinkingStartedAt={thinkingStartedAt}
                 sessionKey={activeThreadId ?? undefined}
@@ -555,6 +572,9 @@ function ChatPageInner() {
                 onHitlDecision={handleHitlDecision}
                 onOpenBrowser={
                   hasBrowserTool && !isMobile ? openBrowserPanel : undefined
+                }
+                onEditFile={
+                  filePaths.length > 0 && !isMobile ? openFilePanel : undefined
                 }
               />
             )}
@@ -617,6 +637,19 @@ function ChatPageInner() {
                 onResizeStart={handleResizeStart}
               />
             )}
+
+          {/* File viewer/editor — bottom panel mode (inside chatMain, desktop only) */}
+          {!isMobile && filePanelOpen && filePanelMode === "bottom" && (
+            <FileBottomPanel
+              agentId={resolvedAgentId ?? ""}
+              filePaths={filePaths}
+              isResizing={fileIsResizing}
+              bottomHeight={filePanelSizes.bottomHeight}
+              onModeChange={setFilePanelMode}
+              onClose={handleFileClose}
+              onResizeStart={fileHandleResizeStart}
+            />
+          )}
         </div>
 
         <ChatBrowserPanels
@@ -636,14 +669,38 @@ function ChatPageInner() {
           onTogglePanel={toggleBrowserPanel}
         />
 
-        <ChatFilePanels
-          filePaths={filePaths}
-          isMobile={isMobile}
-          open={filePanelOpen}
-          agentId={resolvedAgentId ?? ""}
-          onToggle={toggleFilePanel}
-          onClose={() => setFilePanelOpen(false)}
-        />
+        {/* File viewer/editor — right docked panel (desktop only) */}
+        {!isMobile && filePanelOpen && filePanelMode === "right" && (
+          <>
+            <div
+              className={`${styles.panelResizer} ${styles.horizontal} ${
+                fileIsResizing ? styles.resizerActive : ""
+              }`}
+              onPointerDown={(e) => fileHandleResizeStart(e, "horizontal")}
+            >
+              <div className={styles.resizerHandle} />
+            </div>
+            <FilePanel
+              agentId={resolvedAgentId ?? ""}
+              filePaths={filePaths}
+              mode="right"
+              onModeChange={setFilePanelMode}
+              onClose={handleFileClose}
+              style={{ width: filePanelSizes.rightWidth }}
+            />
+          </>
+        )}
+
+        {/* File viewer/editor — floating popup mode (desktop only) */}
+        {!isMobile && filePanelOpen && filePanelMode === "popup" && (
+          <FilePanel
+            agentId={resolvedAgentId ?? ""}
+            filePaths={filePaths}
+            mode="popup"
+            onModeChange={setFilePanelMode}
+            onClose={handleFileClose}
+          />
+        )}
 
         <AgentProfileDrawer
           open={agentProfileOpen}

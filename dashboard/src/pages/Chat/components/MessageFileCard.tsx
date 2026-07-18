@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { message as antMessage } from "antd";
-import { ArrowDownToLine, Eye, FileText } from "lucide-react";
+import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { downloadAuthFile } from "../../../components/AuthFileDownloadLink";
 import {
@@ -41,8 +41,7 @@ export function MessageFileCard({
   const needsAuth = needsAuthBlobFetch(url) || isDataUrl(url);
   const label = filename || url;
 
-  const resolvedPath =
-    workspacePath || workspacePathFromAccessUrl(url) || "";
+  const resolvedPath = workspacePath || workspacePathFromAccessUrl(url) || "";
   const previewable = Boolean(resolvedPath && agentId && isPreviewable(label));
 
   const handleDownload = useCallback(async () => {
@@ -73,38 +72,31 @@ export function MessageFileCard({
 
   return (
     <div className={styles.messageFileCard}>
-      <div
-        className={styles.messageFileMeta}
-        onClick={openPreview}
-        role={previewable ? "button" : undefined}
-        tabIndex={previewable ? 0 : undefined}
-        onKeyDown={
-          previewable
-            ? (e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openPreview();
-                }
-              }
-            : undefined
-        }
-        style={{ cursor: previewable ? "pointer" : "default" }}
-      >
-        <FileText size={14} className={styles.messageFileIcon} aria-hidden />
+      <div className={styles.messageFileMeta}>
+        <Paperclip
+          size={16}
+          strokeWidth={2}
+          className={styles.messageFileIcon}
+          aria-hidden
+        />
         <span className={styles.messageFileName} title={label}>
           {label}
         </span>
-        {previewable && (
-          <Eye
-            size={14}
-            className={styles.messageFilePreviewIcon}
-            aria-hidden
-          />
-        )}
       </div>
+      {previewable && (
+        <button
+          type="button"
+          className={styles.messageFileActionBtn}
+          onClick={openPreview}
+          title={t("common.preview")}
+          aria-label={t("common.preview")}
+        >
+          <Eye size={15} strokeWidth={2} />
+        </button>
+      )}
       <button
         type="button"
-        className={styles.messageFileDownloadBtn}
+        className={styles.messageFileActionBtn}
         onClick={(e) => {
           e.stopPropagation();
           void handleDownload();
@@ -113,7 +105,7 @@ export function MessageFileCard({
         title={t("common.download")}
         aria-label={t("common.download")}
       >
-        <ArrowDownToLine size={16} strokeWidth={2} />
+        <Download size={15} strokeWidth={2} />
       </button>
       {previewOpen && resolvedPath && agentId && (
         <ChatFileModal

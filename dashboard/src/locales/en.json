@@ -496,6 +496,7 @@
     "scrollToBottom": "Scroll to bottom",
     "loadingEarlierMessages": "Loading earlier messages…",
     "scrollForEarlierMessages": "Scroll up for earlier messages",
+    "refreshingMessages": "Refreshing messages…",
     "regenerate": "Regenerate",
     "retry": "Retry",
     "like": "Helpful",
@@ -577,6 +578,7 @@
     },
     "openBrowser": "View browser",
     "openBrowserHint": "Agent is browsing the web",
+    "openFile": "View file",
     "fileWorkspace": "Workspace files",
     "fileWorkspaceHint": "Agent created or edited a file",
     "fileSwitch": "Switch file"

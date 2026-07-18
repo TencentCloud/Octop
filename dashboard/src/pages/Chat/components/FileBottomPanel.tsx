@@ -1,11 +1,11 @@
-import ChatBrowserPanel from "../../../components/BrowserWorkspace/ChatBrowserPanel";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
-import type { DisplayEnvironment } from "../../../api/types/browser";
-import { resolveBrowserProfile } from "../../../utils/browserProfile";
+import FilePanel from "./FilePanel";
 import styles from "../index.module.less";
 
-interface ChatBrowserBottomPanelProps {
-  environment: DisplayEnvironment;
+interface FileBottomPanelProps {
+  agentId: string;
+  filePaths: string[];
+  initialPath?: string | null;
   isResizing: boolean;
   bottomHeight: number;
   onModeChange: (mode: PanelMode) => void;
@@ -16,14 +16,17 @@ interface ChatBrowserBottomPanelProps {
   ) => void;
 }
 
-export default function ChatBrowserBottomPanel({
-  environment,
+/** Bottom-docked variant of {@link FilePanel} (inside ``chatMain``). */
+export default function FileBottomPanel({
+  agentId,
+  filePaths,
+  initialPath,
   isResizing,
   bottomHeight,
   onModeChange,
   onClose,
   onResizeStart,
-}: ChatBrowserBottomPanelProps) {
+}: FileBottomPanelProps) {
   return (
     <>
       <div
@@ -34,9 +37,10 @@ export default function ChatBrowserBottomPanel({
       >
         <div className={styles.resizerHandle} />
       </div>
-      <ChatBrowserPanel
-        sessionId={resolveBrowserProfile()}
-        environment={environment}
+      <FilePanel
+        agentId={agentId}
+        filePaths={filePaths}
+        initialPath={initialPath}
         mode="bottom"
         onModeChange={onModeChange}
         onClose={onClose}

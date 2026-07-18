@@ -26,7 +26,8 @@ export type PreviewKind =
   | "python"
   | "javascript"
   | "json"
-  | "jsonl";
+  | "jsonl"
+  | "html";
 
 export function getPreviewKind(path: string): PreviewKind | null {
   const ext = path.split(".").pop()?.toLowerCase();
@@ -35,7 +36,13 @@ export function getPreviewKind(path: string): PreviewKind | null {
   if (ext === "js") return "javascript";
   if (ext === "json") return "json";
   if (ext === "jsonl") return "jsonl";
+  if (ext === "html" || ext === "htm") return "html";
   return null;
+}
+
+/** Preview kinds that need a flex-filled host (e.g. iframe) rather than scrollable text. */
+export function previewNeedsFillLayout(kind: PreviewKind | null): boolean {
+  return kind === "html";
 }
 
 function useIsDark() {
@@ -166,6 +173,18 @@ export default function FilePreview({
       return <JsonPreview content={content} />;
     case "jsonl":
       return <JsonlPreview content={content} />;
+    case "html":
+      // Render in a sandboxed iframe with an opaque origin (no
+      // ``allow-same-origin``) so the previewed markup cannot reach our
+      // cookies, JWT, or parent DOM. Scripts run in that isolated origin only.
+      return (
+        <iframe
+          title="HTML preview"
+          className={styles.htmlFrame}
+          srcDoc={content}
+          sandbox="allow-scripts allow-popups allow-forms"
+        />
+      );
     default:
       return null;
   }

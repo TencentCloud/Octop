@@ -14,3 +14,17 @@ export function isBrowserToolName(name: string | undefined): boolean {
 export function isFileToolName(name: string | undefined): boolean {
   return (FILE_TOOL_NAMES as readonly string[]).includes(name ?? "");
 }
+
+/**
+ * Match known file tools, plus any tool whose name implies a write/edit.
+ * The harness may report a localized name (e.g. "写入文件") or alias
+ * ``write_file`` under a namespace, so accept both English and Chinese keywords.
+ */
+export function isWriteToolName(name: string | undefined): boolean {
+  return (
+    isFileToolName(name) ||
+    /write|edit|create|save|overwrite|append|写入|编辑|写文件|改文件|创建文件|保存文件/i.test(
+      name ?? "",
+    )
+  );
+}

@@ -321,17 +321,6 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Footer actions */}
         <div className={styles.agentCard2Footer}>
-          <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              onClick={() => onEdit(agent.agent_id)}
-              aria-label={t("common.edit", "Edit")}
-            >
-              <Pencil size={13} />
-            </button>
-          </Tooltip>
-
           <Tooltip title={t("pageShell.workspace.title")} mouseEnterDelay={0.5}>
             <button
               type="button"
@@ -362,6 +351,17 @@ export const AgentCard = memo(function AgentCard({
               aria-label={t("experts.subagentsBtn")}
             >
               <Bot size={13} />
+            </button>
+          </Tooltip>
+
+          <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
+            <button
+              type="button"
+              className={styles.agentCard2EditBtn}
+              onClick={() => onEdit(agent.agent_id)}
+              aria-label={t("common.edit", "Edit")}
+            >
+              <Pencil size={13} />
             </button>
           </Tooltip>
 

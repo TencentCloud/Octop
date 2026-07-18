@@ -53,7 +53,9 @@ interface MessageListProps {
   loading?: boolean;
   historyHasMore?: boolean;
   historyLoadingMore?: boolean;
+  historyRefreshing?: boolean;
   onLoadMoreHistory?: () => void;
+  onRefreshHistory?: () => void;
   isStreaming?: boolean;
   thinkingStartedAt?: number | null;
   sessionKey?: string;
@@ -65,6 +67,7 @@ interface MessageListProps {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
+  onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -84,6 +87,7 @@ interface GroupRenderContext {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
+  onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -122,6 +126,7 @@ function renderMessageGroup(
             onAcpPermissionSelect={ctx.onAcpPermissionSelect}
             onHitlDecision={ctx.onHitlDecision}
             onOpenBrowser={openBrowserHandler}
+            onEditFile={ctx.onEditFile}
             onRunShellCommand={ctx.onRunShellCommand}
             shellCommandDisabled={ctx.shellCommandDisabled}
             shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
@@ -167,6 +172,7 @@ function renderMessageGroup(
         onAcpPermissionSelect={ctx.onAcpPermissionSelect}
         onHitlDecision={ctx.onHitlDecision}
         onOpenBrowser={openBrowserHandler}
+        onEditFile={ctx.onEditFile}
         onRunShellCommand={ctx.onRunShellCommand}
         shellCommandDisabled={ctx.shellCommandDisabled}
         shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
@@ -184,7 +190,9 @@ export default function MessageList(props: MessageListProps) {
     loading,
     historyHasMore,
     historyLoadingMore,
+    historyRefreshing,
     onLoadMoreHistory,
+    onRefreshHistory,
     isStreaming,
     thinkingStartedAt = null,
     sessionKey,
@@ -194,6 +202,7 @@ export default function MessageList(props: MessageListProps) {
     onAcpPermissionSelect,
     onHitlDecision,
     onOpenBrowser,
+    onEditFile,
     onRunShellCommand,
     shellCommandDisabled,
     shellCommandDisabledTitle,
@@ -261,6 +270,42 @@ export default function MessageList(props: MessageListProps) {
     useVirtual,
   ]);
 
+  // Keep the refresh trigger's identity stable so the scroll-listener effect
+  // in useAutoScroll never re-mounts (which would reset its overscroll guard
+  // and fire the refresh twice). Latest values are read from a ref.
+  const refreshStateRef = useRef({
+    historyRefreshing,
+    loading,
+    isStreaming,
+    onRefreshHistory,
+    hasMessages: messages.length > 0,
+  });
+  refreshStateRef.current = {
+    historyRefreshing,
+    loading,
+    isStreaming,
+    onRefreshHistory,
+    hasMessages: messages.length > 0,
+  };
+  const refreshCooldownRef = useRef(0);
+
+  const requestRefreshMessages = useCallback(() => {
+    const s = refreshStateRef.current;
+    const now = Date.now();
+    if (
+      s.historyRefreshing ||
+      s.loading ||
+      s.isStreaming ||
+      !s.onRefreshHistory ||
+      !s.hasMessages ||
+      now - refreshCooldownRef.current < 3000
+    ) {
+      return;
+    }
+    refreshCooldownRef.current = now;
+    s.onRefreshHistory();
+  }, []);
+
   const virtualScrollConfig = useMemo(
     () =>
       useVirtual
@@ -296,6 +341,7 @@ export default function MessageList(props: MessageListProps) {
     virtual: virtualScrollConfig,
     scrollerMountKey,
     onNearTop: requestOlderMessages,
+    onOverscrollBottom: requestRefreshMessages,
     deps: [
       scrollFollowDeps.count,
       scrollFollowDeps.lastId,
@@ -346,6 +392,16 @@ export default function MessageList(props: MessageListProps) {
       </div>
     );
   }, [historyHasMore, historyLoadingMore, t]);
+
+  const refreshFooter = useMemo(() => {
+    if (!historyRefreshing) return null;
+    return (
+      <div className={styles.historyLoadMore}>
+        <Spin size="small" />
+        <span>{t("chat.refreshingMessages")}</span>
+      </div>
+    );
+  }, [historyRefreshing, t]);
 
   const lastBrowserGroupIndex = useMemo(
     () => findLastBrowserTurnGroupIndex(messageGroups),
@@ -417,6 +473,7 @@ export default function MessageList(props: MessageListProps) {
       onAcpPermissionSelect,
       onHitlDecision,
       onOpenBrowser,
+      onEditFile,
       onRunShellCommand,
       shellCommandDisabled,
       shellCommandDisabledTitle,
@@ -434,6 +491,7 @@ export default function MessageList(props: MessageListProps) {
       onAcpPermissionSelect,
       onHitlDecision,
       onOpenBrowser,
+      onEditFile,
       onRunShellCommand,
       shellCommandDisabled,
       shellCommandDisabledTitle,
@@ -456,6 +514,7 @@ export default function MessageList(props: MessageListProps) {
         <ThinkingBubble startedAt={thinkingStartedAt} onCancel={onCancel} />
       )}
       {showContinuing && <ContinuingIndicator onCancel={onCancel} />}
+      {refreshFooter}
     </>
   );
 
@@ -485,7 +544,9 @@ export default function MessageList(props: MessageListProps) {
             ...virtuosoComponents,
             Header: () => (historyHeader ? <div>{historyHeader}</div> : null),
             Footer: () =>
-              showThinking || showContinuing ? <div>{footer}</div> : null,
+              showThinking || showContinuing || refreshFooter ? (
+                <div>{footer}</div>
+              ) : null,
           }}
           itemContent={(index, group) =>
             renderMessageGroup(group, index, groupContext)
