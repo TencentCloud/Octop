@@ -6,12 +6,16 @@ which is only the harness-gateway ``MediaBackend`` adapter for IM ingress.
 
 Path rule for ``BackendWorkspace``
 ----------------------------------
-Pass the path shape through unchanged — absolute stays absolute, relative stays
-relative. Do not rewrite, collapse, or try alternate forms.
+Prefer workspace-relative ``outbound/`` / ``inbound/`` keys when present in the
+source. Otherwise pass the original absolute/relative path through unchanged —
+do not rewrite or collapse forms. When BackendWorkspace cannot open a host
+absolute path (notably Windows drive-letter paths), fall back to a guarded
+host ``Path.read_bytes`` for allowlisted locations.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import mimetypes
@@ -287,9 +291,28 @@ def _is_host_absolute(path: str) -> bool:
         return True
     if len(path) >= 2 and path[1] == ":":
         return True
+    if path.startswith("\\\\"):
+        return True
     if not path.startswith("/"):
         return False
     return not path.startswith(("/outbound/", "/inbound/"))
+
+
+async def _download_via_workspace(workspace: BackendWorkspace, path: str) -> bytes | None:
+    """``adownload_bytes`` that treats path-escape PermissionError as a miss."""
+    try:
+        return await workspace.adownload_bytes(path)
+    except PermissionError:
+        return None
+
+
+async def _read_host_file_bytes(abs_path: str) -> bytes | None:
+    """Best-effort host read when BackendWorkspace cannot open a Windows abs path."""
+    try:
+        return await asyncio.to_thread(Path(abs_path).read_bytes)
+    except OSError as exc:
+        logger.warning("host file read failed for %s: %s", abs_path, exc)
+        return None
 
 
 async def resolve_preview_payload(
@@ -298,22 +321,41 @@ async def resolve_preview_payload(
     workspace: BackendWorkspace,
     mime_hint: str = "",
 ) -> tuple[bytes, str] | None:
-    """Return ``(bytes, mime)`` by passing *source* straight to BackendWorkspace."""
+    """Return ``(bytes, mime)`` for an allowed image/video preview source.
+
+    Prefer workspace-relative ``outbound/`` / ``inbound/`` keys (reliable on every
+    platform), then the original absolute path via BackendWorkspace, then a
+    guarded host ``Path.read_bytes`` fallback. The host fallback matters on
+    Windows where drive-letter absolutes are not treated as absolute by
+    ``BackendWorkspace.resolve_path`` (``startswith("/")`` only).
+    """
     path = backend_workspace_path(source)
     if path is None:
         return None
 
-    if _is_host_absolute(path) and not _abs_path_allowed(path, workspace=workspace.workspace_dir):
-        return None
+    rel = extract_workspace_rel(source)
+    if rel:
+        data = await _download_via_workspace(workspace, rel)
+        if data is not None:
+            mime = _guess_mime(rel, mime_hint)
+            if is_previewable_mime(mime):
+                return data, mime
 
-    try:
-        data = await workspace.adownload_bytes(path)
-    except PermissionError:
-        return None
+    if _is_host_absolute(path):
+        if not _abs_path_allowed(path, workspace=workspace.workspace_dir):
+            return None
+        data = await _download_via_workspace(workspace, path)
+        if data is None:
+            data = await _read_host_file_bytes(path)
+        used = path
+    else:
+        data = await _download_via_workspace(workspace, path)
+        used = path
+
     if data is None:
         return None
 
-    mime = _guess_mime(path, mime_hint)
+    mime = _guess_mime(used, mime_hint)
     if not is_previewable_mime(mime):
         return None
     return data, mime
@@ -326,22 +368,27 @@ async def read_file_url_bytes(
     filename: str = "",
     mime: str = "",
 ) -> bytes | None:
-    """Read bytes for a ``file://`` URL via BackendWorkspace (absolute path)."""
+    """Read bytes for a ``file://`` URL (workspace, import, or host fallback)."""
     path = backend_workspace_path(file_url)
     if path is None:
         return None
-    try:
-        data = await workspace.adownload_bytes(path)
-    except PermissionError:
-        data = None
+
+    rel = extract_workspace_rel(file_url)
+    if rel:
+        data = await _download_via_workspace(workspace, rel)
+        if data is not None:
+            return data
+
+    data = await _download_via_workspace(workspace, path)
     if data is not None:
         return data
+
     imported = await ensure_workspace_media_path(workspace, file_url, filename=filename, mime=mime)
     if imported:
-        try:
-            return await workspace.adownload_bytes(imported)
-        except PermissionError:
-            return None
+        return await _download_via_workspace(workspace, imported)
+
+    if _is_host_absolute(path) and _abs_path_allowed(path, workspace=workspace.workspace_dir):
+        return await _read_host_file_bytes(path)
     return None
 
 
@@ -367,14 +414,9 @@ async def ensure_workspace_media_path(
 
     existing = extract_workspace_rel(file_url)
     if existing:
-        try:
-            # Prefer the absolute path the tool reported when present.
-            if _is_host_absolute(abs_path):
-                data = await workspace.adownload_bytes(abs_path)
-            else:
-                data = await workspace.adownload_bytes(existing)
-        except PermissionError:
-            data = None
+        data = await _download_via_workspace(workspace, existing)
+        if data is None and _is_host_absolute(abs_path):
+            data = await _download_via_workspace(workspace, abs_path)
         if data is not None:
             return existing
 
@@ -382,10 +424,11 @@ async def ensure_workspace_media_path(
         return existing
 
     dest = _outbound_dest_rel(filename=filename, abs_path=abs_path, mime=mime)
-    try:
-        data = await workspace.adownload_bytes(abs_path)
-    except PermissionError:
-        data = None
+    data = await _download_via_workspace(workspace, abs_path)
+    if data is None:
+        # Windows drive-letter paths raise PermissionError inside BackendWorkspace
+        # before the local backend can open them; read the host file directly.
+        data = await _read_host_file_bytes(abs_path)
     if data is None:
         return None
     await workspace.aupload_bytes(dest, data)

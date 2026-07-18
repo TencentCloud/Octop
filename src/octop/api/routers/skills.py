@@ -29,6 +29,7 @@ delete is the right long-term answer.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -185,11 +186,34 @@ def _resolve_skillhub_bin() -> str | None:
     return None
 
 
+async def _close_subprocess(proc: asyncio.subprocess.Process) -> None:
+    """Kill and drain ``proc`` while the event loop is still alive.
+
+    Leaving a live ``asyncio`` subprocess after ``wait_for`` times out (or after
+    the caller abandons it) keeps pipe transports open; when the loop later
+    closes, ``BaseSubprocessTransport.__del__`` raises
+    ``RuntimeError: Event loop is closed`` as an unraisable warning.
+    """
+    if proc.returncode is not None:
+        return
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        return
+    try:
+        await proc.communicate()
+    except Exception:
+        with contextlib.suppress(Exception):
+            await proc.wait()
+
+
 async def _install_skillhub_cli() -> str:
     """Download and run the official install script; return the binary path."""
     from fastapi import HTTPException  # noqa: PLC0415
 
     logger.info("skillhub CLI not found, attempting auto-install...")
+    curl_proc: asyncio.subprocess.Process | None = None
+    bash_proc: asyncio.subprocess.Process | None = None
     try:
         curl_proc = await asyncio.create_subprocess_exec(
             "curl",
@@ -228,6 +252,11 @@ async def _install_skillhub_cli() -> str:
         raise HTTPException(
             status_code=502, detail=f"Failed to auto-install skillhub CLI: {exc}"
         ) from exc
+    finally:
+        if curl_proc is not None:
+            await _close_subprocess(curl_proc)
+        if bash_proc is not None:
+            await _close_subprocess(bash_proc)
 
     skillhub_bin = _resolve_skillhub_bin()
     if not skillhub_bin:
@@ -302,7 +331,11 @@ async def _run_skillhub_cmd(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except (TimeoutError, asyncio.CancelledError):
+        await _close_subprocess(proc)
+        raise
     return (
         proc.returncode or 0,
         stdout_b.decode("utf-8", errors="replace"),
@@ -708,26 +741,23 @@ async def hub_search_skills(
     skillhub_bin = await _ensure_skillhub_cli()
     query = q.strip() or "a"
     # Note: --json is not supported by this CLI version; parse text output instead.
-    cmd = [skillhub_bin, "search", "--search-limit", str(limit), query]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        rc, stdout, stderr = await _run_skillhub_cmd(
+            skillhub_bin,
+            ["search", "--search-limit", str(limit), query],
+            timeout=30,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
     except TimeoutError:
         raise HTTPException(status_code=504, detail="skillhub search timed out") from None
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to run skillhub CLI: {exc}") from exc
 
-    if proc.returncode != 0:
-        err_msg = stderr.decode("utf-8", errors="replace").strip()
+    if rc != 0:
         raise HTTPException(
-            status_code=502, detail=f"skillhub search failed: {err_msg or 'unknown error'}"
+            status_code=502, detail=f"skillhub search failed: {stderr.strip() or 'unknown error'}"
         )
 
-    return _parse_skillhub_search_output(stdout.decode("utf-8", errors="replace"))
+    return _parse_skillhub_search_output(stdout)
 
 
 _RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending", "paid"}
