@@ -61,7 +61,10 @@ async def test_import_external_file_virtual_mode() -> None:
     with tempfile.TemporaryDirectory() as ws:
         external = Path(tempfile.mkdtemp()) / "harness-browser.png"
         external.write_bytes(b"\x89PNG\r\n")
-        workspace = _workspace(ws, virtual_mode=True)
+        workspace = BackendWorkspace(
+            LocalShellBackend(root_dir="/", virtual_mode=True),
+            ws,
+        )
         rel = await ensure_workspace_media_path(
             workspace,
             external.as_uri(),
@@ -105,7 +108,7 @@ async def test_attachment_frame_virtual_mode_uses_download_url() -> None:
         )
         content = enriched["messages"][0]["content"]
         parsed = json.loads(content)
-        assert parsed["preview_url"].startswith("/api/agents/agent-1/workspace/download")
+        assert parsed["preview_url"].startswith("/api/agents/agent-1/media/preview")
         assert parsed["source"]["url"] == parsed["preview_url"]
         assert parsed.get("path") in (None, "outbound") or (
             isinstance(parsed.get("path"), str) and parsed["path"].startswith("outbound/")
@@ -166,8 +169,8 @@ async def test_attachment_frame_uses_workspace_download_url() -> None:
         assert frames[0]["type"] == "attachment"
         assert frames[0]["kind"] == "image"
         assert "data" not in frames[0]
-        assert frames[0]["preview_url"].startswith("/api/agents/agent-1/workspace/download")
-        assert OUTBOUND_DIR in frames[0]["preview_url"]
+        assert frames[0]["preview_url"].startswith("/api/agents/agent-1/media/preview")
+        assert "file%" in frames[0]["preview_url"] or "source=" in frames[0]["preview_url"]
 
 
 def test_iter_media_blocks_single_object() -> None:
@@ -253,7 +256,7 @@ def testenrich_media_block_preview_outbound() -> None:
         "path": "/tmp/workspace/outbound/chart.png",
     }
     enriched = enrich_media_block_preview(block, agent_id="agent-x")
-    assert enriched["preview_url"].startswith("/api/agents/agent-x/workspace/download?path=")
+    assert enriched["preview_url"].startswith("/api/agents/agent-x/media/preview?")
     assert enriched["source"]["url"] == enriched["preview_url"]
     assert enriched["path"] == "outbound/chart.png"
     assert enriched["filename"] == "chart.png"
@@ -310,8 +313,35 @@ def test_dashboard_media_url_uses_path_agent_id() -> None:
     path = "file:///Users/me/.octop/agents/W4MFVJ/outbound/screenshots/harness.png"
     url = dashboard_media_url("6X3Z7C", path)
     assert url is not None
-    assert url.startswith("/api/agents/W4MFVJ/workspace/download?")
-    assert "outbound%2Fscreenshots%2Fharness.png" in url or "screenshots" in url
+    assert url.startswith("/api/agents/W4MFVJ/media/preview?")
+    assert "file%" in url or "source=" in url
+
+
+@pytest.mark.asyncio
+async def test_resolve_preview_keeps_host_absolute_screenshot() -> None:
+    """Browser screenshots under agent outbound/ must load via absolute path."""
+    from deepagents.backends.local_shell import LocalShellBackend
+    from harness_agent.backends.workspace import BackendWorkspace
+
+    from octop.infra.gateway.media.backend_files import resolve_preview_payload
+
+    with tempfile.TemporaryDirectory() as ws:
+        shots = Path(ws) / "outbound" / "screenshots"
+        shots.mkdir(parents=True)
+        png = shots / "harness-abs.png"
+        png.write_bytes(b"\x89PNG\r\n" + b"x" * 64)
+        backend = LocalShellBackend(root_dir="/", virtual_mode=True)
+        workspace = BackendWorkspace(backend, ws)
+        # Tool returned an absolute file:// path — pass it through unchanged.
+        payload = await resolve_preview_payload(
+            source=png.as_uri(),
+            workspace=workspace,
+            mime_hint="image/png",
+        )
+        assert payload is not None
+        data, mime = payload
+        assert data.startswith(b"\x89PNG")
+        assert mime == "image/png"
 
 
 @pytest.mark.asyncio

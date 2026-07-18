@@ -41,7 +41,28 @@ export function agentMediaPreviewUrl(
   )}/media/preview?${params.toString()}`;
 }
 
-/** Extract ``inbound/…`` or ``outbound/…`` from dashboard media/download API URLs. */
+/** Extract ``inbound/…`` or ``outbound/…`` from a filesystem / API path. */
+export function extractWorkspaceRel(path: string): string | null {
+  let raw = path.trim();
+  if (!raw) return null;
+  if (raw.toLowerCase().startsWith("file://")) {
+    raw = raw.slice("file://".length);
+  }
+  const normalized = raw.replace(/\\/g, "/");
+  const stripped = normalized.replace(/^\/+/, "");
+  if (stripped.startsWith("outbound/") || stripped.startsWith("inbound/")) {
+    return stripped;
+  }
+  for (const marker of ["/outbound/", "/inbound/"] as const) {
+    const idx = normalized.indexOf(marker);
+    if (idx >= 0) {
+      return normalized.slice(idx + 1);
+    }
+  }
+  return null;
+}
+
+/** Extract path from dashboard media/download API URLs (preserve absolute). */
 export function workspacePathFromAccessUrl(url: string): string | undefined {
   try {
     const parsed = url.startsWith("http")
@@ -50,8 +71,18 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
     for (const key of ["source", "path"] as const) {
       const raw = parsed.searchParams.get(key);
       if (!raw) continue;
-      const rel = extractWorkspaceRel(raw);
-      if (rel) return rel;
+      if (raw.startsWith("file://")) {
+        let abs = raw.slice("file://".length);
+        if (abs.startsWith("//")) abs = abs.slice(1);
+        return abs.startsWith("/") || /^[A-Za-z]:/.test(abs) ? abs : `/${abs}`;
+      }
+      if (raw.startsWith("/")) {
+        return raw;
+      }
+      const mediaRel = extractWorkspaceRel(raw);
+      if (mediaRel) return mediaRel;
+      const collapsed = toWorkspaceRel(raw);
+      if (collapsed) return collapsed;
     }
   } catch {
     return undefined;
@@ -85,12 +116,6 @@ export function toWorkspaceRel(rawPath: string): string {
     p = p.slice("/workspace".length);
   }
   return p.replace(/^\/+/, "");
-}
-
-/** Extract a workspace-relative fragment from a filesystem / file-URL / tool path. */
-export function extractWorkspaceRel(path: string): string | null {
-  const rel = toWorkspaceRel(path);
-  return rel || null;
 }
 
 /** Read agent id embedded in ``…/agents/{id}/…`` workspace paths. */
@@ -489,18 +514,15 @@ function imageItemFromPath(
   rawPath: string,
 ): ToolMediaItem {
   const agentId = resolveMediaAgentId(chatAgentId, rawPath);
-  const rel = extractWorkspaceRel(rawPath);
-  if (rel) {
-    return {
-      url: workspaceDownloadUrl(agentId, rel),
-      filename: rawPath.split("/").pop(),
-      kind: "image",
-    };
-  }
-  const path = rawPath.startsWith("file://") ? rawPath : `file://${rawPath}`;
+  // Absolute → file:// absolute; relative → relative. No path rewriting.
+  const source = rawPath.startsWith("file://")
+    ? rawPath
+    : rawPath.startsWith("/")
+    ? `file://${rawPath}`
+    : rawPath;
   return {
-    url: agentMediaPreviewUrl(agentId, path),
-    filename: rawPath.split("/").pop(),
+    url: agentMediaPreviewUrl(agentId, source, guessImageMime(rawPath)),
+    filename: rawPath.split("/").filter(Boolean).pop(),
     kind: "image",
   };
 }
