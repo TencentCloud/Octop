@@ -9,6 +9,7 @@ export interface AgentStorageBackend {
   name: string;
   kind: string;
   enabled: boolean;
+  bucket?: string | null;
 }
 
 export interface AgentFormResources {

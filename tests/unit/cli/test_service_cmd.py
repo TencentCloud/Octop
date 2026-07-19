@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import os
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,8 @@ from octop.infra.setup.service import (
     launchd_domain,
     unit_path,
 )
+
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX service management")
 
 
 def _runtime(tmp_path: Path, *, mode: str = "systemd", scope: str = "system") -> ServiceRuntime:

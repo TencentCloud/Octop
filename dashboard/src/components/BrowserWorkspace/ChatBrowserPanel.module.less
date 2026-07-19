@@ -1,0 +1,135 @@
+.chatBrowserPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  /* Same surface as docked right/bottom (BrowserWorkspace / chat shell). */
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-primary);
+
+  &.bottom {
+    width: 100%;
+    min-height: 200px;
+    flex-shrink: 0;
+    border-left: none;
+    border-top: none;
+    overflow: hidden;
+  }
+
+  &.right {
+    min-width: 320px;
+    flex-shrink: 0;
+    border-left: none;
+    overflow: hidden;
+  }
+
+  /* Popup reuses the same surface tokens; only positioning / chrome differ. */
+  &.popup {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 720px;
+    height: 600px;
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 48px);
+    z-index: 1101;
+    border: 1px solid var(--fn-border-primary);
+    border-radius: var(--fn-radius-md, 8px);
+    box-shadow: var(--fn-shadow-lg);
+    /* Custom corner handle — native resize:both fights Monaco layout. */
+    overflow: hidden;
+  }
+
+  &.popupPlaced {
+    transform: none;
+  }
+
+  /* Disable interaction while dragging so the canvas doesn't swallow moves. */
+  &.popupDragging {
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+  }
+
+  &.popupResizing {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+.popupResizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 5;
+  touch-action: none;
+
+  &::after {
+    content: "";
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--fn-text-quaternary, #bbb);
+    border-bottom: 2px solid var(--fn-text-quaternary, #bbb);
+    opacity: 0.7;
+  }
+
+  &:hover::after {
+    opacity: 1;
+    border-color: #1890ff;
+  }
+}
+
+/* Dimmed modal backdrop — theme-aware so dark mode isn't washed out. */
+.popupMask {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+:global(html[data-theme="dark"]) .popupMask {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+/* Chat-only toolbar: mode switch (left) + close (right). Draggable in popup. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-primary);
+  flex-shrink: 0;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.toolbarModes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.toolbarSpacer {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Active-mode indicator on the layout toggle buttons. */
+.modeActive {
+  color: var(--fn-text-brand) !important;
+  background: var(--fn-bg-active) !important;
+  border-radius: 4px;
+}

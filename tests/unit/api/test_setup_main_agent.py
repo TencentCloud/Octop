@@ -27,14 +27,36 @@ def test_bootstrap_main_spec_has_no_custom_backend() -> None:
         expert=expert,
         user_id=1,
         agent_id="main",
-        name="通用助手",
         locale="zh",
     )
     assert "backend" not in spec.config
     assert spec.config.get("expert_id") == "general-assistant"
 
 
+def test_bootstrap_main_spec_en_locale_uses_english_label() -> None:
+    from octop.infra.agents.experts.catalog import (
+        build_create_spec_from_expert,
+    )
+
+    catalog = ExpertCatalog(default_library_root())
+    catalog.refresh()
+    expert = catalog.get("general-assistant")
+    assert expert is not None
+    spec = build_create_spec_from_expert(
+        expert_id="general-assistant",
+        expert=expert,
+        user_id=1,
+        agent_id="main",
+        locale="en",
+    )
+    expected_name = expert.summary.label_en or expert.summary.label_zh
+    assert spec.name == expected_name
+    if expert.summary.description_en:
+        assert spec.description == expert.summary.description_en
+
+
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="POSIX virtual_mode without root_dir behavior")
 async def test_workspace_scoped_virtual_backend_creates_nested_paths() -> None:
     """Broken layout when backend is {local_shell, virtual_mode} without root_dir='/'."""
     with tempfile.TemporaryDirectory() as ws_dir:

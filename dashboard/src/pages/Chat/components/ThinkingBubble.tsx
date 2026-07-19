@@ -1,42 +1,35 @@
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useElapsedSince } from "../../../hooks/useElapsedSeconds";
 import styles from "../index.module.less";
-
-const _thinkingStartedAtMap = new Map<string, number>();
 
 interface ThinkingBubbleProps {
   onCancel?: () => void;
-  sessionKey?: string;
+  startedAt: number;
 }
 
 export default function ThinkingBubble({
   onCancel,
-  sessionKey = "__default__",
+  startedAt,
 }: ThinkingBubbleProps) {
   const { t } = useTranslation();
-  const symbolSrc = `${import.meta.env.BASE_URL}favico.svg`;
-
-  const [elapsed, setElapsed] = useState(() => {
-    let startedAt = _thinkingStartedAtMap.get(sessionKey);
-    if (startedAt === undefined) {
-      startedAt = Date.now();
-      _thinkingStartedAtMap.set(sessionKey, startedAt);
-    }
-    return Math.floor((Date.now() - startedAt) / 1000);
-  });
-
-  useEffect(() => {
-    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const elapsedLabel = elapsed > 0 ? ` · ${elapsed}s` : "";
+  const typingSrc = `${import.meta.env.BASE_URL}octop-mascot-type.webm`;
+  const elapsed = useElapsedSince(startedAt);
 
   return (
     <div className={styles.thinkingBubble}>
       <div className={styles.avatarCol}>
         <div className={styles.botAvatar}>
-          <img src={symbolSrc} alt="Octop" />
+          <video
+            src={typingSrc}
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-label="Octop"
+            ref={(el) => {
+              if (el) el.muted = true;
+            }}
+          />
         </div>
       </div>
       <div className={styles.thinkingContent}>
@@ -45,7 +38,7 @@ export default function ThinkingBubble({
         <span className={styles.thinkingDot} />
         <span className={styles.thinkingText}>
           {t("chat.thinking")}
-          {elapsedLabel}
+          {` · ${elapsed}s`}
         </span>
         {onCancel && (
           <button
@@ -60,8 +53,4 @@ export default function ThinkingBubble({
       </div>
     </div>
   );
-}
-
-export function clearThinkingTimer(sessionKey: string) {
-  _thinkingStartedAtMap.delete(sessionKey);
 }

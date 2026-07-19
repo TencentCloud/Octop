@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Tooltip } from "antd";
 import ThemeSwitcher from "../components/ThemeSwitcher";
 import {
+  Monitor,
   MessageSquareText,
   Timer,
   SlidersHorizontal,
@@ -152,12 +153,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           badge: "new",
         },
         {
-          key: "skills",
-          path: "/skills",
-          icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.skills",
-        },
-        {
           key: "token-usage",
           path: "/token-usage",
           icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
@@ -176,6 +171,19 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           labelKey: "nav.channels",
         },
         {
+          key: "skills",
+          path: "/skills",
+          icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.skills",
+        },
+        {
+          key: "subagents",
+          path: "/subagents",
+          icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.subagents",
+          badge: "new",
+        },
+        {
           key: "terminal",
           path: "/terminal",
           icon: <TerminalSquare size={iconSize} strokeWidth={iconStroke} />,
@@ -188,17 +196,17 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           labelKey: "nav.remoteBrowser",
         },
         {
+          key: "remote-desktop",
+          path: "/remote-desktop",
+          icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.remoteDesktop",
+          badge: "new",
+        },
+        {
           key: "acp",
           path: "/acp",
           icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.acp",
-          badge: "new",
-        },
-        {
-          key: "subagents",
-          path: "/subagents",
-          icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.subagents",
           badge: "new",
         },
         {

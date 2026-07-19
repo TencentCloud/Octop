@@ -53,3 +53,26 @@
   min-width: 0;
   padding: 10px 12px;
 }
+
+.sectionTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.viewMoreLink {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--fn-primary, #1677ff);
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

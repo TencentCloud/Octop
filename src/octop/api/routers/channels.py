@@ -254,7 +254,7 @@ async def probe_channel_config(
 
 # ─── QR scan helpers ────────────────────────────────────────────────────────
 
-_SAFE_ARG_RE = re.compile(r"^[a-zA-Z0-9_.:/\-]+$")
+_SAFE_ARG_RE = re.compile(r"^[a-zA-Z0-9_.:/\\\-]+$")
 _MAX_ARG_LEN = 2048
 _ALLOWED_PLATFORM_VALUES = frozenset({"feishu", "lark"})
 _INSTANCE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")

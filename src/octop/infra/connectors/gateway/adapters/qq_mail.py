@@ -155,6 +155,13 @@ def _imap_login(creds: dict[str, Any]) -> imaplib.IMAP4_SSL:
     return imap
 
 
+def probe_credentials(creds: dict[str, Any]) -> None:
+    """Validate mailbox credentials via IMAP login."""
+    imap = _imap_login(creds)
+    with contextlib.suppress(Exception):
+        imap.logout()
+
+
 def _extract_body(msg: email.message.Message) -> str:
     if msg.is_multipart():
         for part in msg.walk():

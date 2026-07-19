@@ -16,7 +16,7 @@ _MAIL_PROVIDER_PRESETS: dict[str, tuple[str, int, str, int]] = {
     "gmail": ("imap.gmail.com", 993, "smtp.gmail.com", 587),
 }
 
-# MCP Streamable HTTP transport (Notion, Figma, etc.) requires both content types.
+# MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
 
 
@@ -161,28 +161,11 @@ def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> d
                 "x-api-key": api_key,
             },
         }
-    if entry.kind == "baidu-netdisk":
-        access_token = str(creds.get("access_token") or creds.get("token") or "")
-        return {
-            "transport": "http",
-            "url": f"https://mcp-pan.baidu.com/sse?access_token={quote(access_token, safe='')}",
-        }
     if entry.kind == "notion":
         access_token = str(creds.get("access_token") or "")
         return {
             "transport": "http",
             "url": "https://mcp.notion.com/mcp",
-            "headers": {
-                **_mcp_http_headers(),
-                "Authorization": f"Bearer {access_token}",
-                "User-Agent": "octop-connector/0.1",
-            },
-        }
-    if entry.kind == "figma":
-        access_token = str(creds.get("access_token") or "")
-        return {
-            "transport": "http",
-            "url": "https://mcp.figma.com/mcp",
             "headers": {
                 **_mcp_http_headers(),
                 "Authorization": f"Bearer {access_token}",
@@ -228,18 +211,6 @@ def validate_create_credentials(
         token = normalize_weiyun_mcp_token(raw) if entry.kind == "tencent-weiyun" else raw
         if not token:
             raise ValueError("token is required")
-        if entry.kind == "baidu-netdisk":
-            from octop.infra.connectors.baidu_token import validate_baidu_access_token_sync
-
-            ok, err = validate_baidu_access_token_sync(token)
-            if not ok:
-                raise ValueError(err or "invalid baidu access token")
-            out = {"access_token": token}
-            if credentials.get("refresh_token"):
-                out["refresh_token"] = str(credentials["refresh_token"])
-            if credentials.get("expires_at") is not None:
-                out["expires_at"] = int(credentials["expires_at"])
-            return out
         return {"token": token}
 
     if entry.auth_kind == "oauth2":
@@ -289,6 +260,15 @@ def validate_create_credentials(
             raise ValueError(
                 "微信读书需使用 wrk- 开头的 API Key，请登录 "
                 "https://weread.qq.com/r/weread-skills 获取"
+            )
+        if entry.kind == "qq-music" and not api_key.startswith("qmk-"):
+            raise ValueError(
+                "QQ 音乐需使用 qmk- 开头的 API Key，请登录 "
+                "https://y.qq.com/n/ryqq_v2/qqmusic_skills 获取"
+            )
+        if entry.kind == "yuandian" and not api_key.startswith("sk_"):
+            raise ValueError(
+                "元典需使用 sk_ 开头的 API Key，请登录 https://open.chineselaw.com/profile 获取"
             )
         internal_token = new_internal_token()
         out = {"api_key": api_key, "internal_token": internal_token}

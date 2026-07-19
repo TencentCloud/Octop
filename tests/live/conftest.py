@@ -36,7 +36,17 @@ def _load_env_file() -> None:
         pass
 
 
-_load_env_file()
+@pytest.fixture(autouse=True, scope="session")
+def _load_live_env() -> None:
+    """Load the repo-root ``.env`` only while live tests run.
+
+    Loading at import time (previously a module-level call) leaked real
+    credentials into ``os.environ`` for the entire pytest session, polluting
+    unrelated unit tests such as ``test_config`` that assume a clean env for
+    their defaults. Scoping the load to this autouse session fixture confines
+    it to live tests, which are deselected by ``-m "not live"``.
+    """
+    _load_env_file()
 
 
 @dataclass(frozen=True)

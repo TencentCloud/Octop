@@ -57,7 +57,6 @@ import platform
 import shutil
 import signal
 import socket
-import struct
 import subprocess
 import tempfile
 import uuid
@@ -68,6 +67,7 @@ from starlette.websockets import WebSocketState
 
 from octop.api.deps import current_user, get_server, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils import posix_compat
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +106,8 @@ def terminal_supported() -> tuple[bool, str]:
 
 def _set_winsize(fd: int, cols: int, rows: int) -> None:
     """ioctl TIOCSWINSZ on the master fd. Errors are non-fatal."""
-    import fcntl
-    import termios
-
     try:
-        winsize = struct.pack("HHHH", rows, cols, 0, 0)
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+        posix_compat.set_winsize(fd, cols, rows)
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("failed to set winsize: %s", exc)
 
@@ -130,17 +126,25 @@ def _detect_shell() -> str:
             return powershell
         return "cmd.exe"
 
+    def _usable(path: str) -> bool:
+        name = os.path.basename(path).lower()
+        if name in {"nologin", "false", "true", "sync"}:
+            return False
+        return bool(path) and os.path.exists(path)
+
     shell = os.environ.get("SHELL", "").strip()
-    if shell and os.path.exists(shell):
+    if _usable(shell):
         return shell
     try:
-        import pwd
-
-        entry = pwd.getpwuid(os.getuid())
-        if entry.pw_shell and os.path.exists(entry.pw_shell):
-            return entry.pw_shell
+        entry = posix_compat.getpwuid(posix_compat.getuid())
+        shell = str(entry.pw_shell)
+        if _usable(shell):
+            return shell
     except Exception:  # pragma: no cover - non-posix
         pass
+    for candidate in ("/bin/bash", "/bin/sh"):
+        if os.path.exists(candidate):
+            return candidate
     return "/bin/bash"
 
 
@@ -244,12 +248,15 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
         if proc.poll() is not None:
             return
         with contextlib.suppress(ProcessLookupError, OSError):
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            posix_compat.killpg(posix_compat.getpgid(proc.pid), signal.SIGTERM)
         try:
             proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
             with contextlib.suppress(ProcessLookupError, OSError):
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                posix_compat.killpg(
+                    posix_compat.getpgid(proc.pid),
+                    posix_compat.sigkill(),
+                )
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=1)
     except Exception as exc:  # pragma: no cover - defensive
@@ -265,14 +272,15 @@ def _spawn_pty_session(
     rows: int,
     persistent: bool,
 ) -> _PtySession:
-    """Create a PTY pair, spawn the shell at ``workspace_dir``, start the pump."""
-    import fcntl
-    import pty
+    """Create a PTY pair, spawn the shell at ``workspace_dir`` (pump not started).
 
-    master_fd, slave_fd = pty.openpty()
+    Caller must subscribe then call :meth:`_PtySession.start_pump` so an
+    immediately-exiting shell cannot race the empty subscriber set under
+    ``_sessions_lock``.
+    """
+    master_fd, slave_fd = posix_compat.openpty()
     _set_winsize(master_fd, cols, rows)
-    flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-    fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    posix_compat.set_nonblock(master_fd)
 
     shell = _detect_shell()
     # Interactive flag so rc files (.bashrc / .zshrc) load.
@@ -283,32 +291,50 @@ def _spawn_pty_session(
     if "zsh" in shell:
         zdotdir = _zsh_web_zdotdir()
         env["ZDOTDIR"] = zdotdir
+
+    cwd = workspace_dir
+    if not os.path.isdir(cwd):
+        # Fall back rather than fail the whole WebSocket — mkdir races or a
+        # deleted workspace should still yield a usable shell.
+        cwd = os.path.expanduser("~") or "/"
+        logger.warning(
+            "terminal cwd missing, falling back: agent=%s wanted=%s using=%s",
+            agent_id,
+            workspace_dir,
+            cwd,
+        )
+
     proc = subprocess.Popen(
         cmd,
         stdin=slave_fd,
         stdout=slave_fd,
         stderr=slave_fd,
         close_fds=True,
-        preexec_fn=os.setsid,  # separate process group for clean teardown
+        preexec_fn=posix_compat.setsid,  # separate process group for clean teardown
         env=env,
-        cwd=workspace_dir,
+        cwd=cwd,
     )
     os.close(slave_fd)
 
     session = _PtySession(
         sid, agent_id, user_id, proc, master_fd, cols, rows, persistent, zdotdir=zdotdir
     )
-    session.pump_task = asyncio.create_task(_pump_pty(session))
     logger.info(
         "terminal opened: agent=%s sid=%s pid=%s shell=%s cwd=%s persistent=%s",
         agent_id,
         sid,
         proc.pid,
         shell,
-        workspace_dir,
+        cwd,
         persistent,
     )
     return session
+
+
+def _start_session_pump(session: _PtySession) -> None:
+    """Begin PTY fan-out after the first subscriber is attached."""
+    if session.pump_task is None and not session.closed:
+        session.pump_task = asyncio.create_task(_pump_pty(session))
 
 
 async def _pump_pty(session: _PtySession) -> None:
@@ -486,8 +512,27 @@ async def terminal_ws(
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return
     assert server.app_runtime is not None
-    if server.app_runtime.agent_registry.get_row(agent_id) is None:
-        await websocket.close(code=4404, reason="no agents for user")
+    registry = server.app_runtime.agent_registry
+    agent_row = registry.get_row(agent_id)
+    if agent_row is None:
+        # Allow short suffixes; include disabled agents so terminal works even when
+        # the agent runtime is stopped/disabled.
+        candidates: list[Any] = []
+        agent_repo = getattr(server.services, "agent_repo", None)
+        if agent_repo is not None:
+            with contextlib.suppress(Exception):
+                candidates = list(agent_repo.list_all(include_disabled=True))
+        if not candidates:
+            with contextlib.suppress(Exception):
+                candidates = list(registry.list_rows())
+        for row in candidates:
+            row_id = str(getattr(row, "agent_id", "") or "")
+            if row_id == agent_id or row_id.endswith(agent_id):
+                agent_row = row
+                agent_id = row_id
+                break
+    if agent_row is None:
+        await websocket.close(code=4404, reason="agent not found")
         return
     workspace_dir = str(server.services.paths.ensure_agent_workspace(agent_id))
 
@@ -499,6 +544,12 @@ async def terminal_ws(
         return
 
     await websocket.accept()
+    logger.info(
+        "terminal ws accepted: agent=%s user=%s session_id=%s",
+        agent_id,
+        user.id,
+        session_id or "-",
+    )
 
     # --- resolve session (re-attach vs create) --------------------------
     persistent = bool(session_id and session_id.strip())
@@ -511,6 +562,8 @@ async def terminal_ws(
     is_reattach = False
     cap_exceeded = False
     wrong_owner = False
+    spawn_error: str | None = None
+    just_spawned = False
 
     try:
         async with _sessions_lock:
@@ -530,17 +583,38 @@ async def terminal_ws(
                 if len(_sessions) >= _MAX_SESSIONS:
                     cap_exceeded = True
                 else:
-                    session = _spawn_pty_session(
-                        sid, agent_id, user.id, workspace_dir, cols, rows, persistent
-                    )
-                    _sessions[key] = session
+                    try:
+                        session = _spawn_pty_session(
+                            sid, agent_id, user.id, workspace_dir, cols, rows, persistent
+                        )
+                        _sessions[key] = session
+                        just_spawned = True
+                    except Exception as spawn_exc:
+                        logger.exception(
+                            "terminal spawn failed: agent=%s sid=%s cwd=%s",
+                            agent_id,
+                            sid,
+                            workspace_dir,
+                        )
+                        spawn_error = str(spawn_exc)
             # Snapshot scrollback, then subscribe — both sync, no await in
             # between, so the pump can neither duplicate nor drop output at
             # the replay/live boundary.
             if session is not None:
                 snapshot = bytes(session.scrollback)
                 session.subscribers.add(queue)
+                # Start the pump only after the first subscriber is attached
+                # (and only for newly spawned shells — re-attach keeps the
+                # existing pump).
+                if just_spawned:
+                    _start_session_pump(session)
 
+        if spawn_error is not None:
+            await websocket.send_text(
+                json.dumps({"type": "error", "message": f"failed to start shell: {spawn_error}"})
+            )
+            await websocket.close(code=1011, reason="spawn failed")
+            return
         if wrong_owner:
             await websocket.send_text(
                 json.dumps({"type": "error", "message": "session owned by another user"})
@@ -654,6 +728,13 @@ async def terminal_ws(
             with contextlib.suppress(WebSocketDisconnect):
                 await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
     finally:
+        close_sid = sid if "sid" in locals() else (session_id or "-")
+        logger.info(
+            "terminal ws closing: agent=%s sid=%s persistent=%s",
+            agent_id,
+            close_sid,
+            bool(session.persistent) if session is not None else False,
+        )
         # Detach this connection. Persistent shells are kept alive for the
         # grace period so a reconnect can re-attach; ephemeral shells are
         # reaped immediately (original behaviour).
@@ -667,7 +748,7 @@ async def terminal_ws(
         if websocket.application_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close()
-        logger.info("terminal websocket closed: agent=%s sid=%s", agent_id, sid)
+        logger.info("terminal websocket closed: agent=%s sid=%s", agent_id, close_sid)
 
 
 def _read_nonblock(fd: int | None) -> bytes | None:

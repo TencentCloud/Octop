@@ -22,7 +22,7 @@ from octop.api.deps import current_user, get_server
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.backend_files import (
-    normalize_workspace_download_path,
+    backend_workspace_path,
     resolve_preview_payload,
 )
 
@@ -57,6 +57,21 @@ def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> Oct
 def _agent_id_from_media_source(source: str) -> str | None:
     match = re.search(r"/agents/([A-Z0-9]+)/", source, re.IGNORECASE)
     return match.group(1) if match else None
+
+
+def _workspace_io_path(path: str) -> str:
+    """Resolve an API path for ``BackendWorkspace``.
+
+    ``file://`` → absolute path, unchanged. Everything else uses the dashboard
+    ``/foo`` → relative convention via ``workspace_api_path``.
+    """
+    raw = path.strip()
+    if raw.startswith("file://"):
+        resolved = backend_workspace_path(raw)
+        if resolved is None:
+            raise OctopError(ErrorCode.NOT_FOUND, f"cannot resolve {path!r}")
+        return resolved
+    return workspace_api_path(raw)
 
 
 router = APIRouter()
@@ -94,7 +109,7 @@ async def read_file(
 ) -> dict[str, Any]:
     """Read a UTF-8 text file."""
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    content = await ws.aread_text(workspace_api_path(path))
+    content = await ws.aread_text(_workspace_io_path(path))
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
     return {"path": path, "content": coerce_read_content(content)}
@@ -113,7 +128,7 @@ async def write_file(
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
     data = body.content.encode("utf-8")
     try:
-        await ws.aupload_bytes(workspace_api_path(path), data)
+        await ws.aupload_bytes(_workspace_io_path(path), data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {path!r}: {exc}") from exc
     return {"path": path, "size": len(data)}
@@ -221,37 +236,25 @@ async def download_file(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
-    """Stream ``path`` back as application/octet-stream."""
+    """Stream ``path`` back as application/octet-stream.
+
+    ``file://`` sources are passed to ``BackendWorkspace`` as absolute paths.
+    Other paths use the dashboard ``/foo`` → relative convention.
+    """
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    io_path = _workspace_io_path(path)
 
     try:
-        rel = normalize_workspace_download_path(path)
-    except ValueError:
-        rel = None
-
-    if rel is not None:
-        file_blob = await ws.adownload_bytes(workspace_api_path(rel))
-        if file_blob is None:
-            raise OctopError(ErrorCode.NOT_FOUND, f"no data for {path!r}")
-        fname = rel.rsplit("/", 1)[-1] or "download.bin"
-        return StreamingResponse(
-            iter([file_blob]),
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": content_disposition(fname)},
-        )
-
-    abs_source = path if path.startswith("file://") else f"file://{path}"
-    payload = await resolve_preview_payload(
-        source=abs_source,
-        workspace=ws,
-    )
-    if payload is None:
+        file_blob = await ws.adownload_bytes(io_path)
+    except PermissionError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from exc
+    if file_blob is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from None
-    blob, mime = payload
-    fname = path.rsplit("/", 1)[-1] or "download.bin"
+
+    fname = io_path.rsplit("/", 1)[-1] or "download.bin"
     return StreamingResponse(
-        iter([blob]),
-        media_type=mime,
+        iter([file_blob]),
+        media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
     )
 

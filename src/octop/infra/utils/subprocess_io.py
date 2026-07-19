@@ -2,17 +2,9 @@
 
 from __future__ import annotations
 
-import errno
 import json
 import os
 from typing import IO, Any
-
-if os.name == "nt":
-    import ctypes
-    import msvcrt
-    from ctypes import wintypes
-
-    _kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
 
 
 def read_available_bytes(stream: IO[bytes]) -> bytes:
@@ -20,40 +12,12 @@ def read_available_bytes(stream: IO[bytes]) -> bytes:
     if stream is None:
         return b""
     if os.name == "nt":
-        return _read_available_windows(stream)
-    return _read_available_posix(stream)
+        from octop.infra.utils.subprocess_io_win import read_available_windows
 
+        return read_available_windows(stream)
+    from octop.infra.utils.posix_compat import read_available_posix
 
-def _read_available_posix(stream: IO[bytes]) -> bytes:
-    import fcntl
-
-    fd = stream.fileno()
-    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-    try:
-        return os.read(fd, 65536)
-    except OSError as exc:
-        if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-            return b""
-        raise
-    finally:
-        fcntl.fcntl(fd, fcntl.F_SETFL, flags)
-
-
-def _read_available_windows(stream: IO[bytes]) -> bytes:
-    handle = msvcrt.get_osfhandle(stream.fileno())  # type: ignore[attr-defined]
-    avail = wintypes.DWORD()
-    ok = _kernel32.PeekNamedPipe(
-        handle,
-        None,
-        0,
-        None,
-        ctypes.byref(avail),
-        None,
-    )
-    if not ok or avail.value == 0:
-        return b""
-    return stream.read(avail.value)
+    return read_available_posix(stream)
 
 
 def parse_json_lines(raw: bytes) -> list[dict[str, Any]]:

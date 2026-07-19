@@ -18,9 +18,9 @@ async def test_catalog(env):
     assert r.status_code == 200
     kinds = {e["kind"] for e in r.json()}
     assert "tencent-docs" in kinds
-    assert "baidu-netdisk" in kinds
     assert "notion" in kinds
-    assert "figma" in kinds
+    assert "figma" not in kinds
+    assert "baidu-netdisk" not in kinds
     for kind in (
         "tencent-meeting",
         "tencent-lexiang",
@@ -29,6 +29,12 @@ async def test_catalog(env):
         "wechat-reading",
         "youdao-note",
         "tencent-weiyun",
+        "qq-music",
+        "fliggy",
+        "baidu-map",
+        "ctrip-wendao",
+        "meituan-travel",
+        "yuandian",
     ):
         entry = next(e for e in r.json() if e["kind"] == kind)
         assert entry["phase"] == "available", kind
@@ -103,7 +109,11 @@ async def test_get_instance_detail(env):
     assert detail["credentials_preview"]["password_configured"] is True
 
 
-async def test_probe_returns_tools(env):
+async def test_probe_returns_tools(env, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.adapters.qq_mail.probe_credentials",
+        lambda _creds: None,
+    )
     c, _, auth, _ = env
     r = await c.post(
         "/api/connectors/test-credentials",
@@ -121,7 +131,11 @@ async def test_probe_returns_tools(env):
     assert data["tools"][0]["name"]
 
 
-async def test_internal_mcp_tools_list(env):
+async def test_internal_mcp_tools_list(env, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.adapters.qq_mail.probe_credentials",
+        lambda _creds: None,
+    )
     c, _, auth, _ = env
     r = await c.post(
         "/api/connector-instances",
@@ -170,16 +184,3 @@ async def test_patch_instance_status(env):
     )
     assert r2.status_code == 200
     assert r2.json()["status"] == "disabled"
-    c, _, auth, _ = env
-    r = await c.post(
-        "/api/connectors/test-credentials",
-        headers=auth,
-        json={
-            "kind": "qq-mail",
-            "credentials": {"email": "a@qq.com", "password": "code"},
-        },
-    )
-    assert r.status_code == 200
-    assert r.json()["ok"] is True
-    assert r.json()["tool_count"] == 3
-    assert len(r.json()["tools"]) == 3

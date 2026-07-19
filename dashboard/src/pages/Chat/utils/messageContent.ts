@@ -1,5 +1,5 @@
 import type { ChatMessage } from "../hooks/useChat";
-import { isBrowserToolName } from "../constants";
+import { isBrowserToolName, isWriteToolName } from "../constants";
 
 const THINKING_TAG_RE = /<think>[\s\S]*?<\/think>/g;
 
@@ -145,6 +145,16 @@ export function turnUsedBrowserTool(split: AssistantTurnSplit): boolean {
   return (split?.tools ?? []).some((msg) =>
     isBrowserToolName(msg.toolData?.name),
   );
+}
+
+/** True when this message is a workspace file write/edit tool call. */
+function messageUsesFileTool(msg: ChatMessage): boolean {
+  return isWriteToolName(msg.toolData?.name);
+}
+
+/** True when this assistant turn invoked a workspace file write/edit tool. */
+export function turnUsedFileTool(split: AssistantTurnSplit): boolean {
+  return (split?.tools ?? []).some((msg) => messageUsesFileTool(msg));
 }
 
 /** Index of the most recent assistant turn that invoked a browser tool, or -1. */

@@ -258,6 +258,19 @@ Zed setup example.
 | `GET`/`POST`/`PATCH`/`DELETE` | `/storage-backends` | user | per-user remote backend connections |
 | `GET`/`POST`/`PATCH`/`DELETE` | `/admin/storage-backends` | admin | admin-managed backends |
 
+## Host filesystem (dashboard)
+
+Browse the host OS directory tree when configuring a local backend
+`root_dir` (`local_shell` / `filesystem`). Authenticated users only;
+sensitive mounts (`/proc`, `/sys`, `/dev`, `/etc`, `/root` on POSIX)
+are rejected. Listing is single-level and capped; write probe runs only
+for non-`/` paths.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET`    | `/filesystem/dirs?path=<abs>` | user | `{path, entries: [{path, name}]}` — one directory level |
+| `POST`   | `/filesystem/probe` | user | body `{path}` → `{ok, path?}` or `{ok: false, code, detail?}` (`not_directory`, `permission_denied`, `write_failed`, `not_allowed`) |
+
 ## Connectors & OAuth
 
 | Method | Path | Auth | Notes |

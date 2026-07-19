@@ -50,6 +50,7 @@
 | ↔️ | **ACP 双向集成** | `octop acp` 增强 IDE 与终端 AI；对话中委派 OpenCode / Claude Code 等 |
 | 💻 | **终端 AI+** | 浏览器内交互式 Shell，AI 辅助命令执行与排障 |
 | 🌐 | **浏览器 AI+** | 基于 Chromium 的无头浏览器会话，支持网页自动化、截图与远程操控 |
+| 🖥️ | **远程桌面** | 控制台内实时看屏与键鼠操控，跨 Linux / Windows / macOS；适合远程办公、GUI 软件操作，无图形 Linux 可一键搭建隔离桌面 |
 | 🏠 | **可自托管** | 一条 `octop run` 即可运行控制台、CLI、IM 通道与定时任务，数据存于 `~/.octop/` |
 
 <details>
@@ -205,10 +206,10 @@ octop service start
 
 ```bash
 # 构建并启动
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # 或手动构建
-bash deploy/docker_build.sh
+bash docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -262,7 +263,7 @@ docker run -d \
 | 本地脚本 | macOS / Linux | `bash scripts/install.sh` |
 | 本地脚本 | Windows | `scripts\install.bat` 或 `install.ps1` |
 | PyPI | 全平台 | `pip install octop` 或 `pip install "octop[browser]"` |
-| Docker | 全平台 | `deploy/docker-compose.yml` |
+| Docker | 全平台 | `docker/docker-compose.yml` |
 
 所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
 
@@ -369,7 +370,7 @@ OctopServer
  ├─ UserManager
  │   └─ HarnessAgentManager（按用户）
  │       └─ AgentRuntime（按 Agent）
- │           ├─ HarnessAgent      LangGraph 运行时（harness-agent）
+ │           ├─ HarnessAgent      Agent 运行时（harness-agent）
  │           ├─ HarnessProcessor  IM / UI / 定时任务入口
  │           ├─ ChannelManager    IM 连接（harness-gateway）
  │           └─ CronManager       APScheduler
@@ -393,7 +394,7 @@ src/octop/
 
 dashboard/     前端源码（Vite）— 在此编辑，运行 make build-frontend
 
-deploy/        Docker Compose、入口脚本、构建与部署脚本
+docker/        Docker Compose、入口脚本、构建与部署脚本
 tests/         unit/ + integration/
 ```
 

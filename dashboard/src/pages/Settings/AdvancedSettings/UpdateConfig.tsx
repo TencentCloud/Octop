@@ -15,6 +15,10 @@ import {
 } from "../../../api/modules/update";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
+import {
+  clearStoredUpdateStatus,
+  storeUpdateStatus,
+} from "../../../utils/updateStatusCache";
 import styles from "./UpdateConfig.module.less";
 
 export default function UpdateConfig() {
@@ -30,7 +34,10 @@ export default function UpdateConfig() {
   useEffect(() => {
     updateApi
       .getUpdateStatus()
-      .then(setStatus)
+      .then((next) => {
+        storeUpdateStatus(next);
+        setStatus(next);
+      })
       .catch(() => {});
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
@@ -41,6 +48,7 @@ export default function UpdateConfig() {
     setChecking(true);
     try {
       const result = await updateApi.checkForUpdates();
+      storeUpdateStatus(result);
       setStatus(result);
     } catch {
       // network error – keep existing status
@@ -58,10 +66,13 @@ export default function UpdateConfig() {
       } else {
         setUpgrading(false);
         if (prog.status === "complete") {
-          // Refresh version status after successful upgrade
+          clearStoredUpdateStatus();
           updateApi
             .getUpdateStatus()
-            .then(setStatus)
+            .then((next) => {
+              storeUpdateStatus(next);
+              setStatus(next);
+            })
             .catch(() => {});
         }
       }

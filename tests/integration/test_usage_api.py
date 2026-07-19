@@ -6,7 +6,7 @@ Three layers:
      non-admins to their own user_id.
   3. /api/admin/usage/summary returns global rollups.
 
-The chat-stream → ledger pipe is exercised in test_chat_sse via the
+The chat-stream → ledger pipe is exercised in test_chat_ws via the
 existing FakeHarnessAgent fixtures; here we drive the repo directly so
 the test stays focused.
 """

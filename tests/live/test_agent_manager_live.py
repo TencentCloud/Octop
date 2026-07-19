@@ -52,7 +52,11 @@ async def test_create_agent_seeds_workspace_and_starts(
     entry = live_agent_manager._harness_manager.get_agent(row.agent_id)  # type: ignore[union-attr]
     assert entry.agent_id == row.agent_id
     cfg = live_agent_manager._build_harness_config(row)
-    assert cfg.backend == {"type": "local_shell", "virtual_mode": True}
+    assert cfg.backend == {
+        "type": "local_shell",
+        "root_dir": "/",
+        "virtual_mode": True,
+    }
     assert str(cfg.workspace_dir) == str(ws)
 
 

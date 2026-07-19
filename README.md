@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.1.0-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.9.9-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -47,6 +47,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, Discord, WeCom, or program
 | ↔️ | **ACP bidirectional** | `octop acp` for IDE/terminal AI; delegate to OpenCode / Claude Code with permission gates |
 | 💻 | **Terminal AI+** | Interactive shell in the browser — AI-assisted command execution and troubleshooting |
 | 🌐 | **Browser AI+** | Headless Chromium sessions for web automation, screenshots, and remote browsing |
+| 🖥️ | **Remote desktop** | Live screen and input from the dashboard on Linux, Windows, and macOS — remote office work and GUI apps; one-click isolated desktop on headless Linux |
 | 🏠 | **Self-hosted** | Dashboard, CLI, IM channels, and cron in one `octop run` — all data under `~/.octop/` |
 
 ## 📌 Overview
@@ -71,7 +72,7 @@ Octop is a self-hosted AI assistant platform for households and small teams. It 
 
 Octop is built on the Harness stack — a set of focused runtimes that Octop composes into one process:
 
-- **harness-agent** — LangGraph-based agent runtime: model routing, tools, skills, and conversation checkpointing.
+- **harness-agent** — Agent runtime: model routing, tools, skills, and conversation checkpointing.
 - **harness-gateway** — multi-platform IM channel bridge that normalizes incoming messages into a single processing pipeline.
 - **harness-memory** — hierarchical recall with full-text search, so an agent's memory travels with its workspace.
 - **harness-browser** — CDP-based browser automation with persistent profiles for web tasks.
@@ -363,7 +364,7 @@ OctopServer
  ├─ UserManager
  │   └─ HarnessAgentManager (per user)
  │       └─ AgentRuntime (per agent)
- │           ├─ HarnessAgent      LangGraph runtime (harness-agent)
+ │           ├─ HarnessAgent      Agent runtime (harness-agent)
  │           ├─ HarnessProcessor  IM / UI / cron entry point
  │           ├─ ChannelManager    IM connections (harness-gateway)
  │           └─ CronManager       APScheduler

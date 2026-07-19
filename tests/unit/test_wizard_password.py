@@ -6,6 +6,8 @@ import os
 import stat
 from pathlib import Path
 
+import pytest
+
 from octop.infra.setup.password_file import (
     WIZARD_FILE_NAME,
     boot_self_heal,
@@ -35,6 +37,8 @@ def test_ensure_password_returns_none_when_present(tmp_path: Path) -> None:
 
 
 def test_file_mode_is_0600(tmp_path: Path) -> None:
+    if os.name != "posix":
+        pytest.skip("POSIX file mode bits")
     ensure_password(tmp_path)
     mode = stat.S_IMODE(os.stat(_file(tmp_path)).st_mode)
     assert mode == 0o600

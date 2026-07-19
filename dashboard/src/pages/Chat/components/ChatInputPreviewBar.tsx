@@ -9,7 +9,6 @@ import ContextChip from "./ContextChip";
 import { skillChipLabel } from "../utils/skillChipLabel";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import { modelShortLabel } from "../../../utils/modelOptions";
-import { resolveTurnModelOverride } from "../utils/chatMessages";
 import styles from "../index.module.less";
 
 interface ChatInputPreviewBarProps {
@@ -19,7 +18,6 @@ interface ChatInputPreviewBarProps {
   selectedConnectors: string[];
   selectedTargetAgents: string[];
   selectedModel?: string | null;
-  defaultModel?: string | null;
   availableSkills?: SkillSpec[];
   availableConnectors?: {
     mcp_server_name: string;
@@ -48,11 +46,14 @@ export default function ChatInputPreviewBar({
   onConnectorsChange,
   onTargetAgentsChange,
   selectedModel,
-  defaultModel,
   onModelChange,
 }: ChatInputPreviewBarProps) {
   const skillDisplayName = useSkillDisplayName();
-  const modelOverride = resolveTurnModelOverride(selectedModel, defaultModel);
+  // Show the chip whenever a model is explicitly selected, mirroring how
+  // skills / experts / connectors behave — not only when it differs from the
+  // agent default (that was the old "override" behavior).
+  const selectedModelValue = (selectedModel || "").trim();
+  const showModelChip = selectedModelValue.length > 0 && !!onModelChange;
 
   const hasContent =
     attachments.length > 0 ||
@@ -60,7 +61,7 @@ export default function ChatInputPreviewBar({
     selectedConnectors.length > 0 ||
     selectedSkills.length > 0 ||
     selectedTargetAgents.length > 0 ||
-    !!modelOverride;
+    showModelChip;
 
   if (!hasContent) return null;
 
@@ -172,12 +173,12 @@ export default function ChatInputPreviewBar({
             />
           );
         })}
-      {modelOverride && onModelChange && (
+      {showModelChip && (
         <ContextChip
           variant="model"
           icon={<Cpu size={12} strokeWidth={2.2} aria-hidden />}
-          label={modelShortLabel(modelOverride)}
-          onRemove={() => onModelChange(null)}
+          label={modelShortLabel(selectedModelValue)}
+          onRemove={() => onModelChange?.(null)}
         />
       )}
     </div>

@@ -170,7 +170,8 @@ async def test_oversized_image_degrades_to_path_hint() -> None:
         block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
         assert block is not None
         assert block["type"] == "text"
-        assert stored.path in block["text"] or "inbound/" in block["text"]
+        hint = block["text"].replace("\\", "/")
+        assert stored.path.replace("\\", "/") in hint or "inbound/" in hint
 
 
 def test_inbound_attachments_from_parts() -> None:

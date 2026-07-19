@@ -99,6 +99,7 @@ export type {
 const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   messages: [],
   isStreaming: false,
+  thinkingStartedAt: null,
   runUsage: null,
   contextUsage: null,
   historyHasMore: false,
@@ -218,6 +219,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
   return {
     messages: state.messages,
     isStreaming: state.isStreaming,
+    thinkingStartedAt: state.thinkingStartedAt,
     runUsage: state.runUsage,
     contextUsage: state.contextUsage,
     historyHasMore: state.historyHasMore,
@@ -232,6 +234,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
     state = {
       messages: [],
       isStreaming: false,
+      thinkingStartedAt: null,
       runUsage: null,
       contextUsage: null,
       abortController: null,
@@ -260,6 +263,16 @@ function notify(state: SessionStreamState) {
       /* ignore */
     }
   }
+}
+
+function beginStream(state: SessionStreamState): void {
+  state.thinkingStartedAt = Date.now();
+  state.isStreaming = true;
+}
+
+function clearStreamingFlags(state: SessionStreamState): void {
+  state.isStreaming = false;
+  state.thinkingStartedAt = null;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -364,7 +377,7 @@ export function truncateAndReplaceUserMessage(
     ...state.messages.slice(0, idx),
     { ...original, content: newContent, status: "done" as const },
   ];
-  state.isStreaming = false;
+  clearStreamingFlags(state);
   state.runUsage = null;
   state.streamMsg = "";
   state.streamId = "";
@@ -392,7 +405,7 @@ export function appendPushMessage(text: string) {
 export function clearMessages(sessionId: string) {
   const state = getOrCreate(sessionId);
   state.messages = [];
-  state.isStreaming = false;
+  clearStreamingFlags(state);
   state.runUsage = null;
   state.streamMsg = "";
   state.streamId = "";
@@ -410,7 +423,7 @@ export function cancelStream(sessionId: string) {
   if (!state) return;
   state.abortController?.abort();
   state.abortController = null;
-  state.isStreaming = false;
+  clearStreamingFlags(state);
   state.runUsage = null;
   state.messages = state.messages.map((m) =>
     m.status === "streaming" ? { ...m, status: "done" as const } : m,
@@ -1028,7 +1041,7 @@ function handleHitlRequired(
   request: Record<string, unknown>,
 ): void {
   finalizeStreamingMessages(state);
-  state.isStreaming = false;
+  clearStreamingFlags(state);
   state.messages = [
     ...state.messages,
     {
@@ -1180,7 +1193,7 @@ export async function sendTurn(
 
   if (!agentId) {
     appendErrorBubble(state, "No agent selected. Pick one from the top bar.");
-    state.isStreaming = false;
+    clearStreamingFlags(state);
     notify(state);
     onStreamEnd?.();
     return;
@@ -1192,7 +1205,7 @@ export async function sendTurn(
   state.streamMsg = "";
   state.streamId = "";
   state.streamBlockType = "";
-  state.isStreaming = true;
+  beginStream(state);
   state.runUsage = null;
   notify(state);
 
@@ -1204,7 +1217,7 @@ export async function sendTurn(
   const messageContent = buildUserMessageContent(text, attachments);
 
   const finish = () => {
-    state.isStreaming = false;
+    clearStreamingFlags(state);
     state.abortController = null;
     state.streamMsg = "";
     state.streamId = "";
@@ -1307,7 +1320,7 @@ export async function resumeHitl(
     ? "rejected"
     : "approved";
   resolveHitlPending(state, hitlStatus);
-  state.isStreaming = true;
+  beginStream(state);
   notify(state);
   emitStreamEvent({ kind: "streamStart", sessionId });
 
@@ -1324,7 +1337,7 @@ export async function resumeHitl(
   }
 
   const finish = () => {
-    state.isStreaming = false;
+    clearStreamingFlags(state);
     state.abortController = null;
     state.streamMsg = "";
     state.streamId = "";

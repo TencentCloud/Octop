@@ -5,42 +5,6 @@
   border-left: 1px solid var(--fn-border-secondary, #e0e0e0);
   background: var(--fn-bg-primary, #fff);
   overflow: hidden;
-
-  &.hidden {
-    display: none;
-  }
-
-  &.bottom {
-    width: 100%;
-    min-height: 200px;
-    flex-shrink: 0;
-    border-left: none;
-    border-top: none;
-    overflow: hidden;
-  }
-
-  &.right {
-    min-width: 320px;
-    flex-shrink: 0;
-    border-left: none;
-    overflow: hidden;
-  }
-
-  &.popup {
-    position: fixed;
-    right: 80px;
-    bottom: 24px;
-    width: 720px;
-    height: 600px;
-    max-width: calc(100vw - 120px);
-    max-height: calc(100vh - 48px);
-    z-index: 1100;
-    border: 1px solid var(--fn-border-secondary, #e0e0e0);
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    resize: both;
-    overflow: auto;
-  }
 }
 
 .header {
@@ -51,16 +15,6 @@
   border-bottom: 1px solid var(--fn-border-secondary, #e0e0e0);
   background: var(--fn-bg-secondary, #fafafa);
   flex-shrink: 0;
-}
-
-.headerDraggable {
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-
-  &:active {
-    cursor: grabbing;
-  }
 }
 
 .headerLeft {
@@ -139,15 +93,6 @@
     color: #fa8c16;
     font-weight: 600;
   }
-}
-
-.currentUrl {
-  font-size: 11px;
-  color: var(--fn-text-quaternary, #999);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
 }
 
 .headerRight {
@@ -477,32 +422,10 @@
   }
 }
 
-/* Active mode indicator on layout toggle buttons */
-.modeActive {
-  color: #1890ff !important;
-  background: rgba(24, 144, 255, 0.08) !important;
-  border-radius: 4px;
-}
-
 /* Popup overlay backdrop */
 .popupOverlay {
   position: fixed;
   inset: 0;
   z-index: 1099;
   background: transparent;
-}
-
-/* While dragging the popup, disable pointer events on viewport and add visual cue */
-.popupDragging {
-  transition: none !important;
-  user-select: none;
-  -webkit-user-select: none;
-
-  .viewportContainer {
-    pointer-events: none;
-  }
-
-  .header {
-    cursor: grabbing;
-  }
 }

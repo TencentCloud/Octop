@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,8 @@ def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:
 
 
 def test_init_force_resets(fake_home: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows may lock SQLite during init force reset")
     runner = CliRunner()
     args_a = ["init", "--admin-username", "alice", "--admin-password", "pw1234", "--yes"]
     args_b = [

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from octop.infra.backup.snapshot import snapshot_sqlite_file
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows disallows '?' in path names")
 def test_snapshot_sqlite_file_with_special_chars_in_path(tmp_path: Path) -> None:
     """Paths containing URI metacharacters must not alter connect options."""
     tricky_dir = tmp_path / "dir?mode=memory"

@@ -1,15 +1,11 @@
 /**
  * useAutoScroll — streaming chat scroll state machine.
  *
- * Three mutually exclusive scroll modes (stored in scrollModeRef):
+ * Two mutually exclusive scroll modes (stored in scrollModeRef):
  *
- *  "follow"  — default. While streaming, each new token scrolls to the bottom.
- *  "anchor"  — activated on send. The viewport is locked at the user bubble
- *              (ANCHOR_TOP_OFFSET from the container top). Content grows
- *              downward; no auto-scroll happens. A hint ↓ button is shown
- *              when content overflows below the viewport.
- *  "free"    — user scrolled up intentionally. No automatic movement at all.
- *              ↓ button is shown. Restored to "follow" when user reaches bottom.
+ *  "follow" — default. New content scrolls to the bottom automatically.
+ *  "free"   — user scrolled up intentionally. No automatic movement.
+ *             ↓ button is shown. Restored to "follow" when user reaches bottom.
  *
  * Programmatic scroll guard:
  *  Any scrollTo / scrollIntoView fires scroll events. We mark them as
@@ -17,14 +13,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { VirtuosoHandle } from "react-virtuoso";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
 /** px from bottom — counts as "at the bottom" */
-const AT_BOTTOM_THRESHOLD = 80;
-
-/** px gap between container top and anchored user bubble */
-const ANCHOR_TOP_OFFSET = 16;
+export const AT_BOTTOM_THRESHOLD = 80;
 
 /** ms to keep the programmatic-scroll guard alive (covers smooth-scroll animation) */
 const PROGRAMMATIC_GUARD_MS = 700;
@@ -32,38 +26,48 @@ const PROGRAMMATIC_GUARD_MS = 700;
 /** ms to wait after touchend before re-checking (iOS momentum settle) */
 const MOMENTUM_SETTLE_MS = 200;
 
+/** px before a touch gesture counts as intentional scroll-up */
+const TOUCH_SCROLL_UP_THRESHOLD = 10;
+
+/** Accumulated overscroll at bottom before firing refresh */
+const OVERSCROLL_BOTTOM_THRESHOLD = 100;
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type ScrollMode = "follow" | "anchor" | "free";
+type ScrollMode = "follow" | "free";
+
+export interface VirtualScrollConfig {
+  virtuosoRef: React.RefObject<VirtuosoHandle | null>;
+  scrollerRef: React.RefObject<HTMLElement | null>;
+  itemCount: number;
+}
 
 export interface UseAutoScrollOptions {
   deps?: readonly unknown[];
   smooth?: boolean;
+  containerRef?: React.RefObject<HTMLElement | null>;
+  endRef?: React.RefObject<HTMLElement | null>;
+  virtual?: VirtualScrollConfig | null;
+  /** Bumps when the Virtuoso scroller element mounts so listeners re-bind. */
+  scrollerMountKey?: number;
+  onNearTop?: () => void;
+  nearTopThreshold?: number;
+  /** Fired when the user keeps scrolling down while already at the bottom. */
+  onOverscrollBottom?: () => void;
+  overscrollBottomThreshold?: number;
+  /** When true on a deps tick, skip the automatic instant follow scroll. */
+  skipNextDepsScrollRef?: React.MutableRefObject<boolean>;
 }
 
 export interface UseAutoScrollReturn {
   containerRef: React.RefObject<HTMLDivElement>;
   endRef: React.RefObject<HTMLDivElement>;
   showScrollBtn: boolean;
+  isFollowMode: boolean;
   scrollToBottom: (instant?: boolean) => void;
-  scrollToAnchor: (anchorEl: HTMLElement) => void;
-}
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Returns the scrollTop that places `el` exactly `topOffset` px below
- * the top edge of `container`, using viewport coordinates so the result
- * is independent of offsetParent chains and CSS Modules class-name hashing.
- */
-function calcAnchorScrollTop(
-  el: HTMLElement,
-  container: HTMLElement,
-  topOffset: number,
-): number {
-  const elRect = el.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  return container.scrollTop + (elRect.top - containerRect.top) - topOffset;
+  resumeAutoScroll: () => void;
+  armProgrammaticGuard: (ms?: number) => void;
+  handleAtBottomChange: (bottom: boolean) => void;
 }
 
 // ─── hook ─────────────────────────────────────────────────────────────────────
@@ -71,207 +75,263 @@ function calcAnchorScrollTop(
 export function useAutoScroll({
   deps = [],
   smooth = true,
+  containerRef: externalContainerRef,
+  endRef: externalEndRef,
+  virtual = null,
+  scrollerMountKey = 0,
+  onNearTop,
+  nearTopThreshold = AT_BOTTOM_THRESHOLD,
+  onOverscrollBottom,
+  overscrollBottomThreshold = OVERSCROLL_BOTTOM_THRESHOLD,
+  skipNextDepsScrollRef,
 }: UseAutoScrollOptions = {}): UseAutoScrollReturn {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const internalContainerRef = useRef<HTMLDivElement>(null);
+  const internalEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = externalContainerRef ?? internalContainerRef;
+  const endRef = externalEndRef ?? internalEndRef;
 
-  // Primary state machine — never use setState for this; refs are synchronous.
   const scrollModeRef = useRef<ScrollMode>("follow");
-
-  // RAF handle
   const rafRef = useRef<number | null>(null);
-
-  // Programmatic scroll guard
   const isProgrammaticRef = useRef(false);
   const guardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Direction detection
+  // Overscroll-to-refresh state kept in refs so it survives listener effect
+  // re-mounts (e.g. when onOverscrollBottom identity changes mid-refresh).
+  const overscrollAccumRef = useRef(0);
+  const overscrollArmedRef = useRef(true);
   const prevScrollTopRef = useRef(0);
 
-  // Hint button — only this is React state (needs re-render)
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [isFollowMode, setIsFollowMode] = useState(true);
 
-  // ── guard helpers ──────────────────────────────────────────────────────────
+  const getScroller = useCallback((): HTMLElement | null => {
+    if (virtual?.scrollerRef.current) return virtual.scrollerRef.current;
+    return containerRef.current;
+  }, [virtual, containerRef]);
 
-  const armGuard = useCallback((ms: number) => {
-    isProgrammaticRef.current = true;
-    if (guardTimerRef.current !== null) clearTimeout(guardTimerRef.current);
-    guardTimerRef.current = setTimeout(() => {
-      guardTimerRef.current = null;
-      isProgrammaticRef.current = false;
-      if (containerRef.current) {
-        prevScrollTopRef.current = containerRef.current.scrollTop;
-      }
-    }, ms);
-  }, []);
-
-  // ── position helpers ───────────────────────────────────────────────────────
+  const armProgrammaticGuard = useCallback(
+    (ms = PROGRAMMATIC_GUARD_MS) => {
+      isProgrammaticRef.current = true;
+      if (guardTimerRef.current !== null) clearTimeout(guardTimerRef.current);
+      guardTimerRef.current = setTimeout(() => {
+        guardTimerRef.current = null;
+        isProgrammaticRef.current = false;
+        const scroller = getScroller();
+        if (scroller) {
+          prevScrollTopRef.current = scroller.scrollTop;
+        }
+      }, ms);
+    },
+    [getScroller],
+  );
 
   const isAtBottom = useCallback((): boolean => {
-    const c = containerRef.current;
+    const c = getScroller();
     if (!c) return true;
     return c.scrollHeight - c.scrollTop - c.clientHeight <= AT_BOTTOM_THRESHOLD;
+  }, [getScroller]);
+
+  const enterFollowMode = useCallback(() => {
+    scrollModeRef.current = "follow";
+    setIsFollowMode(true);
+    setShowScrollBtn(false);
   }, []);
 
-  const isContentBelowViewport = useCallback((): boolean => {
-    const c = containerRef.current;
-    if (!c) return false;
-    return c.scrollHeight - c.scrollTop - c.clientHeight > AT_BOTTOM_THRESHOLD;
+  const enterFreeMode = useCallback(() => {
+    scrollModeRef.current = "free";
+    setIsFollowMode(false);
+    setShowScrollBtn(true);
+    isProgrammaticRef.current = false;
+    if (guardTimerRef.current !== null) {
+      clearTimeout(guardTimerRef.current);
+      guardTimerRef.current = null;
+    }
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
   }, []);
 
-  // ── public scroll actions ──────────────────────────────────────────────────
-
-  const scrollToBottom = useCallback(
+  const scrollToBottomInFollowMode = useCallback(
     (instant = false) => {
-      const container = containerRef.current;
-      const end = endRef.current;
-      if (!container || !end) return;
-
-      scrollModeRef.current = "follow";
+      if (scrollModeRef.current !== "follow") return;
 
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
-        armGuard(instant ? 50 : PROGRAMMATIC_GUARD_MS);
+        if (scrollModeRef.current !== "follow") return;
+
+        armProgrammaticGuard(instant ? 50 : PROGRAMMATIC_GUARD_MS);
+
+        if (virtual && virtual.itemCount > 0) {
+          const scroller = virtual.scrollerRef.current;
+          if (scroller) {
+            scroller.scrollTo({
+              top: scroller.scrollHeight,
+              behavior: instant ? "auto" : "smooth",
+            });
+          } else {
+            virtual.virtuosoRef.current?.scrollToIndex({
+              index: virtual.itemCount - 1,
+              align: "end",
+              behavior: instant ? "auto" : "smooth",
+            });
+          }
+          return;
+        }
+
+        const end = endRef.current;
+        if (!end) return;
         end.scrollIntoView({
           behavior: instant || !smooth ? "instant" : "smooth",
           block: "end",
         });
-        setShowScrollBtn(false);
       });
     },
-    [smooth, armGuard],
+    [smooth, armProgrammaticGuard, virtual, endRef],
   );
 
-  const scrollToAnchor = useCallback(
-    (anchorEl: HTMLElement) => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      scrollModeRef.current = "anchor";
-
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-
-        const targetScrollTop = Math.max(
-          0,
-          calcAnchorScrollTop(anchorEl, container, ANCHOR_TOP_OFFSET),
-        );
-
-        armGuard(smooth ? PROGRAMMATIC_GUARD_MS : 50);
-        container.scrollTo({
-          top: targetScrollTop,
-          behavior: smooth ? "smooth" : "instant",
-        });
-        setShowScrollBtn(false);
-      });
+  const scrollToBottom = useCallback(
+    (instant = false) => {
+      enterFollowMode();
+      scrollToBottomInFollowMode(instant);
     },
-    [smooth, armGuard],
+    [enterFollowMode, scrollToBottomInFollowMode],
   );
 
-  // ── react to new content (deps change = new tokens / messages) ─────────────
+  const resumeAutoScroll = useCallback(() => {
+    scrollToBottom(smooth);
+  }, [scrollToBottom, smooth]);
+
+  const handleAtBottomChange = useCallback(() => {
+    // Virtuoso may report at-bottom after programmatic follow scrolls.
+    // Resuming follow is handled only by user scroll/wheel/touch listeners.
+  }, []);
 
   useEffect(() => {
-    const mode = scrollModeRef.current;
-
-    if (mode === "follow") {
-      // Instant scroll during content growth — smooth scroll on every token
-      // stacks animations and causes visible jitter on long responses.
-      scrollToBottom(true);
-    } else if (mode === "anchor") {
-      // Anchor mode: don't scroll, just update the hint button.
-      setShowScrollBtn(isContentBelowViewport());
+    if (skipNextDepsScrollRef?.current) {
+      skipNextDepsScrollRef.current = false;
+      return;
     }
-    // "free" mode: user is browsing history — do nothing.
+    if (scrollModeRef.current === "follow") {
+      scrollToBottomInFollowMode(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- caller supplies dynamic dependency list
-  }, [...deps, scrollToBottom, isContentBelowViewport]);
-
-  // ── event listeners ────────────────────────────────────────────────────────
+  }, [...deps, scrollToBottomInFollowMode, skipNextDepsScrollRef]);
 
   useEffect(() => {
-    const container = containerRef.current;
+    const container = getScroller();
     if (!container) return;
 
     prevScrollTopRef.current = container.scrollTop;
 
-    // ── scroll ──
-    // Fires for all sources: wheel, scrollbar drag, keyboard, touch.
+    // Disarmed after one refresh; only re-armed once the user genuinely
+    // leaves the bottom and returns, so a single flick's momentum can't fire
+    // the refresh twice.
+    const resetOverscroll = () => {
+      overscrollAccumRef.current = 0;
+      overscrollArmedRef.current = true;
+    };
+
+    const accumulateOverscroll = (delta: number) => {
+      if (!onOverscrollBottom || !overscrollArmedRef.current || !isAtBottom()) {
+        return;
+      }
+      if (delta <= 0) {
+        overscrollAccumRef.current = Math.max(
+          0,
+          overscrollAccumRef.current + delta,
+        );
+        return;
+      }
+      overscrollAccumRef.current += delta;
+      if (overscrollAccumRef.current >= overscrollBottomThreshold) {
+        overscrollAccumRef.current = 0;
+        overscrollArmedRef.current = false;
+        onOverscrollBottom();
+      }
+    };
+
     const handleScroll = (): void => {
       const cur = container.scrollTop;
       const prev = prevScrollTopRef.current;
       prevScrollTopRef.current = cur;
 
-      // Ignore events produced by our own programmatic scrolls.
-      if (isProgrammaticRef.current) return;
+      const scrolledUp = cur < prev - 1;
 
-      const scrolledUp = cur < prev - 1; // 1px hysteresis
+      // Load earlier messages whenever we're near the top, regardless of
+      // direction. Must run before the scroll-up early return below, otherwise
+      // scrolling up (the natural way to reach the top) never triggers it.
+      if (!isProgrammaticRef.current && onNearTop && cur <= nearTopThreshold) {
+        onNearTop();
+      }
 
       if (scrolledUp) {
-        // User intentionally scrolled up — pause everything.
-        scrollModeRef.current = "free";
-        setShowScrollBtn(true);
-      } else if (isAtBottom()) {
-        // User scrolled back to the bottom — resume follow.
-        scrollModeRef.current = "follow";
-        setShowScrollBtn(false);
-      } else if (!isContentBelowViewport()) {
-        // Content doesn't overflow the viewport — no reason to show the button.
-        setShowScrollBtn(false);
+        resetOverscroll();
+        enterFreeMode();
+        return;
       }
-    };
 
-    // ── wheel ──
-    // Fast-path for desktop: fires *before* scrollTop updates on some browsers.
-    const handleWheel = (e: WheelEvent): void => {
       if (isProgrammaticRef.current) return;
-      if (e.deltaY < 0) {
-        scrollModeRef.current = "free";
-        setShowScrollBtn(true);
-      } else if (e.deltaY > 0 && isAtBottom()) {
-        // User scrolled down and we're already at the bottom — hide the hint.
-        // scrollTop won't change so `handleScroll` may never fire; handle here.
-        scrollModeRef.current = "follow";
-        setShowScrollBtn(false);
+
+      if (isAtBottom()) {
+        enterFollowMode();
+      } else {
+        resetOverscroll();
       }
     };
 
-    // ── touch ──
+    const handleWheel = (e: WheelEvent): void => {
+      if (e.deltaY < 0) {
+        resetOverscroll();
+        enterFreeMode();
+        return;
+      }
+      if (isProgrammaticRef.current) return;
+      if (e.deltaY > 0 && isAtBottom()) {
+        enterFollowMode();
+        accumulateOverscroll(e.deltaY);
+      }
+    };
+
     let touchStartY = 0;
+    let touchLastY = 0;
 
     const handleTouchStart = (e: TouchEvent): void => {
       touchStartY = e.touches[0]?.clientY ?? 0;
+      touchLastY = touchStartY;
     };
 
     const handleTouchMove = (e: TouchEvent): void => {
-      if (isProgrammaticRef.current) return;
-      const dy = (e.touches[0]?.clientY ?? 0) - touchStartY;
-      if (dy > 0) {
-        // Swiping down = scrolling up = user wants to read history.
-        scrollModeRef.current = "free";
-        setShowScrollBtn(true);
+      const y = e.touches[0]?.clientY ?? 0;
+      const dyFromStart = y - touchStartY;
+      const dyStep = touchLastY - y; // positive when finger moves up
+      touchLastY = y;
+      if (dyFromStart > TOUCH_SCROLL_UP_THRESHOLD) {
+        resetOverscroll();
+        enterFreeMode();
+        return;
+      }
+      // Finger moves up → content scrolls down; when already at bottom, count
+      // as overscroll toward refresh.
+      if (dyStep > 0 && isAtBottom()) {
+        accumulateOverscroll(dyStep);
       }
     };
 
     const handleTouchEnd = (): void => {
       setTimeout(() => {
         if (isAtBottom()) {
-          scrollModeRef.current = "follow";
-          setShowScrollBtn(false);
+          enterFollowMode();
+        } else {
+          resetOverscroll();
         }
       }, MOMENTUM_SETTLE_MS);
     };
 
-    // ── ResizeObserver ──
-    // Content height grew (new tokens painted). Act per current mode.
     const handleResize = (): void => {
-      const mode = scrollModeRef.current;
-      if (mode === "follow") {
-        scrollToBottom(true); // instant during streaming for snappiness
-      } else if (mode === "anchor") {
-        setShowScrollBtn(isContentBelowViewport());
+      if (scrollModeRef.current === "follow") {
+        scrollToBottomInFollowMode(true);
       } else {
-        // "free" — just keep the button state accurate
         setShowScrollBtn(!isAtBottom());
       }
     };
@@ -297,13 +357,28 @@ export function useAutoScroll({
       if (guardTimerRef.current !== null) clearTimeout(guardTimerRef.current);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [scrollToBottom, isAtBottom, isContentBelowViewport]);
+  }, [
+    getScroller,
+    scrollToBottomInFollowMode,
+    isAtBottom,
+    enterFollowMode,
+    enterFreeMode,
+    onNearTop,
+    nearTopThreshold,
+    onOverscrollBottom,
+    overscrollBottomThreshold,
+    scrollerMountKey,
+    virtual,
+  ]);
 
   return {
-    containerRef,
-    endRef,
+    containerRef: internalContainerRef,
+    endRef: internalEndRef,
     showScrollBtn,
+    isFollowMode,
     scrollToBottom,
-    scrollToAnchor,
+    resumeAutoScroll,
+    armProgrammaticGuard,
+    handleAtBottomChange,
   };
 }

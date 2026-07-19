@@ -34,6 +34,7 @@ from starlette.websockets import WebSocketState
 
 from octop.api.deps import resolve_user_from_token
 from octop.api.routers.browser.harness import (
+    control_owner_for,
     harness_list_tabs,
     harness_page_url,
     resolve_harness_session,
@@ -101,7 +102,7 @@ async def _stream_loop(
                 "conversation_id": profile,
                 "channel_source": "dashboard",
                 "state": "streaming" if url else "idle",
-                "control_owner": "agent",
+                "control_owner": control_owner_for(profile),
                 "current_url": url,
             },
         )

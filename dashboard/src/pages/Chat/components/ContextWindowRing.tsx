@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Popover, Spin, Drawer } from "antd";
 import {
@@ -10,6 +10,8 @@ import styles from "../index.module.less";
 
 const DEFAULT_MAX = 128_000;
 const BREAKDOWN_CACHE_TTL_MS = 30_000;
+/** Debounce snapshot refresh after stream ``usedTokens`` changes. */
+const HINT_REFRESH_DEBOUNCE_MS = 800;
 
 const SEGMENT_COLORS: Record<ContextUsageSegmentKey, string> = {
   system_prompt: "#9ca3af",
@@ -57,11 +59,107 @@ export default function ContextWindowRing({
     at: number;
     data: ContextUsageBreakdown;
   } | null>(null);
+  // Stream hint — kept in a ref so prefetch does not re-fire on every token tick.
+  const hintUsedRef = useRef(usedTokens ?? 0);
+  hintUsedRef.current = usedTokens ?? 0;
+  const lastHintRefreshRef = useRef<number | null>(null);
+
+  const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
+  const hintUsed = usedTokens ?? 0;
+
+  const cacheKey = useMemo(
+    () =>
+      [
+        agentId ?? "",
+        threadId ?? "",
+        String(max),
+        selectedConnectors.join(","),
+        selectedSkills.join(","),
+      ].join("|"),
+    [agentId, threadId, max, selectedConnectors, selectedSkills],
+  );
+
+  const loadBreakdown = useCallback(
+    async (opts?: { silent?: boolean; force?: boolean }) => {
+      if (!agentId || !threadId) return;
+      const cached = cacheRef.current;
+      if (
+        !opts?.force &&
+        cached &&
+        cached.key === cacheKey &&
+        Date.now() - cached.at < BREAKDOWN_CACHE_TTL_MS
+      ) {
+        setBreakdown(cached.data);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      try {
+        // Prefer a pure harness snapshot. Pass stream hint only as a fallback
+        // when we do not already have a segmented breakdown cached.
+        const haveSegments =
+          cached?.key === cacheKey &&
+          (cached.data.segments?.length ?? 0) > 0 &&
+          cached.data.used_tokens > 0;
+        const hint = hintUsedRef.current;
+        const data = await octopThreadsApi.contextUsage(agentId, threadId, {
+          maxTokens: max,
+          inputTokens: !haveSegments && hint > 0 ? hint : undefined,
+          mcpServers: selectedConnectors,
+          skills: selectedSkills,
+        });
+        cacheRef.current = { key: cacheKey, at: Date.now(), data };
+        setBreakdown(data);
+      } catch {
+        if (!opts?.silent) setBreakdown(null);
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [agentId, threadId, max, selectedConnectors, selectedSkills, cacheKey],
+  );
+
+  // Prefetch when the thread / cap / filters change — not when stream hint ticks.
+  useEffect(() => {
+    if (!agentId || !threadId) {
+      setBreakdown(null);
+      cacheRef.current = null;
+      lastHintRefreshRef.current = null;
+      return;
+    }
+    // Cover the current hint with this prefetch so the debounce effect
+    // does not immediately force a second request.
+    lastHintRefreshRef.current = hintUsedRef.current || null;
+    void loadBreakdown({ silent: true });
+  }, [agentId, threadId, cacheKey, loadBreakdown]);
+
+  // After a turn finishes, ``usedTokens`` settles on last_input_tokens —
+  // soft-refresh once per distinct hint (debounced) for a fresh harness stamp.
+  useEffect(() => {
+    if (!agentId || !threadId || hintUsed <= 0) return;
+    if (lastHintRefreshRef.current === hintUsed) return;
+    const timer = window.setTimeout(() => {
+      lastHintRefreshRef.current = hintUsed;
+      cacheRef.current = null;
+      void loadBreakdown({ silent: true, force: true });
+    }, HINT_REFRESH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [hintUsed, agentId, threadId, loadBreakdown]);
+
+  const ringUsed = useMemo(() => {
+    if (breakdown && breakdown.used_tokens > 0) {
+      return Math.min(breakdown.used_tokens, max);
+    }
+    // Until prefetch returns, show last-call hint (capped so a stale
+    // turn-sum cannot flash a full ring).
+    if (hintUsed > 0) return Math.min(hintUsed, max);
+    return 0;
+  }, [breakdown, hintUsed, max]);
+
+  const ringMax =
+    breakdown && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
 
   const { usedPct, strokeColor, dashOffset, circumference } = useMemo(() => {
-    const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
-    const used = usedTokens ?? 0;
-    const usedRatio = Math.min(used / max, 1);
+    const usedRatio = ringMax > 0 ? Math.min(ringUsed / ringMax, 1) : 0;
     const usedPercent = Math.round(usedRatio * 100);
     const r = 13;
     const circ = 2 * Math.PI * r;
@@ -77,64 +175,13 @@ export default function ContextWindowRing({
       dashOffset: circ * (1 - usedRatio),
       circumference: circ,
     };
-  }, [usedTokens, maxTokens]);
+  }, [ringUsed, ringMax]);
 
-  const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
-  const used = usedTokens ?? 0;
   const tooltip = t("chat.contextWindow.tooltip", {
-    used: formatTokenK(used),
-    max: formatTokenK(max),
+    used: formatTokenK(ringUsed),
+    max: formatTokenK(ringMax),
     percent: usedPct,
   });
-
-  const cacheKey = useMemo(
-    () =>
-      [
-        agentId ?? "",
-        threadId ?? "",
-        String(max),
-        String(used),
-        selectedConnectors.join(","),
-        selectedSkills.join(","),
-      ].join("|"),
-    [agentId, threadId, max, used, selectedConnectors, selectedSkills],
-  );
-
-  const loadBreakdown = useCallback(async () => {
-    if (!agentId || !threadId) return;
-    const cached = cacheRef.current;
-    if (
-      cached &&
-      cached.key === cacheKey &&
-      Date.now() - cached.at < BREAKDOWN_CACHE_TTL_MS
-    ) {
-      setBreakdown(cached.data);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await octopThreadsApi.contextUsage(agentId, threadId, {
-        maxTokens: max,
-        inputTokens: used > 0 ? used : undefined,
-        mcpServers: selectedConnectors,
-        skills: selectedSkills,
-      });
-      cacheRef.current = { key: cacheKey, at: Date.now(), data };
-      setBreakdown(data);
-    } catch {
-      setBreakdown(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    agentId,
-    threadId,
-    max,
-    used,
-    selectedConnectors,
-    selectedSkills,
-    cacheKey,
-  ]);
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -144,12 +191,12 @@ export default function ContextWindowRing({
   };
 
   const display = breakdown ?? {
-    max_tokens: max,
-    used_tokens: used,
+    max_tokens: ringMax,
+    used_tokens: ringUsed,
     segments: [] as ContextUsageBreakdown["segments"],
   };
-  const displayUsed = display.used_tokens > 0 ? display.used_tokens : used;
-  const displayMax = display.max_tokens > 0 ? display.max_tokens : max;
+  const displayUsed = display.used_tokens > 0 ? display.used_tokens : ringUsed;
+  const displayMax = display.max_tokens > 0 ? display.max_tokens : ringMax;
   const displayPct = Math.min(
     100,
     Math.round((displayUsed / displayMax) * 100) || usedPct,
@@ -164,6 +211,9 @@ export default function ContextWindowRing({
       </div>
       <div className={styles.contextUsageSubtitle}>
         {t("chat.contextWindow.breakdownPercent", { percent: displayPct })}
+      </div>
+      <div className={styles.contextUsageHint}>
+        {t("chat.contextWindow.breakdownHint")}
       </div>
       {loading ? (
         <div className={styles.contextUsageLoading}>

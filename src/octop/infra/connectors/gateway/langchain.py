@@ -29,6 +29,8 @@ def build_gateway_langchain_tools(
 
     def _tool_fn(kind: str, tool_name: str) -> Any:
         def _run(**kwargs: Any) -> str:
+            # Null stripping for args_schema happens in harness mcp_args_model.
+            cleaned = {k: v for k, v in kwargs.items() if v is not None}
             resp = handle_mcp_request(
                 kind=kind,
                 creds=creds,
@@ -36,7 +38,7 @@ def build_gateway_langchain_tools(
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "tools/call",
-                    "params": {"name": tool_name, "arguments": kwargs},
+                    "params": {"name": tool_name, "arguments": cleaned},
                 },
             )
             if not isinstance(resp, dict):

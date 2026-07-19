@@ -65,9 +65,11 @@ class UserManager:
         password: str,
         role: Role,
         display_name: str | None = None,
+        locale: str | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
+        loc = normalize_locale(locale)
         async with self._lock:
             if self._services.user_repo.get_by_username(username) is not None:
                 raise OctopError(
@@ -79,9 +81,14 @@ class UserManager:
                 password_hash=hash_password(password),
                 role=role.value,
                 display_name=display_name,
+                locale=loc,
             )
             user = User(
-                id=uid, username=username, role=role, display_name=display_name, locale="zh"
+                id=uid,
+                username=username,
+                role=role,
+                display_name=display_name,
+                locale=loc,
             )
             self._users[username] = user
             self._services.audit_repo.write(actor=username, action="user.create", target=username)

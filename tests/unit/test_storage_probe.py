@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from octop.infra.backend.probe import probe_storage_backend
@@ -41,7 +42,7 @@ def test_filesystem_missing_root(tmp_path: Path) -> None:
     existing = tmp_path / "data"
     existing.mkdir()
     result = probe_storage_backend(
-        _row(kind="filesystem", config_json=f'{{"root_dir": "{existing}"}}'),
+        _row(kind="filesystem", config_json=json.dumps({"root_dir": str(existing)})),
     )
     assert result["ok"] is True
     assert result.get("message_key") == "probe_roundtrip_ok"

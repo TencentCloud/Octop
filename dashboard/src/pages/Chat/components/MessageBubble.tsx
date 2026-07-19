@@ -217,7 +217,13 @@ function ImageGallery({
   );
 }
 
-function FileAttachmentList({ files }: { files: ChatAttachment[] }) {
+function FileAttachmentList({
+  files,
+  agentId,
+}: {
+  files: ChatAttachment[];
+  agentId?: string | null;
+}) {
   if (!files || files.length === 0) return null;
 
   return (
@@ -227,6 +233,8 @@ function FileAttachmentList({ files }: { files: ChatAttachment[] }) {
           key={`${file.url}-${idx}`}
           url={file.url}
           filename={file.filename}
+          agentId={agentId}
+          workspacePath={file.workspacePath}
         />
       ))}
     </div>
@@ -400,6 +408,7 @@ export function ToolDetailsInline({
                 key={`${file.url}-${idx}`}
                 url={file.url}
                 filename={file.filename}
+                agentId={agentId}
               />
             ))}
           </div>
@@ -690,7 +699,10 @@ function MessageBubble({
                     <ImageGallery images={imageAttachments} agentId={agentId} />
                   )}
                   {fileAttachments.length > 0 && (
-                    <FileAttachmentList files={fileAttachments} />
+                    <FileAttachmentList
+                      files={fileAttachments}
+                      agentId={agentId}
+                    />
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
@@ -736,7 +748,10 @@ function MessageBubble({
                   <ImageGallery images={imageAttachments} agentId={agentId} />
                 )}
                 {fileAttachments.length > 0 && (
-                  <FileAttachmentList files={fileAttachments} />
+                  <FileAttachmentList
+                    files={fileAttachments}
+                    agentId={agentId}
+                  />
                 )}
                 {textContent && (
                   <Markdown

@@ -13,6 +13,8 @@ flip a feature flag and let ``test_create_session_happy_path`` run.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -59,7 +61,7 @@ def test_probe_env_when_playwright_missing() -> None:
 
 
 def test_probe_env_harness_browser_without_chromium() -> None:
-    """``browsers_ok`` must stay false when Chromium binary is missing."""
+    """``browsers_ok`` must stay false when no Chrome/Chromium is available."""
     from octop.api.routers.browser import sessions as br
 
     try:
@@ -68,13 +70,60 @@ def test_probe_env_harness_browser_without_chromium() -> None:
         return
 
     with patch(
-        "harness_browser.install.verify_chromium",
-        return_value=(False, "Chromium binary not found"),
+        "harness_browser.cdp.launcher.find_chrome",
+        return_value=None,
     ):
         out = br._probe_env()
     assert out["harness_browser"] is True
     assert out["browsers_ok"] is False
-    assert out["error"] == "Chromium binary not found"
+    assert out["error"]
+
+
+def test_probe_env_accepts_system_chrome() -> None:
+    """System Chrome via find_chrome is enough for browsers_ok (same as launch)."""
+    from octop.api.routers.browser import sessions as br
+
+    try:
+        import harness_browser  # noqa: F401
+    except ImportError:
+        return
+
+    with (
+        patch(
+            "harness_browser.cdp.launcher.find_chrome",
+            return_value="/usr/bin/google-chrome",
+        ),
+        patch(
+            "octop.infra.browser.setup.playwright_chromium_installed",
+            return_value=False,
+        ),
+        patch(
+            "octop.infra.browser.setup.chrome_source_for_path",
+            return_value="system",
+        ),
+    ):
+        out = br._probe_env()
+    assert out["harness_browser"] is True
+    assert out["browsers_ok"] is True
+    assert out["chrome_path"] == "/usr/bin/google-chrome"
+    assert out["chrome_source"] == "system"
+    assert out["playwright_chromium"] is False
+
+
+def test_verify_browser_binary_ok(tmp_path: Path) -> None:
+    from octop.api.routers.browser import sessions as br
+
+    if os.name == "nt":
+        # Windows cannot exec a shebang script; use a .bat that ignores args.
+        exe = tmp_path / "fake-chrome.bat"
+        exe.write_text("@echo Chrome 1.0\r\n", encoding="utf-8")
+    else:
+        exe = tmp_path / "fake-chrome"
+        exe.write_text("#!/bin/sh\necho 'Chrome 1.0'\n", encoding="utf-8")
+        exe.chmod(0o755)
+    ok, msg = br._verify_browser_binary(str(exe))
+    assert ok is True
+    assert "Chrome" in msg
 
 
 # --- session list (always permits empty) -----------------------------------

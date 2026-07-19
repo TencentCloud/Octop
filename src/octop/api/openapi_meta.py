@@ -92,6 +92,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "admin", "description": "Server-wide admin operations (audit log, storage, usage)."},
     {"name": "storage-backends", "description": "User-visible remote storage backend connections."},
+    {
+        "name": "filesystem",
+        "description": "Host filesystem directory browsing for dashboard forms.",
+    },
     {"name": "mbti", "description": "MBTI persona presets applied to agent personality."},
     {"name": "experts", "description": "Bundled expert templates for creating specialized agents."},
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
@@ -107,6 +111,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "browser",
         "description": "Remote browser sessions: navigate, screenshot, live stream.",
+    },
+    {
+        "name": "desktop",
+        "description": "Remote OS desktop stream and input injection (admin only).",
     },
     {"name": "ollama", "description": "Local Ollama model discovery and download management."},
 ]

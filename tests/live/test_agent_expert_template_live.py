@@ -35,6 +35,11 @@ def _workspace_rel_path(rel_path: str) -> Path:
     return Path(rel_path.removeprefix("/"))
 
 
+def _expert_text_contents(catalog: ExpertCatalog, expert_id: str) -> dict[str, str]:
+    """Lazy-read expert seed file bodies (``Expert`` no longer eagerly stores them)."""
+    return {item["name"]: item["content"] for item in catalog.read_file_contents(expert_id)}
+
+
 @pytest.fixture(scope="session")
 def expert_library() -> ExpertCatalog:
     catalog = ExpertCatalog(default_library_root())
@@ -55,45 +60,42 @@ async def _assert_expert_files_on_disk(
     ws: Path,
     expert: Expert,
     expert_id: str,
+    contents: dict[str, str],
 ) -> None:
     md_files = [f for f in expert.files if f.endswith(".md")]
     skill_files = [f for f in expert.files if f.startswith("skills/")]
     assert md_files, f"{expert_id}: manifest has no root .md files"
     assert skill_files, f"{expert_id}: manifest has no skills/ files"
+    assert contents, f"{expert_id}: no readable text seeds"
 
-    for rel_path, expected in expert.file_contents.items():
+    for rel_path, expected in contents.items():
         disk_path = ws / _workspace_rel_path(rel_path)
         assert disk_path.is_file(), f"{expert_id}: missing on disk: {rel_path}"
         actual = disk_path.read_text(encoding="utf-8")
         assert actual == expected, f"{expert_id}: content mismatch for {rel_path}"
-        assert len(actual.strip()) > 0, f"{expert_id}: empty file {rel_path}"
+        # Package markers (__init__.py) may be newline-only; other seeds must be substantive.
+        if Path(rel_path).name != "__init__.py":
+            assert len(actual.strip()) > 0, f"{expert_id}: empty file {rel_path}"
 
 
-async def _read_backend_text(backend: object, vpath: str) -> str:
-    result = await backend.aread(vpath)  # type: ignore[attr-defined]
-    if getattr(result, "error", None):
-        msg = f"backend read failed for {vpath}: {result.error}"
-        raise AssertionError(msg)
-    file_data = getattr(result, "file_data", None)
-    if isinstance(file_data, dict) and "content" in file_data:
-        return str(file_data["content"])
-    content = getattr(result, "content", None)
-    if isinstance(content, str):
-        return content
-    return str(result)
-
-
-async def _assert_expert_files_via_backend(
+async def _assert_expert_files_via_workspace(
     *,
     agent: object,
-    expert: Expert,
     expert_id: str,
+    contents: dict[str, str],
 ) -> None:
-    backend = agent.backend  # type: ignore[attr-defined]
-    for rel_path, expected in expert.file_contents.items():
-        vpath = rel_path if rel_path.startswith("/") else f"/{rel_path}"
-        content = await _read_backend_text(backend, vpath)
-        assert content == expected, f"{expert_id}: backend mismatch for {vpath}"
+    """Compare exact bytes via ``adownload_bytes``.
+
+    ``aread_text`` injects a ``System reminder`` for empty/whitespace-only files
+    (e.g. package ``__init__.py``), so it is not a faithful copy check.
+    """
+    workspace = agent.workspace  # type: ignore[attr-defined]
+    for rel_path, expected in contents.items():
+        rel = rel_path.lstrip("/")
+        raw = await workspace.adownload_bytes(rel)
+        assert raw is not None, f"{expert_id}: workspace missing {rel}"
+        actual = raw.decode("utf-8")
+        assert actual == expected, f"{expert_id}: workspace mismatch for {rel}"
 
 
 @pytest.mark.asyncio
@@ -111,6 +113,7 @@ async def test_skill_experts_copy_md_and_skill_files(
     for expert_id in skill_expert_ids:
         expert = expert_library.get(expert_id)
         assert expert is not None
+        contents = _expert_text_contents(expert_library, expert_id)
 
         row = await live_agent_manager.create(
             AgentCreateSpec(
@@ -124,13 +127,18 @@ async def test_skill_experts_copy_md_and_skill_files(
             ws = live_agent_manager._paths.agent_workspace(row.agent_id)
             assert (ws / "AGENTS.md").is_file(), f"{expert_id}: harness seed AGENTS.md missing"
 
-            await _assert_expert_files_on_disk(ws=ws, expert=expert, expert_id=expert_id)
-
-            agent = live_agent_manager.get_agent(row.agent_id)
-            await _assert_expert_files_via_backend(
-                agent=agent,
+            await _assert_expert_files_on_disk(
+                ws=ws,
                 expert=expert,
                 expert_id=expert_id,
+                contents=contents,
+            )
+
+            agent = live_agent_manager.get_agent(row.agent_id)
+            await _assert_expert_files_via_workspace(
+                agent=agent,
+                expert_id=expert_id,
+                contents=contents,
             )
 
             skill_md = [f for f in expert.files if f.endswith("SKILL.md")]
@@ -161,6 +169,7 @@ async def test_wechat_ops_copies_skill_scripts(
     )
     try:
         ws = live_agent_manager._paths.agent_workspace(row.agent_id)
+        contents = _expert_text_contents(expert_library, "wechat-ops")
         for rel in (
             "skills/publisher-multi-platform/scripts/wechat_publish.py",
             "skills/publisher-multi-platform/manifest.yaml",
@@ -168,7 +177,8 @@ async def test_wechat_ops_copies_skill_scripts(
             path = ws / rel
             assert path.is_file(), rel
             assert path.stat().st_size > 0
-            assert path.read_text(encoding="utf-8") == expert.file_contents[rel]
+            assert rel in contents, f"missing seed text for {rel}"
+            assert path.read_text(encoding="utf-8") == contents[rel]
     finally:
         await live_agent_manager.delete(row.agent_id)
 
@@ -191,6 +201,7 @@ async def test_stock_assistant_skill_references_copied(
     )
     try:
         ws = live_agent_manager._paths.agent_workspace(row.agent_id)
+        contents = _expert_text_contents(expert_library, "stock-assistant")
         for rel in (
             "SOUL.md",
             "IDENTITY.md",
@@ -199,7 +210,8 @@ async def test_stock_assistant_skill_references_copied(
         ):
             disk = ws / rel
             assert disk.is_file(), rel
-            assert disk.read_text(encoding="utf-8") == expert.file_contents[rel]
+            assert rel in contents, f"missing seed text for {rel}"
+            assert disk.read_text(encoding="utf-8") == contents[rel]
     finally:
         await live_agent_manager.delete(row.agent_id)
 

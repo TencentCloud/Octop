@@ -98,6 +98,7 @@ def build_app(server: OctopServer) -> FastAPI:
         chat,
         connectors,
         cron,
+        desktop,
         envs,
         experts,
         health,
@@ -123,6 +124,7 @@ def build_app(server: OctopServer) -> FastAPI:
         voice,
         workspace,
     )
+    from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
     from octop.api.routers.security import router as security_router
@@ -162,6 +164,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(
                 storage_backends_user_router, "/api/storage-backends", ["storage-backends"]
             ),
+            _RouterMount(filesystem_router, "/api/filesystem", ["filesystem"]),
             _RouterMount(mbti.router, "/api", ["mbti"]),
             _RouterMount(experts.router, "/api", ["experts"]),
             _RouterMount(workspace.router, "/api", ["workspace"]),
@@ -177,6 +180,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(uploads.router, "/api", ["chat"]),
             _RouterMount(update.router, "/api", ["update"]),
             _RouterMount(browser.router, "/api", ["browser"]),
+            _RouterMount(desktop.router, "/api", ["desktop"]),
             _RouterMount(ollama_models.router, "/api", ["ollama"]),
             _RouterMount(plugins.router, "/api", ["plugins"]),
         ],

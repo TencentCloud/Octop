@@ -45,7 +45,7 @@ def test_env_sqlite_path_without_database_section(tmp_path: Path, monkeypatch: p
     cfg = load_config(paths.config)
     assert cfg.database_in_file is False
     pool = open_database(cfg, paths)
-    assert pool.path == Path("/tmp/custom-octop.db")
+    assert pool.path == cfg.database.resolve_sqlite_path(paths.root)
 
 
 def test_postgresql_raises_not_implemented(tmp_path: Path):

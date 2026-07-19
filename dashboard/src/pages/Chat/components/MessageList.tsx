@@ -17,6 +17,7 @@ import AssistantTurnView from "./AssistantTurnView";
 import ThinkingBubble from "./ThinkingBubble";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 import ContinuingIndicator from "./ContinuingIndicator";
+import { useAutoScroll } from "../hooks/useAutoScroll";
 import { findLastBrowserTurnGroupIndex } from "../utils/messageContent";
 import {
   groupConsecutiveAssistantMessages,
@@ -52,8 +53,11 @@ interface MessageListProps {
   loading?: boolean;
   historyHasMore?: boolean;
   historyLoadingMore?: boolean;
+  historyRefreshing?: boolean;
   onLoadMoreHistory?: () => void;
+  onRefreshHistory?: () => void;
   isStreaming?: boolean;
+  thinkingStartedAt?: number | null;
   sessionKey?: string;
   onCancel?: () => void;
   onRegenerate?: (messageId: string) => void;
@@ -63,6 +67,7 @@ interface MessageListProps {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
+  onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -82,6 +87,7 @@ interface GroupRenderContext {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
+  onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -120,6 +126,7 @@ function renderMessageGroup(
             onAcpPermissionSelect={ctx.onAcpPermissionSelect}
             onHitlDecision={ctx.onHitlDecision}
             onOpenBrowser={openBrowserHandler}
+            onEditFile={ctx.onEditFile}
             onRunShellCommand={ctx.onRunShellCommand}
             shellCommandDisabled={ctx.shellCommandDisabled}
             shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
@@ -165,6 +172,7 @@ function renderMessageGroup(
         onAcpPermissionSelect={ctx.onAcpPermissionSelect}
         onHitlDecision={ctx.onHitlDecision}
         onOpenBrowser={openBrowserHandler}
+        onEditFile={ctx.onEditFile}
         onRunShellCommand={ctx.onRunShellCommand}
         shellCommandDisabled={ctx.shellCommandDisabled}
         shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
@@ -182,8 +190,11 @@ export default function MessageList(props: MessageListProps) {
     loading,
     historyHasMore,
     historyLoadingMore,
+    historyRefreshing,
     onLoadMoreHistory,
+    onRefreshHistory,
     isStreaming,
+    thinkingStartedAt = null,
     sessionKey,
     onCancel,
     onRegenerate,
@@ -191,6 +202,7 @@ export default function MessageList(props: MessageListProps) {
     onAcpPermissionSelect,
     onHitlDecision,
     onOpenBrowser,
+    onEditFile,
     onRunShellCommand,
     shellCommandDisabled,
     shellCommandDisabledTitle,
@@ -203,13 +215,13 @@ export default function MessageList(props: MessageListProps) {
   const scrollerRef = useRef<HTMLElement | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const bubbleRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
-  const lastAnchoredIdRef = useRef<string | null>(null);
   const prevInitialLoadingRef = useRef(false);
   const scrollHeightBeforePrependRef = useRef<number | null>(null);
   const loadMoreRequestedRef = useRef(false);
   const canLoadOlderRef = useRef(false);
-  const [atBottom, setAtBottom] = useState(true);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const lastSmoothScrolledUserIdRef = useRef<string | null>(null);
+  const skipNextDepsScrollRef = useRef(false);
+  const [scrollerMountKey, setScrollerMountKey] = useState(0);
   const [useVirtualLocked, setUseVirtualLocked] = useState(false);
 
   const messageGroups = useMemo(
@@ -219,6 +231,19 @@ export default function MessageList(props: MessageListProps) {
 
   const useVirtual =
     useVirtualLocked || messageGroups.length >= VIRTUALIZE_THRESHOLD;
+
+  const lastMsg = messages[messages.length - 1];
+  const isAwaitingAssistantReply = Boolean(
+    isStreaming && (!lastMsg || lastMsg.role === "user"),
+  );
+  const showThinking = Boolean(!loading && isAwaitingAssistantReply);
+  const showContinuing =
+    isStreaming &&
+    !showThinking &&
+    lastMsg?.role === "assistant" &&
+    lastMsg.status === "done";
+
+  const stableSessionKey = sessionKey || "__default__";
 
   const requestOlderMessages = useCallback(() => {
     if (
@@ -236,7 +261,6 @@ export default function MessageList(props: MessageListProps) {
       scrollHeightBeforePrependRef.current = scroller.scrollHeight;
     }
     loadMoreRequestedRef.current = true;
-    setAtBottom(false);
     onLoadMoreHistory();
   }, [
     historyHasMore,
@@ -245,6 +269,89 @@ export default function MessageList(props: MessageListProps) {
     onLoadMoreHistory,
     useVirtual,
   ]);
+
+  // Keep the refresh trigger's identity stable so the scroll-listener effect
+  // in useAutoScroll never re-mounts (which would reset its overscroll guard
+  // and fire the refresh twice). Latest values are read from a ref.
+  const refreshStateRef = useRef({
+    historyRefreshing,
+    loading,
+    isStreaming,
+    onRefreshHistory,
+    hasMessages: messages.length > 0,
+  });
+  refreshStateRef.current = {
+    historyRefreshing,
+    loading,
+    isStreaming,
+    onRefreshHistory,
+    hasMessages: messages.length > 0,
+  };
+  const refreshCooldownRef = useRef(0);
+
+  const requestRefreshMessages = useCallback(() => {
+    const s = refreshStateRef.current;
+    const now = Date.now();
+    if (
+      s.historyRefreshing ||
+      s.loading ||
+      s.isStreaming ||
+      !s.onRefreshHistory ||
+      !s.hasMessages ||
+      now - refreshCooldownRef.current < 3000
+    ) {
+      return;
+    }
+    refreshCooldownRef.current = now;
+    s.onRefreshHistory();
+  }, []);
+
+  const virtualScrollConfig = useMemo(
+    () =>
+      useVirtual
+        ? {
+            virtuosoRef,
+            scrollerRef,
+            itemCount: messageGroups.length,
+          }
+        : null,
+    [useVirtual, messageGroups.length],
+  );
+
+  const scrollFollowDeps = useMemo(
+    () => ({
+      count: messages.length,
+      lastId: lastMsg?.id ?? "",
+      lastContent: lastMsg?.content ?? "",
+      lastStatus: lastMsg?.status ?? "",
+      showThinking,
+      showContinuing,
+    }),
+    [messages.length, lastMsg, showThinking, showContinuing],
+  );
+
+  const {
+    showScrollBtn,
+    scrollToBottom,
+    armProgrammaticGuard,
+    handleAtBottomChange,
+  } = useAutoScroll({
+    containerRef,
+    endRef,
+    virtual: virtualScrollConfig,
+    scrollerMountKey,
+    onNearTop: requestOlderMessages,
+    onOverscrollBottom: requestRefreshMessages,
+    deps: [
+      scrollFollowDeps.count,
+      scrollFollowDeps.lastId,
+      scrollFollowDeps.lastContent,
+      scrollFollowDeps.lastStatus,
+      scrollFollowDeps.showThinking,
+      scrollFollowDeps.showContinuing,
+    ],
+    skipNextDepsScrollRef,
+  });
 
   useEffect(() => {
     if (!loading && messages.length > 0) {
@@ -262,12 +369,13 @@ export default function MessageList(props: MessageListProps) {
     if (scrollHeightBeforePrependRef.current === null) return;
     const scroller = useVirtual ? scrollerRef.current : containerRef.current;
     if (scroller instanceof HTMLElement) {
+      armProgrammaticGuard();
       const delta =
         scroller.scrollHeight - scrollHeightBeforePrependRef.current;
       scroller.scrollTop += delta;
     }
     scrollHeightBeforePrependRef.current = null;
-  }, [messages, useVirtual]);
+  }, [messages, useVirtual, armProgrammaticGuard]);
 
   const historyHeader = useMemo(() => {
     if (!historyHasMore && !historyLoadingMore) return null;
@@ -284,6 +392,16 @@ export default function MessageList(props: MessageListProps) {
       </div>
     );
   }, [historyHasMore, historyLoadingMore, t]);
+
+  const refreshFooter = useMemo(() => {
+    if (!historyRefreshing) return null;
+    return (
+      <div className={styles.historyLoadMore}>
+        <Spin size="small" />
+        <span>{t("chat.refreshingMessages")}</span>
+      </div>
+    );
+  }, [historyRefreshing, t]);
 
   const lastBrowserGroupIndex = useMemo(
     () => findLastBrowserTurnGroupIndex(messageGroups),
@@ -306,54 +424,14 @@ export default function MessageList(props: MessageListProps) {
     [],
   );
 
-  const scrollToBottom = useCallback(
-    (instant = false) => {
-      if (useVirtual) {
-        if (messageGroups.length > 0) {
-          virtuosoRef.current?.scrollToIndex({
-            index: messageGroups.length - 1,
-            align: "end",
-            behavior: instant ? "auto" : "smooth",
-          });
-        }
-        setAtBottom(true);
-        setShowScrollBtn(false);
-        return;
-      }
-      const end = endRef.current;
-      if (!end) return;
-      end.scrollIntoView({
-        behavior: instant ? "instant" : "smooth",
-        block: "end",
-      });
-      setShowScrollBtn(false);
-    },
-    [messageGroups.length, useVirtual],
-  );
-
-  const scrollToAnchor = useCallback((anchorEl: HTMLElement) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const elRect = anchorEl.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const targetScrollTop =
-      container.scrollTop + (elRect.top - containerRect.top) - 16;
-    container.scrollTo({
-      top: Math.max(0, targetScrollTop),
-      behavior: "smooth",
-    });
-    setShowScrollBtn(false);
-  }, []);
-
-  const stableSessionKey = sessionKey || "__default__";
-
   useEffect(() => {
     setUseVirtualLocked(false);
     loadMoreRequestedRef.current = false;
     canLoadOlderRef.current = false;
-    lastAnchoredIdRef.current = null;
+    lastSmoothScrolledUserIdRef.current = null;
     scrollHeightBeforePrependRef.current = null;
-  }, [stableSessionKey]);
+    scrollToBottom(true);
+  }, [stableSessionKey, scrollToBottom]);
 
   useEffect(() => {
     if (messageGroups.length >= VIRTUALIZE_THRESHOLD) {
@@ -368,67 +446,20 @@ export default function MessageList(props: MessageListProps) {
     prevInitialLoadingRef.current = !!loading;
   }, [loading, messages.length, scrollToBottom]);
 
-  useEffect(() => {
-    if (!isStreaming) return;
-
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-    if (!lastUserMsg) return;
-    if (lastAnchoredIdRef.current === lastUserMsg.id) return;
-    lastAnchoredIdRef.current = lastUserMsg.id;
-
-    if (useVirtual) {
-      const index = messageGroups.findIndex((g) =>
-        g.messages.some((m) => m.id === lastUserMsg.id),
-      );
-      if (index >= 0) {
-        virtuosoRef.current?.scrollToIndex({
-          index,
-          align: "start",
-          offset: 16,
-          behavior: "smooth",
-        });
-      }
+  useLayoutEffect(() => {
+    if (!isStreaming) {
+      lastSmoothScrolledUserIdRef.current = null;
       return;
     }
 
-    const el = bubbleRefsMap.current.get(lastUserMsg.id);
-    if (el) scrollToAnchor(el);
-  }, [isStreaming, messages, messageGroups, scrollToAnchor, useVirtual]);
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUserMsg) return;
+    if (lastSmoothScrolledUserIdRef.current === lastUserMsg.id) return;
+    lastSmoothScrolledUserIdRef.current = lastUserMsg.id;
 
-  useEffect(() => {
-    if (useVirtual || !isStreaming || !atBottom) return;
-    scrollToBottom(true);
-  }, [messages, isStreaming, atBottom, useVirtual, scrollToBottom]);
-
-  useEffect(() => {
-    if (useVirtual) return;
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const bottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight <=
-        80;
-      setAtBottom(bottom);
-      setShowScrollBtn(!bottom);
-      if (container.scrollTop <= 80) {
-        requestOlderMessages();
-      }
-    };
-
-    handleScroll();
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [useVirtual, messageGroups.length, requestOlderMessages]);
-
-  const handleScrollBtnClick = useCallback(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
-
-  const handleAtBottomChange = useCallback((bottom: boolean) => {
-    setAtBottom(bottom);
-    setShowScrollBtn(!bottom);
-  }, []);
+    skipNextDepsScrollRef.current = true;
+    scrollToBottom(false);
+  }, [isStreaming, messages, scrollToBottom]);
 
   const groupContext = useMemo<GroupRenderContext>(
     () => ({
@@ -442,6 +473,7 @@ export default function MessageList(props: MessageListProps) {
       onAcpPermissionSelect,
       onHitlDecision,
       onOpenBrowser,
+      onEditFile,
       onRunShellCommand,
       shellCommandDisabled,
       shellCommandDisabledTitle,
@@ -459,6 +491,7 @@ export default function MessageList(props: MessageListProps) {
       onAcpPermissionSelect,
       onHitlDecision,
       onOpenBrowser,
+      onEditFile,
       onRunShellCommand,
       shellCommandDisabled,
       shellCommandDisabledTitle,
@@ -475,20 +508,13 @@ export default function MessageList(props: MessageListProps) {
     );
   }
 
-  const lastMsg = messages[messages.length - 1];
-  const showThinking = isStreaming && (!lastMsg || lastMsg.role === "user");
-  const showContinuing =
-    isStreaming &&
-    !showThinking &&
-    lastMsg?.role === "assistant" &&
-    lastMsg.status === "done";
-
   const footer = (
     <>
-      {showThinking && (
-        <ThinkingBubble onCancel={onCancel} sessionKey={stableSessionKey} />
+      {showThinking && thinkingStartedAt != null && (
+        <ThinkingBubble startedAt={thinkingStartedAt} onCancel={onCancel} />
       )}
       {showContinuing && <ContinuingIndicator onCancel={onCancel} />}
+      {refreshFooter}
     </>
   );
 
@@ -503,20 +529,24 @@ export default function MessageList(props: MessageListProps) {
           data={messageGroups}
           initialTopMostItemIndex={Math.max(0, messageGroups.length - 1)}
           increaseViewportBy={{ top: 600, bottom: 800 }}
-          followOutput={
-            isStreaming && atBottom && !historyLoadingMore ? "auto" : false
-          }
+          followOutput={false}
           atBottomStateChange={handleAtBottomChange}
           atTopThreshold={200}
           startReached={requestOlderMessages}
           scrollerRef={(el) => {
-            scrollerRef.current = el instanceof HTMLElement ? el : null;
+            const next = el instanceof HTMLElement ? el : null;
+            if (next !== scrollerRef.current) {
+              scrollerRef.current = next;
+              if (next) setScrollerMountKey((k) => k + 1);
+            }
           }}
           components={{
             ...virtuosoComponents,
             Header: () => (historyHeader ? <div>{historyHeader}</div> : null),
             Footer: () =>
-              showThinking || showContinuing ? <div>{footer}</div> : null,
+              showThinking || showContinuing || refreshFooter ? (
+                <div>{footer}</div>
+              ) : null,
           }}
           itemContent={(index, group) =>
             renderMessageGroup(group, index, groupContext)
@@ -539,7 +569,7 @@ export default function MessageList(props: MessageListProps) {
 
       <ScrollToBottomButton
         visible={showScrollBtn}
-        onClick={handleScrollBtnClick}
+        onClick={() => scrollToBottom()}
       />
     </div>
   );

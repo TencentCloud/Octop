@@ -42,7 +42,7 @@ export interface ChatAttachment {
   kind: "image" | "file";
 }
 
-/** Skills, connectors, experts, and model override attached at send time. */
+/** Skills, connectors, experts, and selected model attached at send time. */
 export interface UserComposerContext {
   skills?: string[];
   connectors?: string[];
@@ -72,6 +72,8 @@ export interface ChatMessage {
 export interface SessionStreamState {
   messages: ChatMessage[];
   isStreaming: boolean;
+  /** Wall-clock ms when the current user turn started waiting on the model. */
+  thinkingStartedAt: number | null;
   runUsage: TokenUsage | null;
   /** Latest prompt/context token count from SSE state snapshots. */
   contextUsage: TokenUsage | null;
@@ -99,6 +101,7 @@ export interface SessionStreamState {
 export interface SessionSnapshot {
   messages: ChatMessage[];
   isStreaming: boolean;
+  thinkingStartedAt: number | null;
   runUsage: TokenUsage | null;
   contextUsage: TokenUsage | null;
   historyHasMore: boolean;

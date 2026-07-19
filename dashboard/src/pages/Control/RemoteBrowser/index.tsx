@@ -11,56 +11,61 @@ import { useSearchParams } from "react-router-dom";
 import {
   Alert,
   Button,
-  Input,
+  Drawer,
   Modal,
   Result,
   Select,
   Space,
   Spin,
-  Tag,
   Tooltip,
   Typography,
   message as antMessage,
 } from "antd";
 import {
-  ArrowLeft,
-  ArrowRight,
   Bot,
   CheckCircle2,
+  Copy,
   Globe,
   Maximize2,
-  Plus,
-  RotateCcw,
+  Play,
+  RefreshCw,
   Square,
   Sparkles,
-  Star,
   Terminal,
+  Trash2,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
+import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import PageShell from "../../../layouts/PageShell";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
+import BrowserViewer, {
+  type BrowserViewerHandle,
+} from "../../../components/BrowserViewer";
 import { useAgent } from "../../../context/AgentContext";
 import { browserApi } from "../../../api/modules/browser";
 import * as chatStore from "../../Chat/hooks/chatStore";
 import type { BrowserSession as HarnessSession } from "../../../api/types/browser";
 import { request } from "../../../api/request";
 import { normalizeUrl } from "../../../utils/normalizeUrl";
-import {
-  clearCanvas,
-  paintBase64JpegToCanvas,
-} from "../../../utils/browserCanvas";
+import { clearCanvas } from "../../../utils/browserCanvas";
 import {
   REFRESH_INTERVAL_PRESETS,
   refreshIntervalLabel,
   viewportModeLabel,
 } from "../../../utils/browserViewport";
-import { useBrowserCanvasInteraction } from "../../../hooks/useBrowserCanvasInteraction";
 import { useBrowserStream } from "../../../hooks/useBrowserStream";
+import { useAutoViewportResize } from "../../../hooks/useAutoViewportResize";
+import {
+  useBrowserViewController,
+  deriveActiveTabUrl,
+} from "../../../hooks/useBrowserViewController";
 import { useRemoteBrowserBookmarks } from "../../../hooks/useRemoteBrowserBookmarks";
 import type { RemoteBrowserBookmark } from "../../../api/modules/preferences";
+import { copyText } from "../../../utils/copyText";
 import { showApiError } from "../../../utils/showApiToast";
 import {
   useViewportMode,
@@ -68,6 +73,7 @@ import {
   type ViewportMode,
 } from "../../../hooks/useViewportMode";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { useLandscapeFullscreen } from "../../../hooks/useLandscapeFullscreen";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -90,6 +96,11 @@ interface EnvStatus {
   playwright: boolean;
   browsers_ok: boolean;
   harness_browser: boolean;
+  /** True when Playwright-managed Chromium dirs exist (uninstall target). */
+  playwright_chromium?: boolean;
+  chrome_path?: string | null;
+  /** "system" | "playwright" when browsers_ok */
+  chrome_source?: "system" | "playwright" | null;
   error: string | null;
 }
 
@@ -102,6 +113,8 @@ type InstallPhase =
 const REFRESH_STORAGE_KEY = "octop:remote-browser:refresh-interval";
 const PROFILE_STORAGE_KEY = "octop:remote-browser:harness-profile";
 const LEGACY_SESSION_STORAGE_KEY = "octop:remote-browser:session-id";
+/** Whether the user left the remote-browser stream open last time. */
+const STREAM_ACTIVE_KEY = "octop:remote-browser:stream-active";
 const DEFAULT_REFRESH_INTERVAL = 500;
 const DEFAULT_START_URL = "https://cloud.tencent.com";
 const BROWSER_AI_PANEL_KEY = "octop:remote-browser:ai-panel-open";
@@ -127,6 +140,26 @@ function persistProfile(profile: string) {
   try {
     localStorage.setItem(PROFILE_STORAGE_KEY, profile);
     localStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readStreamActive(): boolean {
+  try {
+    return localStorage.getItem(STREAM_ACTIVE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setStreamActive(active: boolean) {
+  try {
+    if (active) {
+      localStorage.setItem(STREAM_ACTIVE_KEY, "1");
+    } else {
+      localStorage.removeItem(STREAM_ACTIVE_KEY);
+    }
   } catch {
     /* ignore */
   }
@@ -166,10 +199,9 @@ function tabsFromStream(
 }
 
 function viewFromProfile(profileId: string, tabs: BrowserTab[]): ViewSession {
-  const active = tabs.find((t) => t.active);
   return {
     id: profileId,
-    url: active?.url && active.url !== "about:blank" ? active.url : "",
+    url: deriveActiveTabUrl(tabs),
     tabs,
   };
 }
@@ -277,9 +309,15 @@ export default function RemoteBrowserPage() {
 
   const [installPhase, setInstallPhase] = useState<InstallPhase>("idle");
   const [installLogs, setInstallLogs] = useState<string[]>([]);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [uninstallLogs, setUninstallLogs] = useState<string[]>([]);
   const [envModalOpen, setEnvModalOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const installLogRef = useRef<HTMLDivElement | null>(null);
   const installAbortRef = useRef<AbortController | null>(null);
+  const uninstallAbortRef = useRef<AbortController | null>(null);
 
   const { bookmarks, isBookmarked, toggle, remove } =
     useRemoteBrowserBookmarks();
@@ -288,14 +326,13 @@ export default function RemoteBrowserPage() {
   const [creating, setCreating] = useState(false);
   const [navUrl, setNavUrl] = useState(DEFAULT_START_URL);
   const urlEditingRef = useRef(false);
+  // Default to closed; only auto-open when the user explicitly opened it last
+  // time (so the choice survives page switches via localStorage).
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(() => {
     try {
-      if (typeof window !== "undefined" && window.innerWidth < 768) {
-        return false;
-      }
-      return localStorage.getItem(BROWSER_AI_PANEL_KEY) !== "false";
+      return localStorage.getItem(BROWSER_AI_PANEL_KEY) === "true";
     } catch {
-      return true;
+      return false;
     }
   });
   const [aiPanelWidth, setAiPanelWidth] = useState(() => {
@@ -375,6 +412,7 @@ export default function RemoteBrowserPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const profileIdRef = useRef<string | null>(null);
+  const viewerRef = useRef<BrowserViewerHandle>(null);
 
   const {
     status,
@@ -397,31 +435,25 @@ export default function RemoteBrowserPage() {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [installLogs]);
+    installLogRef.current?.scrollTo({
+      top: installLogRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [installLogs, uninstallLogs]);
 
   useEffect(
     () => () => {
       installAbortRef.current?.abort();
+      uninstallAbortRef.current?.abort();
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
       disconnect();
     },
     [disconnect],
   );
 
-  const handleFrame = useCallback((base64Data: string) => {
-    paintBase64JpegToCanvas(canvasRef.current, base64Data);
+  const handleFrameReadyChange = useCallback((ready: boolean) => {
+    setFrameReady(ready);
   }, []);
-
-  const resolveDimensions = useCallback(() => {
-    const containerEl = containerRef.current;
-    const cw = containerEl?.clientWidth ?? 0;
-    const ch = containerEl?.clientHeight ?? 0;
-    if (isMobile) {
-      if (cw > 0 && ch > 0) return { width: cw, height: ch };
-      return { width: 390, height: 700 };
-    }
-    return resolveViewport(cw, ch) ?? { width: 1280, height: 800 };
-  }, [resolveViewport, isMobile]);
 
   const attachProfile = useCallback((profileId: string, tabs: BrowserTab[]) => {
     profileIdRef.current = profileId;
@@ -432,24 +464,24 @@ export default function RemoteBrowserPage() {
     if (view.url) setNavUrl(view.url);
   }, []);
 
-  const startStream = useCallback(
-    (profileId: string, targetUrl = "") => {
-      const { width, height } = resolveDimensions();
-      connect(
-        targetUrl,
-        width,
-        height,
-        {
-          onFrame: handleFrame,
-          onError: (msg) =>
-            showApiError(msg, t("browserWorkspace.streamError"), t),
-        },
-        { sessionId: profileId },
-      );
-      attachProfile(profileId, []);
+  // Shared stream controller — measures the container, resolves the viewport
+  // (mobile-aware), opens the WebSocket, and paints frames onto the canvas.
+  // The standalone page toggles frame-ready / stream-active flags and attaches
+  // the profile around the connect call.
+  const { startStream } = useBrowserViewController({
+    containerRef,
+    viewerRef,
+    connect,
+    resolveViewport,
+    isMobile,
+    defaultViewport: { width: 1280, height: 800 },
+    onError: (msg) => showApiError(msg, t("browserViewer.connectFailed"), t),
+    onBeforeConnect: (_profileId) => {
+      setFrameReady(false);
+      setStreamActive(true);
     },
-    [attachProfile, connect, handleFrame, resolveDimensions, t],
-  );
+    onAfterConnect: (profileId) => attachProfile(profileId, []),
+  });
 
   // Keep view session in sync with stream tab updates
   useEffect(() => {
@@ -461,13 +493,15 @@ export default function RemoteBrowserPage() {
     if (!urlEditingRef.current && view.url) setNavUrl(view.url);
   }, [streamTabs]);
 
-  const refreshEnv = useCallback(async () => {
+  const refreshEnv = useCallback(async (): Promise<EnvStatus | null> => {
     setEnvLoading(true);
     try {
       const env = await request<EnvStatus>("/browser/env-status");
       setEnvStatus(env);
+      return env;
     } catch (err: unknown) {
       showApiError(err, t("remoteBrowser.envProbeFailed"), t);
+      return null;
     } finally {
       setEnvLoading(false);
     }
@@ -478,8 +512,10 @@ export default function RemoteBrowserPage() {
       const resp = await browserApi.getSessions();
       const sessions = resp.ok ? resp.sessions : [];
       const profile = pickProfile(sessions, threadFromUrl, readStoredProfile());
-      if (threadFromUrl || sessions.length > 0 || readStoredProfile()) {
-        startStream(profile);
+      // Restore stream only when the user left it open, or when deep-linked
+      // via ?thread=… — do not auto-open just because Chrome is still alive.
+      if (threadFromUrl || readStreamActive()) {
+        startStream(profile, "");
         return profile;
       }
       return null;
@@ -494,20 +530,113 @@ export default function RemoteBrowserPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- install ---
+  // --- install / uninstall ---
 
   const startInstall = useCallback(() => {
     setInstallPhase("installing");
     setInstallLogs([]);
+    setEnvModalOpen(false);
     installAbortRef.current = browserApi.installBrowser(
       (line) => setInstallLogs((p) => [...p, line]),
       (success) => {
         installAbortRef.current = null;
-        setInstallPhase(success ? "install_success" : "install_failed");
-        if (success) void refreshEnv();
+        if (!success) {
+          setInstallPhase("install_failed");
+          setEnvModalOpen(true);
+          return;
+        }
+        setInstallPhase("idle");
+        setEnvModalOpen(false);
+        void refreshEnv();
+        antMessage.success(t("remoteBrowser.installSuccess", "浏览器安装成功"));
       },
     );
-  }, [refreshEnv]);
+  }, [refreshEnv, t]);
+
+  const cancelInstall = useCallback(() => {
+    installAbortRef.current?.abort();
+    installAbortRef.current = null;
+    setInstallPhase("idle");
+    setInstallLogs([]);
+    antMessage.info(
+      t(
+        "remoteBrowser.installCancelHint",
+        "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
+      ),
+    );
+  }, [t]);
+
+  const handleCopyInstallLog = useCallback(async () => {
+    if (installLogs.length === 0) return;
+    const ok = await copyText(installLogs.join("\n"));
+    if (ok) {
+      antMessage.success(t("common.copied", "Copied to clipboard"));
+    } else {
+      antMessage.error(t("common.copyFailed", "Failed to copy to clipboard"));
+    }
+  }, [installLogs, t]);
+
+  const handleUninstall = useCallback(() => {
+    if (!envStatus?.playwright_chromium || uninstalling) return;
+    Modal.confirm({
+      title: t("remoteBrowser.uninstallTitle", "卸载远程浏览器"),
+      content: t(
+        "remoteBrowser.uninstallConfirm",
+        "将关闭 Octop 浏览器会话，并删除通过 Playwright 安装的 Chromium。不会影响本机已有的 Chrome/Chromium。是否继续？",
+      ),
+      okText: t("remoteBrowser.uninstall", "卸载"),
+      okButtonProps: { danger: true },
+      cancelText: t("common.cancel"),
+      onOk: () =>
+        new Promise<void>((resolve, reject) => {
+          if (session) {
+            disconnect();
+            profileIdRef.current = null;
+            setSession(null);
+            setFrameReady(false);
+          }
+          setUninstalling(true);
+          setUninstallLogs([]);
+          const hide = antMessage.loading(
+            t("remoteBrowser.uninstalling", "正在卸载…"),
+            0,
+          );
+          uninstallAbortRef.current = browserApi.uninstallBrowser(
+            (line) => setUninstallLogs((prev) => [...prev, line]),
+            (success) => {
+              uninstallAbortRef.current = null;
+              setUninstalling(false);
+              hide();
+              void refreshEnv().then((data) => {
+                const removed = success || !data?.playwright_chromium;
+                if (removed) {
+                  setUninstallLogs([]);
+                  antMessage.success(
+                    t(
+                      "remoteBrowser.uninstallSuccess",
+                      "已删除 Playwright Chromium",
+                    ),
+                  );
+                  resolve();
+                  return;
+                }
+                antMessage.error(
+                  t("remoteBrowser.uninstallFailed", "卸载失败"),
+                );
+                reject(new Error("uninstall failed"));
+              });
+            },
+          );
+        }),
+    });
+  }, [
+    disconnect,
+    envStatus?.playwright_chromium,
+    refreshEnv,
+    session,
+    t,
+    uninstalling,
+  ]);
 
   const openEnvModal = useCallback(() => {
     setEnvModalOpen(true);
@@ -533,16 +662,6 @@ export default function RemoteBrowserPage() {
       setInstallLogs([]);
     }
   }, [installPhase]);
-
-  useEffect(() => {
-    if (installPhase !== "install_success" || !envModalOpen) return;
-    const timer = setTimeout(() => {
-      setEnvModalOpen(false);
-      setInstallPhase("idle");
-      setInstallLogs([]);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [installPhase, envModalOpen]);
 
   // --- session ---
 
@@ -583,6 +702,8 @@ export default function RemoteBrowserPage() {
     disconnect();
     profileIdRef.current = null;
     setSession(null);
+    setFrameReady(false);
+    setStreamActive(false);
     try {
       localStorage.removeItem(PROFILE_STORAGE_KEY);
     } catch {
@@ -595,7 +716,7 @@ export default function RemoteBrowserPage() {
     const profileId = profileIdRef.current;
     if (!profileId) return;
     disconnect();
-    startStream(profileId);
+    startStream(profileId, "");
   }, [disconnect, startStream]);
 
   // Periodic reconnect fallback when stream stalls (manual interval presets)
@@ -604,7 +725,7 @@ export default function RemoteBrowserPage() {
       clearInterval(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
-    if (session && refreshInterval > 0 && !isStreaming) {
+    if (session && refreshInterval > 0 && status === "stopped") {
       refreshTimerRef.current = setInterval(
         () => void refreshView(),
         refreshInterval,
@@ -613,7 +734,7 @@ export default function RemoteBrowserPage() {
     return () => {
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
     };
-  }, [session, refreshInterval, refreshView, isStreaming]);
+  }, [session, refreshInterval, refreshView, status]);
 
   // Reconnect when viewport preset changes (desktop fixed modes only).
   useEffect(() => {
@@ -624,75 +745,13 @@ export default function RemoteBrowserPage() {
 
   // In auto mode (always on mobile), keep Chrome viewport aligned with the
   // visible canvas area so text stays legible instead of CSS-downscaled.
-  useEffect(() => {
-    if (!session) return;
-    const useAuto = isMobile || viewportMode === "auto";
-    if (!useAuto) return;
-    const containerEl = containerRef.current;
-    if (!containerEl) return;
-
-    let lastSent = { w: 0, h: 0 };
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flushResize = () => {
-      const w = containerEl.clientWidth;
-      const h = containerEl.clientHeight;
-      if (w === 0 || h === 0) return;
-      if (isStreaming && (w !== lastSent.w || h !== lastSent.h)) {
-        lastSent = { w, h };
-        sendEvent({ type: "resize", width: w, height: h });
-      }
-    };
-
-    const onResize = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(flushResize, 150);
-    };
-
-    flushResize();
-    const ro = new ResizeObserver(onResize);
-    ro.observe(containerEl);
-    window.addEventListener("resize", onResize);
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      ro.disconnect();
-      window.removeEventListener("resize", onResize);
-    };
-  }, [isStreaming, isMobile, sendEvent, session, viewportMode]);
-
-  const sendAction = useCallback(
-    (body: Record<string, unknown>) => {
-      const type = body.type as string;
-      if (type === "navigate") {
-        const url = normalizeUrl(String(body.url ?? ""));
-        if (url) streamNavigate(url);
-        return;
-      }
-      sendEvent(body);
-    },
-    [sendEvent, streamNavigate],
-  );
-
-  const handleNewTab = useCallback(() => {
-    if (!session) return;
-    newTab();
-  }, [newTab, session]);
-
-  const handleCloseTab = useCallback(
-    (idx: number) => {
-      const tab = session?.tabs.find((t) => t.idx === idx);
-      if (tab) closeTab(tab.id);
-    },
-    [closeTab, session?.tabs],
-  );
-
-  const handleSwitchTab = useCallback(
-    (idx: number) => {
-      const tab = session?.tabs.find((t) => t.idx === idx);
-      if (tab) switchTab(tab.id);
-    },
-    [session?.tabs, switchTab],
-  );
+  // Delegated to the shared hook also used by BrowserWorkspace.
+  useAutoViewportResize({
+    enabled: !!(session && (isMobile || viewportMode === "auto")),
+    containerRef,
+    isStreaming,
+    sendEvent,
+  });
 
   const handleAiPanelToggle = useCallback(() => {
     setIsAiPanelOpen((prev) => {
@@ -804,42 +863,6 @@ export default function RemoteBrowserPage() {
     [aiPanelHeight, aiPanelWidth, isMobile],
   );
 
-  const sendActionScroll = useCallback(
-    (x: number, y: number, deltaX: number, deltaY: number) => {
-      sendEvent({ type: "scroll", x, y, deltaX, deltaY });
-    },
-    [sendEvent],
-  );
-
-  const sendActionClick = useCallback(
-    (x: number, y: number) => {
-      canvasRef.current?.focus();
-      sendEvent({ type: "click", x, y });
-    },
-    [sendEvent],
-  );
-
-  const sendActionDoubleClick = useCallback(
-    (x: number, y: number) => {
-      canvasRef.current?.focus();
-      sendEvent({ type: "dblclick", x, y });
-    },
-    [sendEvent],
-  );
-
-  const {
-    handleWheel: handleCanvasWheel,
-    onMouseDown: handleCanvasMouseDown,
-    onDoubleClick: handleCanvasDblClick,
-    isDragging,
-  } = useBrowserCanvasInteraction({
-    enabled: !!session,
-    canvasRef,
-    onScroll: sendActionScroll,
-    onClick: sendActionClick,
-    onDoubleClick: sendActionDoubleClick,
-  });
-
   const handleCanvasKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLCanvasElement>) => {
       e.preventDefault();
@@ -851,13 +874,6 @@ export default function RemoteBrowserPage() {
     },
     [sendEvent],
   );
-
-  const goto = useCallback(() => {
-    const target = normalizeUrl(navUrl);
-    if (!target) return;
-    setNavUrl(target);
-    sendAction({ type: "navigate", url: target });
-  }, [navUrl, sendAction]);
 
   // --- Skill recording guide ---
   const [browserRecording, setBrowserRecording] = useState(false);
@@ -922,28 +938,49 @@ export default function RemoteBrowserPage() {
   }, [t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
+  const showEdgeControls = Boolean(session) && isStreaming && frameReady;
 
-  const renderInstallLog = (maxHeight = 220) => (
+  const renderInstallLog = (maxHeight?: number, extraClass?: string) => (
     <div
-      style={{
-        background: "var(--fn-bg-secondary,#f5f5f5)",
-        borderRadius: 8,
-        padding: "10px 14px",
-        maxHeight,
-        overflowY: "auto",
-        fontFamily: "monospace",
-        fontSize: 12,
-        lineHeight: 1.6,
-      }}
+      ref={installLogRef}
+      className={`${styles.installLog} ${extraClass ?? ""}`}
+      style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
-        <Text type="secondary">
-          {t("remoteBrowser.installing", "正在启动安装...")}
-        </Text>
+        <div>{t("remoteBrowser.installing", "正在启动安装...")}</div>
       ) : (
         installLogs.map((line, i) => <div key={i}>{line}</div>)
       )}
       <div ref={logEndRef} />
+    </div>
+  );
+
+  const renderViewportUninstallProgress = () => (
+    <div className={styles.installProgress}>
+      <RefreshCw size={32} className={styles.streamLoadingIcon} />
+      <div className={styles.installProgressTitle}>
+        {t("remoteBrowser.uninstalling", "正在卸载…")}
+      </div>
+      <div className={styles.installLog}>
+        {uninstallLogs.length === 0 ? (
+          <div>{t("remoteBrowser.uninstalling", "正在卸载…")}</div>
+        ) : (
+          uninstallLogs.map((line, i) => <div key={i}>{line}</div>)
+        )}
+      </div>
+    </div>
+  );
+
+  const renderViewportInstallProgress = () => (
+    <div className={styles.installProgress}>
+      <RefreshCw size={32} className={styles.streamLoadingIcon} />
+      <div className={styles.installProgressTitle}>
+        {t("remoteBrowser.installProgress", "正在安装中…")}
+      </div>
+      {renderInstallLog()}
+      <div className={styles.installProgressActions}>
+        <Button onClick={cancelInstall}>{t("common.cancel")}</Button>
+      </div>
     </div>
   );
 
@@ -999,19 +1036,43 @@ export default function RemoteBrowserPage() {
             style={{ padding: "8px 0" }}
           />
           {installLogs.length > 0 && (
-            <details open>
-              <summary
+            <div>
+              <div
                 style={{
-                  cursor: "pointer",
-                  fontSize: 12,
-                  color: "var(--fn-text-tertiary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginBottom: 6,
                 }}
               >
-                {t("remoteBrowser.installLog", "安装日志")}
-              </summary>
+                <span
+                  style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}
+                >
+                  {t("remoteBrowser.installLog", "安装日志")}
+                </span>
+                <Button
+                  size="small"
+                  icon={<Copy size={14} />}
+                  onClick={() => void handleCopyInstallLog()}
+                >
+                  {t("common.copy", "Copy")}
+                </Button>
+              </div>
               {renderInstallLog(180)}
-            </details>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  color: "var(--fn-text-secondary)",
+                }}
+              >
+                {t(
+                  "common.askOctopHint",
+                  "If the install keeps failing, copy the log and ask Octop to help you troubleshoot.",
+                )}
+              </div>
+            </div>
           )}
         </div>
       );
@@ -1122,12 +1183,6 @@ export default function RemoteBrowserPage() {
 
   const tabs = useMemo(() => session?.tabs ?? [], [session?.tabs]);
 
-  const activeTabTitle = useMemo(() => {
-    const active = tabs.find((tab) => tab.active);
-    return active?.title ?? "";
-  }, [tabs]);
-
-  const navUrlNormalized = normalizeUrl(navUrl);
   const currentBookmarked = isBookmarked(navUrl);
 
   const openBookmark = useCallback(
@@ -1135,30 +1190,71 @@ export default function RemoteBrowserPage() {
       const target = normalizeUrl(url);
       if (!target) return;
       setNavUrl(target);
-      sendAction({ type: "navigate", url: target });
+      streamNavigate(target);
     },
-    [sendAction],
+    [streamNavigate],
   );
 
-  const handleFullscreen = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void el.requestFullscreen();
-    }
-  }, []);
+  const handleFullscreen = useLandscapeFullscreen(containerRef, {
+    isMobile,
+    onError: () =>
+      antMessage.error(t("remoteBrowser.fullscreenFailed", "无法进入全屏")),
+  });
+
+  const openControlsDrawer = useCallback(() => setControlsOpen(true), []);
+  const closeControlsDrawer = useCallback(() => setControlsOpen(false), []);
+
+  const renderControlsDrawer = () => (
+    <div className={styles.controlsDrawer}>
+      <div className={styles.controlsSection}>
+        <span className={styles.controlsLabel}>
+          {t("remoteBrowser.autoRefresh", "自动刷新")}
+        </span>
+        <Select
+          size="middle"
+          className={styles.controlsSelectFull}
+          value={refreshInterval}
+          onChange={handleRefreshIntervalChange}
+          options={refreshSelectOptions}
+        />
+      </div>
+      <div className={styles.controlsSection}>
+        <span className={styles.controlsLabel}>
+          {t("remoteBrowser.viewportMode", "视口模式")}
+        </span>
+        <Select
+          size="middle"
+          className={styles.controlsSelectFull}
+          value={viewportMode}
+          onChange={handleViewportChange}
+          options={viewportSelectOptions}
+        />
+      </div>
+      <div className={styles.controlsActions}>
+        <Button
+          block
+          icon={<Maximize2 size={14} />}
+          onClick={() => {
+            closeControlsDrawer();
+            void handleFullscreen();
+          }}
+        >
+          {t("remoteBrowser.fullscreen", "全屏")}
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <PageShell
-      title={t("pageShell.browser.title", "远程浏览器")}
+      title={t("pageShell.browser.title", "浏览器 AI+")}
       subtitle={t(
         "pageShell.browser.subtitle",
         "基于 Chromium 的无头浏览器会话",
       )}
+      fill
       actions={
-        <Space>
+        <Space size={8} wrap>
           <Tooltip
             title={t(
               "remoteBrowser.checkInstallTip",
@@ -1166,11 +1262,12 @@ export default function RemoteBrowserPage() {
             )}
           >
             <Button
+              size={isMobile ? "small" : "middle"}
               icon={<Globe size={14} />}
               onClick={openEnvModal}
               type={envReady ? "default" : "primary"}
             >
-              {t("remoteBrowser.checkInstall", "检测浏览器")}
+              {t("remoteBrowser.checkInstallShort", "检查")}
               {envReady && !envLoading && (
                 <CheckCircle2
                   size={14}
@@ -1182,15 +1279,55 @@ export default function RemoteBrowserPage() {
               )}
             </Button>
           </Tooltip>
+          {session ? (
+            <Tooltip title={t("remoteBrowser.stop", "停止")}>
+              <Button
+                size={isMobile ? "small" : "middle"}
+                danger
+                icon={<Square size={14} />}
+                onClick={closeSession}
+                aria-label={t("remoteBrowser.stop", "停止")}
+              >
+                {!isMobile && t("remoteBrowser.stop", "停止")}
+              </Button>
+            </Tooltip>
+          ) : (
+            <Tooltip
+              title={
+                envReady
+                  ? undefined
+                  : t(
+                      "remoteBrowser.startBrowserDisabled",
+                      "请先完成浏览器环境检查与安装",
+                    )
+              }
+            >
+              <Button
+                size={isMobile ? "small" : "middle"}
+                type="primary"
+                icon={<Play size={14} />}
+                loading={creating}
+                disabled={!envReady}
+                onClick={() => void createSession()}
+                aria-label={t("remoteBrowser.startBrowser", "启动浏览器")}
+              >
+                {!isMobile &&
+                  (creating
+                    ? t("remoteBrowser.ai.startingBrowser", "正在启动...")
+                    : t("remoteBrowser.startBrowser", "启动浏览器"))}
+              </Button>
+            </Tooltip>
+          )}
         </Space>
       }
     >
       <Modal
-        title={t("remoteBrowser.checkInstall", "检测浏览器")}
+        title={t("remoteBrowser.checkInstall", "检查浏览器")}
         open={envModalOpen}
         onCancel={closeEnvModal}
         footer={envModalFooter()}
-        width={520}
+        width={isMobile ? "100%" : 520}
+        style={isMobile ? { top: 20, maxWidth: "100vw" } : undefined}
         destroyOnClose
         maskClosable={installPhase !== "installing"}
       >
@@ -1204,484 +1341,204 @@ export default function RemoteBrowserPage() {
         envReady={envReady}
       />
 
-      <div className={styles.pageBody}>
-        {session && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {/* Tab bar */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                background: "var(--fn-bg-secondary)",
-                borderRadius: "6px 6px 0 0",
-                borderBottom: "1px solid var(--fn-border-secondary)",
-                padding: "4px 4px 0",
-                gap: 2,
-                overflowX: "auto",
-                scrollbarWidth: "none",
-              }}
-            >
-              {tabs.map((tab) => (
-                <Tooltip
-                  key={String(tab.id)}
-                  title={tab.url}
-                  mouseEnterDelay={0.8}
-                >
-                  <div
-                    onClick={() => handleSwitchTab(tab.idx)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "4px 10px",
-                      borderRadius: "4px 4px 0 0",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      maxWidth: 200,
-                      fontSize: 12,
-                      background: tab.active
-                        ? "var(--fn-bg-primary)"
-                        : "transparent",
-                      borderTop: tab.active
-                        ? "2px solid var(--fn-color-brand, #635bff)"
-                        : "2px solid transparent",
-                      color: tab.active
-                        ? "var(--fn-text-primary)"
-                        : "var(--fn-text-secondary)",
-                      userSelect: "none",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        minWidth: 0,
-                      }}
-                    >
-                      {tab.title || tab.url || "New Tab"}
-                    </span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCloseTab(tab.idx);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        opacity: 0.5,
-                        borderRadius: 3,
-                        padding: "1px 2px",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <X size={10} />
-                    </span>
-                  </div>
-                </Tooltip>
-              ))}
-              <Tooltip title={t("browserWorkspace.newTab", "新建标签页")}>
-                <button
-                  type="button"
-                  onClick={handleNewTab}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    color: "var(--fn-text-tertiary)",
-                    padding: "4px 6px",
-                    borderRadius: 4,
-                    flexShrink: 0,
-                  }}
-                >
-                  <Plus size={12} />
-                </button>
-              </Tooltip>
-            </div>
-            {/* Navigation bar */}
-            <div
-              className={`${styles.toolbarRow} ${
-                isMobile ? styles.toolbarRowMobile : ""
-              }`}
-            >
-              <Button
-                size="small"
-                icon={<ArrowLeft size={14} />}
-                title={t("remoteBrowser.goBack")}
-                onClick={() => sendAction({ type: "goback" })}
-              />
-              <Button
-                size="small"
-                icon={<ArrowRight size={14} />}
-                title={t("remoteBrowser.goForward")}
-                onClick={() => sendAction({ type: "goforward" })}
-              />
-              <Button
-                size="small"
-                icon={<RotateCcw size={14} />}
-                title={t("remoteBrowser.reloadPage")}
-                onClick={() => sendAction({ type: "reload" })}
-              />
-              <Input
-                size="small"
-                value={navUrl}
-                onChange={(e) => setNavUrl(e.target.value)}
-                onFocus={() => {
-                  urlEditingRef.current = true;
-                }}
-                onBlur={() => {
-                  urlEditingRef.current = false;
-                }}
-                placeholder={t("remoteBrowser.urlPlaceholderExtended")}
-                onPressEnter={() => goto()}
-                prefix={<Globe size={13} />}
-                style={{ flex: 1 }}
-              />
-              <Button size="small" type="primary" onClick={() => goto()}>
-                {t("remoteBrowser.go")}
-              </Button>
-              <Tooltip
-                title={
-                  currentBookmarked
-                    ? t("remoteBrowser.bookmarkRemove", "移除书签")
-                    : t("remoteBrowser.bookmarkAdd", "添加书签")
-                }
-              >
-                <Button
-                  size="small"
-                  icon={
-                    <Star
-                      size={14}
-                      fill={currentBookmarked ? "currentColor" : "none"}
-                    />
-                  }
-                  disabled={!navUrlNormalized}
-                  type={currentBookmarked ? "primary" : "default"}
-                  onClick={() => toggle(navUrl, activeTabTitle)}
-                />
-              </Tooltip>
-              {!isMobile && (
-                <Select
-                  size="small"
-                  value={viewportMode}
-                  onChange={handleViewportChange}
-                  style={{ width: 90 }}
-                  options={viewportSelectOptions}
-                />
-              )}
-              <Button
-                size="small"
-                danger
-                icon={<Square size={14} />}
-                onClick={closeSession}
-                title={t("remoteBrowser.closeSession")}
-              >
-                {t("remoteBrowser.stop", "停止")}
-              </Button>
-              <Button
-                size="small"
-                type={isAiPanelOpen ? "primary" : "default"}
-                icon={<Bot size={14} />}
-                onClick={handleAiPanelToggle}
-              >
-                {t("remoteBrowser.ai.title", "AI 助手")}
-              </Button>
-              <Tooltip
-                title={t(
-                  "skillRecordGuide.buttonTip",
-                  "录制浏览器操作，生成可复用的技能脚本",
-                )}
-              >
-                <Button
-                  size="small"
-                  icon={<Sparkles size={14} />}
-                  onClick={openSkillGuide}
-                >
-                  {t("skillRecordGuide.buttonLabel", "技能录制")}
-                </Button>
-              </Tooltip>
-              <Button
-                size="small"
-                icon={<Maximize2 size={14} />}
-                onClick={handleFullscreen}
-                title={t("remoteBrowser.fullscreen", "全屏")}
-              />
-            </div>
-            {/* Bookmark bar */}
-            {bookmarks.length > 0 && (
-              <BookmarkBar
-                bookmarks={bookmarks}
-                onOpen={openBookmark}
-                onRemove={remove}
-              />
-            )}
-          </div>
-        )}
+      <Drawer
+        title={t("remoteBrowser.controlsTitle", "控制面板")}
+        placement={isMobile ? "bottom" : "right"}
+        open={controlsOpen}
+        onClose={closeControlsDrawer}
+        height={isMobile ? "min(70vh, 520px)" : undefined}
+        width={isMobile ? "100%" : 320}
+        destroyOnClose={false}
+        styles={{ body: { padding: "12px 16px 16px" } }}
+      >
+        {renderControlsDrawer()}
+      </Drawer>
 
+      <div className={styles.pageBody}>
         <div
           className={`${styles.mainRow} ${
             isMobile ? styles.mainRowMobile : ""
           }`}
         >
-          <div className={styles.browserColumn}>
+          <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  border: "1px solid var(--fn-border-secondary)",
-                  borderTop: "none",
-                  borderRadius: "0 0 6px 6px",
-                  overflow: "hidden",
-                }}
-              >
-                <div ref={containerRef} className={styles.canvasViewport}>
-                  <canvas
-                    ref={canvasRef}
-                    tabIndex={0}
-                    className={`${styles.canvas} ${
-                      isMobile ? styles.canvasMobile : ""
-                    }`}
-                    style={{
-                      cursor: isDragging ? "grabbing" : "grab",
-                    }}
-                    onMouseDown={handleCanvasMouseDown}
-                    onDoubleClick={handleCanvasDblClick}
-                    onWheel={handleCanvasWheel}
-                    onKeyDown={handleCanvasKeyDown}
+              <>
+                {bookmarks.length > 0 && (
+                  <BookmarkBar
+                    bookmarks={bookmarks}
+                    onOpen={openBookmark}
+                    onRemove={remove}
                   />
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: 10,
-                      right: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      background: "rgba(0,0,0,0.45)",
-                      backdropFilter: "blur(4px)",
-                      borderRadius: 6,
-                      padding: "4px 8px",
-                    }}
-                  >
-                    <span
-                      style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}
-                    >
-                      {t("remoteBrowser.autoRefresh")}
-                    </span>
-                    <Select
-                      size="small"
-                      value={refreshInterval}
-                      onChange={handleRefreshIntervalChange}
-                      style={{ width: 74 }}
-                      options={refreshSelectOptions}
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--fn-text-tertiary)",
-                    padding: "3px 8px",
-                    borderTop: "1px solid var(--fn-border-secondary)",
-                    background: "var(--fn-bg-primary)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 6 }}
-                  >
-                    <Tag
-                      color={isStreaming ? "processing" : "default"}
-                      style={{ fontSize: 10, margin: 0 }}
-                    >
-                      {isStreaming
-                        ? t("remoteBrowser.streaming", "推流中")
-                        : t("remoteBrowser.connecting", "连接中")}
-                    </Tag>
-                    <span>{tabs.length} tabs</span>
-                  </div>
-                  <span style={{ color: "var(--fn-text-quaternary, #bbb)" }}>
-                    {session.id}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div
-                ref={containerRef}
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  border: "1px solid var(--fn-border-secondary)",
-                  borderRadius: 6,
-                  background: "var(--fn-bg-secondary)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "40px 48px",
-                    background: "var(--fn-bg-primary)",
-                    borderRadius: 12,
-                    boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
-                    textAlign: "center",
-                    minWidth: 320,
-                  }}
-                >
-                  <svg
-                    width="48"
-                    height="48"
-                    viewBox="0 0 48 48"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    style={{ opacity: 0.25 }}
-                  >
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="21"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                    />
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="8"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                    />
-                    <path
-                      d="M24 3 A21 21 0 0 1 42.2 34.5"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M42.2 34.5 A21 21 0 0 1 5.8 34.5"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M5.8 34.5 A21 21 0 0 1 24 3"
-                      stroke="#c0c4cc"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 600,
-                      color: "var(--fn-text-primary)",
-                    }}
-                  >
-                    {t("remoteBrowser.startBrowserTitle", "启动浏览器")}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "var(--fn-text-tertiary)",
-                      lineHeight: 1.6,
-                      maxWidth: 260,
-                    }}
-                  >
-                    {t(
-                      "remoteBrowser.startBrowserDesc",
-                      "点击启动浏览器，然后输入网址，实时查看并操控远端浏览器",
-                    )}
-                  </div>
-                  {envReady && (
-                    <Button
-                      type="primary"
-                      icon={
-                        creating ? undefined : (
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 48 48"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            style={{
-                              display: "inline-block",
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <circle
-                              cx="24"
-                              cy="24"
-                              r="21"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                            />
-                            <circle
-                              cx="24"
-                              cy="24"
-                              r="8"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                            />
-                            <path
-                              d="M24 3 A21 21 0 0 1 42.2 34.5"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                              strokeLinecap="round"
-                            />
-                            <path
-                              d="M42.2 34.5 A21 21 0 0 1 5.8 34.5"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                              strokeLinecap="round"
-                            />
-                            <path
-                              d="M5.8 34.5 A21 21 0 0 1 24 3"
-                              stroke="white"
-                              strokeWidth="3"
-                              fill="none"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                        )
+                )}
+                <BrowserViewer
+                  ref={viewerRef}
+                  status={status}
+                  tabs={streamTabs}
+                  switchTab={switchTab}
+                  closeTab={closeTab}
+                  newTab={newTab}
+                  sendEvent={sendEvent}
+                  navUrl={navUrl}
+                  onNavUrlChange={setNavUrl}
+                  onNavigate={(url) => streamNavigate(url)}
+                  interactive={Boolean(session)}
+                  bookmarked={currentBookmarked}
+                  onToggleBookmark={toggle}
+                  addressBarExtra={
+                    <>
+                      <Button
+                        size="small"
+                        type={isAiPanelOpen ? "primary" : "default"}
+                        icon={<Bot size={14} />}
+                        onClick={handleAiPanelToggle}
+                        aria-label={t("remoteBrowser.ai.title", "AI 助手")}
+                        title={t("remoteBrowser.ai.title", "AI 助手")}
+                      >
+                        {isMobile
+                          ? null
+                          : t("remoteBrowser.ai.title", "AI 助手")}
+                      </Button>
+                      <Tooltip
+                        title={t(
+                          "skillRecordGuide.buttonTip",
+                          "录制浏览器操作，生成可复用的技能脚本",
+                        )}
+                      >
+                        <Button
+                          size="small"
+                          icon={<Sparkles size={14} />}
+                          onClick={openSkillGuide}
+                          aria-label={t(
+                            "skillRecordGuide.buttonLabel",
+                            "技能录制",
+                          )}
+                        >
+                          {isMobile
+                            ? null
+                            : t("skillRecordGuide.buttonLabel", "技能录制")}
+                        </Button>
+                      </Tooltip>
+                    </>
+                  }
+                  overlay={
+                    <StreamEdgeControls
+                      visible={showEdgeControls}
+                      isMobile={isMobile}
+                      fullscreenLabel={t("remoteBrowser.fullscreen", "全屏")}
+                      controlsLabel={t(
+                        "remoteBrowser.openControls",
+                        "控制与快捷操作",
+                      )}
+                      streamingLabel={
+                        isStreaming
+                          ? t("remoteBrowser.streaming", "推流中")
+                          : t("remoteBrowser.connecting", "连接中")
                       }
-                      loading={creating}
-                      onClick={() => void createSession()}
-                      style={{
-                        marginTop: 4,
-                        background: "linear-gradient(135deg, #e85d75, #f5738a)",
-                        borderColor: "transparent",
-                        borderRadius: 8,
-                        fontWeight: 500,
-                      }}
-                    >
-                      {creating
-                        ? t("remoteBrowser.ai.startingBrowser", "正在启动...")
-                        : t("remoteBrowser.startBrowser", "启动浏览器")}
-                    </Button>
-                  )}
-                </div>
+                      onFullscreen={() => void handleFullscreen()}
+                      onOpenControls={openControlsDrawer}
+                    />
+                  }
+                  onCanvasKeyDown={handleCanvasKeyDown}
+                  onFrameReadyChange={handleFrameReadyChange}
+                />
+              </>
+            ) : (
+              <div className={styles.idleViewport}>
+                {installPhase === "installing" ? (
+                  renderViewportInstallProgress()
+                ) : uninstalling ? (
+                  renderViewportUninstallProgress()
+                ) : (
+                  <StreamSetupGuide
+                    icon={<Globe size={48} strokeWidth={1.5} />}
+                    title={
+                      envReady
+                        ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
+                        : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
+                    }
+                    description={
+                      envReady
+                        ? t(
+                            "remoteBrowser.startBrowserDesc",
+                            "环境已就绪，按以下步骤开始远程浏览与操控",
+                          )
+                        : envStatus?.error ||
+                          t(
+                            "remoteBrowser.setupDesc",
+                            "按以下步骤完成 Playwright / Chromium 环境配置",
+                          )
+                    }
+                    steps={
+                      envReady
+                        ? [
+                            {
+                              label: t(
+                                "remoteBrowser.startBrowserIdleStep1",
+                                "点击右上角「启动浏览器」建立会话",
+                              ),
+                            },
+                            {
+                              label: t(
+                                "remoteBrowser.startBrowserIdleStep2",
+                                "在地址栏输入网址并访问，也可使用收藏夹与 AI 助手",
+                              ),
+                            },
+                          ]
+                        : [
+                            {
+                              label: t(
+                                "remoteBrowser.setupStep1",
+                                "点击「检查」，检测 Playwright 与 Chromium 是否可用",
+                              ),
+                            },
+                            {
+                              label: t(
+                                "remoteBrowser.setupStep2",
+                                "若组件缺失，在弹窗中一键安装浏览器环境",
+                              ),
+                            },
+                            {
+                              label: t(
+                                "remoteBrowser.setupStep3",
+                                "安装完成后，点击「启动浏览器」开始会话",
+                              ),
+                            },
+                          ]
+                    }
+                    primaryAction={
+                      envReady
+                        ? {
+                            label: creating
+                              ? t(
+                                  "remoteBrowser.ai.startingBrowser",
+                                  "正在启动...",
+                                )
+                              : t("remoteBrowser.startBrowser", "启动浏览器"),
+                            onClick: () => void createSession(),
+                            loading: creating,
+                            disabled: !envReady,
+                            icon: <Play size={14} />,
+                          }
+                        : {
+                            label: t("remoteBrowser.checkInstallShort", "检查"),
+                            onClick: openEnvModal,
+                            icon: <Globe size={14} />,
+                          }
+                    }
+                    secondaryAction={
+                      envStatus?.playwright_chromium
+                        ? {
+                            label: t("remoteBrowser.uninstall", "卸载"),
+                            onClick: handleUninstall,
+                            icon: <Trash2 size={14} />,
+                            loading: uninstalling,
+                            disabled: uninstalling || envLoading,
+                            danger: true,
+                          }
+                        : undefined
+                    }
+                  />
+                )}
               </div>
             )}
           </div>

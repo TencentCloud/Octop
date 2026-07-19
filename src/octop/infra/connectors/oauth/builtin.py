@@ -7,13 +7,7 @@ from typing import Any
 
 # Octop releases may pre-fill registered OAuth apps here; users need not set env vars.
 # Self-hosted deployments can still override via OCTOP_* env vars or settings.
-_BUILTIN_CLIENTS: dict[str, tuple[str, str]] = {
-    # Baidu Netdisk MCP official demo app (see baidu-netdisk/mcp README)
-    "baidu-netdisk": ("zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky", ""),
-    "tencent-news": ("", ""),
-    "tencent-ima": ("", ""),
-    "figma": ("", ""),
-}
+_BUILTIN_CLIENTS: dict[str, tuple[str, str]] = {}
 
 
 def builtin_client(kind: str) -> tuple[str, str]:

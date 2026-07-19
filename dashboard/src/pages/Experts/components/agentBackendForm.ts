@@ -1,3 +1,5 @@
+import { request } from "../../../api/request";
+
 export const BUILTIN_BACKENDS = ["local_shell", "filesystem", "state"] as const;
 export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
@@ -13,6 +15,7 @@ export interface BackendOption {
   name: string;
   kind: string;
   enabled: boolean;
+  bucket?: string | null;
 }
 
 export function isNamedBackend(ref: string): ref is `named:${string}` {
@@ -38,6 +41,46 @@ export function backendRefToSpec(
 export function isValidCompositePath(path: string): boolean {
   const trimmed = path.trim();
   return trimmed.length > 0 && trimmed.startsWith("/") && trimmed !== "/";
+}
+
+export function needsRootDirProbe(choice: string): boolean {
+  return choice === "local_shell" || choice === "filesystem";
+}
+
+export type RootDirProbeCode =
+  | "not_directory"
+  | "permission_denied"
+  | "write_failed"
+  | "not_allowed";
+
+export interface RootDirProbeResult {
+  ok: boolean;
+  code?: RootDirProbeCode;
+  detail?: string;
+  path?: string;
+}
+
+export function shouldProbeRootDir(choice: string, rootDir?: string): boolean {
+  if (!needsRootDirProbe(choice)) return false;
+  const normalized = (rootDir?.trim() || "/").replace(/\/+$/, "") || "/";
+  return normalized !== "/";
+}
+
+export async function probeRootDir(path: string): Promise<RootDirProbeResult> {
+  return request<RootDirProbeResult>("/filesystem/probe", {
+    method: "POST",
+    body: JSON.stringify({ path: path.trim() || "/" }),
+  });
+}
+
+export function rootDirProbeMessage(
+  result: RootDirProbeResult,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (result.ok) return "";
+  const code = result.code ?? "write_failed";
+  const key = `experts.rootDirProbe.${code}`;
+  return t(key, { detail: result.detail ?? "" });
 }
 
 export function validatePathMappings(

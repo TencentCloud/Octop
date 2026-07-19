@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
@@ -12,6 +12,8 @@ import MbtiPersonaTag from "./MbtiPersonaTag";
 import { metaForFile } from "../pages/Experts/components/iconForName";
 import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups";
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
+import SubagentCatalogDrawer from "../pages/Experts/components/SubagentCatalogDrawer";
+import SkillCatalogDrawer from "../pages/Experts/components/SkillCatalogDrawer";
 import expertStyles from "../pages/Experts/index.module.less";
 import styles from "./AgentProfileDrawer.module.less";
 
@@ -56,6 +58,23 @@ export default function AgentProfileDrawer({
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
+  const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
+  const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
+
+  const installedSlugs = useMemo(
+    () => new Set(subagents.map((s) => s.slug)),
+    [subagents],
+  );
+
+  const reloadSubagents = useCallback(async () => {
+    if (!agent) return;
+    try {
+      const rows = await listAgentSubagents(agent.agent_id);
+      setSubagents(rows);
+    } catch {
+      /* non-critical */
+    }
+  }, [agent]);
 
   useEffect(() => {
     if (!open || !agent) return;
@@ -117,6 +136,8 @@ export default function AgentProfileDrawer({
     if (!open) {
       setViewingFile(null);
       setFileContent("");
+      setSkillCatalogOpen(false);
+      setSubagentCatalogOpen(false);
     }
   }, [open]);
 
@@ -282,8 +303,17 @@ export default function AgentProfileDrawer({
         </div>
 
         <div className={expertStyles.drawerSection}>
-          <div className={expertStyles.drawerSectionTitle}>
-            {t("experts.skillFilesTitle", { count: agentSkills.length })}
+          <div className={styles.sectionTitleRow}>
+            <div className={expertStyles.drawerSectionTitle}>
+              {t("experts.skillFilesTitle", { count: agentSkills.length })}
+            </div>
+            <button
+              type="button"
+              className={styles.viewMoreLink}
+              onClick={() => setSkillCatalogOpen(true)}
+            >
+              {t("common.viewMore")}
+            </button>
           </div>
           <p
             style={{
@@ -335,8 +365,17 @@ export default function AgentProfileDrawer({
         </div>
 
         <div className={expertStyles.drawerSection}>
-          <div className={expertStyles.drawerSectionTitle}>
-            {t("experts.subagentFilesTitle", { count: subagents.length })}
+          <div className={styles.sectionTitleRow}>
+            <div className={expertStyles.drawerSectionTitle}>
+              {t("experts.subagentFilesTitle", { count: subagents.length })}
+            </div>
+            <button
+              type="button"
+              className={styles.viewMoreLink}
+              onClick={() => setSubagentCatalogOpen(true)}
+            >
+              {t("common.viewMore")}
+            </button>
           </div>
           <p
             style={{
@@ -407,19 +446,35 @@ export default function AgentProfileDrawer({
 
   if (isMobile) {
     return (
-      <Drawer
-        open={open}
-        title={mobileTitle}
-        width="100%"
-        placement="bottom"
-        height="82vh"
-        rootClassName={styles.mobileDrawer}
-        styles={mobileDrawerStyles}
-        onClose={handleDrawerClose}
-        destroyOnClose
-      >
-        {viewingFile ? renderFileContent() : renderProfileContent()}
-      </Drawer>
+      <>
+        <Drawer
+          open={open}
+          title={mobileTitle}
+          width="100%"
+          placement="bottom"
+          height="82vh"
+          rootClassName={styles.mobileDrawer}
+          styles={mobileDrawerStyles}
+          onClose={handleDrawerClose}
+          destroyOnClose
+        >
+          {viewingFile ? renderFileContent() : renderProfileContent()}
+        </Drawer>
+
+        <SkillCatalogDrawer
+          agentId={agent?.agent_id ?? ""}
+          open={skillCatalogOpen}
+          onClose={() => setSkillCatalogOpen(false)}
+        />
+        <SubagentCatalogDrawer
+          agentId={agent?.agent_id ?? ""}
+          agentState={agent?.state ?? "stopped"}
+          open={subagentCatalogOpen}
+          installedSlugs={installedSlugs}
+          onClose={() => setSubagentCatalogOpen(false)}
+          onInstalled={() => void reloadSubagents()}
+        />
+      </>
     );
   }
 
@@ -444,6 +499,20 @@ export default function AgentProfileDrawer({
       >
         {renderFileContent()}
       </Drawer>
+
+      <SkillCatalogDrawer
+        agentId={agent?.agent_id ?? ""}
+        open={skillCatalogOpen}
+        onClose={() => setSkillCatalogOpen(false)}
+      />
+      <SubagentCatalogDrawer
+        agentId={agent?.agent_id ?? ""}
+        agentState={agent?.state ?? "stopped"}
+        open={subagentCatalogOpen}
+        installedSlugs={installedSlugs}
+        onClose={() => setSubagentCatalogOpen(false)}
+        onInstalled={() => void reloadSubagents()}
+      />
     </>
   );
 }

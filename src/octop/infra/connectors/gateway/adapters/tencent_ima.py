@@ -137,8 +137,32 @@ def _openapi(creds: dict[str, Any], path: str, body: dict[str, Any]) -> str:
     url = f"https://ima.qq.com/{path.lstrip('/')}"
     with httpx.Client(timeout=60.0) as client:
         r = client.post(url, headers=_headers(creds), json=body)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            raise ValueError(_http_error_message(r))
         data = r.json()
     if isinstance(data, dict):
+        code = data.get("code")
+        if code not in (0, None, "0"):
+            msg = str(data.get("msg") or data.get("message") or "IMA API error")
+            raise ValueError(f"[{code}] {msg}")
         return json.dumps(data, ensure_ascii=False, indent=2)
     return str(data)
+
+
+def _http_error_message(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+        if isinstance(body, dict):
+            msg = body.get("msg") or body.get("message")
+            if msg:
+                return str(msg).strip()
+    except Exception:
+        pass
+    if response.status_code == 401:
+        return "IMA 认证失败，请检查 Client ID 与 API Key"
+    return f"HTTP {response.status_code}"
+
+
+def probe_credentials(creds: dict[str, Any]) -> None:
+    """Hit IMA with a lightweight list call to validate client_id / api_key."""
+    _openapi(creds, "openapi/wiki/v1/search_knowledge_base", {"limit": 1})

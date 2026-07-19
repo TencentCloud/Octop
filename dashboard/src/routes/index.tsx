@@ -12,6 +12,7 @@ const TokenUsagePage = lazy(() => import("../pages/Control/TokenUsage"));
 // Lazy-loaded pages — Control
 const ChannelsPage = lazy(() => import("../pages/Control/Channels"));
 const RemoteBrowserPage = lazy(() => import("../pages/Control/RemoteBrowser"));
+const RemoteDesktopPage = lazy(() => import("../pages/Control/RemoteDesktop"));
 const SubagentsPage = lazy(() => import("../pages/Control/Subagents"));
 const MBTIPage = lazy(() => import("../pages/Agent/MBTI"));
 const MemoryPage = lazy(() => import("../pages/Agent/Memory"));
@@ -53,6 +54,7 @@ export const pathToKey: Record<string, string> = {
   "/channels": "channels",
   "/terminal": "terminal",
   "/remote-browser": "remote-browser",
+  "/remote-desktop": "remote-desktop",
   "/subagents": "subagents",
   "/mbti": "mbti",
   "/memory": "memory",
@@ -75,6 +77,7 @@ export const FULLSCREEN_PATHS = new Set([
   "/terminal",
   "/chat",
   "/remote-browser",
+  "/remote-desktop",
 ]);
 
 /**
@@ -108,6 +111,7 @@ export const routeConfigs: RouteConfig[] = [
   // Control
   { path: "/channels", element: <ChannelsPage /> },
   { path: "/remote-browser", element: <RemoteBrowserPage /> },
+  { path: "/remote-desktop", element: <RemoteDesktopPage /> },
   { path: "/subagents", element: <SubagentsPage /> },
   { path: "/mbti", element: <MBTIPage /> },
   { path: "/memory", element: <MemoryPage /> },

@@ -139,9 +139,6 @@ function openAuthorizeLabel(
   kind: string,
   t: (key: string, fallback: string) => string,
 ): string {
-  if (kind === "baidu-netdisk") {
-    return t("connectors.openAuthorizePage", "打开授权页");
-  }
   if (kind === "tencent-ima") {
     return t("connectors.openAuthorizePage", "打开授权页");
   }
@@ -153,7 +150,7 @@ function authCodeGuideLabel(
   t: (key: string, fallback: string) => string,
 ): string {
   if (kind === "tencent-news") {
-    return t("connectors.newsAuthGuide", "如何获取腾讯新闻授权码");
+    return t("connectors.newsAuthGuide", "如何获取腾讯新闻 API Key");
   }
   return t("connectors.authCodeDoc", "查看如何获取授权码");
 }
@@ -197,6 +194,7 @@ function ConnectorConfigDrawer({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [authInfo, setAuthInfo] = useState<ConnectorAuthInfo | null>(null);
   const [instanceDetail, setInstanceDetail] =
@@ -316,22 +314,30 @@ function ConnectorConfigDrawer({
   };
 
   const handleOAuth = async () => {
-    if (!entry) return;
+    if (!entry || authorizing) return;
+    const popup = window.open("", "octop-oauth", "width=520,height=720");
+    if (!popup) {
+      message.error(
+        t(
+          "connectors.oauthPopupBlocked",
+          "授权窗口被浏览器拦截，请允许本站弹出窗口后重试",
+        ),
+      );
+      return;
+    }
+
+    setAuthorizing(true);
     try {
       const { authorize_url, state_id } = await connectorsApi.oauthStart(
         entry.kind,
         "/connectors",
       );
-      const popup = window.open(
-        authorize_url,
-        "octop-oauth",
-        "width=520,height=720",
-      );
       const onMessage = async (ev: MessageEvent) => {
+        if (ev.origin !== window.location.origin) return;
         if (ev.data?.type !== "octop:connector-oauth") return;
         if (ev.data.state_id !== state_id) return;
         window.removeEventListener("message", onMessage);
-        popup?.close();
+        popup.close();
         try {
           const pending = await connectorsApi.oauthPending(state_id);
           const tokens = pending.tokens ?? {};
@@ -350,9 +356,15 @@ function ConnectorConfigDrawer({
         }
       };
       window.addEventListener("message", onMessage);
+      popup.location.replace(authorize_url);
     } catch (e) {
+      popup.close();
       console.error(e);
-      message.error(t("connectors.oauthStartFailed", "无法启动 OAuth"));
+      message.error(
+        apiErrorMessage(e, t("connectors.oauthStartFailed", "无法启动 OAuth")),
+      );
+    } finally {
+      setAuthorizing(false);
     }
   };
 
@@ -521,6 +533,7 @@ function ConnectorConfigDrawer({
             <Button
               type="primary"
               icon={<Sparkles size={14} />}
+              loading={authorizing}
               onClick={() => void handleOAuth()}
             >
               {t("connectors.oneClickOAuth", "一键授权")}
@@ -586,9 +599,7 @@ function ConnectorConfigDrawer({
                 configuredExtra(preview, "token_configured", t) ??
                 (manualUrl ? (
                   <a href={manualUrl} target="_blank" rel="noreferrer">
-                    {entry.kind === "baidu-netdisk"
-                      ? t("connectors.baiduAuthGuide", "如何获取百度网盘授权码")
-                      : t("connectors.getTokenAt", "前往获取 Token")}
+                    {t("connectors.getTokenAt", "前往获取 Token")}
                   </a>
                 ) : (
                   <a href={entry.doc_url} target="_blank" rel="noreferrer">

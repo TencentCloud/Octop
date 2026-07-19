@@ -1,4 +1,4 @@
-"""OAuth 2.0 for remote MCP servers (Notion, Figma) via RFC 8414 + dynamic registration."""
+"""OAuth 2.0 for remote MCP servers (Notion) via RFC 8414 + dynamic registration."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from octop.infra.utils.ssrf_guard import (
 
 _MCP_ISSUERS: dict[str, str] = {
     "notion": "https://mcp.notion.com",
-    "figma": "https://mcp.figma.com",
 }
 
 

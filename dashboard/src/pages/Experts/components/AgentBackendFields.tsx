@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Form, Input, Select } from "antd";
+import RootDirSelect from "./RootDirSelect";
 import { MinusCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -130,7 +131,7 @@ export default function AgentBackendFields({
             label={t("experts.backendRootDir")}
             initialValue="/"
           >
-            <Input placeholder="/" />
+            <RootDirSelect />
           </Form.Item>
           <div style={{ margin: "-8px 0 12px" }}>
             <p

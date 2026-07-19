@@ -1,0 +1,321 @@
+.remoteDesktopPage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+
+.installProgress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: min(520px, 92%);
+  padding: 24px 20px;
+}
+
+.installProgressTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  text-align: center;
+}
+
+.installLog {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border-secondary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  color: var(--fn-text-secondary);
+}
+
+.installLogCompact {
+  max-height: 160px;
+}
+
+.installProgressActions {
+  display: flex;
+  justify-content: center;
+}
+
+.viewport {
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.streamSurface {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fn-bg-secondary);
+}
+
+.streamLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 2;
+}
+
+.streamLoadingIcon {
+  animation: spin 1s linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.canvasHidden {
+  visibility: hidden;
+  position: absolute;
+}
+
+.viewportMobile {
+  min-height: 0;
+  border-radius: 6px;
+}
+
+.canvas {
+  max-width: 100%;
+  max-height: 100%;
+  cursor: crosshair;
+  outline: none;
+  display: block;
+}
+
+.canvasMobile {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.drawerContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settingsCard {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+}
+
+.settingsCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.settingsCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.settingItem {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settingLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.settingSelectFull {
+  width: 100%;
+}
+
+.shortcutsCard {
+  padding: 12px;
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+}
+
+.shortcutsCardHeader {
+  margin-bottom: 10px;
+}
+
+.shortcutsTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.shortcutsList {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  overflow: hidden;
+  background: var(--fn-bg-elevated);
+}
+
+.shortcutRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--fn-transition-fast, 0.12s ease);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--fn-bg-active);
+  }
+
+  &:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+  }
+}
+
+.shortcutIcon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--fn-radius-md, 8px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tone-bg);
+  color: var(--tone-color);
+}
+
+.shortcutIconBlue {
+  --tone-color: #3b82f6;
+  --tone-bg: rgba(59, 130, 246, 0.12);
+}
+
+.shortcutIconEmerald {
+  --tone-color: #10b981;
+  --tone-bg: rgba(16, 185, 129, 0.12);
+}
+
+.shortcutIconViolet {
+  --tone-color: #8b5cf6;
+  --tone-bg: rgba(139, 92, 246, 0.12);
+}
+
+.shortcutIconAmber {
+  --tone-color: #f59e0b;
+  --tone-bg: rgba(245, 158, 11, 0.14);
+}
+
+.shortcutIconRose {
+  --tone-color: #f43f5e;
+  --tone-bg: rgba(244, 63, 94, 0.12);
+}
+
+.shortcutIconOrange {
+  --tone-color: #f97316;
+  --tone-bg: rgba(249, 115, 22, 0.12);
+}
+
+.shortcutLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--fn-text-primary);
+  font-weight: 500;
+}
+
+.hintText {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.5;
+}
+
+:global(html[data-theme="dark"]) {
+  .shortcutIconBlue {
+    --tone-color: #60a5fa;
+    --tone-bg: rgba(96, 165, 250, 0.16);
+  }
+
+  .shortcutIconEmerald {
+    --tone-color: #34d399;
+    --tone-bg: rgba(52, 211, 153, 0.16);
+  }
+
+  .shortcutIconViolet {
+    --tone-color: #a78bfa;
+    --tone-bg: rgba(167, 139, 250, 0.16);
+  }
+
+  .shortcutIconAmber {
+    --tone-color: #fbbf24;
+    --tone-bg: rgba(251, 191, 36, 0.16);
+  }
+
+  .shortcutIconRose {
+    --tone-color: #fb7185;
+    --tone-bg: rgba(251, 113, 133, 0.16);
+  }
+
+  .shortcutIconOrange {
+    --tone-color: #fb923c;
+    --tone-bg: rgba(251, 146, 60, 0.16);
+  }
+}
