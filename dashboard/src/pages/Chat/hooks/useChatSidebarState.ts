@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { beginPointerDragSession } from "../../../hooks/usePointerDragSession";
 
-export const CHAT_SIDEBAR_KEY = "finnie:chat-sidebar:open";
+export const CHAT_SIDEBAR_KEY = "octop:chat-sidebar:open";
 export const CHAT_SIDEBAR_WIDTH_KEY = "octop:chat-sidebar:width";
 export const SIDEBAR_WIDTH_MIN = 200;
 export const SIDEBAR_WIDTH_MAX = 360;
@@ -75,46 +76,73 @@ function useSidebarOpen(): [
   return [value, setSidebarOpenGlobal];
 }
 
+function clampSidebarWidth(n: number): number {
+  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, n));
+}
+
+function applySidebarWidth(el: HTMLElement | null, width: number) {
+  if (!el) return;
+  el.style.width = `${width}px`;
+  el.style.minWidth = `${width}px`;
+}
+
+/**
+ * Sidebar open/width state with a drag-to-resize handle.
+ *
+ * During drag we write width directly to the sidebar DOM (rAF-batched) so
+ * React does not re-render SessionList on every pointermove — that was the
+ * main source of jank. React state + localStorage commit only on pointerup.
+ */
 export function useChatSidebarState(isMobile: boolean) {
   const [sidebarOpen, setSidebarOpen] = useSidebarOpen();
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);
   sidebarWidthRef.current = sidebarWidth;
+  const sidebarElRef = useRef<HTMLDivElement>(null);
+  const resizeStartRef = useRef({ x: 0, width: 0 });
+  const pendingWidthRef = useRef<number | null>(null);
 
   const handleSidebarResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (isMobile) return;
+    (e: React.PointerEvent) => {
+      if (isMobile || e.button !== 0) return;
       e.preventDefault();
-      const startX = e.clientX;
-      const startW = sidebarWidthRef.current;
+      e.stopPropagation();
 
-      const onMove = (ev: MouseEvent) => {
-        const next = Math.min(
-          SIDEBAR_WIDTH_MAX,
-          Math.max(SIDEBAR_WIDTH_MIN, startW + ev.clientX - startX),
-        );
-        setSidebarWidth(next);
+      const handle = e.currentTarget as HTMLElement;
+      setIsSidebarResizing(true);
+      resizeStartRef.current = {
+        x: e.clientX,
+        width: sidebarWidthRef.current,
       };
+      pendingWidthRef.current = sidebarWidthRef.current;
 
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-        try {
-          localStorage.setItem(
-            CHAT_SIDEBAR_WIDTH_KEY,
-            String(sidebarWidthRef.current),
+      beginPointerDragSession({
+        pointerId: e.pointerId,
+        target: handle,
+        cursor: "col-resize",
+        onMove: (clientX) => {
+          const next = clampSidebarWidth(
+            resizeStartRef.current.width + clientX - resizeStartRef.current.x,
           );
-        } catch {
-          /* ignore */
-        }
-      };
-
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.body.style.userSelect = "none";
-      document.body.style.cursor = "col-resize";
+          pendingWidthRef.current = next;
+          sidebarWidthRef.current = next;
+          applySidebarWidth(sidebarElRef.current, next);
+        },
+        onEnd: () => {
+          const finalWidth = pendingWidthRef.current ?? sidebarWidthRef.current;
+          pendingWidthRef.current = null;
+          setIsSidebarResizing(false);
+          sidebarWidthRef.current = finalWidth;
+          applySidebarWidth(sidebarElRef.current, finalWidth);
+          setSidebarWidth(finalWidth);
+          try {
+            localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(finalWidth));
+          } catch {
+            /* ignore */
+          }
+        },
+      });
     },
     [isMobile],
   );
@@ -123,6 +151,8 @@ export function useChatSidebarState(isMobile: boolean) {
     sidebarOpen,
     setSidebarOpen,
     sidebarWidth,
+    isSidebarResizing,
+    sidebarElRef,
     handleSidebarResizeStart,
   };
 }

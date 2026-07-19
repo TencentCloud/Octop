@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
@@ -17,6 +18,24 @@ from octop.infra.errors import ErrorCode, OctopError
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# In-memory control ownership per session (keyed by harness profile / session_id).
+# This is a UI/coordination hint: the agent pauses interactive input while the
+# user is in control. It is stored separately from the live session so a
+# takeover survives dashboard reloads and WS reconnects.
+_CONTROL_OWNERS: dict[str, str] = {}
+
+
+def control_owner_for(session_id: str) -> str:
+    """Return the current control owner for a session, defaulting to 'agent'."""
+    return _CONTROL_OWNERS.get(session_id, "agent")
+
+
+class HandoffBody(BaseModel):
+    """Control handoff request: switch between agent and user control."""
+
+    target: str  # "agent" | "user"
+    reason: str = ""
 
 
 async def _is_session_alive(sess: Any, *, timeout: float = 2.0) -> bool:
@@ -245,7 +264,7 @@ async def harness_sessions_payload(conversation_id: str | None = None) -> dict[s
                 "conversation_id": profile,
                 "channel_source": "dashboard",
                 "state": "streaming" if url else "idle",
-                "control_owner": "agent",
+                "control_owner": control_owner_for(profile),
                 "current_url": url,
                 "created_at": now,
                 "last_activity_at": now,
@@ -265,3 +284,44 @@ async def list_harness_sessions(
 ) -> dict[str, Any]:
     """List live harness-browser profiles (agent ``browser_use`` sessions)."""
     return await harness_sessions_payload(conversation_id)
+
+
+@router.post("/browser/sessions/{session_id}/handoff")
+async def handoff(
+    session_id: str,
+    body: HandoffBody,
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Switch control of a browser session between the agent and the user.
+
+    The control owner is a coordination hint (the agent yields interactive
+    input to the user while they are in control). It is stored in-memory per
+    session and reflected in ``harness-sessions`` and the WS screencast so a
+    takeover survives dashboard reloads and reconnects.
+    """
+    target = body.target
+    if target not in ("agent", "user"):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "target must be 'agent' or 'user'")
+    _CONTROL_OWNERS[session_id] = target
+
+    payload = await harness_sessions_payload(conversation_id=session_id)
+    session = next(
+        (s for s in payload.get("sessions", []) if s["session_id"] == session_id),
+        None,
+    )
+    if session is None:
+        # Session not currently live — return a minimal payload so the UI can
+        # still flip its local control-owner state.
+        now = int(time.time() * 1000)
+        session = {
+            "session_id": session_id,
+            "profile_name": session_id,
+            "conversation_id": session_id,
+            "channel_source": "dashboard",
+            "state": "idle",
+            "control_owner": target,
+            "current_url": "",
+            "created_at": now,
+            "last_activity_at": now,
+        }
+    return {"ok": True, "session": session}

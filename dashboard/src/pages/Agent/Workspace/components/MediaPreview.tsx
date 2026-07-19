@@ -33,27 +33,35 @@ function useWorkspaceBlob(
   path: string,
   filename: string,
   toBlob: (blob: Blob, filename: string) => Blob,
+  refreshToken = 0,
 ) {
   const [src, setSrc] = useState("");
   const objectUrlRef = useRef<string | undefined>(undefined);
 
-  const apiPath = useMemo(
-    () =>
-      `/agents/${encodeURIComponent(
-        agentId,
-      )}/workspace/download?path=${encodeURIComponent(path)}`,
-    [agentId, path],
-  );
+  const apiPath = useMemo(() => {
+    // Pass the path shape through unchanged: absolute stays absolute (as file://
+    // for the query string), relative stays relative.
+    const source = path.startsWith("file://")
+      ? path
+      : path.startsWith("/")
+      ? `file://${path}`
+      : path.replace(/^\/+/, "");
+    return `/agents/${encodeURIComponent(
+      agentId,
+    )}/media/preview?${new URLSearchParams({ source }).toString()}`;
+  }, [agentId, path]);
 
   useLayoutEffect(() => {
     let cancelled = false;
-    setSrc("");
 
     const load = async () => {
       try {
         const blob = await requestBlob(apiPath);
         if (cancelled) return;
         const objUrl = URL.createObjectURL(toBlob(blob, filename));
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+        }
         objectUrlRef.current = objUrl;
         setSrc(objUrl);
       } catch {
@@ -61,16 +69,25 @@ function useWorkspaceBlob(
       }
     };
 
+    // Keep the previous frame visible while refreshing; only clear on first load.
+    if (!objectUrlRef.current) {
+      setSrc("");
+    }
     void load();
 
     return () => {
       cancelled = true;
+    };
+  }, [apiPath, filename, toBlob, refreshToken]);
+
+  useLayoutEffect(() => {
+    return () => {
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = undefined;
       }
     };
-  }, [apiPath, filename, toBlob]);
+  }, []);
 
   return src;
 }
@@ -79,13 +96,21 @@ function WorkspaceImage({
   agentId,
   path,
   filename,
+  refreshToken = 0,
 }: {
   agentId: string;
   path: string;
   filename: string;
+  refreshToken?: number;
 }) {
   const { t } = useTranslation();
-  const src = useWorkspaceBlob(agentId, path, filename, asImageBlob);
+  const src = useWorkspaceBlob(
+    agentId,
+    path,
+    filename,
+    asImageBlob,
+    refreshToken,
+  );
 
   if (src === "error") {
     return (
@@ -108,10 +133,12 @@ function WorkspaceVideo({
   agentId,
   path,
   filename,
+  refreshToken = 0,
 }: {
   agentId: string;
   path: string;
   filename: string;
+  refreshToken?: number;
 }) {
   const { t } = useTranslation();
   const toBlob = useMemo(
@@ -121,7 +148,7 @@ function WorkspaceVideo({
         : new Blob([blob], { type: guessVideoMime(name) }),
     [],
   );
-  const src = useWorkspaceBlob(agentId, path, filename, toBlob);
+  const src = useWorkspaceBlob(agentId, path, filename, toBlob, refreshToken);
 
   if (src === "error") {
     return (
@@ -150,10 +177,12 @@ function WorkspaceAudio({
   agentId,
   path,
   filename,
+  refreshToken = 0,
 }: {
   agentId: string;
   path: string;
   filename: string;
+  refreshToken?: number;
 }) {
   const { t } = useTranslation();
   const toBlob = useMemo(
@@ -163,7 +192,7 @@ function WorkspaceAudio({
         : new Blob([blob], { type: guessAudioMime(name) }),
     [],
   );
-  const src = useWorkspaceBlob(agentId, path, filename, toBlob);
+  const src = useWorkspaceBlob(agentId, path, filename, toBlob, refreshToken);
 
   if (src === "error") {
     return (
@@ -191,25 +220,42 @@ export default function MediaPreview({
   agentId,
   path,
   kind,
+  refreshToken = 0,
 }: {
   agentId: string;
   path: string;
   kind: MediaKind;
+  refreshToken?: number;
 }) {
   const filename = path.split("/").filter(Boolean).pop() || path;
 
   switch (kind) {
     case "image":
       return (
-        <WorkspaceImage agentId={agentId} path={path} filename={filename} />
+        <WorkspaceImage
+          agentId={agentId}
+          path={path}
+          filename={filename}
+          refreshToken={refreshToken}
+        />
       );
     case "video":
       return (
-        <WorkspaceVideo agentId={agentId} path={path} filename={filename} />
+        <WorkspaceVideo
+          agentId={agentId}
+          path={path}
+          filename={filename}
+          refreshToken={refreshToken}
+        />
       );
     case "audio":
       return (
-        <WorkspaceAudio agentId={agentId} path={path} filename={filename} />
+        <WorkspaceAudio
+          agentId={agentId}
+          path={path}
+          filename={filename}
+          refreshToken={refreshToken}
+        />
       );
     default:
       return null;

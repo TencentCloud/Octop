@@ -29,12 +29,11 @@ interface BrowserStreamCallbacks {
 }
 
 interface ConnectOptions {
-  /** Optional session/conversation id. When set, the backend attaches the
-   *  screencast to the same harness BrowserSession the agent is using for
-   *  this conversation (the agent's `browser_use` tool registers under the
-   *  conversation id as the harness profile name). When unset, the backend
-   *  falls back to a "default" profile — fine for the standalone page,
-   *  wrong for the chat popup. */
+  /** Optional harness profile name. All surfaces (chat panel, standalone
+   *  page, and the agent's `browser_use` tool) share the same `"default"`
+   *  profile so cookies/login and open tabs stay consistent across
+   *  conversations and between headed and headless runs. When unset, the
+   *  backend falls back to `"default"` as well. */
   sessionId?: string | null;
 }
 

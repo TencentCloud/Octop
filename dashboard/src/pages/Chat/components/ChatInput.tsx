@@ -388,7 +388,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             selectedConnectors={selectedConnectors}
             selectedTargetAgents={selectedTargetAgents}
             selectedModel={selectedModel}
-            defaultModel={defaultModel}
             availableSkills={availableSkills}
             availableConnectors={availableConnectors}
             availableAgents={availableAgents}

@@ -105,7 +105,7 @@ def test_enrich_media_block_preview_file_url() -> None:
         },
     }
     enriched = enrich_media_block_preview(block, agent_id="agent-x")
-    assert enriched["preview_url"].startswith("/api/agents/agent-x/workspace/download?path=")
+    assert enriched["preview_url"].startswith("/api/agents/agent-x/media/preview?")
 
 
 @pytest.mark.asyncio

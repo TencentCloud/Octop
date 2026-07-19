@@ -39,6 +39,12 @@
   }
 }
 
+/* Dragging: kill width transitions so the handle tracks the pointer 1:1. */
+.sidebarResizing {
+  transition: none !important;
+  will-change: width, min-width;
+}
+
 .sidebar:not(.sidebarOpen) {
   @media (min-width: 768px) {
     width: 0;
@@ -86,6 +92,7 @@
   height: 100%;
   cursor: col-resize;
   z-index: 3;
+  touch-action: none;
 
   &::after {
     content: "";
@@ -101,8 +108,10 @@
     transition: opacity 0.15s;
   }
 
-  &:hover::after {
+  &:hover::after,
+  &.sidebarResizeHandleActive::after {
     opacity: 1;
+    background: #1890ff;
   }
 }
 

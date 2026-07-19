@@ -106,7 +106,7 @@ async def get_thread_context_usage(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Estimate how the model context window is used for a thread."""
+    """Return persisted context-window usage for a thread (harness-agent snapshot)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     registry = server.app_runtime.agent_registry
     breakdown = await compute_context_breakdown(

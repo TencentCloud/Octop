@@ -2,15 +2,16 @@
 
 ---
 
-本目录包含 Octop 的 Docker 构建与部署脚本。镜像定义在仓库根目录的 [`Dockerfile`](../Dockerfile)。
+本目录包含 Octop 的 Docker 构建与部署相关文件。
 
 ### 文件说明
 
 | 文件 | 说明 |
 |------|------|
+| `Dockerfile` | 多阶段镜像定义（构建上下文为仓库根目录） |
+| `../.dockerignore` | 构建上下文忽略规则（Podman 与 BuildKit 均适用） |
 | `docker_build.sh` | 从源码构建镜像（默认开启 BuildKit 缓存） |
 | `docker-compose.yml` | 本地开发 / 自托管一键启动 |
-
 | `docker-entrypoint.sh` | 容器入口：首次初始化数据库并启动服务 |
 
 ### 快速开始

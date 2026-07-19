@@ -153,12 +153,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           badge: "new",
         },
         {
-          key: "skills",
-          path: "/skills",
-          icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.skills",
-        },
-        {
           key: "token-usage",
           path: "/token-usage",
           icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
@@ -175,6 +169,12 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/channels",
           icon: <PlugZap size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.channels",
+        },
+        {
+          key: "skills",
+          path: "/skills",
+          icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.skills",
         },
         {
           key: "subagents",

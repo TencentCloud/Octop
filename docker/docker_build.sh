@@ -53,7 +53,7 @@ echo ""
 
 docker build \
     -t "$IMAGE_TAG" \
-    -f "${REPO_ROOT}/Dockerfile" \
+    -f "${REPO_ROOT}/docker/Dockerfile" \
     "${BUILD_ARGS[@]}" \
     "$@" \
     "$REPO_ROOT"

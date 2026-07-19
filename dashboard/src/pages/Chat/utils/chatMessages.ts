@@ -39,19 +39,16 @@ export function normalizeComposerContext(
 /**
  * WS ``model`` field for each turn.
  *
- * - Expert has no default (AUTO): omit ``model`` so harness-agent routes freely.
- * - Expert has a default: always send ``model``; user picker overrides when set.
+ * A model explicitly selected in the composer wins; otherwise use the expert
+ * default. Omit the field only when both are AUTO/empty.
  */
 export function resolveTurnModelRef(
   selectedModel: string | null | undefined,
   agentDefaultModel: string | null | undefined,
 ): string | null {
-  const agentDefault = (agentDefaultModel || "").trim();
-  if (!agentDefault) {
-    return null;
-  }
   const selected = (selectedModel || "").trim();
-  return selected || agentDefault;
+  const agentDefault = (agentDefaultModel || "").trim();
+  return selected || agentDefault || null;
 }
 
 /** User picked a model different from the expert default (for UI chips / history). */
@@ -59,12 +56,9 @@ export function resolveTurnModelOverride(
   selectedModel: string | null | undefined,
   agentDefaultModel: string | null | undefined,
 ): string | null {
-  const agentDefault = (agentDefaultModel || "").trim();
-  if (!agentDefault) {
-    return null;
-  }
   const selected = (selectedModel || "").trim();
-  if (!selected || selected === agentDefault) {
+  const agentDefault = (agentDefaultModel || "").trim();
+  if (!selected || (agentDefault && selected === agentDefault)) {
     return null;
   }
   return selected;
@@ -75,7 +69,6 @@ export function buildComposerContext(params: {
   connectors?: string[];
   targetAgents?: string[];
   selectedModel?: string | null;
-  defaultModel?: string | null;
 }): UserComposerContext | undefined {
   const ctx: UserComposerContext = {};
   let has = false;
@@ -93,12 +86,9 @@ export function buildComposerContext(params: {
     has = true;
   }
 
-  const modelOverride = resolveTurnModelOverride(
-    params.selectedModel,
-    params.defaultModel,
-  );
-  if (modelOverride) {
-    ctx.model = modelOverride;
+  const selectedModel = (params.selectedModel || "").trim();
+  if (selectedModel) {
+    ctx.model = selectedModel;
     has = true;
   }
 

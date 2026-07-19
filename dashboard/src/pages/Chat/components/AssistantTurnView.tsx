@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronRight, Globe } from "lucide-react";
+import { ChevronRight, FilePen, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
 import {
@@ -7,6 +7,7 @@ import {
   toAnswerOnlyMessage,
   countProcessStats,
   turnUsedBrowserTool,
+  turnUsedFileTool,
 } from "../utils/messageContent";
 import { useAgent } from "../../../context/AgentContext";
 import AssistantProcessSummary from "./AssistantProcessSummary";
@@ -28,6 +29,7 @@ interface AssistantTurnViewProps {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
+  onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -44,6 +46,7 @@ export default function AssistantTurnView({
   onAcpPermissionSelect,
   onHitlDecision,
   onOpenBrowser,
+  onEditFile,
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
@@ -87,6 +90,8 @@ export default function AssistantTurnView({
     (isStreaming && messages.some((m) => m.status === "streaming"));
   const usedBrowser = turnUsedBrowserTool(fullSplit);
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
+  const usedFileTool = turnUsedFileTool(fullSplit);
+  const showEditFile = usedFileTool && !!onEditFile;
   const hasToolMedia =
     toolMedia.images.length > 0 ||
     toolMedia.videos.length > 0 ||
@@ -128,6 +133,7 @@ export default function AssistantTurnView({
           images={toolMedia.images}
           videos={toolMedia.videos}
           files={toolMedia.files}
+          agentId={agentId}
         />
       )}
       {answerSplit.answerMessage ? (
@@ -159,6 +165,29 @@ export default function AssistantTurnView({
             aria-hidden="true"
           />
           <span>{t("chat.openBrowser")}</span>
+          <ChevronRight
+            size={14}
+            className={styles.openBrowserPromptArrow}
+            aria-hidden="true"
+          />
+        </button>
+      )}
+      {showEditFile && (
+        <button
+          type="button"
+          className={`${styles.openBrowserPrompt} ${
+            turnStreaming ? styles.openBrowserPromptActive : ""
+          }`}
+          onClick={onEditFile}
+          aria-label={t("chat.openFile")}
+        >
+          <FilePen
+            size={16}
+            strokeWidth={2}
+            className={styles.openBrowserPromptIcon}
+            aria-hidden="true"
+          />
+          <span>{t("chat.openFile")}</span>
           <ChevronRight
             size={14}
             className={styles.openBrowserPromptArrow}

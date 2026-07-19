@@ -2,12 +2,14 @@
 
 ---
 
-This directory contains Docker build and deployment scripts for Octop. The image definition lives in the repo-root [`Dockerfile`](../Dockerfile).
+This directory contains the Docker build and deployment assets for Octop.
 
 ### Files
 
 | File | Description |
 |------|-------------|
+| `Dockerfile` | Multi-stage image definition (build context is the repo root) |
+| `../.dockerignore` | Build context ignore rules (applies to both Podman and BuildKit) |
 | `docker_build.sh` | Build image from source (BuildKit cache enabled by default) |
 | `docker-compose.yml` | One-command local / self-hosted deployment |
 | `docker-entrypoint.sh` | Container entrypoint: first-run init + start server |
