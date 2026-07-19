@@ -11,6 +11,7 @@ import pytest
 from deepagents.backends.local_shell import LocalShellBackend
 from harness_agent.backends.workspace import BackendWorkspace
 
+from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.gateway.media.backend_files import (
     ensure_workspace_media_path,
 )
@@ -27,6 +28,22 @@ from octop.infra.gateway.media.tool_media import (
 def _workspace(root: str, *, virtual_mode: bool = False) -> BackendWorkspace:
     backend = LocalShellBackend(root_dir=root, virtual_mode=virtual_mode)
     return BackendWorkspace(backend, root)
+
+
+def _default_virtual_workspace(root: str) -> BackendWorkspace:
+    """BackendWorkspace matching Octop's platform default agent backend.
+
+    POSIX defaults to ``root_dir='/'``; Windows scopes ``root_dir`` to the
+    agent workspace so virtual-mode uploads stay on the same drive.
+    """
+    spec = default_agent_backend_spec(Path(root))
+    return BackendWorkspace(
+        LocalShellBackend(
+            root_dir=str(spec["root_dir"]),
+            virtual_mode=bool(spec.get("virtual_mode", True)),
+        ),
+        root,
+    )
 
 
 @pytest.mark.asyncio
@@ -61,10 +78,7 @@ async def test_import_external_file_virtual_mode() -> None:
     with tempfile.TemporaryDirectory() as ws:
         external = Path(tempfile.mkdtemp()) / "harness-browser.png"
         external.write_bytes(b"\x89PNG\r\n")
-        workspace = BackendWorkspace(
-            LocalShellBackend(root_dir="/", virtual_mode=True),
-            ws,
-        )
+        workspace = _default_virtual_workspace(ws)
         rel = await ensure_workspace_media_path(
             workspace,
             external.as_uri(),
