@@ -25,7 +25,7 @@ disable-model-invocation: true
 | `VERSION_PATTERN` | `^\s*version\s*=\s*"[^"]+"` | 匹配版本行的正则表达式 |
 | `README_FILE` | `README.md` | 含 shields.io 版本徽标的文件（badge 版本号同步升级） |
 | `INIT_VERSION_FILE` | `src/octop/__init__.py` | 含运行时常量 `__version__` 的文件（缺失则跳过并提示） |
-| `TAG_PREFIX` | ``（空） | Git tag 前缀，设为 `v` 则生成 `v0.1.14` 风格标签 |
+| `TAG_PREFIX` | `v` | Git tag 前缀；工作流监听 `v*`，生成 `v0.1.14` 风格标签 |
 | `REMOTE` | `origin` | Git 远程仓库名 |
 | `TARGET_BRANCH` | `main` | 合并请求的目标分支 |
 | `RELEASE_BRANCH_PREFIX` | `release/` | release 分支名前缀 |
