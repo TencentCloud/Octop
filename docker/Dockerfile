@@ -39,7 +39,7 @@ ARG NPM_REGISTRY=
 # Node heap ceiling for the vite build. Lower this (e.g. 1024) on low-memory
 # build hosts (< 4G RAM) to avoid OOM kills — the value only caps the max,
 # it is not pre-allocated.
-ARG NODE_MAX_OLD_SPACE_SIZE=1536
+ARG NODE_MAX_OLD_SPACE_SIZE=2048
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./

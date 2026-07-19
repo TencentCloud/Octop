@@ -9,6 +9,7 @@ import {
   Search,
   Zap,
 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
   expertMarketApi,
@@ -50,10 +51,7 @@ function marketErrorMessage(err: unknown, fallback: string): string {
   return raw || fallback;
 }
 
-function sceneLabel(
-  scene: string,
-  t: (key: string, options?: string | { defaultValue?: string }) => string,
-): string {
+function sceneLabel(scene: string, t: TFunction): string {
   if (!scene) return t("experts.sceneAll", "全部");
   return t(`experts.scenes.${scene}`, { defaultValue: scene });
 }
