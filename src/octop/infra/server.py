@@ -113,7 +113,10 @@ class OctopServer:
         run_migrations(db)
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
         self._ensure_jwt_secret()
-        self.expert_catalog = ExpertCatalog(default_library_root())
+        self.expert_catalog = ExpertCatalog(
+            default_library_root(),
+            extra_roots=[self.paths.expert_market_dir],
+        )
         self.expert_catalog.refresh()
         self.subagent_catalog = SubagentCatalog(default_package_root())
         self.subagent_catalog.refresh()

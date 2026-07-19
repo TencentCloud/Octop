@@ -71,6 +71,20 @@ export interface ConnectorProbeResult {
   status_code?: number;
 }
 
+export type CustomMcpTransport = "streamable_http" | "stdio";
+
+export interface CustomMcpServerSpec {
+  transport: CustomMcpTransport;
+  url?: string;
+  headers?: Record<string, string>;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export type CustomMcpServers = Record<string, CustomMcpServerSpec>;
+
 export const connectorsApi = {
   catalog: () => request<ConnectorCatalogEntry[]>("/connectors/catalog"),
 
@@ -142,6 +156,30 @@ export const connectorsApi = {
     credentials: Record<string, unknown>;
   }) =>
     request<ConnectorProbeResult>("/connectors/test-credentials", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getCustomMcp: () =>
+    request<{ servers: CustomMcpServers }>("/connectors/custom-mcp"),
+
+  putCustomMcp: (servers: CustomMcpServers) =>
+    request<{ servers: CustomMcpServers }>("/connectors/custom-mcp", {
+      method: "PUT",
+      body: JSON.stringify({ servers }),
+    }),
+
+  patchCustomMcpServer: (name: string, body: { enabled: boolean }) =>
+    request<{ servers: CustomMcpServers }>(
+      `/connectors/custom-mcp/servers/${encodeURIComponent(name)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    ),
+
+  testCustomMcp: (body: { name?: string; server?: CustomMcpServerSpec }) =>
+    request<ConnectorProbeResult>("/connectors/custom-mcp/test", {
       method: "POST",
       body: JSON.stringify(body),
     }),

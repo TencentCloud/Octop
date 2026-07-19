@@ -262,11 +262,18 @@ async def prepare_dashboard_turn(
         names=turn.skills,
     )
     if mcp_servers:
-        await server.app_runtime.agent_registry.prepare_chat_mcp(
+        failed = await server.app_runtime.agent_registry.prepare_chat_mcp(
             agent_id,
             mcp_servers,
             connector_user_id=user.id,
         )
+        if failed:
+            locale = getattr(user, "locale", None) or "zh"
+            raise OctopError.localized(
+                ErrorCode.CONNECTOR_MCP_LOAD_FAILED,
+                locale,
+                servers=", ".join(failed),
+            )
 
     thread_registry = server.app_runtime.gateway.thread_registry
     thread_id, session_key = await resolve_thread_id(

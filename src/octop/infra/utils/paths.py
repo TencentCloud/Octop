@@ -54,6 +54,11 @@ class PathLayout:
         """Global agents directory: ~/.octop/agents/"""
         return self.root / "agents"
 
+    @property
+    def expert_market_dir(self) -> Path:
+        """Cached SkillHub expert templates: ``~/.octop/expert_market/``."""
+        return self.root / "expert_market"
+
     def agent_workspace(self, agent_id: str) -> Path:
         """Global agent workspace: ~/.octop/agents/<agent_id>/"""
         return self.agents_dir / agent_id

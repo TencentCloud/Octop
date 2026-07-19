@@ -299,6 +299,7 @@
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
+    "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {servers}",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
@@ -314,6 +315,7 @@
     "SKILL_IMPORT_UNSUPPORTED_URL": "This skill URL source is not supported.",
     "SKILL_IMPORT_FAILED": "Skill import failed: {reason}",
     "SKILL_ALREADY_EXISTS": "Skill {name} already exists. Enable overwrite to replace it.",
+    "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect."
   },

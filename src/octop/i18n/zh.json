@@ -299,6 +299,7 @@
     "CONNECTOR_KIND_UNSUPPORTED": "不支持的连接器类型。",
     "CONNECTOR_NOT_BOUND": "连接器未绑定到此 Agent。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
+    "CONNECTOR_MCP_LOAD_FAILED": "无法加载 MCP 工具：{servers}",
     "CRON_TRIGGER_INVALID": "无效的定时触发器。",
     "SLASH_UNKNOWN": "未知的斜杠指令。",
     "SLASH_BAD_ARGS": "参数无效。",
@@ -314,6 +315,7 @@
     "SKILL_IMPORT_UNSUPPORTED_URL": "不支持该技能 URL 来源。",
     "SKILL_IMPORT_FAILED": "技能导入失败：{reason}",
     "SKILL_ALREADY_EXISTS": "技能 {name} 已存在，如需覆盖请启用 overwrite。",
+    "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。"
   },
