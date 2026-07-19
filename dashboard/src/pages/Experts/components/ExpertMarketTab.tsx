@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, Drawer, Input, message, Spin, Tag } from "antd";
+import { Button, Drawer, Input, message, Segmented, Spin, Tag } from "antd";
 import {
   CircleCheck,
   Download,
@@ -12,10 +12,17 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   expertMarketApi,
+  type ExpertMarketQuickPrompt,
   type MarketExpert,
 } from "../../../api/modules/expertMarket";
+import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { pickLocale } from "../../../utils/localizedText";
+import { pastelIconBackground } from "../../../utils/pastelIconBackground";
+import {
+  parseWorkflowFrontmatterMeta,
+  splitMarkdownFrontmatter,
+} from "../../../utils/markdown";
 import { iconForName } from "./iconForName";
 import styles from "../index.module.less";
 
@@ -24,6 +31,8 @@ interface ExpertMarketTabProps {
   installedExpertIds: Set<string>;
   onCreated: (agentId: string) => void;
 }
+
+const SCENE_ALL = "";
 
 function descOf(expert: MarketExpert, lang: "zh" | "en"): string {
   return pickLocale(expert.description, lang) || "";
@@ -41,6 +50,22 @@ function marketErrorMessage(err: unknown, fallback: string): string {
   return raw || fallback;
 }
 
+function sceneLabel(
+  scene: string,
+  t: (key: string, options?: string | { defaultValue?: string }) => string,
+): string {
+  if (!scene) return t("experts.sceneAll", "全部");
+  return t(`experts.scenes.${scene}`, { defaultValue: scene });
+}
+
+function promptText(
+  prompt: ExpertMarketQuickPrompt,
+  lang: "zh" | "en",
+  field: "title" | "description",
+): string {
+  return pickLocale(prompt[field], lang) || "";
+}
+
 export default function ExpertMarketTab({
   lang,
   installedExpertIds,
@@ -48,6 +73,8 @@ export default function ExpertMarketTab({
 }: ExpertMarketTabProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<MarketExpert[]>([]);
+  const [scenes, setScenes] = useState<string[]>([]);
+  const [activeScene, setActiveScene] = useState(SCENE_ALL);
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,18 +85,18 @@ export default function ExpertMarketTab({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchMarket = useCallback(
-    async (query = keyword, force = false) => {
+    async (query = keyword, scene = activeScene, force = false) => {
       if (force) setRefreshing(true);
       else setLoading(true);
       try {
-        const rows = await expertMarketApi.listSkillsets(query);
-        setItems(rows ?? []);
+        const resp = await expertMarketApi.list(query, scene);
+        setItems(resp?.items ?? []);
+        if (Array.isArray(resp?.scenes) && resp.scenes.length > 0) {
+          setScenes(resp.scenes);
+        }
         setErrorMessage(null);
       } catch (err) {
-        const msg = marketErrorMessage(
-          err,
-          t("experts.marketBackendMissing"),
-        );
+        const msg = marketErrorMessage(err, t("experts.marketBackendMissing"));
         setErrorMessage(msg);
         message.error(msg);
       } finally {
@@ -77,41 +104,54 @@ export default function ExpertMarketTab({
         setRefreshing(false);
       }
     },
-    [keyword, t],
+    [activeScene, keyword, t],
   );
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      void fetchMarket(keyword);
+      const scene = keyword.trim() ? SCENE_ALL : activeScene;
+      void fetchMarket(keyword, scene);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [keyword, fetchMarket]);
+  }, [keyword, activeScene, fetchMarket]);
 
-  const openDetail = useCallback(async (expert: MarketExpert) => {
-    setSelected(expert);
-    setDetailLoading(true);
-    try {
-      const detail = await expertMarketApi.getSkillset(expert.slug);
-      setSelected(detail);
-    } catch {
-      // The card data is still enough to create; keep the drawer open.
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
+  const openDetail = useCallback(
+    async (expert: MarketExpert) => {
+      setSelected(expert);
+      setDetailLoading(true);
+      try {
+        const detail = await expertMarketApi.get(expert.slug);
+        setSelected(detail);
+      } catch (err) {
+        message.error(
+          apiErrorMessage(err, t("experts.marketDetailLoadFailed"), t),
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [t],
+  );
 
   const createMarketExpert = useCallback(
     async (expert: MarketExpert) => {
-      if (installedExpertIds.has(expert.id) || creatingSlug) return;
+      if (creatingSlug) return;
       setCreatingSlug(expert.slug);
       try {
-        const result = await expertMarketApi.createFromSkillset(expert.slug);
-        message.success(
-          t("experts.marketCreateSuccess", { name: result.name }),
-        );
+        const result = await expertMarketApi.install(expert.slug);
+        const enrichment = result.market?.welcome_enrichment;
+        if (enrichment === "pending") {
+          message.success(
+            t("experts.marketCreateSuccessEnriching", { name: result.name }),
+          );
+        } else {
+          message.success(
+            t("experts.marketCreateSuccess", { name: result.name }),
+          );
+        }
         setSelected(null);
         onCreated(result.agent_id);
       } catch (err) {
@@ -120,13 +160,43 @@ export default function ExpertMarketTab({
         setCreatingSlug(null);
       }
     },
-    [creatingSlug, installedExpertIds, onCreated, t],
+    [creatingSlug, onCreated, t],
   );
 
   const totalText = useMemo(
     () => t("experts.totalMarket", { count: items.length }),
     [items.length, t],
   );
+
+  const sceneOptions = useMemo(
+    () => [
+      { value: SCENE_ALL, label: sceneLabel(SCENE_ALL, t) },
+      ...scenes.map((scene) => ({
+        value: scene,
+        label: sceneLabel(scene, t),
+      })),
+    ],
+    [scenes, t],
+  );
+
+  const workflowDoc = useMemo(() => {
+    const raw =
+      selected?.content?.[lang] ||
+      selected?.content?.zh ||
+      selected?.content?.en ||
+      "";
+    if (!raw.trim()) {
+      return {
+        body: "",
+        meta: parseWorkflowFrontmatterMeta(null),
+      };
+    }
+    const split = splitMarkdownFrontmatter(raw);
+    return {
+      body: split.body,
+      meta: parseWorkflowFrontmatterMeta(split.raw),
+    };
+  }, [lang, selected]);
 
   if (loading && items.length === 0) {
     return (
@@ -140,7 +210,9 @@ export default function ExpertMarketTab({
     <div className={styles.marketContainer}>
       <div className={styles.gridToolbar}>
         <span className={styles.gridCount}>{totalText}</span>
-        <div className={styles.gridToolbarRight}>
+        <div
+          className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
+        >
           <Input
             className={styles.marketSearch}
             prefix={<Search size={14} />}
@@ -152,7 +224,7 @@ export default function ExpertMarketTab({
           <button
             className={styles.toolbarIconBtn}
             disabled={refreshing}
-            onClick={() => void fetchMarket(keyword, true)}
+            onClick={() => void fetchMarket(keyword, activeScene, true)}
             type="button"
           >
             <RefreshCw
@@ -162,6 +234,19 @@ export default function ExpertMarketTab({
           </button>
         </div>
       </div>
+
+      {!keyword && sceneOptions.length > 1 && (
+        <div className={styles.marketSceneTabsWrap}>
+          <Segmented
+            block
+            size="large"
+            value={activeScene}
+            onChange={(v) => setActiveScene(String(v))}
+            options={sceneOptions}
+            className={styles.marketSceneTabs}
+          />
+        </div>
+      )}
 
       {items.length === 0 ? (
         <div className={styles.emptyState}>
@@ -178,7 +263,7 @@ export default function ExpertMarketTab({
             <div className={styles.emptyActions}>
               <button
                 className={styles.emptyAction}
-                onClick={() => void fetchMarket(keyword, true)}
+                onClick={() => void fetchMarket(keyword, activeScene, true)}
                 type="button"
               >
                 {t("common.refresh")}
@@ -209,7 +294,7 @@ export default function ExpertMarketTab({
                     <CircleCheck size={16} />
                   </div>
                 )}
-                <div className={styles.agentCardHeader}>
+                <div className={styles.marketCardHeader}>
                   <div
                     className={styles.agentCardIcon}
                     style={{
@@ -249,23 +334,17 @@ export default function ExpertMarketTab({
                   </span>
                   <Button
                     size="small"
-                    type={installed ? "default" : "primary"}
-                    icon={
-                      installed ? (
-                        <CircleCheck size={14} />
-                      ) : (
-                        <Download size={14} />
-                      )
-                    }
+                    type="primary"
+                    icon={<Download size={14} />}
                     loading={creatingSlug === expert.slug}
-                    disabled={installed || Boolean(creatingSlug)}
+                    disabled={Boolean(creatingSlug)}
                     onClick={(e) => {
                       e.stopPropagation();
                       void createMarketExpert(expert);
                     }}
                   >
                     {installed
-                      ? t("experts.installedBadge")
+                      ? t("experts.createAgainFromMarket")
                       : t("experts.createFromMarket")}
                   </Button>
                 </div>
@@ -289,13 +368,11 @@ export default function ExpertMarketTab({
               block
               icon={<Download size={14} />}
               loading={creatingSlug === selected.slug}
-              disabled={
-                installedExpertIds.has(selected.id) || Boolean(creatingSlug)
-              }
+              disabled={Boolean(creatingSlug)}
               onClick={() => void createMarketExpert(selected)}
             >
               {installedExpertIds.has(selected.id)
-                ? t("experts.installedBadge")
+                ? t("experts.createAgainFromMarket")
                 : t("experts.createFromMarket")}
             </Button>
           ) : null
@@ -303,47 +380,123 @@ export default function ExpertMarketTab({
       >
         {selected && (
           <div className={styles.marketDrawerBody}>
-            <div className={styles.marketTagRow}>
-              <Tag bordered={false}>{t("experts.marketSource")}</Tag>
-              {selected.scene && <Tag bordered={false}>{selected.scene}</Tag>}
-              {selected.sub_scene && (
-                <Tag bordered={false}>{selected.sub_scene}</Tag>
-              )}
-              <Tag bordered={false}>
-                {t("experts.marketSkillCount", {
-                  count:
-                    selected.skill_count ?? selected.skill_slugs?.length ?? 0,
-                })}
-              </Tag>
-            </div>
             <p className={styles.marketDrawerDesc}>
               {descOf(selected, lang) || t("experts.noMarketDescription")}
             </p>
-            {selected.skill_slugs && selected.skill_slugs.length > 0 && (
-              <div>
-                <div className={styles.marketSectionTitle}>
-                  {t("experts.marketIncludedSkills")}
-                </div>
-                <div className={styles.marketSkillList}>
-                  {selected.skill_slugs.map((slug) => (
-                    <Tag key={slug}>{slug}</Tag>
+            <div>
+              <div className={styles.marketSectionTitle}>
+                {t("experts.marketQuickPrompts")}
+              </div>
+              {detailLoading ? (
+                <Spin size="small" />
+              ) : selected.quick_prompts &&
+                selected.quick_prompts.length > 0 ? (
+                <div className={styles.marketQuickPromptList}>
+                  {selected.quick_prompts.map((card, idx) => (
+                    <div
+                      key={`${promptText(card, lang, "title")}-${idx}`}
+                      className={styles.marketQuickPromptCard}
+                    >
+                      <div
+                        className={styles.marketQuickPromptIcon}
+                        style={{
+                          background: pastelIconBackground(card.color, idx),
+                        }}
+                      >
+                        {iconForName(card.icon_name || "zap", 16)}
+                      </div>
+                      <div>
+                        <div className={styles.marketQuickPromptTitle}>
+                          {promptText(card, lang, "title")}
+                        </div>
+                        <div className={styles.marketQuickPromptDesc}>
+                          {promptText(card, lang, "description")}
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className={styles.marketWorkflowPreview}>
+                  {t("experts.marketQuickPromptsEmpty")}
+                </div>
+              )}
+            </div>
             <div>
               <div className={styles.marketSectionTitle}>
                 {t("experts.marketWorkflowPrompt")}
               </div>
-              <div className={styles.marketWorkflowPreview}>
-                {detailLoading ? (
+              {detailLoading ? (
+                <div className={styles.marketWorkflowPreview}>
                   <Spin size="small" />
-                ) : (
-                  selected.content?.[lang] ||
-                  selected.content?.zh ||
-                  t("experts.marketWorkflowEmpty")
-                )}
-              </div>
+                </div>
+              ) : workflowDoc.body ||
+                workflowDoc.meta.version ||
+                workflowDoc.meta.children.length > 0 ? (
+                <div className={styles.marketWorkflowPanel}>
+                  {(workflowDoc.meta.displayName ||
+                    workflowDoc.meta.version ||
+                    workflowDoc.meta.packageType ||
+                    workflowDoc.meta.children.length > 0) && (
+                    <div className={styles.marketWorkflowMeta}>
+                      <div className={styles.marketWorkflowMetaTitle}>
+                        {t("experts.marketWorkflowMeta")}
+                      </div>
+                      <div className={styles.marketTagRow}>
+                        {workflowDoc.meta.displayName && (
+                          <Tag bordered={false}>
+                            {workflowDoc.meta.displayName}
+                          </Tag>
+                        )}
+                        {workflowDoc.meta.version && (
+                          <Tag bordered={false}>
+                            {t("experts.marketWorkflowVersion", {
+                              version: workflowDoc.meta.version,
+                            })}
+                          </Tag>
+                        )}
+                        {workflowDoc.meta.packageType && (
+                          <Tag bordered={false}>
+                            {workflowDoc.meta.packageType}
+                          </Tag>
+                        )}
+                      </div>
+                      {workflowDoc.meta.children.length > 0 && (
+                        <div className={styles.marketWorkflowChildren}>
+                          <div className={styles.marketWorkflowChildrenLabel}>
+                            {t("experts.marketWorkflowChildren")}
+                          </div>
+                          <div className={styles.marketSkillList}>
+                            {workflowDoc.meta.children.map((slug) => (
+                              <Tag key={slug}>{slug}</Tag>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {workflowDoc.body ? (
+                    <div className={styles.marketWorkflowPreview}>
+                      <Markdown
+                        content={workflowDoc.body}
+                        className={styles.marketWorkflowMarkdown}
+                      />
+                    </div>
+                  ) : (
+                    <div className={styles.marketWorkflowPreview}>
+                      <span className={styles.marketWorkflowEmpty}>
+                        {t("experts.marketWorkflowEmpty")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className={styles.marketWorkflowPreview}>
+                  <span className={styles.marketWorkflowEmpty}>
+                    {t("experts.marketWorkflowEmpty")}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}

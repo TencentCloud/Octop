@@ -2,15 +2,16 @@
  * Experts page — redesigned as Agents Management Centre.
  *
  * Tab A: user's experts, shown as a card grid with start/stop/edit/delete.
- * Tab B: featured expert templates, shown as a card grid with create-from-template drawer.
+ * Tab B: built-in expert templates, shown as a card grid with create-from-template drawer.
  * Tab C: SkillHub expert market, shown as remote skillset cards.
  *
  * API (all via request() which already prefixes /api):
  *   GET  /experts                         → ExpertSummary[]
- *   GET  /experts/hub/skillsets           → SkillHub market expert cards
+ *   GET  /experts/hub                     → SkillHub market cards (+ scenes)
+ *   GET  /experts/hub/{slug}              → market detail + quick prompts
+ *   POST /experts/hub/{slug}/install      → create agent from market
  *   GET  /agents                          → via AgentContext
  *   POST /agents/from-expert/{id}         → create agent (via CreateFromExpertDrawer)
- *   POST /agents/from-expert-market/skillsets/{slug}
  *   POST /agents/{id}/start|stop          → lifecycle (via AgentCard)
  *   PATCH /agents/{id}                    → edit (via EditAgentDrawer)
  *   DELETE /agents/{id}                   → delete (via AgentCard)
@@ -93,7 +94,7 @@ export default function ExpertsPage() {
     localStorage.setItem(VIEW_STORAGE_KEY, mode);
   };
 
-  // ── Featured expert library ────────────────────────────────────
+  // ── Built-in expert library ────────────────────────────────────
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
   const [expertLoading, setExpertLoading] = useState(false);
 
@@ -168,13 +169,16 @@ export default function ExpertsPage() {
   // ── Create-from-expert Drawer / Market create success ──────────
   const [createExpert, setCreateExpert] = useState<ExpertSummary | null>(null);
 
-  const handleCreated = useCallback((agentId: string) => {
-    setCreateExpert(null);
-    void refreshAgents({ silent: true });
-    setActiveTab("my");
-    setNewAgentId(agentId);
-    setTimeout(() => setNewAgentId(null), 1000);
-  }, [refreshAgents]);
+  const handleCreated = useCallback(
+    (agentId: string) => {
+      setCreateExpert(null);
+      void refreshAgents({ silent: true });
+      setActiveTab("my");
+      setNewAgentId(agentId);
+      setTimeout(() => setNewAgentId(null), 1000);
+    },
+    [refreshAgents],
+  );
 
   const openExpertLibrary = useCallback(() => {
     setActiveTab("library");

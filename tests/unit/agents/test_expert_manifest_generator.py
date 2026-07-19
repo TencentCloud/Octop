@@ -21,9 +21,10 @@ class FakeLLM:
         )
 
 
-def _generated_payload() -> dict[str, Any]:
+def _generated_payload(*, prompt_count: int = 6) -> dict[str, Any]:
+    titles = ["启动任务", "规划路径", "分析材料", "生成方案", "优化迭代", "答疑澄清"]
     prompts: list[dict[str, Any]] = []
-    for idx, title in enumerate(["启动任务", "规划路径", "分析材料", "生成方案"], start=1):
+    for idx, title in enumerate(titles[:prompt_count], start=1):
         prompts.append(
             {
                 "title": {"zh": title, "en": f"Card {idx}"},
@@ -49,8 +50,8 @@ def _generated_payload() -> dict[str, Any]:
             "en": "Organizes tasks and deliverables through the test workflow.",
         },
         "welcome_message": {
-            "zh": "我是测试专家，可以按工作流推进。",
-            "en": "I am the test expert and can follow the workflow.",
+            "zh": "把测试任务按工作流推进到可交付结果",
+            "en": "Move test tasks through the workflow to a ready deliverable",
         },
         "quick_prompts": prompts,
     }
@@ -113,8 +114,8 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
     assert (
         data["description"]["en"] == "Organizes tasks and deliverables through the test workflow."
     )
-    assert data["welcome_message"]["zh"] == "我是测试专家，可以按工作流推进。"
-    assert len(data["quick_prompts"]) == 4
+    assert data["welcome_message"]["zh"] == "把测试任务按工作流推进到可交付结果"
+    assert len(data["quick_prompts"]) == 6
     assert data["quick_prompts"][0]["title"]["en"] == "Card 1"
     assert data["skillhub"]["manifest_generated"]["model"] == "p/model"
     assert data["skillhub"]["welcome_generated"]["model"] == "p/model"
@@ -159,7 +160,7 @@ def test_normalize_manifest_assets_roleizes_fallback_label() -> None:
     assert assets["description"] == {"zh": "自动生成测试方案", "en": "Generate test plans"}
 
 
-def test_normalize_manifest_assets_keeps_at_most_nine_quick_prompts() -> None:
+def test_normalize_manifest_assets_keeps_at_most_six_quick_prompts() -> None:
     from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
 
     payload = _generated_payload()
@@ -180,5 +181,114 @@ def test_normalize_manifest_assets_keeps_at_most_nine_quick_prompts() -> None:
         fallback_name_en="Expert",
     )
 
-    assert len(assets["quick_prompts"]) == 9
-    assert assets["quick_prompts"][-1]["title"]["zh"] == "卡片 9"
+    assert len(assets["quick_prompts"]) == 6
+    assert assets["quick_prompts"][-1]["title"]["zh"] == "卡片 6"
+
+
+def test_normalize_manifest_assets_shortens_long_welcome() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["welcome_message"] = {
+        "zh": "把灵感扩展成可连载大纲。也可以继续帮你修订人物小传。",
+        "en": ("Expand ideas into serialization-ready outlines. We can continue from any stage."),
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="专家",
+        fallback_name_en="Expert",
+    )
+
+    assert assets["welcome_message"]["zh"] == "把灵感扩展成可连载大纲"
+    assert assets["welcome_message"]["en"] == ("Expand ideas into serialization-ready outlines")
+    assert "…" not in assets["welcome_message"]["zh"]
+    assert "…" not in assets["welcome_message"]["en"]
+
+
+def test_normalize_manifest_assets_avoids_ellipsis_on_oversized_welcome() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["welcome_message"] = {
+        "zh": (
+            "覆盖塔罗占卜从「加密随机抽牌引擎」到「韦特经典体系 / 治愈反思派 / "
+            "13 牌阵丰富度」再到深度解读与疗愈建议的完整工作流"
+        ),
+        "en": (
+            "Cover tarot from a crypto-random draw engine through Rider-Waite classics, "
+            "healing reflection schools, and rich 13-card spreads"
+        ),
+    }
+    payload["description"] = {
+        "zh": "塔罗占卜与牌阵解读",
+        "en": "Tarot draws and spread interpretation",
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="塔罗占卜专家",
+        fallback_name_en="Tarot Expert",
+    )
+
+    assert "…" not in assets["welcome_message"]["zh"]
+    assert "再到" not in assets["welcome_message"]["zh"]
+    assert assets["welcome_message"]["zh"] == "塔罗占卜与牌阵解读"
+    assert assets["welcome_message"]["en"] == "Tarot draws and spread interpretation"
+
+
+def test_normalize_manifest_assets_rejects_chinese_in_english_welcome() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["welcome_message"] = {
+        "zh": "把灵感扩展成可连载大纲",
+        "en": "把灵感扩展成可连载大纲",
+    }
+    payload["description"] = {
+        "zh": "长篇大纲设计",
+        "en": "Turn story ideas into durable long-form outlines",
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="长篇大纲设计专家",
+        fallback_name_en="Long-form Outline Expert",
+    )
+
+    assert assets["welcome_message"]["zh"] == "把灵感扩展成可连载大纲"
+    assert assets["welcome_message"]["en"] == ("Turn story ideas into durable long-form outlines")
+
+
+def test_normalize_manifest_assets_uses_pastel_palette_for_quick_prompt_colors() -> None:
+    from octop.infra.agents.experts.manifest_generator import (
+        _COLOR_FALLBACKS,
+        normalize_manifest_assets,
+    )
+
+    payload = _generated_payload(prompt_count=2)
+    payload["quick_prompts"][0]["color"] = "#1d4ed8"
+    payload["quick_prompts"][1]["color"] = "#e8f4ff"
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="专家",
+        fallback_name_en="Expert",
+    )
+
+    assert assets["quick_prompts"][0]["color"] == _COLOR_FALLBACKS[0]
+    assert assets["quick_prompts"][1]["color"] == _COLOR_FALLBACKS[1]
+
+
+def test_normalize_manifest_assets_pads_to_six_quick_prompts() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    assets = normalize_manifest_assets(
+        _generated_payload(prompt_count=3),
+        fallback_name_zh="专家",
+        fallback_name_en="Expert",
+    )
+
+    assert len(assets["quick_prompts"]) == 6
+    assert assets["quick_prompts"][0]["title"]["zh"] == "启动任务"
+    assert assets["quick_prompts"][3]["title"]["zh"] == "继续推进 4"

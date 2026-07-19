@@ -433,6 +433,19 @@ def build_mcp_server_configs_for_user(
                 )
         except Exception:
             logger.exception("failed to build MCP spec for instance %s", inst.instance_id)
+
+    custom_configs = svc.custom_harness_configs(user_id)
+    for name, spec in custom_configs.items():
+        # Defer loading: placeholder without ``transport`` so harness skips
+        # aload at agent start. Tools are injected via prepare_chat_mcp + cache.
+        configs[name] = {}
+        if log:
+            logger.info(
+                "  defer custom MCP %s transport=%s (load on chat)",
+                name,
+                spec.get("transport"),
+            )
+
     if log:
         logger.info(
             "build_mcp_server_configs agent=%s result: %s",

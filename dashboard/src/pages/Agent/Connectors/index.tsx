@@ -21,6 +21,7 @@ import {
   type ConnectorInstanceDetail,
 } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
+import { CustomMcpTab } from "./CustomMcpTab";
 import {
   INLINE_CREDENTIAL_GUIDE_KINDS,
   HIDE_INLINE_FIELD_GUIDE_KINDS,
@@ -933,6 +934,7 @@ function ConnectorConfigDrawer({
 export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"builtin" | "custom">("builtin");
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
@@ -1012,7 +1014,30 @@ export default function ConnectorsPage() {
       subtitle={t("pageShell.connectors.subtitle")}
     >
       <div className={styles.connectorsPage}>
-        {loading ? (
+        <div className={styles.tabBar}>
+          <button
+            type="button"
+            className={`${styles.tab}${
+              activeTab === "builtin" ? ` ${styles.active}` : ""
+            }`}
+            onClick={() => setActiveTab("builtin")}
+          >
+            {t("connectors.tabBuiltin", "内置连接器")}
+          </button>
+          <button
+            type="button"
+            className={`${styles.tab}${
+              activeTab === "custom" ? ` ${styles.active}` : ""
+            }`}
+            onClick={() => setActiveTab("custom")}
+          >
+            {t("connectors.tabCustom", "自定义连接器")}
+          </button>
+        </div>
+
+        {activeTab === "custom" ? (
+          <CustomMcpTab />
+        ) : loading ? (
           <div className={styles.loadingState}>
             <Spin />
           </div>

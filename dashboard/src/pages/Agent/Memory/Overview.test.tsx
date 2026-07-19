@@ -43,6 +43,10 @@ vi.mock("../../../api/modules/memoryDashboard", () => ({
     a.deprecated_at != null,
 }));
 
+vi.mock("./MigrateMemory", () => ({
+  default: () => null,
+}));
+
 import { memoryDashboardApi } from "../../../api/modules/memoryDashboard";
 import Overview from "./Overview";
 
@@ -74,17 +78,16 @@ describe("<Overview />", () => {
       expect(screen.getByText("概览")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/条原始事件/)).toBeInTheDocument();
+    expect(screen.getByText(/条记忆/)).toBeInTheDocument();
     expect(screen.getByText("记忆类型分布")).toBeInTheDocument();
-    expect(screen.getByText("近 7 天新增趋势")).toBeInTheDocument();
-    // Closing block: memory composition by confidence, importance, and status.
+    expect(screen.getByText("近 14 天新增趋势")).toBeInTheDocument();
     expect(screen.getByText("记忆构成")).toBeInTheDocument();
     expect(screen.getByText("置信度")).toBeInTheDocument();
     expect(screen.getByText("重要度")).toBeInTheDocument();
 
     expect(api.statsCounts).toHaveBeenCalledWith("ZYWZTD");
     expect(api.statsAtomKinds).toHaveBeenCalledWith("ZYWZTD");
-    expect(api.statsGrowth).toHaveBeenCalledWith("ZYWZTD", 7);
+    expect(api.statsGrowth).toHaveBeenCalledWith("ZYWZTD", 14);
   });
 
   it("renders KPI strip without Journal content", async () => {
@@ -110,9 +113,10 @@ describe("<Overview />", () => {
 
     expect(screen.getAllByText("18").length).toBeGreaterThan(0);
     expect(screen.getAllByText("34").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("891").length).toBeGreaterThan(0);
-    expect(screen.getByText("待处理")).toBeInTheDocument();
-    expect(screen.getByText("待刷新主题")).toBeInTheDocument();
+    expect(screen.getByText("待沉淀")).toBeInTheDocument();
+    expect(screen.getByText("记忆条目")).toBeInTheDocument();
+    expect(screen.getByText("关键人事物")).toBeInTheDocument();
+    expect(screen.queryByText("891")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Promoted via dashboard/),
     ).not.toBeInTheDocument();
@@ -130,25 +134,28 @@ describe("<Overview />", () => {
       expect(screen.getByText("概览")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText(/条原始事件/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/条记忆/)).not.toBeInTheDocument();
     expect(
-      screen.getAllByText(/暂无记忆类型数据|近 7 天暂无新增/).length,
+      screen.getAllByText(/暂无记忆类型数据|近 14 天暂无新增|暂无记忆构成数据/)
+        .length,
     ).toBeGreaterThanOrEqual(2);
   });
 
   it("renders subtitle when stats_counts returns custom values", async () => {
     api.statsCounts.mockResolvedValue(
-      statsCountsFixture({ atoms: 147, raw_events: 234 }),
+      statsCountsFixture({ atoms: 147, entities: 22, raw_events: 234 }),
     );
     api.statsAtomKinds.mockResolvedValue({ series: [] });
     api.statsGrowth.mockResolvedValue({ series: [] });
+    api.listAtoms.mockResolvedValue(listAtomsResp([]));
 
     render(<Overview agentId="ZYWZTD" />);
 
     await waitFor(() => {
       expect(screen.getAllByText("147").length).toBeGreaterThan(0);
     });
-    expect(screen.getAllByText("234").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("22").length).toBeGreaterThan(0);
+    expect(screen.queryByText("234")).not.toBeInTheDocument();
   });
 
   it("does not crash when agentId is empty (no fan-out)", () => {

@@ -23,6 +23,11 @@ from octop.infra.connectors.catalog import (
     get_catalog_entry,
     list_catalog,
 )
+from octop.infra.connectors.custom_mcp import (
+    CUSTOM_MCP_KIND,
+    is_custom_mcp_kind,
+    parse_synthetic_instance_id,
+)
 from octop.infra.connectors.oauth import (
     auth_info_for_kind,
     delete_oauth_ctx,
@@ -33,7 +38,11 @@ from octop.infra.connectors.oauth import (
     save_oauth_ctx,
     start_oauth,
 )
-from octop.infra.connectors.probe import prepare_probe_credentials, probe_connector
+from octop.infra.connectors.probe import (
+    prepare_probe_credentials,
+    probe_connector,
+    probe_custom_mcp_server,
+)
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_ulid
@@ -66,6 +75,21 @@ class ExchangeAuthCodeBody(BaseModel):
 class TestCredentialsBody(BaseModel):
     kind: str
     credentials: dict[str, Any] = Field(default_factory=dict)
+
+
+class CustomMcpPutBody(BaseModel):
+    servers: dict[str, Any] = Field(default_factory=dict)
+
+
+class CustomMcpServerPatchBody(BaseModel):
+    enabled: bool
+
+
+class CustomMcpTestBody(BaseModel):
+    """Probe one server by name (saved) or by inline spec."""
+
+    name: str | None = None
+    server: dict[str, Any] | None = None
 
 
 def _connector_service(server: Any) -> ConnectorService:
@@ -221,9 +245,91 @@ async def list_instances(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """List the current user's connected third-party accounts."""
-    rows = _connector_service(server).list_user_instances(user.id)
-    return [_instance_to_dict(inst) for inst in rows]
+    """List the current user's connected accounts (custom MCP expanded per server)."""
+    return _connector_service(server).list_instances_for_api(user.id)
+
+
+@router.get("/connectors/custom-mcp", summary="Get custom MCP servers")
+async def get_custom_mcp(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Return the user's custom MCP server map (langchain-mcp-adapters shape)."""
+    servers = _connector_service(server).get_custom_servers(user.id)
+    return {"servers": servers}
+
+
+@router.put("/connectors/custom-mcp", summary="Save custom MCP servers")
+async def put_custom_mcp(
+    body: CustomMcpPutBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Replace the user's custom MCP servers document and reload agents."""
+    svc = _connector_service(server)
+    try:
+        servers = svc.put_custom_servers(user.id, body.servers)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+    server.services.audit_repo.write(
+        actor=user.username,
+        action="connector.custom_mcp.save",
+        target=CUSTOM_MCP_KIND,
+        payload=str(len(servers)),
+    )
+    _schedule_connector_reload(server, user.id)
+    return {"servers": servers}
+
+
+@router.patch(
+    "/connectors/custom-mcp/servers/{server_name}",
+    summary="Enable or disable one custom MCP server",
+)
+async def patch_custom_mcp_server(
+    server_name: str,
+    body: CustomMcpServerPatchBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Toggle ``enabled`` for a single custom MCP server without rewriting others."""
+    svc = _connector_service(server)
+    try:
+        servers = svc.patch_custom_server_enabled(user.id, server_name, enabled=body.enabled)
+    except KeyError as exc:
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        ) from exc
+    except ValueError as exc:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+    _schedule_connector_reload(server, user.id)
+    return {"servers": servers}
+
+
+@router.post("/connectors/custom-mcp/test", summary="Probe a custom MCP server")
+async def test_custom_mcp(
+    body: CustomMcpTestBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Probe connectivity for one custom MCP server (saved name or inline spec)."""
+    svc = _connector_service(server)
+    spec: dict[str, Any] | None = None
+    if body.server is not None:
+        spec = dict(body.server)
+    elif body.name:
+        saved = svc.get_custom_servers(user.id)
+        raw = saved.get(body.name)
+        if not isinstance(raw, dict):
+            raise OctopError(
+                ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {body.name!r} not found"
+            )
+        spec = dict(raw)
+    else:
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            "provide name or server spec to probe",
+        )
+    return await probe_custom_mcp_server(spec)
 
 
 @router.get("/connector-instances/{instance_id}", summary="Get connector instance")
@@ -266,6 +372,11 @@ async def create_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Connect a third-party account. Replaces any existing instance of the same kind."""
+    if is_custom_mcp_kind(body.kind):
+        raise OctopError(
+            ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
+            "use PUT /connectors/custom-mcp for custom MCP servers",
+        )
     entry = get_catalog_entry(body.kind)
     if entry is None:
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, f"unknown kind {body.kind!r}")
@@ -321,12 +432,41 @@ async def patch_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Enable or disable a connector instance without deleting credentials."""
+    synthetic_name = parse_synthetic_instance_id(instance_id)
+    if synthetic_name is not None:
+        if body.status is None:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "status is required")
+        status = body.status.strip()
+        if status not in ("active", "disabled"):
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "status must be active or disabled"
+            )
+        svc = _connector_service(server)
+        try:
+            svc.patch_custom_server_enabled(user.id, synthetic_name, enabled=(status == "active"))
+        except KeyError as exc:
+            raise OctopError(
+                ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found"
+            ) from exc
+        except ValueError as exc:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+        _schedule_connector_reload(server, user.id)
+        for item in svc.list_instances_for_api(user.id):
+            if item["instance_id"] == instance_id:
+                return item
+        raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
+
     repo = server.services.repos.connector_repo
     inst = repo.get(instance_id)
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     if inst.user_id != user.id:
         raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+    if is_custom_mcp_kind(inst.kind):
+        raise OctopError(
+            ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
+            "use PATCH /connectors/custom-mcp/servers/{name} for custom MCP servers",
+        )
     if body.status is not None:
         status = body.status.strip()
         if status not in ("active", "disabled"):
@@ -347,6 +487,26 @@ async def delete_instance(
     server: Any = Depends(get_server),
 ) -> None:
     """Disconnect and delete stored credentials for a connector instance."""
+    synthetic_name = parse_synthetic_instance_id(instance_id)
+    if synthetic_name is not None:
+        svc = _connector_service(server)
+        servers = dict(svc.get_custom_servers(user.id))
+        if synthetic_name not in servers:
+            raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
+        del servers[synthetic_name]
+        try:
+            svc.put_custom_servers(user.id, servers)
+        except ValueError as exc:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+        server.services.audit_repo.write(
+            actor=user.username,
+            action="connector.custom_mcp.delete_server",
+            target=synthetic_name,
+            payload=CUSTOM_MCP_KIND,
+        )
+        _schedule_connector_reload(server, user.id)
+        return
+
     repo = server.services.repos.connector_repo
     inst = repo.get(instance_id)
     if inst is None:
@@ -370,6 +530,15 @@ async def test_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Probe the connector with stored credentials and return success or error details."""
+    synthetic_name = parse_synthetic_instance_id(instance_id)
+    if synthetic_name is not None:
+        svc = _connector_service(server)
+        saved = svc.get_custom_servers(user.id)
+        raw = saved.get(synthetic_name)
+        if not isinstance(raw, dict):
+            raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
+        return await probe_custom_mcp_server(dict(raw))
+
     repo = server.services.repos.connector_repo
     inst = repo.get(instance_id)
     if inst is None:

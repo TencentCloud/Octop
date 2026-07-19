@@ -49,7 +49,10 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       .then((data) => {
         if (cancelled) return;
         setQuickCards(mapQuickPrompts(data.quick_prompts, locale));
-        setWelcomeSuffix(pickLocale(data.welcome_message, locale) || null);
+        setWelcomeSuffix(
+          pickLocale(data.welcome_message, locale, { crossFallback: false }) ||
+            null,
+        );
       })
       .catch(() => {
         if (!cancelled) {

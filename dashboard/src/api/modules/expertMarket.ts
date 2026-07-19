@@ -30,6 +30,11 @@ export interface MarketExpert {
   quick_prompts?: ExpertMarketQuickPrompt[];
 }
 
+export interface ExpertHubListResponse {
+  items: MarketExpert[];
+  scenes: string[];
+}
+
 export interface CreateMarketExpertResponse {
   id: number | string;
   agent_id: string;
@@ -45,28 +50,42 @@ export interface CreateMarketExpertResponse {
     source: string;
     kind: string;
     slug: string;
-    quick_prompts_generated: boolean;
+    welcome_enrichment: "pending" | "skipped" | "succeeded" | "failed" | string;
   };
   bootstrap_pending: boolean;
 }
 
+export interface CreateMarketExpertBody {
+  name?: string;
+  description?: string;
+  providers?: string[];
+  default_model?: string;
+  backend?: Record<string, unknown>;
+}
+
+function hubListPath(query: string, scene: string): string {
+  const params = new URLSearchParams();
+  const q = query.trim();
+  const s = scene.trim();
+  if (q) params.set("q", q);
+  if (s) params.set("scene", s);
+  const qs = params.toString();
+  return qs ? `/experts/hub?${qs}` : "/experts/hub";
+}
+
 export const expertMarketApi = {
-  listSkillsets: (query: string) =>
-    request<MarketExpert[]>(
-      `/experts/hub/skillsets?q=${encodeURIComponent(query.trim())}`,
-    ),
+  list: (query: string, scene = "") =>
+    request<ExpertHubListResponse>(hubListPath(query, scene)),
 
-  getSkillset: (slug: string) =>
-    request<MarketExpert>(
-      `/experts/hub/skillsets/${encodeURIComponent(slug)}`,
-    ),
+  get: (slug: string) =>
+    request<MarketExpert>(`/experts/hub/${encodeURIComponent(slug)}`),
 
-  createFromSkillset: (slug: string) =>
+  install: (slug: string, body: CreateMarketExpertBody = {}) =>
     request<CreateMarketExpertResponse>(
-      `/agents/from-expert-market/skillsets/${encodeURIComponent(slug)}`,
+      `/experts/hub/${encodeURIComponent(slug)}/install`,
       {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       },
     ),
 };

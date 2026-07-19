@@ -11,6 +11,8 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from octop.infra.utils.llm_text import ainvoke_text
+
 logger = logging.getLogger(__name__)
 
 _SKILL_PATH = Path(__file__).with_name("manifest_generator_skill.md")
@@ -19,11 +21,13 @@ _MAX_WORKFLOW_CHARS = 6000
 _MAX_SKILL_EXCERPT_CHARS = 500
 _MAX_LABEL_CHARS = 64
 _MAX_EXPERT_DESCRIPTION_CHARS = 220
-_MAX_PROMPT_CHARS = 1200
-_MAX_TITLE_CHARS = 48
-_MAX_DESCRIPTION_CHARS = 120
-_MAX_WELCOME_CHARS = 220
-_MAX_QUICK_PROMPTS = 9
+_MAX_PROMPT_CHARS = 180
+_MAX_TITLE_CHARS = 18
+_MAX_DESCRIPTION_CHARS = 36
+_MAX_WELCOME_CHARS_ZH = 40
+_MAX_WELCOME_CHARS_EN = 90
+_MAX_QUICK_PROMPTS = 6
+_MIN_QUICK_PROMPTS = 6
 
 _ALLOWED_ICONS = {
     "zap",
@@ -46,8 +50,16 @@ _ALLOWED_ICONS = {
     "sparkles",
 }
 _ICON_FALLBACKS = ["zap", "list-todo", "file-text", "presentation"]
-_COLOR_FALLBACKS = ["#e8f4ff", "#dcfce7", "#fef3c7", "#fce7f3"]
-_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_COLOR_FALLBACKS = (
+    "#e8f4ff",
+    "#dcfce7",
+    "#fef3c7",
+    "#fce7f3",
+    "#f1f5f9",
+    "#eef2ff",
+    "#ecfeff",
+    "#fff1f2",
+)
 
 
 class ExpertManifestGenerationError(RuntimeError):
@@ -134,9 +146,11 @@ async def generate_skillhub_manifest_assets(
         "skills": skill_context,
         "target": {
             "locale_fields": ["zh", "en"],
-            "quick_prompt_min": 6,
+            "welcome_max_chars_zh": _MAX_WELCOME_CHARS_ZH,
+            "welcome_max_chars_en": _MAX_WELCOME_CHARS_EN,
+            "quick_prompt_min": _MIN_QUICK_PROMPTS,
             "quick_prompt_max": _MAX_QUICK_PROMPTS,
-            "output": "label + description + welcome_message + quick_prompts for Octop expert manifest",
+            "output": "label + description + one-line welcome_message + quick_prompts for Octop expert manifest",
         },
     }
     messages = [
@@ -144,11 +158,8 @@ async def generate_skillhub_manifest_assets(
         HumanMessage(content=json.dumps(context, ensure_ascii=False, indent=2)),
     ]
     generator_llm = _bind_json_response(llm)
-    result = await asyncio.wait_for(
-        generator_llm.ainvoke(messages),
-        timeout=timeout,
-    )
-    raw = parse_model_json(_message_text(result))
+    text = await ainvoke_text(generator_llm, messages, timeout=timeout)
+    raw = parse_model_json(text)
     return normalize_manifest_assets(
         raw,
         fallback_name_zh=fallback_label_zh,
@@ -169,6 +180,30 @@ def _bind_json_response(llm: Any) -> Any:
         return llm
 
 
+def merge_manifest_assets(
+    manifest: dict[str, Any],
+    assets: dict[str, Any],
+    *,
+    model_ref: str,
+) -> dict[str, Any]:
+    """Return a copy of *manifest* with generated welcome metadata merged in."""
+    out = dict(manifest)
+    out["label"] = assets["label"]
+    out["description"] = assets["description"]
+    out["welcome_message"] = assets["welcome_message"]
+    out["quick_prompts"] = assets["quick_prompts"]
+    raw_skillhub = out.get("skillhub")
+    skillhub = dict(raw_skillhub) if isinstance(raw_skillhub, dict) else {}
+    generated = {
+        "by": "expert-manifest-generator",
+        "model": model_ref,
+    }
+    skillhub["manifest_generated"] = generated
+    skillhub["welcome_generated"] = generated
+    out["skillhub"] = skillhub
+    return out
+
+
 def apply_manifest_assets(
     manifest_path: Path,
     assets: dict[str, Any],
@@ -179,24 +214,55 @@ def apply_manifest_assets(
     manifest = _read_manifest(manifest_path)
     if manifest is None:
         raise ExpertManifestGenerationError("manifest is not valid JSON")
-    manifest["label"] = assets["label"]
-    manifest["description"] = assets["description"]
-    manifest["welcome_message"] = assets["welcome_message"]
-    manifest["quick_prompts"] = assets["quick_prompts"]
-    skillhub = manifest.get("skillhub")
-    if not isinstance(skillhub, dict):
-        skillhub = {}
-    generated = {
-        "by": "expert-manifest-generator",
-        "model": model_ref,
-    }
-    skillhub["manifest_generated"] = generated
-    skillhub["welcome_generated"] = generated
-    manifest["skillhub"] = skillhub
+    merged = merge_manifest_assets(manifest, assets, model_ref=model_ref)
     manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+async def build_skillhub_agent_manifest_bytes(
+    *,
+    llm: Any,
+    item: Any,
+    expert_dir: Path,
+    model_ref: str,
+    timeout: float = 45.0,
+) -> bytes:
+    """Generate welcome metadata from the cached template; return manifest bytes.
+
+    Reads the shared SkillHub cache for workflow context only — does not mutate it.
+    Callers should upload the returned bytes to the agent workspace.
+    """
+    manifest_path = expert_dir / _MANIFEST_FILENAME
+    manifest = await asyncio.to_thread(_read_manifest, manifest_path)
+    if not manifest:
+        raise ExpertManifestGenerationError("cached expert manifest is missing")
+
+    skill_slugs = _manifest_skill_slugs(manifest)
+    skillset_prompt = await asyncio.to_thread(
+        _read_text,
+        expert_dir / "skills" / item.slug / "SKILL.md",
+    )
+    if not skillset_prompt.strip():
+        raise ExpertManifestGenerationError("cached skillset workflow prompt is missing")
+    skill_context = await asyncio.to_thread(
+        collect_skill_context,
+        expert_dir,
+        skill_slugs=skill_slugs,
+        main_skill_slug=item.slug,
+    )
+
+    assets = await generate_skillhub_manifest_assets(
+        llm=llm,
+        item=item,
+        skill_slugs=skill_slugs,
+        skillset_prompt=skillset_prompt,
+        skill_context=skill_context,
+        timeout=timeout,
+    )
+    merged = merge_manifest_assets(manifest, assets, model_ref=model_ref)
+    return (json.dumps(merged, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def collect_skill_context(
@@ -274,14 +340,26 @@ def normalize_manifest_assets(
         max_chars=_MAX_EXPERT_DESCRIPTION_CHARS,
     )
     welcome = payload.get("welcome_message")
-    welcome_zh, welcome_en = _localized_pair(
-        welcome,
-        fallback_zh=f"我是「{label_zh}」。告诉我你的目标和材料，我会按专家工作流推进。",
-        fallback_en=(
-            f"I am the {label_en}. Share your goal and materials, "
-            "and I will follow the expert workflow."
-        ),
-        max_chars=_MAX_WELCOME_CHARS,
+    if isinstance(welcome, dict):
+        welcome_zh_raw = str(welcome.get("zh") or welcome.get("cn") or "")
+        welcome_en_raw = str(welcome.get("en") or "")
+    elif isinstance(welcome, str):
+        welcome_zh_raw, welcome_en_raw = welcome, ""
+    else:
+        welcome_zh_raw, welcome_en_raw = "", ""
+    welcome_zh_fallback = _capability_welcome_fallback_zh(expert_description_zh)
+    welcome_en_fallback = _capability_welcome_fallback_en(expert_description_en)
+    welcome_zh = _clip_welcome(
+        welcome_zh_raw.strip(),
+        _MAX_WELCOME_CHARS_ZH,
+        fallback=welcome_zh_fallback,
+        require_chinese=True,
+    )
+    welcome_en = _clip_welcome(
+        welcome_en_raw.strip(),
+        _MAX_WELCOME_CHARS_EN,
+        fallback=welcome_en_fallback,
+        require_chinese=False,
     )
 
     raw_prompts = payload.get("quick_prompts")
@@ -326,11 +404,34 @@ def normalize_manifest_assets(
 
     if len(prompts) < 2:
         raise ExpertManifestGenerationError("model returned too few usable quick prompts")
+    while len(prompts) < _MIN_QUICK_PROMPTS:
+        idx = len(prompts)
+        prompts.append(
+            {
+                "title": {
+                    "zh": _clip(f"继续推进 {idx + 1}", _MAX_TITLE_CHARS),
+                    "en": _clip(f"Continue {idx + 1}", _MAX_TITLE_CHARS),
+                },
+                "description": {
+                    "zh": "补充目标与材料，继续专家工作流",
+                    "en": "Add context and continue the workflow",
+                },
+                "prompt": {
+                    "zh": f"请作为「{label_zh}」，帮我继续推进下一步。\n我的情况/目标/材料是：\n",
+                    "en": (
+                        f"As the {label_en}, help me continue with the next step.\n"
+                        "My context, goals, or materials are:\n"
+                    ),
+                },
+                "color": _normalize_color(None, idx),
+                "icon_name": _normalize_icon(None, idx),
+            },
+        )
     return {
         "label": {"zh": label_zh, "en": label_en},
         "description": {"zh": expert_description_zh, "en": expert_description_en},
         "welcome_message": {"zh": welcome_zh, "en": welcome_en},
-        "quick_prompts": prompts,
+        "quick_prompts": prompts[:_MAX_QUICK_PROMPTS],
     }
 
 
@@ -431,8 +532,11 @@ def _localized_pair(
 
 
 def _normalize_color(value: Any, idx: int) -> str:
-    if isinstance(value, str) and _HEX_COLOR_RE.fullmatch(value.strip()):
-        return value.strip()
+    """Assign quick-card chip colors from the built-in pastel palette.
+
+    Model-provided colors are ignored: LLMs often emit saturated brand colors that
+    do not match bundled expert chips even after lightening.
+    """
     return _COLOR_FALLBACKS[idx % len(_COLOR_FALLBACKS)]
 
 
@@ -443,27 +547,71 @@ def _normalize_icon(value: Any, idx: int) -> str:
     return _ICON_FALLBACKS[idx % len(_ICON_FALLBACKS)]
 
 
-def _message_text(result: Any) -> str:
-    content = getattr(result, "content", result)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict):
-                text = block.get("text") or block.get("content")
-                if text:
-                    parts.append(str(text))
-        return "".join(parts)
-    return str(content or "")
-
-
 def _clip(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "…"
+
+
+def _clip_welcome(
+    text: str,
+    max_chars: int,
+    *,
+    fallback: str,
+    require_chinese: bool | None = None,
+) -> str:
+    """Return one complete welcome line; never mid-sentence ellipsis."""
+    cleaned = " ".join((text or "").split())
+    if require_chinese is True and cleaned and not _looks_chinese(cleaned):
+        cleaned = ""
+    if require_chinese is False and cleaned and _looks_chinese(cleaned):
+        cleaned = ""
+    if cleaned:
+        for sep in ("。", "！", "？", ".", "!", "?"):
+            idx = cleaned.find(sep)
+            if idx >= 6:
+                cleaned = cleaned[:idx].strip()
+                break
+        if 6 <= len(cleaned) <= max_chars:
+            return cleaned
+    fb = " ".join((fallback or "").split())
+    if not fb:
+        return ""
+    if len(fb) <= max_chars:
+        return fb
+    # Fallbacks are authored short; keep a complete prefix without ellipsis marks.
+    for sep in ("，", ",", "、", " "):
+        idx = fb.rfind(sep, 0, max_chars + 1)
+        if idx >= 6:
+            return fb[:idx].strip()
+    return fb[:max_chars].rstrip()
+
+
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+def _looks_chinese(text: str) -> bool:
+    return bool(_CJK_RE.search(text))
+
+
+def _capability_welcome_fallback_zh(description_zh: str) -> str:
+    line = _clip_welcome(
+        description_zh,
+        _MAX_WELCOME_CHARS_ZH,
+        fallback="提供专业、可落地的专家工作流支持",
+        require_chinese=True,
+    )
+    return line or "提供专业、可落地的专家工作流支持"
+
+
+def _capability_welcome_fallback_en(description_en: str) -> str:
+    line = _clip_welcome(
+        description_en,
+        _MAX_WELCOME_CHARS_EN,
+        fallback="Practical expert workflow support for your goals",
+        require_chinese=False,
+    )
+    return line or "Practical expert workflow support for your goals"
 
 
 def _unique(values: list[str]) -> list[str]:

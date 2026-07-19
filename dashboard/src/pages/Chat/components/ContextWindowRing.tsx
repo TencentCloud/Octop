@@ -6,6 +6,7 @@ import {
   type ContextUsageBreakdown,
   type ContextUsageSegmentKey,
 } from "../../../api/modules/octopThreads";
+import { isPendingThread } from "../hooks/useSessions";
 import styles from "../index.module.less";
 
 const DEFAULT_MAX = 128_000;
@@ -81,7 +82,7 @@ export default function ContextWindowRing({
 
   const loadBreakdown = useCallback(
     async (opts?: { silent?: boolean; force?: boolean }) => {
-      if (!agentId || !threadId) return;
+      if (!agentId || !threadId || isPendingThread(threadId)) return;
       const cached = cacheRef.current;
       if (
         !opts?.force &&
@@ -120,7 +121,7 @@ export default function ContextWindowRing({
 
   // Prefetch when the thread / cap / filters change — not when stream hint ticks.
   useEffect(() => {
-    if (!agentId || !threadId) {
+    if (!agentId || !threadId || isPendingThread(threadId)) {
       setBreakdown(null);
       cacheRef.current = null;
       lastHintRefreshRef.current = null;
@@ -135,7 +136,9 @@ export default function ContextWindowRing({
   // After a turn finishes, ``usedTokens`` settles on last_input_tokens —
   // soft-refresh once per distinct hint (debounced) for a fresh harness stamp.
   useEffect(() => {
-    if (!agentId || !threadId || hintUsed <= 0) return;
+    if (!agentId || !threadId || isPendingThread(threadId) || hintUsed <= 0) {
+      return;
+    }
     if (lastHintRefreshRef.current === hintUsed) return;
     const timer = window.setTimeout(() => {
       lastHintRefreshRef.current = hintUsed;

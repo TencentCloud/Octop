@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
-from octop.infra.agents.experts.catalog import build_create_spec_from_expert
+from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, build_create_spec_from_expert
 from octop.infra.agents.experts.manifest_generator import (
-    generate_and_apply_skillhub_manifest_assets,
+    build_skillhub_agent_manifest_bytes,
 )
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
+    SkillHubMarketErrorKind,
     install_skillset_template,
 )
 from octop.infra.errors import ErrorCode, OctopError
@@ -31,6 +33,8 @@ _GENERATOR_LIGHTWEIGHT_MODEL_HINTS = (
     "small",
 )
 
+WelcomeEnrichment = Literal["pending", "skipped", "succeeded", "failed"]
+
 
 @dataclass(frozen=True)
 class SkillHubMarketAgentCreateOptions:
@@ -48,7 +52,7 @@ class SkillHubMarketAgentCreateResult:
     icon_name: str | None
     color: str | None
     slug: str
-    quick_prompts_generated: bool
+    welcome_enrichment: WelcomeEnrichment
 
 
 def _resolve_generator_model_ref(server: Any, requested_model: str | None) -> str | None:
@@ -80,54 +84,136 @@ def _generator_model_score(model_ref: str) -> tuple[int, int]:
     return (1, len(model_ref))
 
 
-async def _try_generate_skillhub_manifest_assets(
+def _resolve_generator_llm(
     *,
     server: Any,
-    item: Any,
     requested_model: str | None,
-) -> bool:
-    """Best-effort model enrichment for cached SkillHub expert manifest."""
+    slug: str,
+) -> tuple[Any, str] | None:
+    """Return ``(llm, model_ref)`` or ``None`` when generation should be skipped."""
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
     harness_manager = registry.harness_manager
     factory = harness_manager.shared_factory if harness_manager is not None else None
     if factory is None:
-        logger.info("skip SkillHub manifest generation for %s: no model factory", item.slug)
-        return False
+        logger.info("skip SkillHub manifest generation for %s: no model factory", slug)
+        return None
 
     model_ref = _resolve_generator_model_ref(server, requested_model)
     if not model_ref:
-        logger.info("skip SkillHub manifest generation for %s: no usable model", item.slug)
-        return False
+        logger.info("skip SkillHub manifest generation for %s: no usable model", slug)
+        return None
     try:
-        llm = factory.get(model_ref)
+        return factory.get(model_ref), model_ref
     except Exception as exc:
         logger.warning(
             "skip SkillHub manifest generation for %s: model %s unavailable: %s",
-            item.slug,
+            slug,
             model_ref,
             exc,
         )
-        return False
+        return None
 
-    expert_dir = server.paths.expert_market_dir / item.expert_id
+
+def _set_welcome_enrichment_status(
+    *,
+    server: Any,
+    agent_id: str,
+    status: WelcomeEnrichment,
+) -> None:
+    """Persist enrichment status on agent config without forcing a harness reload."""
+    registry = server.app_runtime.agent_registry
+    assert registry is not None
+    cfg = dict(registry.get_config(agent_id))
+    source = cfg.get("expert_source")
+    if isinstance(source, dict):
+        cfg["expert_source"] = {**source, "welcome_enrichment": status}
+    else:
+        cfg["welcome_enrichment"] = status
+    server.services.agent_repo.update_config(
+        agent_id,
+        config_json=json.dumps(cfg, ensure_ascii=False),
+    )
+
+
+async def _enrich_agent_welcome_async(
+    *,
+    server: Any,
+    item: Any,
+    agent_id: str,
+    requested_model: str | None,
+) -> None:
+    """Background: LLM-enrich welcome cards and write only the agent workspace copy.
+
+    The shared SkillHub cache under ``expert_market/`` stays deterministic so
+    concurrent installs of the same slug cannot clobber each other.
+    """
     try:
-        return await generate_and_apply_skillhub_manifest_assets(
+        resolved = _resolve_generator_llm(
+            server=server,
+            requested_model=requested_model,
+            slug=item.slug,
+        )
+        if resolved is None:
+            _set_welcome_enrichment_status(
+                server=server,
+                agent_id=agent_id,
+                status="skipped",
+            )
+            return
+        llm, model_ref = resolved
+        expert_dir = server.paths.expert_market_dir / item.expert_id
+        payload = await build_skillhub_agent_manifest_bytes(
             llm=llm,
             item=item,
             expert_dir=expert_dir,
             model_ref=model_ref,
             timeout=_SKILLHUB_MANIFEST_GENERATION_TIMEOUT_SECONDS,
         )
-    except Exception as exc:
-        logger.warning(
-            "SkillHub manifest generation failed slug=%s model=%s type=%s error=%r",
-            item.slug,
-            model_ref,
-            exc.__class__.__name__,
-            exc,
+        assert server.app_runtime is not None
+        registry = server.app_runtime.agent_registry
+        workspace = registry.workspace_for_agent(agent_id)
+        if workspace is None:
+            logger.info(
+                "SkillHub welcome enrichment skipped upload agent=%s: no workspace",
+                agent_id,
+            )
+            _set_welcome_enrichment_status(
+                server=server,
+                agent_id=agent_id,
+                status="failed",
+            )
+            return
+        await workspace.aupload_many([(MANIFEST_FILENAME, payload)])
+        _set_welcome_enrichment_status(
+            server=server,
+            agent_id=agent_id,
+            status="succeeded",
         )
-        return False
+        logger.info(
+            "SkillHub welcome enrichment applied agent=%s slug=%s",
+            agent_id,
+            item.slug,
+        )
+    except Exception:
+        logger.warning(
+            "SkillHub welcome enrichment failed agent=%s slug=%s",
+            agent_id,
+            item.slug,
+            exc_info=True,
+        )
+        try:
+            _set_welcome_enrichment_status(
+                server=server,
+                agent_id=agent_id,
+                status="failed",
+            )
+        except Exception:
+            logger.warning(
+                "failed to persist welcome enrichment failure agent=%s",
+                agent_id,
+                exc_info=True,
+            )
 
 
 async def create_agent_from_skillhub_skillset(
@@ -137,7 +223,12 @@ async def create_agent_from_skillhub_skillset(
     slug: str,
     options: SkillHubMarketAgentCreateOptions,
 ) -> SkillHubMarketAgentCreateResult:
-    """Install a SkillHub skillset template and create an Octop agent from it."""
+    """Install a SkillHub skillset template and create an Octop agent from it.
+
+    Welcome / quick-prompt cards use the deterministic SkillHub workflow first so
+    create stays fast. Optional LLM enrichment runs in the background and updates
+    only this agent's workspace ``manifest.json`` when ready.
+    """
     catalog = server.expert_catalog
     if catalog is None:
         raise OctopError(
@@ -153,21 +244,30 @@ async def create_agent_from_skillhub_skillset(
         cache_root=server.paths.expert_market_dir,
     )
 
-    quick_prompts_generated = await _try_generate_skillhub_manifest_assets(
-        server=server,
-        item=item,
-        requested_model=options.default_model,
-    )
     catalog.refresh()
     expert = catalog.get(item.expert_id)
     if expert is None:
-        raise SkillHubMarketError(f"SkillHub expert template {item.expert_id!r} was not cached")
+        raise SkillHubMarketError(
+            f"SkillHub expert template {item.expert_id!r} was not cached",
+            kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
+        )
+
+    can_enrich = (
+        _resolve_generator_llm(
+            server=server,
+            requested_model=options.default_model,
+            slug=item.slug,
+        )
+        is not None
+    )
+    welcome_enrichment: WelcomeEnrichment = "pending" if can_enrich else "skipped"
 
     config_extra: dict[str, Any] = {
         "expert_source": {
             "type": "skillhub",
             "kind": "skillset",
             "slug": item.slug,
+            "welcome_enrichment": welcome_enrichment,
         }
     }
     if options.providers:
@@ -190,11 +290,23 @@ async def create_agent_from_skillhub_skillset(
         config_extra=config_extra,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
+
+    if can_enrich:
+        asyncio.create_task(
+            _enrich_agent_welcome_async(
+                server=server,
+                item=item,
+                agent_id=row.agent_id,
+                requested_model=options.default_model,
+            ),
+            name=f"skillhub-welcome-{row.agent_id}",
+        )
+
     return SkillHubMarketAgentCreateResult(
         row=row,
         expert_id=item.expert_id,
         icon_name=expert.summary.icon_name,
         color=expert.summary.color,
         slug=item.slug,
-        quick_prompts_generated=quick_prompts_generated,
+        welcome_enrichment=welcome_enrichment,
     )

@@ -1,8 +1,12 @@
-"""Experts router — expose the bundled scene templates.
+"""Experts router — bundled scene templates + SkillHub expert market.
 
-GET /api/experts             → summaries (id, label, description, …)
-GET /api/experts/{id}        → template metadata + lazy ``file_contents``
-POST /api/agents/from-expert/{id} → create agent and seed workspace files
+GET  /api/experts                  → bundled expert summaries
+GET  /api/experts/{id}             → template metadata + lazy ``file_contents``
+POST /api/agents/from-expert/{id}  → create agent from bundled expert
+
+GET  /api/experts/hub              → SkillHub market cards (``?q=&scene=``)
+GET  /api/experts/hub/{slug}       → SkillHub market detail + quick prompts
+POST /api/experts/hub/{slug}/install → create agent from market expert
 """
 
 from __future__ import annotations
@@ -10,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
@@ -26,13 +30,24 @@ from octop.infra.agents.experts.market_creation import (
 )
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
+    SkillHubMarketErrorKind,
+    browse_skillsets,
     fetch_skillset,
-    fetch_skillsets,
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
 
 router = APIRouter()
+
+_SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
+    SkillHubMarketErrorKind.NOT_FOUND: "expert not found",
+    SkillHubMarketErrorKind.INVALID_SLUG: "invalid expert id",
+    SkillHubMarketErrorKind.UPSTREAM_TIMEOUT: "upstream timeout",
+    SkillHubMarketErrorKind.UPSTREAM_BAD_PAYLOAD: "invalid upstream response",
+    SkillHubMarketErrorKind.PACKAGE_INVALID: "invalid expert package",
+    SkillHubMarketErrorKind.PACKAGE_TOO_LARGE: "expert package too large",
+    SkillHubMarketErrorKind.UPSTREAM_FAILED: "upstream request failed",
+}
 
 
 class FromExpertBody(BaseModel):
@@ -56,7 +71,7 @@ class QuickPromptResponse(BaseModel):
     icon_name: str | None = None
 
 
-class SkillHubSkillsetResponse(BaseModel):
+class ExpertHubItemResponse(BaseModel):
     id: str
     slug: str
     label: LocalizedTextResponse
@@ -73,11 +88,16 @@ class SkillHubSkillsetResponse(BaseModel):
     quick_prompts: list[QuickPromptResponse] | None = None
 
 
+class ExpertHubListResponse(BaseModel):
+    items: list[ExpertHubItemResponse]
+    scenes: list[str] = Field(default_factory=list)
+
+
 class MarketCreateSourceResponse(BaseModel):
     source: str
     kind: str
     slug: str
-    quick_prompts_generated: bool
+    welcome_enrichment: str
 
 
 class MarketCreateResponse(BaseModel):
@@ -140,6 +160,23 @@ def _expert_dict(
     return result
 
 
+def _map_skillhub_error(exc: SkillHubMarketError) -> OctopError:
+    kind = getattr(exc, "kind", SkillHubMarketErrorKind.UPSTREAM_FAILED)
+    if kind in (
+        SkillHubMarketErrorKind.NOT_FOUND,
+        SkillHubMarketErrorKind.INVALID_SLUG,
+    ):
+        return OctopError(ErrorCode.NOT_FOUND, "skillhub expert not found")
+    reason = _SAFE_MARKET_REASONS.get(
+        kind, _SAFE_MARKET_REASONS[SkillHubMarketErrorKind.UPSTREAM_FAILED]
+    )
+    return OctopError(
+        ErrorCode.EXPERT_MARKET_FAILED,
+        f"expert market failed: {reason}",
+        details={"reason": reason, "kind": kind.value},
+    )
+
+
 @router.get("/experts")
 async def list_experts(
     _: Any = Depends(current_user),
@@ -152,59 +189,50 @@ async def list_experts(
 
 
 @router.get(
-    "/experts/hub/skillsets",
-    response_model=list[SkillHubSkillsetResponse],
-    summary="List SkillHub expert market skillsets",
+    "/experts/hub",
+    response_model=ExpertHubListResponse,
+    summary="List SkillHub expert market cards",
 )
-async def list_skillhub_skillsets(
+async def list_expert_hub(
     q: str = "",
+    scene: str = "",
     _: Any = Depends(current_user),
-) -> list[dict[str, Any]]:
-    """List SkillHub skillsets normalized as market expert cards."""
+) -> dict[str, Any]:
+    """List SkillHub skillsets as market expert cards, optionally filtered by scene."""
     try:
-        items = await asyncio.to_thread(fetch_skillsets, q)
+        items, scenes = await asyncio.to_thread(browse_skillsets, q, scene=scene)
     except SkillHubMarketError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return [item.api_dict(include_content=False) for item in items]
+        raise _map_skillhub_error(exc) from exc
+    return {
+        "items": [item.api_dict(include_content=False) for item in items],
+        "scenes": scenes,
+    }
 
 
 @router.get(
-    "/experts/hub/skillsets/{slug}",
-    response_model=SkillHubSkillsetResponse,
-    summary="Get SkillHub expert market skillset detail",
+    "/experts/hub/{slug}",
+    response_model=ExpertHubItemResponse,
+    summary="Get SkillHub expert market detail",
 )
-async def get_skillhub_skillset(
+async def get_expert_hub_item(
     slug: str,
     _: Any = Depends(current_user),
 ) -> dict[str, Any]:
-    """SkillHub skillset detail, including workflow prompt and default quick prompts."""
+    """SkillHub market detail, including workflow prompt and default quick prompts."""
     try:
         item = await asyncio.to_thread(fetch_skillset, slug)
     except SkillHubMarketError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise _map_skillhub_error(exc) from exc
     return item.api_dict(include_content=True)
 
 
-@router.get("/experts/{expert_id}")
-async def get_expert(
-    expert_id: str,
-    _: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    catalog = server.expert_catalog
-    expert = None if catalog is None else catalog.get(expert_id)
-    if expert is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
-    return _expert_dict(expert, catalog, include_file_contents=True)
-
-
 @router.post(
-    "/agents/from-expert-market/skillsets/{slug}",
+    "/experts/hub/{slug}/install",
     status_code=201,
     response_model=MarketCreateResponse,
-    summary="Create an agent from a SkillHub expert market skillset",
+    summary="Create an agent from a SkillHub expert market card",
 )
-async def create_agent_from_skillhub_skillset(
+async def install_expert_hub_item(
     slug: str,
     body: FromExpertBody,
     user: Any = Depends(current_user),
@@ -225,7 +253,7 @@ async def create_agent_from_skillhub_skillset(
             ),
         )
     except SkillHubMarketError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _map_skillhub_error(exc) from exc
 
     row = result.row
     return {
@@ -243,10 +271,23 @@ async def create_agent_from_skillhub_skillset(
             "source": "skillhub",
             "kind": "skillset",
             "slug": result.slug,
-            "quick_prompts_generated": result.quick_prompts_generated,
+            "welcome_enrichment": result.welcome_enrichment,
         },
         "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(row.agent_id),
     }
+
+
+@router.get("/experts/{expert_id}")
+async def get_expert(
+    expert_id: str,
+    _: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    catalog = server.expert_catalog
+    expert = None if catalog is None else catalog.get(expert_id)
+    if expert is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
+    return _expert_dict(expert, catalog, include_file_contents=True)
 
 
 @router.post("/agents/from-expert/{expert_id}", status_code=201)

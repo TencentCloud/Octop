@@ -14,8 +14,14 @@ from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
 )
+from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 
 logger = logging.getLogger(__name__)
+
+_THINKING_CAPTURE_RE = re.compile(
+    r"<think>([\s\S]*?)</think>\s*",
+    re.IGNORECASE,
+)
 
 # Must match harness_agent.agent.CHECKPOINT_TS_KEY (epoch-ms in additional_kwargs).
 CHECKPOINT_TS_KEY = "checkpoint_ts"
@@ -539,42 +545,3 @@ def _message_content(msg: Any) -> str:
                 parts.append(str(block.get("text", "")))
         return _strip_thinking("\n".join(p for p in parts if p))
     return _strip_thinking(str(content) if content else "")
-
-
-def _llm_text_content(result: Any) -> str:
-    content = getattr(result, "content", result)
-    if isinstance(content, str):
-        return _strip_thinking(content)
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict):
-                block_type = str(block.get("type") or "").lower()
-                if block_type in ("thinking", "reasoning"):
-                    continue
-                if block_type == "text":
-                    parts.append(str(block.get("text") or ""))
-            elif isinstance(block, str):
-                parts.append(block)
-        return _strip_thinking("".join(parts))
-    extra = getattr(result, "additional_kwargs", None)
-    if isinstance(extra, dict):
-        reasoning = extra.get("reasoning_content")
-        if isinstance(reasoning, str) and reasoning.strip():
-            pass
-    return _strip_thinking(str(content or ""))
-
-
-_THINKING_RE = re.compile(
-    r"<think>[\s\S]*?</think>\s*",
-    re.IGNORECASE,
-)
-
-_THINKING_CAPTURE_RE = re.compile(
-    r"<think>([\s\S]*?)</think>\s*",
-    re.IGNORECASE,
-)
-
-
-def _strip_thinking(text: str) -> str:
-    return _THINKING_RE.sub("", text).strip()
