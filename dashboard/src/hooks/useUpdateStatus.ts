@@ -1,26 +1,50 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { updateApi, type UpdateStatus } from "../api/modules/update";
+import {
+  isUpdateStatusCacheExpired,
+  readStoredUpdateStatus,
+  storeUpdateStatus,
+} from "../utils/updateStatusCache";
 
-const FOCUS_CHECK_MIN_MS = 30 * 60 * 1000;
+/** Shared in-flight probe so Header + Sidebar mounts don't stampede PyPI. */
+let inFlight: Promise<UpdateStatus | null> | null = null;
 
-export function useUpdateStatus() {
-  const [status, setStatus] = useState<UpdateStatus | null>(null);
-  const lastFetchRef = useRef(0);
-
-  const refreshStatus = useCallback(async (force = false) => {
-    const now = Date.now();
-    if (!force && now - lastFetchRef.current < FOCUS_CHECK_MIN_MS) return;
-    lastFetchRef.current = now;
+async function probeUpdateStatus(): Promise<UpdateStatus | null> {
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
     try {
       const next = await updateApi.getUpdateStatus();
-      setStatus(next);
+      storeUpdateStatus(next);
+      return next;
     } catch {
-      /* ignore — UI should stay quiet on failure */
+      return null;
+    } finally {
+      inFlight = null;
     }
+  })();
+  return inFlight;
+}
+
+export function useUpdateStatus() {
+  const [status, setStatus] = useState<UpdateStatus | null>(() =>
+    readStoredUpdateStatus(),
+  );
+
+  const refreshStatus = useCallback(async (force = false) => {
+    if (!force && !isUpdateStatusCacheExpired()) {
+      const cached = readStoredUpdateStatus();
+      if (cached) {
+        setStatus(cached);
+        return;
+      }
+    }
+    const next = await probeUpdateStatus();
+    if (next) setStatus(next);
   }, []);
 
   useEffect(() => {
-    void refreshStatus(true);
+    // Startup: use cache if fresh (< 1h); otherwise probe and persist.
+    void refreshStatus(false);
   }, [refreshStatus]);
 
   useEffect(() => {

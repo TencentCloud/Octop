@@ -88,7 +88,7 @@ build-frontend:
 	@echo "[build-frontend] Installing npm dependencies..."
 	cd $(DASHBOARD_DIR) && npm ci
 	@echo "[build-frontend] Building dashboard (output: $(DASHBOARD_DEST))..."
-	cd $(DASHBOARD_DIR) && NODE_ENV=production NODE_OPTIONS="--max-old-space-size=4096" npm run build
+	cd $(DASHBOARD_DIR) && NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npm run build
 	@echo "[build-frontend] Done."
 
 .PHONY: build-wheel

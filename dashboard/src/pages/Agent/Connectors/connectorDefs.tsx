@@ -1,4 +1,4 @@
-import { Cloud } from "lucide-react";
+import { Cable } from "lucide-react";
 
 import { getConnectorLogo } from "../../../assets/connectors";
 import type { ConnectorCatalogEntry } from "../../../api/modules/connectors";
@@ -44,6 +44,8 @@ export const HIDE_INLINE_FIELD_GUIDE_KINDS = new Set([
   "tencent-news",
   "wechat-reading",
   "youdao-note",
+  "meituan-travel",
+  "yuandian",
 ]);
 
 export function mailProviderById(id: string | undefined) {
@@ -65,7 +67,13 @@ export function ConnectorLogo({
 }) {
   const src = getConnectorLogo(kind);
   if (!src) {
-    return <Cloud size={size} />;
+    return (
+      <Cable
+        size={size}
+        className={styles.connectorMcpFallbackIcon}
+        aria-hidden
+      />
+    );
   }
   return (
     <img

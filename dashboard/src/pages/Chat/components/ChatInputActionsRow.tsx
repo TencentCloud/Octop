@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Send,
@@ -136,6 +136,8 @@ export default function ChatInputActionsRow({
   onSubmit,
 }: ChatInputActionsRowProps) {
   const { t } = useTranslation();
+  const actionsRowRef = useRef<HTMLDivElement | null>(null);
+  const [isCompact, setIsCompact] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
@@ -146,6 +148,23 @@ export default function ChatInputActionsRow({
   );
 
   const modelOverride = resolveTurnModelOverride(selectedModel, defaultModel);
+  const useCompactControls = isMobile || isCompact;
+
+  useEffect(() => {
+    if (isMobile) {
+      setIsCompact(false);
+      return;
+    }
+    const row = actionsRowRef.current;
+    if (!row) return;
+    const update = (width: number) => setIsCompact(width <= 560);
+    update(row.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect.width);
+    });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [isMobile]);
 
   const showModelPicker = Boolean(
     availableModels && availableModels.length > 0 && onModelChange,
@@ -380,7 +399,7 @@ export default function ChatInputActionsRow({
   };
 
   const renderSecondaryActions = () => {
-    if (isMobile) {
+    if (useCompactControls) {
       return (
         <>
           {showModelPicker && (
@@ -630,7 +649,7 @@ export default function ChatInputActionsRow({
   };
 
   return (
-    <div className={styles.actionsRow}>
+    <div ref={actionsRowRef} className={styles.actionsRow}>
       <div className={styles.secondaryActions}>{renderSecondaryActions()}</div>
       <div className={styles.inputActions}>
         <ContextWindowRing
@@ -643,7 +662,7 @@ export default function ChatInputActionsRow({
           isMobile={isMobile}
         />
         {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}
-        {isMobile ? (
+        {useCompactControls ? (
           <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>
             <button
               className={styles.newChatBtn}

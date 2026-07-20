@@ -1,8 +1,8 @@
 {
   "id": "wechat-ops",
   "label": {
-    "zh": "发文官 · 一文多发",
-    "en": "Publisher · Multi-Platform"
+    "zh": "发文官 · 内容推送",
+    "en": "Publisher · Content Push"
   },
   "description": {
     "zh": "一文多发助手 — 将 Markdown 文章一键发布到内容运营平台和社交内容平台。微信端通过 wenyan-cli 渲染精美排版，社交内容平台端自动适配短笔记 + 图片 + 话题标签格式。数据完全自主可控，不依赖第三方 SaaS 平台。",

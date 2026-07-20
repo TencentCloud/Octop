@@ -9,8 +9,14 @@ export interface LocalizedText {
 export function pickLocale(
   node: LocalizedText | undefined,
   locale: UiLocale,
+  options?: { crossFallback?: boolean },
 ): string {
   if (!node) return "";
-  if (locale === "zh") return node.zh || node.en || "";
-  return node.en || node.zh || "";
+  const crossFallback = options?.crossFallback !== false;
+  if (locale === "zh") {
+    if (node.zh) return node.zh;
+    return crossFallback ? node.en || "" : "";
+  }
+  if (node.en) return node.en;
+  return crossFallback ? node.zh || "" : "";
 }

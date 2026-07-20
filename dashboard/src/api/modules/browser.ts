@@ -23,6 +23,73 @@ export interface BrowserEnvStatus {
   path: string | null;
 }
 
+function streamBrowserSse(
+  path: string,
+  onLog: (line: string) => void,
+  onDone: (success: boolean) => void,
+): AbortController {
+  const controller = new AbortController();
+  const url = getApiUrl(path);
+  const token = getAuthToken();
+
+  fetch(url, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) {
+        onDone(false);
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const payload = JSON.parse(line.slice(6)) as {
+              done?: boolean;
+              success?: boolean;
+              log?: string;
+              error?: string;
+            };
+            if (payload.done) {
+              if (payload.log !== undefined) {
+                onLog(payload.log);
+              } else if (payload.error) {
+                onLog(payload.error);
+              }
+              onDone(Boolean(payload.success));
+              return;
+            }
+            if (payload.log !== undefined) {
+              onLog(payload.log);
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+      onDone(false);
+    })
+    .catch(() => {
+      if (!controller.signal.aborted) onDone(false);
+    });
+
+  return controller;
+}
+
 // Browser API
 export const browserApi = {
   // -- Environment (Setup Wizard) --
@@ -41,60 +108,16 @@ export const browserApi = {
   installBrowser: (
     onLog: (line: string) => void,
     onDone: (success: boolean) => void,
-  ): AbortController => {
-    const controller = new AbortController();
-    const url = getApiUrl("/browser/install");
-    const token = getAuthToken();
+  ): AbortController => streamBrowserSse("/browser/install", onLog, onDone),
 
-    fetch(url, {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok || !res.body) {
-          onDone(false);
-          return;
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          // Parse SSE lines
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const payload = JSON.parse(line.slice(6));
-              if (payload.done) {
-                onDone(payload.success);
-                return;
-              }
-              if (payload.log !== undefined) {
-                onLog(payload.log);
-              }
-            } catch {
-              // ignore parse errors
-            }
-          }
-        }
-        // Stream ended without a done event
-        onDone(false);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) onDone(false);
-      });
-
-    return controller;
-  },
+  /**
+   * Remove Playwright-managed Chromium via SSE (admin).
+   * Does not touch system Chrome/Chromium or harness profiles.
+   */
+  uninstallBrowser: (
+    onLog: (line: string) => void,
+    onDone: (success: boolean) => void,
+  ): AbortController => streamBrowserSse("/browser/uninstall", onLog, onDone),
 
   // -- Sessions --
 

@@ -14,9 +14,11 @@ import {
   FolderOpen,
   MessageSquare,
   Bot,
+  Sparkles,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
+import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
@@ -61,6 +63,9 @@ export default function AgentExpertsTable({
   const [localStates, setLocalStates] = useState<Record<string, string>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [workspaceAgentId, setWorkspaceAgentId] = useState<string | null>(null);
+  const [skillCatalogAgentId, setSkillCatalogAgentId] = useState<string | null>(
+    null,
+  );
   const [subagentCatalogAgentId, setSubagentCatalogAgentId] = useState<
     string | null
   >(null);
@@ -308,7 +313,7 @@ export default function AgentExpertsTable({
     {
       title: t("experts.table.actions", "操作"),
       key: "actions",
-      width: 300,
+      width: 340,
       fixed: "right",
       render: (_v, row) => {
         const state = localStates[row.agent_id] ?? row.state;
@@ -317,22 +322,22 @@ export default function AgentExpertsTable({
         const chatReady = isAgentChatReady(state);
         return (
           <div className={styles.tableActions}>
+            <Tooltip title={t("experts.reloadAgent")}>
+              <button
+                type="button"
+                className={styles.tableActionBtn}
+                disabled={isTransient || actionLoadingId === row.agent_id}
+                onClick={() => void handleReload(row)}
+              >
+                <RefreshCw size={13} />
+              </button>
+            </Tooltip>
             <Switch
               size="small"
               checked={switchChecked}
               loading={isTransient || actionLoadingId === row.agent_id}
               onChange={(checked) => void handleToggle(row, checked)}
             />
-            <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                onClick={() => onEdit(row.agent_id)}
-                aria-label={t("common.edit", "Edit")}
-              >
-                <Pencil size={13} />
-              </button>
-            </Tooltip>
             <Tooltip
               title={t("pageShell.workspace.title")}
               mouseEnterDelay={0.5}
@@ -346,6 +351,16 @@ export default function AgentExpertsTable({
                 <FolderOpen size={13} />
               </button>
             </Tooltip>
+            <Tooltip title={t("experts.skillsBtn")} mouseEnterDelay={0.5}>
+              <button
+                type="button"
+                className={styles.tableActionBtn}
+                onClick={() => setSkillCatalogAgentId(row.agent_id)}
+                aria-label={t("experts.skillsBtn")}
+              >
+                <Sparkles size={13} />
+              </button>
+            </Tooltip>
             <Tooltip title={t("experts.subagentsBtn")} mouseEnterDelay={0.5}>
               <button
                 type="button"
@@ -356,14 +371,14 @@ export default function AgentExpertsTable({
                 <Bot size={13} />
               </button>
             </Tooltip>
-            <Tooltip title={t("experts.reloadAgent")}>
+            <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
               <button
                 type="button"
                 className={styles.tableActionBtn}
-                disabled={isTransient || actionLoadingId === row.agent_id}
-                onClick={() => void handleReload(row)}
+                onClick={() => onEdit(row.agent_id)}
+                aria-label={t("common.edit", "Edit")}
               >
-                <RefreshCw size={13} />
+                <Pencil size={13} />
               </button>
             </Tooltip>
             <Popconfirm
@@ -432,6 +447,11 @@ export default function AgentExpertsTable({
         agentId={workspaceAgentId ?? ""}
         open={workspaceAgentId !== null}
         onClose={() => setWorkspaceAgentId(null)}
+      />
+      <SkillCatalogDrawer
+        agentId={skillCatalogAgentId ?? ""}
+        open={skillCatalogAgentId !== null}
+        onClose={() => setSkillCatalogAgentId(null)}
       />
       <SubagentCatalogDrawer
         agentId={subagentCatalogAgentId ?? ""}

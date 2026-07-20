@@ -1,81 +1,119 @@
-.edgeRail {
+/* Quiet top HUD: only a centered top strip captures hover — not the full width. */
+.topHoverZone {
   position: absolute;
   top: 0;
-  bottom: 0;
-  width: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Match HUD width so left/right page chrome stays click-through to the stream. */
+  width: min(320px, calc(100% - 24px));
+  height: 12px;
   z-index: 5;
   display: flex;
-  align-items: center;
-  pointer-events: auto;
-}
-
-.edgeRailLeft {
-  left: 0;
-  justify-content: flex-start;
-  padding-left: 6px;
-}
-
-.edgeRailRight {
-  right: 0;
-  justify-content: flex-end;
-  padding-right: 6px;
-}
-
-.edgeRailHidden {
-  display: none;
-}
-
-.edgeFab {
-  display: flex;
-  align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--fn-border-primary);
-  border-radius: 999px;
-  background: var(--fn-bg-glass);
-  color: var(--fn-text-primary);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--fn-shadow-md);
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease,
-    background 0.15s ease,
-    border-color 0.15s ease;
+  pointer-events: auto;
 
-  &:hover {
-    background: var(--fn-bg-elevated);
-    border-color: var(--fn-border-input);
+  &:hover,
+  &:focus-within {
+    height: 44px;
+
+    .hud {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
-.edgeFabLeft {
-  transform: translateX(-14px);
+.topHoverZoneMobile {
+  height: 44px;
+  pointer-events: none;
+
+  .hud {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
 }
 
-.edgeFabRight {
-  transform: translateX(14px);
+.hud {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  width: min(320px, calc(100% - 24px));
+  margin-top: 6px;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
-.edgeRailLeft:hover .edgeFabLeft,
-.edgeRailLeft:focus-within .edgeFabLeft {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
+.hudSide {
+  display: flex;
+  align-items: center;
 }
 
-.edgeRailRight:hover .edgeFabRight,
-.edgeRailRight:focus-within .edgeFabRight {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
+.hudSideRight {
+  justify-content: flex-end;
 }
 
-.edgeRailMobileVisible .edgeFabRight {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
+.hudCenter {
+  display: flex;
+  justify-content: center;
+}
+
+.statusText {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3ecf8e;
+  box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.55);
+  animation: pulseDot 1.8s ease-out infinite;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(15, 18, 22, 0.42);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(15, 18, 22, 0.72);
+    color: #fff;
+  }
+}
+
+@keyframes pulseDot {
+  0% {
+    box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(62, 207, 142, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(62, 207, 142, 0);
+  }
 }

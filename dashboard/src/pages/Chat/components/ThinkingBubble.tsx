@@ -12,14 +12,24 @@ export default function ThinkingBubble({
   startedAt,
 }: ThinkingBubbleProps) {
   const { t } = useTranslation();
-  const symbolSrc = `${import.meta.env.BASE_URL}favico.svg`;
+  const typingSrc = `${import.meta.env.BASE_URL}octop-mascot-type.webm`;
   const elapsed = useElapsedSince(startedAt);
 
   return (
     <div className={styles.thinkingBubble}>
       <div className={styles.avatarCol}>
         <div className={styles.botAvatar}>
-          <img src={symbolSrc} alt="Octop" />
+          <video
+            src={typingSrc}
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-label="Octop"
+            ref={(el) => {
+              if (el) el.muted = true;
+            }}
+          />
         </div>
       </div>
       <div className={styles.thinkingContent}>

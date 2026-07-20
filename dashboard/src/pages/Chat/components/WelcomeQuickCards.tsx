@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { iconForName } from "../../Experts/components/iconForName";
+import { pastelIconBackground } from "../../../utils/pastelIconBackground";
 import type { WelcomeQuickCard } from "./WelcomeScreen";
 import styles from "../index.module.less";
 
@@ -40,7 +41,10 @@ export default function WelcomeQuickCards({
           >
             <div
               className={styles.quickCardIcon}
-              style={{ background: card.color, color: "rgba(15,23,42,0.55)" }}
+              style={{
+                background: pastelIconBackground(card.color, i),
+                color: "rgba(15,23,42,0.55)",
+              }}
             >
               {iconForName(card.icon_name, 18)}
             </div>

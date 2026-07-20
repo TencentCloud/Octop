@@ -49,6 +49,7 @@ class FakeHarnessAgent:
             self._backend = _FakeBackend()
             self._workspace = BackendWorkspace(self._backend, self._workspace_dir)
         self.config = SimpleNamespace(mcp_server_configs={}, skills_disabled=frozenset())
+        self._mcp_tools: list[Any] = []
         self._mcp_tool_name_set: frozenset[str] = frozenset()
 
     def use_workspace_dir(self, workspace_dir: Path, *, virtual_mode: bool = False) -> None:
@@ -89,6 +90,25 @@ class FakeHarnessAgent:
 
     def is_bootstrapped(self) -> bool:
         return True
+
+    def append_mcp_tools(self, extra_tools: list[Any]) -> None:
+        """Mirror harness ``append_mcp_tools`` (no graph recompile in tests)."""
+        if not extra_tools:
+            return
+        existing = {str(getattr(t, "name", "") or "") for t in self._mcp_tools}
+        new_tools = [
+            tool for tool in extra_tools if str(getattr(tool, "name", "") or "") not in existing
+        ]
+        if not new_tools:
+            return
+        self._mcp_tools = list(new_tools) + list(self._mcp_tools)
+        self._mcp_tool_name_set = frozenset(
+            str(getattr(t, "name", "") or "") for t in self._mcp_tools if getattr(t, "name", None)
+        )
+
+    def inject_mcp_tools(self, extra_tools: list[Any]) -> None:
+        """Alias for :meth:`append_mcp_tools` (gateway in-process MCP injection)."""
+        self.append_mcp_tools(extra_tools)
 
     async def seed_default_subagent(self) -> None:
         """Mirror harness init_workspace default subagent seed."""

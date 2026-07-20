@@ -41,7 +41,28 @@ export function agentMediaPreviewUrl(
   )}/media/preview?${params.toString()}`;
 }
 
-/** Extract ``inbound/…`` or ``outbound/…`` from dashboard media/download API URLs. */
+/** Extract ``inbound/…`` or ``outbound/…`` from a filesystem / API path. */
+export function extractWorkspaceRel(path: string): string | null {
+  let raw = path.trim();
+  if (!raw) return null;
+  if (raw.toLowerCase().startsWith("file://")) {
+    raw = raw.slice("file://".length);
+  }
+  const normalized = raw.replace(/\\/g, "/");
+  const stripped = normalized.replace(/^\/+/, "");
+  if (stripped.startsWith("outbound/") || stripped.startsWith("inbound/")) {
+    return stripped;
+  }
+  for (const marker of ["/outbound/", "/inbound/"] as const) {
+    const idx = normalized.indexOf(marker);
+    if (idx >= 0) {
+      return normalized.slice(idx + 1);
+    }
+  }
+  return null;
+}
+
+/** Extract path from dashboard media/download API URLs (preserve absolute). */
 export function workspacePathFromAccessUrl(url: string): string | undefined {
   try {
     const parsed = url.startsWith("http")
@@ -50,8 +71,18 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
     for (const key of ["source", "path"] as const) {
       const raw = parsed.searchParams.get(key);
       if (!raw) continue;
-      const rel = extractWorkspaceRel(raw);
-      if (rel) return rel;
+      if (raw.startsWith("file://")) {
+        let abs = raw.slice("file://".length);
+        if (abs.startsWith("//")) abs = abs.slice(1);
+        return abs.startsWith("/") || /^[A-Za-z]:/.test(abs) ? abs : `/${abs}`;
+      }
+      if (raw.startsWith("/")) {
+        return raw;
+      }
+      const mediaRel = extractWorkspaceRel(raw);
+      if (mediaRel) return mediaRel;
+      const collapsed = toWorkspaceRel(raw);
+      if (collapsed) return collapsed;
     }
   } catch {
     return undefined;
@@ -59,18 +90,32 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
   return undefined;
 }
 
-/** Extract ``outbound/…`` or ``inbound/…`` from a filesystem or file URL path. */
-export function extractWorkspaceRel(path: string): string | null {
-  const raw = path.trim();
-  const fsPath = raw.startsWith("file://") ? raw.slice("file://".length) : raw;
-  for (const marker of ["/outbound/", "/inbound/"]) {
-    const idx = fsPath.indexOf(marker);
-    if (idx >= 0) return fsPath.slice(idx + 1);
+/**
+ * Normalize an arbitrary harness-reported file path into a workspace-relative
+ * fragment the backend ``download`` endpoint can resolve.
+ *
+ * Harness tool output often reports an absolute path such as
+ * ``/workspace/report.pdf`` (where ``/workspace`` *is* the workspace root) or a
+ * ``file:///workspace/…`` URL. The workspace tree and the ``media/preview``
+ * endpoint treat such paths as relative to the workspace dir, but the
+ * ``download`` endpoint only strips a leading slash. Mirroring that
+ * normalization here makes chat file cards open exactly like the workspace
+ * viewer, which always passes a relative path such as ``report.pdf``.
+ */
+export function toWorkspaceRel(rawPath: string): string {
+  let p = rawPath.trim();
+  if (!p) return "";
+  if (p.startsWith("file://")) p = p.slice("file://".length);
+  const marker = "/workspace/";
+  const idx = p.lastIndexOf(marker);
+  if (idx >= 0) {
+    p = p.slice(idx + marker.length);
+  } else if (p === "/workspace") {
+    p = "";
+  } else if (p.startsWith("/workspace")) {
+    p = p.slice("/workspace".length);
   }
-  if (fsPath.startsWith("outbound/") || fsPath.startsWith("inbound/")) {
-    return fsPath.replace(/^\/+/, "");
-  }
-  return null;
+  return p.replace(/^\/+/, "");
 }
 
 /** Read agent id embedded in ``…/agents/{id}/…`` workspace paths. */
@@ -83,10 +128,11 @@ export function workspaceDownloadUrl(
   agentId: string,
   workspaceRel: string,
 ): string {
-  const rel = workspaceRel.replace(/^\/+/, "");
+  const rel = toWorkspaceRel(workspaceRel);
+  const safe = rel || "";
   return `/api/agents/${encodeURIComponent(
     agentId,
-  )}/workspace/download?path=${encodeURIComponent(`/${rel}`)}`;
+  )}/workspace/download?path=${encodeURIComponent(`/${safe}`)}`;
 }
 
 /**
@@ -468,18 +514,15 @@ function imageItemFromPath(
   rawPath: string,
 ): ToolMediaItem {
   const agentId = resolveMediaAgentId(chatAgentId, rawPath);
-  const rel = extractWorkspaceRel(rawPath);
-  if (rel) {
-    return {
-      url: workspaceDownloadUrl(agentId, rel),
-      filename: rawPath.split("/").pop(),
-      kind: "image",
-    };
-  }
-  const path = rawPath.startsWith("file://") ? rawPath : `file://${rawPath}`;
+  // Absolute → file:// absolute; relative → relative. No path rewriting.
+  const source = rawPath.startsWith("file://")
+    ? rawPath
+    : rawPath.startsWith("/")
+    ? `file://${rawPath}`
+    : rawPath;
   return {
-    url: agentMediaPreviewUrl(agentId, path),
-    filename: rawPath.split("/").pop(),
+    url: agentMediaPreviewUrl(agentId, source, guessImageMime(rawPath)),
+    filename: rawPath.split("/").filter(Boolean).pop(),
     kind: "image",
   };
 }

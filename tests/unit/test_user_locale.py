@@ -26,6 +26,13 @@ def test_users_table_has_locale_default_zh(db: DBPool):
     assert row.locale == "zh"
 
 
+def test_user_repo_create_accepts_explicit_locale(db: DBPool):
+    uid = UserRepo(db).create(username="en-user", password_hash="h", role="admin", locale="en")
+    row = UserRepo(db).get(uid)
+    assert row is not None
+    assert row.locale == "en"
+
+
 def test_legacy_users_table_gets_locale_column(tmp_path: Path):
     pool = DBPool(tmp_path / "legacy.db")
     with pool.connect() as conn:

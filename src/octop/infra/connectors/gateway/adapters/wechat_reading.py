@@ -53,6 +53,11 @@ def notes(creds: dict[str, Any], args: dict[str, Any]) -> str:
     return _api(creds, "/book/bookmarklist", bookId=book_id)
 
 
+def probe_credentials(creds: dict[str, Any]) -> None:
+    """Validate WeRead API key by syncing the bookshelf."""
+    shelf(creds)
+
+
 def _api_key(creds: dict[str, Any]) -> str:
     api_key = str(creds.get("api_key") or "").strip()
     if not api_key:

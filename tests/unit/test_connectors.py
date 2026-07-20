@@ -146,6 +146,51 @@ def test_gateway_ima_tool_call_dispatch():
     assert "arguments" not in str(resp["result"]["content"][0]["text"])
 
 
+def test_gateway_probe_rejects_bad_ima_credentials(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    def _boom(_creds: dict[str, object]) -> None:
+        raise ValueError("skill auth failed")
+
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.adapters.tencent_ima.probe_credentials",
+        _boom,
+    )
+    entry = get_catalog_entry("tencent-ima")
+    assert entry is not None
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"api_key": "bad", "client_id": "bad"},
+            instance_id="probe",
+            config=OctopConfig(),
+        )
+    )
+    assert out["ok"] is False
+    assert "auth" in out["error"].lower() or "skill" in out["error"].lower()
+
+
+def test_gateway_probe_accepts_valid_ima_credentials(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.adapters.tencent_ima.probe_credentials",
+        lambda _creds: None,
+    )
+    entry = get_catalog_entry("tencent-ima")
+    assert entry is not None
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"api_key": "k", "client_id": "c"},
+            instance_id="probe",
+            config=OctopConfig(),
+        )
+    )
+    assert out["ok"] is True
+    assert out["tool_count"] == 4
+
+
 def test_gateway_wechat_reading_tools():
     tools = handle_mcp_request(
         kind="wechat-reading",
@@ -169,6 +214,8 @@ def test_ima_list_notes_uses_list_note_api(monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, object] = {}
 
     class _Resp:
+        status_code = 200
+
         def raise_for_status(self) -> None:
             return None
 
@@ -275,18 +322,15 @@ def test_youdao_personal_token_credentials():
     assert "internal_token" not in payload
 
 
-def test_auth_code_passthrough_news():
-    payload = validate_create_credentials("tencent-news", {"cookie": "sess=1"})
-    assert payload["cookie"] == "sess=1"
+def test_tencent_news_api_key_credentials():
+    payload = validate_create_credentials("tencent-news", {"api_key": "news-key-1"})
+    assert payload["api_key"] == "news-key-1"
     assert "internal_token" in payload
 
 
-def test_baidu_probe_tools():
-    from octop.infra.connectors.baidu_token import baidu_probe_tools
-
-    tools = baidu_probe_tools()
-    assert len(tools) >= 3
-    assert any(t["name"] == "list_files" for t in tools)
+def test_tencent_news_rejects_empty_api_key():
+    with pytest.raises(ValueError, match="api_key"):
+        validate_create_credentials("tencent-news", {})
 
 
 def test_http_error_message_baidu_auth_fail():
@@ -298,11 +342,11 @@ def test_http_error_message_baidu_auth_fail():
     assert http_error_message(r) == "auth fail:token fail"
 
 
-def test_static_probe_tools_baidu():
+def test_static_probe_tools_weiyun():
     from octop.infra.connectors.probe import static_probe_tools
 
-    tools = static_probe_tools("baidu-netdisk")
-    assert len(tools) >= 3
+    tools = static_probe_tools("tencent-weiyun")
+    assert len(tools) >= 1
     assert static_probe_tools("notion") == []
 
 
@@ -354,7 +398,7 @@ def test_gateway_search_news_passes_query(monkeypatch: pytest.MonkeyPatch):
         entry=entry,
         instance_id="inst1",
         mcp_server_name="tencent-news__inst1",
-        creds={"cookie": "x"},
+        creds={"api_key": "x"},
     )
     search = next(t for t in tools if t.name.endswith("search_news"))
     assert "query" in search.args_schema.model_json_schema()["properties"]
@@ -363,97 +407,79 @@ def test_gateway_search_news_passes_query(monkeypatch: pytest.MonkeyPatch):
     assert captured["max_results"] == 5
 
 
-def test_baidu_personal_token_credentials_invalid():
-    with pytest.raises(ValueError, match="32 位授权码"):
-        validate_create_credentials("baidu-netdisk", {"token": "785329e1434f623b0562f6663921fb31"})
+def test_tencent_news_search_body_matches_official_cli(monkeypatch: pytest.MonkeyPatch):
+    import uuid
+
+    import httpx
+
+    from octop.infra.connectors.gateway.adapters import tencent_news
+
+    captured: dict[str, object] = {}
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"base_rsp": {"code": 0, "msg": "success"}, "news_list": []}
+
+    class _Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> _Client:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def post(self, url: str, headers: dict[str, str], json: dict[str, object]) -> _Resp:
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "Client", _Client)
+    tencent_news.search_news({"api_key": "news-key"}, {"query": "热点", "limit": 3})
+    body = captured["json"]
+    assert isinstance(body, dict)
+    assert body["page"] == 1
+    assert body["page_size"] == 3
+    assert body["is_show_content"] == 0
+    assert body["article_types"] == [0]
+    assert isinstance(body["query"], dict)
+    assert body["query"]["search"] == "热点"
+    assert uuid.UUID(str(body["query"]["query_id"]))
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer news-key"
+    assert headers["Caller-Skill"] == tencent_news._CALLER_SKILL
+    assert uuid.UUID(str(headers["Skill-Request-Id"]))
+    assert headers["Skill-Request-Id"] == body["query"]["query_id"]
 
 
-def test_prepare_baidu_auth_code_requires_secret_for_builtin_app():
-    from octop.api.routers.connectors import _prepare_credentials
+def test_tencent_news_probe_rejects_bad_api_key(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
 
-    class _Settings:
-        def get(self, _key: str) -> str:
-            return ""
+    def _boom(_creds: dict[str, object]) -> None:
+        raise ValueError("腾讯新闻 API Key 无效: verifyAPIKey failed")
 
-    with pytest.raises(ValueError, match="access_token="):
-        asyncio.run(
-            _prepare_credentials(
-                "baidu-netdisk",
-                {"token": "069adffeef42c9af962b4802b6f255b1"},
-                _Settings(),
-            )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.adapters.tencent_news.probe_credentials",
+        _boom,
+    )
+    entry = get_catalog_entry("tencent-news")
+    assert entry is not None
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"api_key": "bad"},
+            instance_id="probe",
+            config=OctopConfig(),
         )
-
-
-def test_prepare_baidu_auth_code_exchanges_with_client_secret(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from octop.api.routers.connectors import _prepare_credentials
-
-    async def _fake_exchange(**_kwargs: object) -> dict[str, object]:
-        return {
-            "access_token": "bd_access",
-            "refresh_token": "bd_refresh",
-            "expires_at": 9999999999,
-        }
-
-    monkeypatch.setattr(
-        "octop.infra.connectors.oauth.baidu.exchange_baidu_oob_code",
-        _fake_exchange,
     )
-    monkeypatch.setattr(
-        "octop.infra.connectors.oauth.baidu.resolve_baidu_client_credentials",
-        lambda _repo: ("cid", "secret"),
-    )
-    monkeypatch.setattr(
-        "octop.infra.connectors.baidu_token.validate_baidu_access_token_sync",
-        lambda _token: (True, None),
-    )
-
-    class _Settings:
-        def get(self, _key: str) -> str:
-            return ""
-
-    payload = asyncio.run(
-        _prepare_credentials(
-            "baidu-netdisk",
-            {"token": "785329e1434f623b0562f6663921fb31"},
-            _Settings(),
-        )
-    )
-    assert payload["access_token"] == "bd_access"
-
-
-def test_baidu_personal_token_credentials(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        "octop.infra.connectors.baidu_token.validate_baidu_access_token_sync",
-        lambda _token: (True, None),
-    )
-    payload = validate_create_credentials("baidu-netdisk", {"token": "bd_token"})
-    assert payload["access_token"] == "bd_token"
-
-
-def test_extract_baidu_access_token_from_url():
-    from octop.infra.connectors.oauth.registry import _extract_baidu_access_token
-
-    assert (
-        _extract_baidu_access_token("https://example.com/#access_token=abc123&expires=1")
-        == "abc123"
-    )
-
-
-def test_baidu_authorize_url_uses_token_flow():
-    from octop.infra.connectors.oauth.registry import authorize_url_for_paste
-
-    class _Settings:
-        def get(self, _key: str) -> str:
-            return ""
-
-    url = authorize_url_for_paste("baidu-netdisk", _Settings())
-    assert url is not None
-    assert "response_type=token" in url
-    assert "zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky" in url
-    assert "force_login=1" in url
+    assert out["ok"] is False
+    assert "api key" in out["error"].lower()
 
 
 def test_mail_provider_netease():
@@ -486,8 +512,192 @@ def test_oauth_ready_notion():
             return ""
 
     assert oauth_ready_for_kind("notion", _Settings()) is True
-    assert oauth_ready_for_kind("baidu-netdisk", _Settings()) is False
     assert oauth_ready_for_kind("youdao-note", _Settings()) is False
+
+
+def test_new_gateway_connectors_in_catalog():
+    for kind in (
+        "qq-music",
+        "fliggy",
+        "baidu-map",
+        "ctrip-wendao",
+        "meituan-travel",
+        "yuandian",
+    ):
+        entry = get_catalog_entry(kind)
+        assert entry is not None
+        assert entry.mcp_mode == "gateway"
+        assert entry.auth_kind == "api_key"
+        assert entry.phase == "available"
+
+
+def test_yuandian_api_key_prefix():
+    with pytest.raises(ValueError, match="sk_"):
+        validate_create_credentials("yuandian", {"api_key": "bad-key"})
+    payload = validate_create_credentials("yuandian", {"api_key": "sk_test"})
+    assert payload["api_key"] == "sk_test"
+    assert "internal_token" in payload
+
+
+def test_meituan_travel_requires_query():
+    from octop.infra.connectors.gateway.adapters import meituan_travel
+
+    with pytest.raises(ValueError, match="query"):
+        meituan_travel.call_tool({"api_key": "a" * 32}, "travel_query", {"city": "北京"})
+
+
+def test_meituan_travel_probe_is_format_only():
+    from octop.infra.connectors.gateway.adapters import meituan_travel
+
+    with pytest.raises(ValueError, match="格式"):
+        meituan_travel.probe_credentials({"api_key": "short"})
+    with pytest.raises(ValueError, match="格式"):
+        meituan_travel.probe_credentials({"api_key": "not-hex!!!!!!!!!!!"})
+    meituan_travel.probe_credentials({"api_key": "a" * 32})
+
+
+def test_yuandian_tools_and_required_args():
+    from octop.infra.connectors.gateway.adapters import yuandian
+
+    names = {t["name"] for t in yuandian.list_tools()}
+    assert names == {
+        "search_laws",
+        "search_cases",
+        "search_enterprises",
+        "get_enterprise",
+        "detect_hallucination",
+    }
+    with pytest.raises(ValueError, match="sk_"):
+        yuandian.probe_credentials({"api_key": "bad"})
+    with pytest.raises(ValueError, match="name"):
+        yuandian.call_tool({"api_key": "sk_x"}, "search_enterprises", {})
+
+
+def test_qq_music_api_key_prefix():
+    with pytest.raises(ValueError, match="qmk-"):
+        validate_create_credentials("qq-music", {"api_key": "bad-key"})
+    payload = validate_create_credentials(
+        "qq-music", {"api_key": "qmk-00000000-0000-0000-0000-000000000000"}
+    )
+    assert payload["api_key"].startswith("qmk-")
+    assert "internal_token" in payload
+
+
+def test_ctrip_wendao_token_format():
+    from octop.infra.connectors.gateway.adapters import ctrip_wendao
+
+    with pytest.raises(ValueError, match="Token"):
+        ctrip_wendao.probe_credentials({"api_key": "short"})
+    ctrip_wendao.probe_credentials({"api_key": "0123456789abcdef0123456789abcdef"})
+
+
+def test_baidu_map_search_place_requires_region():
+    from octop.infra.connectors.gateway.adapters import baidu_map
+
+    tools = {t["name"]: t for t in baidu_map.list_tools()}
+    assert "region" in tools["search_place"]["inputSchema"]["required"]
+    with pytest.raises(ValueError, match="region"):
+        baidu_map.call_tool(
+            {"api_key": "sk-ap-x"},
+            "search_place",
+            {"query": "天安门附近停车场"},
+        )
+
+
+def test_fliggy_exposes_only_nl_search_tools():
+    from octop.infra.connectors.gateway.adapters import fliggy
+
+    names = {t["name"] for t in fliggy.list_tools()}
+    assert names == {"fliggy_ai_search", "fliggy_fast_search"}
+    with pytest.raises(ValueError, match="query"):
+        fliggy.call_tool({"api_key": "sk-x"}, "fliggy_fast_search", {"query": None})
+    with pytest.raises(ValueError, match="unknown tool"):
+        fliggy.call_tool({"api_key": "sk-x"}, "search_flight", {"origin": "北京"})
+
+
+def test_mcp_args_model_drops_nulls_before_validation():
+    from harness_agent.mcp import mcp_args_model
+
+    model = mcp_args_model(
+        "search_place",
+        {
+            "type": "object",
+            "required": ["query", "region"],
+            "properties": {
+                "query": {"type": "string"},
+                "region": {"type": "string"},
+            },
+        },
+    )
+    # Null region is omitted, then required validation fires clearly.
+    with pytest.raises(Exception, match="region"):
+        model.model_validate({"query": "天安门附近停车场", "region": None})
+    ok = model.model_validate({"query": "天安门附近停车场", "region": "北京"})
+    assert ok.model_dump() == {"query": "天安门附近停车场", "region": "北京"}
+
+
+def test_new_gateway_probe_rejects_bad_credentials(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    cases = (
+        ("qq-music", "QQ 音乐 API Key 无效"),
+        ("fliggy", "飞猪 API Key 无效"),
+        ("baidu-map", "百度地图 Token 无效"),
+    )
+    for kind, err in cases:
+
+        def _boom(_creds: dict[str, object], message: str = err) -> None:
+            raise ValueError(message)
+
+        monkeypatch.setattr(
+            f"octop.infra.connectors.gateway.adapters.{kind.replace('-', '_')}.probe_credentials",
+            _boom,
+        )
+        entry = get_catalog_entry(kind)
+        assert entry is not None
+        out = asyncio.run(
+            probe_connector(
+                entry,
+                {"api_key": "bad"},
+                instance_id="probe",
+                config=OctopConfig(),
+            )
+        )
+        assert out["ok"] is False, kind
+        assert "无效" in out["error"]
+
+
+def test_probe_notion_routes_to_streamable(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    captured: dict[str, object] = {}
+
+    async def _fake(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["kind"] = kind
+        return {
+            "ok": True,
+            "tool_count": 1,
+            "tools": [{"name": "notion-search", "description": "Search"}],
+        }
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _fake)
+    entry = get_catalog_entry("notion")
+    assert entry is not None
+
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"access_token": "ntn_tok"},
+            instance_id="probe",
+            config=OctopConfig(),
+        )
+    )
+    assert captured["kind"] == "notion"
+    assert captured["url"] == "https://mcp.notion.com/mcp"
+    assert out["ok"] is True
+    assert out["tools"][0]["name"] == "notion-search"
 
 
 def test_personal_token_meeting():

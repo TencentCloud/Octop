@@ -90,7 +90,6 @@ export function useChatSend({
         connectors: selectedConnectors,
         targetAgents: selectedTargetAgents,
         selectedModel,
-        defaultModel,
       });
 
       const modelOverride = resolveTurnModelRef(selectedModel, defaultModel);

@@ -1,0 +1,55 @@
+name: Docker Publish
+
+# 仅在推送版本标签（v*）时构建并发布镜像到 Docker Hub。
+# 与 .github/workflows/release.yml（发 PyPI）相互独立、可并行。
+# 普通 push / PR 不会触发，CI 开销保持在最低。
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  docker:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # 镜像名 = <DOCKERHUB_USERNAME>/octop（个人或组织命名空间均可）。
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/octop
+          tags: |
+            # v1.2.3 -> 1.2.3
+            type=semver,pattern={{version}}
+            # 每个 tag 同时打 latest
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          # 默认仅 amd64，构建最快最稳。如需 ARM64（Apple Silicon / Graviton），
+          # 改为 "linux/amd64,linux/arm64" 并加上 docker/setup-qemu-action@v3 步骤。
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 复用 GitHub Actions 缓存加速后续构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

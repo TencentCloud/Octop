@@ -284,16 +284,22 @@ class ExpertCatalog:
     point ``library_root`` at a fixture directory.
     """
 
-    def __init__(self, library_root: Path) -> None:
+    def __init__(self, library_root: Path, extra_roots: list[Path] | None = None) -> None:
         self._root = library_root
+        self._extra_roots = list(extra_roots or [])
         self._experts: dict[str, Expert] = {}
+        self._expert_dirs: dict[str, Path] = {}
 
     @property
     def root(self) -> Path:
         return self._root
 
+    @property
+    def roots(self) -> tuple[Path, ...]:
+        return (self._root, *self._extra_roots)
+
     def expert_dir(self, expert_id: str) -> Path:
-        return self._root / expert_id
+        return self._expert_dirs.get(expert_id) or (self._root / expert_id)
 
     def read_file_contents(
         self,
@@ -311,40 +317,43 @@ class ExpertCatalog:
     def refresh(self) -> None:
         """Re-scan the library directory; quietly skip malformed entries."""
         out: dict[str, Expert] = {}
-        if not self._root.exists():
-            self._experts = {}
-            return
-        for entry in sorted(self._root.iterdir()):
-            if not entry.is_dir():
+        dirs: dict[str, Path] = {}
+        for root in self.roots:
+            if not root.exists():
                 continue
-            manifest_path = entry / MANIFEST_FILENAME
-            if not manifest_path.exists():
-                continue
-            data = _read_manifest(manifest_path)
-            if not isinstance(data, dict):
-                continue
-            ex_id = str(data.get("id") or entry.name)
-            prompt_files = [str(f) for f in (data.get("prompt_files") or [])]
-            seed_paths = discover_seed_paths(entry)
-            summary = ExpertSummary(
-                id=ex_id,
-                label_zh=_coerce_label(data.get("label"), "zh"),
-                label_en=_coerce_label(data.get("label"), "en"),
-                description_zh=_coerce_label(data.get("description"), "zh"),
-                description_en=_coerce_label(data.get("description"), "en"),
-                welcome_message_zh=_coerce_label(data.get("welcome_message"), "zh"),
-                welcome_message_en=_coerce_label(data.get("welcome_message"), "en"),
-                icon_name=data.get("icon_name"),
-                color=data.get("color"),
-                quick_prompts=_parse_quick_prompts(data),
-            )
-            out[ex_id] = Expert(
-                summary=summary,
-                files=seed_paths,
-                prompt_files=prompt_files,
-                quick_prompts=summary.quick_prompts,
-            )
+            for entry in sorted(root.iterdir()):
+                if not entry.is_dir():
+                    continue
+                manifest_path = entry / MANIFEST_FILENAME
+                if not manifest_path.exists():
+                    continue
+                data = _read_manifest(manifest_path)
+                if not isinstance(data, dict):
+                    continue
+                ex_id = str(data.get("id") or entry.name)
+                prompt_files = [str(f) for f in (data.get("prompt_files") or [])]
+                seed_paths = discover_seed_paths(entry)
+                summary = ExpertSummary(
+                    id=ex_id,
+                    label_zh=_coerce_label(data.get("label"), "zh"),
+                    label_en=_coerce_label(data.get("label"), "en"),
+                    description_zh=_coerce_label(data.get("description"), "zh"),
+                    description_en=_coerce_label(data.get("description"), "en"),
+                    welcome_message_zh=_coerce_label(data.get("welcome_message"), "zh"),
+                    welcome_message_en=_coerce_label(data.get("welcome_message"), "en"),
+                    icon_name=data.get("icon_name"),
+                    color=data.get("color"),
+                    quick_prompts=_parse_quick_prompts(data),
+                )
+                out[ex_id] = Expert(
+                    summary=summary,
+                    files=seed_paths,
+                    prompt_files=prompt_files,
+                    quick_prompts=summary.quick_prompts,
+                )
+                dirs[ex_id] = entry
         self._experts = out
+        self._expert_dirs = dirs
         logger.info("expert catalog loaded: %d templates", len(out))
 
     def list_summaries(self) -> list[ExpertSummary]:
@@ -400,13 +409,22 @@ def build_create_spec_from_expert(
 ) -> AgentCreateSpec:
     """Build :class:`AgentCreateSpec` for ``AgentManager.create`` from a catalog entry."""
     resolved_name = resolve_expert_agent_name(expert, expert_id, locale=locale, override=name)
-    resolved_description = (
-        description
-        or expert.summary.description_zh
-        or expert.summary.label_zh
-        or expert.summary.description_en
-        or expert.summary.label_en
-    )
+    if description:
+        resolved_description = description
+    elif locale == "zh":
+        resolved_description = (
+            expert.summary.description_zh
+            or expert.summary.label_zh
+            or expert.summary.description_en
+            or expert.summary.label_en
+        )
+    else:
+        resolved_description = (
+            expert.summary.description_en
+            or expert.summary.label_en
+            or expert.summary.description_zh
+            or expert.summary.label_zh
+        )
     return AgentCreateSpec(
         agent_id=agent_id,
         name=resolved_name,

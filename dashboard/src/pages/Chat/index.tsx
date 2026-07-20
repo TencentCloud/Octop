@@ -9,7 +9,7 @@ import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
 import { formatRunUsage } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
-import { useChatBrowserPanel } from "./hooks/useChatBrowserPanel";
+import { useChatDockPanel } from "./hooks/useChatDockPanel";
 import { useChatSend } from "./hooks/useChatSend";
 import { useChatNavigation } from "./hooks/useChatNavigation";
 import { useChatSessionActions } from "./hooks/useChatSessionActions";
@@ -17,6 +17,7 @@ import { useChatSessionActions } from "./hooks/useChatSessionActions";
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
+import { useChatFileDetection } from "./hooks/useChatFileDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { browserApi } from "../../api/modules/browser";
 import type { TokenUsage } from "../../api/types";
@@ -31,11 +32,12 @@ import { useSkills } from "../Agent/Skills/useSkills";
 import { useAgent } from "../../context/AgentContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
-import ChatBrowserPanels from "./components/ChatBrowserPanels";
-import ChatBrowserBottomPanel from "./components/ChatBrowserBottomPanel";
+import ChatDockPanels from "./components/ChatDockPanels";
+import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
+import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
 import styles from "./index.module.less";
 
 export default function ChatPage() {
@@ -64,6 +66,8 @@ function ChatPageInner() {
     sidebarOpen,
     setSidebarOpen,
     sidebarWidth,
+    isSidebarResizing,
+    sidebarElRef,
     handleSidebarResizeStart,
   } = useChatSidebarState(isMobile);
 
@@ -170,12 +174,14 @@ function ChatPageInner() {
     historyLoading,
     historyHasMore,
     historyLoadingMore,
+    historyRefreshing,
     contextUsage,
     sendMessage,
     editAndResend,
     cancelStream,
     loadHistory,
     loadMoreHistory,
+    refreshHistory,
     clearMessages,
     resumeHitl,
   } = useChat(activeThreadId, resolvedAgentId);
@@ -198,18 +204,30 @@ function ChatPageInner() {
 
   refreshBrowserRef.current = refreshBrowserSession;
 
+  const { filePaths } = useChatFileDetection(activeThreadId, messages);
   const {
-    browserPanelOpen,
-    browserPanelMode,
-    setBrowserPanelMode,
-    panelSizes,
-    isResizing,
-    handleResizeStart,
-    handleBrowserClose,
-    toggleBrowserPanel,
+    dockOpen,
+    dockKind,
+    dockMode,
+    filePath: filePanelPath,
+    panelSizes: dockPanelSizes,
+    isResizing: dockIsResizing,
+    handleResizeStart: dockHandleResizeStart,
+    handleClose: handleDockClose,
+    handleModeChange: handleDockModeChange,
+    openFilePanel,
+    openFileAt,
     openBrowserPanel,
+    toggleBrowserPanel,
     resetDismissOnSessionGone,
-  } = useChatBrowserPanel(isMobile);
+  } = useChatDockPanel(isMobile);
+
+  const panelFilePaths = useMemo(() => {
+    if (!filePanelPath) return filePaths;
+    const normalized = filePanelPath;
+    if (filePaths.some((p) => p === normalized)) return filePaths;
+    return [...filePaths, normalized];
+  }, [filePaths, filePanelPath]);
 
   const prevBrowserStateRef = useRef<string>("idle");
   useEffect(() => {
@@ -383,6 +401,11 @@ function ChatPageInner() {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      if (promptNeedsUserInput(text)) {
+        prefillInputRef.current = trimmed;
+        chatInputRef.current?.setPrefillText(trimmed);
+        return;
+      }
       wrappedHandleSend(trimmed);
     },
     [wrappedHandleSend],
@@ -452,12 +475,18 @@ function ChatPageInner() {
   const hasMessages = messages.length > 0;
 
   return (
-    <>
-      <div className={styles.chatPage}>
+    <ChatFilePreviewProvider openFilePreview={openFileAt}>
+      <div
+        className={`${styles.chatPage} ${
+          dockIsResizing ? styles.panelResizeActive : ""
+        }`}
+      >
         <ChatSidebarPanel
           isMobile={isMobile}
           sidebarOpen={sidebarOpen}
           sidebarWidth={sidebarWidth}
+          isSidebarResizing={isSidebarResizing}
+          sidebarElRef={sidebarElRef}
           agents={agents}
           sessions={sessions}
           activeThreadId={activeThreadId}
@@ -481,10 +510,7 @@ function ChatPageInner() {
         {/* Main chat area */}
         <div
           className={`${styles.chatMain} ${
-            hasBrowserTool &&
-            !isMobile &&
-            browserPanelOpen &&
-            browserPanelMode === "bottom"
+            dockOpen && dockMode === "bottom"
               ? styles.chatMainWithBottomPanel
               : ""
           }`}
@@ -527,6 +553,7 @@ function ChatPageInner() {
                 welcomeSuffix={welcomeSuffix}
                 quickCards={expertQuickCards}
                 onPromptClick={handlePromptClick}
+                hideMascot={isStreaming}
               />
             ) : (
               <MessageList
@@ -535,7 +562,9 @@ function ChatPageInner() {
                 loading={historyLoading}
                 historyHasMore={historyHasMore}
                 historyLoadingMore={historyLoadingMore}
+                historyRefreshing={historyRefreshing}
                 onLoadMoreHistory={() => void loadMoreHistory()}
+                onRefreshHistory={() => void refreshHistory()}
                 isStreaming={isStreaming}
                 thinkingStartedAt={thinkingStartedAt}
                 sessionKey={activeThreadId ?? undefined}
@@ -546,6 +575,11 @@ function ChatPageInner() {
                 onHitlDecision={handleHitlDecision}
                 onOpenBrowser={
                   hasBrowserTool && !isMobile ? openBrowserPanel : undefined
+                }
+                onEditFile={
+                  panelFilePaths.length > 0 && !isMobile
+                    ? openFilePanel
+                    : undefined
                 }
               />
             )}
@@ -594,39 +628,50 @@ function ChatPageInner() {
             contextMaxTokens={contextMaxTokens}
           />
 
-          {/* Browser Workspace — bottom panel mode (inside chatMain, desktop only) */}
-          {hasBrowserTool &&
-            !isMobile &&
-            browserPanelOpen &&
-            browserPanelMode === "bottom" && (
-              <ChatBrowserBottomPanel
-                sessionId={browserSessionId ?? activeThreadId ?? null}
-                environment={browserEnvironment}
-                isResizing={isResizing}
-                bottomHeight={panelSizes.bottomHeight}
-                onModeChange={setBrowserPanelMode}
-                onClose={handleBrowserClose}
-                onResizeStart={handleResizeStart}
-              />
-            )}
+          {/* Shared dock — bottom slot (file / browser / preview) */}
+          <ChatDockPanels
+            slot="bottom"
+            hasBrowserTool={hasBrowserTool}
+            isMobile={isMobile}
+            dockOpen={dockOpen}
+            dockKind={dockKind}
+            dockMode={dockMode}
+            isResizing={dockIsResizing}
+            panelSizes={dockPanelSizes}
+            agentId={resolvedAgentId ?? ""}
+            filePaths={panelFilePaths}
+            initialPath={filePanelPath}
+            browserSessionId={browserSessionId}
+            browserEnvironment={browserEnvironment}
+            browserSessionState={browserSessionState}
+            browserControlOwner={browserControlOwner}
+            onModeChange={handleDockModeChange}
+            onClose={handleDockClose}
+            onResizeStart={dockHandleResizeStart}
+            onToggleBrowser={toggleBrowserPanel}
+          />
         </div>
 
-        <ChatBrowserPanels
+        <ChatDockPanels
+          slot="side"
           hasBrowserTool={hasBrowserTool}
           isMobile={isMobile}
-          browserPanelOpen={browserPanelOpen}
-          browserPanelMode={browserPanelMode}
-          isResizing={isResizing}
-          panelSizes={panelSizes}
+          dockOpen={dockOpen}
+          dockKind={dockKind}
+          dockMode={dockMode}
+          isResizing={dockIsResizing}
+          panelSizes={dockPanelSizes}
+          agentId={resolvedAgentId ?? ""}
+          filePaths={panelFilePaths}
+          initialPath={filePanelPath}
           browserSessionId={browserSessionId}
-          activeThreadId={activeThreadId}
           browserEnvironment={browserEnvironment}
           browserSessionState={browserSessionState}
           browserControlOwner={browserControlOwner}
-          onModeChange={setBrowserPanelMode}
-          onClose={handleBrowserClose}
-          onResizeStart={handleResizeStart}
-          onTogglePanel={toggleBrowserPanel}
+          onModeChange={handleDockModeChange}
+          onClose={handleDockClose}
+          onResizeStart={dockHandleResizeStart}
+          onToggleBrowser={toggleBrowserPanel}
         />
 
         <AgentProfileDrawer
@@ -636,6 +681,6 @@ function ChatPageInner() {
           onClose={() => setAgentProfileOpen(false)}
         />
       </div>
-    </>
+    </ChatFilePreviewProvider>
   );
 }

@@ -50,6 +50,88 @@
   }
 }
 
+.filePanelBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fileModalToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-secondary);
+  flex: none;
+}
+
+.fileModalToolbarLeft {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.fileModalSelect {
+  max-width: 320px;
+}
+
+.fileModalActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.fileModalIconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-medium);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  padding: 0;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-text-brand);
+    border-color: var(--fn-color-brand);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.fileModalBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px;
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-primary);
+}
+
+.fileModalBodyFill {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
 .agentProfileBtnWrap {
   position: absolute;
   right: 12px;
@@ -307,6 +389,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
   transition: background 0.15s;
 
   &:hover,
@@ -354,4 +437,10 @@
 
 .resizerActive {
   background: rgba(24, 144, 255, 0.06);
+}
+
+.panelResizeActive {
+  iframe {
+    pointer-events: none;
+  }
 }

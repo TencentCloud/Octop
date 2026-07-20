@@ -1,11 +1,17 @@
-"""Unit tests for SkillHub install error mapping."""
+"""Unit tests for SkillHub install error mapping and CLI subprocess helpers."""
 
 from __future__ import annotations
 
+import asyncio
+import sys
+
+import pytest
 from fastapi import HTTPException
 
 from octop.api.routers.skills import (
+    _close_subprocess,
     _map_skillhub_install_error,
+    _run_skillhub_cmd,
     _skillhub_rankings_args,
     _skillhub_stderr_suggests_upgrade,
 )
@@ -52,3 +58,42 @@ def test_skillhub_rankings_args() -> None:
         "--host",
         "https://api.example.com",
     ]
+
+
+@pytest.mark.asyncio
+async def test_run_skillhub_cmd_timeout_kills_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Timeout must kill+drain the child so transports close on a live loop."""
+    procs: list[asyncio.subprocess.Process] = []
+    real_exec = asyncio.create_subprocess_exec
+
+    async def _tracking_exec(*args: object, **kwargs: object) -> asyncio.subprocess.Process:
+        proc = await real_exec(*args, **kwargs)
+        procs.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _tracking_exec)
+    with pytest.raises(TimeoutError):
+        await _run_skillhub_cmd(
+            sys.executable,
+            ["-c", "import time; time.sleep(60)"],
+            timeout=0.05,
+        )
+    assert procs, "expected create_subprocess_exec to run"
+    assert procs[0].returncode is not None, "timed-out child must be reaped"
+    # Flush deferred pipe close callbacks while the loop is still open.
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_close_subprocess_is_noop_when_already_exited() -> None:
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        "pass",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+    assert proc.returncode is not None
+    await _close_subprocess(proc)
+    assert proc.returncode is not None

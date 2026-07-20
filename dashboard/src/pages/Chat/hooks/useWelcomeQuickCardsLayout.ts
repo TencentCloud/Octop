@@ -2,8 +2,21 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import type { WelcomeQuickCard } from "../components/WelcomeScreen";
 
-const MAX_DEFAULT_ROWS = 3;
+const MAX_DEFAULT_ROWS = 2;
 const MOBILE_MIN_VISIBLE = 2;
+const MASCOT_ASPECT = 711 / 812;
+// Estimated heading height WITHOUT the mascot (avoids a feedback loop where
+// hiding the mascot shrinks the heading, which would re-trigger the check).
+const HEADING_HEIGHT_NO_MASCOT = 72;
+// Hysteresis gap so the mascot does not flicker at the height threshold.
+const MASCOT_HIDE_HYSTERESIS = 24;
+
+function estimateMascotHeight(): number {
+  const w = window.innerWidth;
+  if (w < 768) return Math.round(185 * MASCOT_ASPECT - 14);
+  if (w >= 1200) return Math.round(300 * MASCOT_ASPECT - 24);
+  return Math.round(240 * MASCOT_ASPECT - 20);
+}
 
 export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
   const isMobile = useIsMobile();
@@ -15,6 +28,7 @@ export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
     quickCards.length,
   );
   const [expanded, setExpanded] = useState(false);
+  const [autoHideMascot, setAutoHideMascot] = useState(false);
 
   useEffect(() => {
     setExpanded(false);
@@ -27,13 +41,46 @@ export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
       const cols = w < 480 ? 1 : w < 768 ? 2 : w < 1200 ? 2 : 3;
       const maxByRows = MAX_DEFAULT_ROWS * cols;
 
+      const container = welcomeRef.current;
+      const probe = probeRef.current;
+
+      // Hide the mascot when the available height cannot fit the mascot
+      // plus the heading plus at least two rows of quick-start cards.
+      // Uses a fixed heading estimate (not the live heading height) and a
+      // hysteresis gap so the toggle does not oscillate near the threshold.
+      if (container && probe) {
+        const containerRect = container.getBoundingClientRect();
+        const sectionTitleHeight =
+          sectionTitleRef.current?.getBoundingClientRect().height ?? 0;
+        const cardHeight = probe.getBoundingClientRect().height;
+        const rowGap = 8;
+        const reserved = 48;
+        const neededForMascot =
+          estimateMascotHeight() +
+          HEADING_HEIGHT_NO_MASCOT +
+          sectionTitleHeight +
+          rowGap +
+          2 * (cardHeight + rowGap) +
+          reserved;
+        if (cardHeight > 0) {
+          let next = autoHideMascot;
+          if (!autoHideMascot && containerRect.height < neededForMascot) {
+            next = true;
+          } else if (
+            autoHideMascot &&
+            containerRect.height > neededForMascot + MASCOT_HIDE_HYSTERESIS
+          ) {
+            next = false;
+          }
+          setAutoHideMascot((prev) => (prev === next ? prev : next));
+        }
+      }
+
       if (!isMobile) {
         setDefaultVisible(Math.min(quickCards.length, maxByRows));
         return;
       }
 
-      const container = welcomeRef.current;
-      const probe = probeRef.current;
       if (!container || !probe || quickCards.length === 0) {
         setDefaultVisible(
           Math.max(MOBILE_MIN_VISIBLE, Math.min(quickCards.length, maxByRows)),
@@ -42,10 +89,13 @@ export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
       }
 
       const containerRect = container.getBoundingClientRect();
-      const headingHeight =
-        headingRef.current?.getBoundingClientRect().height ?? 0;
+      // Use a fixed heading estimate (with mascot height only when shown) so
+      // the card count does not oscillate when the mascot toggles.
       const sectionTitleHeight =
         sectionTitleRef.current?.getBoundingClientRect().height ?? 0;
+      const headingHeight =
+        HEADING_HEIGHT_NO_MASCOT +
+        (autoHideMascot ? 0 : estimateMascotHeight());
       const cardHeight = probe.getBoundingClientRect().height;
       if (cardHeight <= 0) return;
 
@@ -94,5 +144,6 @@ export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
     cards,
     showToggle,
     isMobile,
+    autoHideMascot,
   };
 }

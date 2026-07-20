@@ -21,7 +21,7 @@ const TerminalPage = lazy(() => import("../../pages/Control/Terminal"));
 
 const { Content } = Layout;
 
-const SIDEBAR_COLLAPSED_KEY = "finnie:sidebar:collapsed";
+const SIDEBAR_COLLAPSED_KEY = "octop:sidebar:collapsed";
 
 function getSavedCollapsed(): boolean {
   try {

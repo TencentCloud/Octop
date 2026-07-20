@@ -1,0 +1,192 @@
+.browserViewer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--fn-bg-primary);
+}
+
+// ---------- Tab bar ----------
+.tabBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--fn-bg-secondary);
+  border-bottom: 1px solid var(--fn-border-secondary);
+  padding: 4px 4px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+  border-top: 2px solid transparent;
+  user-select: none;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
+.tabActive {
+  background: var(--fn-bg-primary);
+  border-top: 2px solid var(--fn-color-brand, #635bff);
+  color: var(--fn-text-primary);
+}
+
+.tabLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tabClose {
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  border-radius: 3px;
+  padding: 1px 2px;
+  flex-shrink: 0;
+
+  &:hover {
+    opacity: 1;
+    background: var(--fn-border-secondary);
+  }
+}
+
+.tabNew {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--fn-text-tertiary);
+  padding: 4px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-primary);
+  }
+}
+
+// ---------- Address bar ----------
+.addressBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--fn-bg-secondary);
+  border-bottom: 1px solid var(--fn-border-secondary);
+}
+
+.urlInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.bookmarkBtn {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--fn-text-tertiary);
+  opacity: 0.7;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-text-primary);
+    opacity: 1;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.3;
+  }
+}
+
+.bookmarkBtnActive {
+  color: var(--fn-color-warning, #faad14);
+  opacity: 1;
+}
+
+// ---------- Viewport ----------
+.viewportContainer {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  background: #1f1f1f;
+}
+
+.viewportInteractive {
+  cursor: grab;
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #1f1f1f;
+}
+
+.canvasInteractive {
+  cursor: grab;
+}
+
+.canvasHidden {
+  visibility: hidden;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: center;
+  padding: 16px;
+}
+
+.placeholderHint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 4px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.interactiveHint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  white-space: nowrap;
+}

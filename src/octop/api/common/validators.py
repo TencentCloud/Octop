@@ -15,9 +15,16 @@ async def validate_chat_mcp_servers(
 ) -> list[str] | None:
     if not names:
         return None
-    repo = server.services.repos.connector_repo
+    from octop.infra.connectors.service import ConnectorService
+
+    svc = ConnectorService(
+        repo=server.services.repos.connector_repo,
+        secret_repo=server.services.secret_repo,
+        settings_repo=server.services.settings_repo,
+        config=server.services.config,
+    )
     try:
-        return list(repo.validate_mcp_servers_for_user(user_id, names))
+        return list(svc.validate_mcp_servers_for_user(user_id, names))
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_NOT_BOUND, str(exc)) from exc
 

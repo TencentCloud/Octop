@@ -1,6 +1,7 @@
 /* ================================================================
    Experts page — redesigned as Agents Management Centre.
-   Two-tab layout: 我的专家 (agent grid) + 专家库 (template grid).
+   Three-tab layout: 我的专家 (agent grid) + 内置专家 (template grid)
+   + 专家市场 (SkillHub skillset grid).
    ================================================================ */
 
 /* ── Card Grid ─────────────────────────────────────────────────── */
@@ -153,6 +154,13 @@
 }
 
 .agentCard2Switch {
+  flex-shrink: 0;
+}
+
+.agentCard2HeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -580,6 +588,317 @@
 
   .expertTemplateCard:hover & {
     color: var(--expert-accent, var(--fn-color-brand));
+  }
+}
+
+/* ── Expert Market ─────────────────────────────────────────────── */
+
+.marketContainer {
+  min-width: 0;
+}
+
+.marketSceneTabsWrap {
+  width: 100%;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.marketSceneTabs {
+  width: 100%;
+  min-width: max-content;
+
+  :global(.ant-segmented-item) {
+    min-width: 4.75em;
+  }
+
+  :global(.ant-segmented-item-label) {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+
+.marketCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.marketSearch {
+  width: 280px;
+  min-width: 0;
+
+  @media (max-width: 640px) {
+    width: auto;
+    flex: 1 1 0;
+  }
+}
+
+.marketToolbarRight {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+
+  .toolbarIconBtn {
+    flex-shrink: 0;
+  }
+}
+
+.marketIconImg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.marketCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  min-width: 0;
+
+  @media (max-width: 640px) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.marketMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  white-space: nowrap;
+}
+
+.marketDrawerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.marketTagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketDrawerDesc {
+  margin: 0;
+  color: var(--fn-text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.marketSectionTitle {
+  margin-bottom: 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.marketSkillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketQuickPromptList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.marketQuickPromptCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md);
+  min-width: 0;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary, var(--fn-border-primary));
+}
+
+.marketQuickPromptIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: rgba(15, 23, 42, 0.62);
+}
+
+:global(html[data-theme="dark"]) .marketQuickPromptIcon {
+  color: rgba(15, 23, 42, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.marketQuickPromptTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketQuickPromptDesc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+  line-height: 1.45;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.marketWorkflowPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.marketWorkflowMeta {
+  padding: 12px 14px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+}
+
+.marketWorkflowMetaTitle {
+  margin-bottom: 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.marketWorkflowChildren {
+  margin-top: 10px;
+}
+
+.marketWorkflowChildrenLabel {
+  margin-bottom: 6px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.marketWorkflowPreview {
+  min-height: 120px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px 16px;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+}
+
+.marketWorkflowEmpty {
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.marketWorkflowMarkdown {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--fn-text-primary);
+  word-break: break-word;
+
+  :global(h1),
+  :global(h2),
+  :global(h3),
+  :global(h4) {
+    margin: 0.85em 0 0.4em;
+    color: var(--fn-text-primary);
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  :global(h1) {
+    font-size: 16px;
+  }
+
+  :global(h2) {
+    font-size: 14px;
+  }
+
+  :global(h3),
+  :global(h4) {
+    font-size: 13px;
+  }
+
+  :global(h1:first-child),
+  :global(h2:first-child),
+  :global(h3:first-child),
+  :global(p:first-child) {
+    margin-top: 0;
+  }
+
+  :global(p) {
+    margin: 0.45em 0;
+    color: var(--fn-text-secondary);
+  }
+
+  :global(ul),
+  :global(ol) {
+    margin: 0.4em 0 0.6em;
+    padding-left: 1.35em;
+    color: var(--fn-text-secondary);
+  }
+
+  :global(li) {
+    margin: 0.2em 0;
+  }
+
+  :global(li::marker) {
+    color: var(--fn-text-tertiary);
+  }
+
+  :global(strong) {
+    color: var(--fn-text-primary);
+    font-weight: 600;
+  }
+
+  :global(code) {
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+    font-size: 12px;
+  }
+
+  :global(hr) {
+    margin: 12px 0;
+    border: none;
+    border-top: 1px solid var(--fn-border-secondary);
+  }
+
+  :global(blockquote) {
+    margin: 0.6em 0;
+    padding: 0.2em 0 0.2em 0.85em;
+    border-left: 3px solid var(--fn-border-primary);
+    color: var(--fn-text-tertiary);
   }
 }
 

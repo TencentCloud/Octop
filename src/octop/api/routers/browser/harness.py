@@ -6,9 +6,11 @@ import asyncio
 import contextlib
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
@@ -16,6 +18,24 @@ from octop.infra.errors import ErrorCode, OctopError
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# In-memory control ownership per session (keyed by harness profile / session_id).
+# This is a UI/coordination hint: the agent pauses interactive input while the
+# user is in control. It is stored separately from the live session so a
+# takeover survives dashboard reloads and WS reconnects.
+_CONTROL_OWNERS: dict[str, str] = {}
+
+
+def control_owner_for(session_id: str) -> str:
+    """Return the current control owner for a session, defaulting to 'agent'."""
+    return _CONTROL_OWNERS.get(session_id, "agent")
+
+
+class HandoffBody(BaseModel):
+    """Control handoff request: switch between agent and user control."""
+
+    target: str  # "agent" | "user"
+    reason: str = ""
 
 
 async def _is_session_alive(sess: Any, *, timeout: float = 2.0) -> bool:
@@ -101,18 +121,71 @@ async def resolve_harness_session(
 
         shots = agent_outbound_screenshots_dir(server.paths, agent_id)
         harness_settings = harness_settings_for_screenshots_dir(shots)
+
+    from octop.infra.browser.setup import (  # noqa: PLC0415
+        prepare_harness_profile_for_launch,
+        resolve_browser_display,
+    )
+
+    await prepare_harness_profile_for_launch(profile)
+    # Virtual desktop (Xvnc :99) → headed Chrome so the window shows on
+    # remote desktop; otherwise keep auto (headless on servers without X).
+    display = resolve_browser_display()
+    launch_mode = "headed" if display else "auto"
+
+    # Fresh ProfileManager picks up any BROWSER_USE_PROFILES_DIR relocation
+    # done by prepare (default singleton is bound at import time).
+    from harness_browser.profile import ProfileManager  # noqa: PLC0415
+    from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
+
+    profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
+
     try:
         sess = await BrowserSession.create(
             profile=profile,
-            mode="auto",
+            mode=launch_mode,  # type: ignore[arg-type]
             settings=harness_settings,
+            profile_manager=profile_manager,
         )
     except Exception as exc:
-        raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            f"failed to attach browser profile {profile!r}: {exc}",
-            status=503,
-        ) from exc
+        # Chrome exit 21 / ProcessSingleton usually means a stale lock or a
+        # non-writable profile left by a previous root/non-root mismatch.
+        msg = str(exc)
+        if (
+            "returncode=21" in msg
+            or "ProcessSingleton" in msg
+            or "SingletonLock" in msg
+            or "profile directory" in msg.lower()
+            or "/run/user/" in msg
+        ):
+            logger.warning(
+                "Browser launch failed for %r (%s); recovering profile and retrying",
+                profile,
+                exc,
+            )
+            await prepare_harness_profile_for_launch(profile, force_recover=True)
+            display = resolve_browser_display()
+            launch_mode = "headed" if display else "auto"
+            profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
+            try:
+                sess = await BrowserSession.create(
+                    profile=profile,
+                    mode=launch_mode,  # type: ignore[arg-type]
+                    settings=harness_settings,
+                    profile_manager=profile_manager,
+                )
+            except Exception as retry_exc:
+                raise OctopError(
+                    ErrorCode.INTERNAL_ERROR,
+                    f"failed to attach browser profile {profile!r}: {retry_exc}",
+                    status=503,
+                ) from retry_exc
+        else:
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"failed to attach browser profile {profile!r}: {exc}",
+                status=503,
+            ) from exc
     _registry[profile] = sess
     return sess
 
@@ -191,7 +264,7 @@ async def harness_sessions_payload(conversation_id: str | None = None) -> dict[s
                 "conversation_id": profile,
                 "channel_source": "dashboard",
                 "state": "streaming" if url else "idle",
-                "control_owner": "agent",
+                "control_owner": control_owner_for(profile),
                 "current_url": url,
                 "created_at": now,
                 "last_activity_at": now,
@@ -211,3 +284,44 @@ async def list_harness_sessions(
 ) -> dict[str, Any]:
     """List live harness-browser profiles (agent ``browser_use`` sessions)."""
     return await harness_sessions_payload(conversation_id)
+
+
+@router.post("/browser/sessions/{session_id}/handoff")
+async def handoff(
+    session_id: str,
+    body: HandoffBody,
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Switch control of a browser session between the agent and the user.
+
+    The control owner is a coordination hint (the agent yields interactive
+    input to the user while they are in control). It is stored in-memory per
+    session and reflected in ``harness-sessions`` and the WS screencast so a
+    takeover survives dashboard reloads and reconnects.
+    """
+    target = body.target
+    if target not in ("agent", "user"):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "target must be 'agent' or 'user'")
+    _CONTROL_OWNERS[session_id] = target
+
+    payload = await harness_sessions_payload(conversation_id=session_id)
+    session = next(
+        (s for s in payload.get("sessions", []) if s["session_id"] == session_id),
+        None,
+    )
+    if session is None:
+        # Session not currently live — return a minimal payload so the UI can
+        # still flip its local control-owner state.
+        now = int(time.time() * 1000)
+        session = {
+            "session_id": session_id,
+            "profile_name": session_id,
+            "conversation_id": session_id,
+            "channel_source": "dashboard",
+            "state": "idle",
+            "control_owner": target,
+            "current_url": "",
+            "created_at": now,
+            "last_activity_at": now,
+        }
+    return {"ok": True, "session": session}

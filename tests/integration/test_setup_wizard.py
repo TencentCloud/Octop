@@ -76,6 +76,22 @@ async def test_initial_admin_succeeds_with_token(env: Any) -> None:
     assert not (Path.home() / WIZARD_FILE_NAME).exists()
 
 
+async def test_initial_admin_respects_locale_body(env: Any) -> None:
+    c, srv, _home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    r = await c.post(
+        "/api/setup/initial-admin",
+        json={"username": "admin", "password": "pw", "locale": "en"},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert r.status_code == 201
+    assert r.json()["locale"] == "en"
+    user = srv.user_manager.get("admin")
+    assert user is not None
+    assert user.locale == "en"
+
+
 # ─── /setup/status ─────────────────────────────────────────────────
 
 
