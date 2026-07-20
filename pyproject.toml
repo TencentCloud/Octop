@@ -22,7 +22,6 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
     "orcakit-harness-agent[all]>=0.9.10",
-    "harness-memory>=0.8.5",
     "harness-gateway>=0.8.4",
     "cryptography>=41",
     "scalar-fastapi>=1.0",
@@ -66,12 +65,6 @@ dev = [
     "mypy>=1.10",
     "build>=1.0",
 ]
-
-[tool.uv.sources]
-orcakit-harness-agent = { path = "../harness-agent", editable = true }
-harness-memory = { path = "../harness-memory", editable = true }
-harness-gateway = { path = "../harness-im-bridge", editable = true }
-harness-browser = { path = "../harness-browser", editable = true }
 
 [project.scripts]
 octop = "octop.cli.main:cli"

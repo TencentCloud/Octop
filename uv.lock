@@ -1268,39 +1268,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/4b/bc/9f0c2ca9d35de4efa
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/22/1dcea13385221846dbd94e5c8dd6cf170f17025700c9a2b663f76d34cf25/harness_gateway-0.8.5-py3-none-any.whl", hash = "sha256:85c6a9be8b8052611be1ed07fc554af7bbea529a31f4b84a5222c32eb85af9b9", size = 108647, upload-time = "2026-07-17T09:18:12.465Z" },
 ]
-provides-extras = ["examples", "dev"]
 
 [[package]]
 name = "harness-memory"
-version = "0.9.1"
-source = { editable = "../harness-memory" }
-
-[package.metadata]
-requires-dist = [
-    { name = "chromadb", marker = "extra == 'chroma'", specifier = ">=0.4" },
-    { name = "click", marker = "extra == 'cli'", specifier = ">=8.0" },
-    { name = "click", marker = "extra == 'dashboard'", specifier = ">=8.0" },
-    { name = "click", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "fastapi", marker = "extra == 'dashboard'", specifier = ">=0.110" },
-    { name = "langgraph", marker = "extra == 'dev'", specifier = ">=0.2" },
-    { name = "langgraph-checkpoint", marker = "extra == 'dev'", specifier = ">=2.0" },
-    { name = "langgraph-checkpoint", marker = "extra == 'langgraph'", specifier = ">=2.0" },
-    { name = "langgraph-checkpoint", marker = "extra == 'langgraph-postgres'", specifier = ">=2.0" },
-    { name = "langgraph-checkpoint-postgres", marker = "extra == 'langgraph-postgres'", specifier = ">=2.0" },
-    { name = "langgraph-checkpoint-sqlite", marker = "extra == 'dev'", specifier = ">=2.0" },
-    { name = "langgraph-checkpoint-sqlite", marker = "extra == 'langgraph'", specifier = ">=2.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
-    { name = "psycopg", extras = ["binary"], marker = "extra == 'langgraph-postgres'", specifier = ">=3.1" },
-    { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "qdrant-client", marker = "extra == 'qdrant'", specifier = ">=1.7" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
-    { name = "sentence-transformers", marker = "extra == 'embeddings'", specifier = ">=2.2" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'dashboard'", specifier = ">=0.29" },
+version = "0.8.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/32/444b4568e62215d49339ad8a419908361298fbd974804a4ccec6f2b869dc/harness_memory-0.8.5.tar.gz", hash = "sha256:f96e7993a1743c80e2939288122c02fb59dba6c3569113342bb1c5629c703330", size = 34501889, upload-time = "2026-07-09T08:44:49.525Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/86/1cc1e0d955d3f18a4fc8fbc2f57964da6b6f9394af2a3991466ee5a5cbb4/harness_memory-0.8.5-py3-none-any.whl", hash = "sha256:362864aa83fc211b6f62023855e15f5feae9126a0ec000ca4f6f65938878e226", size = 302722, upload-time = "2026-07-09T08:44:45.12Z" },
 ]
-provides-extras = ["postgres", "chroma", "qdrant", "embeddings", "langgraph", "langgraph-postgres", "cli", "dashboard", "dev"]
 
 [[package]]
 name = "httpcore"
@@ -2205,7 +2181,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "harness-browser" },
     { name = "harness-gateway" },
-    { name = "harness-memory" },
     { name = "josepy" },
     { name = "langchain-core" },
     { name = "orcakit-harness-agent", extra = ["all"] },
