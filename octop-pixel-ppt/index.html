@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Octop · 我的世界像素风介绍</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&family=ZCOOL+QingKe+HuangYou&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* Minecraft palette (exact from design) */
+    --sky:#7EC8E3;
+    --grass:#6ABE30; --grass-light:#8FE05A;
+    --dirt:#8B5A2B; --dirt-dark:#A06A33;
+    --gold:#F2C14E; --gold-light:#F7D27A; --gold-dark:#D89E2A;
+    --cyan:#3FCFCF; --cyan-stroke:#40BFCF;
+    --ink:#1B1B24; --panel:#2A2A35;
+    --nether:#26120F; --nether-panel:#2A1820; --lava:#E25822;
+    --sand:#F4E9C9; --border-ink:#1C1C21;
+    --c-blue:#3B82F5; --c-green:#0FBA82; --c-purple:#8C5CF5; --c-orange:#F59E0A; --c-red:#F04545;
+    --creeper:#5BA93A;
+    --text-gray:#444444; --text-light:#E0E0E0; --text-mid:#999999; --text-storm:#D0D0D0;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%; background:#0d0d12; overflow:hidden; font-family:'Noto Sans SC',sans-serif; color:#fff; -webkit-font-smoothing:none; image-rendering:pixelated;}
+  #viewport{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#0d0d12;}
+  #stage{width:1920px; height:1080px; position:relative; transform-origin:center center;}
+  .slide{position:absolute; inset:0; width:1920px; height:1080px; display:none; overflow:hidden;}
+  .slide.active{display:block; animation:fade .25s ease;}
+  @keyframes fade{from{opacity:0;}to{opacity:1;}}
+
+  .pixel{font-family:'Pixelify Sans',monospace; font-weight:700;}
+  .zh{font-family:'ZCOOL QingKe HuangYou','Noto Sans SC',sans-serif;}
+  .sc{font-family:'Noto Sans SC',sans-serif;}
+  .scb{font-family:'Noto Sans SC',sans-serif; font-weight:700;}
+
+  /* blocky minecraft outline for display titles */
+  .outline{
+    text-shadow:
+      3px 0 0 var(--ink), -3px 0 0 var(--ink),
+      0 3px 0 var(--ink), 0 -3px 0 var(--ink),
+      3px 3px 0 var(--ink), -3px 3px 0 var(--ink),
+      3px -3px 0 var(--ink), -3px -3px 0 var(--ink);
+  }
+
+  /* ---------- shared decorations ---------- */
+  .cloud{position:absolute; background:#fff; opacity:.88;}
+  .ground{position:absolute; left:0;}
+  .ground .g-green{position:absolute; left:0; top:0; width:1920px; height:40px; background:var(--grass);}
+  .ground .g-green-l{position:absolute; left:0; top:0; width:1920px; height:12px; background:var(--grass-light);}
+  .ground .g-dirt{position:absolute; left:0; top:40px; width:1920px; height:60px; background:var(--dirt);}
+  .ground .g-dirt-d{position:absolute; left:0; top:40px; width:1920px; height:14px; background:var(--dirt-dark);}
+
+  .sun{position:absolute; background:var(--gold);}
+  .sun .s-l{position:absolute; left:0; top:0; width:100%; height:16px; background:var(--gold-light);}
+  .sun .s-d{position:absolute; left:0; bottom:0; width:100%; height:16px; background:var(--gold-dark);}
+
+  .deco{position:absolute;}
+  .deco svg{display:block; width:100%; height:100%; shape-rendering:crispEdges;}
+
+  /* titles */
+  .title{position:absolute; left:0; width:1920px; text-align:center;}
+  .label{position:absolute; left:0; width:1920px; text-align:center;}
+
+  /* card (sandstone) */
+  .card{position:absolute; background:var(--sand); border:3px solid var(--border-ink);}
+  .card .num{position:absolute; font-family:'Pixelify Sans',monospace; font-weight:700;}
+  .card .ctitle{position:absolute; font-family:'ZCOOL QingKe HuangYou','Noto Sans SC',sans-serif; color:var(--ink);}
+  .card .cdesc{position:absolute; font-family:'Noto Sans SC',sans-serif; color:var(--text-gray); white-space:pre-line; line-height:38px;}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; z-index:50;}
+  #hud .dots{display:flex; gap:12px;}
+  #hud .dot{width:16px; height:16px; background:#3a3a44; border:2px solid #1b1b24; cursor:pointer; transition:.15s;}
+  #hud .dot.on{background:var(--gold);}
+  #hud .counter{font-family:'Pixelify Sans',monospace; font-weight:700; color:#cfcfe0; font-size:18px; letter-spacing:1px;}
+  #hint{position:fixed; top:16px; right:18px; font-family:'Pixelify Sans',monospace; font-weight:700; color:#7c7c8c; font-size:14px; z-index:50;}
+</style>
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+
+    <!-- ============ SLIDE 1 : COVER ============ -->
+    <section class="slide active" data-bg="sky">
+      <div style="position:absolute;inset:0;background:var(--sky);"></div>
+      <!-- clouds -->
+      <div class="cloud" style="left:400px;top:290px;width:220px;height:50px;"></div>
+      <div class="cloud" style="left:450px;top:250px;width:140px;height:50px;"></div>
+      <div class="cloud" style="left:520px;top:220px;width:80px;height:50px;"></div>
+      <div class="cloud" style="left:1100px;top:200px;width:260px;height:50px;"></div>
+      <div class="cloud" style="left:1160px;top:160px;width:150px;height:50px;"></div>
+      <!-- sun -->
+      <div class="sun" style="left:1560px;top:120px;width:170px;height:170px;"><div class="s-l"></div><div class="s-d"></div></div>
+      <!-- ground -->
+      <div class="ground" style="top:980px;height:100px;">
+        <div class="g-green"></div><div class="g-green-l"></div><div class="g-dirt"></div><div class="g-dirt-d"></div>
+      </div>
+      <!-- decorations -->
+      <div class="deco" style="left:170px;top:790px;width:150px;height:150px;">
+        <svg viewBox="0 0 150 150">
+          <rect x="0" y="0" width="150" height="150" fill="#5BA93A"/>
+          <rect x="28.125" y="37.5" width="18.75" height="28.125" fill="#1B1B24"/>
+          <rect x="103.125" y="37.5" width="18.75" height="28.125" fill="#1B1B24"/>
+          <rect x="46.875" y="84.375" width="56.25" height="9.375" fill="#1B1B24"/>
+          <rect x="56.25" y="93.75" width="9.375" height="18.75" fill="#1B1B24"/>
+          <rect x="84.375" y="93.75" width="9.375" height="18.75" fill="#1B1B24"/>
+        </svg>
+      </div>
+      <div class="deco" style="left:1500px;top:430px;width:120px;height:120px;">
+        <svg viewBox="0 0 120 120">
+          <rect x="0" y="0" width="120" height="120" fill="#7C7C7C"/>
+          <rect x="0" y="0" width="120" height="20" fill="#9A9A9A"/>
+          <rect x="0" y="100" width="120" height="20" fill="#5E5E5E"/>
+          <rect x="30" y="40" width="20" height="20" fill="#3FD0D0"/>
+          <rect x="70" y="60" width="20" height="20" fill="#3FD0D0"/>
+          <rect x="50" y="80" width="20" height="20" fill="#3FD0D0"/>
+        </svg>
+      </div>
+      <div class="deco" style="left:250px;top:430px;width:110px;height:110px;">
+        <svg viewBox="0 0 110 110">
+          <rect x="0" y="0" width="110" height="36.667" fill="#6ABE30"/>
+          <rect x="0" y="36.667" width="110" height="73.333" fill="#8B5A2B"/>
+          <rect x="0" y="0" width="110" height="9.167" fill="#8FE05A"/>
+          <rect x="27.5" y="36.667" width="18.333" height="18.333" fill="#6ABE30"/>
+          <rect x="64.167" y="45.833" width="18.333" height="18.333" fill="#6ABE30"/>
+        </svg>
+      </div>
+      <div class="deco" style="left:1620px;top:700px;width:90px;height:90px;">
+        <svg viewBox="0 0 90 90">
+          <rect x="0" y="0" width="90" height="30" fill="#6ABE30"/>
+          <rect x="0" y="30" width="90" height="60" fill="#8B5A2B"/>
+          <rect x="0" y="0" width="90" height="7.5" fill="#8FE05A"/>
+          <rect x="22.5" y="30" width="15" height="15" fill="#6ABE30"/>
+        </svg>
+      </div>
+      <!-- text -->
+      <div class="title outline pixel" style="top:300px;height:264px;font-size:220px;color:var(--gold);line-height:264px;">OCTOP</div>
+      <div class="title outline zh" style="top:560px;height:84px;font-size:84px;color:#fff;line-height:84px;">自托管 AI 助手平台</div>
+      <div class="title scb" style="top:690px;height:58px;font-size:40px;color:#EAF5FF;line-height:58px;">多用户 · 多专家 · 一站式智能工作台</div>
+      <div style="position:absolute;left:660px;top:922px;width:600px;height:56px;background:var(--gold);display:flex;align-items:center;justify-content:center;">
+        <span class="scb" style="font-size:28px;color:var(--ink);">我的世界 · 像素风介绍</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 2 : 多用户多专家团队 ============ -->
+    <section class="slide" data-bg="sky">
+      <div style="position:absolute;inset:0;background:var(--sky);"></div>
+      <div class="cloud" style="left:240px;top:155px;width:200px;height:45px;"></div>
+      <div class="cloud" style="left:290px;top:120px;width:130px;height:45px;"></div>
+      <div class="cloud" style="left:1160px;top:145px;width:280px;height:45px;"></div>
+      <div class="cloud" style="left:1240px;top:110px;width:160px;height:45px;"></div>
+      <div class="cloud" style="left:1300px;top:190px;width:90px;height:45px;"></div>
+      <div class="ground" style="top:980px;height:100px;">
+        <div class="g-green"></div><div class="g-green-l"></div><div class="g-dirt"></div><div class="g-dirt-d"></div>
+      </div>
+      <div class="title outline zh" style="top:56px;height:76px;font-size:76px;color:#fff;line-height:76px;">多用户 · 多专家团队</div>
+      <div class="label pixel" style="top:148px;height:41px;font-size:34px;color:var(--gold);line-height:41px;">Multi-User &amp; Multi-Expert Team</div>
+
+      <!-- Card 1 -->
+      <div class="card" style="left:80px;top:228px;width:550px;height:620px;">
+        <div class="num" style="left:36px;top:36px;font-size:48px;color:var(--grass);">01</div>
+        <div class="deco" style="left:36px;top:114px;width:80px;height:80px;">
+          <svg viewBox="0 0 80 80">
+            <rect x="6.667" y="6.667" width="13.333" height="13.333" fill="#1B1B24"/>
+            <rect x="0" y="20" width="26.667" height="20" fill="#1B1B24"/>
+            <rect x="0" y="40" width="26.667" height="26.667" fill="#1B1B24"/>
+            <rect x="46.667" y="6.667" width="13.333" height="13.333" fill="#1B1B24"/>
+            <rect x="40" y="20" width="26.667" height="20" fill="#1B1B24"/>
+            <rect x="40" y="40" width="26.667" height="26.667" fill="#1B1B24"/>
+          </svg>
+        </div>
+        <div class="ctitle" style="left:36px;top:214px;font-size:42px;">多用户支持</div>
+        <div class="cdesc" style="left:36px;top:276px;font-size:28px;">管理员可创建子用户
+一账号全家共享使用
+权限灵活分配
+安全可控</div>
+      </div>
+      <!-- Card 2 -->
+      <div class="card" style="left:670px;top:228px;width:550px;height:620px;">
+        <div class="num" style="left:36px;top:36px;font-size:48px;color:var(--cyan);">02</div>
+        <div class="deco" style="left:36px;top:114px;width:80px;height:80px;">
+          <svg viewBox="0 0 80 80">
+            <rect x="20" y="6.667" width="40" height="20" fill="#3FCFCF"/>
+            <rect x="13.333" y="26.667" width="53.333" height="26.667" fill="#3FCFCF"/>
+            <rect x="26.667" y="53.333" width="26.667" height="13.333" fill="#3FCFCF"/>
+            <rect x="33.333" y="13.333" width="13.333" height="6.667" fill="#fff"/>
+            <rect x="33.333" y="33.333" width="13.333" height="6.667" fill="#fff"/>
+            <rect x="33.333" y="53.333" width="13.333" height="6.667" fill="#fff"/>
+          </svg>
+        </div>
+        <div class="ctitle" style="left:36px;top:214px;font-size:42px;">多专家系统</div>
+        <div class="cdesc" style="left:36px;top:276px;font-size:28px;">每个用户可创建多个专家
+各连不同 IM 渠道
+例：QQ 育儿 / 微信 生活助理
+独立记忆工作区
+多功能不混乱</div>
+      </div>
+      <!-- Card 3 -->
+      <div class="card" style="left:1260px;top:228px;width:550px;height:620px;">
+        <div class="num" style="left:36px;top:36px;font-size:48px;color:var(--gold);">03</div>
+        <div class="ctitle" style="left:36px;top:114px;font-size:42px;">子 Agent 团队</div>
+        <div class="cdesc" style="left:36px;top:176px;font-size:28px;">为每个专家添加子智能体
+组建强大的专家团队
+分工协作
+能力倍增</div>
+        <div class="deco" style="left:36px;top:348px;width:80px;height:80px;">
+          <svg viewBox="0 0 80 80">
+            <rect x="13.333" y="6.667" width="53.333" height="33.333" fill="#F2C14E"/>
+            <rect x="20" y="13.333" width="13.333" height="13.333" fill="#1B1B24"/>
+            <rect x="46.667" y="13.333" width="13.333" height="13.333" fill="#1B1B24"/>
+            <rect x="26.667" y="40" width="26.667" height="26.667" fill="#D89E2A"/>
+            <rect x="6.667" y="46.667" width="13.333" height="20" fill="#F2C14E"/>
+            <rect x="60" y="46.667" width="13.333" height="20" fill="#F2C14E"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 3 : 记忆系统 (cave) ============ -->
+    <section class="slide" data-bg="cave">
+      <div style="position:absolute;inset:0;background:var(--ink);"></div>
+      <!-- cave glow + lava faint -->
+      <div style="position:absolute;left:100px;top:910px;width:45px;height:45px;background:var(--cyan);opacity:.45;"></div>
+      <div style="position:absolute;left:165px;top:935px;width:28px;height:28px;background:var(--cyan);opacity:.45;"></div>
+      <div style="position:absolute;left:1700px;top:860px;width:55px;height:55px;background:var(--cyan);opacity:.45;"></div>
+      <div style="position:absolute;left:1770px;top:905px;width:32px;height:32px;background:var(--cyan);opacity:.45;"></div>
+      <div style="position:absolute;left:1740px;top:965px;width:38px;height:38px;background:var(--lava);opacity:.35;"></div>
+      <div style="position:absolute;left:1795px;top:985px;width:22px;height:22px;background:var(--lava);opacity:.35;"></div>
+      <div style="position:absolute;left:0;top:1040px;width:1920px;height:40px;background:#111118;"></div>
+
+      <div class="title outline zh" style="top:56px;height:76px;font-size:76px;color:#fff;line-height:76px;">记忆系统：可靠 &amp; 可迁移</div>
+      <div class="label pixel" style="top:148px;height:41px;font-size:34px;color:var(--cyan);line-height:41px;">Memory System : Reliable &amp; Portable</div>
+
+      <!-- Left panel -->
+      <div style="position:absolute;left:80px;top:228px;width:820px;height:720px;background:var(--panel);border:3px solid var(--cyan-stroke);">
+        <div class="zh" style="position:absolute;left:36px;top:36px;font-size:44px;color:var(--cyan);">⛏ 记忆流程</div>
+        <div class="sc" style="position:absolute;left:36px;top:108px;width:738px;height:114px;font-size:28px;line-height:38px;color:var(--text-light);white-space:pre-line;">① 创建流程
+  对话内容写入 → 自动语义索引 → 持久化存储到本地数据库
+  支持增量更新，无需全量重建</div>
+        <div class="sc" style="position:absolute;left:36px;top:250px;width:598px;height:114px;font-size:28px;line-height:38px;color:var(--text-light);white-space:pre-line;">② 召回流程
+  用户提问 → 语义相似度召回 → 注入上下文窗口
+  基于向量检索，精准定位相关记忆</div>
+        <div style="position:absolute;left:36px;top:392px;width:748px;height:100px;background:var(--cyan);display:flex;align-items:center;">
+          <span class="scb" style="font-size:26px;color:var(--ink);padding:0 22px;">✓ 新版记忆：持久化索引 · 向量检索 · 断电不丢失</span>
+        </div>
+      </div>
+
+      <!-- Right panel -->
+      <div style="position:absolute;left:1020px;top:228px;width:820px;height:720px;background:var(--panel);border:3px solid var(--gold);">
+        <div class="zh" style="position:absolute;left:36px;top:36px;font-size:44px;color:var(--gold);">📦 一键可迁移</div>
+        <div style="position:absolute;left:36px;top:108px;width:155px;height:134px;background:var(--ink);border:3px solid var(--cyan-stroke);">
+          <div class="pixel" style="position:absolute;left:24px;top:24px;font-size:36px;color:var(--cyan);">OCTOP</div>
+          <div class="sc" style="position:absolute;left:24px;top:75px;font-size:24px;color:var(--text-mid);">记忆数据</div>
+        </div>
+        <div class="pixel" style="position:absolute;left:36px;top:270px;width:748px;height:86px;font-size:72px;color:var(--gold);">⟹</div>
+        <div style="position:absolute;left:36px;top:384px;width:216px;height:134px;background:var(--ink);border:3px solid var(--gold);">
+          <div class="pixel" style="position:absolute;left:24px;top:24px;font-size:36px;color:var(--gold);">OpenClaw</div>
+          <div class="sc" style="position:absolute;left:24px;top:75px;font-size:24px;color:var(--text-mid);">继续使用</div>
+        </div>
+        <div class="sc" style="position:absolute;left:36px;top:546px;width:397px;height:108px;font-size:26px;line-height:36px;color:var(--text-mid);white-space:pre-line;">在 Octop 上使用的数据
+可一键迁移至 OpenClaw 继续使用
+格式兼容，无缝衔接</div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 4 : Connector 腾讯全家桶 ============ -->
+    <section class="slide" data-bg="sky">
+      <div style="position:absolute;inset:0;background:var(--sky);"></div>
+      <div class="cloud" style="left:160px;top:120px;width:180px;height:40px;"></div>
+      <div class="cloud" style="left:210px;top:90px;width:120px;height:40px;"></div>
+      <!-- right clouds shifted clear of the title -->
+      <div class="cloud" style="left:1250px;top:110px;width:240px;height:40px;"></div>
+      <div class="cloud" style="left:1320px;top:80px;width:140px;height:40px;"></div>
+      <div class="cloud" style="left:1580px;top:150px;width:160px;height:35px;"></div>
+      <div class="ground" style="top:980px;height:100px;">
+        <div class="g-green"></div><div class="g-green-l"></div><div class="g-dirt"></div><div class="g-dirt-d"></div>
+      </div>
+      <div class="title outline zh" style="top:56px;height:72px;font-size:72px;color:#fff;line-height:72px;">Connector：一键接入腾讯全家桶</div>
+      <div class="label pixel" style="top:142px;height:38px;font-size:32px;color:var(--gold);line-height:38px;">One-Click Tencent Ecosystem Integration</div>
+
+      <!-- P1 -->
+      <div class="card" style="left:120px;top:230px;width:520px;height:280px;border-color:var(--c-blue);">
+        <div class="num" style="left:28px;top:28px;font-size:40px;color:var(--c-blue);">01</div>
+        <div class="ctitle" style="left:28px;top:88px;font-size:38px;">腾讯文档</div>
+        <div class="cdesc" style="left:28px;top:138px;width:234px;height:68px;font-size:26px;line-height:34px;">分析材料、协作编辑
+实时同步、多人批注</div>
+      </div>
+      <!-- P2 -->
+      <div class="card" style="left:700px;top:230px;width:520px;height:280px;border-color:var(--c-green);">
+        <div class="num" style="left:28px;top:28px;font-size:40px;color:var(--c-green);">02</div>
+        <div class="ctitle" style="left:28px;top:88px;font-size:38px;">腾讯会议</div>
+        <div class="cdesc" style="left:28px;top:138px;width:260px;height:68px;font-size:26px;line-height:34px;">预定会议室、屏幕共享
+日历集成、智能纪要</div>
+      </div>
+      <!-- P3 -->
+      <div class="card" style="left:1280px;top:230px;width:520px;height:280px;border-color:var(--c-purple);">
+        <div class="num" style="left:28px;top:28px;font-size:40px;color:var(--c-purple);">03</div>
+        <div class="ctitle" style="left:28px;top:88px;font-size:38px;">腾讯问卷 &amp; 微云</div>
+        <div class="cdesc" style="left:28px;top:138px;width:234px;height:68px;font-size:26px;line-height:34px;">收集反馈、数据统计
+文件存储、云端同步</div>
+      </div>
+      <!-- P4 -->
+      <div class="card" style="left:120px;top:560px;width:520px;height:280px;border-color:var(--c-orange);">
+        <div class="num" style="left:28px;top:28px;font-size:40px;color:var(--c-orange);">04</div>
+        <div class="ctitle" style="left:28px;top:88px;font-size:38px;">企业微信 / QQ邮箱</div>
+        <div class="cdesc" style="left:28px;top:138px;width:269px;height:68px;font-size:26px;line-height:34px;">IM 渠道接入、消息通知
+邮件收发、自动回复</div>
+      </div>
+      <!-- P5 -->
+      <div class="card" style="left:700px;top:560px;width:520px;height:280px;border-color:var(--c-red);">
+        <div class="num" style="left:28px;top:28px;font-size:40px;color:var(--c-red);">05</div>
+        <div class="ctitle" style="left:28px;top:88px;font-size:38px;">更多腾讯服务</div>
+        <div class="cdesc" style="left:28px;top:138px;width:234px;height:68px;font-size:26px;line-height:34px;">持续扩展中...
+地图、视频、健康等</div>
+      </div>
+
+      <div style="position:absolute;left:120px;top:900px;width:1680px;height:64px;background:var(--gold);display:flex;align-items:center;justify-content:center;">
+        <span class="scb" style="font-size:32px;color:var(--ink);">🎮 一键接入 · 开箱即用 · 无缝集成腾讯生态全家族</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 5 : ACP 双向集成 (nether) ============ -->
+    <section class="slide" data-bg="nether">
+      <div style="position:absolute;inset:0;background:var(--nether);"></div>
+      <div style="position:absolute;left:140px;top:920px;width:80px;height:35px;background:var(--lava);opacity:.3;"></div>
+      <div style="position:absolute;left:230px;top:940px;width:45px;height:22px;background:var(--lava);opacity:.3;"></div>
+      <div style="position:absolute;left:1640px;top:900px;width:100px;height:45px;background:var(--lava);opacity:.3;"></div>
+      <div style="position:absolute;left:1760px;top:950px;width:55px;height:28px;background:var(--lava);opacity:.3;"></div>
+      <div style="position:absolute;left:0;top:1040px;width:1920px;height:40px;background:#1A0A03;"></div>
+
+      <div class="title outline zh" style="top:56px;height:72px;font-size:72px;color:#fff;line-height:72px;">ACP 双向集成：一个界面搞定多任务</div>
+      <div class="label pixel" style="top:142px;height:38px;font-size:32px;color:var(--gold);line-height:38px;">Bidirectional CodeBuddy Integration</div>
+
+      <!-- L panel -->
+      <div style="position:absolute;left:80px;top:228px;width:780px;height:680px;background:var(--nether-panel);border:3px solid var(--cyan-stroke);">
+        <div style="position:absolute;left:36px;top:36px;width:160px;height:48px;background:var(--cyan);display:flex;align-items:center;justify-content:center;">
+          <span class="pixel" style="font-size:26px;color:var(--ink);">OCTOP</span>
+        </div>
+        <div class="zh" style="position:absolute;left:36px;top:108px;font-size:42px;color:var(--cyan);">派发任务 Dispatch</div>
+        <div class="sc" style="position:absolute;left:36px;top:174px;width:537px;height:228px;font-size:28px;line-height:38px;color:var(--text-storm);white-space:pre-line;">在 Octop 界面直接给 CodeBuddy 下达任务
+
+✦ 无需切换窗口，一站式操作
+✦ 支持多个任务并行管理
+✦ 实时查看每个任务的执行状态
+✦ 统一的任务队列与优先级</div>
+      </div>
+
+      <!-- R panel -->
+      <div style="position:absolute;left:1060px;top:228px;width:780px;height:680px;background:var(--nether-panel);border:3px solid var(--gold);">
+        <div style="position:absolute;left:36px;top:36px;width:180px;height:48px;background:var(--gold);display:flex;align-items:center;justify-content:center;">
+          <span class="pixel" style="font-size:24px;color:var(--ink);">CodeBuddy</span>
+        </div>
+        <div class="zh" style="position:absolute;left:36px;top:108px;font-size:42px;color:var(--gold);">接收结果 Result</div>
+        <div class="sc" style="position:absolute;left:36px;top:174px;width:501px;height:228px;font-size:28px;line-height:38px;color:var(--text-storm);white-space:pre-line;">CodeBuddy 完成后结果自动回传 Octop
+
+✦ 无需手动拷贝，数据自动同步
+✦ 实时进度推送与通知
+✦ 支持多种结果格式（文本/代码/文件）
+✦ 历史记录完整可追溯</div>
+      </div>
+
+      <div class="pixel" style="position:absolute;left:0;top:500px;width:1920px;height:115px;text-align:center;font-size:96px;color:var(--lava);line-height:115px;">⟺</div>
+
+      <div style="position:absolute;left:120px;top:940px;width:1680px;height:60px;background:var(--lava);display:flex;align-items:center;justify-content:center;">
+        <span class="scb" style="font-size:30px;color:#FFF9F5;">⚡ 不用来回切换 · 多任务并行 · 一个界面搞定所有开发工作流 ⚡</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 6 : 浏览器录制回放 ============ -->
+    <section class="slide" data-bg="sky">
+      <div style="position:absolute;inset:0;background:var(--sky);"></div>
+      <div class="cloud" style="left:320px;top:130px;width:200px;height:45px;"></div>
+      <div class="cloud" style="left:380px;top:95px;width:130px;height:45px;"></div>
+      <div class="cloud" style="left:1080px;top:115px;width:280px;height:50px;"></div>
+      <div class="cloud" style="left:1160px;top:80px;width:150px;height:50px;"></div>
+      <div class="cloud" style="left:1560px;top:155px;width:170px;height:40px;"></div>
+      <div class="sun" style="left:1560px;top:130px;width:160px;height:160px;"><div class="s-l"></div><div class="s-d"></div></div>
+      <div class="ground" style="top:980px;height:100px;">
+        <div class="g-green"></div><div class="g-green-l"></div><div class="g-dirt"></div><div class="g-dirt-d"></div>
+      </div>
+
+      <div class="title outline zh" style="top:56px;height:72px;font-size:72px;color:#fff;line-height:72px;">浏览器录制回放 · 工作流可复用</div>
+      <div class="label pixel" style="top:142px;height:36px;font-size:30px;color:var(--gold);line-height:36px;">Browser Recording &amp; Reusable Workflows</div>
+
+      <!-- Process row -->
+      <div style="position:absolute;left:60px;top:220px;width:1800px;height:380px;background:var(--sand);border:3px solid var(--border-ink);">
+        <!-- Step1 -->
+        <div style="position:absolute;left:32px;top:32px;width:416px;height:316px;background:#fff;">
+          <div class="pixel" style="position:absolute;left:20px;top:20px;font-size:36px;color:var(--c-blue);">01</div>
+          <div class="zh" style="position:absolute;left:20px;top:75px;font-size:32px;color:var(--ink);">录制 Record</div>
+          <div class="sc" style="position:absolute;left:20px;top:119px;width:168px;height:64px;font-size:24px;line-height:32px;color:#555;white-space:pre-line;">在浏览器中操作
+自动录制每一步</div>
+        </div>
+        <!-- Step2 -->
+        <div style="position:absolute;left:472px;top:32px;width:416px;height:316px;background:#fff;">
+          <div class="pixel" style="position:absolute;left:20px;top:20px;font-size:36px;color:var(--c-green);">02</div>
+          <div class="zh" style="position:absolute;left:20px;top:75px;font-size:32px;color:var(--ink);">生成 Generate</div>
+          <div class="sc" style="position:absolute;left:20px;top:119px;width:174px;height:64px;font-size:24px;line-height:32px;color:#555;white-space:pre-line;">AI 分析操作序列
+生成工作流 Skill</div>
+        </div>
+        <!-- Step3 -->
+        <div style="position:absolute;left:912px;top:32px;width:416px;height:316px;background:#fff;">
+          <div class="pixel" style="position:absolute;left:20px;top:20px;font-size:36px;color:var(--c-orange);">03</div>
+          <div class="zh" style="position:absolute;left:20px;top:75px;font-size:32px;color:var(--ink);">回放 Replay</div>
+          <div class="sc" style="position:absolute;left:20px;top:119px;width:168px;height:64px;font-size:24px;line-height:32px;color:#555;white-space:pre-line;">一键回放
+自动化重复任务</div>
+        </div>
+        <!-- Step4 -->
+        <div style="position:absolute;left:1352px;top:32px;width:416px;height:316px;background:#fff;">
+          <div class="pixel" style="position:absolute;left:20px;top:20px;font-size:36px;color:var(--c-red);">04</div>
+          <div class="zh" style="position:absolute;left:20px;top:75px;font-size:32px;color:var(--ink);">分享 Share</div>
+          <div class="sc" style="position:absolute;left:20px;top:119px;width:168px;height:64px;font-size:24px;line-height:32px;color:#555;white-space:pre-line;">Skill 可复用
+团队分享与协作</div>
+        </div>
+      </div>
+
+      <!-- Closing frame -->
+      <div style="position:absolute;left:260px;top:650px;width:1400px;height:240px;background:var(--gold);display:flex;flex-direction:column;justify-content:center;padding-left:40px;">
+        <div class="zh" style="font-size:52px;color:var(--ink);margin-bottom:10px;">Octop — 把 AI 助手，搭成你的方块世界</div>
+        <div class="pixel" style="font-size:26px;color:#3A2010;">Build Your AI Assistant Block by Block</div>
+      </div>
+
+      <div class="deco" style="left:1720px;top:750px;width:100px;height:100px;">
+        <svg viewBox="0 0 100 100">
+          <rect x="0" y="0" width="100" height="33.333" fill="#6ABE30"/>
+          <rect x="0" y="33.333" width="100" height="66.667" fill="#8B5A2B"/>
+          <rect x="0" y="0" width="100" height="8.333" fill="#8FE05A"/>
+          <rect x="25" y="33.333" width="16.667" height="16.667" fill="#6ABE30"/>
+          <rect x="58.333" y="41.667" width="16.667" height="16.667" fill="#6ABE30"/>
+        </svg>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="hint">← → 翻页 · 点击切换</div>
+<div id="hud">
+  <div class="counter"><span id="cur">1</span> / 6</div>
+  <div class="dots" id="dots"></div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const dotsWrap = document.getElementById('dots');
+  const curEl = document.getElementById('cur');
+  let idx = 0;
+
+  slides.forEach((s,i)=>{
+    const d = document.createElement('div');
+    d.className = 'dot' + (i===0?' on':'');
+    d.addEventListener('click',(e)=>{ e.stopPropagation(); go(i); });
+    dotsWrap.appendChild(d);
+  });
+
+  function go(n){
+    idx = (n + slides.length) % slides.length;
+    slides.forEach((s,i)=> s.classList.toggle('active', i===idx));
+    Array.from(dotsWrap.children).forEach((d,i)=> d.classList.toggle('on', i===idx));
+    curEl.textContent = idx+1;
+  }
+  function next(){ go(idx+1); }
+  function prev(){ go(idx-1); }
+
+  window.addEventListener('keydown',(e)=>{
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); next(); }
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); prev(); }
+  });
+  document.getElementById('stage').addEventListener('click', next);
+
+  // scale-to-fit (1920x1080 stage)
+  const stage = document.getElementById('stage');
+  function fit(){
+    const s = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    stage.style.transform = `scale(${s})`;
+  }
+  window.addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>

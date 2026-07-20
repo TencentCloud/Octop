@@ -108,7 +108,7 @@ describe("<ProfileOverview />", () => {
     await waitFor(() => {
       expect(screen.getAllByText(/用户画像/).length).toBeGreaterThan(0);
     });
-    expect(screen.getByText(/agent 还在了解你/)).toBeInTheDocument();
+    expect(screen.getByText(/Octop 还在了解你/)).toBeInTheDocument();
   });
 
   it("caps a section at 6 rows and shows 查看全部 that calls onViewAll", async () => {

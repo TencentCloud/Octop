@@ -837,3 +837,399 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* ---- Memory pipeline card (raw -> pending -> promoted) ---- */
+.pipelineCard {
+  :global(.ant-card-body) {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}
+
+.pipelineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pipelineStage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 96px;
+  padding: 8px 16px;
+  border: 1px solid var(--fn-border-secondary, #f0f0f0);
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, #fafafa);
+  cursor: default;
+}
+
+.pipelineStageClickable {
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--fn-primary, #e85d75);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.pipelineStageWarn {
+  border-color: #f59e0b;
+}
+
+.pipelineStageValue {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fn-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pipelineStageLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.pipelineArrow {
+  font-size: 16px;
+  color: var(--fn-text-quaternary, #d9d9d9);
+  flex-shrink: 0;
+}
+
+.pipelineHint {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fn-text-tertiary);
+}
+
+/* ---- Simplified overview dashboard ---- */
+.overviewHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 14px;
+  background: radial-gradient(
+      circle at 0 0,
+      rgba(232, 93, 117, 0.11),
+      transparent 38%
+    ),
+    var(--fn-bg-elevated);
+}
+
+.overviewHeroMain,
+.overviewTitleRow,
+.overviewActions {
+  display: flex;
+  align-items: center;
+}
+
+.overviewHeroMain {
+  gap: 14px;
+  min-width: 0;
+
+  h2 {
+    margin: 0;
+    color: var(--fn-text-primary);
+    font-size: 20px;
+  }
+
+  p {
+    margin: 5px 0 0;
+    color: var(--fn-text-tertiary);
+    font-size: 13px;
+  }
+}
+
+.overviewHeroIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #e85d75, #f08ca0);
+  box-shadow: 0 8px 18px rgba(232, 93, 117, 0.24);
+}
+
+.overviewTitleRow {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.overviewActions {
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.memoryStatusOn,
+.memoryStatusOff {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+
+  i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+
+.memoryStatusOn {
+  color: #389e0d;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.memoryStatusOff {
+  color: #8c8c8c;
+  background: rgba(140, 140, 140, 0.12);
+}
+
+.spinning {
+  animation: overviewSpin 0.8s linear infinite;
+}
+
+@keyframes overviewSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 12px;
+  background: var(--fn-bg-elevated);
+}
+
+.summaryIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--summary-color);
+  background: var(--summary-bg);
+}
+
+.summaryContent {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  > span {
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+  }
+
+  strong {
+    margin-top: 2px;
+    color: var(--fn-text-primary);
+    font-size: 23px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+  }
+}
+
+.summaryDelta {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: #389e0d;
+  font-size: 10px;
+}
+
+.summaryWarn {
+  color: #d48806 !important;
+}
+
+.summary_rose {
+  --summary-color: #e85d75;
+  --summary-bg: rgba(232, 93, 117, 0.1);
+}
+
+.summary_violet {
+  --summary-color: #8b5cf6;
+  --summary-bg: rgba(139, 92, 246, 0.1);
+}
+
+.summary_blue {
+  --summary-color: #3b82f6;
+  --summary-bg: rgba(59, 130, 246, 0.1);
+}
+
+.summary_amber {
+  --summary-color: #f59e0b;
+  --summary-bg: rgba(245, 158, 11, 0.1);
+}
+
+.pipelineHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+
+  > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--fn-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+    font-weight: 400;
+  }
+}
+
+.pipelineCard .pipelineRow {
+  align-items: center;
+  gap: 0;
+}
+
+.pipelineCard .pipelineStage {
+  display: flex;
+  flex: 0 0 150px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.02));
+
+  strong {
+    color: var(--fn-text-primary);
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  span {
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+}
+
+.pipelineCard .pipelineStageClickable:hover {
+  border-color: rgba(232, 93, 117, 0.45);
+  background: rgba(232, 93, 117, 0.04);
+}
+
+.pipelineConnector {
+  flex: 1;
+  min-width: 28px;
+  height: 1px;
+  background: var(--fn-border-primary);
+}
+
+.overviewCharts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 16px;
+}
+
+.overviewChartCard {
+  border-radius: 12px;
+
+  :global(.ant-card-head-title) {
+    font-size: 14px;
+  }
+}
+
+.growthChart,
+.kindChart {
+  height: 270px;
+}
+
+@media (max-width: 980px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overviewCharts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .overviewHero {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .overviewActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .summaryCard {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    padding: 13px;
+  }
+
+  .pipelineHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .pipelineCard .pipelineRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pipelineCard .pipelineStage {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .pipelineConnector {
+    width: 1px;
+    min-width: 1px;
+    height: 18px;
+    margin-left: 24px;
+  }
+}

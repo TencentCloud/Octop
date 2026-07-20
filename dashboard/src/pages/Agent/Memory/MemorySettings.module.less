@@ -1,0 +1,195 @@
+.settingsPage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 880px;
+  padding-bottom: 24px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 8px;
+
+  h2 {
+    margin: 0 0 4px;
+    color: var(--fn-text-primary);
+    font-size: 20px;
+  }
+
+  p {
+    margin: 0;
+    color: var(--fn-text-tertiary);
+    font-size: 13px;
+  }
+}
+
+.headerIcon,
+.settingIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--fn-color-brand);
+  background: rgba(232, 93, 117, 0.1);
+}
+
+.headerIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+}
+
+.settingIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.settingCard {
+  border-radius: 12px;
+
+  :global(.ant-card-body) {
+    padding: 20px;
+  }
+}
+
+.settingRow,
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settingRow {
+  justify-content: space-between;
+}
+
+.settingIdentity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settingTitle {
+  color: var(--fn-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settingDescription {
+  margin-top: 3px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.switchBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.statusOn,
+.statusOff {
+  font-size: 12px;
+}
+
+.statusOn {
+  color: #389e0d;
+}
+
+.statusOff {
+  color: var(--fn-text-tertiary);
+}
+
+.memoryWarning {
+  margin-top: 16px;
+}
+
+.cardDisabled {
+  opacity: 0.58;
+}
+
+.strategyFields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 20px 0 0 46px;
+  padding: 0;
+  border: 0;
+}
+
+.radioTitle {
+  color: var(--fn-text-primary);
+  font-weight: 500;
+}
+
+.radioHint {
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+.timeControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+
+  :global(.ant-input-number) {
+    width: 100px;
+  }
+}
+
+.saveBar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fn-bg-elevated) 94%, transparent);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+
+  span {
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  .settingRow {
+    align-items: flex-start;
+  }
+
+  .switchBlock {
+    flex-direction: column-reverse;
+    gap: 4px;
+  }
+
+  .strategyFields {
+    margin-left: 0;
+  }
+
+  .radioHint {
+    display: block;
+    margin: 3px 0 0;
+  }
+
+  .timeControl {
+    flex-wrap: wrap;
+  }
+
+  .saveBar {
+    bottom: 8px;
+  }
+}

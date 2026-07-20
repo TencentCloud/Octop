@@ -396,6 +396,11 @@ tests/         unit/ + integration/
 
 **Prerequisites:** Python 3.11+, Node 18+, [uv](https://docs.astral.sh/uv/)
 
+The development checkout expects `harness-agent`, `harness-memory`,
+`harness-im-bridge`, and `harness-browser` as sibling directories. `uv sync`
+installs all four as editable local dependencies, so source changes take effect
+without publishing packages first.
+
 ```bash
 # Backend
 make install          # pip install -e ".[dev]"

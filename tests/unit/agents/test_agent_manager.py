@@ -13,7 +13,7 @@ import pytest
 from octop.config import OctopConfig
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.experts.catalog import default_library_root
-from octop.infra.agents.manager import AgentManager
+from octop.infra.agents.manager import AgentManager, _memory_extract_settings
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import DBPool
@@ -87,6 +87,59 @@ def test_format_agent_start_error_no_enabled_models_message() -> None:
 def test_format_agent_start_error_unknown_passthrough() -> None:
     exc = RuntimeError("disk full")
     assert format_agent_start_error(exc) == "disk full"
+
+
+def test_memory_extract_settings_supports_legacy_harness(caplog: pytest.LogCaptureFixture) -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "memory_enabled": False,
+                "extract_on_session_end": True,
+                "extract_trigger_mode": "interval",
+                "extract_idle_seconds": 60,
+                "extract_interval_seconds": 600,
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_enabled",
+                "memory_extract_on_session_end",
+                "memory_extract_idle_seconds",
+            }
+        ),
+    )
+
+    assert settings == {
+        "memory_enabled": False,
+        "memory_extract_on_session_end": True,
+        "memory_extract_idle_seconds": 600.0,
+    }
+    assert "lacks interval memory extraction" in caplog.text
+
+
+def test_build_harness_config_accepts_memory_extract_settings(manager: AgentManager) -> None:
+    row = _row(
+        config_json=json.dumps(
+            {
+                "memory": {
+                    "memory_enabled": False,
+                    "extract_on_session_end": True,
+                    "extract_trigger_mode": "interval",
+                    "extract_idle_seconds": 60,
+                    "extract_interval_seconds": 600,
+                }
+            }
+        )
+    )
+
+    cfg = manager._build_harness_config(row)
+
+    assert cfg.memory_enabled is False
+    if hasattr(cfg, "memory_extract_trigger_mode"):
+        assert cfg.memory_extract_trigger_mode == "interval"
+        assert cfg.memory_extract_interval_seconds == 600.0
+    else:
+        assert cfg.memory_extract_idle_seconds == 600.0
 
 
 def test_format_agent_start_error_unwraps_exception_group() -> None:

@@ -60,6 +60,44 @@ export interface ListAtomsResponse {
   has_more: boolean;
 }
 
+export interface RawEventItem {
+  id: string;
+  host: string;
+  session_id: string | null;
+  thread_id: string | null;
+  user: string | null;
+  timestamp: string;
+  event_type: string;
+  content: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ListRawEventsResponse {
+  items: RawEventItem[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface ListRawEventsBody {
+  session_id?: string;
+  thread_id?: string;
+  event_type?: string;
+  query?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export type ExtractTriggerMode = "idle" | "interval";
+
+export interface ExtractConfig {
+  /** Missing on older Octop API processes; absence keeps the historical enabled default. */
+  memory_enabled?: boolean;
+  extract_on_session_end: boolean;
+  extract_trigger_mode: ExtractTriggerMode;
+  extract_idle_seconds: number;
+  extract_interval_seconds: number;
+}
+
 export interface EntityItem {
   id: string;
   entity_type: string;
@@ -296,6 +334,9 @@ export const memoryDashboardApi = {
   listCandidates: (aid: string, body?: ListCandidatesBody) =>
     post<ListCandidatesResponse>(`${base(aid)}/candidates/list`, body),
 
+  listRawEvents: (aid: string, body?: ListRawEventsBody) =>
+    post<ListRawEventsResponse>(`${base(aid)}/raw_events/list`, body),
+
   // single fetches
   getAtom: (aid: string, atomId: string) =>
     request<AtomItem>(`${base(aid)}/atoms/${encodeURIComponent(atomId)}`),
@@ -385,6 +426,16 @@ export const memoryDashboardApi = {
     request<TerminalEntityResponse>(
       `${base(aid)}/terminal/entities?limit=${limit}`,
     ),
+
+  // extraction-trigger config
+  getExtractConfig: (aid: string) =>
+    request<ExtractConfig>(`${base(aid)}/extract-config`),
+
+  putExtractConfig: (aid: string, body: Partial<ExtractConfig>) =>
+    request<ExtractConfig>(`${base(aid)}/extract-config`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 };
 
 export default memoryDashboardApi;
