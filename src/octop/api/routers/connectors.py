@@ -7,6 +7,7 @@ import json
 import logging
 import secrets
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -224,6 +225,12 @@ def _schedule_connector_reload(server: Any, user_id: int) -> None:
             logger.exception("background connector reload failed for user %s", user_id)
 
     asyncio.create_task(_run())
+
+
+def _is_public_http_uri(uri: str) -> bool:
+    parsed = urlparse(uri)
+    host = (parsed.hostname or "").lower()
+    return parsed.scheme == "http" and host not in {"localhost", "127.0.0.1", "::1"}
 
 
 @router.get("/connectors/catalog", summary="Connector catalog")
@@ -695,6 +702,11 @@ async def oauth_start(
     state_id = new_ulid()
     base = str(request.base_url).rstrip("/")
     redirect_uri = f"{base}/api/connectors/oauth/callback"
+    if kind == "notion" and _is_public_http_uri(redirect_uri):
+        raise OctopError(
+            ErrorCode.CONNECTOR_OAUTH_HTTPS_REQUIRED,
+            "Notion OAuth callbacks require HTTPS for non-loopback addresses",
+        )
 
     try:
         authorize_url, verifier, ctx = await start_oauth(
