@@ -96,9 +96,9 @@ describe("<AtomsList />", () => {
     await waitFor(() => {
       expect(api.listAtoms).toHaveBeenCalledTimes(1);
     });
-    // No data rows are rendered (Pagination has its own <li>s, so we
-    // assert via the antd Empty role="img" placeholder instead).
-    expect(document.querySelector(".ant-empty-image")).not.toBeNull();
+    expect(
+      await screen.findByText(/还没有记忆。开始对话后/),
+    ).toBeInTheDocument();
   });
 
   it("opens the detail drawer when a row is clicked", async () => {

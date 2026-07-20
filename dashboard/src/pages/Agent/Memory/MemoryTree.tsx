@@ -28,7 +28,6 @@ import {
   Button,
   Card,
   Drawer,
-  Empty,
   Skeleton,
   Space,
   Spin,
@@ -46,6 +45,7 @@ import {
   type Confidence,
   type EntityItem,
 } from "../../../api/modules/memoryDashboard";
+import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 import { confirmDeprecateAtom } from "./shared/deprecateAtom";
 
 interface Props {
@@ -225,7 +225,7 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
       {entitiesLoading && entities.length === 0 ? (
         <Skeleton active />
       ) : entities.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <MemoryPipelineEmpty agentId={agentId} />
       ) : (
         <div className="memory-tree" style={{ fontSize: 13 }}>
           {/* Root row */}

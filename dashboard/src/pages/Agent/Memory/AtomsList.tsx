@@ -28,6 +28,7 @@ import {
 } from "../../../api/modules/memoryDashboard";
 import MemoryLayerView from "./shared/MemoryLayerView";
 import LineageStrip from "./shared/LineageStrip";
+import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 import { confirmDeprecateAtom } from "./shared/deprecateAtom";
 
 const PAGE_SIZE = 20;
@@ -124,6 +125,10 @@ export default function AtomsList({ agentId }: Props) {
     </>
   );
 
+  // Guided empty only when no filter is active — a filtered-out list must
+  // keep the plain empty so it doesn't read as "distillation pending".
+  const noFilterActive = !kind && !importance;
+
   return (
     <MemoryLayerView<AtomItem>
       toolbar={toolbar}
@@ -133,6 +138,9 @@ export default function AtomsList({ agentId }: Props) {
       pageSize={PAGE_SIZE}
       onPageChange={setPage}
       loading={loading}
+      emptyContent={
+        noFilterActive ? <MemoryPipelineEmpty agentId={agentId} /> : undefined
+      }
       keyOf={(a) => a.id}
       selected={selected}
       onItemClick={setSelected}
