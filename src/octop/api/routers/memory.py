@@ -58,6 +58,9 @@ _EXTRACT_DEFAULTS: dict[str, Any] = {
     "extract_trigger_mode": "idle",
     "extract_idle_seconds": 300.0,
     "extract_interval_seconds": 21600.0,
+    # Model ref ("provider/model") used for extraction / promotion; None → AUTO
+    # (follow the agent's effective chat model).
+    "aux_model": None,
 }
 # Guard rails so a bad UI value can't schedule a hot loop or a never-firing timer.
 _MIN_IDLE_SECONDS = 60.0  # UI minimum: one minute; zero must not disable extraction
@@ -181,6 +184,10 @@ class _ExtractConfigBody(BaseModel):
     )
     extract_interval_seconds: float | None = Field(
         default=None, description="mode=interval: seconds between sweeps"
+    )
+    aux_model: str | None = Field(
+        default=None,
+        description="'provider/model' ref for extraction; '' resets to AUTO",
     )
 
 
@@ -700,6 +707,19 @@ def _coerce_seconds(value: Any, *, minimum: float) -> float:
     return seconds
 
 
+def _validated_aux_model(value: Any, providers: Any) -> str | None:
+    """Normalize an ``aux_model`` patch value: empty / "auto" → None (AUTO)."""
+    ref = str(value).strip()
+    if not ref or ref.lower() == "auto":
+        return None
+    if not providers.is_model_ref_usable(ref):
+        raise HTTPException(
+            status_code=400,
+            detail=f"aux_model {ref!r} is not an enabled model on a usable provider",
+        )
+    return ref
+
+
 @router.get("/agents/{agent_id}/memory/extract-config")
 async def get_extract_config(
     agent_id: str,
@@ -752,6 +772,8 @@ async def put_extract_config(
         merged["extract_interval_seconds"] = _coerce_seconds(
             patch["extract_interval_seconds"], minimum=_MIN_INTERVAL_SECONDS
         )
+    if "aux_model" in patch:
+        merged["aux_model"] = _validated_aux_model(patch["aux_model"], registry.providers)
 
     try:
         cfg = json.loads(row.config_json or "{}")

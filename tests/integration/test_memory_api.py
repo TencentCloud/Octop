@@ -314,6 +314,59 @@ async def test_extract_config_defaults_then_update(env_with_main_agent) -> None:
 
 
 @pytest.mark.asyncio
+async def test_extract_config_aux_model_roundtrip(env_with_main_agent) -> None:
+    from tests.support.auth import create_provider
+
+    client, _srv, auth, aid = env_with_main_agent
+    await create_provider(
+        client,
+        auth,
+        name="aux-prov",
+        base_url="https://api.example.com/v1",
+        models=[{"id": "mini", "name": "Mini", "enabled": True}],
+    )
+
+    # Fresh agent: AUTO (null).
+    r = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["aux_model"] is None
+
+    # Pin a usable ref.
+    r2 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"aux_model": "aux-prov/mini"},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["aux_model"] == "aux-prov/mini"
+
+    # Persisted; other fields untouched.
+    r3 = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r3.json()["aux_model"] == "aux-prov/mini"
+    assert r3.json()["extract_trigger_mode"] == "idle"
+
+    # Empty string resets back to AUTO.
+    r4 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"aux_model": ""},
+    )
+    assert r4.status_code == 200, r4.text
+    assert r4.json()["aux_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_config_rejects_unusable_aux_model(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    r = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"aux_model": "no-such-provider/model"},
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
 async def test_extract_config_rejects_bad_mode(env_with_main_agent) -> None:
     client, _srv, auth, aid = env_with_main_agent
     r = await client.put(

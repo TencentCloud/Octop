@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -67,10 +67,41 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _memory_aux_model_settings(
+    mem: dict[str, Any],
+    supported_fields: frozenset[str],
+    is_ref_usable: Callable[[str], bool] | None,
+) -> dict[str, Any]:
+    """Map the ``memory.aux_model`` ref onto both harness extraction tiers.
+
+    A stale ref (provider deleted / model disabled since it was saved) is
+    dropped with a warning so extraction falls back to the default model
+    instead of failing at call time.
+    """
+    aux_model = mem.get("aux_model")
+    if (
+        not isinstance(aux_model, str)
+        or not aux_model.strip()
+        or "memory_aux_light_model" not in supported_fields
+        or "memory_aux_heavy_model" not in supported_fields
+    ):
+        return {}
+    ref = aux_model.strip()
+    if is_ref_usable is not None and not is_ref_usable(ref):
+        logger.warning(
+            "memory aux_model %r no longer usable; falling back to the default model",
+            ref,
+        )
+        return {}
+    # One user-chosen model drives both extraction tiers.
+    return {"memory_aux_light_model": ref, "memory_aux_heavy_model": ref}
+
+
 def _memory_extract_settings(
     cfg: dict[str, Any],
     *,
     supported_fields: frozenset[str] = _HARNESS_AGENT_CONFIG_FIELDS,
+    is_ref_usable: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Extract the ``memory`` config section into HarnessAgentConfig kwargs.
 
@@ -82,7 +113,7 @@ def _memory_extract_settings(
     mem = cfg.get("memory")
     if not isinstance(mem, dict):
         return {}
-    out: dict[str, Any] = {}
+    out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
     if "memory_enabled" in supported_fields and isinstance(mem.get("memory_enabled"), bool):
         out["memory_enabled"] = mem["memory_enabled"]
     if "memory_extract_on_session_end" in supported_fields and isinstance(
@@ -1358,7 +1389,7 @@ class AgentManager:
             acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
             skills_disabled=frozenset(skills_disabled_set(cfg)),
             default_timezone=self._config.cron_timezone,
-            **_memory_extract_settings(cfg),
+            **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
         )
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None

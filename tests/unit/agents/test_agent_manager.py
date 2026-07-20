@@ -117,6 +117,37 @@ def test_memory_extract_settings_supports_legacy_harness(caplog: pytest.LogCaptu
     assert "lacks interval memory extraction" in caplog.text
 
 
+def test_memory_extract_settings_forwards_aux_model_to_both_tiers() -> None:
+    settings = _memory_extract_settings(
+        {"memory": {"aux_model": "hai/MiniMax-M2.7"}},
+        is_ref_usable=lambda ref: ref == "hai/MiniMax-M2.7",
+    )
+    assert settings == {
+        "memory_aux_light_model": "hai/MiniMax-M2.7",
+        "memory_aux_heavy_model": "hai/MiniMax-M2.7",
+    }
+
+
+def test_memory_extract_settings_drops_stale_aux_model(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    settings = _memory_extract_settings(
+        {"memory": {"aux_model": "gone/model"}},
+        is_ref_usable=lambda _ref: False,
+    )
+    assert settings == {}
+    assert "no longer usable" in caplog.text
+
+
+def test_memory_extract_settings_skips_aux_model_on_legacy_harness() -> None:
+    settings = _memory_extract_settings(
+        {"memory": {"aux_model": "hai/MiniMax-M2.7"}},
+        supported_fields=frozenset({"memory_enabled"}),
+        is_ref_usable=lambda _ref: True,
+    )
+    assert settings == {}
+
+
 def test_build_harness_config_accepts_memory_extract_settings(manager: AgentManager) -> None:
     row = _row(
         config_json=json.dumps(
@@ -385,6 +416,24 @@ def test_build_harness_config_no_providers_leaves_default_model_unset(
 ) -> None:
     cfg = manager._build_harness_config(_row(default_model=None))
     assert cfg.default_model is None
+
+
+def test_build_harness_config_applies_usable_aux_model(manager: AgentManager) -> None:
+    _seed_test_provider(manager)
+    cfg = manager._build_harness_config(
+        _row(config_json=json.dumps({"memory": {"aux_model": "test-openai/gpt-4o-mini"}})),
+    )
+    assert cfg.memory_aux_light_model == "test-openai/gpt-4o-mini"
+    assert cfg.memory_aux_heavy_model == "test-openai/gpt-4o-mini"
+
+
+def test_build_harness_config_ignores_stale_aux_model(manager: AgentManager) -> None:
+    _seed_test_provider(manager)
+    cfg = manager._build_harness_config(
+        _row(config_json=json.dumps({"memory": {"aux_model": "deleted-provider/gone"}})),
+    )
+    assert cfg.memory_aux_light_model is None
+    assert cfg.memory_aux_heavy_model is None
 
 
 @pytest.mark.skip(

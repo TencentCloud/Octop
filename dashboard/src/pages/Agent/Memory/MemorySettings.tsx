@@ -5,13 +5,14 @@ import {
   Card,
   InputNumber,
   Radio,
+  Select,
   Skeleton,
   Space,
   Switch,
   Typography,
   message,
 } from "antd";
-import { Brain, Database, Sparkles } from "lucide-react";
+import { Brain, Cpu, Database, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -19,6 +20,14 @@ import {
   type ExtractConfig,
   type ExtractTriggerMode,
 } from "../../../api/modules/memoryDashboard";
+import { providerApi } from "../../../api/modules/provider";
+import {
+  MODEL_AUTO_VALUE,
+  buildModelSelectOptions,
+  defaultModelFromForm,
+  defaultModelToForm,
+  type ModelPickerOption,
+} from "../../../utils/modelOptions";
 import styles from "./MemorySettings.module.less";
 
 interface Props {
@@ -37,10 +46,33 @@ export default function MemorySettings({ agentId }: Props) {
   const [mode, setMode] = useState<ExtractTriggerMode>("idle");
   const [idleMinutes, setIdleMinutes] = useState(5);
   const [intervalHours, setIntervalHours] = useState(6);
+  const [auxModel, setAuxModel] = useState<string>(MODEL_AUTO_VALUE);
+  const [models, setModels] = useState<ModelPickerOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModelsLoading(true);
+    providerApi
+      .listResolvedModels()
+      .then((data) => {
+        if (!cancelled) setModels(data as ModelPickerOption[]);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const applyConfig = useCallback((cfg: ExtractConfig) => {
     setMemoryEnabled(cfg.memory_enabled ?? true);
     setMode(cfg.extract_trigger_mode);
+    setAuxModel(defaultModelToForm(cfg.aux_model));
     setIdleMinutes(
       Math.max(
         MIN_IDLE_MINUTES,
@@ -84,6 +116,7 @@ export default function MemorySettings({ agentId }: Props) {
           Math.max(MIN_IDLE_MINUTES, idleMinutes) * 60,
         ),
         extract_interval_seconds: Math.round(intervalHours * 3600),
+        aux_model: defaultModelFromForm(auxModel) ?? "",
       });
       applyConfig(cfg);
       message.success(t("memory.settings.saved", "已保存，agent 将自动重载"));
@@ -264,6 +297,44 @@ export default function MemorySettings({ agentId }: Props) {
               )}
             />
           ) : null}
+        </fieldset>
+      </Card>
+
+      <Card
+        className={`${styles.settingCard} ${
+          !memoryEnabled ? styles.cardDisabled : ""
+        }`}
+      >
+        <div className={styles.sectionHeading}>
+          <span className={styles.settingIcon}>
+            <Cpu size={18} />
+          </span>
+          <div>
+            <div className={styles.settingTitle}>
+              {t("memory.settings.extractModelTitle", "记忆提取模型")}
+            </div>
+            <div className={styles.settingDescription}>
+              {t(
+                "memory.settings.extractModelDescription",
+                "提炼记忆时调用的模型。选择“自动”跟随对话使用的默认模型；也可以指定一个更便宜或更快的模型专门做提炼。",
+              )}
+            </div>
+          </div>
+        </div>
+        <fieldset className={styles.strategyFields} disabled={!memoryEnabled}>
+          <Select
+            style={{ minWidth: 280, maxWidth: 420 }}
+            value={auxModel}
+            loading={modelsLoading}
+            disabled={!memoryEnabled}
+            onChange={setAuxModel}
+            options={buildModelSelectOptions(
+              models,
+              t("memory.settings.extractModelAuto", "自动（跟随对话模型）"),
+            )}
+            showSearch
+            optionFilterProp="label"
+          />
         </fieldset>
       </Card>
 

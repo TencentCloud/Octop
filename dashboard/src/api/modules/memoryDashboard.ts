@@ -96,6 +96,11 @@ export interface ExtractConfig {
   extract_trigger_mode: ExtractTriggerMode;
   extract_idle_seconds: number;
   extract_interval_seconds: number;
+  /**
+   * "provider/model" ref used for extraction / promotion. null/absent = AUTO
+   * (follow the chat model); send "" to reset back to AUTO.
+   */
+  aux_model?: string | null;
 }
 
 export interface EntityItem {
