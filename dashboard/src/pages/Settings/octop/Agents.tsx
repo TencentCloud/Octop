@@ -380,7 +380,7 @@ export default function OctopAgentsPage() {
             columns={columns}
             scroll={{ x: 1200 }}
             pagination={{
-              pageSize: 10,
+              defaultPageSize: 10,
               showSizeChanger: true,
               pageSizeOptions: ["10", "20", "50"],
               showTotal: (total) => t("adminAgents.total", { count: total }),

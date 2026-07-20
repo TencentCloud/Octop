@@ -133,6 +133,7 @@ function ProviderPanel({ provider, envVars, onSaved }: ProviderPanelProps) {
       } else {
         message.error(
           t("setupWizard.search.testFailed", {
+            name: provider.name,
             error: result.error || result.error_type || "Unknown error",
           }),
         );
@@ -141,6 +142,7 @@ function ProviderPanel({ provider, envVars, onSaved }: ProviderPanelProps) {
       if (err && typeof err === "object" && "errorFields" in err) return;
       message.error(
         t("setupWizard.search.testFailed", {
+          name: provider.name,
           error: err instanceof Error ? err.message : String(err),
         }),
       );

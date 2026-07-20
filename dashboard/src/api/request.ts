@@ -3,6 +3,9 @@ import i18n from "../i18n";
 
 const AUTH_TOKEN_KEY = "auth_token";
 
+/** Response header used by the server for JWT sliding renewal. */
+export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
+
 /** Save JWT token to localStorage */
 export function setAuthToken(token: string) {
   localStorage.setItem(AUTH_TOKEN_KEY, token);
@@ -18,6 +21,14 @@ export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem("octop:active-agent");
   setActiveAgentId(null);
+}
+
+/** Persist a sliding-renewed access token from an API response, if present. */
+export function applyRenewedAccessToken(response: Response): void {
+  const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
+  if (renewed) {
+    setAuthToken(renewed);
+  }
 }
 
 let _redirectingToSetup = false;
@@ -221,6 +232,7 @@ export async function request<T = unknown>(
   }
 
   await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -262,6 +274,7 @@ export async function requestBlob(
   }
 
   await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -298,6 +311,7 @@ export async function requestUpload<T = unknown>(
   }
 
   await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");

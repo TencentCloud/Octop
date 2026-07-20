@@ -20,6 +20,11 @@ Most endpoints require a JWT bearer token:
 2. `POST /api/auth/login` with `username` and `password`.
 3. Send `Authorization: Bearer <access_token>` on subsequent requests.
 
+Access tokens use sliding renewal: when less than one-third of
+`access_token_ttl_seconds` remains, authenticated responses may include a fresh
+token in the `X-Octop-Access-Token` header. Clients should replace the stored
+token when present.
+
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/connectors/oauth/callback`, and
 `/api/internal/mcp/*`.
@@ -76,6 +81,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "Scheduled prompts that run against an agent on a cron trigger.",
     },
     {"name": "envs", "description": "Environment variable presets for agents and workspaces."},
+    {
+        "name": "search",
+        "description": "Web-search provider API key probes (Tavily, Brave, Google, Kimi).",
+    },
     {"name": "providers", "description": "LLM provider configuration and active model selection."},
     {"name": "voice", "description": "Speech-to-text and text-to-speech provider configuration."},
     {
