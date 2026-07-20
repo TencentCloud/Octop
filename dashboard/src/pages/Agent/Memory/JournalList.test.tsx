@@ -76,6 +76,47 @@ describe("<JournalList />", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders extract_run rows with a run summary built from stats", async () => {
+    api.listJournal.mockResolvedValue(
+      listJournalResp([
+        makeJournal({
+          id: "run-1",
+          action: "extract_run",
+          actor: "auto",
+          target_atom_id: null,
+          note: "scanned 4 events, 4 new; 2 candidates, 2 promoted",
+          after: {
+            events_considered: 4,
+            events_extracted: 4,
+            candidates: 2,
+            promoted: 2,
+            failure_reason: null,
+          },
+        }),
+        makeJournal({
+          id: "run-2",
+          action: "extract_run",
+          actor: "auto",
+          target_atom_id: null,
+          note: "no new events (scanned 4)",
+          after: { events_considered: 4, events_extracted: 0, candidates: 0 },
+        }),
+      ]),
+    );
+
+    render(<JournalList agentId="ZYWZTD" />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText("提取运行")).toHaveLength(2),
+    );
+    expect(
+      screen.getByText("处理 4 段对话，生成 2 条草稿，晋升 2 条记忆"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("扫描 4 段对话，无新增内容"),
+    ).toBeInTheDocument();
+  });
+
   it("renders empty state on no entries", async () => {
     api.listJournal.mockResolvedValue(listJournalResp([]));
     render(<JournalList agentId="ZYWZTD" />);

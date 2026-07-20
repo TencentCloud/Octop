@@ -12,6 +12,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
   memoryDashboardApi,
+  type ExtractRunStats,
   type JournalItem,
   type ListJournalBody,
 } from "../../../api/modules/memoryDashboard";
@@ -20,8 +21,7 @@ const PAGE_SIZE = 30;
 
 const ACTION_OPTIONS = [
   { value: "", label: "全部记录" },
-  { value: "capture", label: "记录对话" },
-  { value: "extract", label: "生成草稿" },
+  { value: "extract_run", label: "提取运行" },
   { value: "promote", label: "采纳" },
   { value: "reject", label: "忽略" },
   { value: "deprecate", label: "弃用" },
@@ -29,6 +29,7 @@ const ACTION_OPTIONS = [
 ];
 
 const ACTION_COLOR: Record<string, string> = {
+  extract_run: "cyan",
   capture: "default",
   extract: "blue",
   promote: "purple",
@@ -41,6 +42,7 @@ const ACTION_COLOR: Record<string, string> = {
 };
 
 const ACTION_HEX: Record<string, string> = {
+  extract_run: "#13c2c2",
   capture: "#8c8c8c",
   extract: "#1677ff",
   promote: "#722ed1",
@@ -326,6 +328,9 @@ function PipelineStoryRow({
 function SingleEventRow({ item }: { item: JournalItem }) {
   const dotColor = ACTION_HEX[item.action] ?? "#bfbfbf";
   const story = singleEventStory(item);
+  const isRun = item.action === "extract_run";
+  const runText = isRun ? extractRunSummary(item.after) : "";
+  const detailText = isRun ? "" : noteToChinese(item.note);
   return (
     <div style={{ marginBottom: 10, display: "flex", gap: 12 }}>
       <span
@@ -362,9 +367,11 @@ function SingleEventRow({ item }: { item: JournalItem }) {
           >
             {actionLabel(item.action)}
           </Tag>
-          <span style={{ color: "#595959" }}>{targetText(item)}</span>
+          <span style={{ color: "#595959" }}>
+            {isRun ? runText : targetText(item)}
+          </span>
         </Space>
-        {noteToChinese(item.note) ? (
+        {detailText ? (
           <div
             style={{
               marginTop: 4,
@@ -373,12 +380,33 @@ function SingleEventRow({ item }: { item: JournalItem }) {
               lineHeight: 1.5,
             }}
           >
-            {noteToChinese(item.note)}
+            {detailText}
           </div>
         ) : null}
       </div>
     </div>
   );
+}
+
+/** Human summary for an ``extract_run`` row, built from its structured stats. */
+function extractRunSummary(after: ExtractRunStats | null | undefined): string {
+  const s = after ?? {};
+  if (s.failure_reason) {
+    if (/no llm|not configured|no model/i.test(s.failure_reason)) {
+      return "未配置提取模型，本次未运行";
+    }
+    return "本次提取失败";
+  }
+  const extracted = s.events_extracted ?? 0;
+  if (extracted === 0) {
+    return `扫描 ${s.events_considered ?? 0} 段对话，无新增内容`;
+  }
+  const promoted = s.promoted ?? 0;
+  const candidates = s.candidates ?? 0;
+  if (candidates === 0) {
+    return `处理 ${extracted} 段对话，未发现可记忆的内容`;
+  }
+  return `处理 ${extracted} 段对话，生成 ${candidates} 条草稿，晋升 ${promoted} 条记忆`;
 }
 
 /** Child row for each pipeline detail in the expanded state. */
@@ -537,6 +565,8 @@ function pipelineSummary(items: JournalItem[]): PipelineSummary {
 
 function singleEventStory(item: JournalItem): { icon: string } {
   switch (item.action) {
+    case "extract_run":
+      return { icon: item.after?.failure_reason ? "⚠️" : "🔍" };
     case "promote":
       return { icon: "✅" };
     case "reject":
@@ -565,6 +595,8 @@ function targetText(j: JournalItem): string {
 
 function actionLabel(action: string): string {
   switch (action) {
+    case "extract_run":
+      return "提取运行";
     case "capture":
       return "记录对话";
     case "extract":

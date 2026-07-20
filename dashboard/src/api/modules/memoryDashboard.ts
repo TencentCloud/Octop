@@ -137,6 +137,20 @@ export interface ListEpisodesResponse {
   has_more: boolean;
 }
 
+/** Structured run stats attached to an ``extract_run`` journal entry. */
+export interface ExtractRunStats {
+  events_considered?: number;
+  events_extracted?: number;
+  candidates?: number;
+  promoted?: number;
+  merged?: number;
+  conflicts?: number;
+  needs_review?: number;
+  dropped?: number;
+  llm_calls?: number;
+  failure_reason?: string | null;
+}
+
 export interface JournalItem {
   id: string;
   timestamp: string;
@@ -148,6 +162,8 @@ export interface JournalItem {
   note?: string | null;
   /** Short target memory/topic text enriched by the backend for specific action display. */
   target_summary?: string | null;
+  /** Present on ``extract_run`` rows: structured stats for this extraction pass. */
+  after?: ExtractRunStats | null;
 }
 
 export interface ListJournalResponse {
