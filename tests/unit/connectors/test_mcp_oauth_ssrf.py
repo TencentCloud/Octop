@@ -11,6 +11,7 @@ from octop.infra.connectors.oauth.mcp import (
     _validate_metadata_endpoints,
     exchange_authorization_code,
     issuer_for_kind,
+    register_dynamic_client,
 )
 
 
@@ -83,6 +84,38 @@ async def test_exchange_authorization_code_uses_validated_url() -> None:
     assert out["access_token"] == "tok"
     mock_validate.assert_awaited_once()
     mock_request.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_notion_public_http_redirect_uri_gets_actionable_error() -> None:
+    issuer = issuer_for_kind("notion")
+    metadata = {"registration_endpoint": "https://mcp.notion.com/register"}
+    mock_resp = AsyncMock()
+    mock_resp.status_code = 400
+    mock_resp.json = lambda: {
+        "error": "invalid_redirect_uri",
+        "error_description": "Redirect URI must use HTTPS unless it is a loopback HTTP URI",
+    }
+    mock_resp.raise_for_status.side_effect = AssertionError("should raise clearer error first")
+
+    with (
+        patch(
+            "octop.infra.connectors.oauth.mcp.safe_request",
+            new_callable=AsyncMock,
+            return_value=mock_resp,
+        ),
+        patch(
+            "octop.infra.connectors.oauth.mcp._ensure_mcp_oauth_url",
+            new_callable=AsyncMock,
+            return_value="https://mcp.notion.com/register",
+        ),
+        pytest.raises(ValueError, match="公网 HTTP.*Notion.*HTTPS"),
+    ):
+        await register_dynamic_client(
+            metadata,
+            issuer=issuer,
+            redirect_uri="http://58.87.70.170/api/connectors/oauth/callback",
+        )
 
 
 @pytest.mark.asyncio

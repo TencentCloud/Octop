@@ -226,6 +226,12 @@ def _schedule_connector_reload(server: Any, user_id: int) -> None:
     asyncio.create_task(_run())
 
 
+def _oauth_redirect_uri(request: Request, server: Any) -> str:
+    public_base = str(getattr(server.services.config, "public_base_url", "") or "").strip()
+    base = public_base.rstrip("/") if public_base else str(request.base_url).rstrip("/")
+    return f"{base}/api/connectors/oauth/callback"
+
+
 @router.get("/connectors/catalog", summary="Connector catalog")
 async def get_catalog(
     user: Any = Depends(current_user),
@@ -693,8 +699,7 @@ async def oauth_start(
 
     state = secrets.token_urlsafe(24)
     state_id = new_ulid()
-    base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base}/api/connectors/oauth/callback"
+    redirect_uri = _oauth_redirect_uri(request, server)
 
     try:
         authorize_url, verifier, ctx = await start_oauth(
@@ -704,6 +709,8 @@ async def oauth_start(
             settings_repo=server.services.settings_repo,
         )
     except ValueError as exc:
+        if "OCTOP_PUBLIC_BASE_URL" in str(exc):
+            raise OctopError(ErrorCode.CONNECTOR_OAUTH_HTTPS_REQUIRED, str(exc)) from exc
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     except Exception as exc:
         logger.exception("oauth start failed for %s", kind)
@@ -743,8 +750,7 @@ async def oauth_callback(
     if row is None:
         return HTMLResponse("<html><body>无效或过期的 state</body></html>", status_code=400)
 
-    base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base}/api/connectors/oauth/callback"
+    redirect_uri = _oauth_redirect_uri(request, server)
 
     try:
         tokens = await exchange_oauth_code(

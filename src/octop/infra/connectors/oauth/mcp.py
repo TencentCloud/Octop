@@ -30,6 +30,38 @@ def issuer_for_kind(kind: str) -> str:
     return issuer
 
 
+def _is_loopback_http_uri(uri: str) -> bool:
+    parsed = urlparse(uri)
+    if parsed.scheme != "http":
+        return False
+    host = (parsed.hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def _is_public_http_uri(uri: str) -> bool:
+    parsed = urlparse(uri)
+    return parsed.scheme == "http" and not _is_loopback_http_uri(uri)
+
+
+def _dynamic_registration_error_message(
+    body: object,
+    *,
+    issuer: str,
+    redirect_uri: str,
+) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    if body.get("error") != "invalid_redirect_uri":
+        return None
+    if issuer == _MCP_ISSUERS["notion"] and _is_public_http_uri(redirect_uri):
+        return (
+            "当前通过公网 HTTP 访问 Octop，Notion 授权回调地址需要 HTTPS。"
+            "请改用 HTTPS 访问 Octop，或配置 OCTOP_PUBLIC_BASE_URL 为 HTTPS 外部地址。"
+        )
+    desc = str(body.get("error_description") or "").strip()
+    return desc or None
+
+
 async def _ensure_mcp_oauth_url(url: str, *, issuer: str, field: str) -> str:
     """Block SSRF: only public https endpoints under the issuer domain."""
     try:
@@ -91,6 +123,18 @@ async def register_dynamic_client(
         "token_endpoint_auth_method": auth_method,
     }
     r = await safe_request("POST", reg_url, json=payload, timeout=20.0)
+    if r.status_code >= 400:
+        try:
+            err_body: object = r.json()
+        except Exception:
+            err_body = None
+        msg = _dynamic_registration_error_message(
+            err_body,
+            issuer=issuer,
+            redirect_uri=redirect_uri,
+        )
+        if msg:
+            raise ValueError(msg)
     r.raise_for_status()
     data = r.json()
     if not isinstance(data, dict) or not data.get("client_id"):

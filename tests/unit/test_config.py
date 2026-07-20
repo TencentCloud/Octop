@@ -57,11 +57,13 @@ def test_loads_database_section(tmp_path: Path):
 
 def test_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_PORT", "7000")
+    monkeypatch.setenv("OCTOP_PUBLIC_BASE_URL", "https://octop.example.com/")
     monkeypatch.setenv("OCTOP_LOG_LEVEL", "warning")
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"port": 8088}))
     cfg = load_config(cfg_path)
     assert cfg.port == 7000
+    assert cfg.public_base_url == "https://octop.example.com"
     assert cfg.log_level == "warning"
 
 

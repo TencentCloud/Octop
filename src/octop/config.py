@@ -76,6 +76,7 @@ class TlsConfig:
 class OctopConfig:
     bind_host: str = "127.0.0.1"
     port: int = 8088
+    public_base_url: str = ""
     log_level: str = "info"
     access_token_ttl_seconds: int = 86400
     login_max_attempts: int = 5
@@ -259,6 +260,8 @@ def load_config(path: Path) -> OctopConfig:
         merged["bind_host"] = v
     if v := os.environ.get("OCTOP_PORT"):
         merged["port"] = _coerce_int("OCTOP_PORT", v, merged["port"])
+    if v := os.environ.get("OCTOP_PUBLIC_BASE_URL"):
+        merged["public_base_url"] = v.strip().rstrip("/")
     if v := os.environ.get("OCTOP_LOG_LEVEL"):
         merged["log_level"] = v
     if v := os.environ.get("OCTOP_ACCESS_TOKEN_TTL"):
@@ -293,6 +296,7 @@ def load_config(path: Path) -> OctopConfig:
     return OctopConfig(
         bind_host=merged["bind_host"],
         port=int(merged["port"]),
+        public_base_url=str(merged.get("public_base_url") or "").strip().rstrip("/"),
         log_level=merged["log_level"],
         access_token_ttl_seconds=int(merged["access_token_ttl_seconds"]),
         login_max_attempts=int(merged.get("login_max_attempts", 5)),

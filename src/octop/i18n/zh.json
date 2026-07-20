@@ -296,6 +296,7 @@
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_INVALID_CREDENTIALS": "连接器凭证无效。",
+    "CONNECTOR_OAUTH_HTTPS_REQUIRED": "当前通过公网 HTTP 访问 Octop，Notion 授权回调地址需要 HTTPS。请改用 HTTPS 访问 Octop，或配置 OCTOP_PUBLIC_BASE_URL 为 HTTPS 外部地址。",
     "CONNECTOR_KIND_UNSUPPORTED": "不支持的连接器类型。",
     "CONNECTOR_NOT_BOUND": "连接器未绑定到此 Agent。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",

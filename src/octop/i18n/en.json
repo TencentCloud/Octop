@@ -296,6 +296,7 @@
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
     "CONNECTOR_NOT_FOUND": "Connector not found.",
     "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
+    "CONNECTOR_OAUTH_HTTPS_REQUIRED": "Octop is currently being accessed over public HTTP, but Notion OAuth callbacks require HTTPS. Use an HTTPS Octop URL, or set OCTOP_PUBLIC_BASE_URL to an HTTPS external URL.",
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
