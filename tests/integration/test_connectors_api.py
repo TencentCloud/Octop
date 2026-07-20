@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from tests.support.app import octop_client, write_octop_config
+from tests.support.auth import auth_header, bootstrap_admin
 from tests.support.http import ws_chat_turn
 
 
@@ -163,6 +168,26 @@ async def test_auth_info(env):
     assert data["login_url"] is None
     assert data["authorize_url"] == "https://weread.qq.com/r/weread-skills"
     assert data["auth_hint"]
+
+
+async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path):
+    write_octop_config(tmp_octop_home)
+    async with octop_client(tmp_octop_home) as (c, _srv):
+        await bootstrap_admin(c, tmp_octop_home)
+        auth = await auth_header(c)
+        mocked_start = AsyncMock()
+        with patch("octop.api.routers.connectors.start_oauth", mocked_start):
+            r = await c.post(
+                "/api/connectors/oauth/notion/start",
+                headers={**auth, "host": "58.87.70.170"},
+                json={"redirect_after": "/connectors"},
+            )
+    assert r.status_code == 400
+    body = r.json()
+    assert body["error"]["code"] == "CONNECTOR_OAUTH_HTTPS_REQUIRED"
+    assert "Notion" in body["error"]["message"]
+    assert "HTTPS" in body["error"]["message"]
+    mocked_start.assert_not_awaited()
 
 
 async def test_patch_instance_status(env):
