@@ -370,13 +370,21 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
-def test_build_harness_config_auto_expert_omits_providers_and_default(
+def test_build_harness_config_auto_expert_falls_back_to_first_model(
     manager: AgentManager,
 ) -> None:
+    """AUTO expert still gets a concrete default_model so the memory aux LLM works."""
     _seed_test_provider(manager)
     cfg = manager._build_harness_config(_row(default_model=None))
-    assert cfg.default_model is None
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
     assert cfg.providers == []
+
+
+def test_build_harness_config_no_providers_leaves_default_model_unset(
+    manager: AgentManager,
+) -> None:
+    cfg = manager._build_harness_config(_row(default_model=None))
+    assert cfg.default_model is None
 
 
 @pytest.mark.skip(
