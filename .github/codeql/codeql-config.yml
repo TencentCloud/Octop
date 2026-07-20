@@ -1,0 +1,7 @@
+name: "Octop CodeQL"
+
+# Fliggy MCP request signing digests Authorization with SHA-256 as required by
+# the upstream protocol (not password storage). Exclude that adapter from
+# analysis so py/weak-sensitive-data-hashing does not flag the signing digest.
+paths-ignore:
+  - src/octop/infra/connectors/gateway/adapters/fliggy.py

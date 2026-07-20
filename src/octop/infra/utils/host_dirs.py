@@ -25,6 +25,10 @@ def _is_denied_host_path(resolved: Path) -> bool:
     if os.name != "posix":
         return False
     text = resolved.as_posix()
+    # macOS resolves /etc → /private/etc (and similar). Strip that prefix so
+    # denied policy still matches the logical system locations.
+    if text == "/private" or text.startswith("/private/"):
+        text = text[len("/private") :] or "/"
     return any(text == denied or text.startswith(f"{denied}/") for denied in _DENIED_PREFIXES_POSIX)
 
 

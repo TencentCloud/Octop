@@ -42,7 +42,7 @@ export interface ChatAttachment {
   kind: "image" | "file";
 }
 
-/** Skills, connectors, experts, and model override attached at send time. */
+/** Skills, connectors, experts, and selected model attached at send time. */
 export interface UserComposerContext {
   skills?: string[];
   connectors?: string[];

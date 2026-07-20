@@ -16,7 +16,7 @@ services:
   octop:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     image: octop:latest
     container_name: octop
     restart: unless-stopped

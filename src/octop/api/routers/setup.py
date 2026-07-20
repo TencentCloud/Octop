@@ -17,6 +17,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
 from octop.infra.users.identity import Role
+from octop.infra.utils.locale import normalize_locale, resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,10 @@ class SetupBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
     display_name: str | None = None
+    locale: str | None = Field(
+        default=None,
+        description="UI locale for the initial admin (zh|en). Defaults to Accept-Language.",
+    )
 
 
 class ProviderModelDraft(BaseModel):
@@ -115,7 +120,7 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
     raise OctopError(ErrorCode.AUTH_FAILED, "invalid or expired wizard token")
 
 
-async def _bootstrap_default_agent(server: Any, *, user_id: int) -> None:
+async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
     """Create the first default agent for a fresh install."""
     from octop.infra.agents.experts.catalog import build_create_spec_from_expert
 
@@ -129,14 +134,13 @@ async def _bootstrap_default_agent(server: Any, *, user_id: int) -> None:
     expert = None if catalog is None else catalog.get("general-assistant")
     if expert is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "general-assistant expert template missing")
+    loc = normalize_locale(locale)
     spec = build_create_spec_from_expert(
         expert_id="general-assistant",
         expert=expert,
         user_id=user_id,
         agent_id="main",
-        name="通用助手",
-        description="友好的通用助手，无特定技能，适合作为起点或日常对话。",
-        locale="zh",
+        locale=loc,
     )
     await registry.create(spec, defer_bootstrap=True)
 
@@ -250,17 +254,20 @@ async def verify_password(
 @router.post("/setup/initial-admin", status_code=201, summary="Create initial admin")
 async def initial_admin(
     body: SetupBody,
+    request: Request,
     server: Any = Depends(get_server),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Create the first admin user. Default ``main`` agent is created at ``/setup/finish``."""
     _enforce_wizard_open(server)
     _require_wizard_token(authorization, server)
+    locale = normalize_locale(body.locale or resolve_request_locale(request))
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
         role=Role.ADMIN,
         display_name=body.display_name,
+        locale=locale,
     )
     _wizard.remove_password(Path.home())
     secret = server.services.secret_repo.get("jwt")
@@ -272,6 +279,7 @@ async def initial_admin(
         "id": user.id,
         "username": user.username,
         "role": user.role.value,
+        "locale": user.locale,
         "access_token": access_token,
         "expires_in": ttl,
     }
@@ -332,7 +340,7 @@ async def finish(
     admin = next((u for u in users if u.is_admin), users[0] if users else None)
     if admin is not None:
         try:
-            await _bootstrap_default_agent(server, user_id=admin.id)
+            await _bootstrap_default_agent(server, user_id=admin.id, locale=admin.locale)
         except Exception as exc:  # pragma: no cover
             logger.warning("could not auto-create default agent: %s", exc)
     if wizard_token is not None:

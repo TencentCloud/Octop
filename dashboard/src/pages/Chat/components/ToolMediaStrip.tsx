@@ -108,10 +108,12 @@ export function ToolMediaStrip({
   images,
   videos,
   files = [],
+  agentId,
 }: {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
   files?: Array<{ url: string; filename?: string }>;
+  agentId?: string | null;
 }) {
   if (images.length === 0 && videos.length === 0 && files.length === 0) {
     return null;
@@ -143,6 +145,7 @@ export function ToolMediaStrip({
               key={`${file.url}-${idx}`}
               url={file.url}
               filename={file.filename}
+              agentId={agentId}
             />
           ))}
         </div>

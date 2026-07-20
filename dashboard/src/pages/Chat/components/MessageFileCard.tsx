@@ -1,23 +1,50 @@
 import { useCallback, useState } from "react";
 import { message as antMessage } from "antd";
-import { ArrowDownToLine, FileText } from "lucide-react";
+import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { downloadAuthFile } from "../../../components/AuthFileDownloadLink";
-import { isDataUrl, needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
+import {
+  isDataUrl,
+  needsAuthBlobFetch,
+  workspacePathFromAccessUrl,
+} from "../../../utils/toolMediaBlocks";
+import { getDocKind } from "../../Agent/Workspace/utils/docKind";
+import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
+import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
+import { useChatFilePreview } from "../ChatFilePreviewContext";
 import styles from "../index.module.less";
+
+/** Files the browser can render inline (vs. pure binary blobs). */
+function isPreviewable(name: string): boolean {
+  return (
+    isProbablyText(name) ||
+    getMediaKind(name) !== null ||
+    getDocKind(name) !== null
+  );
+}
 
 /** Authenticated download card for chat / tool-result non-image files. */
 export function MessageFileCard({
   url,
   filename,
+  agentId,
+  workspacePath,
 }: {
   url: string;
   filename?: string;
+  agentId?: string | null;
+  workspacePath?: string;
 }) {
   const { t } = useTranslation();
+  const filePreview = useChatFilePreview();
   const [loading, setLoading] = useState(false);
   const needsAuth = needsAuthBlobFetch(url) || isDataUrl(url);
   const label = filename || url;
+
+  const resolvedPath = workspacePath || workspacePathFromAccessUrl(url) || "";
+  const previewable = Boolean(
+    resolvedPath && agentId && isPreviewable(label) && filePreview,
+  );
 
   const handleDownload = useCallback(async () => {
     if (!needsAuth) {
@@ -41,23 +68,48 @@ export function MessageFileCard({
     }
   }, [url, filename, needsAuth, t]);
 
+  const openPreview = useCallback(() => {
+    if (previewable && resolvedPath && filePreview) {
+      filePreview.openFilePreview(resolvedPath);
+    }
+  }, [previewable, resolvedPath, filePreview]);
+
   return (
     <div className={styles.messageFileCard}>
       <div className={styles.messageFileMeta}>
-        <FileText size={14} className={styles.messageFileIcon} aria-hidden />
+        <Paperclip
+          size={16}
+          strokeWidth={2}
+          className={styles.messageFileIcon}
+          aria-hidden
+        />
         <span className={styles.messageFileName} title={label}>
           {label}
         </span>
       </div>
+      {previewable && (
+        <button
+          type="button"
+          className={styles.messageFileActionBtn}
+          onClick={openPreview}
+          title={t("common.preview")}
+          aria-label={t("common.preview")}
+        >
+          <Eye size={15} strokeWidth={2} />
+        </button>
+      )}
       <button
         type="button"
-        className={styles.messageFileDownloadBtn}
-        onClick={() => void handleDownload()}
+        className={styles.messageFileActionBtn}
+        onClick={(e) => {
+          e.stopPropagation();
+          void handleDownload();
+        }}
         disabled={loading}
         title={t("common.download")}
         aria-label={t("common.download")}
       >
-        <ArrowDownToLine size={16} strokeWidth={2} />
+        <Download size={15} strokeWidth={2} />
       </button>
     </div>
   );

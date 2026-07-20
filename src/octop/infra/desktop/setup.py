@@ -403,13 +403,45 @@ def _xdpyinfo_ok(display: str) -> bool:
     return proc.returncode == 0
 
 
+def _systemd_available() -> bool:
+    return shutil.which("systemctl") is not None and Path("/run/systemd/system").is_dir()
+
+
+def _systemd_unit_files() -> tuple[Path, ...]:
+    return (
+        Path("/etc/systemd/system/octop-desktop-xvnc.service"),
+        Path("/etc/systemd/system/octop-desktop-session.service"),
+        Path("/etc/systemd/system/octop-desktop-openbox.service"),
+    )
+
+
+def _systemd_unit_files_present() -> bool:
+    return all(path.is_file() for path in _systemd_unit_files())
+
+
+def _runtime_scripts_present() -> bool:
+    root = system_install_root()
+    return (root / "start-openbox.sh").is_file() and (root / "start-session.sh").is_file()
+
+
 def _virtual_desktop_installed() -> bool:
-    return system_conf_dir().is_dir() or desktop_env_file().is_file()
+    """True when the stack is complete enough to start (not a partial leftover)."""
+    if not _runtime_scripts_present():
+        return False
+    if not (system_conf_dir().is_dir() or desktop_env_file().is_file()):
+        return False
+    if _systemd_available():
+        return _systemd_unit_files_present()
+    return True
 
 
 def _linux_virtual_desktop_present() -> bool:
+    """True when any virtual-desktop leftover exists (including partial installs)."""
     return (
-        _virtual_desktop_installed() or system_install_root().is_dir() or system_conf_dir().is_dir()
+        system_conf_dir().is_dir()
+        or system_install_root().is_dir()
+        or desktop_env_file().is_file()
+        or _systemd_unit_files_present()
     )
 
 
@@ -687,12 +719,13 @@ async def _run_script_step(
     missing_error_key: str,
     log_message_key: str,
     tolerate_exit_code: bool = False,
+    script_args: tuple[str, ...] = (),
 ) -> AsyncIterator[str]:
     if script is None:
         async for chunk in _install_failure(_install_log(locale, missing_error_key)):
             yield chunk
         return
-    cmd = _install_cmd_for_script(script)
+    cmd = _install_cmd_for_script(script, *script_args)
     if cmd is None:
         async for chunk in _install_failure(_install_log(locale, "error_sudo_required")):
             yield chunk
@@ -719,6 +752,22 @@ async def _run_script_step(
 
 
 async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
+    if platform.system() == "Linux":
+        build_deps_failed = False
+        async for chunk in _run_script_step(
+            resolve_install_script_path(),
+            locale=locale,
+            missing_error_key="error_script_missing",
+            log_message_key="install_log_build_deps",
+            script_args=("--build-deps-only", "--python", sys.executable),
+        ):
+            yield chunk
+            done = _sse_done(chunk)
+            if done is not None and not done.get("success"):
+                build_deps_failed = True
+        if build_deps_failed:
+            return
+
     cmd = python_deps_install_cmd()
     if cmd is None:
         async for chunk in _install_failure(_install_log(locale, "error_pip_unavailable")):
@@ -735,11 +784,11 @@ async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
             yield chunk
 
 
-def _install_cmd_for_script(script: Path) -> list[str] | None:
+def _install_cmd_for_script(script: Path, *script_args: str) -> list[str] | None:
     if geteuid() == 0:
-        return ["/bin/bash", str(script)]
+        return ["/bin/bash", str(script), *script_args]
     if shutil.which("sudo"):
-        return ["sudo", "-n", "/bin/bash", str(script)]
+        return ["sudo", "-n", "/bin/bash", str(script), *script_args]
     return None
 
 
@@ -768,9 +817,26 @@ fi
 rm -rf /opt/octop-desktop /etc/octop-desktop
 rm -f /usr/share/backgrounds/octop-desktop-wallpaper.png \\
       /usr/share/backgrounds/octop-desktop-wallpaper.svg 2>/dev/null || true
+rm -f /usr/share/icons/hicolor/48x48/apps/octop-start-menu.png 2>/dev/null || true
+# Remove octop-managed Desktop launchers so they are not left as orphans after
+# uninstall (they point at the now-removed /opt/octop-desktop tree). Targeted by
+# filename to avoid deleting user-placed .desktop files on the Desktop.
+rm -f /root/Desktop/terminal.desktop \\
+      /root/Desktop/files.desktop \\
+      /root/Desktop/editor.desktop \\
+      /root/Desktop/browser.desktop 2>/dev/null || true
+# Stale xfconf/icon layout survives a package reinstall and keeps tiny icons.
+rm -rf /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \\
+       /root/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml \\
+       /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \\
+       /root/.config/xfce4/desktop \\
+       /root/.config/xfce4/panel \\
+       /root/.cache/xfce4/xfdesktop 2>/dev/null || true
 pkill -9 -f 'import -display :99' 2>/dev/null || true
 pkill -9 -f 'Xvnc :99' 2>/dev/null || true
 pkill -9 -f '/opt/octop-desktop/' 2>/dev/null || true
+pkill -x xfce4-panel 2>/dev/null || true
+pkill -f 'xfdesktop --display' 2>/dev/null || true
 rm -f /tmp/.X99-lock
 rm -rf /tmp/.X11-unix/X99 /tmp/octop-desktop-dbus-env /tmp/runtime-octop-desktop
 """

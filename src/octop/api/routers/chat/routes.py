@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -13,7 +12,6 @@ from fastapi.responses import StreamingResponse
 from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import HitlResumeBody, PolishBody
-from octop.api.routers.chat.serialize import _llm_text_content
 from octop.api.routers.chat.sse import format_sse
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
@@ -22,6 +20,7 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_has_content,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.llm_text import ainvoke_text
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -114,13 +113,12 @@ async def polish_prompt(
     model_ref = (body.default_model or "").strip() or harness.config.pick_default_model_ref()
     llm = harness.model_factory.get(model_ref)
     try:
-        result = await asyncio.wait_for(
-            llm.ainvoke(
-                [
-                    SystemMessage(content=_POLISH_SYSTEM_PROMPT),
-                    HumanMessage(content=draft),
-                ]
-            ),
+        polished = await ainvoke_text(
+            llm,
+            [
+                SystemMessage(content=_POLISH_SYSTEM_PROMPT),
+                HumanMessage(content=draft),
+            ],
             timeout=30.0,
         )
     except TimeoutError:
@@ -129,7 +127,6 @@ async def polish_prompt(
         logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
 
-    polished = _llm_text_content(result)
     if not polished:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")
     return {"text": polished}

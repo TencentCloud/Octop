@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "0.9.4"
+version = "0.9.11"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on harness-agent"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,25 +21,19 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "orcakit-harness-agent>=0.9.5",
+    "orcakit-harness-agent[all]>=0.9.10",
     "harness-memory>=0.8.5",
-    "harness-gateway>=0.8.2",
+    "harness-gateway>=0.8.4",
     "cryptography>=41",
     "scalar-fastapi>=1.0",
-    "cos-python-sdk-v5>=1.9",
-    "oss2>=2.18",
-    "esdk-obs-python>=3.24",
-    "deepagents-backends>=0.2",
     "edge-tts>=6.1",
-    "langfuse>=4.9.0",
-    "agent-client-protocol>=0.9.0",
-    "psutil>=5.9",
     "segno>=1.6",
     "websockets>=13.0",
     "acme>=5.6.0",
     "josepy>=2.2.0",
     "boto3>=1.40.61",
-    "harness-browser>=0.7.2",
+    "harness-browser>=0.7.4",
+    "playwright>=1.40",
 ]
 
 [project.optional-dependencies]
@@ -54,11 +48,10 @@ dev = [
     "mypy>=1.10",
     "build>=1.0",
 ]
+# Kept for backward compatibility; playwright is now a core dependency.
 browser = [
     "playwright>=1.40",
-    "harness-browser>=0.7.3",
 ]
-channels-feishu = ["harness-browser>=0.7.0"]
 desktop = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
 
 [dependency-groups]
@@ -118,7 +111,7 @@ ignore = ["E501"]
 "src/octop/api/**" = ["B008"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 files = ["src/octop"]
@@ -189,4 +182,12 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "live: tests that hit real LLM endpoints (skipped by default)",
+]
+# The project pins a starlette fork (1.3.1) whose TestClient prefers a
+# private ``httpx2`` build that is not installable from PyPI. When ``httpx2``
+# is absent it falls back to ``httpx`` and emits a non-actionable
+# StarletteDeprecationWarning on every ``starlette.testclient`` import. The
+# fallback is intentional for this environment, so silence the noise.
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]

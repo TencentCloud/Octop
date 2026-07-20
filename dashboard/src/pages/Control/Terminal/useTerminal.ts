@@ -89,7 +89,9 @@ function generateId(): string {
 function buildWsUrl(agentId: string, sessionId: string): string {
   const token = getAuthToken();
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const base = `${protocol}://${window.location.host}/api/agents/${agentId}/terminal/ws`;
+  const base = `${protocol}://${
+    window.location.host
+  }/api/agents/${encodeURIComponent(agentId)}/terminal/ws`;
   const params = new URLSearchParams();
   if (token) params.set("token", token);
   // Opt into backend session persistence: same id re-attaches to the shell.
@@ -104,11 +106,15 @@ function pickAgentId(
   currentAgentId: string,
   validAgentIds: ReadonlySet<string>,
 ): string {
-  const stored = session.agentId;
-  if (stored && validAgentIds.has(stored)) return stored;
-  if (currentAgentId && validAgentIds.has(currentAgentId))
-    return currentAgentId;
-  return "";
+  const resolve = (id: string) => {
+    if (!id) return "";
+    if (validAgentIds.has(id)) return id;
+    for (const full of validAgentIds) {
+      if (full.endsWith(id)) return full;
+    }
+    return "";
+  };
+  return resolve(session.agentId) || resolve(currentAgentId);
 }
 
 /** Restore persisted tabs into the sessions map, returning their ids. */
@@ -291,6 +297,11 @@ export function useTerminal() {
             session.onExit?.(msg.code ?? 0);
           } else if (msg.type === "error") {
             console.error("[Terminal] Server error:", msg.message);
+            // Permanent server-side failure — stop the reconnect storm.
+            session.exited = true;
+            clearReconnectTimer(session);
+            setConnState(session, "error");
+            session.onExit?.(-1);
           }
         } catch {
           // Non-JSON frames — unlikely but ignore.
@@ -302,11 +313,20 @@ export function useTerminal() {
         setConnState(session, "error");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         if (isStale()) return;
         session.ws = null;
         if (session.exited) {
           setConnState(session, "disconnected");
+          return;
+        }
+        // Server permanent failures (auth / spawn / unsupported / capacity).
+        // Stop the reconnect storm even if the error frame was missed.
+        if (ev.code === 1011 || (ev.code >= 4000 && ev.code < 5000)) {
+          session.exited = true;
+          clearReconnectTimer(session);
+          setConnState(session, "error");
+          session.onExit?.(ev.code);
           return;
         }
         // Transient drop — auto-reconnect (capped). Manual button covers the rest.

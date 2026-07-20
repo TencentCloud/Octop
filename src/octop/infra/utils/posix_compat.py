@@ -70,7 +70,10 @@ def setsid() -> int:
     fn = getattr(os, "setsid", None)
     if fn is None:
         raise OSError("setsid is not available on this platform")
-    return int(fn())
+    # macOS returns None from os.setsid(); Linux returns the new session id.
+    # preexec_fn must not raise — wrapping None in int() aborts the child spawn.
+    result = fn()
+    return int(result) if result is not None else 0
 
 
 def sigkill() -> int:

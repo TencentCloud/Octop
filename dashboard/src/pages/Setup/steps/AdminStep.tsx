@@ -4,6 +4,7 @@ import { User, Lock, IdCard } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { wizardApi, wizardSession } from "../wizardClient";
+import { setAuthToken } from "../../../api/request";
 
 const { Text } = Typography;
 
@@ -23,7 +24,7 @@ interface Props {
 }
 
 export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [form] = Form.useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,15 +42,19 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
     }
     setSubmitting(true);
     try {
+      const locale = i18n.language?.startsWith("zh") ? "zh" : "en";
       const created = await wizardApi.createAdmin(
         {
           username: values.username,
           display_name: values.display_name?.trim() || null,
           password: values.password,
+          locale,
         },
         wizardToken,
       );
       wizardSession.saveSetupJwt(created.access_token);
+      // So mid-wizard locale / preferences API calls can authenticate.
+      setAuthToken(created.access_token);
       onCreated({ username: values.username, password: values.password });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

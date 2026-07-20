@@ -218,6 +218,30 @@ def test_resolve_model_for_multimodal_turn(
     assert resolved == expected
 
 
+def test_resolve_first_model_ref_returns_first_enabled_model(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="p1",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "disabled", "name": "disabled", "enabled": False},
+                {"id": "ready", "name": "ready", "enabled": True},
+            ]
+        ),
+    )
+    store._provider_repo.create(
+        name="p2",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "other", "name": "other", "enabled": True}]),
+    )
+
+    assert store.resolve_first_model_ref() == "p1/ready"
+
+
 def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="p",

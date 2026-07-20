@@ -38,6 +38,10 @@ import {
   Activity,
   HardDrive,
   Bell,
+  BarChart3,
+  Network,
+  ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 
 const iconMap: Record<string, (size: number) => ReactNode> = {
@@ -67,6 +71,10 @@ const iconMap: Record<string, (size: number) => ReactNode> = {
   presentation: (size) => <Presentation size={size} />,
   activity: (size) => <Activity size={size} />,
   "hard-drive": (size) => <HardDrive size={size} />,
+  "bar-chart-3": (size) => <BarChart3 size={size} />,
+  network: (size) => <Network size={size} />,
+  "shield-check": (size) => <ShieldCheck size={size} />,
+  "refresh-cw": (size) => <RefreshCw size={size} />,
 };
 
 export function iconForName(

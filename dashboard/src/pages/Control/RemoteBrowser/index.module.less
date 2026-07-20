@@ -33,6 +33,64 @@
   border-radius: 8px;
   background: var(--fn-bg-secondary);
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.installProgress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: min(520px, 92%);
+  padding: 24px 20px;
+}
+
+.installProgressTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  text-align: center;
+}
+
+.installLog {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border-secondary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  color: var(--fn-text-secondary);
+}
+
+.installProgressActions {
+  display: flex;
+  justify-content: center;
+}
+
+.streamLoadingIcon {
+  animation: rbSpin 1s linear infinite;
+  color: var(--fn-text-secondary);
+}
+
+@keyframes rbSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.canvasHidden {
+  visibility: hidden;
 }
 
 .aiPanelRight {

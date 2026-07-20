@@ -50,13 +50,14 @@ class UserRepo:
         password_hash: str,
         role: str,
         display_name: str | None = None,
+        locale: str = "zh",
     ) -> int:
         with self._db.transaction() as conn:
             return insert_returning_id(
                 conn,
                 "INSERT INTO users(username, password_hash, role, display_name, "
-                "disabled, created_at) VALUES (?, ?, ?, ?, 0, ?)",
-                (username, password_hash, role, display_name, now_ts()),
+                "locale, disabled, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+                (username, password_hash, role, display_name, locale, now_ts()),
             )
 
     def get(self, user_id: int) -> UserRow | None:

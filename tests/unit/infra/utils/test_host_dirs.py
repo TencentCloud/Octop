@@ -58,6 +58,16 @@ def test_assert_safe_host_path_rejects_etc() -> None:
 
 
 @posix_only
+def test_assert_safe_host_path_rejects_private_etc_symlink() -> None:
+    """macOS resolves /etc → /private/etc; denial must still apply."""
+    resolved = Path("/etc/passwd").resolve()
+    if not str(resolved).startswith("/private/"):
+        pytest.skip("host does not use /private/etc layout")
+    with pytest.raises(ValueError, match="not allowed"):
+        assert_safe_host_path(str(resolved))
+
+
+@posix_only
 def test_assert_safe_host_path_rejects_root() -> None:
     with pytest.raises(ValueError, match="not allowed"):
         assert_safe_host_path("/root")

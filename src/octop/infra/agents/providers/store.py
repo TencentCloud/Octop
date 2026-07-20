@@ -152,6 +152,17 @@ class ProviderStore:
         upgraded = self.resolve_multimodal_model_ref()
         return upgraded or ref
 
+    def resolve_first_model_ref(self) -> str | None:
+        """First enabled model across usable providers, for lightweight internal tasks."""
+        for row in self.iter_usable_rows():
+            for model in row.get_models():
+                if not model.get("enabled", True):
+                    continue
+                model_id = str(model.get("id") or "").strip()
+                if model_id:
+                    return f"{row.name}/{model_id}"
+        return None
+
     def is_model_ref_usable(self, ref: str) -> bool:
         """Return True when *ref* points at an enabled model on a usable provider row."""
         ref = ref.strip()

@@ -10,12 +10,12 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from octop.api.routers.chat.serialize import (
     _entry_matches_thread,
-    _llm_text_content,
     _merge_adjacent_messages,
     _serialize_history_message,
     _strip_thinking,
     _ts_to_ms,
 )
+from octop.infra.utils.llm_text import llm_text_content as _llm_text_content
 
 
 def test_serialize_history_message_includes_thinking_and_tools() -> None:

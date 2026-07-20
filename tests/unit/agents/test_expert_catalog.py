@@ -41,6 +41,29 @@ def test_expert_discovers_seed_paths(tmp_path: Path) -> None:
     assert expert.prompt_files == []
 
 
+def test_expert_catalog_reads_extra_roots(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+
+    bundled_root = tmp_path / "bundled"
+    market_root = tmp_path / "market"
+    bundled_dir = bundled_root / "bundled-expert"
+    market_dir = market_root / "market-expert"
+    bundled_dir.mkdir(parents=True)
+    market_dir.mkdir(parents=True)
+    _write_manifest(bundled_dir)
+    _write_manifest(market_dir)
+    (market_dir / "SOUL.md").write_text("# Market soul", encoding="utf-8")
+
+    catalog = ExpertCatalog(bundled_root, extra_roots=[market_root])
+    catalog.refresh()
+
+    assert catalog.get("bundled-expert") is not None
+    market = catalog.get("market-expert")
+    assert market is not None
+    assert catalog.expert_dir("market-expert") == market_dir
+    assert "SOUL.md" in market.files
+
+
 def test_expert_lazy_read_file_contents(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 

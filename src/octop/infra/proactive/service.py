@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from octop.i18n.loader import tr as i18n_tr
 from octop.infra.proactive.picker import EpisodePicker
+from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import normalize_locale
 
 if TYPE_CHECKING:
@@ -60,22 +61,6 @@ def _format_episodes_for_prompt(episodes: list[Any]) -> str:
             f"   Emotion: {ep.emotion} (intensity {ep.intensity}/5)"
         )
     return "\n\n".join(lines)
-
-
-def _llm_response_text(response: Any) -> str:
-    """Extract plain text from a LangChain ``ainvoke`` result."""
-    content = getattr(response, "content", response)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                parts.append(str(block.get("text") or ""))
-            elif isinstance(block, str):
-                parts.append(block)
-        return "".join(parts)
-    return str(content or "")
 
 
 # ---------------------------------------------------------------------------
@@ -234,8 +219,7 @@ class ProactiveCareService:
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=f"User's recent life events:\n\n{episode_context}"),
             ]
-            response = await llm.ainvoke(messages)
-            care_text = _llm_response_text(response)
+            care_text = await ainvoke_text(llm, messages, timeout=30.0)
             # Truncate to the max length
             if len(care_text) > _MAX_CARE_TEXT_LEN:
                 care_text = care_text[:_MAX_CARE_TEXT_LEN]

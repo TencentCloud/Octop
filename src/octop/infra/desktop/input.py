@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from octop.infra.desktop.capture import display_env, is_linux_virtual_display
@@ -298,9 +299,30 @@ VoidRunner = Callable[[InputInjector], None]
 
 
 def _action_display_env(display: str | None) -> dict[str, str]:
+    """Env for spawned desktop helpers (DISPLAY + session D-Bus + HOME)."""
     env = os.environ.copy()
     if display:
         env["DISPLAY"] = display
+    env.setdefault("HOME", "/root")
+    # Session bus is written by start-session.sh as:
+    #   export DBUS_SESSION_BUS_ADDRESS="..."
+    #   export DBUS_SESSION_BUS_PID="..."
+    dbus_env = Path("/tmp/octop-desktop-dbus-env")
+    if not dbus_env.is_file():
+        return env
+    try:
+        for line in dbus_env.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[len("export ") :]
+            if not line.startswith("DBUS_SESSION_BUS_"):
+                continue
+            key, _, value = line.partition("=")
+            value = value.strip().strip("'").strip('"')
+            if key and value:
+                env[key] = value
+    except OSError:
+        pass
     return env
 
 
@@ -327,9 +349,9 @@ def _xdotool_key(combo: str, *, display: str | None) -> bool:
     try:
         proc = subprocess.run(
             ["xdotool", "key", combo],
-            env=_action_display_env(display),
+            env=_xdotool_env(display),
             capture_output=True,
-            timeout=3,
+            timeout=_XDOTOOL_TIMEOUT_S,
             check=False,
         )
         return proc.returncode == 0
@@ -369,9 +391,19 @@ def _linux_runners(display: str | None) -> dict[str, ActionRunner]:
 
         return _run
 
+    def open_menu() -> ActionRunner:
+        """Open appfinder (same binary as the panel start button)."""
+        spawn = spawn_first([["xfce4-appfinder"]])
+        keys = key_combo("alt+F1", ["Alt", "F1"])
+
+        def _run(injector: InputInjector) -> bool:
+            return spawn(injector) or keys(injector)
+
+        return _run
+
     return {
         "show_desktop": key_combo("ctrl+alt+d", ["Control", "Alt", "d"]),
-        "open_menu": key_combo("alt+F1", ["Alt", "F1"]),
+        "open_menu": open_menu(),
         "close_window": key_combo("alt+F4", ["Alt", "F4"]),
         "open_terminal": spawn_first([["xfce4-terminal"], ["x-terminal-emulator"], ["xterm"]]),
         "open_files": spawn_first([["thunar"], ["nautilus"], ["pcmanfm"]]),

@@ -3,6 +3,19 @@ import type { ResolvedModel, TokenUsage } from "../../../api/types";
 import { modelOptionValue } from "../../../utils/modelOptions";
 import type { ChatMessage } from "./useChat";
 
+function usageContextInput(
+  usage: TokenUsage | null | undefined,
+): number | null {
+  if (!usage) return null;
+  // Prefer last model-call size (context fullness), not turn-summed billing.
+  const last = usage.last_input_tokens;
+  if (typeof last === "number" && last > 0) return last;
+  if (typeof usage.input_tokens === "number" && usage.input_tokens > 0) {
+    return usage.input_tokens;
+  }
+  return null;
+}
+
 export function useChatContextWindow(
   messages: ChatMessage[],
   contextUsage: TokenUsage | null | undefined,
@@ -29,17 +42,11 @@ export function useChatContextWindow(
   }, [selectedModel, availableModels, agentDefaultModel]);
 
   const contextUsedTokens = useMemo(() => {
-    if (
-      typeof contextUsage?.input_tokens === "number" &&
-      contextUsage.input_tokens > 0
-    ) {
-      return contextUsage.input_tokens;
-    }
+    const fromStream = usageContextInput(contextUsage);
+    if (fromStream != null) return fromStream;
     for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const usage = messages[i].usage;
-      if (typeof usage?.input_tokens === "number" && usage.input_tokens > 0) {
-        return usage.input_tokens;
-      }
+      const fromMsg = usageContextInput(messages[i].usage);
+      if (fromMsg != null) return fromMsg;
     }
     return null;
   }, [contextUsage, messages]);

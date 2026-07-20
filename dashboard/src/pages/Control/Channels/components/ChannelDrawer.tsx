@@ -470,7 +470,7 @@ export function ChannelDrawer({
       name: string,
       config: Record<string, unknown>,
     ): Promise<boolean> => {
-      const enabled = form.getFieldValue("enabled") ?? true;
+      const enabled = form.getFieldValue("enabled") ?? false;
       return onSubmit(kind, name, config, enabled);
     },
     [form, onSubmit],
@@ -626,7 +626,7 @@ export function ChannelDrawer({
         }
       }
     }
-    onSubmit(kind, kind, config, values.enabled ?? true);
+    onSubmit(kind, kind, config, values.enabled ?? false);
   };
 
   // ── QR Panels ───────────────────────────────────────────────────────────

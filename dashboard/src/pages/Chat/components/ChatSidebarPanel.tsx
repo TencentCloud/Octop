@@ -1,6 +1,7 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
+import type { RefObject } from "react";
 import SessionList from "./SessionList";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -10,6 +11,8 @@ interface ChatSidebarPanelProps {
   isMobile: boolean;
   sidebarOpen: boolean;
   sidebarWidth: number;
+  isSidebarResizing?: boolean;
+  sidebarElRef?: RefObject<HTMLDivElement>;
   agents: OctopAgent[];
   sessions: Session[];
   activeThreadId: string | null;
@@ -24,13 +27,15 @@ interface ChatSidebarPanelProps {
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onSidebarOpenChange: (open: boolean) => void;
-  onSidebarResizeStart: (e: React.MouseEvent) => void;
+  onSidebarResizeStart: (e: React.PointerEvent) => void;
 }
 
 export default function ChatSidebarPanel({
   isMobile,
   sidebarOpen,
   sidebarWidth,
+  isSidebarResizing = false,
+  sidebarElRef,
   agents,
   sessions,
   activeThreadId,
@@ -63,7 +68,10 @@ export default function ChatSidebarPanel({
       )}
 
       <div
-        className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}
+        ref={sidebarElRef}
+        className={`${styles.sidebar} ${
+          sidebarOpen ? styles.sidebarOpen : ""
+        } ${isSidebarResizing ? styles.sidebarResizing : ""}`}
         style={
           !isMobile && sidebarOpen
             ? { width: sidebarWidth, minWidth: sidebarWidth }
@@ -87,8 +95,10 @@ export default function ChatSidebarPanel({
         />
         {!isMobile && sidebarOpen && (
           <div
-            className={styles.sidebarResizeHandle}
-            onMouseDown={onSidebarResizeStart}
+            className={`${styles.sidebarResizeHandle} ${
+              isSidebarResizing ? styles.sidebarResizeHandleActive : ""
+            }`}
+            onPointerDown={onSidebarResizeStart}
             role="separator"
             aria-orientation="vertical"
             aria-label={t("chat.resizeSidebar", "调整侧栏宽度")}

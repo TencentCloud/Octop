@@ -55,7 +55,7 @@ def _resolve_scope(value: str) -> ServiceScope | None:
 
 
 def _health_failure_hint(runtime: ServiceRuntime) -> str:
-    log_path = runtime.home / "octop.log"
+    log_path = runtime.home / "logs" / "octop.log"
     if runtime.mode == "systemd":
         journal = (
             "journalctl --user -u octop -n 80 --no-pager"

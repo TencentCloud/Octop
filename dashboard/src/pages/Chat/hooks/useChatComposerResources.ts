@@ -3,6 +3,7 @@ import { connectorsApi } from "../../../api/modules/connectors";
 import { providerApi } from "../../../api/modules/provider";
 import type { ResolvedModel } from "../../../api/types";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import { CONNECTORS_CHANGED_EVENT } from "../../Agent/Connectors/customMcpUtils";
 import {
   loadSavedConnectors,
   loadSavedSkills,
@@ -53,9 +54,11 @@ export function useChatComposerResources(
     loadConnectors();
     const onFocus = () => loadConnectors();
     window.addEventListener("focus", onFocus);
+    window.addEventListener(CONNECTORS_CHANGED_EVENT, loadConnectors);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(CONNECTORS_CHANGED_EVENT, loadConnectors);
     };
   }, [resolvedAgentId]);
 

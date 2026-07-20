@@ -372,6 +372,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   //      the accumulated usage to the Turn's final AI message. Preference
   //      is the last plain AI text (no toolData); otherwise fall back to
   //      the last AI message we saw.
+  //   4. Also stash ``last_input_tokens`` = the *latest* call's input size
+  //      (not the sum). Context-window ring must use that — summing N
+  //      model calls easily exceeds the context limit and shows 100%.
   //
   // Net effect: the usage shown under the final reply equals the Turn's
   // run_usage (matches `[Token][Turn Summary]` server logs and
@@ -382,6 +385,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     total_tokens: 0,
   });
   let turnAcc: TokenUsage | null = null;
+  let turnLastInputTokens = 0;
   let turnLastAiIdx: number | null = null;
   let turnLastPlainAiIdx: number | null = null;
 
@@ -394,10 +398,19 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     if (hasAny) {
       const target = turnLastPlainAiIdx ?? turnLastAiIdx;
       if (target !== null) {
-        merged[target] = { ...merged[target], usage: turnAcc };
+        merged[target] = {
+          ...merged[target],
+          usage: {
+            ...turnAcc,
+            ...(turnLastInputTokens > 0
+              ? { last_input_tokens: turnLastInputTokens }
+              : {}),
+          },
+        };
       }
     }
     turnAcc = null;
+    turnLastInputTokens = 0;
     turnLastAiIdx = null;
     turnLastPlainAiIdx = null;
   };
@@ -407,6 +420,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     if (m.role === "user") {
       flushTurn();
       turnAcc = emptyUsage();
+      turnLastInputTokens = 0;
       continue;
     }
     if (m.role !== "assistant") continue;
@@ -417,6 +431,11 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
 
     const u = m.usage;
     if (u) {
+      const callIn =
+        typeof u.input_tokens === "number" && u.input_tokens > 0
+          ? u.input_tokens
+          : 0;
+      if (callIn > 0) turnLastInputTokens = callIn;
       turnAcc.input_tokens =
         (turnAcc.input_tokens || 0) + (u.input_tokens || 0);
       turnAcc.output_tokens =
@@ -559,8 +578,10 @@ export function useChat(
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const loadGenRef = useRef(0);
   const loadMoreInFlightRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
 
   const sendMessage = useCallback(
     (
@@ -686,6 +707,57 @@ export function useChat(
   }, [agentId, stableSessionId]);
 
   /**
+   * Force-reload the latest history page from the API.
+   *
+   * Used when the user overscrolls at the bottom to recover from a dropped WS
+   * stream that left the last assistant turn incomplete in memory.
+   */
+  const refreshHistory = useCallback(async () => {
+    const key = stableSessionId;
+    const snap = chatStore.getSnapshot(key);
+    if (
+      refreshInFlightRef.current ||
+      historyRefreshing ||
+      historyLoading ||
+      snap.isStreaming ||
+      !agentId ||
+      key === "__empty__"
+    ) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    const gen = ++loadGenRef.current;
+    setHistoryRefreshing(true);
+
+    try {
+      const {
+        messages: latest,
+        hasMore,
+        nextOffset,
+      } = await loadThreadHistory(agentId, key, { offset: 0 });
+      if (loadGenRef.current !== gen) return;
+
+      // Keep older pages the user already scrolled in; replace the overlapping
+      // latest-page window with the server copy so truncated WS turns heal.
+      const latestIds = new Set(latest.map((m) => m.id));
+      const firstOverlap = snap.messages.findIndex((m) => latestIds.has(m.id));
+      const olderPrefix =
+        firstOverlap > 0 ? snap.messages.slice(0, firstOverlap) : [];
+      chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
+        hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
+        nextOffset:
+          olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
+      });
+    } finally {
+      refreshInFlightRef.current = false;
+      if (loadGenRef.current === gen) {
+        setHistoryRefreshing(false);
+      }
+    }
+  }, [agentId, stableSessionId, historyRefreshing, historyLoading]);
+
+  /**
    * Edit a historical user message: truncate everything from that message
    * onwards, replace its content, then re-send to the backend.
    * Mirrors the behaviour of Claude / ChatGPT "edit message".
@@ -747,11 +819,13 @@ export function useChat(
     historyLoading,
     historyHasMore,
     historyLoadingMore,
+    historyRefreshing,
     sendMessage,
     editAndResend,
     cancelStream,
     loadHistory,
     loadMoreHistory,
+    refreshHistory,
     clearMessages,
     resumeHitl,
   };

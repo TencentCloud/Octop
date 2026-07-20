@@ -14,6 +14,13 @@ _xvnc_alive() {
 }
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  for unit in octop-desktop-xvnc octop-desktop-session octop-desktop-openbox; do
+    if [ ! -f "/etc/systemd/system/${unit}.service" ]; then
+      echo "systemd unit ${unit}.service is missing; re-run the desktop install" >&2
+      exit 1
+    fi
+  done
+  systemctl daemon-reload
   systemctl start octop-desktop-xvnc octop-desktop-session octop-desktop-openbox
 else
   OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
@@ -21,7 +28,7 @@ else
   DISPLAY_NUM=":99"
   if ! _xvnc_alive "Xvnc.*${DISPLAY_NUM}"; then
     rm -f "/tmp/.X${DISPLAY_NUM#:}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM#:}"
-    nohup "$(command -v Xvnc || command -v Xtigervnc)" :99 -depth 24 -geometry 1920x1080 \
+    nohup "$(command -v Xvnc || command -v Xtigervnc)" :99 -depth 24 -geometry 1920x1080 -dpi 96 \
       -rfbport 5900 -localhost yes -AlwaysShared -maxclients 256 -SecurityTypes VncAuth \
       -rfbauth /etc/octop-desktop/rfbauth \
       > "${OCTOP_HOME}/desktop/xvnc.log" 2>&1 &

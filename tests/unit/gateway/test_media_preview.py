@@ -31,7 +31,8 @@ async def test_resolve_preview_from_outbound_screenshots() -> None:
         shots.mkdir(parents=True)
         png = shots / "harness.png"
         png.write_bytes(b"\x89PNG\r\n")
-        backend = LocalShellBackend(root_dir=ws, virtual_mode=True)
+        # Match POSIX default agent backend (root_dir=/).
+        backend = LocalShellBackend(root_dir="/", virtual_mode=True)
         workspace = BackendWorkspace(backend, ws)
         payload = await resolve_preview_payload(
             source=png.as_uri(),
@@ -49,7 +50,7 @@ async def test_resolve_preview_from_tmp_screenshot() -> None:
     with tempfile.TemporaryDirectory() as ws, tempfile.TemporaryDirectory() as ext_dir:
         png = Path(ext_dir) / f"orca-test-preview-{time.time_ns()}.png"
         png.write_bytes(b"\x89PNG\r\n")
-        backend = LocalShellBackend(root_dir=ws, virtual_mode=True)
+        backend = LocalShellBackend(root_dir="/", virtual_mode=True)
         workspace = BackendWorkspace(backend, ws)
         payload = await resolve_preview_payload(
             source=png.as_uri(),
