@@ -1547,7 +1547,11 @@
 }
 
 .expertsTable {
-  margin: 12px 0 40px;
+  margin: 12px 0 0;
+
+  :global(.octop-table-pagination) {
+    margin: 12px 0 0 !important;
+  }
 }
 
 .tableNameCell {

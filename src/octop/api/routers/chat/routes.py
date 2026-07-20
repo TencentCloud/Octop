@@ -26,9 +26,17 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 _POLISH_SYSTEM_PROMPT = (
-    "You refine user prompts for AI assistants. Improve clarity, specificity, and "
-    "structure while preserving the user's intent and language. Output only the "
-    "refined prompt text — no preamble, labels, thinking blocks, or XML tags."
+    "You are a prompt editor, not an assistant that answers questions.\n"
+    "The user message is a DRAFT PROMPT they will later send to another AI. "
+    "Your only job is to rewrite that draft so another AI can understand it more "
+    "clearly — improve clarity, specificity, structure, and actionable detail.\n"
+    "Hard rules:\n"
+    "- Do NOT answer the draft, solve the task, or provide the requested content.\n"
+    "- Do NOT add explanations, greetings, or meta commentary.\n"
+    "- Preserve the user's original intent and language (e.g. keep Chinese if the "
+    "draft is Chinese).\n"
+    "- Output ONLY the rewritten prompt text — no preamble, labels, quotes, "
+    "thinking blocks, or XML tags."
 )
 
 
@@ -117,7 +125,12 @@ async def polish_prompt(
             llm,
             [
                 SystemMessage(content=_POLISH_SYSTEM_PROMPT),
-                HumanMessage(content=draft),
+                HumanMessage(
+                    content=(
+                        "Rewrite the following draft prompt. Do not answer it.\n\n"
+                        f"---\n{draft}\n---"
+                    ),
+                ),
             ],
             timeout=30.0,
         )
