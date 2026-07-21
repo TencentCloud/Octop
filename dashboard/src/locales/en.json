@@ -1372,6 +1372,7 @@
     "sttEmpty": "No speech detected",
     "sttFailed": "Speech recognition failed",
     "sttFallback": "Server STT failed — switched to browser recognition",
+    "sttProviderRequired": "This browser does not support native speech recognition. Configure Tencent Cloud or OpenAI STT.",
     "ttsFailed": "Text-to-speech failed",
     "nothingToRead": "No readable prose in this message (code blocks are skipped)",
     "browserNoChineseVoice": "Chrome has no Chinese voice — using Edge TTS instead",

@@ -134,6 +134,15 @@ export function VoiceSettingsPanel() {
       } else {
         await voiceApi.createProvider(payload);
       }
+      if (
+        preset.kind !== "browser" &&
+        (preset.capability === "stt" || preset.capability === "both") &&
+        active.stt === "browser"
+      ) {
+        const next = await voiceApi.setActive({ stt: preset.id });
+        setActive(next);
+        invalidateVoiceConfigCache();
+      }
       message.success(t("voice.saved"));
       setConfigure(null);
       await fetchAll();
