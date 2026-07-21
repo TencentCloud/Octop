@@ -453,7 +453,7 @@
         "app_secret": "App Secret",
         "secret": "Secret",
         "bot_id": "Bot ID",
-        "app_key": "Client ID",
+        "app_key": "App Key",
         "bot_token": "Bot Token",
         "token": "Token",
         "ak": "AK",
