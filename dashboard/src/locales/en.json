@@ -850,16 +850,6 @@
     "rankingsEmpty": "No skills in this ranking yet",
     "agentSkillsLib": "{{agent}}'s skills library (/skills/<name>/SKILL.md)",
     "noAgentSelected": "Pick an agent in the top switcher first",
-    "tabs": {
-      "overview": "Overview",
-      "profile": "Profile",
-      "library": "Memory tree",
-      "episodes": "Emotional journal",
-      "candidates": "All",
-      "journal": "Activity",
-      "proactive": "Proactive care",
-      "settings": "Settings"
-    },
     "noSkills": "No skills yet",
     "noSkillsDesc": "Create a custom skill — the agent will use it at the right moment.",
     "totalCount": "{{count}} skill(s)",
@@ -2068,6 +2058,16 @@
     "deleteSuccess": "Memory deleted successfully",
     "deleteFailed": "Failed to delete memory",
     "noAgentSelected": "Pick an agent in the top switcher first",
+    "tabs": {
+      "overview": "Overview",
+      "profile": "Profile",
+      "library": "Memory tree",
+      "episodes": "Emotional journal",
+      "candidates": "Memory distillation",
+      "journal": "Activity",
+      "proactive": "Proactive care",
+      "settings": "Settings"
+    },
     "vs": {
       "title": "Semantic Search",
       "description": "When enabled, memory search understands meaning (not just keywords), helping the AI find more relevant memories.",

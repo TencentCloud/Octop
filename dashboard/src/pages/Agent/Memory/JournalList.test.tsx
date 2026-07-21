@@ -112,9 +112,7 @@ describe("<JournalList />", () => {
     expect(
       screen.getByText("处理 4 段对话，生成 2 条草稿，晋升 2 条记忆"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("扫描 4 段对话，无新增内容"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("扫描 4 段对话，无新增内容")).toBeInTheDocument();
   });
 
   it("renders empty state on no entries", async () => {

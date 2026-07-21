@@ -59,7 +59,7 @@ const TABS: TabDef[] = [
   {
     key: "candidates",
     labelKey: "memory.tabs.candidates",
-    fallback: "全部",
+    fallback: "记忆沉淀",
     showPendingBadge: true,
   },
   { key: "journal", labelKey: "memory.tabs.journal", fallback: "整理记录" },

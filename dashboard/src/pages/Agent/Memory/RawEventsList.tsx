@@ -23,9 +23,17 @@ import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 
 const PAGE_SIZE = 20;
 
-const EVENT_TYPE_OPTIONS: { value: string; labelKey: string; fallback: string }[] = [
+const EVENT_TYPE_OPTIONS: {
+  value: string;
+  labelKey: string;
+  fallback: string;
+}[] = [
   { value: "", labelKey: "memory.raw.typeAll", fallback: "全部类型" },
-  { value: "user_message", labelKey: "memory.raw.typeUser", fallback: "用户消息" },
+  {
+    value: "user_message",
+    labelKey: "memory.raw.typeUser",
+    fallback: "用户消息",
+  },
   {
     value: "assistant_message",
     labelKey: "memory.raw.typeAssistant",

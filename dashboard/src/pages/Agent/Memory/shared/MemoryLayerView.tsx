@@ -91,12 +91,12 @@ export default function MemoryLayerView<T>(props: MemoryLayerViewProps<T>) {
       {loading && items.length === 0 ? (
         <Skeleton active />
       ) : items.length === 0 ? (
-        (emptyContent ?? (
+        emptyContent ?? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={emptyText ?? undefined}
           />
-        ))
+        )
       ) : (
         <ul style={listStyle}>
           {items.map((it) => (
