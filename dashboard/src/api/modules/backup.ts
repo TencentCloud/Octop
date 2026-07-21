@@ -4,6 +4,7 @@ export interface BackupFileItem {
   name: string;
   size: number;
   modified_at: string;
+  created_at: string;
 }
 
 export interface BackupListResponse {
@@ -48,10 +49,11 @@ export const backupApi = {
   /** Upload archive into backups dir (does not restore). */
   uploadBackup: (
     file: File,
+    onProgress?: (percent: number) => void,
   ): Promise<{ ok: boolean; item: BackupFileItem }> => {
     const formData = new FormData();
     formData.append("file", file);
-    return requestUpload("/admin/backup/import", formData);
+    return requestUpload("/admin/backup/import", formData, {}, onProgress);
   },
 
   /** Ephemeral download without saving to backups dir. */

@@ -25,6 +25,8 @@ import { RefreshCw, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import { request } from "../../../api/request";
 import styles from "./index.module.less";
 
@@ -81,13 +83,14 @@ const ACTION_OPTIONS = [
   "user.set_role",
 ];
 
-function formatTs(ts: number): string {
-  return new Date(ts * 1000).toLocaleString();
+function formatTs(ts: number, timeZone: string): string {
+  return formatServerDateTime(ts, timeZone);
 }
 
 export default function AdminAuditPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const timeZone = useServerTimezone();
   const [rows, setRows] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm<FilterValues>();
@@ -230,7 +233,9 @@ export default function AdminAuditPage() {
           {rows.map((row) => (
             <div key={row.id} className={styles.item}>
               <div className={styles.itemHeader}>
-                <span className={styles.itemTime}>{formatTs(row.ts)}</span>
+                <span className={styles.itemTime}>
+                  {formatTs(row.ts, timeZone)}
+                </span>
                 <span className={styles.itemActor}>
                   {formatActor(row.actor)}
                 </span>
@@ -278,7 +283,7 @@ export default function AdminAuditPage() {
               title: t("adminAudit.colTime"),
               dataIndex: "ts",
               width: 180,
-              render: formatTs,
+              render: (ts: number) => formatTs(ts, timeZone),
             },
             {
               title: t("adminAudit.colActor"),

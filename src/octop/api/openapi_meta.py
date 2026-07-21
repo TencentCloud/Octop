@@ -80,6 +80,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "cron",
         "description": "Scheduled prompts that run against an agent on a cron trigger.",
     },
+    {
+        "name": "settings",
+        "description": "Process-level settings (e.g. default timezone from config.json).",
+    },
     {"name": "envs", "description": "Environment variable presets for agents and workspaces."},
     {
         "name": "search",

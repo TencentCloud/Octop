@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="snapshots/banner.png" alt="Octop Banner" width="600" />
+  <img src="docs/assets/readme-banner.png" alt="Octop Banner" width="600" />
 </p>
 
 <p align="center">
@@ -326,7 +326,7 @@ Full reference: **[docs/cli.md](docs/cli.md)**.
 After `octop run`, open **http://127.0.0.1:8088**.
 
 <p align="center">
-  <img src="snapshots/chat.png" alt="Octop Web Dashboard" width="800" />
+  <img src="docs/assets/readme-chat.png" alt="Octop Web Dashboard" width="800" />
 </p>
 
 - **Chat** — real-time conversation with agents

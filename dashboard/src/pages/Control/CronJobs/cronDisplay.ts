@@ -1,13 +1,18 @@
 /** Helpers to map Octop cron rows for dashboard display. */
 
+import { formatServerDateTime } from "../../../utils/formatMessageTime";
+
 export function channelFromSessionKey(sessionKey: string): string {
   const parts = sessionKey.split(":");
   return parts.length >= 2 ? parts[1] : "dashboard";
 }
 
-export function formatCronTimestamp(ts: number | null | undefined): string {
+export function formatCronTimestamp(
+  ts: number | null | undefined,
+  timeZone?: string,
+): string {
   if (!ts) return "—";
-  return new Date(ts * 1000).toLocaleString();
+  return formatServerDateTime(ts, timeZone);
 }
 
 export function extractPromptFromJob(job: {

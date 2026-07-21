@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,30 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
 _BACKUP_SUFFIXES = (".tar.gz", ".tgz")
+_BACKUP_CREATED_RE = re.compile(
+    r"octop-backup-(\d{8}T\d{6}Z)",
+)
+
+
+def _iso_utc_from_timestamp(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat()
+
+
+def resolve_backup_created_at(name: str, path: Path, *, mtime: float) -> str:
+    """Filename stamp → birth time → mtime."""
+    match = _BACKUP_CREATED_RE.search(name)
+    if match:
+        stamp = match.group(1)  # YYYYMMDDTHHMMSSZ
+        try:
+            parsed = datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        except ValueError:
+            pass
+        else:
+            return parsed.isoformat()
+    birth = getattr(path.stat(), "st_birthtime", None)
+    if isinstance(birth, int | float) and birth > 0:
+        return _iso_utc_from_timestamp(float(birth))
+    return _iso_utc_from_timestamp(mtime)
 
 
 @dataclass(frozen=True)
@@ -17,12 +42,14 @@ class BackupFileInfo:
     name: str
     size: int
     modified_at: str
+    created_at: str
 
     def to_dict(self) -> dict[str, str | int]:
         return {
             "name": self.name,
             "size": self.size,
             "modified_at": self.modified_at,
+            "created_at": self.created_at,
         }
 
 
@@ -47,8 +74,16 @@ def list_backup_files(paths: PathLayout) -> list[BackupFileInfo]:
         if not any(path.name.endswith(suffix) for suffix in _BACKUP_SUFFIXES):
             continue
         stat = path.stat()
-        modified = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
-        out.append(BackupFileInfo(name=path.name, size=stat.st_size, modified_at=modified))
+        modified = _iso_utc_from_timestamp(stat.st_mtime)
+        created = resolve_backup_created_at(path.name, path, mtime=stat.st_mtime)
+        out.append(
+            BackupFileInfo(
+                name=path.name,
+                size=stat.st_size,
+                modified_at=modified,
+                created_at=created,
+            )
+        )
     return out
 
 
@@ -58,10 +93,13 @@ def write_backup_file(paths: PathLayout, filename: str, data: bytes) -> BackupFi
     dest = paths.backup_file(safe)
     dest.write_bytes(data)
     stat = dest.stat()
+    modified = _iso_utc_from_timestamp(stat.st_mtime)
+    created = resolve_backup_created_at(safe, dest, mtime=stat.st_mtime)
     return BackupFileInfo(
         name=safe,
         size=stat.st_size,
-        modified_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+        modified_at=modified,
+        created_at=created,
     )
 
 

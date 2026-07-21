@@ -250,6 +250,7 @@ function CronJobsPage() {
     onEdit: handleEdit,
     onDelete: handleDelete,
     t,
+    timeZone: cronTimezone,
   });
 
   // Until the user picks an agent there is nothing to fetch and no scope
@@ -337,6 +338,7 @@ function CronJobsPage() {
                 <CronJobCard
                   key={job.id}
                   job={job}
+                  timeZone={cronTimezone}
                   onToggleEnabled={handleToggleEnabled}
                   onExecuteNow={handleExecuteNow}
                   onEdit={handleEdit}
@@ -376,6 +378,7 @@ function CronJobsPage() {
       <JobDetailDrawer
         open={detailDrawerOpen}
         job={detailJob}
+        timeZone={cronTimezone}
         onClose={handleDetailClose}
       />
 

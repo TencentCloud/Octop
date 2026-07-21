@@ -30,6 +30,7 @@ const DISABLED_ACCENT = "#8c8c8c";
 
 interface CronJobCardProps {
   job: CronJob;
+  timeZone: string;
   onToggleEnabled: (job: CronJob) => void;
   onExecuteNow: (job: CronJob) => void;
   onEdit: (job: CronJob) => void;
@@ -38,6 +39,7 @@ interface CronJobCardProps {
 
 export function CronJobCard({
   job,
+  timeZone,
   onToggleEnabled,
   onExecuteNow,
   onEdit,
@@ -174,7 +176,7 @@ export function CronJobCard({
             <span className={styles.cronCardInfoLabel}>
               {t("cronJobs.col.lastRunAt")}:
             </span>
-            <span>{formatCronTimestamp(lastRunAt)}</span>
+            <span>{formatCronTimestamp(lastRunAt, timeZone)}</span>
           </span>
         )}
         {lastStatus && (

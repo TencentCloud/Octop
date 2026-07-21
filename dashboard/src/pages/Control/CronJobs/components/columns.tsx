@@ -23,6 +23,7 @@ interface ColumnHandlers {
   onEdit: (job: CronJob) => void;
   onDelete: (jobId: string) => void;
   t: TFunction;
+  timeZone: string;
 }
 
 function channelLabel(channel: string, t: TFunction): string {
@@ -189,7 +190,10 @@ export const createColumns = (
         const ts = meta.octop_last_run_at;
         return (
           <span style={{ fontSize: 12, color: "var(--fn-text-secondary)" }}>
-            {formatCronTimestamp(typeof ts === "number" ? ts : null)}
+            {formatCronTimestamp(
+              typeof ts === "number" ? ts : null,
+              handlers.timeZone,
+            )}
           </span>
         );
       },

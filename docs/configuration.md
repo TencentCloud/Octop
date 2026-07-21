@@ -38,7 +38,7 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
   "login_max_attempts": 5,
   "login_lockout_seconds": 900,
   "cors_origins": [],
-  "cron_timezone": "Asia/Shanghai",
+  "default_timezone": "Asia/Shanghai",
   "enable_dashboard": true,
   "enable_api_docs": false,
   "require_setup_password": true,
@@ -66,6 +66,10 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
 
 Notes:
 
+- `default_timezone` is the process default for dashboard timestamps, cron
+  scheduling, and harness. Legacy `cron_timezone` in `config.json` and
+  `OCTOP_CRON_TIMEZONE` are still accepted; the new key/env wins when both
+  are set.
 - `database.password` is intentionally **not** persisted to disk; supply
   it through `OCTOP_DATABASE_PASSWORD` when running against PostgreSQL.
 - `enable_api_docs=false` keeps `/api/docs` (Scalar) off in production
@@ -88,7 +92,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_ACCESS_TOKEN_TTL` | int (seconds) | `86400` | JWT access-token lifetime |
 | `OCTOP_LOGIN_MAX_ATTEMPTS` | int | `5` | Failed-login attempts before lockout |
 | `OCTOP_LOGIN_LOCKOUT_SECONDS` | int | `900` | Lockout duration after `OCTOP_LOGIN_MAX_ATTEMPTS` failures |
-| `OCTOP_CRON_TIMEZONE` | IANA tz | `Asia/Shanghai` | Timezone APScheduler resolves cron strings against |
+| `OCTOP_DEFAULT_TIMEZONE` | IANA tz | `Asia/Shanghai` | Default timezone for display, scheduling, and harness (`cron_timezone` / `OCTOP_CRON_TIMEZONE` still accepted) |
 | `OCTOP_CORS_ORIGINS` | comma-sep list | empty | Permitted CORS origins for the dashboard / external callers |
 | `OCTOP_ENABLE_DASHBOARD` | bool | `true` | Serve the built React SPA at `/` |
 | `OCTOP_ENABLE_API_DOCS` | bool | `false` | Expose Scalar API docs at `/api/docs` |
