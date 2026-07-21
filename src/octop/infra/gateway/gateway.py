@@ -19,6 +19,11 @@ from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.gateway.channels.yuanbao import (
+    YuanbaoChannel,
+    probe_yuanbao,
+    yuanbao_config_from_dict,
+)
 from octop.infra.gateway.cli import CLI_CHANNEL_ID, CliChannel, CliHub
 from octop.infra.gateway.process import build_harness_request, media_backend_for_agent
 from octop.infra.gateway.process.processor import GlobalProcessor
@@ -443,6 +448,11 @@ class Gateway:
             raise RuntimeError("gateway not booted")
 
         try:
+            if row.kind == "yuanbao":
+                # Bypass manager.probe_channel (broken stub in harness-gateway 0.8.5).
+                yuanbao_cfg = yuanbao_config_from_dict(raw_cfg)
+                await probe_yuanbao(yuanbao_cfg)
+                return {"ok": True}
             await manager.probe_channel(
                 row.kind,
                 raw_cfg,
@@ -498,15 +508,33 @@ class Gateway:
     async def _register_channel(self, row: ChannelRow) -> None:
         if not self._channel_manager or not self._processor:
             return
-        config = self._config_from_row(row)
         manager = self._require_channel_manager()
-        await manager.add_channel(
-            row.kind,
-            config,
-            tenant_id=row.agent_id,
-            channel_id=row.channel_id,
-            processor=self._processor,
-        )
+        if row.kind == "yuanbao":
+            # harness-gateway 0.8.5 ships a broken YuanbaoConfig stub that
+            # expects token/bot_id. Octop persists app_key/app_secret instead,
+            # so bypass the manager's config-based path and register our own
+            # channel instance. ``manager.add_channel(instance)`` still calls
+            # ``_register_channel`` under the hood: it creates the queue, sets
+            # the enqueue callback, propagates the manager media backend,
+            # starts the channel and spawns workers.
+            raw_cfg = self._config_from_row(row)
+            yuanbao_cfg = yuanbao_config_from_dict(raw_cfg)
+            instance = YuanbaoChannel(
+                self._processor,
+                config=yuanbao_cfg,
+                channel_id=row.channel_id,
+                tenant_id=row.agent_id,
+            )
+            await manager.add_channel(instance)
+        else:
+            config = self._config_from_row(row)
+            await manager.add_channel(
+                row.kind,
+                config,
+                tenant_id=row.agent_id,
+                channel_id=row.channel_id,
+                processor=self._processor,
+            )
         registered = manager.get_channel(row.channel_id)
         if registered is not None:
             backend = media_backend_for_agent(self._agent_manager, row.agent_id)

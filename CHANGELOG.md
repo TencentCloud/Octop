@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 修复元宝（Yuanbao）频道无法连接的问题。harness-gateway 0.8.5 的 `YuanbaoConfig` 为占位 stub，错误地要求 `token`/`bot_id` 凭据（导致探测报「缺少 Token、Bot ID」），且未实现真实的腾讯元宝协议。在 Octop 内实现可工作的频道：`app_key`/`app_secret` + HMAC-SHA256 sign-token + WSS protobuf（auth-bind、心跳、收 push、`send_c2c_message`/`send_group_message`）+ 指数退避重连，并修正频道探测的凭据校验
+
 ## [0.9.12] - 2026-07-21
 
 ### 新增
