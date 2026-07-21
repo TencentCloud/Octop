@@ -153,7 +153,7 @@ class OctopServer:
         cron_mgr = CronManager(
             gateway=gateway,
             repos=self.services.repos,
-            timezone=config.cron_timezone,
+            timezone=config.default_timezone,
         )
         await cron_mgr.boot()
 
@@ -170,6 +170,7 @@ class OctopServer:
             gateway=gateway,
             care_push_repo=self.services.repos.care_push_repo,
             agent_manager=registry,
+            timezone=config.default_timezone,
         )
         proactive_scheduler = ProactiveCareScheduler(
             care_service=care_service,

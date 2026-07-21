@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { octopCronApi } from "../api/modules/cronjob";
+import { octopSettingsApi } from "../api/modules/settings";
 
 let cachedTimezone: string | null = null;
 let inflight: Promise<string> | null = null;
@@ -7,8 +7,8 @@ let inflight: Promise<string> | null = null;
 async function fetchServerTimezone(): Promise<string> {
   if (cachedTimezone) return cachedTimezone;
   if (!inflight) {
-    inflight = octopCronApi
-      .settings()
+    inflight = octopSettingsApi
+      .timezone()
       .then((settings) => {
         cachedTimezone = settings.timezone?.trim() || "UTC";
         return cachedTimezone;
@@ -24,7 +24,7 @@ async function fetchServerTimezone(): Promise<string> {
   return inflight;
 }
 
-/** Server timezone from config.json `cron_timezone` (via GET /api/cron/settings). */
+/** Server timezone from config.json `default_timezone` (via GET /api/settings/timezone). */
 export function useServerTimezone(): string {
   const [timezone, setTimezone] = useState(cachedTimezone ?? "UTC");
 

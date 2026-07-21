@@ -46,8 +46,8 @@ async def cron_settings(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
-    """Return process-level cron configuration (e.g. scheduler timezone)."""
-    return {"timezone": server.services.config.cron_timezone}
+    """Return process-level cron configuration (compat; prefer ``GET /settings/timezone``)."""
+    return {"timezone": server.services.config.default_timezone}
 
 
 @router.get("/agents/{agent_id}/cron", summary="List cron jobs")

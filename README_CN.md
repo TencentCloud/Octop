@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="snapshots/banner.png" alt="Octop Banner" width="600" />
+  <img src="docs/assets/readme-banner-zh.png" alt="Octop Banner" width="600" />
 </p>
 
 <p align="center">
@@ -332,7 +332,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 `octop run` 启动后访问 **http://127.0.0.1:8088**。
 
 <p align="center">
-  <img src="snapshots/chat_zh.png" alt="Octop Web 控制台" width="800" />
+  <img src="docs/assets/readme-chat-zh.png" alt="Octop Web 控制台" width="800" />
 </p>
 
 - **对话** — 与 Agent 实时聊天

@@ -16,6 +16,11 @@ import {
   User,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import {
+  calendarDaysAgo,
+  formatServerYmd,
+} from "../../../utils/formatMessageTime";
 import type { TFunction } from "i18next";
 
 import {
@@ -77,6 +82,7 @@ export default function ProfileOverview({
   onViewAll,
 }: Props) {
   const { t } = useTranslation();
+  const timeZone = useServerTimezone();
   const [state, setState] = useState<PageState>(INITIAL_STATE);
 
   const loadAll = useCallback(async () => {
@@ -188,7 +194,7 @@ export default function ProfileOverview({
           title={t("memory.terminal.aboutMe", "关于你")}
           subtitle={t("memory.terminal.aboutMeDesc", "长期稳定的偏好与事实")}
           loading={firstLoading}
-          items={state.aboutMe.map((a) => atomToConceptItem(a, t))}
+          items={state.aboutMe.map((a) => atomToConceptItem(a, t, timeZone))}
           emptyHint={t(
             "memory.terminal.emptyAboutMe",
             "Octop 还在了解你，多聊几次就会补上",
@@ -203,7 +209,7 @@ export default function ProfileOverview({
             "进行中的任务和最近的决定",
           )}
           loading={firstLoading}
-          items={state.focus.map((a) => atomToConceptItem(a, t))}
+          items={state.focus.map((a) => atomToConceptItem(a, t, timeZone))}
           emptyHint={t("memory.terminal.emptyFocus", "暂时没有进行中的任务")}
           onViewAll={onViewAll}
         />
@@ -215,7 +221,7 @@ export default function ProfileOverview({
             "最近被 Octop 记下的关键内容",
           )}
           loading={firstLoading}
-          items={state.toldMe.map((a) => atomToConceptItem(a, t))}
+          items={state.toldMe.map((a) => atomToConceptItem(a, t, timeZone))}
           emptyHint={t("memory.terminal.emptyToldMe", "还没有记下明确事实")}
           onViewAll={onViewAll}
         />
@@ -246,8 +252,8 @@ function Stat({
   );
 }
 
-function atomToConceptItem(a: AtomItem, t: TFn): ConceptItem {
-  const time = relTime(a.occurred_at, t);
+function atomToConceptItem(a: AtomItem, t: TFn, timeZone: string): ConceptItem {
+  const time = relTime(a.occurred_at, t, timeZone);
   return {
     id: a.id,
     entityId: a.entity_id,
@@ -476,15 +482,16 @@ function confidenceLabel(c: string, t: TFn): string {
 }
 
 /** Format occurred_at as today, yesterday, N days ago, or yyyy-MM-dd; returns null when absent. */
-function relTime(s: string | null | undefined, t: TFn): string | null {
+function relTime(
+  s: string | null | undefined,
+  t: TFn,
+  timeZone: string,
+): string | null {
   if (!s) return null;
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const day = new Date(d);
-  day.setHours(0, 0, 0, 0);
-  const diff = Math.floor((today.getTime() - day.getTime()) / 86400000);
+  const diff = calendarDaysAgo(d, timeZone);
+  if (Number.isNaN(diff)) return null;
   if (diff <= 0) return t("memory.time.today", "今天");
   if (diff === 1) return t("memory.time.yesterday", "昨天");
   if (diff < 7)
@@ -492,9 +499,7 @@ function relTime(s: string | null | undefined, t: TFn): string | null {
       "{{n}}",
       String(diff),
     );
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${dd}`;
+  return formatServerYmd(d, timeZone);
 }
 
 function entityTypeLabel(raw: string, t: TFn): string {

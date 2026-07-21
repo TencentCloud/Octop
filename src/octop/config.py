@@ -81,7 +81,7 @@ class OctopConfig:
     login_max_attempts: int = 5
     login_lockout_seconds: int = 900
     cors_origins: list[str] = field(default_factory=list)
-    cron_timezone: str = "Asia/Shanghai"
+    default_timezone: str = "Asia/Shanghai"
     enable_dashboard: bool = True
     enable_api_docs: bool = False
     require_setup_password: bool = True
@@ -249,6 +249,11 @@ def load_config(path: Path) -> OctopConfig:
         database_in_file = False
 
     merged = {**file_defaults, **raw}
+    # Legacy key: prefer default_timezone when both are present in the file.
+    if "default_timezone" not in raw and "cron_timezone" in raw:
+        merged["default_timezone"] = raw["cron_timezone"]
+    merged.pop("cron_timezone", None)
+
     merged_db = {
         **file_defaults["database"],
         **_parse_database_section(raw.get("database")),
@@ -273,8 +278,10 @@ def load_config(path: Path) -> OctopConfig:
         merged["login_lockout_seconds"] = _coerce_int(
             "OCTOP_LOGIN_LOCKOUT_SECONDS", v, merged.get("login_lockout_seconds", 900)
         )
-    if v := os.environ.get("OCTOP_CRON_TIMEZONE"):
-        merged["cron_timezone"] = v
+    if (v := os.environ.get("OCTOP_DEFAULT_TIMEZONE")) or (
+        v := os.environ.get("OCTOP_CRON_TIMEZONE")
+    ):
+        merged["default_timezone"] = v
     if v := os.environ.get("OCTOP_CORS_ORIGINS"):
         merged["cors_origins"] = [s.strip() for s in v.split(",") if s.strip()]
     if v := os.environ.get("OCTOP_ENABLE_DASHBOARD"):
@@ -298,7 +305,7 @@ def load_config(path: Path) -> OctopConfig:
         login_max_attempts=int(merged.get("login_max_attempts", 5)),
         login_lockout_seconds=int(merged.get("login_lockout_seconds", 900)),
         cors_origins=list(merged.get("cors_origins") or []),
-        cron_timezone=merged["cron_timezone"],
+        default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
         require_setup_password=bool(merged["require_setup_password"]),

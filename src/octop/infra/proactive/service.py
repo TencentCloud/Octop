@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -37,6 +38,17 @@ logger = logging.getLogger(__name__)
 _MAX_CARE_TEXT_LEN = 200  # max length of a care message (chars)
 _DEFAULT_WINDOW_DAYS = 7  # default time window (days)
 _FALLBACK_WINDOW_DAYS = 30  # fallback time window (days)
+
+
+def _today_in_timezone(now: datetime, timezone_name: str, *, locale: str) -> str:
+    """Format *now* as a calendar date in the configured server timezone."""
+    try:
+        local = now.astimezone(ZoneInfo(timezone_name))
+    except Exception:
+        local = now.astimezone()
+    if locale == "zh":
+        return local.strftime("%Y-%m-%d")
+    return local.strftime("%B %d, %Y")
 
 
 # ---------------------------------------------------------------------------
@@ -86,10 +98,12 @@ class ProactiveCareService:
         gateway: Gateway,
         care_push_repo: CarePushRepo,
         agent_manager: AgentManager,
+        timezone: str = "Asia/Shanghai",
     ) -> None:
         self._gateway = gateway
         self._care_push_repo = care_push_repo
         self._agent_manager = agent_manager
+        self._timezone = timezone or "Asia/Shanghai"
         self._picker = EpisodePicker(
             top_k=3,
             window_days=_DEFAULT_WINDOW_DAYS,
@@ -191,11 +205,7 @@ class ProactiveCareService:
         locale = normalize_locale(str(raw_locale) if raw_locale is not None else None)
 
         # Build the system prompt from i18n JSON.
-        today_str = (
-            now.astimezone().strftime("%Y-%m-%d")
-            if locale == "zh"
-            else now.astimezone().strftime("%B %d, %Y")
-        )
+        today_str = _today_in_timezone(now, self._timezone, locale=locale)
         soul_md_stripped = soul_md.strip()
         if soul_md_stripped:
             system_prompt = i18n_tr(

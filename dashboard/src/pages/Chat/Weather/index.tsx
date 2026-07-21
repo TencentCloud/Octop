@@ -1,8 +1,9 @@
 import { createStyles } from "antd-style";
 import { Sun, Cloud, CloudRain } from "lucide-react";
 import { Card, Typography } from "antd";
-import dayjs from "dayjs";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
 
 interface WeatherItem {
   location: string;
@@ -147,10 +148,34 @@ const getWeatherLabel = (type: string) => {
   }
 };
 
+function weatherDate(date: string, timeZone: string, lang: string): string {
+  const raw = date.includes("T") ? date : `${date}T12:00:00Z`;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(lang.startsWith("zh") ? "zh-CN" : "en-US", {
+    timeZone,
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long",
+  });
+}
+
+function weatherWeekday(date: string, timeZone: string, lang: string): string {
+  const raw = date.includes("T") ? date : `${date}T12:00:00Z`;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(lang.startsWith("zh") ? "zh-CN" : "en-US", {
+    timeZone,
+    weekday: "short",
+  });
+}
+
 export default function Weather(props: {
   data: { content: Array<{ data: { output: string } }> };
 }) {
   const { styles } = useStyles();
+  const { i18n } = useTranslation();
+  const timeZone = useServerTimezone();
   const data = useMemo(() => {
     try {
       const content = props.data?.content;
@@ -179,7 +204,7 @@ export default function Weather(props: {
           </Typography.Text>
           <br />
           <Typography.Text className={styles.date}>
-            {dayjs(current.date).format("MM月DD日 dddd")}
+            {weatherDate(current.date, timeZone, i18n.language)}
           </Typography.Text>
         </div>
       </div>
@@ -201,7 +226,7 @@ export default function Weather(props: {
         {forecast.map((item: WeatherItem, index: number) => (
           <div key={index} className={styles.forecastItem}>
             <Typography.Text className={styles.forecastDay}>
-              {dayjs(item.date).format("ddd")}
+              {weatherWeekday(item.date, timeZone, i18n.language)}
             </Typography.Text>
             <WeatherIcon type={item.weather} className={styles.forecastIcon} />
             <Typography.Text className={styles.forecastTemp}>

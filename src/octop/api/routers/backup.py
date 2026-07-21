@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -20,6 +21,8 @@ from octop.infra.backup.system_archive import create_system_backup, restore_syst
 from octop.infra.db.repos.audit import ACTOR_ADMIN
 from octop.infra.errors import ErrorCode, OctopError
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 _MAX_IMPORT_BYTES = 512 * 1024 * 1024
@@ -36,6 +39,20 @@ def _resolve_db_path(server: Any) -> Any:
 def _agent_rows(server: Any) -> list[Any]:
     assert server.app_runtime is not None
     return cast(list[Any], server.app_runtime.agent_registry.list_rows())
+
+
+async def _rehydrate_runtime_after_restore(server: Any) -> None:
+    """Sync restored providers into harness and reload agents (no process restart)."""
+    runtime = getattr(server, "app_runtime", None)
+    if runtime is None:
+        return
+    registry = getattr(runtime, "agent_registry", None)
+    if registry is None:
+        return
+    try:
+        await registry.on_provider_changed()
+    except Exception:
+        logger.exception("post-restore provider/agent rehydrate failed")
 
 
 @router.get("/backup/list", summary="List stored backup archives")
@@ -94,7 +111,12 @@ async def restore_backup_file(
     _: Any = Depends(current_admin),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Restore database and workspaces from a file in ``backups_dir``."""
+    """Restore database and workspaces from a file in ``backups_dir``.
+
+    After the archive is applied, providers are synced into the harness and agents
+    are reloaded in-process so experts can run without a full service restart.
+    Restored ``config.json`` / ``env`` still require a process restart to take effect.
+    """
     assert server.services is not None
     safe = normalize_backup_filename(filename)
     raw = read_backup_file(server.paths, safe)
@@ -106,6 +128,7 @@ async def restore_backup_file(
         pool=server.services.db,
         restore_config=restore_config,
     )
+    await _rehydrate_runtime_after_restore(server)
     server.services.audit_repo.write(
         actor=ACTOR_ADMIN,
         action="backup.restore",

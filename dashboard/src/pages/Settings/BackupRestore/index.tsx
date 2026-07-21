@@ -4,6 +4,7 @@ import {
   Checkbox,
   Empty,
   Modal,
+  Progress,
   Spin,
   Table,
   Upload,
@@ -22,7 +23,10 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { backupApi, type BackupFileItem } from "../../../api/modules/backup";
+import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
 
@@ -40,14 +44,11 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
-
 interface BackupFileCardProps {
   row: BackupFileItem;
   downloading: boolean;
+  busy: boolean;
+  timeZone: string;
   onDownload: (row: BackupFileItem) => void;
   onRestore: (row: BackupFileItem) => void;
   onDelete: (row: BackupFileItem) => void;
@@ -56,6 +57,8 @@ interface BackupFileCardProps {
 function BackupFileCard({
   row,
   downloading,
+  busy,
+  timeZone,
   onDownload,
   onRestore,
   onDelete,
@@ -70,7 +73,12 @@ function BackupFileCard({
           {t("backup.colSize")}: {formatSize(row.size)}
         </span>
         <span>
-          {t("backup.colModified")}: {formatTime(row.modified_at)}
+          {t("backup.colCreated")}:{" "}
+          {formatServerIsoDateTime(row.created_at, timeZone)}
+        </span>
+        <span>
+          {t("backup.colModified")}:{" "}
+          {formatServerIsoDateTime(row.modified_at, timeZone)}
         </span>
       </div>
       <div className={styles.backupCardActions}>
@@ -78,6 +86,7 @@ function BackupFileCard({
           size="small"
           icon={<Download size={14} />}
           loading={downloading}
+          disabled={busy}
           onClick={() => void onDownload(row)}
         >
           {t("common.download")}
@@ -85,6 +94,7 @@ function BackupFileCard({
         <Button
           size="small"
           icon={<RotateCcw size={14} />}
+          disabled={busy}
           onClick={() => onRestore(row)}
         >
           {t("backup.restoreAction")}
@@ -93,6 +103,7 @@ function BackupFileCard({
           size="small"
           danger
           icon={<Trash2 size={14} />}
+          disabled={busy}
           onClick={() => onDelete(row)}
         >
           {t("common.delete")}
@@ -105,6 +116,8 @@ function BackupFileCard({
 export default function BackupRestorePanel() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const serverTimezone = useServerTimezone();
+  const { isRestarting } = useServiceRestartContext();
   const [items, setItems] = useState<BackupFileItem[]>([]);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(false);
@@ -112,10 +125,14 @@ export default function BackupRestorePanel() {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreConfig, setRestoreConfig] = useState(true);
   const [restoring, setRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [pendingRestore, setPendingRestore] = useState<BackupFileItem | null>(
     null,
   );
   const [downloading, setDownloading] = useState<string | null>(null);
+
+  const busy = creating || restoring || uploadPercent !== null || isRestarting;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -165,6 +182,7 @@ export default function BackupRestorePanel() {
   const confirmRestore = async () => {
     if (!pendingRestore) return;
     setRestoring(true);
+    setRestoreProgress(true);
     try {
       const result = await backupApi.restoreBackup(
         pendingRestore.name,
@@ -178,15 +196,18 @@ export default function BackupRestorePanel() {
       );
       setRestoreOpen(false);
       setPendingRestore(null);
+      await refresh();
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : String(err);
       message.error(detail || t("backup.importFailed"));
     } finally {
+      setRestoreProgress(false);
       setRestoring(false);
     }
   };
 
   const onDelete = (row: BackupFileItem) => {
+    if (busy) return;
     Modal.confirm({
       title: t("backup.deleteConfirmTitle"),
       content: t("backup.deleteConfirmBody", { name: row.name }),
@@ -212,21 +233,27 @@ export default function BackupRestorePanel() {
       title: t("backup.colSize"),
       dataIndex: "size",
       key: "size",
-      width: 110,
+      width: 100,
       render: (size: number) => formatSize(size),
+    },
+    {
+      title: t("backup.colCreated"),
+      dataIndex: "created_at",
+      key: "created_at",
+      width: 160,
+      render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
     {
       title: t("backup.colModified"),
       dataIndex: "modified_at",
       key: "modified_at",
-      width: 180,
-      render: (v: string) => formatTime(v),
+      width: 160,
+      render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
     {
       title: t("backup.colActions"),
       key: "actions",
-      width: 280,
-      fixed: "right",
+      width: 225,
       render: (_: unknown, row) => (
         <div className={styles.rowActions}>
           <Button
@@ -234,6 +261,7 @@ export default function BackupRestorePanel() {
             size="small"
             icon={<Download size={14} />}
             loading={downloading === row.name}
+            disabled={busy}
             onClick={() => void onDownload(row)}
           >
             {t("common.download")}
@@ -242,6 +270,7 @@ export default function BackupRestorePanel() {
             type="link"
             size="small"
             icon={<RotateCcw size={14} />}
+            disabled={busy}
             onClick={() => {
               setPendingRestore(row);
               setRestoreOpen(true);
@@ -254,6 +283,7 @@ export default function BackupRestorePanel() {
             size="small"
             danger
             icon={<Trash2 size={14} />}
+            disabled={busy}
             onClick={() => onDelete(row)}
           >
             {t("common.delete")}
@@ -286,6 +316,7 @@ export default function BackupRestorePanel() {
             type="primary"
             icon={<Plus size={14} />}
             loading={creating}
+            disabled={busy && !creating}
             onClick={() => void onCreate()}
           >
             {t("backup.createButton")}
@@ -293,10 +324,15 @@ export default function BackupRestorePanel() {
           <Upload
             accept=".tar.gz,.tgz,application/gzip,application/x-gzip"
             showUploadList={false}
+            disabled={busy}
             beforeUpload={(file) => {
               void (async () => {
+                setUploadPercent(0);
                 try {
-                  await backupApi.uploadBackup(file);
+                  await backupApi.uploadBackup(file, (p) =>
+                    setUploadPercent(p),
+                  );
+                  setUploadPercent(100);
                   message.success(
                     t("backup.uploadSuccess", { name: file.name }),
                   );
@@ -305,19 +341,44 @@ export default function BackupRestorePanel() {
                   const detail =
                     err instanceof Error ? err.message : String(err);
                   message.error(detail || t("backup.uploadFailed"));
+                } finally {
+                  setUploadPercent(null);
                 }
               })();
               return false;
             }}
           >
-            <Button icon={<UploadIcon size={14} />}>
+            <Button icon={<UploadIcon size={14} />} disabled={busy}>
               {t("backup.uploadButton")}
             </Button>
           </Upload>
-          <Button icon={<RefreshCw size={14} />} onClick={() => void refresh()}>
+          <Button
+            icon={<RefreshCw size={14} />}
+            disabled={busy}
+            onClick={() => void refresh()}
+          >
             {t("common.refresh")}
           </Button>
         </div>
+        {(uploadPercent !== null || restoreProgress) && (
+          <div className={styles.progressBlock}>
+            {uploadPercent !== null ? (
+              <>
+                <div className={styles.progressLabel}>
+                  {t("backup.uploading", { percent: uploadPercent })}
+                </div>
+                <Progress percent={uploadPercent} status="active" />
+              </>
+            ) : (
+              <>
+                <div className={styles.progressLabel}>
+                  {t("backup.restoring")}
+                </div>
+                <Progress percent={100} status="active" showInfo={false} />
+              </>
+            )}
+          </div>
+        )}
         {isMobile ? (
           loading && items.length === 0 ? (
             <div className={styles.cardLoading}>
@@ -336,6 +397,8 @@ export default function BackupRestorePanel() {
                     key={row.name}
                     row={row}
                     downloading={downloading === row.name}
+                    busy={busy}
+                    timeZone={serverTimezone}
                     onDownload={onDownload}
                     onRestore={(item) => {
                       setPendingRestore(item);
@@ -356,7 +419,6 @@ export default function BackupRestorePanel() {
             columns={columns}
             dataSource={items}
             pagination={false}
-            scroll={{ x: 900 }}
             locale={{ emptyText: t("backup.emptyList") }}
           />
         )}
@@ -382,7 +444,8 @@ export default function BackupRestorePanel() {
         okText={t("backup.importConfirmOk")}
         cancelText={t("common.cancel")}
         confirmLoading={restoring}
-        okButtonProps={{ danger: true }}
+        okButtonProps={{ danger: true, disabled: busy && !restoring }}
+        cancelButtonProps={{ disabled: restoring }}
       >
         <p>
           {t("backup.importConfirmBody", { name: pendingRestore?.name ?? "" })}
@@ -390,6 +453,7 @@ export default function BackupRestorePanel() {
         <div className={styles.checkboxRow}>
           <Checkbox
             checked={restoreConfig}
+            disabled={restoring}
             onChange={(e) => setRestoreConfig(e.target.checked)}
           >
             {t("backup.restoreConfig")}

@@ -129,7 +129,8 @@ because each request is a one-shot continuation.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/cron/settings` | user | process-level `{timezone}` |
+| `GET`    | `/settings/timezone` | user | process-level `{timezone}` from `default_timezone` |
+| `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
 | `GET`    | `/agents/{aid}/cron` | owner | list of cron rows |
 | `POST`   | `/agents/{aid}/cron` | owner | body `{trigger, prompt, session_key?, fresh_thread?, model?, task_type?}` → `201` |
 | `GET`    | `/agents/{aid}/cron/{cid}` | owner | cron row |

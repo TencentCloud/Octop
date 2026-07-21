@@ -56,6 +56,8 @@ import PageShell from "../../../layouts/PageShell";
 import { request } from "../../../api/request";
 import { authApi } from "../../../api/modules/auth";
 import { useCardTableView } from "../../../hooks/useCardTableView";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
@@ -118,9 +120,9 @@ function lockRemainingSeconds(row: UserRow, nowSec: number): number {
   return Math.max(0, row.login_locked_until - nowSec);
 }
 
-function formatUserTs(ts?: number): string {
+function formatUserTs(ts: number | undefined, timeZone: string): string {
   if (!ts) return "—";
-  return new Date(ts * 1000).toLocaleString();
+  return formatServerDateTime(ts, timeZone);
 }
 
 interface UserCardGridProps {
@@ -167,6 +169,7 @@ function UserCardGrid({
   isSelfAdmin,
 }: UserCardGridProps) {
   const { t } = useTranslation();
+  const timeZone = useServerTimezone();
   if (loading && rows.length === 0) {
     return (
       <div className={styles.userGridLoading}>
@@ -236,7 +239,7 @@ function UserCardGrid({
                     <Tooltip title={t("adminUsers.colCreatedAt")}>
                       <div className={styles.userCardTime}>
                         <Clock size={11} />
-                        <span>{formatUserTs(row.created_at)}</span>
+                        <span>{formatUserTs(row.created_at, timeZone)}</span>
                       </div>
                     </Tooltip>
                   )}
@@ -441,6 +444,7 @@ function UserLoginLock({
 
 export default function AdminUsersPage() {
   const { t } = useTranslation();
+  const timeZone = useServerTimezone();
   const [agents, setAgents] = useState<OctopAgent[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [rows, setRows] = useState<UserRow[]>([]);
@@ -764,7 +768,7 @@ export default function AdminUsersPage() {
               width: 168,
               render: (ts: number | undefined) => (
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  {formatUserTs(ts)}
+                  {formatUserTs(ts, timeZone)}
                 </Text>
               ),
             },
