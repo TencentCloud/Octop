@@ -23,8 +23,12 @@ def test_load_provider_presets_integration() -> None:
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
     token_ids = {m["id"] for m in token_plan["models"]}
-    assert "deepseek-v4-flash" in token_ids
-    assert "kimi-k2.6" in token_ids
+    # Match by prefix: harness-agent tags token-plan model ids with a release
+    # date suffix (e.g. deepseek-v4-flash-202605) and bumps the Kimi minor
+    # version over time, so assert the model family is present rather than an
+    # exact id that drifts with every upstream release.
+    assert any(mid.startswith("deepseek-v4-flash") for mid in token_ids)
+    assert any(mid.startswith("kimi-k2") for mid in token_ids)
     assert token_plan.get("vendor") == "tencent"
     assert token_plan.get("provider_group") == "tencent"
 
