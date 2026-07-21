@@ -11,6 +11,7 @@ def test_desktop_keys_parity() -> None:
     assert en_keys == zh_keys
     assert "desktop.install_log_system" in en_keys
     assert "desktop.install_log_build_deps" in en_keys
+    assert "desktop.error_el10_unsupported" in en_keys
 
 
 def test_desktop_error_interpolation() -> None:

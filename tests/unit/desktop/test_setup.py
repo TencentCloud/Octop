@@ -37,6 +37,47 @@ def test_friendly_install_log_line_maps_install_json() -> None:
     assert friendly == tr("desktop.error_apt_failed", "en")
 
 
+def test_friendly_install_log_line_localizes_el10_error() -> None:
+    from octop.infra.desktop.setup import _friendly_install_log_line
+
+    raw = '{"installed": false, "error": "EL10_UNSUPPORTED: package stack unavailable"}'
+    friendly = _friendly_install_log_line(raw, "zh")
+    assert friendly == tr("desktop.error_el10_unsupported", "zh")
+
+
+@pytest.mark.parametrize(
+    ("release", "expected"),
+    [
+        ({"ID": "almalinux", "VERSION_ID": "10.2"}, 10),
+        ({"ID": "rocky", "VERSION_ID": "10"}, 10),
+        ({"ID": "custom", "ID_LIKE": "rhel centos fedora", "VERSION_ID": "11.1"}, 11),
+        ({"ID": "rhel", "VERSION_ID": "9.7"}, 9),
+        ({"ID": "fedora", "VERSION_ID": "42"}, None),
+    ],
+)
+def test_enterprise_linux_major_version(release: dict[str, str], expected: int | None) -> None:
+    from octop.infra.desktop.setup import _enterprise_linux_major_version
+
+    assert _enterprise_linux_major_version(release) == expected
+
+
+def test_desktop_status_rejects_fresh_el10_before_python_deps() -> None:
+    reason = tr("desktop.error_el10_unsupported", "en")
+    with (
+        patch("octop.infra.desktop.setup.platform.system", return_value="Linux"),
+        patch("octop.infra.desktop.setup._python_deps_available", return_value=False),
+        patch("octop.infra.desktop.setup._unsupported_linux_desktop_reason", return_value=reason),
+        patch(
+            "octop.infra.desktop.setup._resolve_linux_setup",
+            return_value=("needs_install", None, "", None),
+        ),
+    ):
+        status = desktop_status()
+    assert status.setup_state == "unsupported"
+    assert status.desktop_supported is False
+    assert status.reason == reason
+
+
 @pytest.mark.asyncio
 async def test_iter_subprocess_lines_handles_long_line_without_newline() -> None:
     from octop.infra.desktop.setup import _iter_subprocess_lines

@@ -72,6 +72,23 @@ detect_distro() {
     fi
 }
 
+detect_enterprise_linux_major() {
+    [ -f /etc/os-release ] || return 1
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    local lineage=" ${ID:-} ${ID_LIKE:-} "
+    case "$lineage" in
+        *" almalinux "*|*" centos "*|*" ol "*|*" rhel "*|*" rocky "*) ;;
+        *) return 1 ;;
+    esac
+    local version_id="${VERSION_ID:-}"
+    local major="${version_id%%.*}"
+    case "$major" in
+        ""|*[!0-9]*) return 1 ;;
+    esac
+    echo "$major"
+}
+
 detect_xvnc_bin() {
     local p
     for p in /usr/bin/Xvnc /usr/libexec/Xvnc /usr/bin/Xtigervnc /usr/libexec/Xtigervnc; do
@@ -1105,6 +1122,14 @@ main() {
         install_python_build_deps "$family"
         echo '{"installed": true, "build_deps_only": true}'
         exit 0
+    fi
+
+    if [ "$family" = rhel ]; then
+        local enterprise_linux_major
+        enterprise_linux_major=$(detect_enterprise_linux_major || true)
+        if [ -n "$enterprise_linux_major" ] && [ "$enterprise_linux_major" -ge 10 ]; then
+            fail "EL10_UNSUPPORTED: Enterprise Linux 10 and later do not provide the required TigerVNC, Openbox, and XFCE packages. Use Enterprise Linux 9 or Debian/Ubuntu."
+        fi
     fi
 
     install_packages "$family"

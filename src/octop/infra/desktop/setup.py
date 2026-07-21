@@ -25,6 +25,8 @@ _APT_LOCK_RE = re.compile(r"lock-frontend|dpkg.*lock", re.I)
 _SCRIPT_LOG_RE = re.compile(
     r"(install\.sh|start\.sh|stop\.sh|Running /|Starting desktop services via /|Stopping desktop services via /)",
 )
+_OS_RELEASE_PATH = Path("/etc/os-release")
+_ENTERPRISE_LINUX_IDS = frozenset({"almalinux", "centos", "ol", "rhel", "rocky"})
 
 
 def _install_log(locale: str, key: str, **kwargs: object) -> str:
@@ -74,10 +76,43 @@ def _friendly_install_log_line(text: str, locale: str) -> str | None:
             return t
         err = str(payload.get("error") or "").strip()
         if payload.get("installed") is False and err:
+            if err.startswith("EL10_UNSUPPORTED:"):
+                return _install_log(locale, "error_el10_unsupported")
             if "apt" in err.lower():
                 return _install_log(locale, "error_apt_failed")
             return err
     return t
+
+
+def _read_os_release() -> dict[str, str]:
+    try:
+        text = _OS_RELEASE_PATH.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    release: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        release[key] = value.strip().strip("\"'")
+    return release
+
+
+def _enterprise_linux_major_version(release: dict[str, str]) -> int | None:
+    distro_id = release.get("ID", "").lower()
+    distro_like = set(release.get("ID_LIKE", "").lower().split())
+    if distro_id not in _ENTERPRISE_LINUX_IDS and not distro_like.intersection({"rhel", "centos"}):
+        return None
+    match = re.match(r"\d+", release.get("VERSION_ID", ""))
+    return int(match.group()) if match else None
+
+
+def _unsupported_linux_desktop_reason(locale: str) -> str:
+    major = _enterprise_linux_major_version(_read_os_release())
+    if major is not None and major >= 10:
+        return _install_log(locale, "error_el10_unsupported")
+    return ""
 
 
 async def _iter_subprocess_lines(stream: asyncio.StreamReader) -> AsyncIterator[str]:
@@ -576,6 +611,25 @@ def _mac_permissions() -> tuple[str, ...]:
 def desktop_status(*, locale: str = "en") -> DesktopStatus:
     system = platform.system().lower()
     geometry = read_geometry()
+    linux_setup: tuple[SetupState, str | None, str, bool | None] | None = None
+
+    if system == "linux":
+        unsupported_reason = _unsupported_linux_desktop_reason(locale)
+        if unsupported_reason:
+            linux_setup = _resolve_linux_setup(locale=locale)
+            if linux_setup[0] == "needs_install":
+                return DesktopStatus(
+                    ok=False,
+                    desktop_supported=False,
+                    setup_state="unsupported",
+                    platform=system,
+                    display=None,
+                    reason=unsupported_reason,
+                    install_script="",
+                    start_command="",
+                    geometry=geometry,
+                    vnc_localhost_only=linux_setup[3],
+                )
 
     if not _python_deps_available():
         return DesktopStatus(
@@ -593,7 +647,7 @@ def desktop_status(*, locale: str = "en") -> DesktopStatus:
         )
 
     if system == "linux":
-        setup_state, display, reason, vnc_local = _resolve_linux_setup(locale=locale)
+        setup_state, display, reason, vnc_local = linux_setup or _resolve_linux_setup(locale=locale)
         supported = setup_state in {"ready", "needs_start"}
         return DesktopStatus(
             ok=setup_state == "ready",
