@@ -19,12 +19,11 @@ import pytest
 
 # `harness_memory` is an optional dependency (lazy-imported by the app); the
 # real package is not part of the base install, so skip these integration
-# tests when it is unavailable rather than failing the whole suite.
-# `harness_memory` is an optional dependency; the app lazy-imports the
-# `harness_memory.lightclaw` bridge at request time. The top-level package
-# may be importable without that submodule present, so skip on the real
-# import target to avoid a ModuleNotFoundError at runtime.
-pytest.importorskip("harness_memory.lightclaw")
+# tests when it is unavailable rather than failing the whole suite. The app
+# reaches memory through the JSON-RPC bridge, so gate on that exact import
+# target (the old ``harness_memory.lightclaw`` name no longer exists and made
+# this whole file silently skip).
+pytest.importorskip("harness_memory.adapters.bridge.handlers")
 
 from octop.api.common.memory_client import (
     invalidate_cached_memory,
@@ -46,6 +45,7 @@ def _seed_memory(srv: Any, agent_id: str) -> None:
         Entity,
         Episode,
         JournalEntry,
+        RawEvent,
     )
 
     workspace = srv.services.paths.ensure_agent_workspace(agent_id)
@@ -104,6 +104,31 @@ def _seed_memory(srv: Any, agent_id: str) -> None:
         created_at=_now(),
     )
     memory.add_atom(atom)
+
+    memory.add_raw_batch(
+        [
+            RawEvent(
+                id="raw-1",
+                host="octop",
+                session_id="sess-1",
+                thread_id="th-1",
+                user="u",
+                timestamp=_now(),
+                event_type="user_message",
+                content="我喜欢喝美式咖啡",
+            ),
+            RawEvent(
+                id="raw-2",
+                host="octop",
+                session_id="sess-1",
+                thread_id="th-1",
+                user="u",
+                timestamp=_now(),
+                event_type="assistant_message",
+                content="好的，记住了",
+            ),
+        ]
+    )
 
     episode = Episode(
         id="ep-1",
@@ -231,6 +256,139 @@ async def test_deprecate_atom_round_trip(env_with_main_agent) -> None:
         json={"reason": "again"},
     )
     assert r2.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_raw_events(env_with_main_agent) -> None:
+    client, srv, auth, aid = env_with_main_agent
+    _seed_memory(srv, aid)
+
+    r = await client.post(f"/api/agents/{aid}/memory/raw_events/list", headers=auth, json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 2
+    assert {i["id"] for i in body["items"]} == {"raw-1", "raw-2"}
+
+    # event_type filter narrows to the user message.
+    r2 = await client.post(
+        f"/api/agents/{aid}/memory/raw_events/list",
+        headers=auth,
+        json={"event_type": "user_message"},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["total"] == 1
+    assert r2.json()["items"][0]["id"] == "raw-1"
+
+
+@pytest.mark.asyncio
+async def test_extract_config_defaults_then_update(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+
+    # GET returns defaults for a fresh agent.
+    r = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["memory_enabled"] is True
+    assert r.json()["extract_trigger_mode"] == "idle"
+    assert r.json()["extract_idle_seconds"] == 300.0
+
+    # PUT switches to interval mode; short interval is clamped to the floor.
+    r2 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={
+            "memory_enabled": False,
+            "extract_trigger_mode": "interval",
+            "extract_interval_seconds": 5,
+        },
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["memory_enabled"] is False
+    assert r2.json()["extract_trigger_mode"] == "interval"
+    assert r2.json()["extract_interval_seconds"] == 300.0  # clamped to 5-min floor
+
+    # GET reflects the persisted change.
+    r3 = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r3.json()["extract_trigger_mode"] == "interval"
+    assert r3.json()["extract_interval_seconds"] == 300.0
+    assert r3.json()["memory_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_extract_config_aux_model_roundtrip(env_with_main_agent) -> None:
+    from tests.support.auth import create_provider
+
+    client, _srv, auth, aid = env_with_main_agent
+    await create_provider(
+        client,
+        auth,
+        name="aux-prov",
+        base_url="https://api.example.com/v1",
+        models=[{"id": "mini", "name": "Mini", "enabled": True}],
+    )
+
+    # Fresh agent: AUTO (null).
+    r = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["aux_model"] is None
+
+    # Pin a usable ref.
+    r2 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"aux_model": "aux-prov/mini"},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["aux_model"] == "aux-prov/mini"
+
+    # Persisted; other fields untouched.
+    r3 = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r3.json()["aux_model"] == "aux-prov/mini"
+    assert r3.json()["extract_trigger_mode"] == "idle"
+
+    # Empty string resets back to AUTO.
+    r4 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"aux_model": ""},
+    )
+    assert r4.status_code == 200, r4.text
+    assert r4.json()["aux_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_config_rejects_unusable_aux_model(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    r = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"aux_model": "no-such-provider/model"},
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
+async def test_extract_config_rejects_bad_mode(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    r = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"extract_trigger_mode": "bogus"},
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
+async def test_extract_config_clamps_zero_idle_time_to_one_minute(
+    env_with_main_agent,
+) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    r = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"extract_trigger_mode": "idle", "extract_idle_seconds": 0},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["extract_idle_seconds"] == 60.0
 
 
 @pytest.mark.asyncio

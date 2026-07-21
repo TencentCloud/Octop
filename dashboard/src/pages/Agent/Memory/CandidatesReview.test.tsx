@@ -2,7 +2,7 @@
  * CandidatesReview.test.tsx — pending Candidate inbox.
  *
  * What we cover:
- *   - mount → listCandidates({status: 'pending'}) by default
+ *   - mount → listCandidates without a status filter (All) by default
  *   - row renders title + verbatim_quote + subject_name
  *   - clicking the promote button opens the Popconfirm, confirming
  *     fires promoteCandidate and re-loads the list
@@ -40,7 +40,7 @@ beforeEach(() => {
 });
 
 describe("<CandidatesReview />", () => {
-  it("loads pending candidates by default and renders title + quote", async () => {
+  it("loads all candidates by default and renders title + quote", async () => {
     api.listCandidates.mockResolvedValue(
       listCandidatesResp([
         makeCandidate({
@@ -61,7 +61,6 @@ describe("<CandidatesReview />", () => {
     expect(api.listCandidates).toHaveBeenCalledWith("ZYWZTD", {
       offset: 0,
       limit: 20,
-      status: "pending",
     });
     // verbatim quote and subject_name render in the meta line
     expect(screen.getByText(/每天必须喝美式/)).toBeInTheDocument();
@@ -139,7 +138,7 @@ describe("<CandidatesReview />", () => {
     api.listCandidates.mockResolvedValue(listCandidatesResp([]));
     render(<CandidatesReview agentId="ZYWZTD" />);
     await waitFor(() => expect(api.listCandidates).toHaveBeenCalled());
-    expect(screen.getByText("暂无待处理的记忆草稿")).toBeInTheDocument();
+    expect(screen.getByText("暂无记忆内容")).toBeInTheDocument();
   });
 
   it("disables promote/reject buttons for already-decided candidates", async () => {

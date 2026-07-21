@@ -13,7 +13,7 @@ import pytest
 from octop.config import OctopConfig
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.experts.catalog import default_library_root
-from octop.infra.agents.manager import AgentManager
+from octop.infra.agents.manager import AgentManager, _memory_extract_settings
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import DBPool
@@ -87,6 +87,90 @@ def test_format_agent_start_error_no_enabled_models_message() -> None:
 def test_format_agent_start_error_unknown_passthrough() -> None:
     exc = RuntimeError("disk full")
     assert format_agent_start_error(exc) == "disk full"
+
+
+def test_memory_extract_settings_supports_legacy_harness(caplog: pytest.LogCaptureFixture) -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "memory_enabled": False,
+                "extract_on_session_end": True,
+                "extract_trigger_mode": "interval",
+                "extract_idle_seconds": 60,
+                "extract_interval_seconds": 600,
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_enabled",
+                "memory_extract_on_session_end",
+                "memory_extract_idle_seconds",
+            }
+        ),
+    )
+
+    assert settings == {
+        "memory_enabled": False,
+        "memory_extract_on_session_end": True,
+        "memory_extract_idle_seconds": 600.0,
+    }
+    assert "lacks interval memory extraction" in caplog.text
+
+
+def test_memory_extract_settings_forwards_aux_model_to_both_tiers() -> None:
+    settings = _memory_extract_settings(
+        {"memory": {"aux_model": "hai/MiniMax-M2.7"}},
+        is_ref_usable=lambda ref: ref == "hai/MiniMax-M2.7",
+    )
+    assert settings == {
+        "memory_aux_light_model": "hai/MiniMax-M2.7",
+        "memory_aux_heavy_model": "hai/MiniMax-M2.7",
+    }
+
+
+def test_memory_extract_settings_drops_stale_aux_model(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    settings = _memory_extract_settings(
+        {"memory": {"aux_model": "gone/model"}},
+        is_ref_usable=lambda _ref: False,
+    )
+    assert settings == {}
+    assert "no longer usable" in caplog.text
+
+
+def test_memory_extract_settings_skips_aux_model_on_legacy_harness() -> None:
+    settings = _memory_extract_settings(
+        {"memory": {"aux_model": "hai/MiniMax-M2.7"}},
+        supported_fields=frozenset({"memory_enabled"}),
+        is_ref_usable=lambda _ref: True,
+    )
+    assert settings == {}
+
+
+def test_build_harness_config_accepts_memory_extract_settings(manager: AgentManager) -> None:
+    row = _row(
+        config_json=json.dumps(
+            {
+                "memory": {
+                    "memory_enabled": False,
+                    "extract_on_session_end": True,
+                    "extract_trigger_mode": "interval",
+                    "extract_idle_seconds": 60,
+                    "extract_interval_seconds": 600,
+                }
+            }
+        )
+    )
+
+    cfg = manager._build_harness_config(row)
+
+    assert cfg.memory_enabled is False
+    if hasattr(cfg, "memory_extract_trigger_mode"):
+        assert cfg.memory_extract_trigger_mode == "interval"
+        assert cfg.memory_extract_interval_seconds == 600.0
+    else:
+        assert cfg.memory_extract_idle_seconds == 600.0
 
 
 def test_format_agent_start_error_unwraps_exception_group() -> None:
@@ -317,13 +401,39 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
-def test_build_harness_config_auto_expert_omits_providers_and_default(
+def test_build_harness_config_auto_expert_falls_back_to_first_model(
     manager: AgentManager,
 ) -> None:
+    """AUTO expert still gets a concrete default_model so the memory aux LLM works."""
     _seed_test_provider(manager)
     cfg = manager._build_harness_config(_row(default_model=None))
-    assert cfg.default_model is None
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
     assert cfg.providers == []
+
+
+def test_build_harness_config_no_providers_leaves_default_model_unset(
+    manager: AgentManager,
+) -> None:
+    cfg = manager._build_harness_config(_row(default_model=None))
+    assert cfg.default_model is None
+
+
+def test_build_harness_config_applies_usable_aux_model(manager: AgentManager) -> None:
+    _seed_test_provider(manager)
+    cfg = manager._build_harness_config(
+        _row(config_json=json.dumps({"memory": {"aux_model": "test-openai/gpt-4o-mini"}})),
+    )
+    assert cfg.memory_aux_light_model == "test-openai/gpt-4o-mini"
+    assert cfg.memory_aux_heavy_model == "test-openai/gpt-4o-mini"
+
+
+def test_build_harness_config_ignores_stale_aux_model(manager: AgentManager) -> None:
+    _seed_test_provider(manager)
+    cfg = manager._build_harness_config(
+        _row(config_json=json.dumps({"memory": {"aux_model": "deleted-provider/gone"}})),
+    )
+    assert cfg.memory_aux_light_model is None
+    assert cfg.memory_aux_heavy_model is None
 
 
 @pytest.mark.skip(

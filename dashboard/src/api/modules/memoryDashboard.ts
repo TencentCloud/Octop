@@ -60,6 +60,49 @@ export interface ListAtomsResponse {
   has_more: boolean;
 }
 
+export interface RawEventItem {
+  id: string;
+  host: string;
+  session_id: string | null;
+  thread_id: string | null;
+  user: string | null;
+  timestamp: string;
+  event_type: string;
+  content: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ListRawEventsResponse {
+  items: RawEventItem[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface ListRawEventsBody {
+  session_id?: string;
+  thread_id?: string;
+  event_type?: string;
+  query?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export type ExtractTriggerMode = "idle" | "interval";
+
+export interface ExtractConfig {
+  /** Missing on older Octop API processes; absence keeps the historical enabled default. */
+  memory_enabled?: boolean;
+  extract_on_session_end: boolean;
+  extract_trigger_mode: ExtractTriggerMode;
+  extract_idle_seconds: number;
+  extract_interval_seconds: number;
+  /**
+   * "provider/model" ref used for extraction / promotion. null/absent = AUTO
+   * (follow the chat model); send "" to reset back to AUTO.
+   */
+  aux_model?: string | null;
+}
+
 export interface EntityItem {
   id: string;
   entity_type: string;
@@ -69,6 +112,21 @@ export interface EntityItem {
   created_at: string;
   page_dirty?: boolean;
 }
+
+/** L3 entity page — the long-form, LLM-regenerated summary for a topic. */
+export interface EntityPage {
+  id: string;
+  entity_id: string;
+  summary_markdown: string;
+  headline: string;
+  topics: string[];
+  dirty: boolean;
+  summary_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EntityDetail = EntityItem & { page: EntityPage | null };
 
 export interface ListEntitiesResponse {
   items: EntityItem[];
@@ -94,6 +152,20 @@ export interface ListEpisodesResponse {
   has_more: boolean;
 }
 
+/** Structured run stats attached to an ``extract_run`` journal entry. */
+export interface ExtractRunStats {
+  events_considered?: number;
+  events_extracted?: number;
+  candidates?: number;
+  promoted?: number;
+  merged?: number;
+  conflicts?: number;
+  needs_review?: number;
+  dropped?: number;
+  llm_calls?: number;
+  failure_reason?: string | null;
+}
+
 export interface JournalItem {
   id: string;
   timestamp: string;
@@ -105,6 +177,8 @@ export interface JournalItem {
   note?: string | null;
   /** Short target memory/topic text enriched by the backend for specific action display. */
   target_summary?: string | null;
+  /** Present on ``extract_run`` rows: structured stats for this extraction pass. */
+  after?: ExtractRunStats | null;
 }
 
 export interface ListJournalResponse {
@@ -296,12 +370,15 @@ export const memoryDashboardApi = {
   listCandidates: (aid: string, body?: ListCandidatesBody) =>
     post<ListCandidatesResponse>(`${base(aid)}/candidates/list`, body),
 
+  listRawEvents: (aid: string, body?: ListRawEventsBody) =>
+    post<ListRawEventsResponse>(`${base(aid)}/raw_events/list`, body),
+
   // single fetches
   getAtom: (aid: string, atomId: string) =>
     request<AtomItem>(`${base(aid)}/atoms/${encodeURIComponent(atomId)}`),
 
   getEntity: (aid: string, entityId: string) =>
-    request<EntityItem & { page: unknown | null }>(
+    request<EntityDetail>(
       `${base(aid)}/entities/${encodeURIComponent(entityId)}`,
     ),
 
@@ -385,6 +462,16 @@ export const memoryDashboardApi = {
     request<TerminalEntityResponse>(
       `${base(aid)}/terminal/entities?limit=${limit}`,
     ),
+
+  // extraction-trigger config
+  getExtractConfig: (aid: string) =>
+    request<ExtractConfig>(`${base(aid)}/extract-config`),
+
+  putExtractConfig: (aid: string, body: Partial<ExtractConfig>) =>
+    request<ExtractConfig>(`${base(aid)}/extract-config`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 };
 
 export default memoryDashboardApi;

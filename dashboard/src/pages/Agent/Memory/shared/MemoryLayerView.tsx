@@ -49,6 +49,11 @@ interface MemoryLayerViewProps<T> {
 
   /** Empty-state copy. */
   emptyText?: ReactNode;
+  /**
+   * Full replacement node for the empty state. Takes precedence over
+   * ``emptyText``; use for guided empties (e.g. memory-pipeline hint).
+   */
+  emptyContent?: ReactNode;
 }
 
 export default function MemoryLayerView<T>(props: MemoryLayerViewProps<T>) {
@@ -69,6 +74,7 @@ export default function MemoryLayerView<T>(props: MemoryLayerViewProps<T>) {
     renderDrawer,
     onItemClick,
     emptyText,
+    emptyContent,
   } = props;
 
   const isMobile = useIsMobile();
@@ -85,10 +91,12 @@ export default function MemoryLayerView<T>(props: MemoryLayerViewProps<T>) {
       {loading && items.length === 0 ? (
         <Skeleton active />
       ) : items.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={emptyText ?? undefined}
-        />
+        (emptyContent ?? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={emptyText ?? undefined}
+          />
+        ))
       ) : (
         <ul style={listStyle}>
           {items.map((it) => (

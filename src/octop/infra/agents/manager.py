@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
-from dataclasses import dataclass, field, replace
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any, cast
 
 from harness_agent import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
@@ -51,6 +51,8 @@ _MEMORY_NS_PREFIX = "agent_"
 
 _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
+_HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
+
 
 def _memory_namespace(agent_id: str) -> str:
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
@@ -62,6 +64,93 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
     if isinstance(raw, list):
         return {str(x) for x in raw}
     return set()
+
+
+def _memory_aux_model_settings(
+    mem: dict[str, Any],
+    supported_fields: frozenset[str],
+    is_ref_usable: Callable[[str], bool] | None,
+) -> dict[str, Any]:
+    """Map the ``memory.aux_model`` ref onto both harness extraction tiers.
+
+    A stale ref (provider deleted / model disabled since it was saved) is
+    dropped with a warning so extraction falls back to the default model
+    instead of failing at call time.
+    """
+    aux_model = mem.get("aux_model")
+    if (
+        not isinstance(aux_model, str)
+        or not aux_model.strip()
+        or "memory_aux_light_model" not in supported_fields
+        or "memory_aux_heavy_model" not in supported_fields
+    ):
+        return {}
+    ref = aux_model.strip()
+    if is_ref_usable is not None and not is_ref_usable(ref):
+        logger.warning(
+            "memory aux_model %r no longer usable; falling back to the default model",
+            ref,
+        )
+        return {}
+    # One user-chosen model drives both extraction tiers.
+    return {"memory_aux_light_model": ref, "memory_aux_heavy_model": ref}
+
+
+def _memory_extract_settings(
+    cfg: dict[str, Any],
+    *,
+    supported_fields: frozenset[str] = _HARNESS_AGENT_CONFIG_FIELDS,
+    is_ref_usable: Callable[[str], bool] | None = None,
+) -> dict[str, Any]:
+    """Extract the ``memory`` config section into HarnessAgentConfig kwargs.
+
+    Mirrors the shape written by the dashboard's ``PUT .../memory/extract-config``
+    endpoint. Only recognized keys are forwarded; anything missing falls through
+    to HarnessAgentConfig's own defaults, so an agent with no ``memory`` section
+    behaves exactly as before.
+    """
+    mem = cfg.get("memory")
+    if not isinstance(mem, dict):
+        return {}
+    out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
+    if "memory_enabled" in supported_fields and isinstance(mem.get("memory_enabled"), bool):
+        out["memory_enabled"] = mem["memory_enabled"]
+    if "memory_extract_on_session_end" in supported_fields and isinstance(
+        mem.get("extract_on_session_end"), bool
+    ):
+        out["memory_extract_on_session_end"] = mem["extract_on_session_end"]
+    mode = mem.get("extract_trigger_mode")
+    if mode in ("idle", "interval") and "memory_extract_trigger_mode" in supported_fields:
+        out["memory_extract_trigger_mode"] = mode
+    for src, dst in (
+        ("extract_idle_seconds", "memory_extract_idle_seconds"),
+        ("extract_interval_seconds", "memory_extract_interval_seconds"),
+    ):
+        val = mem.get(src)
+        if (
+            dst in supported_fields
+            and isinstance(val, int | float)
+            and not isinstance(val, bool)
+            and val > 0
+        ):
+            out[dst] = float(val)
+
+    # orcakit-harness-agent 0.9.5 predates the interval trigger fields. Keep
+    # hot reload working against that release and approximate interval mode
+    # with its per-session idle watchdog until a newer harness is installed.
+    if (
+        mode == "interval"
+        and "memory_extract_trigger_mode" not in supported_fields
+        and "memory_extract_idle_seconds" in supported_fields
+    ):
+        interval = mem.get("extract_interval_seconds")
+        if isinstance(interval, int | float) and not isinstance(interval, bool) and interval > 0:
+            out["memory_extract_idle_seconds"] = float(interval)
+        logger.warning(
+            "Installed harness-agent lacks interval memory extraction; "
+            "falling back to the idle watchdog for this agent"
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1342,7 +1431,15 @@ class AgentManager:
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),
             workspace_dir=workspace_dir,
-            default_model=self._providers.resolve_explicit_default_model(row, cfg),
+            # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
+            # back to the first usable model — the same one AUTO chat routing
+            # resolves to — so promotion works whenever chat does. Per-turn AUTO
+            # routing is unaffected: the gateway resolves models via
+            # ``resolve_explicit_default_model`` directly.
+            default_model=(
+                self._providers.resolve_explicit_default_model(row, cfg)
+                or self._providers.resolve_first_model_ref()
+            ),
             system_prompt=system_prompt,
             memory=memory,
             backend=backend,  # resolved spec; harness re-resolves to a runtime instance
@@ -1354,6 +1451,7 @@ class AgentManager:
             acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
             skills_disabled=frozenset(skills_disabled_set(cfg)),
             default_timezone=self._config.default_timezone,
+            **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
         )
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None

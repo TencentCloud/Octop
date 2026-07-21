@@ -15,11 +15,13 @@ import ConversationRecords from "./ConversationRecords";
 import Overview from "./Overview";
 import ProfileOverview from "./ProfileOverview";
 import AtomsList from "./AtomsList";
+import RawEventsList from "./RawEventsList";
 import EpisodesList from "./EpisodesList";
 import JournalList from "./JournalList";
 import CandidatesReview from "./CandidatesReview";
 import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
+import MemorySettings from "./MemorySettings";
 
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
@@ -34,10 +36,11 @@ type MemoryTab =
   | "candidates"
   | "journal"
   | "conversations"
-  | "proactive";
+  | "proactive"
+  | "settings";
 
 /** Internal view for the memory-library tab. */
-type LibraryView = "tree" | "atoms";
+type LibraryView = "tree" | "atoms" | "raw";
 
 interface TabDef {
   key: MemoryTab;
@@ -56,7 +59,7 @@ const TABS: TabDef[] = [
   {
     key: "candidates",
     labelKey: "memory.tabs.candidates",
-    fallback: "记忆沉淀",
+    fallback: "全部",
     showPendingBadge: true,
   },
   { key: "journal", labelKey: "memory.tabs.journal", fallback: "整理记录" },
@@ -66,6 +69,7 @@ const TABS: TabDef[] = [
     fallback: "对话记录",
   },
   { key: "proactive", labelKey: "memory.tabs.proactive", fallback: "主动关心" },
+  { key: "settings", labelKey: "memory.tabs.settings", fallback: "设置" },
 ];
 
 export default function MemoryPage() {
@@ -119,6 +123,10 @@ export default function MemoryPage() {
                 label: t("memory.library.viewAtoms", "列表视图"),
                 value: "atoms",
               },
+              {
+                label: t("memory.library.viewRaw", "原始素材"),
+                value: "raw",
+              },
             ]}
           />
           <span className={styles.librarySwitchHint}>
@@ -127,9 +135,14 @@ export default function MemoryPage() {
                   "memory.library.hintTree",
                   "按人、项目、工具等主题，分组浏览相关记忆",
                 )
-              : t(
+              : libraryView === "atoms"
+              ? t(
                   "memory.library.hintAtoms",
                   "扁平展示全部记忆，可按重要程度筛选",
+                )
+              : t(
+                  "memory.library.hintRaw",
+                  "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
                 )}
           </span>
         </div>
@@ -139,8 +152,10 @@ export default function MemoryPage() {
             agentId={activeAgentId}
             initialExpandEntityId={expandEntityId}
           />
-        ) : (
+        ) : libraryView === "atoms" ? (
           <AtomsList agentId={activeAgentId} />
+        ) : (
+          <RawEventsList agentId={activeAgentId} />
         )}
       </div>
     );
@@ -159,7 +174,14 @@ export default function MemoryPage() {
       let children: ReactNode = null;
       switch (tab.key) {
         case "overview":
-          children = <Overview agentId={activeAgentId} />;
+          children = (
+            <Overview
+              agentId={activeAgentId}
+              onViewConversations={() => setActiveTab("conversations")}
+              onReviewCandidates={() => setActiveTab("candidates")}
+              onOpenSettings={() => setActiveTab("settings")}
+            />
+          );
           break;
         case "profile":
           children = (
@@ -197,6 +219,9 @@ export default function MemoryPage() {
               onSwitchToEpisodes={() => setActiveTab("episodes")}
             />
           );
+          break;
+        case "settings":
+          children = <MemorySettings agentId={activeAgentId} />;
           break;
       }
 

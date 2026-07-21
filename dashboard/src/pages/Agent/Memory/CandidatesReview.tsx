@@ -80,7 +80,7 @@ export default function CandidatesReview({ agentId }: Props) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<CandidateStatus | "">("pending");
+  const [status, setStatus] = useState<CandidateStatus | "">("");
   const [kind, setKind] = useState<AtomKind | "">("");
   const [selected, setSelected] = useState<CandidateItem | null>(null);
 
@@ -197,7 +197,7 @@ export default function CandidatesReview({ agentId }: Props) {
       ) : items.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t("memory.candidates.empty", "暂无待处理的记忆草稿")}
+          description={t("memory.candidates.empty", "暂无记忆内容")}
         />
       ) : (
         <ul className={styles.candidateList}>

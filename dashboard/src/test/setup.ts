@@ -21,13 +21,31 @@ import { cleanup } from "@testing-library/react";
 // console noise per test file).
 vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>();
+
+  type TOptions = Record<string, unknown> & { defaultValue?: string };
+
+  // Interpolate ``{{name}}`` placeholders like real i18next so tests can
+  // assert user-visible copy such as "已捕获 42 条对话记忆".
+  const interpolate = (template: string, options?: TOptions): string => {
+    if (!options) return template;
+    return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+      name in options ? String(options[name]) : match,
+    );
+  };
+
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, fallback?: string | { defaultValue?: string }) => {
-        if (typeof fallback === "string") return fallback;
-        if (fallback && typeof fallback === "object" && fallback.defaultValue)
-          return fallback.defaultValue;
+      t: (
+        key: string,
+        fallback?: string | TOptions,
+        options?: TOptions,
+      ): string => {
+        if (typeof fallback === "string") return interpolate(fallback, options);
+        if (fallback && typeof fallback === "object") {
+          const template = fallback.defaultValue ?? key;
+          return interpolate(template, fallback);
+        }
         return key;
       },
       i18n: { language: "zh", changeLanguage: () => Promise.resolve() },
