@@ -48,6 +48,10 @@ const QUICK_CONFIG_CHANNELS: ChannelKey[] = [
   "yuanbao",
 ];
 
+const YUANBAO_DEFAULT_API_DOMAIN = "https://bot.yuanbao.tencent.com";
+const YUANBAO_DEFAULT_WS_URL =
+  "wss://bot-wss.yuanbao.tencent.com/wss/connection";
+
 // QR State Machine
 type QrPhase =
   | { phase: "idle" }
@@ -527,6 +531,8 @@ export function ChannelDrawer({
         config: mergeDisplayConfig({
           app_key: s.appKey,
           app_secret: s.appSecret,
+          api_domain: YUANBAO_DEFAULT_API_DOMAIN,
+          ws_url: YUANBAO_DEFAULT_WS_URL,
         }),
       };
     }
@@ -994,6 +1000,8 @@ export function ChannelDrawer({
           mergeDisplayConfig({
             app_key: s.appKey,
             app_secret: s.appSecret,
+            api_domain: YUANBAO_DEFAULT_API_DOMAIN,
+            ws_url: YUANBAO_DEFAULT_WS_URL,
           }),
         );
       return (
