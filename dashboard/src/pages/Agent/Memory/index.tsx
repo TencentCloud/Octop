@@ -142,7 +142,7 @@ export default function MemoryPage() {
                 )
               : t(
                   "memory.library.hintRaw",
-                  "提炼前捕获的原始对话素材（条数与「对话记录」不一一对应）",
+                  "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
                 )}
           </span>
         </div>

@@ -25,7 +25,7 @@ vi.mock("react-i18next", async (importOriginal) => {
   type TOptions = Record<string, unknown> & { defaultValue?: string };
 
   // Interpolate ``{{name}}`` placeholders like real i18next so tests can
-  // assert user-visible copy such as "已捕获 42 条对话素材".
+  // assert user-visible copy such as "已捕获 42 条对话记忆".
   const interpolate = (template: string, options?: TOptions): string => {
     if (!options) return template;
     return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>

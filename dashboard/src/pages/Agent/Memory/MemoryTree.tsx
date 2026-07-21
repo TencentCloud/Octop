@@ -35,7 +35,13 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { ChevronDown, ChevronRight, RefreshCw, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -43,8 +49,11 @@ import {
   isAtomDeprecated,
   type AtomItem,
   type Confidence,
+  type EntityDetail,
   type EntityItem,
+  type EntityPage,
 } from "../../../api/modules/memoryDashboard";
+import Markdown from "../../../components/Markdown/LazyMarkdown";
 import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 import { confirmDeprecateAtom } from "./shared/deprecateAtom";
 
@@ -69,6 +78,8 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
   );
   const [atomsByEntity, setAtomsByEntity] = useState<AtomCache>(new Map());
   const [selectedAtom, setSelectedAtom] = useState<AtomItem | null>(null);
+  // Entity whose long-form summary page is being viewed in the drawer.
+  const [summaryEntity, setSummaryEntity] = useState<EntityItem | null>(null);
   // Used for scroll positioning.
   const targetRowRef = useRef<HTMLLIElement | null>(null);
   // Read the latest atomsByEntity through a ref to avoid useEffect dependency loops.
@@ -250,6 +261,7 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
                     entity={entity}
                     expanded={isExpanded}
                     onToggle={() => handleToggleEntity(entity.id)}
+                    onViewSummary={() => setSummaryEntity(entity)}
                   />
                   {isExpanded ? (
                     <AtomChildren
@@ -277,6 +289,12 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
         agentId={agentId}
         onClose={() => setSelectedAtom(null)}
         onDeprecated={handleDeprecated}
+      />
+
+      <EntitySummaryDrawer
+        agentId={agentId}
+        entity={summaryEntity}
+        onClose={() => setSummaryEntity(null)}
       />
     </Card>
   );
@@ -324,11 +342,14 @@ function EntityRow({
   entity,
   expanded,
   onToggle,
+  onViewSummary,
 }: {
   entity: EntityItem;
   expanded: boolean;
   onToggle: () => void;
+  onViewSummary: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <div
       onClick={onToggle}
@@ -344,13 +365,15 @@ function EntityRow({
         position: "relative",
       }}
       className="memory-tree-row"
-      onMouseEnter={(e) =>
-        ((e.currentTarget as HTMLDivElement).style.background =
-          "var(--fn-bg-hover, #fafafa)")
-      }
-      onMouseLeave={(e) =>
-        ((e.currentTarget as HTMLDivElement).style.background = "transparent")
-      }
+      onMouseEnter={(e) => {
+        setHovered(true);
+        (e.currentTarget as HTMLDivElement).style.background =
+          "var(--fn-bg-hover, #fafafa)";
+      }}
+      onMouseLeave={(e) => {
+        setHovered(false);
+        (e.currentTarget as HTMLDivElement).style.background = "transparent";
+      }}
     >
       {/* L-elbow guide */}
       <Guide />
@@ -382,6 +405,32 @@ function EntityRow({
           (也叫 {entity.aliases.join(", ")})
         </span>
       ) : null}
+      {/* Push the summary affordance to the right edge. */}
+      <span style={{ marginLeft: "auto" }} />
+      {entity.page_dirty ? (
+        <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>
+          待刷新
+        </Tag>
+      ) : null}
+      <Tooltip title="查看这个主题的摘要">
+        <Button
+          size="small"
+          icon={<BookOpen size={13} />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewSummary();
+          }}
+          style={{
+            flexShrink: 0,
+            fontSize: 12,
+            // Lift the button on row hover so it reads as the primary action.
+            borderColor: hovered ? "#1677ff" : undefined,
+            color: hovered ? "#1677ff" : undefined,
+          }}
+        >
+          查看摘要
+        </Button>
+      </Tooltip>
     </div>
   );
 }
@@ -663,6 +712,138 @@ function AtomDetailDrawer({
         </div>
       ) : null}
     </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Entity summary (L3 page) drawer
+// ---------------------------------------------------------------------------
+
+function EntitySummaryDrawer({
+  agentId,
+  entity,
+  onClose,
+}: {
+  agentId: string;
+  entity: EntityItem | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [detail, setDetail] = useState<EntityDetail | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!entity) return;
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+    setDetail(null);
+    memoryDashboardApi
+      .getEntity(agentId, entity.id)
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, entity]);
+
+  const page = detail?.page ?? null;
+
+  return (
+    <Drawer
+      title={t("memory.entitySummary", "主题摘要")}
+      open={!!entity}
+      onClose={onClose}
+      width={560}
+    >
+      {entity ? (
+        <div>
+          <Space size={4} wrap style={{ marginBottom: 4 }}>
+            <span style={{ fontSize: 16, fontWeight: 600 }}>🏷️</span>
+            <span style={{ fontSize: 16, fontWeight: 600 }}>
+              {entity.canonical_name}
+            </span>
+            <Tag>{entityTypeLabel(entity.entity_type)}</Tag>
+            <Tag color="blue">{entity.atom_count} 条记忆</Tag>
+            {page?.dirty ? <Tag color="orange">待刷新</Tag> : null}
+          </Space>
+          {entity.aliases.length > 0 ? (
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+              也叫 {entity.aliases.join("、")}
+            </Typography.Paragraph>
+          ) : null}
+
+          <EntitySummaryBody loading={loading} failed={failed} page={page} />
+        </div>
+      ) : null}
+    </Drawer>
+  );
+}
+
+function EntitySummaryBody({
+  loading,
+  failed,
+  page,
+}: {
+  loading: boolean;
+  failed: boolean;
+  page: EntityPage | null;
+}) {
+  if (loading) return <Skeleton active paragraph={{ rows: 6 }} />;
+  if (failed) {
+    return (
+      <Typography.Paragraph type="danger">
+        摘要加载失败，请稍后重试。
+      </Typography.Paragraph>
+    );
+  }
+  if (!page || !page.summary_markdown.trim()) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <Typography.Paragraph type="secondary">
+          这个主题的摘要还没有生成。
+        </Typography.Paragraph>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          新建主题或有新记忆改动后，系统会在后台自动整理出一份长文摘要，稍后回来即可查看。
+        </Typography.Paragraph>
+      </div>
+    );
+  }
+  return (
+    <>
+      {page.headline ? (
+        <Typography.Paragraph
+          style={{
+            fontSize: 13,
+            color: "#595959",
+            background: "var(--fn-bg-hover, #fafafa)",
+            borderRadius: 6,
+            padding: "8px 12px",
+          }}
+        >
+          {page.headline}
+        </Typography.Paragraph>
+      ) : null}
+      <div style={{ marginTop: 4 }}>
+        <Markdown content={page.summary_markdown} />
+      </div>
+      <Typography.Paragraph
+        type="secondary"
+        style={{ fontSize: 12, marginTop: 16 }}
+      >
+        版本 v{page.summary_version} · 更新于{" "}
+        {formatRelativeTime(page.updated_at)}
+        {page.dirty ? " · 有新记忆改动，后台稍后会自动刷新这份摘要" : ""}
+      </Typography.Paragraph>
+    </>
   );
 }
 

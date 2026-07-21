@@ -60,10 +60,10 @@ describe("<Overview />", () => {
     expect(screen.getAllByText("长期记忆").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("关键主题")).toBeInTheDocument();
     expect(screen.getByText("记忆处理进度")).toBeInTheDocument();
-    expect(screen.getByText("近 14 天记忆增长")).toBeInTheDocument();
+    expect(screen.getByText("近 7 天记忆增长")).toBeInTheDocument();
     expect(screen.getByText("记忆类型")).toBeInTheDocument();
 
-    expect(api.statsGrowth).toHaveBeenCalledWith("ZYWZTD", 14);
+    expect(api.statsGrowth).toHaveBeenCalledWith("ZYWZTD", 7);
     expect(api.getExtractConfig).toHaveBeenCalledWith("ZYWZTD");
   });
 
@@ -101,7 +101,7 @@ describe("<Overview />", () => {
     );
 
     await screen.findByText("记忆处理进度");
-    fireEvent.click(screen.getByRole("button", { name: /对话素材/ }));
+    fireEvent.click(screen.getByRole("button", { name: /对话记忆/ }));
     fireEvent.click(screen.getByRole("button", { name: /待处理/ }));
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     expect(onViewConversations).toHaveBeenCalledOnce();
@@ -118,7 +118,7 @@ describe("<Overview />", () => {
 
     await screen.findByText("记忆概览");
     expect(screen.getByText("暂无记忆类型数据")).toBeInTheDocument();
-    expect(screen.getByText("近 14 天暂无新增")).toBeInTheDocument();
+    expect(screen.getByText("近 7 天暂无新增")).toBeInTheDocument();
   });
 
   it("refreshes all overview sources", async () => {

@@ -87,7 +87,7 @@ export default function MemoryPipelineEmpty({ agentId }: Props) {
       >
         {t(
           "memory.pipeline.emptyWithRaw",
-          "已捕获 {{n}} 条对话素材。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
+          "已捕获 {{n}} 条对话记忆。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
           { n: rawCount },
         )}
         {pendingCount > 0 ? (

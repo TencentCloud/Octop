@@ -215,7 +215,7 @@ export default function MemorySettings({ agentId }: Props) {
             <div className={styles.settingDescription}>
               {t(
                 "memory.settings.distillDescription",
-                "选择何时把对话素材整理为可召回的长期记忆。",
+                "选择何时把对话记忆整理为可召回的长期记忆。",
               )}
             </div>
           </div>

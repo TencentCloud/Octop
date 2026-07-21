@@ -2113,7 +2113,7 @@
     },
     "pipeline": {
       "title": "Memory pipeline",
-      "stageRaw": "Raw material",
+      "stageRaw": "Conversation memory",
       "stageRawHint": "Filtered material messages captured from conversations (counts don't map 1:1 to Conversations)",
       "stagePending": "Pending review",
       "stagePendingHint": "Distilled memory candidates",
@@ -2187,13 +2187,14 @@
       "atoms": "Long-term memories",
       "entities": "Key topics",
       "episodes": "Emotional moments",
-      "rawEvents": "Conversation material",
+      "rawEvents": "Conversation memory",
       "candidatesPending": "Needs attention",
       "kindsTitle": "Memory types",
       "kindsEmpty": "No memory type data yet",
-      "growthTitle": "Memory growth · 14 days",
-      "growthEmpty": "No new memories in the last 14 days"
-    }
+      "growthTitle": "Memory growth · 7 days",
+      "growthEmpty": "No new memories in the last 7 days"
+    },
+    "entitySummary": "Topic summary"
   },
   "personalization": {
     "title": "Scenarios",

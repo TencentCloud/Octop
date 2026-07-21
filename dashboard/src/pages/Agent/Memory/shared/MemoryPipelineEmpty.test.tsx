@@ -40,7 +40,7 @@ describe("<MemoryPipelineEmpty />", () => {
     await waitFor(() => {
       expect(screen.getByText("记忆还在提炼中")).toBeInTheDocument();
     });
-    expect(screen.getByText(/已捕获 42 条对话素材/)).toBeInTheDocument();
+    expect(screen.getByText(/已捕获 42 条对话记忆/)).toBeInTheDocument();
     expect(screen.queryByText(/候选记忆待确认/)).not.toBeInTheDocument();
     expect(api.statsCounts).toHaveBeenCalledWith("A1");
   });

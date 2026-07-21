@@ -113,6 +113,21 @@ export interface EntityItem {
   page_dirty?: boolean;
 }
 
+/** L3 entity page — the long-form, LLM-regenerated summary for a topic. */
+export interface EntityPage {
+  id: string;
+  entity_id: string;
+  summary_markdown: string;
+  headline: string;
+  topics: string[];
+  dirty: boolean;
+  summary_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EntityDetail = EntityItem & { page: EntityPage | null };
+
 export interface ListEntitiesResponse {
   items: EntityItem[];
   total: number;
@@ -363,7 +378,7 @@ export const memoryDashboardApi = {
     request<AtomItem>(`${base(aid)}/atoms/${encodeURIComponent(atomId)}`),
 
   getEntity: (aid: string, entityId: string) =>
-    request<EntityItem & { page: unknown | null }>(
+    request<EntityDetail>(
       `${base(aid)}/entities/${encodeURIComponent(entityId)}`,
     ),
 

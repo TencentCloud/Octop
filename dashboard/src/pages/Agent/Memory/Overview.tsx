@@ -87,7 +87,7 @@ export default function Overview({
     const results = await Promise.allSettled([
       memoryDashboardApi.statsCounts(agentId),
       memoryDashboardApi.statsAtomKinds(agentId),
-      memoryDashboardApi.statsGrowth(agentId, 14),
+      memoryDashboardApi.statsGrowth(agentId, 7),
       memoryDashboardApi.getExtractConfig(agentId),
     ]);
     const [counts, kinds, growth, config] = results;
@@ -182,7 +182,7 @@ export default function Overview({
         <SummaryCard
           icon={<Database size={18} />}
           tone="blue"
-          label={t("memory.overview.rawEvents", "对话素材")}
+          label={t("memory.overview.rawEvents", "对话记忆")}
           value={state.counts?.raw_events}
           loading={state.firstLoading}
         />
@@ -207,14 +207,14 @@ export default function Overview({
       <div className={styles.overviewCharts}>
         <Card
           className={styles.overviewChartCard}
-          title={t("memory.overview.growthTitle", "近 14 天记忆增长")}
+          title={t("memory.overview.growthTitle", "近 7 天记忆增长")}
         >
           {state.firstLoading && !state.growth ? (
             <Skeleton active paragraph={{ rows: 4 }} />
           ) : !state.growth || state.growth.series.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("memory.overview.growthEmpty", "近 14 天暂无新增")}
+              description={t("memory.overview.growthEmpty", "近 7 天暂无新增")}
             />
           ) : (
             <div className={styles.growthChart}>
@@ -361,12 +361,12 @@ function PipelineCard({
       : atoms === 0
       ? t(
           "memory.pipeline.hintDistilling",
-          "已捕获 {{n}} 条对话素材，首批长期记忆通常会在几轮对话后出现。",
+          "已捕获 {{n}} 条对话记忆，首批长期记忆通常会在几轮对话后出现。",
           { n: raw },
         )
       : t(
           "memory.pipeline.hintNormal",
-          "对话素材会自动提炼为候选内容，确认后成为可召回的长期记忆。",
+          "对话记忆会自动提炼为候选内容，确认后成为可召回的长期记忆。",
         );
 
   return (
@@ -380,7 +380,7 @@ function PipelineCard({
       </div>
       <div className={styles.pipelineRow}>
         <PipelineStage
-          label={t("memory.pipeline.stageRaw", "对话素材")}
+          label={t("memory.pipeline.stageRaw", "对话记忆")}
           value={raw}
           onClick={onViewConversations}
         />

@@ -2062,7 +2062,7 @@
       "viewRaw": "原始素材",
       "hintTree": "按人、项目、工具等主题，分组浏览相关记忆",
       "hintAtoms": "扁平展示全部记忆，可按重要程度筛选",
-      "hintRaw": "提炼前捕获的原始对话素材（条数与「对话记录」不一一对应）"
+      "hintRaw": "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）"
     },
     "raw": {
       "typeFilter": "类型",
@@ -2078,7 +2078,7 @@
     },
     "extractConfig": {
       "title": "记忆提炼时机",
-      "subtitle": "控制何时把对话素材提炼成记忆",
+      "subtitle": "控制何时把对话记忆提炼成长期记忆",
       "enableLabel": "自动提炼记忆",
       "modeIdle": "对话空闲后提炼",
       "modeIdleHint": "等对话安静一段时间再提炼，记忆质量最好（推荐）",
@@ -2103,7 +2103,7 @@
       "disabledTitle": "关闭后 Agent 将不再使用记忆",
       "disabledDescription": "Agent 不会读取已有记忆，也不会捕获或提炼新的记忆。已有记忆和对话记录不会被删除，重新开启后可以继续使用。",
       "distillTitle": "记忆提炼时机",
-      "distillDescription": "选择何时把对话素材整理为可召回的长期记忆。",
+      "distillDescription": "选择何时把对话记忆整理为可召回的长期记忆。",
       "extractModelTitle": "记忆提取模型",
       "extractModelDescription": "提炼记忆时调用的模型。选择“自动”跟随对话使用的默认模型；也可以指定一个更便宜或更快的模型专门做提炼。",
       "extractModelAuto": "自动（跟随对话模型）",
@@ -2121,13 +2121,13 @@
       "atoms": "长期记忆",
       "entities": "关键主题",
       "episodes": "情绪片段",
-      "rawEvents": "对话素材",
+      "rawEvents": "对话记忆",
       "candidatesPending": "待处理",
       "dirtyPages": "待刷新主题",
       "kindsTitle": "记忆类型",
       "kindsEmpty": "暂无记忆类型数据",
-      "growthTitle": "近 14 天记忆增长",
-      "growthEmpty": "近 14 天暂无新增",
+      "growthTitle": "近 7 天记忆增长",
+      "growthEmpty": "近 7 天暂无新增",
       "processingStatus": "处理状态",
       "statusEmpty": "暂无状态数据",
       "pendingReview": "待处理",
@@ -2194,6 +2194,7 @@
       "hint": "点击主题展开它下面的记忆；再点击具体记忆查看详情。"
     },
     "atomDetail": "记忆详情",
+    "entitySummary": "主题摘要",
     "episodeDetail": "情绪日记详情",
     "episodes": {
       "disclaimer": "这里记录你与 Octop 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 Octop 更好地关心你，并用于周 / 月小结。"
@@ -2312,18 +2313,18 @@
     },
     "pipeline": {
       "title": "记忆流水线",
-      "stageRaw": "对话素材",
+      "stageRaw": "对话记忆",
       "stageRawHint": "从对话中自动筛选捕获的素材消息数（经过滤，和「对话记录」的条数不一一对应）",
       "stagePending": "待沉淀",
       "stagePendingHint": "提炼出的候选记忆",
       "stageAtoms": "已沉淀记忆",
       "stageAtomsHint": "可被召回的正式记忆",
       "hintNoRaw": "开始对话后，系统会自动捕获素材并提炼记忆。",
-      "hintDistilling": "已捕获 {{n}} 条对话素材。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
-      "hintNormal": "对话素材会在会话空闲后自动提炼；提炼产出先进入「记忆沉淀」确认，再成为正式记忆。",
+      "hintDistilling": "已捕获 {{n}} 条对话记忆。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
+      "hintNormal": "对话记忆会在会话空闲后自动提炼；提炼产出先进入「记忆沉淀」确认，再成为正式记忆。",
       "emptyTitle": "记忆还在提炼中",
       "emptyNoRaw": "还没有记忆。开始对话后，系统会自动捕获素材并提炼记忆。",
-      "emptyWithRaw": "已捕获 {{n}} 条对话素材。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
+      "emptyWithRaw": "已捕获 {{n}} 条对话记忆。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
       "emptyPendingSuffix": "另有 {{n}} 条候选记忆待确认，请前往「记忆沉淀」查看。"
     }
   },
