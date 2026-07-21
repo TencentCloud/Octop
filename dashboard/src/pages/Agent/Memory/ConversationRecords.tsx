@@ -538,7 +538,7 @@ export default function ConversationRecords({
               scroll={{ x: 980 }}
               locale={{ emptyText: t("memory.noConversations") }}
               pagination={{
-                pageSize: THREAD_LIST_PAGE_SIZE,
+                defaultPageSize: THREAD_LIST_PAGE_SIZE,
                 showSizeChanger: true,
                 pageSizeOptions: THREAD_LIST_PAGE_SIZE_OPTIONS.map(String),
                 showTotal: threadPaginationTotal,

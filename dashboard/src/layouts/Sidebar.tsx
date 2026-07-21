@@ -137,7 +137,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/experts",
           icon: <GraduationCap size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.experts",
-          badge: "new",
         },
         {
           key: "tasks",
@@ -150,7 +149,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/connectors",
           icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.connectors",
-          badge: "new",
         },
         {
           key: "token-usage",
@@ -181,7 +179,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/subagents",
           icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.subagents",
-          badge: "new",
         },
         {
           key: "terminal",
@@ -200,14 +197,12 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/remote-desktop",
           icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.remoteDesktop",
-          badge: "new",
         },
         {
           key: "acp",
           path: "/acp",
           icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.acp",
-          badge: "new",
         },
         {
           key: "mbti",
@@ -246,7 +241,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/admin/backend",
           icon: <FolderOpen size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.adminStorage",
-          badge: "new",
         },
         {
           key: "admin-audit",

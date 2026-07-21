@@ -476,7 +476,7 @@ export default function RemoteBrowserPage() {
     isMobile,
     defaultViewport: { width: 1280, height: 800 },
     onError: (msg) => showApiError(msg, t("browserViewer.connectFailed"), t),
-    onBeforeConnect: (_profileId) => {
+    onBeforeConnect: () => {
       setFrameReady(false);
       setStreamActive(true);
     },

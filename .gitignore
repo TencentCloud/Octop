@@ -86,3 +86,6 @@ logs/
 
 # Local monorepo dev helpers (not for upstream)
 scripts/dev-local-link.sh
+
+# Local agent planning docs (not for upstream)
+docs/superpowers/

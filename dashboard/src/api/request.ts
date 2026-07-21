@@ -3,6 +3,9 @@ import i18n from "../i18n";
 
 const AUTH_TOKEN_KEY = "auth_token";
 
+/** Response header used by the server for JWT sliding renewal. */
+export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
+
 /** Save JWT token to localStorage */
 export function setAuthToken(token: string) {
   localStorage.setItem(AUTH_TOKEN_KEY, token);
@@ -18,6 +21,14 @@ export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem("octop:active-agent");
   setActiveAgentId(null);
+}
+
+/** Persist a sliding-renewed access token from an API response, if present. */
+export function applyRenewedAccessToken(response: Response): void {
+  const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
+  if (renewed) {
+    setAuthToken(renewed);
+  }
 }
 
 let _redirectingToSetup = false;
@@ -221,6 +232,7 @@ export async function request<T = unknown>(
   }
 
   await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -262,6 +274,7 @@ export async function requestBlob(
   }
 
   await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -275,41 +288,116 @@ export async function requestBlob(
   return response.blob();
 }
 
+export type UploadProgressHandler = (percent: number) => void;
+
 /**
  * Upload a FormData payload (no explicit Content-Type — browser handles boundary).
+ * Uses XMLHttpRequest so callers can report upload progress.
  */
 export async function requestUpload<T = unknown>(
   path: string,
   body: FormData,
   options: RequestInit = {},
+  onProgress?: UploadProgressHandler,
 ): Promise<T> {
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
+  const method = options.method ?? "POST";
 
-  const response = await fetch(url, {
-    method: "POST",
-    ...options,
-    headers: { ...headers, ...(options.headers as Record<string, string>) },
-    body,
-  });
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
 
-  if (await check503ForSetupRequired(path, response)) {
-    throw new Error("Setup required — redirecting to /setup");
-  }
-
-  await throwIfUnauthorized(path, response);
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    let detail = `Upload failed: ${response.status}`;
-    try {
-      const json = JSON.parse(text);
-      if (json.detail) detail = json.detail;
-    } catch {
-      if (text) detail = text;
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value);
     }
-    throw new Error(detail);
-  }
+    if (options.headers) {
+      const extraEntries =
+        options.headers instanceof Headers
+          ? Array.from(options.headers.entries())
+          : Array.isArray(options.headers)
+          ? options.headers
+          : Object.entries(options.headers);
+      for (const [k, v] of extraEntries) {
+        xhr.setRequestHeader(k, String(v));
+      }
+    }
 
-  return (await response.json()) as T;
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+    }
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        reject(new DOMException("The operation was aborted.", "AbortError"));
+        return;
+      }
+      options.signal.addEventListener(
+        "abort",
+        () => {
+          xhr.abort();
+        },
+        { once: true },
+      );
+    }
+
+    xhr.onload = () => {
+      void (async () => {
+        const status = xhr.status;
+        const responseText = xhr.responseText;
+        const responseHeaders = new Headers();
+        const renewed = xhr.getResponseHeader(ACCESS_TOKEN_RESPONSE_HEADER);
+        if (renewed) {
+          responseHeaders.set(ACCESS_TOKEN_RESPONSE_HEADER, renewed);
+        }
+        const response = new Response(responseText, {
+          status,
+          headers: responseHeaders,
+        });
+
+        if (await check503ForSetupRequired(path, response)) {
+          reject(new Error("Setup required — redirecting to /setup"));
+          return;
+        }
+
+        try {
+          await throwIfUnauthorized(path, response);
+        } catch (err) {
+          reject(err);
+          return;
+        }
+
+        applyRenewedAccessToken(response);
+
+        if (!response.ok) {
+          const text = responseText;
+          let detail = `Upload failed: ${status}`;
+          try {
+            const json = JSON.parse(text) as { detail?: string };
+            if (json.detail) detail = json.detail;
+          } catch {
+            if (text) detail = text;
+          }
+          reject(new Error(detail));
+          return;
+        }
+
+        try {
+          resolve((await response.json()) as T);
+        } catch {
+          reject(new Error("Upload failed: invalid JSON response"));
+        }
+      })();
+    };
+
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.onabort = () =>
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+
+    xhr.send(body);
+  });
 }

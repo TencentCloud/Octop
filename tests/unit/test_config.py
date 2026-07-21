@@ -191,3 +191,63 @@ def test_tls_from_file(tmp_path: Path):
     assert cfg.tls.enabled is True
     assert cfg.tls.mode == "letsencrypt"
     assert cfg.tls.domains == ["a.example.com"]
+
+
+def test_default_timezone_written_on_fresh_config(tmp_path: Path):
+    cfg = load_config(tmp_path / "config.json")
+    assert cfg.default_timezone == "Asia/Shanghai"
+    written = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert written["default_timezone"] == "Asia/Shanghai"
+    assert "cron_timezone" not in written
+
+
+def test_default_timezone_from_file(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"default_timezone": "America/New_York"}))
+    cfg = load_config(cfg_path)
+    assert cfg.default_timezone == "America/New_York"
+
+
+def test_legacy_cron_timezone_key_still_loads(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"cron_timezone": "Europe/Berlin"}))
+    cfg = load_config(cfg_path)
+    assert cfg.default_timezone == "Europe/Berlin"
+
+
+def test_default_timezone_prefers_new_key_over_legacy(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "default_timezone": "UTC",
+                "cron_timezone": "Europe/Berlin",
+            }
+        )
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.default_timezone == "UTC"
+
+
+def test_default_timezone_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OCTOP_DEFAULT_TIMEZONE", "Pacific/Auckland")
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"default_timezone": "UTC"}))
+    cfg = load_config(cfg_path)
+    assert cfg.default_timezone == "Pacific/Auckland"
+
+
+def test_legacy_cron_timezone_env_still_works(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("OCTOP_DEFAULT_TIMEZONE", raising=False)
+    monkeypatch.setenv("OCTOP_CRON_TIMEZONE", "Asia/Tokyo")
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"default_timezone": "UTC"}))
+    cfg = load_config(cfg_path)
+    assert cfg.default_timezone == "Asia/Tokyo"
+
+
+def test_new_timezone_env_wins_over_legacy_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OCTOP_DEFAULT_TIMEZONE", "UTC")
+    monkeypatch.setenv("OCTOP_CRON_TIMEZONE", "Asia/Tokyo")
+    cfg = load_config(tmp_path / "config.json")
+    assert cfg.default_timezone == "UTC"

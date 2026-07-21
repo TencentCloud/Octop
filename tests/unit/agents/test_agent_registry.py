@@ -718,7 +718,7 @@ async def test_on_provider_changed_bootstraps_factory_when_none(
         lambda self: [fake_provider_cfg],
     )
     reload_mock = AsyncMock()
-    monkeypatch.setattr(registry, "_reload_agents_needing_model", reload_mock)
+    monkeypatch.setattr(registry, "_reload_agents", reload_mock)
 
     await registry.on_provider_changed()
 
@@ -748,7 +748,7 @@ async def test_on_provider_changed_reloads_agents_when_factory_bootstraps(
         lambda self: [fake_provider_cfg],
     )
     reload_mock = AsyncMock()
-    monkeypatch.setattr(registry, "reload_all", reload_mock)
+    monkeypatch.setattr(registry, "_reload_agents", reload_mock)
 
     await registry.on_provider_changed()
 
@@ -757,8 +757,8 @@ async def test_on_provider_changed_reloads_agents_when_factory_bootstraps(
 
 
 @pytest.mark.asyncio
-async def test_reload_agents_needing_model_skips_running(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+async def test_impact_ids_needing_model_excludes_running(
+    tmp_path: Path,
 ) -> None:
     services = _make_services(tmp_path)
     services.repos.agent_repo.create(
@@ -773,14 +773,12 @@ async def test_reload_agents_needing_model_skips_running(
         name="Failed",
     )
     services.repos.agent_repo.set_state("failed-one", "failed")
-    fake_hm = _make_fake_hm()
-    registry = _make_registry(services, fake_hm=fake_hm)
-    reload_mock = AsyncMock()
-    monkeypatch.setattr(registry, "_reload_agent", reload_mock)
+    registry = _make_registry(services)
+    services.repos.settings_repo.set_active_model("other", "x")
 
-    await registry._reload_agents_needing_model()
-
-    reload_mock.assert_awaited_once_with("failed-one")
+    ids = registry._provider_reload_impact_ids(provider_name="test-openai")
+    assert "failed-one" in ids
+    assert "running-one" not in ids
 
 
 @pytest.mark.asyncio
@@ -795,7 +793,7 @@ async def test_on_provider_changed_reloads_all_when_factory_ready(
     fake_hm.shared_factory = fake_factory
     registry = _attach_registry(services, fake_hm=fake_hm)
     reload_mock = AsyncMock()
-    monkeypatch.setattr(registry, "reload_all", reload_mock)
+    monkeypatch.setattr(registry, "_reload_agents", reload_mock)
     monkeypatch.setattr(
         "octop.infra.agents.providers.store.ProviderStore.build_harness_configs",
         lambda self: [],

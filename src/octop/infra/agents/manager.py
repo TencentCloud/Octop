@@ -42,9 +42,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Module constants & pure helpers
-# ---------------------------------------------------------------------------
+# Bounded parallelism for awaited provider/active-model reload batches.
+_PROVIDER_RELOAD_CONCURRENCY = 6
 
 # harness-memory builds SQLite table names as ``{namespace}_*``. The namespace
 # must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
@@ -568,9 +567,11 @@ class AgentManager:
         await self._reload_agent(agent_id)
 
     async def reload_all(self) -> None:
-        """Rebuild harness runtime for every enabled agent."""
-        for row in self._repos.agent_repo.list_all(include_disabled=False):
-            await self._reload_agent(row.agent_id)
+        """Rebuild harness runtime for every enabled agent (bounded parallel)."""
+        agent_ids = [
+            row.agent_id for row in self._repos.agent_repo.list_all(include_disabled=False)
+        ]
+        await self._reload_agents(agent_ids)
 
     def reload_harness_agents(self) -> None:
         """Rebuild harness agents in place (e.g. after tool-guard rules changed on disk).
@@ -580,8 +581,69 @@ class AgentManager:
         if self._harness_manager is not None:
             self._harness_manager.rebuild_all_agents()
 
-    async def on_provider_changed(self) -> None:
-        """Called after any provider CRUD. Syncs harness factory and restarts blocked agents."""
+    def _agent_uses_auto_default(self, row: AgentRow) -> bool:
+        cfg = self.get_config(row.agent_id)
+        return self._providers.resolve_explicit_default_model(row, cfg) is None
+
+    def _provider_reload_impact_ids(
+        self,
+        *,
+        provider_name: str | None = None,
+        active_model_changed: bool = False,
+    ) -> list[str]:
+        """Agent IDs that must be rebuilt after a provider / active-model change."""
+        rows = self._repos.agent_repo.list_all(include_disabled=False)
+        if provider_name is None and not active_model_changed:
+            return [row.agent_id for row in rows]
+
+        enabled_ids = {row.agent_id for row in rows}
+        impact: set[str] = set()
+        include_auto = active_model_changed
+        if provider_name and not include_auto:
+            active_name, _ = self._repos.settings_repo.get_active_model()
+            include_auto = active_name == provider_name
+
+        for row in rows:
+            if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD or (
+                include_auto and self._agent_uses_auto_default(row)
+            ):
+                impact.add(row.agent_id)
+
+        if provider_name:
+            for ref in self.find_agents_using_provider(provider_name):
+                aid = ref.get("agent_id")
+                if isinstance(aid, str) and aid in enabled_ids:
+                    impact.add(aid)
+
+        return sorted(impact)
+
+    async def _reload_agents(self, agent_ids: list[str]) -> None:
+        """Reload agents concurrently with a fixed concurrency cap."""
+        if not agent_ids:
+            return
+        sem = asyncio.Semaphore(_PROVIDER_RELOAD_CONCURRENCY)
+
+        async def _one(agent_id: str) -> None:
+            async with sem:
+                try:
+                    await self._reload_agent(agent_id)
+                except Exception:
+                    logger.exception("Parallel reload failed for agent %s", agent_id)
+
+        await asyncio.gather(*(_one(agent_id) for agent_id in agent_ids))
+
+    async def on_provider_changed(
+        self,
+        *,
+        provider_name: str | None = None,
+        active_model_changed: bool = False,
+    ) -> None:
+        """Sync harness factory from DB, then reload impacted agents (awaited).
+
+        When *provider_name* or *active_model_changed* is set, only the impact set
+        is rebuilt. With neither set (backup restore, OAuth, unknown), all enabled
+        agents are rebuilt in parallel.
+        """
         if self._harness_manager is None:
             return
         providers = self._providers.build_harness_configs()
@@ -590,8 +652,14 @@ class AgentManager:
             providers,
             shared_factory=self._harness_manager.shared_factory,
         )
-        if self._harness_manager.shared_factory is not None:
-            await self.reload_all()
+        if self._harness_manager.shared_factory is None:
+            return
+        await self._reload_agents(
+            self._provider_reload_impact_ids(
+                provider_name=provider_name,
+                active_model_changed=active_model_changed,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Connectors & MCP — OAuth refresh and pre-chat tool loading
@@ -1201,12 +1269,6 @@ class AgentManager:
                 error=format_agent_start_error(exc),
             )
 
-    async def _reload_agents_needing_model(self) -> None:
-        """Restart agents that never came up because models were configured later."""
-        for row in self._repos.agent_repo.list_all(include_disabled=False):
-            if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD:
-                await self._reload_agent(row.agent_id)
-
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""
         self._reload_dirty.add(agent_id)
@@ -1388,7 +1450,7 @@ class AgentManager:
             acp_runners=acp_config.runners,
             acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
             skills_disabled=frozenset(skills_disabled_set(cfg)),
-            default_timezone=self._config.cron_timezone,
+            default_timezone=self._config.default_timezone,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
         )
         global_policy = self._security.harness_policy()

@@ -23,6 +23,13 @@ import {
   memoryDashboardApi,
   type EpisodeItem,
 } from "../../../api/modules/memoryDashboard";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import {
+  calendarDaysAgo,
+  formatServerHourMinute,
+  formatServerIsoDateTime,
+  formatServerYmd,
+} from "../../../utils/formatMessageTime";
 
 const PAGE_SIZE = 20;
 
@@ -32,6 +39,7 @@ interface Props {
 
 export default function EpisodesList({ agentId }: Props) {
   const { t } = useTranslation();
+  const timeZone = useServerTimezone();
   const [items, setItems] = useState<EpisodeItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -58,7 +66,7 @@ export default function EpisodesList({ agentId }: Props) {
   }, [agentId, load]);
 
   // Group by date while preserving order; consecutive same-day records share one section.
-  const groups = useMemo(() => groupByDay(items), [items]);
+  const groups = useMemo(() => groupByDay(items, timeZone), [items, timeZone]);
 
   return (
     <Card size="small">
@@ -134,7 +142,7 @@ export default function EpisodesList({ agentId }: Props) {
                           marginBottom: 4,
                         }}
                       >
-                        {fmtHourMinute(ep.occurred_at)}
+                        {formatServerHourMinute(ep.occurred_at, timeZone)}
                       </div>
                       <IntensityBar
                         intensity={ep.intensity}
@@ -209,7 +217,7 @@ export default function EpisodesList({ agentId }: Props) {
               type="secondary"
               style={{ fontSize: 12, marginTop: 12 }}
             >
-              发生于 {new Date(selected.occurred_at).toLocaleDateString()}
+              发生于 {formatServerIsoDateTime(selected.occurred_at, timeZone)}
             </Typography.Paragraph>
           </div>
         ) : null}
@@ -254,20 +262,15 @@ interface DayGroup {
   items: EpisodeItem[];
 }
 
-function groupByDay(items: EpisodeItem[]): DayGroup[] {
-  const today = startOfDay(new Date());
+function groupByDay(items: EpisodeItem[], timeZone: string): DayGroup[] {
   const groups: DayGroup[] = [];
   for (const it of items) {
-    const d = new Date(it.occurred_at);
-    const dayStart = startOfDay(d);
-    const diffDays = Math.floor(
-      (today.getTime() - dayStart.getTime()) / (24 * 3600 * 1000),
-    );
+    const diffDays = calendarDaysAgo(it.occurred_at, timeZone);
     let label: string;
     if (diffDays === 0) label = "今天";
     else if (diffDays === 1) label = "昨天";
     else if (diffDays > 1 && diffDays < 7) label = `${diffDays} 天前`;
-    else label = formatDate(d);
+    else label = formatServerYmd(it.occurred_at, timeZone);
 
     const last = groups[groups.length - 1];
     if (last && last.label === label) {
@@ -277,30 +280,6 @@ function groupByDay(items: EpisodeItem[]): DayGroup[] {
     }
   }
   return groups;
-}
-
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function fmtHourMinute(s: string): string {
-  try {
-    const d = new Date(s);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes(),
-    ).padStart(2, "0")}`;
-  } catch {
-    return "";
-  }
 }
 
 function IntensityBar({

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Send,
   Square,
-  Plus,
+  MessageSquarePlus,
   Paperclip,
   Zap,
   Link2,
@@ -669,7 +669,7 @@ export default function ChatInputActionsRow({
               onClick={onNewChat}
               type="button"
             >
-              <Plus size={18} />
+              <MessageSquarePlus size={16} strokeWidth={1.75} />
             </button>
           </Tooltip>
         ) : (
@@ -680,7 +680,7 @@ export default function ChatInputActionsRow({
                 onClick={onNewChat}
                 type="button"
               >
-                <Plus size={18} />
+                <MessageSquarePlus size={16} strokeWidth={1.75} />
               </button>
             </Tooltip>
             <Tooltip title={t("chat.polish.tooltip")} mouseEnterDelay={0.4}>

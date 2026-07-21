@@ -7,10 +7,16 @@ from pathlib import Path
 import httpx
 import pytest
 from tests.support.app import write_octop_config
-from tests.support.auth import bootstrap_admin
+from tests.support.auth import bearer, bootstrap_admin, login
 
 from octop.api.app import build_app
-from octop.api.deps import is_jwt_exempt_path
+from octop.api.deps import (
+    ACCESS_TOKEN_RESPONSE_HEADER,
+    decode_token,
+    is_jwt_exempt_path,
+    maybe_sliding_renew_token,
+    sign_token,
+)
 from octop.infra.server import OctopServer
 
 
@@ -68,3 +74,60 @@ async def test_middleware_allows_api_docs_without_token(tmp_path: Path) -> None:
             assert spec.status_code == 200
     finally:
         await srv.stop()
+
+
+async def test_fresh_token_does_not_sliding_renew(client) -> None:
+    c, _srv, home = client
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    r = await c.get("/api/auth/me", headers=bearer(token))
+    assert r.status_code == 200
+    assert ACCESS_TOKEN_RESPONSE_HEADER not in r.headers
+
+
+async def test_near_expiry_token_gets_sliding_renew(client) -> None:
+    c, srv, home = client
+    await bootstrap_admin(c, home)
+    assert srv.user_manager is not None
+    assert srv.services is not None
+    user = srv.user_manager.get("admin")
+    assert user is not None
+    secret = srv.services.secret_repo.get("jwt")
+    assert secret is not None
+    # Remaining life (~60s) is far below default TTL/3 (~8h) → renew.
+    short = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role.value,
+        ttl_seconds=60,
+    )
+    r = await c.get("/api/auth/me", headers=bearer(short))
+    assert r.status_code == 200
+    renewed = r.headers.get(ACCESS_TOKEN_RESPONSE_HEADER)
+    assert renewed
+    assert renewed != short
+    payload = decode_token(secret, renewed)
+    assert int(payload["exp"]) - int(payload["iat"]) == srv.services.config.access_token_ttl_seconds
+
+
+async def test_maybe_sliding_renew_helper_threshold(client) -> None:
+    _c, srv, home = client
+    await bootstrap_admin(_c, home)
+    assert srv.user_manager is not None
+    assert srv.services is not None
+    user = srv.user_manager.get("admin")
+    assert user is not None
+    secret = srv.services.secret_repo.get("jwt")
+    assert secret is not None
+    ttl = srv.services.config.access_token_ttl_seconds
+    fresh = sign_token(
+        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
+    )
+    assert maybe_sliding_renew_token(srv, fresh, user) is None
+    short = sign_token(
+        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=60
+    )
+    renewed = maybe_sliding_renew_token(srv, short, user)
+    assert renewed is not None
+    assert renewed != short

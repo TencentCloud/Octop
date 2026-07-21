@@ -26,10 +26,16 @@ type CronJob = CronJobSpecOutput;
 interface JobDetailDrawerProps {
   open: boolean;
   job: CronJob | null;
+  timeZone: string;
   onClose: () => void;
 }
 
-export function JobDetailDrawer({ open, job, onClose }: JobDetailDrawerProps) {
+export function JobDetailDrawer({
+  open,
+  job,
+  timeZone,
+  onClose,
+}: JobDetailDrawerProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -140,6 +146,7 @@ export function JobDetailDrawer({ open, job, onClose }: JobDetailDrawerProps) {
             typeof meta.octop_last_run_at === "number"
               ? meta.octop_last_run_at
               : null,
+            timeZone,
           )}
         </Descriptions.Item>
         <Descriptions.Item label={t("cronJobs.col.lastStatus")}>

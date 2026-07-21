@@ -56,6 +56,17 @@ class ProviderPatchBody(BaseModel):
     enabled: bool | None = None
 
 
+# Fields that affect harness factory / agent runtime when patched.
+_PROVIDER_REHYDRATE_FIELDS = frozenset(
+    {"kind", "base_url", "api_key", "extra_json", "models", "enabled"}
+)
+
+
+def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
+    """True when the patch touches fields that require ``on_provider_changed``."""
+    return bool(body.model_fields_set & _PROVIDER_REHYDRATE_FIELDS)
+
+
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
 
@@ -162,7 +173,7 @@ async def set_active_model(
     """Set the globally preferred model used when no agent override applies."""
     server.services.settings_repo.set_active_model(body.provider_name, body.model)
     if server.app_runtime is not None:
-        await server.app_runtime.agent_registry.reload_all()
+        await server.app_runtime.agent_registry.on_provider_changed(active_model_changed=True)
     return {"provider_name": body.provider_name, "model": body.model}
 
 
@@ -215,7 +226,9 @@ async def codex_oauth_callback(
         )
         pid = apply_codex_credentials(server.services, server.services.paths, cred)
         if server.app_runtime is not None:
-            await server.app_runtime.agent_registry.on_provider_changed()
+            await server.app_runtime.agent_registry.on_provider_changed(
+                provider_name=CODEX_PROVIDER_NAME,
+            )
         settings.set(
             f"codex_oauth.pending.{state_id}",
             json.dumps(
@@ -275,7 +288,7 @@ async def admin_create_provider(
         note=body.note,
     )
     if server.app_runtime:
-        await server.app_runtime.agent_registry.on_provider_changed()
+        await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
     return _row_to_dict(server.services.provider_repo.get(pid))
 
 
@@ -302,8 +315,8 @@ async def admin_patch_provider(
         note=body.note,
         enabled=body.enabled,
     )
-    if server.app_runtime:
-        await server.app_runtime.agent_registry.on_provider_changed()
+    if server.app_runtime and _patch_requires_provider_rehydrate(body):
+        await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
     return _row_to_dict(server.services.provider_repo.get(provider_id))
 
 
@@ -323,9 +336,10 @@ async def admin_delete_provider(
             f"provider {row.name!r} is referenced by {len(refs)} agent(s)",
             details={"agents": refs},
         )
+    name = row.name
     server.services.provider_repo.delete(provider_id)
     if server.app_runtime:
-        await server.app_runtime.agent_registry.on_provider_changed()
+        await server.app_runtime.agent_registry.on_provider_changed(provider_name=name)
 
 
 @admin_router.post("/test-draft", summary="Test unsaved provider draft")
@@ -407,7 +421,9 @@ async def codex_oauth_logout(
     if row is not None:
         server.services.provider_repo.update(row.id, api_key=None)
         if server.app_runtime is not None:
-            await server.app_runtime.agent_registry.on_provider_changed()
+            await server.app_runtime.agent_registry.on_provider_changed(
+                provider_name=CODEX_PROVIDER_NAME,
+            )
 
 
 @admin_router.post("/{provider_id}/test")

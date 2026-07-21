@@ -124,7 +124,7 @@ export function useWelcomeQuickCardsLayout(quickCards: WelcomeQuickCard[]) {
       ro.disconnect();
       window.removeEventListener("resize", compute);
     };
-  }, [isMobile, quickCards.length]);
+  }, [isMobile, quickCards.length, autoHideMascot]);
 
   useEffect(() => {
     setExpanded(false);

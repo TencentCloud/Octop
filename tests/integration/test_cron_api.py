@@ -174,6 +174,13 @@ async def test_cron_settings_returns_timezone(env: Any) -> None:
     assert r.json() == {"timezone": "Asia/Shanghai"}
 
 
+async def test_settings_timezone_returns_default(env: Any) -> None:
+    c, _srv, alice_auth, _bob_auth, _aid = env
+    r = await c.get("/api/settings/timezone", headers=alice_auth)
+    assert r.status_code == 200
+    assert r.json() == {"timezone": "Asia/Shanghai"}
+
+
 async def test_run_now_unknown_cron_returns_404(env: Any) -> None:
     c, _srv, alice_auth, _bob_auth, aid = env
     r = await c.post(

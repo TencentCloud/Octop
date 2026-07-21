@@ -27,6 +27,14 @@ export interface ActiveVoice {
   tts: string;
 }
 
+function recordingFilename(type: string): string {
+  const lower = type.toLowerCase();
+  if (lower.includes("mp4")) return "recording.m4a";
+  if (lower.includes("ogg")) return "recording.ogg";
+  if (lower.includes("wav")) return "recording.wav";
+  return "recording.webm";
+}
+
 export const voiceApi = {
   getPresets: () => request<VoicePreset[]>("/voice/presets"),
   getProviders: () => request<VoiceProviderRow[]>("/voice/providers"),
@@ -38,14 +46,11 @@ export const voiceApi = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  transcribe: (audio: Blob, language = "zh-CN") => {
+  transcribe: (audio: Blob, language = "zh-CN", provider?: string) => {
     const form = new FormData();
-    form.append(
-      "audio",
-      audio,
-      audio.type.includes("webm") ? "recording.webm" : "recording.wav",
-    );
+    form.append("audio", audio, recordingFilename(audio.type));
     form.append("language", language);
+    if (provider) form.append("provider", provider);
     return requestUpload<{ text: string; confidence?: number | null }>(
       "/voice/stt",
       form,

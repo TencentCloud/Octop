@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatMessageTime, formatServerDateTime } from "./formatMessageTime";
+import {
+  calendarDaysAgo,
+  formatMessageTime,
+  formatServerDateTime,
+  formatServerHourMinute,
+  formatServerIsoDateTime,
+  formatServerYmd,
+} from "./formatMessageTime";
 
 function hourInZone(tsMs: number, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -32,5 +39,38 @@ describe("formatServerDateTime", () => {
     const epochSec = Date.UTC(2026, 6, 9, 7, 16, 37) / 1000;
     expect(hourInZone(epochSec * 1000, "Asia/Shanghai")).toBe(15);
     expect(formatServerDateTime(epochSec, "Asia/Shanghai")).toContain("2026");
+  });
+});
+
+describe("formatServerIsoDateTime", () => {
+  it("formats ISO strings in the configured timezone", () => {
+    const iso = "2026-07-09T07:16:37+00:00";
+    const ts = Date.parse(iso);
+    expect(hourInZone(ts, "Asia/Shanghai")).toBe(15);
+    expect(hourInZone(ts, "UTC")).toBe(7);
+    expect(formatServerIsoDateTime(iso, "Asia/Shanghai")).toBeTruthy();
+    expect(formatServerIsoDateTime(iso, "UTC")).toBeTruthy();
+  });
+
+  it("returns em dash for empty input", () => {
+    expect(formatServerIsoDateTime("", "UTC")).toBe("—");
+  });
+});
+
+describe("formatServerYmd / formatServerHourMinute / calendarDaysAgo", () => {
+  it("formats calendar parts in Asia/Shanghai", () => {
+    // 2026-07-09 16:30 CST = 08:30 UTC
+    const iso = "2026-07-09T08:30:00Z";
+    expect(formatServerYmd(iso, "Asia/Shanghai")).toBe("2026-07-09");
+    expect(formatServerHourMinute(iso, "Asia/Shanghai")).toBe("16:30");
+    expect(formatServerHourMinute(iso, "UTC")).toBe("08:30");
+  });
+
+  it("computes calendar day distance in the configured zone", () => {
+    const now = new Date("2026-07-10T02:00:00Z");
+    expect(calendarDaysAgo("2026-07-09T08:00:00Z", "Asia/Shanghai", now)).toBe(
+      1,
+    );
+    expect(calendarDaysAgo("2026-07-09T08:00:00Z", "UTC", now)).toBe(1);
   });
 });

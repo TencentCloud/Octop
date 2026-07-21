@@ -257,6 +257,20 @@ i18n/
 
 Do **not** use gettext (`.po` files). Do **not** embed user-visible English in `infra/` when a backend i18n key exists. Expert catalog (`infra/agents/experts/`) still uses embedded `label_zh`/`label_en` in source data — out of scope unless explicitly migrating that catalog.
 
+**Timezone (config.json):**
+
+User-facing datetime display and cron/scheduling defaults MUST use the server timezone from `config.json` → `default_timezone` (env override `OCTOP_DEFAULT_TIMEZONE`; legacy `cron_timezone` / `OCTOP_CRON_TIMEZONE` still accepted) — not the browser's local timezone.
+
+| Layer | Entry |
+|-------|--------|
+| Config | `OctopConfig.default_timezone` in `config.py` |
+| API | `GET /api/settings/timezone` → `{ "timezone": "…" }` (`GET /api/cron/settings` remains a compat alias) |
+| Dashboard | `useServerTimezone()`; format with `formatServerDateTime` / `formatServerIsoDateTime` / `formatMessageTime(..., timeZone)` in `dashboard/src/utils/formatMessageTime.ts` |
+
+**Do not** use bare `toLocaleString()` / `toLocaleDateString()` / `toLocaleTimeString()` for timestamps users see without passing the server `timeZone`. Number grouping via `Number#toLocaleString()` (e.g. download counts) is fine.
+
+**Language:** Keep the existing locale resolution (user preference → `Accept-Language` / dashboard i18n → channel hints → `DEFAULT_LOCALE`). Language is **not** a `config.json` key — do not add one unless explicitly requested.
+
 **Workspace storage:** `infra/backend/resolver.py` resolves harness `BackendProtocol` from agent config; remote backends use `probe.py` for fast tree listing.
 
 **Connectors:** `infra/connectors/` — catalog, OAuth registry, MCP gateway; HTTP surface in `api/routers/connectors.py`.
@@ -312,6 +326,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | How does the frontend call the API? | `dashboard/src/api/request.ts` |
 | Internationalization (backend) | `src/octop/i18n/`, `infra/utils/locale.py`, `api/routers/i18n.py` |
 | Internationalization (dashboard) | `dashboard/src/locales/`, `dashboard/src/i18n.ts`, `dashboard/src/utils/apiError.ts` |
+| Server timezone (config.json) | `default_timezone` in `config.py`; `GET /api/settings/timezone`; `dashboard/src/hooks/useServerTimezone.ts`; `dashboard/src/utils/formatMessageTime.ts` |
 | Test layout & shared helpers | `tests/support/` (`fakes`, `auth`, `http`, `scenarios`, `app`), `tests/integration/conftest.py`, `tests/unit/{db,cron,gateway,agents,api,cli}/` |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |

@@ -45,6 +45,8 @@ import { workspaceApi } from "../../../../api/modules/workspace";
 import { useAgent } from "../../../../context/AgentContext";
 import { useIsMobile } from "../../../../hooks/useIsMobile";
 import { useHorizontalResize } from "../../../../hooks/useHorizontalResize";
+import { useServerTimezone } from "../../../../hooks/useServerTimezone";
+import { formatServerIsoDateTime } from "../../../../utils/formatMessageTime";
 import { isAgentChatReady } from "../../../../utils/agentError";
 import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
@@ -81,11 +83,9 @@ function pathFromKey(key: string): TreeKey {
   return { is_dir: key[0] === "d", path: key.slice(sep + 1) };
 }
 
-function formatModified(ts?: string): string {
+function formatModified(ts: string | undefined, timeZone: string): string {
   if (!ts) return "—";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleString();
+  return formatServerIsoDateTime(ts, timeZone);
 }
 
 function sortFileInfos(infos: FileInfo[]): FileInfo[] {
@@ -257,6 +257,7 @@ export default function WorkspaceDrawer({
 }: WorkspaceDrawerProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const timeZone = useServerTimezone();
   const { agents } = useAgent();
   const activeAgent = agents.find((a) => a.agent_id === agentId) ?? null;
   const workspaceReady = isAgentChatReady(activeAgent?.state);
@@ -1335,7 +1336,7 @@ export default function WorkspaceDrawer({
                                   : formatSize(entry.size)}
                               </span>
                               <span className={styles.dirListingMeta}>
-                                {formatModified(entry.modified_at)}
+                                {formatModified(entry.modified_at, timeZone)}
                               </span>
                             </button>
                           );

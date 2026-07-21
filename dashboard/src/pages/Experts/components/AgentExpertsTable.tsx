@@ -1,5 +1,11 @@
 // dashboard/src/pages/Experts/components/AgentExpertsTable.tsx
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Popconfirm, Switch, Table, Tag, Tooltip, message } from "antd";
@@ -75,6 +81,30 @@ export default function AgentExpertsTable({
   const [mbtiCatalogOpen, setMbtiCatalogOpen] = useState(false);
   const [mbtiAgentId, setMbtiAgentId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  /** Keep pagination in view: body scrolls inside remaining viewport height. */
+  const [scrollY, setScrollY] = useState(360);
+
+  useLayoutEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const top = el.getBoundingClientRect().top;
+      // Table header (~55) + pagination (~56) + bottom padding (~16).
+      const next = Math.floor(window.innerHeight - top - 127);
+      setScrollY(Math.max(200, next));
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(document.documentElement);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [agents.length]);
 
   const openMbtiCatalog = useCallback((agentId: string) => {
     setMbtiAgentId(agentId);
@@ -430,19 +460,20 @@ export default function AgentExpertsTable({
 
   return (
     <>
-      <Table<OctopAgent>
-        className={styles.expertsTable}
-        rowKey="agent_id"
-        dataSource={agents}
-        columns={columns}
-        scroll={{ x: 1304 }}
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          pageSizeOptions: ["10", "20", "50"],
-          showTotal: (total) => t("experts.totalAgents", { count: total }),
-        }}
-      />
+      <div ref={tableWrapRef} className={styles.expertsTable}>
+        <Table<OctopAgent>
+          rowKey="agent_id"
+          dataSource={agents}
+          columns={columns}
+          scroll={{ x: 1304, y: scrollY }}
+          pagination={{
+            defaultPageSize: 10,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "20", "50"],
+            showTotal: (total) => t("experts.totalAgents", { count: total }),
+          }}
+        />
+      </div>
       <WorkspaceDrawer
         agentId={workspaceAgentId ?? ""}
         open={workspaceAgentId !== null}

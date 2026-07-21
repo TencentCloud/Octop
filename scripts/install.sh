@@ -98,7 +98,8 @@ Octop 安装脚本 (macOS / Linux)
   HARNESS_AGENT_REPO      harness-agent 仓库（默认从 OCTOP_REPO 推导）
   HARNESS_GATEWAY_REPO    harness-gateway 仓库（默认从 OCTOP_REPO 推导）
   HARNESS_BROWSER_REPO    harness-browser 仓库（源码安装时使用）
-  PLAYWRIGHT_DOWNLOAD_HOST  Playwright 下载镜像（可选，用于加速）
+  PLAYWRIGHT_DOWNLOAD_HOST  Playwright 下载镜像（可选；未设时自动：npmmirror → 官方）
+  PLAYWRIGHT_INSTALL_TIMEOUT  单镜像下载超时秒数（默认 600）
 
 说明:
   本脚本在隔离虚拟环境（~/.octop/venv）中安装，不会影响系统 Python。
@@ -296,33 +297,75 @@ _ensure_rustc() {
     return 1
 }
 
+# 以 root 或免密 sudo 执行包管理命令（CentOS 常用 root 登录，不可强制 sudo）
+_sudo_nopass() {
+    command -v sudo &>/dev/null && sudo -n true 2>/dev/null
+}
+
+_run_as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif _sudo_nopass; then
+        sudo "$@"
+    else
+        return 1
+    fi
+}
+
+# 当前将用于编译扩展的 Python 是否带有 Python.h（uv 自带或系统 python3-dev）
+_python_dev_headers_ok() {
+    local py=""
+    if [ -x "${OCTOP_VENV:-}/bin/python" ]; then
+        py="$OCTOP_VENV/bin/python"
+    elif command -v python3 &>/dev/null; then
+        py="$(command -v python3)"
+    else
+        return 1
+    fi
+    "$py" -c 'import sysconfig, os
+p = sysconfig.get_path("include")
+raise SystemExit(0 if p and os.path.isfile(os.path.join(p, "Python.h")) else 1)' 2>/dev/null
+}
+
+# gcc + Python 头文件：evdev/pynput 等在无匹配 wheel 时需本地编译。
+# 注意：仅有 gcc、缺 python3-dev 时（常见于 Ubuntu 云镜像）也会失败，不可因已有 gcc 而跳过。
 _ensure_c_build_tools() {
+    local have_cc=0 have_pyh=0
     if command -v cc &>/dev/null || command -v gcc &>/dev/null; then
+        have_cc=1
+    fi
+    if _python_dev_headers_ok; then
+        have_pyh=1
+    fi
+    if [ "$have_cc" -eq 1 ] && [ "$have_pyh" -eq 1 ]; then
         return 0
     fi
-    info "正在安装 C 编译工具（gcc/make）..."
+
+    info "正在安装本地编译依赖（gcc / Python 开发头文件）..."
     if command -v apt-get &>/dev/null; then
-        if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-            sudo apt-get update -qq 2>/dev/null || true
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential 2>/dev/null || true
-        elif [ "$(id -u)" -eq 0 ]; then
-            apt-get update -qq 2>/dev/null || true
-            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential 2>/dev/null || true
-        fi
-    elif command -v yum &>/dev/null; then
-        if [ "$(id -u)" -eq 0 ]; then
-            yum install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
-        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-            sudo yum install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
-        fi
+        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>/dev/null || true
+        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            build-essential python3-dev 2>/dev/null || true
     elif command -v dnf &>/dev/null; then
-        if [ "$(id -u)" -eq 0 ]; then
-            dnf install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
-        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-            sudo dnf install -y gcc gcc-c++ make openssl-devel 2>/dev/null || true
-        fi
+        _run_as_root dnf install -y \
+            gcc gcc-c++ make openssl-devel libffi-devel python3-devel 2>/dev/null || true
+    elif command -v yum &>/dev/null; then
+        _run_as_root yum install -y \
+            gcc gcc-c++ make openssl-devel libffi-devel python3-devel 2>/dev/null || true
     fi
-    command -v cc &>/dev/null || command -v gcc &>/dev/null
+
+    have_cc=0
+    if command -v cc &>/dev/null || command -v gcc &>/dev/null; then
+        have_cc=1
+    fi
+    have_pyh=0
+    if _python_dev_headers_ok; then
+        have_pyh=1
+    fi
+    [ "$have_cc" -eq 1 ] || return 1
+    # 系统 python3-devel 可能与 uv 拉取的 Python 小版本不一致；uv 自带解释器通常自带头文件。
+    # 若仍缺失，后续源码编译可能失败，由 pip 错误提示即可。
+    return 0
 }
 
 _cxx_major() {
@@ -345,48 +388,78 @@ _fix_centos7_scl_repos() {
 }
 
 _ensure_modern_cxx() {
-    # playwright → greenlet 等需较新 C++；CentOS 7 自带 gcc 4.8 不够
+    # playwright → greenlet、numpy 2.x 等需较新 C++；CentOS 7 自带 gcc 4.8 不够
+    # numpy>=2.5 要求 GCC >= 10.3，故优先 devtoolset-11
     local major
     major="$(_cxx_major)"
-    if [ -n "$major" ] && [ "$major" -ge 7 ] 2>/dev/null; then
+    if [ -n "$major" ] && [ "$major" -ge 10 ] 2>/dev/null; then
         info "C++ 编译器就绪: $(${CXX:-g++} --version 2>/dev/null | head -n1)"
         return 0
     fi
 
     if ! command -v yum &>/dev/null; then
-        warn "系统 gcc 过旧且无 yum，greenlet/playwright 源码编译可能失败"
+        warn "系统 gcc 过旧且无 yum，greenlet/numpy 源码编译可能失败"
         return 1
     fi
 
-    info "系统 gcc 过旧（需 >=7），正在安装 devtoolset-9..."
-    local yum_cmd=(yum)
-    if [ "$(id -u)" -ne 0 ]; then
-        if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-            yum_cmd=(sudo yum)
-        else
-            warn "需要 root/sudo 安装 devtoolset-9"
-            return 1
-        fi
+    if [ "$(id -u)" -ne 0 ] && ! _sudo_nopass; then
+        warn "需要 root/sudo 安装 devtoolset"
+        return 1
     fi
 
-    "${yum_cmd[@]}" install -y centos-release-scl 2>/dev/null || true
+    _run_as_root yum install -y centos-release-scl 2>/dev/null || true
     _fix_centos7_scl_repos
-    if ! "${yum_cmd[@]}" install -y devtoolset-9-gcc devtoolset-9-gcc-c++ make 2>/dev/null; then
-        warn "devtoolset-9 安装失败，greenlet/playwright 可能无法编译"
+
+    local dts enable_file=""
+    for dts in 11 10 9; do
+        info "系统 gcc 过旧（numpy 需 >=10.3），正在安装 devtoolset-${dts}..."
+        if _run_as_root yum install -y \
+            "devtoolset-${dts}-gcc" "devtoolset-${dts}-gcc-c++" make 2>/dev/null; then
+            if [ -f "/opt/rh/devtoolset-${dts}/enable" ]; then
+                enable_file="/opt/rh/devtoolset-${dts}/enable"
+                break
+            fi
+        fi
+        warn "devtoolset-${dts} 安装失败，尝试下一版本..."
+    done
+
+    if [ -z "$enable_file" ]; then
+        warn "未能安装可用的 devtoolset，greenlet/numpy 可能无法编译"
         return 1
     fi
 
-    if [ -f /opt/rh/devtoolset-9/enable ]; then
-        # enable 脚本会读未定义的 MANPATH；临时关闭 nounset
-        set +u
-        # shellcheck disable=SC1091
-        . /opt/rh/devtoolset-9/enable
-        set -u
-        export CC=gcc CXX=g++
-        info "已启用 devtoolset-9: $(g++ --version 2>/dev/null | head -n1)"
+    # enable 脚本会读未定义的 MANPATH；临时关闭 nounset
+    set +u
+    # shellcheck disable=SC1091
+    . "$enable_file"
+    set -u
+    export CC=gcc CXX=g++
+    info "已启用 $(basename "$(dirname "$enable_file")"): $(g++ --version 2>/dev/null | head -n1)"
+    major="$(_cxx_major)"
+    if [ -n "$major" ] && [ "$major" -ge 10 ] 2>/dev/null; then
         return 0
     fi
-    return 1
+    # gcc 9 仍可能编 greenlet，但编不了新版 numpy
+    warn "当前 g++ 主版本为 ${major:-?}（numpy 2.5+ 需 >=10）"
+    return 0
+}
+
+_ensure_old_glibc_image_libs() {
+    # Pillow 等在无 manylinux_2_28 wheel 时需源码编译，依赖 jpeg/zlib/freetype 头文件
+    info "正在安装图像库开发包（Pillow 源码编译需要）..."
+    if command -v apt-get &>/dev/null; then
+        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            libjpeg-dev zlib1g-dev libfreetype6-dev libtiff-dev libwebp-dev \
+            liblcms2-dev libopenjp2-7-dev 2>/dev/null || true
+    elif command -v dnf &>/dev/null; then
+        _run_as_root dnf install -y \
+            libjpeg-turbo-devel zlib-devel freetype-devel libtiff-devel \
+            libwebp-devel lcms2-devel openjpeg2-devel 2>/dev/null || true
+    elif command -v yum &>/dev/null; then
+        _run_as_root yum install -y \
+            libjpeg-turbo-devel zlib-devel freetype-devel libtiff-devel \
+            libwebp-devel lcms2-devel openjpeg2-devel 2>/dev/null || true
+    fi
 }
 
 _ensure_old_glibc_build_toolchain() {
@@ -398,6 +471,7 @@ _ensure_old_glibc_build_toolchain() {
     ver="$(_glibc_major_minor)"
     warn "检测到 glibc ${ver}（< 2.28，如 CentOS 7）：部分依赖需本地编译"
     _ensure_c_build_tools || warn "未找到 gcc，源码编译可能失败"
+    _ensure_old_glibc_image_libs
     _ensure_modern_cxx || warn "未启用新版 g++，playwright 依赖（greenlet）可能编译失败"
     if ! _ensure_rustc; then
         die "当前系统 glibc=$ver，无法使用预编译 wheel，且 Rust 安装失败。请升级到 CentOS/RHEL 8+、Ubuntu 20.04+，或手动安装 rustup 后重试。"
@@ -414,6 +488,10 @@ fi
 [ -x "$OCTOP_VENV/bin/python" ] || die "虚拟环境创建失败"
 info "Python 环境就绪 ($("$OCTOP_VENV/bin/python" --version))"
 
+# Linux 上始终确保可编译本地扩展（Ubuntu 缺 python3-dev、CentOS 缺 python3-devel 等）
+if [ "$OS" = "Linux" ]; then
+    _ensure_c_build_tools || warn "未完整安装 gcc/Python 头文件，若依赖需源码编译可能失败"
+fi
 _ensure_old_glibc_build_toolchain
 
 # ── 步骤 3: 安装 Octop ───────────────────────────────────────────────────────
@@ -550,11 +628,7 @@ _install_playwright_system_deps() {
             return
         fi
         # 回退：手动安装（Ubuntu 24+ 部分包名为 *t64）
-        local _apt="apt-get"
-        if command -v sudo &>/dev/null && [ "$(id -u)" -ne 0 ]; then
-            _apt="sudo apt-get"
-        fi
-        $_apt update 2>/dev/null || true
+        _run_as_root apt-get update 2>/dev/null || true
         # 逐包尝试，兼容 Ubuntu 22/24 包名差异
         local pkg
         for pkg in \
@@ -567,7 +641,7 @@ _install_playwright_system_deps() {
             libatk-bridge2.0-0t64 libatk-bridge2.0-0 \
             libgdk-pixbuf-2.0-0 libgdk-pixbuf2.0-0 \
             ; do
-            $_apt install -y "$pkg" 2>/dev/null || true
+            _run_as_root apt-get install -y "$pkg" 2>/dev/null || true
         done
         return
     fi
@@ -575,7 +649,7 @@ _install_playwright_system_deps() {
     if command -v dnf &>/dev/null; then
         info "检测到 dnf 包管理器 (Fedora/RHEL)..."
         info "正在安装 Playwright 系统依赖..."
-        sudo dnf install -y \
+        _run_as_root dnf install -y \
             alsa-lib atk at-spi2-atk cups-libs libdrm libgbm \
             libX11 libXcomposite libXdamage libXext libXfixes libXrandr \
             libxkbcommon nss pango \
@@ -586,7 +660,7 @@ _install_playwright_system_deps() {
     if command -v yum &>/dev/null; then
         info "检测到 yum 包管理器 (CentOS/RHEL)..."
         info "正在安装 Playwright 系统依赖..."
-        sudo yum install -y \
+        _run_as_root yum install -y \
             alsa-lib atk at-spi2-atk cups-libs libdrm libgbm \
             libX11 libXcomposite libXdamage libXext libXfixes libXrandr \
             libxkbcommon nss pango \
@@ -597,7 +671,7 @@ _install_playwright_system_deps() {
     if command -v pacman &>/dev/null; then
         info "检测到 pacman 包管理器 (Arch/Manjaro)..."
         info "正在安装 Playwright 系统依赖..."
-        sudo pacman -S --noconfirm --needed \
+        _run_as_root pacman -S --noconfirm --needed \
             alsa-lib atk at-spi2-atk cups libdrm mesa \
             libx11 libxcomposite libxdamage libxext libxfixes libxrandr \
             libxkbcommon nss pango \
@@ -608,7 +682,7 @@ _install_playwright_system_deps() {
     if command -v zypper &>/dev/null; then
         info "检测到 zypper 包管理器 (openSUSE)..."
         info "正在安装 Playwright 系统依赖..."
-        sudo zypper install -y \
+        _run_as_root zypper install -y \
             alsa libatk-1_0-0 libatk-bridge-2_0-0 libcups2 libdrm2 \
             Mesa-libgbm1 libX11-6 libXcomposite1 libXdamage1 libXext6 \
             libXfixes3 libXrandr2 libxkbcommon0 libnspr4 libnss3 \
@@ -627,13 +701,54 @@ _install_playwright_browsers() {
         warn "已安装 playwright Python 包，但跳过 Chromium；建议使用 Ubuntu 20.04+ / CentOS/RHEL 8+"
         return 1
     fi
-    info "正在安装 Playwright Chromium 浏览器..."
-    if "$OCTOP_VENV/bin/python" -m playwright install chromium; then
-        info "✓ Playwright Chromium 安装成功"
-        return 0
+
+    # 镜像分层（对齐 finnie TencentOS 策略）：
+    #   1. 用户指定 PLAYWRIGHT_DOWNLOAD_HOST
+    #   2. npmmirror（国内最快）
+    #   3. 官方 CDN（失败兜底）
+    # 单源超时避免 GCS 卡住拖死整次安装；可用 PLAYWRIGHT_INSTALL_TIMEOUT 覆盖（秒）
+    local _pw_timeout="${PLAYWRIGHT_INSTALL_TIMEOUT:-600}"
+    _run_playwright_chromium_install() {
+        if command -v timeout &>/dev/null; then
+            timeout "$_pw_timeout" "$OCTOP_VENV/bin/python" -m playwright install chromium
+        else
+            "$OCTOP_VENV/bin/python" -m playwright install chromium
+        fi
+    }
+
+    local -a _pw_hosts=()
+    local _h
+    if [ -n "${PLAYWRIGHT_DOWNLOAD_HOST:-}" ]; then
+        _pw_hosts+=("$PLAYWRIGHT_DOWNLOAD_HOST")
     fi
+    _pw_hosts+=("https://cdn.npmmirror.com/binaries/playwright")
+    _pw_hosts+=("")  # 官方：清空 PLAYWRIGHT_DOWNLOAD_HOST
+
+    local _seen="|"
+    for _h in "${_pw_hosts[@]}"; do
+        case "$_seen" in
+            *"|${_h}|"*) continue ;;
+        esac
+        _seen="${_seen}${_h}|"
+
+        if [ -n "$_h" ]; then
+            export PLAYWRIGHT_DOWNLOAD_HOST="$_h"
+            info "尝试 Playwright 镜像: $_h"
+        else
+            unset PLAYWRIGHT_DOWNLOAD_HOST || true
+            info "尝试 Playwright 官方 CDN..."
+        fi
+
+        if _run_playwright_chromium_install; then
+            info "✓ Playwright Chromium 安装成功"
+            return 0
+        fi
+        warn "该源失败或超时，尝试下一镜像..."
+    done
+
     warn "⚠ Playwright Chromium 安装失败，可稍后运行:"
-    warn "  $OCTOP_VENV/bin/python -m playwright install chromium"
+    warn "  PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \\"
+    warn "    $OCTOP_VENV/bin/python -m playwright install chromium"
     return 1
 }
 
@@ -724,10 +839,6 @@ info "包装脚本已创建: $OCTOP_BIN/octop"
 _can_write_dir() {
     local dir="$1"
     [ -d "$dir" ] && [ -w "$dir" ]
-}
-
-_sudo_nopass() {
-    command -v sudo &>/dev/null && sudo -n true 2>/dev/null
 }
 
 _try_symlink() {

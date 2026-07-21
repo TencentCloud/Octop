@@ -66,12 +66,15 @@ def build_app(server: OctopServer) -> FastAPI:
     _install_exception_handlers(app)
 
     if cfg and cfg.cors_origins:
+        from octop.api.deps import ACCESS_TOKEN_RESPONSE_HEADER
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cfg.cors_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=[ACCESS_TOKEN_RESPONSE_HEADER],
         )
 
     install_jwt_auth(app, server)
@@ -112,6 +115,8 @@ def build_app(server: OctopServer) -> FastAPI:
         preferences,
         proactive_care,
         providers,
+        search,
+        settings,
         setup,
         skills,
         slash,
@@ -150,7 +155,9 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(internal_mcp.router, "/api", ["internal-mcp"]),
             _RouterMount(channels.router, "/api", ["channels"]),
             _RouterMount(cron.router, "/api", ["cron"]),
+            _RouterMount(settings.router, "/api", ["settings"]),
             _RouterMount(envs.router, "/api", ["envs"]),
+            _RouterMount(search.router, "/api", ["search"]),
             _RouterMount(providers.router, "/api/providers", ["providers"]),
             _RouterMount(voice.router, "/api/voice", ["voice"]),
             _RouterMount(admin.router, "/api/admin", ["admin"]),

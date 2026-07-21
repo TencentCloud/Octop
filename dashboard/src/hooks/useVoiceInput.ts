@@ -16,9 +16,11 @@ interface BrowserSpeechRecognition {
   onerror: (() => void) | null;
   onend: (() => void) | null;
   start: () => void;
+  stop?: () => void;
 }
 
 type SpeechRecognitionCtor = new () => BrowserSpeechRecognition;
+const BROWSER_STT_TIMEOUT_MS = 15000;
 
 function getSpeechRecognition(): SpeechRecognitionCtor | null {
   const w = window as Window & {
@@ -53,22 +55,47 @@ async function transcribeWithBrowser(language: string): Promise<string> {
   }
   return new Promise((resolve, reject) => {
     const rec = new Ctor();
+    let settled = false;
+    let timer = 0;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) window.clearTimeout(timer);
+      rec.onresult = null;
+      rec.onerror = null;
+      rec.onend = null;
+      fn();
+    };
     rec.lang = language;
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     rec.onresult = (event) => {
       const text = event.results[0]?.[0]?.transcript?.trim() ?? "";
-      resolve(text);
+      settle(() => resolve(text));
     };
-    rec.onerror = () => reject(new Error("browser STT failed"));
-    rec.onend = () => {};
-    rec.start();
+    rec.onerror = () => settle(() => reject(new Error("browser STT failed")));
+    rec.onend = () => settle(() => resolve(""));
+    timer = window.setTimeout(() => {
+      try {
+        rec.stop?.();
+      } catch {
+        // Browser implementations differ; the timeout still settles below.
+      }
+      settle(() => reject(new Error("browser STT timed out")));
+    }, BROWSER_STT_TIMEOUT_MS);
+    try {
+      rec.start();
+    } catch (err) {
+      settle(() =>
+        reject(err instanceof Error ? err : new Error("browser STT failed")),
+      );
+    }
   });
 }
 
 /** Check whether the browser can record audio (requires secure context). */
 export function canRecordAudio(): boolean {
-  return !!navigator.mediaDevices?.getUserMedia;
+  return !!navigator.mediaDevices?.getUserMedia && "MediaRecorder" in window;
 }
 
 /** Check whether any STT method is available. */
@@ -120,6 +147,9 @@ export function useVoiceInput(onText: (text: string) => void) {
           if (msg.includes("VOICE_BROWSER_ONLY") || msg.includes("422")) {
             if (browserSttAvailable()) {
               text = await transcribeWithBrowser(language);
+            } else {
+              antMessage.error(t("voice.sttProviderRequired"));
+              return;
             }
           } else {
             // Server STT failed — try browser fallback if available.

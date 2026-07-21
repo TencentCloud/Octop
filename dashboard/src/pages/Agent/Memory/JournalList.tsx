@@ -16,6 +16,12 @@ import {
   type JournalItem,
   type ListJournalBody,
 } from "../../../api/modules/memoryDashboard";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import {
+  calendarDaysAgo,
+  formatServerHourMinute,
+  formatServerYmd,
+} from "../../../utils/formatMessageTime";
 
 const PAGE_SIZE = 30;
 
@@ -64,6 +70,7 @@ interface Props {
 }
 
 export default function JournalList({ agentId }: Props) {
+  const timeZone = useServerTimezone();
   const [items, setItems] = useState<JournalItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -92,7 +99,7 @@ export default function JournalList({ agentId }: Props) {
     void load();
   }, [agentId, load]);
 
-  const days = useMemo(() => buildDays(items), [items]);
+  const days = useMemo(() => buildDays(items, timeZone), [items, timeZone]);
 
   return (
     <Card size="small">
@@ -122,6 +129,7 @@ export default function JournalList({ agentId }: Props) {
             <DaySection
               key={day.label}
               day={day}
+              timeZone={timeZone}
               expanded={expanded}
               onToggle={(key) => setExpanded((s) => ({ ...s, [key]: !s[key] }))}
             />
@@ -164,10 +172,12 @@ interface Group {
 
 function DaySection({
   day,
+  timeZone,
   expanded,
   onToggle,
 }: {
   day: DayBucket;
+  timeZone: string;
   expanded: Record<string, boolean>;
   onToggle: (key: string) => void;
 }) {
@@ -203,6 +213,7 @@ function DaySection({
           <GroupRow
             key={g.key}
             group={g}
+            timeZone={timeZone}
             isExpanded={!!expanded[g.key]}
             onToggle={() => onToggle(g.key)}
           />
@@ -214,10 +225,12 @@ function DaySection({
 
 function GroupRow({
   group,
+  timeZone,
   isExpanded,
   onToggle,
 }: {
   group: Group;
+  timeZone: string;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -225,22 +238,25 @@ function GroupRow({
     return (
       <PipelineStoryRow
         group={group}
+        timeZone={timeZone}
         isExpanded={isExpanded}
         onToggle={onToggle}
       />
     );
   }
   // Single standalone event.
-  return <SingleEventRow item={group.items[0]} />;
+  return <SingleEventRow item={group.items[0]} timeZone={timeZone} />;
 }
 
 /** Pipeline story card: capture/extract/page_regen aggregation. */
 function PipelineStoryRow({
   group,
+  timeZone,
   isExpanded,
   onToggle,
 }: {
   group: Group;
+  timeZone: string;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -275,7 +291,7 @@ function PipelineStoryRow({
             paddingTop: 2,
           }}
         >
-          {fmtHourMinute(group.timestamp)}
+          {formatServerHourMinute(group.timestamp, timeZone)}
         </span>
         <span
           style={{
@@ -316,7 +332,7 @@ function PipelineStoryRow({
           }}
         >
           {group.items.map((j) => (
-            <DetailLine key={j.id} item={j} />
+            <DetailLine key={j.id} item={j} timeZone={timeZone} />
           ))}
         </div>
       )}
@@ -325,7 +341,13 @@ function PipelineStoryRow({
 }
 
 /** Standalone key event: promote / reject / deprecate / create / update / merge. */
-function SingleEventRow({ item }: { item: JournalItem }) {
+function SingleEventRow({
+  item,
+  timeZone,
+}: {
+  item: JournalItem;
+  timeZone: string;
+}) {
   const dotColor = ACTION_HEX[item.action] ?? "#bfbfbf";
   const story = singleEventStory(item);
   const isRun = item.action === "extract_run";
@@ -341,7 +363,7 @@ function SingleEventRow({ item }: { item: JournalItem }) {
           paddingTop: 2,
         }}
       >
-        {fmtHourMinute(item.timestamp)}
+        {formatServerHourMinute(item.timestamp, timeZone)}
       </span>
       <span
         style={{
@@ -410,7 +432,13 @@ function extractRunSummary(after: ExtractRunStats | null | undefined): string {
 }
 
 /** Child row for each pipeline detail in the expanded state. */
-function DetailLine({ item }: { item: JournalItem }) {
+function DetailLine({
+  item,
+  timeZone,
+}: {
+  item: JournalItem;
+  timeZone: string;
+}) {
   return (
     <div
       style={{
@@ -422,7 +450,9 @@ function DetailLine({ item }: { item: JournalItem }) {
         color: "#8c8c8c",
       }}
     >
-      <span style={{ minWidth: 40 }}>{fmtHourMinute(item.timestamp)}</span>
+      <span style={{ minWidth: 40 }}>
+        {formatServerHourMinute(item.timestamp, timeZone)}
+      </span>
       <Tag
         color={ACTION_COLOR[item.action] ?? "default"}
         style={{ margin: 0, fontSize: 11 }}
@@ -443,21 +473,16 @@ function DetailLine({ item }: { item: JournalItem }) {
 // Data shaping: flat items -> DayBucket[Group[]].
 // ---------------------------------------------------------------------------
 
-function buildDays(items: JournalItem[]): DayBucket[] {
+function buildDays(items: JournalItem[], timeZone: string): DayBucket[] {
   const groups = aggregate(items);
-  const today = startOfDay(new Date());
   const out: DayBucket[] = [];
   for (const g of groups) {
-    const d = new Date(g.timestamp);
-    const dayStart = startOfDay(d);
-    const diffDays = Math.floor(
-      (today.getTime() - dayStart.getTime()) / (24 * 3600 * 1000),
-    );
+    const diffDays = calendarDaysAgo(g.timestamp, timeZone);
     let label: string;
     if (diffDays === 0) label = "今天";
     else if (diffDays === 1) label = "昨天";
     else if (diffDays > 1 && diffDays < 7) label = `${diffDays} 天前`;
-    else label = formatDate(d);
+    else label = formatServerYmd(g.timestamp, timeZone);
 
     const last = out[out.length - 1];
     if (last && last.label === label) {
@@ -646,28 +671,4 @@ function noteToChinese(note: string | null | undefined): string | null {
 
   // Hide other English dev logs.
   return null;
-}
-
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function fmtHourMinute(s: string): string {
-  try {
-    const d = new Date(s);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes(),
-    ).padStart(2, "0")}`;
-  } catch {
-    return "";
-  }
 }
