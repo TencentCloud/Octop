@@ -51,6 +51,11 @@ help:
 	@echo "  dev-frontend     Start Vite dev server only"
 	@echo "  dev-backend      Start octop run only"
 	@echo ""
+	@echo "Online-deps targets (local Octop source + PyPI harness components):"
+	@echo "  install-online   Create .venv-online: Octop editable + harness-* from PyPI"
+	@echo "  test-online      pytest against .venv-online (not live)"
+	@echo "  run-online       Start octop run from .venv-online"
+	@echo ""
 	@echo "Quality targets (backend — CI ship bar):"
 	@echo "  all              lint + typecheck + test (backend)"
 	@echo "  lint             Ruff check + format check (src, tests)"
@@ -76,6 +81,7 @@ help:
 	@echo "  install-tools    Install build + twine for publishing"
 	@echo "  docs-cli         Regenerate docs/cli.md from Click commands"
 	@echo "  clean            Remove build artifacts and caches"
+	@echo "  clean-online     Remove the .venv-online environment"
 	@echo "  version          Show current project version"
 
 # ─── Build ───────────────────────────────────────────────────────────────────
@@ -161,6 +167,30 @@ dev-frontend:
 .PHONY: dev-backend
 dev-backend:
 	$(RUN) octop run
+
+# ─── Online-deps dev (local Octop source + PyPI harness components) ───────────
+# Keeps a dedicated .venv-online alongside .venv. Octop itself is installed
+# editable (-e) so source edits are live; the harness-* siblings are pulled
+# from PyPI (--no-sources ignores the editable local paths in uv.lock).
+# Re-run install-online only when a dependency version changes.
+VENV_ONLINE := $(REPO_ROOT)/.venv-online
+PY_ONLINE   := $(VENV_ONLINE)/bin
+
+.PHONY: install-online
+install-online:
+	@echo "[install-online] Creating $(VENV_ONLINE) (local Octop + PyPI harness deps)..."
+	uv venv $(VENV_ONLINE) --python 3.12
+	uv pip install --no-sources --python $(PY_ONLINE)/python -e ".[dev]"
+	@echo "[install-online] Done. Octop=editable(local), harness-*=PyPI."
+
+.PHONY: test-online
+test-online:
+	@echo "[test-online] pytest against $(VENV_ONLINE) (not live)..."
+	$(PY_ONLINE)/pytest -m "not live"
+
+.PHONY: run-online
+run-online:
+	$(PY_ONLINE)/octop run
 
 # ─── Quality (backend) ───────────────────────────────────────────────────────
 
@@ -260,6 +290,12 @@ clean:
 	rm -rf $(REPO_ROOT)/htmlcov
 	find $(REPO_ROOT)/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "[clean] Done."
+
+.PHONY: clean-online
+clean-online:
+	@echo "[clean-online] Removing $(VENV_ONLINE)..."
+	rm -rf $(VENV_ONLINE)
+	@echo "[clean-online] Done."
 
 .PHONY: version
 version:

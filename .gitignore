@@ -30,6 +30,7 @@ pip-wheel-metadata/
 
 # Virtual environments
 .venv/
+.venv-online/
 venv/
 env/
 ENV/
