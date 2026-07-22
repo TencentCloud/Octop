@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
+from harness_agent.backends import resolve_backend
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.backend.resolver import default_agent_backend_spec
@@ -33,17 +34,11 @@ def _workspace(root: str, *, virtual_mode: bool = False) -> BackendWorkspace:
 def _default_virtual_workspace(root: str) -> BackendWorkspace:
     """BackendWorkspace matching Octop's platform default agent backend.
 
-    POSIX defaults to ``root_dir='/'``; Windows scopes ``root_dir`` to the
-    agent workspace so virtual-mode uploads stay on the same drive.
+    POSIX keeps a host-rooted default inside a composite backend; Windows
+    scopes the local-shell root to the agent workspace.
     """
     spec = default_agent_backend_spec(Path(root))
-    return BackendWorkspace(
-        LocalShellBackend(
-            root_dir=str(spec["root_dir"]),
-            virtual_mode=bool(spec.get("virtual_mode", True)),
-        ),
-        root,
-    )
+    return BackendWorkspace(resolve_backend(spec, workspace_dir=root), root)
 
 
 @pytest.mark.asyncio

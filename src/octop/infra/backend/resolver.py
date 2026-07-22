@@ -6,18 +6,34 @@ import os
 from pathlib import Path
 from typing import Any
 
+from deepagents.backends import CompositeBackend
+from deepagents.backends.protocol import SandboxBackendProtocol
+
 from octop.infra.backend.adapter import row_to_backend_spec
 
 
-def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
+class _MountedCompositeBackend(CompositeBackend):
+    """Composite backend that keeps its default backend's local mount discoverable."""
+
+    @property
+    def cwd(self) -> Path:
+        mount = getattr(self.default, "cwd", None) or getattr(self.default, "root_dir", None)
+        if mount is None:
+            raise AttributeError("default backend has no local mount")
+        return Path(mount)
+
+
+def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any] | CompositeBackend:
     """Harness backend for agents with no explicit ``backend`` in config.
 
-    On POSIX this matches harness ``DEFAULT_BACKEND_SPEC`` (host-rooted virtual
-    paths). On Windows ``root_dir='/'`` resolves to the process current-drive
-    root, which often differs from the drive hosting ``workspace_dir`` — scope
-    the default to the agent workspace instead.
+    On POSIX the default backend keeps harness' host-rooted virtual paths, while
+    a composite ``artifacts_root`` stores generated conversation history and
+    large tool results in the agent workspace. On Windows ``root_dir='/'``
+    resolves to the process current-drive root, which often differs from the
+    drive hosting ``workspace_dir`` — scope the default to the agent workspace
+    instead.
     """
-    from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
+    from harness_agent.backends import DEFAULT_BACKEND_SPEC, resolve_backend  # noqa: PLC0415
 
     if os.name == "nt":
         return {
@@ -25,7 +41,12 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
             "root_dir": str(workspace_dir.resolve()),
             "virtual_mode": True,
         }
-    return dict(DEFAULT_BACKEND_SPEC)
+    default = resolve_backend(dict(DEFAULT_BACKEND_SPEC), workspace_dir=workspace_dir)
+    return _MountedCompositeBackend(
+        default=default,
+        routes={},
+        artifacts_root=str(workspace_dir.resolve()),
+    )
 
 
 def resolve_agent_backend_spec(
@@ -82,6 +103,12 @@ def backend_spec_supports_execution(spec: Any) -> bool:
     """
     if spec is None:
         return True
+    if isinstance(spec, SandboxBackendProtocol):
+        return True
+    if isinstance(spec, CompositeBackend):
+        if backend_spec_supports_execution(spec.default):
+            return True
+        return any(backend_spec_supports_execution(route) for route in spec.routes.values())
     if isinstance(spec, str):
         return spec == "local_shell"
     if not isinstance(spec, dict):
