@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, insert_returning_id, map_rows, now_ts
 
 
@@ -40,7 +40,7 @@ class UserRow:
 
 
 class UserRepo:
-    def __init__(self, db: DBPool) -> None:
+    def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
     def create(

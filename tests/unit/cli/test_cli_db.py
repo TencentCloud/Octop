@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from octop.cli.main import cli
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.utils.paths import PathLayout
@@ -34,7 +34,7 @@ def _bootstrap(fake_home: Path) -> None:
 def test_list_agents_offline(fake_home: Path) -> None:
     _bootstrap(fake_home)
     paths = PathLayout(fake_home / ".octop")
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     db.close()
 
@@ -48,7 +48,7 @@ def test_list_agents_offline(fake_home: Path) -> None:
 def test_list_threads_offline(fake_home: Path) -> None:
     _bootstrap(fake_home)
     paths = PathLayout(fake_home / ".octop")
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     tid = new_ulid()
     ThreadRepo(db).insert(
@@ -72,7 +72,7 @@ def test_list_threads_offline(fake_home: Path) -> None:
 def test_agent_list_offline_flag(fake_home: Path) -> None:
     _bootstrap(fake_home)
     paths = PathLayout(fake_home / ".octop")
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     db.close()
 

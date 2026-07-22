@@ -277,6 +277,8 @@
     "AUTH_FAILED": "Authentication failed.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
+    "DATABASE_NOT_EMPTY": "The target database already has users. Use an empty database, or log in with the existing admin.",
+    "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "FORBIDDEN": "Permission denied.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",

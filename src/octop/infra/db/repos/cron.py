@@ -11,7 +11,7 @@ from octop.infra.cron.task_type import (
     normalize_cron_task_type,
     require_cron_task_type,
 )
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
     UNSET,
     DbRow,
@@ -91,7 +91,7 @@ class CronJobRow:
 
 
 class CronJobRepo:
-    def __init__(self, db: DBPool) -> None:
+    def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
     def create(

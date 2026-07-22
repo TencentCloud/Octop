@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { wizardApi, wizardSession } from "../wizardClient";
 import { setAuthToken } from "../../../api/request";
+import { apiErrorMessage } from "../../../utils/apiError";
 
 const { Text } = Typography;
 
@@ -57,7 +58,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
       setAuthToken(created.access_token);
       onCreated({ username: values.username, password: values.password });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(apiErrorMessage(e, t("wizard.admin.submitFailed"), t));
     } finally {
       setSubmitting(false);
     }

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 
 
 class SettingsRepo:
     _KEY_ACTIVE_MODEL = "active_model"
 
-    def __init__(self, db: DBPool):
+    def __init__(self, db: DatabasePool):
         self._db = db
 
     def get(self, key: str) -> str | None:

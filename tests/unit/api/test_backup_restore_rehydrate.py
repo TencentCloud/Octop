@@ -26,7 +26,6 @@ async def test_restore_backup_file_rehydrates_providers(
 
     monkeypatch.setattr(backup_router, "normalize_backup_filename", lambda name: name)
     monkeypatch.setattr(backup_router, "read_backup_file", lambda *_a, **_k: b"fake-archive")
-    monkeypatch.setattr(backup_router, "_resolve_db_path", lambda _s: MagicMock())
     monkeypatch.setattr(
         backup_router,
         "restore_system_backup",
@@ -36,6 +35,7 @@ async def test_restore_backup_file_rehydrates_providers(
     server = MagicMock()
     server.services = MagicMock()
     server.services.db = MagicMock()
+    server.services.config.database = MagicMock()
     server.services.audit_repo.write = MagicMock()
     server.paths = MagicMock()
     server.app_runtime = MagicMock()
@@ -67,7 +67,6 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
     }
     monkeypatch.setattr(backup_router, "normalize_backup_filename", lambda name: name)
     monkeypatch.setattr(backup_router, "read_backup_file", lambda *_a, **_k: b"fake-archive")
-    monkeypatch.setattr(backup_router, "_resolve_db_path", lambda _s: MagicMock())
     monkeypatch.setattr(
         backup_router,
         "restore_system_backup",
@@ -77,6 +76,7 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
     server = MagicMock()
     server.services = MagicMock()
     server.services.db = MagicMock()
+    server.services.config.database = MagicMock()
     server.services.audit_repo.write = MagicMock()
     server.paths = MagicMock()
     server.app_runtime = None

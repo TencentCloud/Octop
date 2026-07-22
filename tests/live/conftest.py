@@ -14,7 +14,7 @@ from octop.config import OctopConfig
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import build_shared_services
 from octop.infra.utils.paths import PathLayout
 
@@ -99,7 +99,7 @@ async def live_agent_manager(
 ) -> AsyncIterator[AgentManager]:
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     _seed_live_provider(services, live_openai_config)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Segmented, Steps, Typography } from "antd";
-import { Lock, UserCog, Cpu, CheckCircle, Wand2 } from "lucide-react";
+import { Lock, UserCog, Cpu, CheckCircle, Wand2, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ensureLocaleBundle } from "../../i18n";
 import { storeUiLocale, type UiLocale } from "../../utils/locale";
@@ -9,6 +9,7 @@ import { storeUiLocale, type UiLocale } from "../../utils/locale";
 import { authApi } from "../../api/modules/auth";
 import { preferencesApi } from "../../api/modules/preferences";
 import { useTheme } from "../../context/ThemeContext";
+import DatabaseStep from "./steps/DatabaseStep";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
 import ModelStep from "./steps/ModelStep";
@@ -17,6 +18,7 @@ import type { ProviderDraft } from "./wizardClient";
 import {
   wizardApi,
   wizardSession,
+  STEP_DATABASE,
   STEP_PASSWORD,
   STEP_ADMIN,
   STEP_MODEL,
@@ -46,6 +48,21 @@ export default function SetupPage() {
     wizardSession.saveStep(step);
   }, []);
 
+  const ensureWizardToken = useCallback(async () => {
+    const token = wizardSession.loadToken();
+    if (token) {
+      try {
+        const { valid } = await wizardApi.validateToken(token);
+        if (valid) return token;
+      } catch {
+        /* fall through */
+      }
+    }
+    const r = await wizardApi.begin();
+    wizardSession.saveToken(r.wizard_token);
+    return r.wizard_token;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     authApi
@@ -60,63 +77,56 @@ export default function SetupPage() {
 
         setPasswordRequired(status.wizard_password_required);
 
-        if (!status.wizard_password_required) {
-          const token = wizardSession.loadToken();
-          if (!token) {
-            try {
-              const r = await wizardApi.begin();
-              if (cancelled) return;
-              wizardSession.saveToken(r.wizard_token);
-            } catch {
-              if (!cancelled) setChecking(false);
-              return;
-            }
-          }
-          goToStep(STEP_ADMIN);
-          setChecking(false);
-          return;
+        const savedStep = wizardSession.loadStep();
+        const draft = wizardSession.loadDraft();
+        if (draft.provider) {
+          setProviderDraft(draft.provider);
         }
 
         const token = wizardSession.loadToken();
-        if (!token) {
-          wizardSession.clearAll();
+        if (token) {
+          try {
+            const { valid } = await wizardApi.validateToken(token);
+            if (cancelled) return;
+            if (valid) {
+              if (
+                savedStep !== null &&
+                savedStep >= STEP_DATABASE &&
+                savedStep <= STEP_MODEL
+              ) {
+                if (savedStep === STEP_DATABASE && status.database_bound) {
+                  goToStep(STEP_ADMIN);
+                } else {
+                  goToStep(savedStep);
+                }
+              } else if (
+                savedStep === STEP_PASSWORD &&
+                status.wizard_password_required
+              ) {
+                goToStep(STEP_PASSWORD);
+              } else {
+                goToStep(status.database_bound ? STEP_ADMIN : STEP_DATABASE);
+              }
+              setChecking(false);
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+
+        // No valid wizard token yet.
+        if (status.wizard_password_required) {
           goToStep(STEP_PASSWORD);
-          setChecking(false);
-          return;
+        } else {
+          try {
+            await ensureWizardToken();
+          } catch {
+            /* continue into database step; begin can be retried */
+          }
+          if (!cancelled) goToStep(STEP_DATABASE);
         }
-
-        try {
-          const { valid } = await wizardApi.validateToken(token);
-          if (cancelled) return;
-          if (!valid) {
-            wizardSession.clearAll();
-            goToStep(STEP_PASSWORD);
-            return;
-          }
-
-          const savedStep = wizardSession.loadStep();
-          const draft = wizardSession.loadDraft();
-          if (draft.provider) {
-            setProviderDraft(draft.provider);
-          }
-
-          if (
-            savedStep !== null &&
-            savedStep >= STEP_ADMIN &&
-            savedStep <= STEP_MODEL
-          ) {
-            goToStep(savedStep);
-          } else {
-            goToStep(STEP_ADMIN);
-          }
-        } catch {
-          if (!cancelled) {
-            wizardSession.clearAll();
-            goToStep(STEP_PASSWORD);
-          }
-        } finally {
-          if (!cancelled) setChecking(false);
-        }
+        if (!cancelled) setChecking(false);
       })
       .catch(() => {
         if (!cancelled) setChecking(false);
@@ -124,13 +134,31 @@ export default function SetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, goToStep]);
+  }, [navigate, goToStep, ensureWizardToken]);
 
-  const handleBackToPassword = () => {
-    wizardSession.clearToken();
-    wizardSession.saveDraft({});
+  const handlePasswordVerified = () => {
+    goToStep(STEP_DATABASE);
+  };
+
+  const handleDatabaseContinue = async () => {
+    try {
+      await ensureWizardToken();
+    } catch {
+      /* token may already exist after password step */
+    }
+    goToStep(STEP_ADMIN);
+  };
+
+  const handleBackFromAdmin = () => {
     setAdminCreds(null);
     setProviderDraft(null);
+    wizardSession.saveDraft({});
+    goToStep(STEP_DATABASE);
+  };
+
+  const handleBackFromDatabase = () => {
+    if (!passwordRequired) return;
+    wizardSession.clearToken();
     goToStep(STEP_PASSWORD);
   };
 
@@ -157,11 +185,10 @@ export default function SetupPage() {
     const locale: UiLocale = lang.startsWith("zh") ? "zh" : "en";
     storeUiLocale(locale);
     void ensureLocaleBundle(locale).then(() => i18n.changeLanguage(locale));
-    // If admin already exists mid-wizard, persist the user's explicit choice.
     const setupJwt = wizardSession.loadSetupJwt();
     if (setupJwt) {
       void preferencesApi.setLocale(locale).catch(() => {
-        /* best-effort; FinishStep login still applies stored UI locale via create */
+        /* best-effort */
       });
     }
   };
@@ -169,19 +196,26 @@ export default function SetupPage() {
   const stepItems = passwordRequired
     ? [
         { title: t("wizard.steps.password"), icon: <Lock size={22} /> },
+        { title: t("wizard.steps.database"), icon: <Database size={22} /> },
         { title: t("wizard.steps.admin"), icon: <UserCog size={22} /> },
         { title: t("wizard.steps.model"), icon: <Cpu size={22} /> },
         { title: t("common.done"), icon: <CheckCircle size={22} /> },
       ]
     : [
+        { title: t("wizard.steps.database"), icon: <Database size={22} /> },
         { title: t("wizard.steps.admin"), icon: <UserCog size={22} /> },
         { title: t("wizard.steps.model"), icon: <Cpu size={22} /> },
         { title: t("common.done"), icon: <CheckCircle size={22} /> },
       ];
 
-  const stepIndex = passwordRequired
-    ? current
-    : Math.max(0, current - STEP_ADMIN);
+  const stepIndex = (() => {
+    if (passwordRequired) return current;
+    // Password step omitted visually: map DATABASE..FINISH → 0..3
+    if (current <= STEP_DATABASE) return 0;
+    if (current === STEP_ADMIN) return 1;
+    if (current === STEP_MODEL) return 2;
+    return 3;
+  })();
 
   return (
     <div className={styles.wizardShell}>
@@ -190,7 +224,6 @@ export default function SetupPage() {
           isModelStep ? styles.wizardCardWide : styles.wizardCardNarrow
         }`}
       >
-        {/* Header bar */}
         <div className={styles.wizardHeader}>
           <div className={styles.wizardHeaderTop}>
             <div className={styles.wizardHeaderBrand}>
@@ -225,19 +258,24 @@ export default function SetupPage() {
           />
         </div>
 
-        {/* Step content */}
         <div
           className={`${styles.wizardBody} ${
             isModelStep ? styles.wizardBodyFlush : ""
           }`}
         >
           {current === STEP_PASSWORD && passwordRequired && (
-            <PasswordStep onVerified={() => goToStep(STEP_ADMIN)} />
+            <PasswordStep onVerified={handlePasswordVerified} />
+          )}
+          {current === STEP_DATABASE && (
+            <DatabaseStep
+              onContinue={() => void handleDatabaseContinue()}
+              onBack={passwordRequired ? handleBackFromDatabase : undefined}
+            />
           )}
           {current === STEP_ADMIN && (
             <AdminStep
               createdCreds={adminCreds}
-              onBack={passwordRequired ? handleBackToPassword : undefined}
+              onBack={handleBackFromAdmin}
               onCreated={(creds) => {
                 setAdminCreds(creds);
                 wizardSession.saveDraft({ adminUsername: creds.username });

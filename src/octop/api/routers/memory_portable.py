@@ -22,11 +22,42 @@ from octop.api.common.agent import require_agent_row
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path, memory_namespace
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.memory_backend import open_memory_kwargs
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _agent_config_dict(server: Any, agent_id: str) -> dict[str, Any]:
+    import json  # noqa: PLC0415
+
+    row = server.services.agent_repo.get(agent_id)
+    if row is None or not row.config_json:
+        return {}
+    try:
+        parsed = json.loads(row.config_json)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _refuse_postgres_portable(server: Any, agent_id: str) -> None:
+    workspace = server.services.paths.ensure_agent_workspace(agent_id)
+    _ns, backend, _cfg = open_memory_kwargs(
+        agent_id=agent_id,
+        cfg=_agent_config_dict(server, agent_id),
+        octop_config=server.services.config,
+        workspace_dir=workspace,
+    )
+    if backend == "postgres":
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            "portable memory pack/adopt is not supported when memory.backend is postgres; "
+            "use pg_dump on the memory schema instead",
+            status=501,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +112,7 @@ async def pack_agent_memory(
 ) -> StreamingResponse:
     """Package the agent's memory into a .hmpkg file and serve it as a download attachment."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    _refuse_postgres_portable(server, agent_id)
 
     try:
         from harness_memory.operations.migration.portable import pack
@@ -161,6 +193,7 @@ async def adopt_agent_memory(
 ) -> JSONResponse:
     """Upload a .hmpkg file and import it into the target host."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    _refuse_postgres_portable(server, agent_id)
 
     try:
         from harness_memory.operations.migration.portable import adopt
@@ -211,6 +244,7 @@ async def doctor_agent_memory(
 ) -> JSONResponse:
     """Run a health check against the target db."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    _refuse_postgres_portable(server, agent_id)
 
     try:
         from harness_memory.operations.migration.portable import doctor

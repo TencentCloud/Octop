@@ -60,6 +60,10 @@ class CronManager:
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone=timezone)
         self._lock = asyncio.Lock()
 
+    def replace_repos(self, repos: RepoBundle) -> None:
+        """Point cron persistence at a rebound control-plane pool."""
+        self._repos = repos
+
     async def boot(self) -> None:
         self._scheduler.start()
         rows = self._repos.cron_repo.list_all(include_disabled=False)

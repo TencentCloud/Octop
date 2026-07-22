@@ -38,6 +38,12 @@ class UserManager:
         self._login_max_attempts = max(1, services.config.login_max_attempts)
         self._login_lockout_seconds = max(60, services.config.login_lockout_seconds)
 
+    def replace_services(self, services: SharedServices) -> None:
+        """Point at a new SharedServices (control-plane DB rebind during setup)."""
+        self._services = services
+        self._login_max_attempts = max(1, services.config.login_max_attempts)
+        self._login_lockout_seconds = max(60, services.config.login_lockout_seconds)
+
     # ----- lifecycle -----
 
     async def boot(self) -> None:

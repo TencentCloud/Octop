@@ -18,7 +18,7 @@ from octop.infra.connectors.custom_mcp import (
 )
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.settings import SettingsRepo
@@ -26,14 +26,14 @@ from octop.infra.utils.ulid import new_ulid
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "octop.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     return pool
 
 
 @pytest.fixture
-def svc(db: DBPool) -> ConnectorService:
+def svc(db: SqlitePool) -> ConnectorService:
     return ConnectorService(
         repo=ConnectorRepo(db),
         secret_repo=SecretRepo(db),
@@ -42,7 +42,7 @@ def svc(db: DBPool) -> ConnectorService:
     )
 
 
-def _ensure_user(db: DBPool) -> int:
+def _ensure_user(db: SqlitePool) -> int:
     with db.transaction() as conn:
         conn.execute(
             "INSERT INTO users(username, password_hash, role, created_at) "
@@ -158,7 +158,7 @@ def test_harness_spec_streamable_http_adds_accept():
     assert "enabled" not in spec
 
 
-def test_put_and_expand_custom_mcp(svc: ConnectorService, db: DBPool):
+def test_put_and_expand_custom_mcp(svc: ConnectorService, db: SqlitePool):
     uid = _ensure_user(db)
     servers = svc.put_custom_servers(
         uid,
@@ -194,7 +194,7 @@ def test_put_and_expand_custom_mcp(svc: ConnectorService, db: DBPool):
     assert set(svc.list_active_mcp_server_names(uid)) == {"deepwiki", "local"}
 
 
-def test_put_empty_servers_deletes_parent_row(svc: ConnectorService, db: DBPool):
+def test_put_empty_servers_deletes_parent_row(svc: ConnectorService, db: SqlitePool):
     uid = _ensure_user(db)
     svc.put_custom_servers(
         uid,
@@ -211,7 +211,7 @@ def test_put_empty_servers_deletes_parent_row(svc: ConnectorService, db: DBPool)
     assert svc.list_instances_for_api(uid) == []
 
 
-def test_build_mcp_configs_merges_enabled_custom(svc: ConnectorService, db: DBPool):
+def test_build_mcp_configs_merges_enabled_custom(svc: ConnectorService, db: SqlitePool):
     uid = _ensure_user(db)
     # Built-in-style row that catalog would skip if unknown — use real catalog kind optional.
     # Only custom servers here.
@@ -244,7 +244,7 @@ def test_build_mcp_configs_merges_enabled_custom(svc: ConnectorService, db: DBPo
     assert "transport" not in configs["a"]
 
 
-def test_custom_mcp_name_conflicts_with_builtin(svc: ConnectorService, db: DBPool):
+def test_custom_mcp_name_conflicts_with_builtin(svc: ConnectorService, db: SqlitePool):
     uid = _ensure_user(db)
     iid = new_ulid()
     name = mcp_server_name("tencent-docs", iid)

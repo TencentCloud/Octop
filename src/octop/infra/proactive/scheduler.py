@@ -19,6 +19,7 @@ from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from octop.infra.db.repos.care_push import CarePushRepo
     from octop.infra.db.repos.proactive_care_config import (
         ProactiveCareConfigRepo,
     )
@@ -132,6 +133,18 @@ class ProactiveCareScheduler:
         self._session_repo = session_repo
         # agent_id -> asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
+
+    def replace_persistence(
+        self,
+        *,
+        config_repo: ProactiveCareConfigRepo,
+        session_repo: SessionRepo,
+        care_push_repo: CarePushRepo,
+    ) -> None:
+        """Point scheduler/care persistence at a rebound control-plane pool."""
+        self._config_repo = config_repo
+        self._session_repo = session_repo
+        self._care_service.replace_care_push_repo(care_push_repo)
 
     async def start_all(self) -> None:
         """At system startup, register random scheduling tasks for all agents with enabled=true."""

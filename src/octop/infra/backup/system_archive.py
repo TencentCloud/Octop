@@ -12,14 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from octop import __version__
+from octop.config import DatabaseConfig
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
+from octop.infra.backup.pg_dump import dump_postgres, restore_postgres
 from octop.infra.backup.snapshot import (
-    restore_sqlite_file,
     restore_sqlite_into_pool,
     snapshot_sqlite_file,
 )
 from octop.infra.db.migrate import _current_version
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool, SqlitePool
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import env_file_path
 from octop.infra.utils.paths import PathLayout
@@ -28,6 +29,8 @@ _CONFIG_DIR = "config"
 _DB_DIR = "db"
 _WORKSPACES_DIR = "workspaces"
 _MANIFEST_NAME = "manifest.json"
+_SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
+_PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
 
 
 def _timestamp() -> str:
@@ -47,22 +50,28 @@ def _add_dir(tf: tarfile.TarFile, src: Path, arc_root: str) -> None:
 def create_system_backup(
     *,
     paths: PathLayout,
-    db_path: Path,
     agent_rows: list[Any],
+    pool: DatabasePool,
+    db_config: DatabaseConfig,
 ) -> tuple[bytes, str]:
     """Build a ``.tar.gz`` archive and return ``(bytes, suggested_filename)``."""
-    if not db_path.is_file():
-        raise OctopError(ErrorCode.NOT_FOUND, f"database not found: {db_path}")
-
-    schema_version = 0
     try:
-        pool = DBPool(db_path)
-        try:
-            schema_version = _current_version(pool)
-        finally:
-            pool.close()
+        schema_version = _current_version(pool)
     except Exception:
         schema_version = 0
+
+    if pool.dialect == "postgresql":
+        db_arc = _PG_DUMP_ARC
+        database_driver = "postgresql"
+        database_dump_format = "pg_custom"
+    else:
+        db_arc = _SQLITE_DB_ARC
+        database_driver = "sqlite"
+        database_dump_format = "sqlite_file"
+        if not isinstance(pool, SqlitePool):
+            raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite backup requires SqlitePool")
+        if not pool.path.is_file():
+            raise OctopError(ErrorCode.NOT_FOUND, f"database not found: {pool.path}")
 
     agents = [
         AgentBackupEntry(
@@ -79,6 +88,9 @@ def create_system_backup(
         schema_version=schema_version,
         created_at=datetime.now(UTC).isoformat(),
         home=str(paths.root),
+        db_file=db_arc,
+        database_driver=database_driver,
+        database_dump_format=database_dump_format,
         agents=agents,
         includes_config=paths.config.is_file(),
         includes_env=env_path.is_file(),
@@ -87,8 +99,12 @@ def create_system_backup(
     buf = io.BytesIO()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        db_dest = root / _DB_DIR / "octop.db"
-        snapshot_sqlite_file(db_path, db_dest)
+        db_dest = root / db_arc
+        if pool.dialect == "postgresql":
+            dump_postgres(db_config.postgresql_conninfo(), db_dest)
+        else:
+            assert isinstance(pool, SqlitePool)
+            snapshot_sqlite_file(pool.path, db_dest)
 
         manifest_path = root / _MANIFEST_NAME
         manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -104,7 +120,7 @@ def create_system_backup(
 
         with tarfile.open(fileobj=buf, mode="w:gz") as tf:
             tf.add(manifest_path, arcname=_MANIFEST_NAME)
-            tf.add(db_dest, arcname=f"{_DB_DIR}/octop.db")
+            tf.add(db_dest, arcname=db_arc)
             if paths.config.is_file():
                 tf.add(root / _CONFIG_DIR / "config.json", arcname=f"{_CONFIG_DIR}/config.json")
             if env_path.is_file():
@@ -151,25 +167,40 @@ def restore_system_backup(
     data: bytes,
     *,
     paths: PathLayout,
-    db_path: Path,
-    pool: DBPool | None = None,
+    pool: DatabasePool,
+    db_config: DatabaseConfig,
     restore_config: bool = True,
 ) -> dict[str, Any]:
     """Restore database, workspaces, and optional config from a tar.gz archive."""
     members = _read_tar_members(data)
     manifest = _extract_manifest(members)
 
+    archive_driver = manifest.database_driver or "sqlite"
+    if archive_driver != pool.dialect:
+        raise OctopError(
+            ErrorCode.BACKUP_DRIVER_MISMATCH,
+            f"backup database_driver={archive_driver!r} does not match "
+            f"runtime dialect={pool.dialect!r}; cross-engine restore is refused",
+            status=400,
+            details={"archive_driver": archive_driver, "runtime_driver": pool.dialect},
+        )
+
     db_blob = members.get(manifest.db_file)
     if db_blob is None:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
 
     with tempfile.TemporaryDirectory() as tmp:
-        backup_db = Path(tmp) / "octop.db"
-        backup_db.write_bytes(db_blob)
-        if pool is not None:
-            restore_sqlite_into_pool(backup_db, pool)
+        if pool.dialect == "postgresql":
+            dump_path = Path(tmp) / "octop.dump"
+            dump_path.write_bytes(db_blob)
+            restore_postgres(db_config.postgresql_conninfo(), dump_path)
         else:
-            restore_sqlite_file(backup_db, db_path)
+            backup_db = Path(tmp) / "octop.db"
+            backup_db.write_bytes(db_blob)
+            if isinstance(pool, SqlitePool):
+                restore_sqlite_into_pool(backup_db, pool)
+            else:
+                raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite restore requires SqlitePool")
 
         if restore_config:
             cfg_blob = members.get(f"{_CONFIG_DIR}/config.json")
@@ -204,4 +235,5 @@ def restore_system_backup(
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
         "restore_config": restore_config,
+        "database_driver": archive_driver,
     }

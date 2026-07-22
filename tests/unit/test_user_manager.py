@@ -8,7 +8,7 @@ import pytest
 
 from octop.config import OctopConfig
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role
@@ -20,7 +20,7 @@ from octop.infra.utils.paths import PathLayout
 async def manager(tmp_path: Path) -> UserManager:
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     return UserManager(services)
@@ -145,7 +145,7 @@ async def test_count(manager: UserManager):
 async def test_boot_loads_existing_users(tmp_path: Path):
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     # Pre-populate via repo
@@ -161,7 +161,7 @@ async def test_boot_loads_users(tmp_path: Path):
     """UserManager.boot() loads user identity objects (agents are now global)."""
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     from octop.infra.users.password import hash_password

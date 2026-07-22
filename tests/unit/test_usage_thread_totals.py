@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.users import UserRepo
 
 
 def test_thread_totals_aggregate(tmp_path: Path):
-    db = DBPool(tmp_path / "u.db")
+    db = SqlitePool(tmp_path / "u.db")
     run_migrations(db)
     uid = UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="a1", user_id=uid, name="a")

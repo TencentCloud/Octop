@@ -109,6 +109,14 @@ class Gateway:
         self._cli_channel: CliChannel | None = None
         self._runtime_status: dict[str, ChannelRuntimeStatus] = {}
 
+    def replace_repos(self, repos: RepoBundle) -> None:
+        """Point channel/thread persistence at a rebound control-plane pool."""
+        self._repos = repos
+        self._thread_registry.replace_repos(
+            session_repo=repos.session_repo,
+            thread_repo=repos.thread_repo,
+        )
+
     @property
     def ws_hub(self) -> WebSocketHub:
         return self._ws_hub

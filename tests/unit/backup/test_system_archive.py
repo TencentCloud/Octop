@@ -9,10 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from octop.infra.backup.manifest import MANIFEST_VERSION
+from octop.config import DatabaseConfig
+from octop.infra.backup.manifest import MANIFEST_VERSION, BackupManifest
 from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
 
@@ -23,16 +25,32 @@ def layout(tmp_path: Path) -> PathLayout:
     return PathLayout(root)
 
 
+def test_manifest_roundtrip_includes_driver_fields() -> None:
+    m = BackupManifest(
+        manifest_version=1,
+        octop_version="0.0.0",
+        schema_version=1,
+        created_at="t",
+        home="/tmp",
+        db_file="db/octop.dump",
+        database_driver="postgresql",
+        database_dump_format="pg_custom",
+    )
+    loaded = BackupManifest.load_text(m.to_json())
+    assert loaded.database_driver == "postgresql"
+    assert loaded.database_dump_format == "pg_custom"
+    assert loaded.db_file == "db/octop.dump"
+
+
 def test_roundtrip_backup(layout: PathLayout) -> None:
     db_path = layout.db
-    pool = DBPool(db_path)
+    pool = SqlitePool(db_path)
     run_migrations(pool)
     with pool.connect() as conn:
         conn.execute(
             "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
             ("alice", "hash", "admin", 1),
         )
-    pool.close()
 
     ws = layout.ensure_agent_workspace("agent01")
     (ws / "SOUL.md").write_text("# soul", encoding="utf-8")
@@ -42,19 +60,25 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
         agent_id = "agent01"
         name = "Test"
 
-    data, _name = create_system_backup(paths=layout, db_path=db_path, agent_rows=[Row()])
+    data, _name = create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+    )
+    pool.close()
 
     restore_root = layout.root.parent / "restored"
     restore_layout = PathLayout(restore_root)
     restore_db = restore_layout.db
-    restore_pool = DBPool(restore_db)
+    restore_pool = SqlitePool(restore_db)
     run_migrations(restore_pool)
 
     result = restore_system_backup(
         data,
         paths=restore_layout,
-        db_path=restore_db,
         pool=restore_pool,
+        db_config=DatabaseConfig(),
         restore_config=True,
     )
     restore_pool.close()
@@ -68,3 +92,46 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
         manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
     assert manifest["manifest_version"] == MANIFEST_VERSION
+    assert manifest["database_driver"] == "sqlite"
+
+
+def test_refuse_cross_engine_restore(layout: PathLayout) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+
+    class Row:
+        agent_id = "a1"
+        name = "n"
+
+    data, _ = create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+    )
+    # Rewrite manifest to pretend it's a postgres dump.
+    members: dict[str, bytes] = {}
+    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+        for m in tf.getmembers():
+            if m.isfile():
+                f = tf.extractfile(m)
+                assert f is not None
+                members[m.name] = f.read()
+    manifest = json.loads(members["manifest.json"])
+    manifest["database_driver"] = "postgresql"
+    members["manifest.json"] = json.dumps(manifest).encode()
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name, blob in members.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(blob)
+            tf.addfile(info, BytesIO(blob))
+    with pytest.raises(OctopError) as excinfo:
+        restore_system_backup(
+            buf.getvalue(),
+            paths=layout,
+            pool=pool,
+            db_config=DatabaseConfig(),
+        )
+    assert excinfo.value.code == ErrorCode.BACKUP_DRIVER_MISMATCH
+    pool.close()

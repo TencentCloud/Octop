@@ -16,7 +16,7 @@ from octop.infra.agents.experts.catalog import default_library_root
 from octop.infra.agents.manager import AgentManager, _memory_extract_settings
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import build_shared_services
 from octop.infra.errors import OctopError
@@ -32,7 +32,7 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 def manager(tmp_path: Path) -> AgentManager:
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     return AgentManager(repos=services.repos, paths=services.paths)
@@ -679,7 +679,7 @@ async def test_reload_agent_does_not_block_event_loop(tmp_path: Path) -> None:
 
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     registry = AgentManager(repos=services.repos, paths=services.paths)

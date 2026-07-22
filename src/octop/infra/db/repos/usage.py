@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
     DbRow,
     insert_returning_id,
@@ -73,7 +73,7 @@ def _resolve_window(window: str) -> tuple[int, int]:
 
 
 class UsageRepo:
-    def __init__(self, db: DBPool):
+    def __init__(self, db: DatabasePool):
         self._db = db
 
     # --- write -----------------------------------------------------------

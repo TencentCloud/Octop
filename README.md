@@ -358,7 +358,7 @@ See [docs/configuration.md](docs/configuration.md) for env vars and `config.json
 
 ```
 OctopServer
- ├─ DBPool               SQLite (WAL mode)
+ ├─ SqlitePool               SQLite (WAL mode)
  ├─ SharedServices       DI root — every repo + config
  ├─ ExpertCatalog        scans agents/experts/library/ at boot
  ├─ UserManager

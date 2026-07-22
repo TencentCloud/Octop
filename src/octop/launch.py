@@ -35,8 +35,9 @@ async def run_foreground(
 
     srv = OctopServer()
     await srv.start()
-    assert srv.services is not None
-    cfg = srv.services.config
+    # Greenfield deferral leaves services unset until /setup/database binds.
+    cfg = srv.services.config if srv.services is not None else srv.config
+    assert cfg is not None
     bind_host = host or cfg.bind_host
     bind_port = port or cfg.port
     if ssl_certfile is None and ssl_keyfile is None:

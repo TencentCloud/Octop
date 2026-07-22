@@ -15,6 +15,7 @@ from harness_agent.security.models import SecurityPolicy
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
+from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.backend.resolver import (
@@ -153,6 +154,15 @@ def _memory_extract_settings(
     return out
 
 
+def _resolve_memory_backend_kwargs(
+    cfg: dict[str, Any],
+    *,
+    workspace_dir: Any,
+    config: Any,
+) -> dict[str, Any]:
+    return memory_backend_from_agent_config(cfg, octop_config=config, workspace_dir=workspace_dir)
+
+
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
@@ -250,6 +260,27 @@ class AgentManager:
         self._mcp_tool_cache: dict[tuple[int, str, str], list[Any]] = {}
         self._mcp_tool_cache_locks: dict[tuple[int, str], asyncio.Lock] = {}
         self._mcp_tool_cache_guard = asyncio.Lock()
+
+    def replace_persistence(self, repos: RepoBundle, config: OctopConfig) -> None:
+        """Retarget repos/config and rebuild settings stores after control-plane rebind."""
+        self._repos = repos
+        self._config = config
+        self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._security = SecuritySettingsStore(settings_repo=repos.settings_repo)
+        self._acp_settings = ACPSettingsStore(
+            settings_repo=repos.settings_repo,
+            agents_repo=repos.agent_repo,
+        )
+        self._providers = ProviderStore(provider_repo=repos.provider_repo)
+        self._connector_svc = ConnectorService(
+            repo=repos.connector_repo,
+            secret_repo=repos.secret_repo,
+            settings_repo=repos.settings_repo,
+            config=self._config,
+        )
 
     def set_cron_manager(self, cron_manager: CronManager) -> None:
         """Attach the process-wide CronManager (must be set before boot())."""
@@ -1452,6 +1483,7 @@ class AgentManager:
             skills_disabled=frozenset(skills_disabled_set(cfg)),
             default_timezone=self._config.default_timezone,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
+            **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None

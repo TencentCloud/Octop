@@ -8,25 +8,25 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.providers import ProviderRepo, ProviderRow
 from octop.infra.db.repos.users import UserRepo
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "x.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "x.db")
     run_migrations(pool)
     return pool
 
 
 @pytest.fixture
-def user_id(db: DBPool) -> int:
+def user_id(db: SqlitePool) -> int:
     return UserRepo(db).create(username="alice", password_hash="h", role="admin")
 
 
 @pytest.fixture
-def repo(db: DBPool) -> ProviderRepo:
+def repo(db: SqlitePool) -> ProviderRepo:
     return ProviderRepo(db)
 
 
@@ -77,7 +77,7 @@ def test_delete(repo: ProviderRepo):
 # ---------------------------------------------------------------------------
 
 
-def test_find_referencing_agent_ids_returns_agents_that_use_provider(db: DBPool, user_id: int):
+def test_find_referencing_agent_ids_returns_agents_that_use_provider(db: SqlitePool, user_id: int):
     from octop.infra.db.repos.agents import AgentRepo
 
     repo = ProviderRepo(db)
@@ -102,7 +102,7 @@ def test_find_referencing_agent_ids_returns_agents_that_use_provider(db: DBPool,
     assert refs == ["a1"]
 
 
-def test_find_referencing_agent_ids_returns_empty_when_no_references(db: DBPool, user_id: int):
+def test_find_referencing_agent_ids_returns_empty_when_no_references(db: SqlitePool, user_id: int):
     from octop.infra.db.repos.agents import AgentRepo
 
     repo = ProviderRepo(db)
@@ -120,7 +120,9 @@ def test_find_referencing_agent_ids_returns_empty_when_no_references(db: DBPool,
     assert refs == []
 
 
-def test_find_referencing_agent_ids_handles_multiple_providers_per_agent(db: DBPool, user_id: int):
+def test_find_referencing_agent_ids_handles_multiple_providers_per_agent(
+    db: SqlitePool, user_id: int
+):
     from octop.infra.db.repos.agents import AgentRepo
 
     repo = ProviderRepo(db)
@@ -139,7 +141,7 @@ def test_find_referencing_agent_ids_handles_multiple_providers_per_agent(db: DBP
     assert repo.find_referencing_agent_ids(agent_repo, "bedrock") == []
 
 
-def test_find_referencing_agent_ids_handles_null_config_json(db: DBPool, user_id: int):
+def test_find_referencing_agent_ids_handles_null_config_json(db: SqlitePool, user_id: int):
     from octop.infra.db.repos.agents import AgentRepo
 
     repo = ProviderRepo(db)

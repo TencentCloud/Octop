@@ -8,31 +8,31 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "octop.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     return pool
 
 
 def test_db_pool_creates_file(tmp_path: Path):
     db_path = tmp_path / "octop.db"
-    DBPool(db_path)
+    SqlitePool(db_path)
     assert db_path.exists()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX-only mode bits")
 def test_db_pool_file_is_0600(tmp_path: Path):
     db_path = tmp_path / "octop.db"
-    DBPool(db_path)
+    SqlitePool(db_path)
     mode = db_path.stat().st_mode & 0o777
     assert mode == 0o600
 
 
-def test_run_migrations_creates_tables(db: DBPool):
+def test_run_migrations_creates_tables(db: SqlitePool):
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -61,7 +61,7 @@ def test_run_migrations_creates_tables(db: DBPool):
     assert expected.issubset(names)
 
 
-def test_run_migrations_idempotent(db: DBPool):
+def test_run_migrations_idempotent(db: SqlitePool):
     run_migrations(db)
     with db.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
@@ -77,7 +77,7 @@ def test_run_migrations_idempotent(db: DBPool):
 def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
     """DBs missing columns must be repaired on boot even if schema version is ahead."""
     db_path = tmp_path / "octop.db"
-    pool = DBPool(db_path)
+    pool = SqlitePool(db_path)
     with pool.connect() as conn:
         conn.executescript(
             (
@@ -93,13 +93,13 @@ def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
     assert "task_type" in cron_cols
 
 
-def test_foreign_keys_enabled(db: DBPool):
+def test_foreign_keys_enabled(db: SqlitePool):
     with db.connect() as conn:
         fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
     assert fk == 1
 
 
-def test_transaction_rolls_back_on_exception(db: DBPool):
+def test_transaction_rolls_back_on_exception(db: SqlitePool):
     with pytest.raises(RuntimeError), db.transaction() as conn:
         conn.execute(
             "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, 0)",
