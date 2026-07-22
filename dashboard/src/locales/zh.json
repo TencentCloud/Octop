@@ -2714,7 +2714,7 @@
     "waitingScreenshot": "正在等待浏览器截图…",
     "firstConnectHint": "首次连接可能需要几秒钟",
     "waitingAgentHint": "等待 Agent 启动浏览器…",
-    "interactiveHint": "🖱️ 可直接在浏览器上点击、滚动和输入",
+    "interactiveHint": "🖱️ 可直接在浏览器上点击、拖动、滚动和输入",
     "returnToAgent": "交还控制权给 Agent",
     "takeover": "人工接管",
     "openDesktopChrome": "在桌面上打开 Chrome 窗口",
@@ -2746,7 +2746,7 @@
     "streaming": "推流中",
     "connectFailed": "浏览器流连接失败",
     "reconnect": "重新连接",
-    "interactiveHint": "🖱️ 可直接在浏览器上点击、滚动和输入"
+    "interactiveHint": "🖱️ 可直接在浏览器上点击、拖动、滚动和输入"
   },
   "embedding": {
     "title": "本地 Embedding 配置",

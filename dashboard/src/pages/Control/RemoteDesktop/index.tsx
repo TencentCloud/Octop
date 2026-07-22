@@ -9,7 +9,6 @@ import {
   Space,
   Tag,
   Tooltip,
-  Typography,
   message,
 } from "antd";
 import {
@@ -28,6 +27,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import StreamConnectingIndicator from "../../../components/StreamConnectingIndicator";
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import PageShell from "../../../layouts/PageShell";
@@ -66,8 +66,6 @@ import {
 } from "../../../utils/desktopViewport";
 import { sendDesktopAction } from "./desktopShortcuts";
 import styles from "./index.module.less";
-
-const { Text } = Typography;
 
 const RESOLUTION_STORAGE_KEY = "octop:remote-desktop:resolution";
 const FPS_STORAGE_KEY = "octop:remote-desktop:max-fps";
@@ -1206,14 +1204,15 @@ export default function RemoteDesktopPage() {
             <div className={styles.streamSurface}>
               {isStreaming && !frameReady && (
                 <div className={styles.streamLoading}>
-                  <RefreshCw size={28} className={styles.streamLoadingIcon} />
-                  <Text type="secondary">
-                    {status === "connecting"
-                      ? t("remoteDesktop.connecting", "连接中")
-                      : status === "reconnecting"
-                      ? t("remoteDesktop.reconnecting", "重连中")
-                      : t("remoteDesktop.waitingFrame", "等待画面…")}
-                  </Text>
+                  <StreamConnectingIndicator
+                    label={
+                      status === "connecting"
+                        ? t("remoteDesktop.connecting", "连接中")
+                        : status === "reconnecting"
+                        ? t("remoteDesktop.reconnecting", "重连中")
+                        : t("remoteDesktop.waitingFrame", "等待画面…")
+                    }
+                  />
                 </div>
               )}
               <StreamEdgeControls
@@ -1238,6 +1237,8 @@ export default function RemoteDesktopPage() {
                   isMobile ? styles.canvasMobile : ""
                 } ${!frameReady ? styles.canvasHidden : ""}`}
                 onPointerDown={interaction.onPointerDown}
+                onPointerMove={interaction.onPointerMove}
+                onPointerLeave={interaction.onPointerLeave}
                 onDoubleClick={interaction.onDoubleClick}
                 onContextMenu={interaction.onContextMenu}
                 onWheel={interaction.onWheel}

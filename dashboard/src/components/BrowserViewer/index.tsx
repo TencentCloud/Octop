@@ -13,7 +13,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Globe,
-  Loader2,
   Plus,
   RotateCcw,
   Star,
@@ -29,6 +28,7 @@ import type {
 import { useBrowserCanvasInteraction } from "../../hooks/useBrowserCanvasInteraction";
 import { paintBase64JpegToCanvas } from "../../utils/browserCanvas";
 import { normalizeUrl } from "../../utils/normalizeUrl";
+import StreamConnectingIndicator from "../StreamConnectingIndicator";
 import styles from "./index.module.less";
 
 /** Imperative handle so the parent can paint incoming frames onto the canvas. */
@@ -131,25 +131,16 @@ export const BrowserViewer = forwardRef<
     onFrameReadyChange?.(frameReady);
   }, [frameReady, onFrameReadyChange]);
 
-  const sendPanScroll = useCallback(
-    (x: number, y: number, deltaX: number, deltaY: number) => {
-      sendEvent({ type: "scroll", x, y, deltaX, deltaY });
-    },
-    [sendEvent],
-  );
-
-  const sendPanClick = useCallback(
-    (x: number, y: number) => {
-      canvasRef.current?.focus();
-      sendEvent({ type: "click", x, y });
-    },
-    [sendEvent],
-  );
-
-  const sendPanDoubleClick = useCallback(
-    (x: number, y: number) => {
-      canvasRef.current?.focus();
-      sendEvent({ type: "dblclick", x, y });
+  const forwardCanvasEvent = useCallback(
+    (event: Record<string, unknown>) => {
+      if (
+        event.type === "click" ||
+        event.type === "dblclick" ||
+        event.type === "mousedown"
+      ) {
+        canvasRef.current?.focus();
+      }
+      sendEvent(event);
     },
     [sendEvent],
   );
@@ -157,15 +148,16 @@ export const BrowserViewer = forwardRef<
   const {
     handleWheel,
     onPointerDown: handlePanPointerDown,
+    onPointerMove: handlePointerMove,
+    onPointerLeave: handlePointerLeave,
     onDoubleClick: handlePanDoubleClick,
+    onContextMenu: handleContextMenu,
     isDragging,
     pointerStyle,
   } = useBrowserCanvasInteraction({
     enabled: interactive,
     canvasRef,
-    onScroll: sendPanScroll,
-    onClick: sendPanClick,
-    onDoubleClick: sendPanDoubleClick,
+    onEvent: forwardCanvasEvent,
   });
 
   const isStreaming = status === "streaming" || status === "browser_started";
@@ -323,15 +315,14 @@ export const BrowserViewer = forwardRef<
           </div>
         ) : isConnecting && !frameReady ? (
           <div className={styles.placeholder}>
-            <Loader2 size={24} style={{ marginBottom: 8 }} />
-            <div>
-              {isStreaming
-                ? t("browserViewer.streaming")
-                : t("browserViewer.connecting")}
-            </div>
-            {connectingHint && (
-              <div className={styles.placeholderHint}>{connectingHint}</div>
-            )}
+            <StreamConnectingIndicator
+              label={
+                isStreaming
+                  ? t("browserViewer.streaming")
+                  : t("browserViewer.connecting")
+              }
+              hint={connectingHint}
+            />
           </div>
         ) : (
           <canvas
@@ -341,11 +332,14 @@ export const BrowserViewer = forwardRef<
               interactive ? styles.canvasInteractive : ""
             } ${!frameReady ? styles.canvasHidden : ""}`}
             style={{
-              cursor: isDragging ? "grabbing" : "grab",
+              cursor: isDragging ? "grabbing" : "default",
               ...pointerStyle,
             }}
             onPointerDown={handlePanPointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
             onDoubleClick={handlePanDoubleClick}
+            onContextMenu={handleContextMenu}
             onWheel={handleWheel}
             onKeyDown={onCanvasKeyDown}
           />

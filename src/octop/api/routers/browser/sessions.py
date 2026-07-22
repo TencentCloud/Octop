@@ -387,7 +387,7 @@ class ActionBody(BaseModel):
     """A single user interaction event to execute on the page."""
 
     type: str
-    """Event type: click | dblclick | mousedown | mouseup | type | scroll |
+    """Event type: click | dblclick | mousedown | mouseup | mousemove | type | scroll |
     keydown | keyup | navigate | goback | goforward | reload"""
 
     x: float | None = None
@@ -409,7 +409,7 @@ async def action(
     """Execute a single interaction on the session page.
 
     Supported action types:
-      click / dblclick / mousedown / mouseup — mouse at (x, y)
+      click / dblclick / mousedown / mouseup / mousemove — mouse at (x, y)
       type               — insert text (body.text)
       scroll             — scroll at (x, y) by (delta_x, delta_y)
       keydown / keyup    — key press (body.key)
@@ -429,13 +429,15 @@ async def action(
         raise OctopError(ErrorCode.NOT_FOUND, f"session unavailable: {exc}") from exc
     t = body.type
     try:
-        if t in ("click", "dblclick", "mousedown", "mouseup"):
+        if t in ("click", "dblclick", "mousedown", "mouseup", "mousemove"):
             if body.x is None or body.y is None:
                 raise OctopError(ErrorCode.SLASH_BAD_ARGS, "x and y required for mouse action")
             if t == "click":
                 await _mouse_click(sess, page, body.x, body.y, button=body.button)
             elif t == "dblclick":
                 await _mouse_click(sess, page, body.x, body.y, button=body.button, click_count=2)
+            elif t == "mousemove":
+                await page.mouse.move(body.x, body.y)
             else:
                 await page.mouse.move(body.x, body.y)
                 if t == "mousedown":
