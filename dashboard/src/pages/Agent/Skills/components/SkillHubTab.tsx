@@ -25,6 +25,7 @@ const RANKING_TABS: { key: RankingType; labelKey: string }[] = [
 
 interface RankingsResponse {
   rankings?: Record<string, { section?: string; skills?: SkillHubSkill[] }>;
+  errors?: Record<string, string>;
 }
 
 // Cache rankings in localStorage for 1 day to avoid slow repeated fetches.
@@ -123,7 +124,11 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
             map[key] = sections[key]?.skills ?? [];
           }
           setRankings(map);
-          saveRankingsCache(map);
+          // Do not cache a partial response for a full day, so a later visit
+          // can retry after the transient upstream failure has recovered.
+          if (Object.keys(resp?.errors ?? {}).length === 0) {
+            saveRankingsCache(map);
+          }
         }
       } catch (err) {
         if (!controller.signal.aborted) {

@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 import os
 import shutil
@@ -270,52 +269,12 @@ async def _install_skillhub_cli() -> str:
     return skillhub_bin
 
 
-async def _skillhub_supports_rankings(skillhub_bin: str) -> bool:
-    """Return True when the CLI exposes ``skill rankings``."""
-    try:
-        rc, _stdout, _stderr = await _run_skillhub_cmd(
-            skillhub_bin,
-            ["skill", "rankings", "--help"],
-            timeout=10,
-        )
-        return rc == 0
-    except Exception:
-        return False
-
-
-async def _ensure_skillhub_cli(*, require_rankings: bool = False) -> str:
-    """Return path to the ``skillhub`` binary, auto-installing or upgrading if needed."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
+async def _ensure_skillhub_cli() -> str:
+    """Return path to the ``skillhub`` binary, auto-installing it if needed."""
     skillhub_bin = _resolve_skillhub_bin()
     if skillhub_bin is None:
         skillhub_bin = await _install_skillhub_cli()
-
-    if require_rankings and not await _skillhub_supports_rankings(skillhub_bin):
-        logger.info("skillhub CLI missing skill rankings support, attempting self-upgrade...")
-        if await _upgrade_skillhub_cli(skillhub_bin):
-            skillhub_bin = _resolve_skillhub_bin() or skillhub_bin
-        if not await _skillhub_supports_rankings(skillhub_bin):
-            logger.info("skillhub self-upgrade insufficient, reinstalling CLI...")
-            skillhub_bin = await _install_skillhub_cli()
-        if not await _skillhub_supports_rankings(skillhub_bin):
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "skillhub CLI does not support skill rankings after upgrade/reinstall. "
-                    f"Install manually: curl -fsSL {_SKILLHUB_INSTALL_URL} | sh"
-                ),
-            )
-
     return skillhub_bin
-
-
-def _skillhub_rankings_args(rtype: str, *, host: str | None = None) -> list[str]:
-    """Build argv for ``skillhub skill rankings``."""
-    args = ["skill", "rankings", "--type", rtype]
-    if host:
-        args += ["--host", host]
-    return args
 
 
 async def _run_skillhub_cmd(
@@ -399,7 +358,7 @@ def _skillhub_cli_failure_detail(action: str, stderr: str, *, locale: str = "en"
 
 def _skillhub_stderr_suggests_upgrade(err_msg: str) -> bool:
     lower = err_msg.lower()
-    return "self-upgrade" in lower or "新版本" in err_msg or "invalid choice: 'rankings'" in lower
+    return "self-upgrade" in lower or "新版本" in err_msg
 
 
 async def _enabled_skill_names(
@@ -784,71 +743,37 @@ _RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending",
 @router.get("/agents/{agent_id}/skills/hub/rankings")
 async def hub_rankings(
     agent_id: str,
-    request: Request,
     type: str = "all",
-    host: str | None = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Fetch Tencent SkillHub rankings via the skillhub CLI.
+    """Fetch Tencent SkillHub rankings directly over HTTP.
 
-    Runs ``skillhub skill rankings --type <type> [--host <host>]`` and returns
-    the CLI JSON payload (typically ``section``, ``skills``, ``total``).
+    Returns the same payload shape previously produced by
+    ``skillhub skill rankings`` (typically ``section``, ``skills``, ``total``).
     ``type`` selects a section (all / hot / recommended / trending / newest /
-    featured / paid). The host is resolved from the ``host`` query param, else
-    the ``SKILLHUB_HOST`` env var, else the CLI default (https://api.skillhub.cn).
-    Each source is stripped of surrounding whitespace; blank or whitespace-only
-    values are ignored and fall through to the next source. The agent_id is
-    accepted for auth/routing symmetry with search/install; rankings are global.
+    featured / paid). The host is resolved from the server-side ``SKILLHUB_HOST``
+    env var, else https://api.skillhub.cn. The agent_id is accepted for
+    auth/routing symmetry with search/install; rankings are global.
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
-    locale = resolve_request_locale(request)
 
     rtype = type if type in _RANKING_TYPES else "all"
-    skillhub_bin = await _ensure_skillhub_cli(require_rankings=True)
-    # host param > SKILLHUB_HOST env > CLI default. Strip each source and skip
-    # blank / whitespace-only values so they fall through to the next source
-    # (a whitespace-only host param must not short-circuit past the env var).
-    resolved_host = (host or "").strip() or os.environ.get("SKILLHUB_HOST", "").strip()
-    args = _skillhub_rankings_args(rtype, host=resolved_host or None)
+    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError,
+        SkillHubMarketTimeout,
+        fetch_skillhub_rankings,
+    )
 
     try:
-        rc, stdout, stderr = await _run_skillhub_cmd(skillhub_bin, args, timeout=20)
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="skillhub rankings timed out") from None
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to run skillhub CLI: {exc}") from exc
-
-    if (
-        rc != 0
-        and _skillhub_stderr_suggests_upgrade(stderr)
-        and await _upgrade_skillhub_cli(skillhub_bin)
-    ):
-        skillhub_bin = _resolve_skillhub_bin() or skillhub_bin
-        try:
-            rc, stdout, stderr = await _run_skillhub_cmd(skillhub_bin, args, timeout=20)
-        except TimeoutError:
-            raise HTTPException(status_code=504, detail="skillhub rankings timed out") from None
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-            ) from exc
-
-    if rc != 0:
-        raise HTTPException(
-            status_code=502,
-            detail=_skillhub_cli_failure_detail("rankings", stderr, locale=locale),
-        )
-
-    try:
-        return json.loads(stdout)  # type: ignore[no-any-return]
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=502, detail=f"skillhub rankings returned invalid JSON: {exc}"
-        ) from exc
+        return await fetch_skillhub_rankings(rtype)
+    except SkillHubMarketTimeout as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except SkillHubMarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/agents/{agent_id}/skills/hub/install", status_code=201)

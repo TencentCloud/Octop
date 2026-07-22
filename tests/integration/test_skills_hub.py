@@ -64,20 +64,38 @@ async def test_hub_search_with_query(env: Any) -> None:
         assert r.status_code in (502, 504), f"Unexpected status {r.status_code}: {r.text}"
 
 
-async def test_hub_rankings_returns_dict(env: Any) -> None:
-    """Authenticated GET rankings → 200 (dict) or 5xx if CLI absent."""
+async def test_hub_rankings_returns_dict(
+    env: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authenticated GET rankings returns the direct HTTP client payload."""
+    from octop.infra.agents import skillhub_market
+
+    async def fake_fetch_rankings(
+        ranking_type: str,
+        *,
+        host: str | None = None,
+        timeout: float = 10.0,
+    ) -> dict[str, Any]:
+        assert ranking_type == "hot"
+        assert host is None
+        assert timeout == 10.0
+        return {"section": "hot_downloads", "skills": [], "total": 0}
+
+    monkeypatch.setattr(
+        skillhub_market,
+        "fetch_skillhub_rankings",
+        fake_fetch_rankings,
+    )
+
     c, _srv, auth, aid = env
     r = await c.get(
         f"/api/agents/{aid}/skills/hub/rankings",
         headers=auth,
         params={"type": "hot"},
     )
-    if r.status_code == 200:
-        body = r.json()
-        assert isinstance(body, dict), "200 response body must be a dict"
-        assert "skills" in body, "rankings response must include skills list"
-    else:
-        assert r.status_code in (502, 504), f"Unexpected status {r.status_code}: {r.text}"
+    assert r.status_code == 200
+    assert r.json() == {"section": "hot_downloads", "skills": [], "total": 0}
 
 
 # --- authenticated install tests --------------------------------------------
