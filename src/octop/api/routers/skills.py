@@ -616,11 +616,7 @@ async def delete_skill(
 async def _persist_disabled(server: Any, agent_id: str, disabled: set[str]) -> None:
     """Write back ``skills_disabled`` and hot-sync the running harness agent."""
     assert server.app_runtime is not None
-    registry = server.app_runtime.agent_registry
-    cfg = registry.get_config(agent_id)
-    cfg["skills_disabled"] = sorted(disabled)
-    await registry.update_config_json(agent_id, json.dumps(cfg))
-    registry.sync_skills_disabled(agent_id, disabled)
+    await server.app_runtime.agent_registry.persist_skills_disabled(agent_id, disabled)
 
 
 @router.post("/agents/{agent_id}/skills/{name}/enable", status_code=204)

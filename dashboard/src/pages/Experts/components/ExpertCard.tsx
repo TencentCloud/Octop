@@ -43,15 +43,8 @@ export const ExpertCard = memo(function ExpertCard({
         } as React.CSSProperties
       }
     >
-      {/* Installed badge */}
-      {isInstalled && (
-        <div className={styles.expertInstalledCheck}>
-          <CheckCircle size={16} />
-        </div>
-      )}
-
       {/* Icon + title */}
-      <div className={styles.agentCardHeader}>
+      <div className={styles.expertTemplateHeader}>
         <div
           className={styles.agentCardIcon}
           style={{
@@ -63,20 +56,23 @@ export const ExpertCard = memo(function ExpertCard({
         </div>
         <div className={styles.agentCardTitleBlock}>
           <div className={styles.agentCardName}>{label}</div>
-          {isInstalled && (
-            <div className={styles.expertInstalledLabel}>
-              {t("experts.installedBadge")}
-            </div>
-          )}
         </div>
       </div>
 
       {/* Description */}
       <div className={styles.agentCardDesc}>{desc || "\u00a0"}</div>
 
-      {/* Footer hint */}
-      <div className={styles.expertCardHint}>
-        {t("experts.createFromTemplate")}
+      {/* Footer */}
+      <div className={styles.expertCardFooter}>
+        <div className={styles.expertCardHint}>
+          {t("experts.createFromTemplate")}
+        </div>
+        {isInstalled && (
+          <div className={styles.expertInstalledLabel}>
+            <CheckCircle size={12} />
+            {t("experts.installedBadge")}
+          </div>
+        )}
       </div>
     </div>
   );
