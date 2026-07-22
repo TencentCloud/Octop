@@ -7,6 +7,8 @@ import json
 import re
 import zipfile
 
+import pytest
+
 
 def _zip_bytes(files: dict[str, str]) -> bytes:
     buf = io.BytesIO()
@@ -427,6 +429,36 @@ def test_map_skillhub_error_hides_upstream_details() -> None:
     assert "secret.example" not in mapped.message
     assert mapped.details["kind"] == "upstream_failed"
     assert "secret.example" not in str(mapped.details.get("reason", ""))
+
+
+def test_http_get_ssl_urlerror_raises_ssl_kind(monkeypatch) -> None:
+    from urllib.error import URLError
+
+    from octop.infra.agents.experts import skillhub_market
+
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise URLError("[SSL: RECORD_LAYER_FAILURE] record layer failure")
+
+    monkeypatch.setattr(skillhub_market, "urlopen", boom)
+
+    with pytest.raises(skillhub_market.SkillHubMarketError) as exc:
+        skillhub_market._http_get("https://example.test/x", accept="application/json")
+    assert exc.value.kind == skillhub_market.SkillHubMarketErrorKind.SSL_ERROR
+
+
+def test_map_skillhub_ssl_error() -> None:
+    from octop.api.routers.experts import _map_skillhub_error
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubMarketError,
+        SkillHubMarketErrorKind,
+    )
+    from octop.infra.errors import ErrorCode
+
+    mapped = _map_skillhub_error(
+        SkillHubMarketError("ssl broken", kind=SkillHubMarketErrorKind.SSL_ERROR)
+    )
+    assert mapped.code == ErrorCode.SKILLHUB_SSL_FAILED
+    assert mapped.details["kind"] == "ssl_error"
 
 
 def test_map_skillhub_not_found() -> None:

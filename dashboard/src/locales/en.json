@@ -95,6 +95,7 @@
     "SKILL_IMPORT_FAILED": "Skill import failed: {reason}",
     "SKILL_ALREADY_EXISTS": "Skill {name} already exists. Enable overwrite to replace it.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
+    "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect."
   },
