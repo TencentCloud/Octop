@@ -364,7 +364,15 @@ def _map_skillhub_install_error(err_msg: str, skill_name: str) -> Any | None:
     """Map skillhub stderr to an HTTPException when the failure is user-actionable."""
     from fastapi import HTTPException  # noqa: PLC0415
 
+    from octop.i18n import error_message  # noqa: PLC0415
+    from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
+
     lower = err_msg.lower()
+    if looks_like_ssl_error(err_msg):
+        return HTTPException(
+            status_code=502,
+            detail=error_message("SKILLHUB_SSL_FAILED", "en"),
+        )
     if "http 404" in lower or ("download failed" in lower and "404" in lower):
         return HTTPException(
             status_code=404,
@@ -376,6 +384,17 @@ def _map_skillhub_install_error(err_msg: str, skill_name: str) -> Any | None:
             detail=f"Skill '{skill_name}' not found in SkillHub",
         )
     return None
+
+
+def _skillhub_cli_failure_detail(action: str, stderr: str, *, locale: str = "en") -> str:
+    """Build a 502 detail for a failed skillhub CLI invocation."""
+    from octop.i18n import error_message  # noqa: PLC0415
+    from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
+
+    err = stderr.strip() or "unknown error"
+    if looks_like_ssl_error(err):
+        return error_message("SKILLHUB_SSL_FAILED", locale)
+    return f"skillhub {action} failed: {err}"
 
 
 def _skillhub_stderr_suggests_upgrade(err_msg: str) -> bool:
@@ -721,6 +740,7 @@ def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
 @router.get("/agents/{agent_id}/skills/hub/search")
 async def hub_search_skills(
     agent_id: str,
+    request: Request,
     q: str = "",
     limit: int = 50,
     as_user: int | None = None,
@@ -738,6 +758,7 @@ async def hub_search_skills(
     # runs globally, so we only need an existence/ownership check here —
     # the agent need not be running (unlike chat/workspace endpoints).
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    locale = resolve_request_locale(request)
     skillhub_bin = await _ensure_skillhub_cli()
     query = q.strip() or "a"
     # Note: --json is not supported by this CLI version; parse text output instead.
@@ -754,7 +775,8 @@ async def hub_search_skills(
 
     if rc != 0:
         raise HTTPException(
-            status_code=502, detail=f"skillhub search failed: {stderr.strip() or 'unknown error'}"
+            status_code=502,
+            detail=_skillhub_cli_failure_detail("search", stderr, locale=locale),
         )
 
     return _parse_skillhub_search_output(stdout)
@@ -766,6 +788,7 @@ _RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending",
 @router.get("/agents/{agent_id}/skills/hub/rankings")
 async def hub_rankings(
     agent_id: str,
+    request: Request,
     type: str = "all",
     host: str | None = None,
     as_user: int | None = None,
@@ -786,6 +809,7 @@ async def hub_rankings(
     from fastapi import HTTPException  # noqa: PLC0415
 
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    locale = resolve_request_locale(request)
 
     rtype = type if type in _RANKING_TYPES else "all"
     skillhub_bin = await _ensure_skillhub_cli(require_rankings=True)
@@ -820,7 +844,7 @@ async def hub_rankings(
     if rc != 0:
         raise HTTPException(
             status_code=502,
-            detail=f"skillhub rankings failed: {stderr.strip() or 'unknown error'}",
+            detail=_skillhub_cli_failure_detail("rankings", stderr, locale=locale),
         )
 
     try:
@@ -901,7 +925,8 @@ async def hub_install_skill(
             if mapped is not None:
                 raise mapped
             raise HTTPException(
-                status_code=502, detail=f"skillhub install failed: {err_msg or 'unknown error'}"
+                status_code=502,
+                detail=_skillhub_cli_failure_detail("install", err_msg, locale="en"),
             )
 
         uploads: list[tuple[str, bytes]] = []

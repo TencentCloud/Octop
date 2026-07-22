@@ -38,6 +38,39 @@ def test_map_install_error_unknown_returns_none() -> None:
     assert _map_skillhub_install_error("network timeout", "foo") is None
 
 
+def test_map_install_error_ssl_record_layer() -> None:
+    from octop.i18n import error_message
+
+    err = (
+        "Failed to fetch hot rankings: [SSL: RECORD_LAYER_FAILURE] "
+        "record layer failure (_ssl.c:1081)"
+    )
+    exc = _map_skillhub_install_error(err, "any-skill")
+    assert isinstance(exc, HTTPException)
+    assert exc.status_code == 502
+    assert exc.detail == error_message("SKILLHUB_SSL_FAILED", "en")
+
+
+def test_skillhub_cli_failure_detail_ssl() -> None:
+    from octop.api.routers.skills import _skillhub_cli_failure_detail
+    from octop.i18n import error_message
+
+    detail = _skillhub_cli_failure_detail(
+        "rankings",
+        "Error: [SSL: RECORD_LAYER_FAILURE] record layer failure",
+        locale="zh",
+    )
+    assert detail == error_message("SKILLHUB_SSL_FAILED", "zh")
+    assert "openssl" in detail.lower() or "SSL" in detail or "证书" in detail
+
+
+def test_skillhub_cli_failure_detail_passthrough() -> None:
+    from octop.api.routers.skills import _skillhub_cli_failure_detail
+
+    detail = _skillhub_cli_failure_detail("search", "network timeout", locale="en")
+    assert detail == "skillhub search failed: network timeout"
+
+
 def test_stderr_suggests_upgrade() -> None:
     assert _skillhub_stderr_suggests_upgrade(
         "[skillhub] 发现新版本 2026.6.18（当前 2026.6.17）。运行 `skillhub self-upgrade` 进行升级。"
