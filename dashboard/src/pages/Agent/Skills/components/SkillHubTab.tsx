@@ -288,7 +288,7 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
           icon={<RefreshCw size={14} />}
           onClick={() => void fetchRankings(true)}
         >
-          {t("common.retry", "Retry")}
+          {t("common.refresh")}
         </Button>
       </div>
     );
@@ -323,7 +323,7 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
           style={{ color: "var(--fn-text-tertiary)" }}
           onClick={() => void fetchRankings(true)}
         >
-          {t("common.refresh", "Refresh")}
+          {t("common.refresh")}
         </Button>
       </div>
 
