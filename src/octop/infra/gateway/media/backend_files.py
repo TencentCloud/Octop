@@ -191,9 +191,25 @@ def normalize_workspace_download_path(path: str) -> str:
 
 
 def workspace_download_url(agent_id: str, workspace_path: str) -> str:
-    rel = normalize_workspace_media_path(workspace_path)
+    """Build a dashboard download URL for a workspace or host-absolute path.
+
+    Absolute / ``file://`` paths are passed through (``from_workspace=false``
+    default treats leading ``/`` as host-absolute). Relative workspace keys
+    are passed without a leading slash so they stay workspace-relative.
+    """
+    raw = workspace_path.strip()
+    if (
+        raw.startswith("file://")
+        or raw.startswith("/")
+        or (len(raw) >= 2 and raw[1] == ":")
+        or raw.startswith("\\\\")
+    ):
+        path_param = raw
+    else:
+        rel = extract_workspace_rel(raw) or raw.lstrip("/")
+        path_param = rel
     return (
-        f"/api/agents/{agent_id}/workspace/download?path={urllib.parse.quote('/' + rel, safe='')}"
+        f"/api/agents/{agent_id}/workspace/download?path={urllib.parse.quote(path_param, safe='')}"
     )
 
 
@@ -285,17 +301,80 @@ def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:
     return False
 
 
-def _is_host_absolute(path: str) -> bool:
-    """True for host filesystem absolutes (not workspace keys like ``/outbound/…``)."""
-    if path.startswith("file://"):
-        return True
-    if len(path) >= 2 and path[1] == ":":
-        return True
-    if path.startswith("\\\\"):
-        return True
-    if not path.startswith("/"):
+_DENIED_HOST_DOWNLOAD_PREFIXES = (
+    "/etc/",
+    "/proc/",
+    "/sys/",
+    "/dev/",
+    "/private/etc/",
+)
+_DENIED_WIN_DOWNLOAD_PREFIXES = (
+    "c:/windows/",
+    "c:/program files/",
+    "c:/program files (x86)/",
+)
+
+
+def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
+    """Allow host-absolute download when under workspace / agents / temp, or
+    non-system user paths (e.g. Desktop tool outputs). Deny OS system roots.
+    """
+    raw = path.strip()
+    if not raw:
         return False
-    return not path.startswith(("/outbound/", "/inbound/"))
+    if raw.startswith("file://"):
+        raw = file_url_to_abs_path(raw)
+        if not raw:
+            return False
+    try:
+        resolved = Path(raw).resolve()
+    except (OSError, ValueError):
+        return False
+
+    norm = str(resolved).replace("\\", "/").lower()
+    if ".harness-browser" in norm:
+        return False
+
+    try:
+        resolved.relative_to(workspace.resolve())
+        return True
+    except ValueError:
+        pass
+
+    if "/.octop/agents/" in norm:
+        return True
+    if is_allowed_host_temp_path(resolved):
+        return True
+
+    if any(norm.startswith(prefix) for prefix in _DENIED_HOST_DOWNLOAD_PREFIXES):
+        return False
+    win_denied = (
+        len(norm) >= 2
+        and norm[1] == ":"
+        and any(norm.startswith(prefix) for prefix in _DENIED_WIN_DOWNLOAD_PREFIXES)
+    )
+    return not win_denied
+
+
+def is_host_absolute_path(path: str) -> bool:
+    """True for host filesystem absolute paths (``/…``, ``file://``, drive letter).
+
+    With ``from_workspace=false``, API leading ``/`` means host-absolute. Workspace
+    keys must be passed without a leading slash (``outbound/…``) or with
+    ``from_workspace=true``.
+    """
+    raw = path.strip().replace("\\", "/")
+    if raw.startswith("file://"):
+        return True
+    if len(raw) >= 2 and raw[1] == ":":
+        return True
+    if raw.startswith("\\\\"):
+        return True
+    return raw.startswith("/")
+
+
+def _is_host_absolute(path: str) -> bool:
+    return is_host_absolute_path(path)
 
 
 async def _download_via_workspace(workspace: BackendWorkspace, path: str) -> bytes | None:
@@ -441,8 +520,10 @@ __all__ = [
     "ensure_workspace_media_path",
     "extract_workspace_rel",
     "file_url_to_abs_path",
+    "is_allowed_host_download_abs_path",
     "is_allowed_host_temp_path",
     "is_blocked_host_download_path",
+    "is_host_absolute_path",
     "is_previewable_mime",
     "media_preview_url",
     "normalize_workspace_download_path",

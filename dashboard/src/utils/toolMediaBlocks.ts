@@ -124,15 +124,56 @@ export function agentIdFromWorkspacePath(path: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * Build a workspace download URL.
+ *
+ * Absolute / ``file://`` paths are passed through (API default treats leading
+ * ``/`` as host-absolute). Legacy ``/outbound|inbound/…`` keys are rewritten to
+ * relative workspace paths. Other relative keys omit the leading slash.
+ */
 export function workspaceDownloadUrl(
   agentId: string,
-  workspaceRel: string,
+  workspacePath: string,
 ): string {
-  const rel = toWorkspaceRel(workspaceRel);
-  const safe = rel || "";
+  const raw = workspacePath.trim();
+  let pathParam: string;
+  if (raw.toLowerCase().startsWith("file://")) {
+    pathParam = raw;
+  } else {
+    const mediaRel = extractWorkspaceRel(raw);
+    if (mediaRel) {
+      pathParam = mediaRel;
+    } else if (
+      raw.startsWith("/") ||
+      /^[A-Za-z]:[\\/]/.test(raw) ||
+      raw.startsWith("\\\\")
+    ) {
+      pathParam = raw;
+    } else {
+      pathParam = toWorkspaceRel(raw) || "";
+    }
+  }
   return `/api/agents/${encodeURIComponent(
     agentId,
-  )}/workspace/download?path=${encodeURIComponent(`/${safe}`)}`;
+  )}/workspace/download?path=${encodeURIComponent(pathParam)}`;
+}
+
+/** True when *path* looks like a host filesystem absolute (or ``file://``). */
+export function isHostAbsoluteMediaPath(path: string): boolean {
+  const raw = path.trim().replace(/\\/g, "/");
+  if (raw.toLowerCase().startsWith("file://")) return true;
+  if (/^[A-Za-z]:[\\/]/.test(raw) || raw.startsWith("\\\\")) return true;
+  if (!raw.startsWith("/")) return false;
+  // Legacy dashboard workspace keys — not host roots.
+  if (
+    raw.startsWith("/outbound/") ||
+    raw.startsWith("/inbound/") ||
+    raw === "/outbound" ||
+    raw === "/inbound"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -197,7 +238,8 @@ export function canonicalizeMediaApiUrl(
         const mediaAgent = agentIdFromWorkspacePath(pathParam) || urlAgent;
         return workspaceDownloadUrl(mediaAgent, rel);
       }
-      return url;
+      // Rebuild so workspaceDownloadUrl can normalize other shapes.
+      return workspaceDownloadUrl(urlAgent, pathParam);
     }
 
     const source = parsed.searchParams.get("source") || "";

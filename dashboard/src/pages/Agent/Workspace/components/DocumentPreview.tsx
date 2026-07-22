@@ -15,6 +15,7 @@ import { Button, Spin } from "antd";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { requestBlob } from "../../../../api/request";
+import { withFromWorkspace } from "../../../../utils/fromWorkspace";
 import type { DocKind } from "../utils/docKind";
 import styles from "../index.module.less";
 
@@ -48,9 +49,11 @@ export default function DocumentPreview({
   const handleDownload = useCallback(async () => {
     try {
       const blob = await requestBlob(
-        `/agents/${encodeURIComponent(
-          agentId,
-        )}/workspace/download?path=${encodeURIComponent(path)}`,
+        withFromWorkspace(
+          `/agents/${encodeURIComponent(
+            agentId,
+          )}/workspace/download?path=${encodeURIComponent(path)}`,
+        ),
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -79,9 +82,11 @@ export default function DocumentPreview({
     const load = async () => {
       try {
         const blob = await requestBlob(
-          `/agents/${encodeURIComponent(
-            agentId,
-          )}/workspace/download?path=${encodeURIComponent(path)}`,
+          withFromWorkspace(
+            `/agents/${encodeURIComponent(
+              agentId,
+            )}/workspace/download?path=${encodeURIComponent(path)}`,
+          ),
         );
         if (cancelled) return;
 

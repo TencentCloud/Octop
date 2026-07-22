@@ -1,5 +1,6 @@
 import { request, requestBlob, requestUpload, getAuthToken } from "../request";
 import { getApiUrl } from "../config";
+import { withFromWorkspace } from "../../utils/fromWorkspace";
 import type {
   MdFileInfo,
   MdFileContent,
@@ -88,7 +89,9 @@ export const workspaceApi = {
 
   deleteWorkspaceFile: (agentId: string, path: string): Promise<void> =>
     request<void>(
-      `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+      withFromWorkspace(
+        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+      ),
       { method: "DELETE" },
     ),
 
@@ -98,7 +101,9 @@ export const workspaceApi = {
     destination: string,
   ): Promise<{ path: string }> =>
     request<{ path: string }>(
-      `/agents/${agentId}/workspace/move?path=${encodeURIComponent(path)}`,
+      withFromWorkspace(
+        `/agents/${agentId}/workspace/move?path=${encodeURIComponent(path)}`,
+      ),
       {
         method: "POST",
         body: JSON.stringify({ destination }),
@@ -110,7 +115,9 @@ export const workspaceApi = {
     path: string,
   ): Promise<{ path: string; is_dir: boolean }> =>
     request<{ path: string; is_dir: boolean }>(
-      `/agents/${agentId}/workspace/mkdir?path=${encodeURIComponent(path)}`,
+      withFromWorkspace(
+        `/agents/${agentId}/workspace/mkdir?path=${encodeURIComponent(path)}`,
+      ),
       { method: "POST" },
     ),
 
@@ -120,7 +127,9 @@ export const workspaceApi = {
     content = "",
   ): Promise<{ path: string; size: number }> =>
     request<{ path: string; size: number }>(
-      `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+      withFromWorkspace(
+        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+      ),
       {
         method: "PUT",
         body: JSON.stringify({ content }),
