@@ -7,7 +7,7 @@ import {
   useState,
   useLayoutEffect,
 } from "react";
-import { Spin } from "antd";
+import { Spin, Button } from "antd";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
@@ -23,6 +23,7 @@ import {
   groupConsecutiveAssistantMessages,
   type MessageGroup,
 } from "../utils/messageGrouping";
+import { nextCanLoadOlder, shouldReleaseLoadMoreLatch } from "./loadOlderGate";
 import styles from "../index.module.less";
 
 /** Virtualize long threads; short chats keep the simpler DOM path. */
@@ -54,7 +55,8 @@ interface MessageListProps {
   historyHasMore?: boolean;
   historyLoadingMore?: boolean;
   historyRefreshing?: boolean;
-  onLoadMoreHistory?: () => void;
+  /** Return false when the load did not start (caller must release any latch). */
+  onLoadMoreHistory?: () => boolean | void | Promise<boolean | void>;
   onRefreshHistory?: () => void;
   isStreaming?: boolean;
   thinkingStartedAt?: number | null;
@@ -251,6 +253,7 @@ export default function MessageList(props: MessageListProps) {
       !historyHasMore ||
       historyLoadingMore ||
       loading ||
+      isStreaming ||
       !onLoadMoreHistory ||
       loadMoreRequestedRef.current
     ) {
@@ -261,11 +264,25 @@ export default function MessageList(props: MessageListProps) {
       scrollHeightBeforePrependRef.current = scroller.scrollHeight;
     }
     loadMoreRequestedRef.current = true;
-    onLoadMoreHistory();
+    void Promise.resolve(onLoadMoreHistory()).then(
+      (started) => {
+        // Early-return in loadMoreHistory leaves historyLoadingMore false, so the
+        // effect below never clears this latch — release it explicitly.
+        if (shouldReleaseLoadMoreLatch(started)) {
+          loadMoreRequestedRef.current = false;
+          scrollHeightBeforePrependRef.current = null;
+        }
+      },
+      () => {
+        loadMoreRequestedRef.current = false;
+        scrollHeightBeforePrependRef.current = null;
+      },
+    );
   }, [
     historyHasMore,
     historyLoadingMore,
     loading,
+    isStreaming,
     onLoadMoreHistory,
     useVirtual,
   ]);
@@ -354,12 +371,6 @@ export default function MessageList(props: MessageListProps) {
   });
 
   useEffect(() => {
-    if (!loading && messages.length > 0) {
-      canLoadOlderRef.current = true;
-    }
-  }, [loading, messages.length]);
-
-  useEffect(() => {
     if (!historyLoadingMore) {
       loadMoreRequestedRef.current = false;
     }
@@ -387,11 +398,18 @@ export default function MessageList(props: MessageListProps) {
             <span>{t("chat.loadingEarlierMessages")}</span>
           </>
         ) : (
-          <span>{t("chat.scrollForEarlierMessages")}</span>
+          <Button
+            type="link"
+            size="small"
+            className={styles.historyLoadMoreBtn}
+            onClick={requestOlderMessages}
+          >
+            {t("chat.loadEarlierMessages")}
+          </Button>
         )}
       </div>
     );
-  }, [historyHasMore, historyLoadingMore, t]);
+  }, [historyHasMore, historyLoadingMore, requestOlderMessages, t]);
 
   const refreshFooter = useMemo(() => {
     if (!historyRefreshing) return null;
@@ -424,14 +442,66 @@ export default function MessageList(props: MessageListProps) {
     [],
   );
 
+  // Keep scrollToBottom identity out of session-reset deps: virtual itemCount
+  // changes every message and would re-disarm canLoadOlder permanently.
+  const scrollToBottomRef = useRef(scrollToBottom);
+  scrollToBottomRef.current = scrollToBottom;
+
   useEffect(() => {
     setUseVirtualLocked(false);
     loadMoreRequestedRef.current = false;
-    canLoadOlderRef.current = false;
+    canLoadOlderRef.current = nextCanLoadOlder({
+      kind: "session-reset",
+      loading: !!loading,
+      messageCount: messages.length,
+    });
     lastSmoothScrolledUserIdRef.current = null;
     scrollHeightBeforePrependRef.current = null;
-    scrollToBottom(true);
-  }, [stableSessionKey, scrollToBottom]);
+    scrollToBottomRef.current(true);
+    // Intentionally only sessionKey — see scrollToBottomRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- session switch only
+  }, [stableSessionKey]);
+
+  // Re-arm after session reset (must run after the effect above).
+  useEffect(() => {
+    if (
+      nextCanLoadOlder({
+        kind: "history-ready",
+        loading: !!loading,
+        messageCount: messages.length,
+      })
+    ) {
+      canLoadOlderRef.current = true;
+    }
+  }, [loading, messages.length, stableSessionKey]);
+
+  // When the list does not overflow, scroll-to-top never fires — keep loading
+  // older pages until content can scroll or the server says there is no more.
+  useEffect(() => {
+    if (
+      !historyHasMore ||
+      historyLoadingMore ||
+      loading ||
+      isStreaming ||
+      !canLoadOlderRef.current
+    ) {
+      return;
+    }
+    const scroller = useVirtual ? scrollerRef.current : containerRef.current;
+    if (!(scroller instanceof HTMLElement)) return;
+    if (scroller.scrollHeight <= scroller.clientHeight + 80) {
+      requestOlderMessages();
+    }
+  }, [
+    historyHasMore,
+    historyLoadingMore,
+    loading,
+    isStreaming,
+    messages.length,
+    useVirtual,
+    scrollerMountKey,
+    requestOlderMessages,
+  ]);
 
   useEffect(() => {
     if (messageGroups.length >= VIRTUALIZE_THRESHOLD) {
@@ -441,10 +511,10 @@ export default function MessageList(props: MessageListProps) {
 
   useEffect(() => {
     if (prevInitialLoadingRef.current && !loading && messages.length > 0) {
-      scrollToBottom(true);
+      scrollToBottomRef.current(true);
     }
     prevInitialLoadingRef.current = !!loading;
-  }, [loading, messages.length, scrollToBottom]);
+  }, [loading, messages.length]);
 
   useLayoutEffect(() => {
     if (!isStreaming) {

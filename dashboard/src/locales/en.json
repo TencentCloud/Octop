@@ -626,7 +626,8 @@
     "openFile": "View file",
     "fileWorkspace": "Workspace files",
     "fileWorkspaceHint": "Agent created or edited a file",
-    "fileSwitch": "Switch file"
+    "fileSwitch": "Switch file",
+    "loadEarlierMessages": "Load earlier messages"
   },
   "tools": {
     "unknown": "Unknown tool",

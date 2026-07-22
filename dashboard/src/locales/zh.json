@@ -624,7 +624,8 @@
     "openFile": "查看文件",
     "fileWorkspace": "工作区文件",
     "fileWorkspaceHint": "Agent 已生成或编辑文件",
-    "fileSwitch": "切换文件"
+    "fileSwitch": "切换文件",
+    "loadEarlierMessages": "加载更早的消息"
   },
   "tools": {
     "unknown": "未知工具",
