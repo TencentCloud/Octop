@@ -524,6 +524,12 @@
 
 /* ── Expert Template Card ─────────────────────────────── */
 
+.expertTemplateHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .expertTemplateCard {
   background: var(--fn-bg-primary);
   border: 2px solid var(--fn-card-border-normal);
@@ -564,26 +570,29 @@
   }
 }
 
-.expertInstalledCheck {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  color: #52c41a;
+.expertCardFooter {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
 }
 
 .expertInstalledLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
   font-size: 11px;
   color: #52c41a;
-  margin-top: 2px;
   font-weight: 500;
 }
 
 .expertCardHint {
   font-size: 12px;
   color: var(--fn-text-quaternary);
-  margin-top: 4px;
+  min-width: 0;
   transition: color 0.2s;
 
   .expertTemplateCard:hover & {
