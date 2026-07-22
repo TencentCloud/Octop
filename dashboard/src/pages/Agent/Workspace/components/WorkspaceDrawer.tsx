@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request, requestBlob, requestUpload } from "../../../../api/request";
-import { withFromWorkspace } from "@/utils/fromWorkspace";
+import { withFromWorkspace } from "../../../../utils/fromWorkspace";
 import { workspaceApi } from "../../../../api/modules/workspace";
 import { useAgent } from "../../../../context/AgentContext";
 import { useIsMobile } from "../../../../hooks/useIsMobile";

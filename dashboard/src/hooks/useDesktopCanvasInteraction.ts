@@ -62,6 +62,7 @@ export function useDesktopCanvasInteraction({
   return {
     onPointerDown: pointer.onPointerDown,
     onPointerMove: pointer.onPointerMove,
+    onPointerLeave: pointer.onPointerLeave,
     onDoubleClick: pointer.onDoubleClick,
     onContextMenu: pointer.onContextMenu,
     onWheel: pointer.onWheel,

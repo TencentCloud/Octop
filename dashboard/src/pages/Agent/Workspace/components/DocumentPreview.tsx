@@ -23,6 +23,19 @@ interface DocumentPreviewProps {
   agentId: string;
   path: string;
   kind: DocKind;
+  /** Workspace UI paths use true; chat/tool paths use false. */
+  fromWorkspace?: boolean;
+}
+
+function documentDownloadUrl(
+  agentId: string,
+  path: string,
+  fromWorkspace: boolean,
+): string {
+  const url = `/agents/${encodeURIComponent(
+    agentId,
+  )}/workspace/download?path=${encodeURIComponent(path)}`;
+  return fromWorkspace ? withFromWorkspace(url) : `${url}&from_workspace=false`;
 }
 
 function escapeHtml(value: string): string {
@@ -37,6 +50,7 @@ export default function DocumentPreview({
   agentId,
   path,
   kind,
+  fromWorkspace = true,
 }: DocumentPreviewProps) {
   const { t } = useTranslation();
   const [src, setSrc] = useState("");
@@ -49,11 +63,7 @@ export default function DocumentPreview({
   const handleDownload = useCallback(async () => {
     try {
       const blob = await requestBlob(
-        withFromWorkspace(
-          `/agents/${encodeURIComponent(
-            agentId,
-          )}/workspace/download?path=${encodeURIComponent(path)}`,
-        ),
+        documentDownloadUrl(agentId, path, fromWorkspace),
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -64,7 +74,7 @@ export default function DocumentPreview({
     } catch {
       // Download errors surface via the network layer; nothing to recover here.
     }
-  }, [agentId, path]);
+  }, [agentId, path, fromWorkspace]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,11 +92,7 @@ export default function DocumentPreview({
     const load = async () => {
       try {
         const blob = await requestBlob(
-          withFromWorkspace(
-            `/agents/${encodeURIComponent(
-              agentId,
-            )}/workspace/download?path=${encodeURIComponent(path)}`,
-          ),
+          documentDownloadUrl(agentId, path, fromWorkspace),
         );
         if (cancelled) return;
 
@@ -174,7 +180,7 @@ export default function DocumentPreview({
       pptxViewerRef.current?.destroy();
       pptxViewerRef.current = null;
     };
-  }, [agentId, path, kind]);
+  }, [agentId, path, kind, fromWorkspace]);
 
   if (error) {
     return (

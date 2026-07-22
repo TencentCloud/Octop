@@ -276,6 +276,7 @@ export default function FilePanelContent({
           <FileViewer
             agentId={agentId}
             path={resolvedPath}
+            fromWorkspace={false}
             editMode={editMode}
             value={content}
             onChange={setContent}
