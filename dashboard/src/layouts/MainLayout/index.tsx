@@ -13,7 +13,9 @@ import {
   MOBILE_FULLSCREEN_PATHS,
   SELF_HEADER_PATHS,
 } from "../../routes";
+import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import RequireAdmin from "../../components/RequireAdmin";
 
 const Chat = lazy(() => import("../../pages/Chat"));
@@ -53,6 +55,7 @@ export default function MainLayout() {
     (isMobile && MOBILE_FULLSCREEN_PATHS.has(currentPath));
 
   const [collapsed, setCollapsed] = useState(() => getSavedCollapsed());
+  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
   const [terminalMounted, setTerminalMounted] = useState(
     () => currentPath === "/terminal",
   );
@@ -64,6 +67,16 @@ export default function MainLayout() {
   }, [currentPath]);
 
   const toggleCollapsed = useCallback(() => {
+    if (!isMobile && isChatPath(currentPath)) {
+      if (!collapsed && chatSidebarOpen) {
+        setChatSidebarOpen(false);
+        return;
+      }
+      if (collapsed) {
+        setChatSidebarOpen(true);
+      }
+    }
+
     setCollapsed((prev) => {
       const next = !prev;
       try {
@@ -73,7 +86,7 @@ export default function MainLayout() {
       }
       return next;
     });
-  }, []);
+  }, [chatSidebarOpen, collapsed, currentPath, isMobile, setChatSidebarOpen]);
 
   // When switching to mobile, always collapse; restore saved preference on desktop
   useEffect(() => {
@@ -126,65 +139,79 @@ export default function MainLayout() {
     </Suspense>
   );
 
+  const isChatRoute = isChatPath(currentPath);
+
   return (
     <ServiceRestartProvider>
-      {/* Outer: full-height column (header on top, body below) */}
       <div
         style={{
           height: "100dvh",
           display: "flex",
-          flexDirection: "column",
+          flexDirection: "row",
           background: "var(--fn-bg-layout)",
           transition: "background var(--fn-transition)",
           overflow: "hidden",
         }}
       >
-        {/* Global header — hidden on mobile only for pages that provide their
-         own compact header (e.g. Chat). Other fullscreen pages like
-         RemoteBrowser / Terminal still show the global header on mobile. */}
-        {!(
-          isMobile &&
-          (SELF_HEADER_PATHS.has(currentPath) ||
-            [...SELF_HEADER_PATHS].some((p) => currentPath.startsWith(p + "/")))
-        ) && (
-          <Header
-            selectedKey={selectedKey}
-            collapsed={collapsed}
-            onToggle={toggleCollapsed}
-            isMobile={isMobile}
+        {/* Mobile overlay backdrop */}
+        {isMobile && !collapsed && (
+          <div
+            onClick={toggleCollapsed}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.40)",
+              zIndex: 99,
+            }}
           />
         )}
 
+        <Sidebar
+          selectedKey={selectedKey}
+          collapsed={collapsed}
+          onToggle={toggleCollapsed}
+          isMobile={isMobile}
+        />
+
+        {isChatRoute && (
+          <div
+            id={CHAT_HISTORY_RAIL_ID}
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignSelf: "stretch",
+              minHeight: 0,
+              height: "100%",
+            }}
+          />
+        )}
+
+        {/* Right column: header on top, page content below */}
         <div
           style={{
-            display: "flex",
             flex: 1,
+            minWidth: 0,
             minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
             overflow: "hidden",
-            position: "relative",
           }}
         >
-          {/* Mobile overlay backdrop */}
-          {isMobile && !collapsed && (
-            <div
-              onClick={toggleCollapsed}
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0, 0, 0, 0.40)",
-                zIndex: 99,
-              }}
+          {!(
+            isMobile &&
+            (SELF_HEADER_PATHS.has(currentPath) ||
+              [...SELF_HEADER_PATHS].some((p) =>
+                currentPath.startsWith(p + "/"),
+              ))
+          ) && (
+            <Header
+              selectedKey={selectedKey}
+              collapsed={collapsed}
+              onToggle={toggleCollapsed}
+              isMobile={isMobile}
             />
           )}
 
-          <Sidebar
-            selectedKey={selectedKey}
-            collapsed={collapsed}
-            onToggle={toggleCollapsed}
-            isMobile={isMobile}
-          />
-
-          {/* Main content area */}
           <Layout
             style={{
               background: "transparent",
@@ -193,6 +220,7 @@ export default function MainLayout() {
               flexDirection: "column",
               overflow: "hidden",
               minWidth: 0,
+              minHeight: 0,
             }}
           >
             <Content
@@ -204,12 +232,12 @@ export default function MainLayout() {
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
+                minHeight: 0,
               }}
             >
               <PwaUpdatePrompt />
               <PwaAutoPrompt />
 
-              {/* Terminal chunk loads on first visit; stays mounted to preserve state. */}
               {terminalMounted && (
                 <div
                   style={{
@@ -241,7 +269,6 @@ export default function MainLayout() {
 
               {currentPath !== "/terminal" &&
                 (isFullscreen ? (
-                  // Fullscreen pages: no padding/scroll wrapper
                   <div
                     style={{
                       flex: 1,
@@ -254,7 +281,6 @@ export default function MainLayout() {
                     {routes}
                   </div>
                 ) : (
-                  // Normal pages: scrollable with padding
                   <div className="page-content">{routes}</div>
                 ))}
             </Content>

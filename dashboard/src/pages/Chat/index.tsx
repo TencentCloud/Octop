@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { PanelLeftOpen, GraduationCap } from "lucide-react";
@@ -9,6 +10,7 @@ import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
 import { formatRunUsage } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
+import { useChatHistoryRail } from "./hooks/useChatHistoryRail";
 import { useChatDockPanel } from "./hooks/useChatDockPanel";
 import { useChatSend } from "./hooks/useChatSend";
 import { useChatNavigation } from "./hooks/useChatNavigation";
@@ -54,6 +56,7 @@ function ChatPageInner() {
     threadId?: string;
   }>();
   const isMobile = useIsMobile();
+  const chatHistoryRail = useChatHistoryRail();
   const [selectedTargetAgents, setSelectedTargetAgents] = useState<string[]>(
     [],
   );
@@ -476,39 +479,45 @@ function ChatPageInner() {
 
   const hasMessages = messages.length > 0;
 
+  const chatSidebarPanel = (
+    <ChatSidebarPanel
+      isMobile={isMobile}
+      sidebarOpen={sidebarOpen}
+      sidebarWidth={sidebarWidth}
+      isSidebarResizing={isSidebarResizing}
+      sidebarElRef={sidebarElRef}
+      agents={agents}
+      sessions={sessions}
+      activeThreadId={activeThreadId}
+      resolvedAgentId={resolvedAgentId}
+      sessionsHasMore={sessionsHasMore}
+      sessionsLoadingMore={sessionsLoadingMore}
+      onLoadMoreSessions={handleLoadMoreSessions}
+      onFetchAllSessions={handleFetchAllSessions}
+      onSelectSession={(sessionId, agentId) => {
+        setActiveAgent(agentId);
+        handleSelectSession(sessionId);
+      }}
+      onAgentSelect={navigateToAgent}
+      onDeleteSession={handleDeleteSession}
+      onRenameSession={renameSession}
+      onPinSession={pinSession}
+      onSidebarOpenChange={setSidebarOpen}
+      onSidebarResizeStart={handleSidebarResizeStart}
+      layoutRail
+    />
+  );
+
   return (
     <ChatFilePreviewProvider openFilePreview={openFileAt}>
+      {chatHistoryRail
+        ? createPortal(chatSidebarPanel, chatHistoryRail)
+        : null}
       <div
         className={`${styles.chatPage} ${
           dockIsResizing ? styles.panelResizeActive : ""
         }`}
       >
-        <ChatSidebarPanel
-          isMobile={isMobile}
-          sidebarOpen={sidebarOpen}
-          sidebarWidth={sidebarWidth}
-          isSidebarResizing={isSidebarResizing}
-          sidebarElRef={sidebarElRef}
-          agents={agents}
-          sessions={sessions}
-          activeThreadId={activeThreadId}
-          resolvedAgentId={resolvedAgentId}
-          sessionsHasMore={sessionsHasMore}
-          sessionsLoadingMore={sessionsLoadingMore}
-          onLoadMoreSessions={handleLoadMoreSessions}
-          onFetchAllSessions={handleFetchAllSessions}
-          onSelectSession={(sessionId, agentId) => {
-            setActiveAgent(agentId);
-            handleSelectSession(sessionId);
-          }}
-          onAgentSelect={navigateToAgent}
-          onDeleteSession={handleDeleteSession}
-          onRenameSession={renameSession}
-          onPinSession={pinSession}
-          onSidebarOpenChange={setSidebarOpen}
-          onSidebarResizeStart={handleSidebarResizeStart}
-        />
-
         {/* Main chat area */}
         <div
           className={`${styles.chatMain} ${
