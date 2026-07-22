@@ -2,6 +2,11 @@
 
 <!-- What does this PR change and why? -->
 
+## Target branch
+
+- [ ] Base is **`develop`** (feature / fix — default)
+- [ ] Base is **`main`** (`release/*` or `hotfix/*` only)
+
 ## Type of change
 
 - [ ] Bug fix
@@ -9,6 +14,7 @@
 - [ ] Breaking change
 - [ ] Documentation
 - [ ] Refactor / chore
+- [ ] Release / hotfix
 
 ## Test plan
 
