@@ -44,6 +44,19 @@ def _agent_config_dict(server: Any, agent_id: str) -> dict[str, Any]:
 
 
 def _refuse_postgres_portable(server: Any, agent_id: str) -> None:
+    """Portable pack/adopt is a SQLite-file mechanism; PostgreSQL memory has a
+    different migration model.
+
+    SQLite: one file per agent — pack/adopt moves that file's contents between
+    hosts (Octop / OpenClaw / hermes).
+
+    PostgreSQL: all agents share fixed tables in the ``harness_memory`` schema,
+    isolated by a ``namespace`` column. There is no per-agent file to pack, and
+    ``pg_dump`` of the schema must NOT be suggested as a substitute — it would
+    export every agent's memory, not just this one. The supported way to give
+    another host (e.g. OpenClaw) access is to point it at the same DSN and
+    namespace, where the memory is simply shared rather than migrated.
+    """
     workspace = server.services.paths.ensure_agent_workspace(agent_id)
     _ns, backend, _cfg = open_memory_kwargs(
         agent_id=agent_id,
@@ -54,8 +67,11 @@ def _refuse_postgres_portable(server: Any, agent_id: str) -> None:
     if backend == "postgres":
         raise OctopError(
             ErrorCode.SLASH_BAD_ARGS,
-            "portable memory pack/adopt is not supported when memory.backend is postgres; "
-            "use pg_dump on the memory schema instead",
+            "portable memory pack/adopt only supports sqlite memory backends; "
+            "this agent's memory lives in shared PostgreSQL tables (isolated by "
+            "namespace), so there is no per-agent file to pack. To use this "
+            "agent's memory from another host (e.g. OpenClaw), point that host "
+            "at the same PostgreSQL DSN and namespace instead of migrating.",
             status=501,
         )
 
