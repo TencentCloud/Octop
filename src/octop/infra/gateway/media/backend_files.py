@@ -142,7 +142,15 @@ _PREVIEW_VIDEO = frozenset({"video/mp4", "video/webm", "video/quicktime", "video
 
 def file_url_to_abs_path(file_url: str) -> str:
     parsed = urllib.parse.urlparse(file_url)
-    return urllib.request.url2pathname(parsed.path)
+    path = parsed.path
+    # file:///C:/… — Windows drive in URL path
+    if len(path) >= 3 and path[0] == "/" and path[2] == ":":
+        return path[1:]
+    # Unix absolute (file:///Users/…) — keep forward slashes; url2pathname
+    # would produce \Users\… on Windows and break cross-platform semantics.
+    if path.startswith("/"):
+        return urllib.parse.unquote(path)
+    return urllib.request.url2pathname(path)
 
 
 def agent_id_from_workspace_path(path: str) -> str | None:
@@ -326,6 +334,17 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
         raw = file_url_to_abs_path(raw)
         if not raw:
             return False
+
+    raw_norm = raw.replace("\\", "/")
+    # POSIX-style absolute paths (leading /, not a drive letter) — deny system
+    # roots on every platform; Path.resolve() on Windows maps /etc → C:\etc.
+    if (
+        raw_norm.startswith("/")
+        and not (len(raw_norm) >= 3 and raw_norm[2] == ":")
+        and any(raw_norm.lower().startswith(prefix) for prefix in _DENIED_HOST_DOWNLOAD_PREFIXES)
+    ):
+        return False
+
     try:
         resolved = Path(raw).resolve()
     except (OSError, ValueError):
