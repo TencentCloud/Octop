@@ -246,9 +246,7 @@ def poll_device_token(device_auth_id: str, user_code: str) -> tuple[str, str] | 
         if exc.code in (403, 404):
             return None
         body_text = exc.read().decode(errors="replace")
-        raise RuntimeError(
-            f"Codex device code poll failed (HTTP {exc.code}): {body_text}"
-        ) from exc
+        raise RuntimeError(f"Codex device code poll failed (HTTP {exc.code}): {body_text}") from exc
     auth_code = data.get("authorization_code")
     code_verifier = data.get("code_verifier")
     if auth_code and code_verifier:

@@ -59,9 +59,7 @@ def test_poll_device_token_returns_none_while_pending() -> None:
 
 
 def test_poll_device_token_returns_code_on_success() -> None:
-    payload = json.dumps(
-        {"authorization_code": "auth-code", "code_verifier": "verifier"}
-    ).encode()
+    payload = json.dumps({"authorization_code": "auth-code", "code_verifier": "verifier"}).encode()
 
     def fake_urlopen(req: urllib.request.Request, timeout: float = 30) -> _Resp:
         assert "deviceauth/token" in req.full_url
