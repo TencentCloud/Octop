@@ -122,6 +122,29 @@ def test_build_harness_configs_maps_kind_to_protocol(store: ProviderStore) -> No
     assert providers[0].protocol == "anthropic"
 
 
+def test_build_harness_configs_maps_context_window_to_max_input_tokens(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="hai",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "MiniMax-M2.7",
+                    "name": "MiniMax",
+                    "enabled": True,
+                    "context_window": 1_000_000,
+                }
+            ]
+        ),
+    )
+    providers = store.build_harness_configs()
+    assert providers[0].models[0].max_input_tokens == 1_000_000
+
+
 def test_resolve_default_model_returns_none_when_stale(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="hai",

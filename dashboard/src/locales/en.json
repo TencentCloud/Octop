@@ -629,7 +629,8 @@
     "openFile": "View file",
     "fileWorkspace": "Workspace files",
     "fileWorkspaceHint": "Agent created or edited a file",
-    "fileSwitch": "Switch file"
+    "fileSwitch": "Switch file",
+    "loadEarlierMessages": "Load earlier messages"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -2579,7 +2580,7 @@
     "waitingScreenshot": "Waiting for browser screenshot…",
     "firstConnectHint": "First connection may take a few seconds",
     "waitingAgentHint": "Waiting for Agent to launch the browser…",
-    "interactiveHint": "🖱️ Click, scroll, and type directly on the browser view",
+    "interactiveHint": "🖱️ Click, drag, scroll, and type directly on the browser view",
     "returnToAgent": "Return control to Agent",
     "takeover": "Take over",
     "openDesktopChrome": "Open Chrome window on desktop",
@@ -2611,7 +2612,7 @@
     "streaming": "Streaming",
     "connectFailed": "Failed to connect to browser stream",
     "reconnect": "Reconnect",
-    "interactiveHint": "🖱️ Click, scroll, and type directly on the browser view"
+    "interactiveHint": "🖱️ Click, drag, scroll, and type directly on the browser view"
   },
   "embedding": {
     "title": "Local Embedding Configuration",

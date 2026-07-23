@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
+from harness_agent.backends import resolve_backend
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.backend.resolver import default_agent_backend_spec
@@ -33,17 +34,12 @@ def _workspace(root: str, *, virtual_mode: bool = False) -> BackendWorkspace:
 def _default_virtual_workspace(root: str) -> BackendWorkspace:
     """BackendWorkspace matching Octop's platform default agent backend.
 
-    POSIX defaults to ``root_dir='/'``; Windows scopes ``root_dir`` to the
+    POSIX keeps host-rooted shell access; harness scopes deepagents artifacts
+    to the agent workspace. Windows scopes the local-shell root to the
     agent workspace so virtual-mode uploads stay on the same drive.
     """
     spec = default_agent_backend_spec(Path(root))
-    return BackendWorkspace(
-        LocalShellBackend(
-            root_dir=str(spec["root_dir"]),
-            virtual_mode=bool(spec.get("virtual_mode", True)),
-        ),
-        root,
-    )
+    return BackendWorkspace(resolve_backend(spec, workspace_dir=root), root)
 
 
 @pytest.mark.asyncio
@@ -274,6 +270,55 @@ def testenrich_media_block_preview_outbound() -> None:
     assert enriched["source"]["url"] == enriched["preview_url"]
     assert enriched["path"] == "outbound/chart.png"
     assert enriched["filename"] == "chart.png"
+
+
+@pytest.mark.asyncio
+async def test_enrich_send_file_keeps_absolute_path_without_copy() -> None:
+    """send_file with a host-absolute path must keep that path (no outbound copy).
+
+    Dashboard download already passes ``file://`` to BackendWorkspace, which
+    can read absolute paths directly.
+    """
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws, virtual_mode=False)
+        generated = Path(ws) / "generated" / "water-ppt"
+        generated.mkdir(parents=True)
+        pptx = generated / "保护地球节约用水.pptx"
+        pptx.write_bytes(b"PKDATA")
+        abs_path = str(pptx.resolve())
+        chunk = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "content": {
+                        "type": "file",
+                        "source": {
+                            "type": "url",
+                            "url": Path(abs_path).as_uri(),
+                            "media_type": (
+                                "application/vnd.openxmlformats-officedocument"
+                                ".presentationml.presentation"
+                            ),
+                        },
+                        "filename": "保护地球节约用水.pptx",
+                    },
+                },
+            ],
+        }
+        enriched = await enrich_tool_result_with_backend(
+            chunk,
+            agent_id="main",
+            workspace=workspace,
+        )
+        content = enriched["messages"][0]["content"]
+        assert isinstance(content, dict)
+        assert content["type"] == "file"
+        assert content.get("path") == abs_path
+        assert content["filename"] == "保护地球节约用水.pptx"
+        assert "preview_url" not in content
+        assert "source" not in content
+        outbound = Path(ws) / "outbound"
+        assert not outbound.exists() or list(outbound.iterdir()) == []
 
 
 @pytest.mark.asyncio

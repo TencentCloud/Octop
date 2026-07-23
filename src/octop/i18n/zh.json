@@ -96,7 +96,12 @@
       "set": "此话题模型 → {model}。"
     },
     "compact": {
-      "done": "已压缩上下文，新话题 {short}{archived}。",
+      "done": "已压缩模型上下文（话题 `{short}`）：较早消息 {count} 条已总结，保留最近对话。\n\n聊天记录仍完整保留；下一轮起模型只使用摘要 + 近期对话。",
+      "done_offload": "已压缩模型上下文（话题 `{short}`）：较早消息 {count} 条已总结，保留最近对话。\n\n- 原文：`{path}`\n- 聊天记录仍完整保留；下一轮起模型只使用摘要 + 近期对话。",
+      "nothing": "当前话题 `{short}` 暂无可压缩内容（对话过短或已压缩）。",
+      "no_thread": "当前没有活跃话题。",
+      "unavailable": "压缩不可用（Agent 未就绪或版本过旧）。",
+      "failed": "压缩失败，请查看日志后重试。",
       "archived": "（{count} 条消息已归档为 {short}）"
     },
     "agent": {
@@ -197,7 +202,7 @@
       },
       "compact": {
         "label": "压缩记忆",
-        "description": "归档当前上下文并开始新线程"
+        "description": "总结并卸载较早上下文，释放窗口（不新建话题）"
       },
       "stop": {
         "label": "停止生成",
