@@ -1247,7 +1247,7 @@ wheels = [
 
 [[package]]
 name = "harness-gateway"
-version = "0.8.5"
+version = "0.8.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1264,9 +1264,9 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/bc/9f0c2ca9d35de4efab1a236b7739ff41d9acdc20995174d9a34821996963/harness_gateway-0.8.5.tar.gz", hash = "sha256:716e3ebbffb822cbfaca2235276145ec315d5b917dca86936142971c869794d3", size = 456578, upload-time = "2026-07-17T09:18:14.773Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/dd/3995e00dc6dc8315f6f5e73256840c54b4e6bb3d43cf07dd0d5849c1d1c2/harness_gateway-0.8.7.tar.gz", hash = "sha256:1582ecacfba2a7f8c8974fc350e5b91c081826706846a637a14b0901e426567d", size = 461644, upload-time = "2026-07-23T08:01:00.695Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/22/1dcea13385221846dbd94e5c8dd6cf170f17025700c9a2b663f76d34cf25/harness_gateway-0.8.5-py3-none-any.whl", hash = "sha256:85c6a9be8b8052611be1ed07fc554af7bbea529a31f4b84a5222c32eb85af9b9", size = 108647, upload-time = "2026-07-17T09:18:12.465Z" },
+    { url = "https://files.pythonhosted.org/packages/33/08/de6ebe9ad396d10eab60cc89d11423127704c94a62e4e104b65deebdd754/harness_gateway-0.8.7-py3-none-any.whl", hash = "sha256:dd18a4384e400956246d74812e7089c55acad34c471f873671cbe1588497c228", size = 125603, upload-time = "2026-07-23T08:00:58.785Z" },
 ]
 
 [[package]]
@@ -2238,7 +2238,7 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "harness-browser", specifier = ">=0.7.4" },
-    { name = "harness-gateway", specifier = ">=0.8.5" },
+    { name = "harness-gateway", specifier = ">=0.8.7" },
     { name = "harness-memory", specifier = ">=0.9.2" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "josepy", specifier = ">=2.2.0" },
