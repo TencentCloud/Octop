@@ -277,6 +277,55 @@ def testenrich_media_block_preview_outbound() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enrich_send_file_keeps_absolute_path_without_copy() -> None:
+    """send_file with a host-absolute path must keep that path (no outbound copy).
+
+    Dashboard download already passes ``file://`` to BackendWorkspace, which
+    can read absolute paths directly.
+    """
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws, virtual_mode=False)
+        generated = Path(ws) / "generated" / "water-ppt"
+        generated.mkdir(parents=True)
+        pptx = generated / "保护地球节约用水.pptx"
+        pptx.write_bytes(b"PKDATA")
+        abs_path = str(pptx.resolve())
+        chunk = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "content": {
+                        "type": "file",
+                        "source": {
+                            "type": "url",
+                            "url": Path(abs_path).as_uri(),
+                            "media_type": (
+                                "application/vnd.openxmlformats-officedocument"
+                                ".presentationml.presentation"
+                            ),
+                        },
+                        "filename": "保护地球节约用水.pptx",
+                    },
+                },
+            ],
+        }
+        enriched = await enrich_tool_result_with_backend(
+            chunk,
+            agent_id="main",
+            workspace=workspace,
+        )
+        content = enriched["messages"][0]["content"]
+        assert isinstance(content, dict)
+        assert content["type"] == "file"
+        assert content.get("path") == abs_path
+        assert content["filename"] == "保护地球节约用水.pptx"
+        assert "preview_url" not in content
+        assert "source" not in content
+        outbound = Path(ws) / "outbound"
+        assert not outbound.exists() or list(outbound.iterdir()) == []
+
+
+@pytest.mark.asyncio
 async def test_enrich_send_file_rewrites_path_to_dashboard_api() -> None:
     """Host path from send_file must become workspace/download API for dashboard."""
     with tempfile.TemporaryDirectory() as ws:

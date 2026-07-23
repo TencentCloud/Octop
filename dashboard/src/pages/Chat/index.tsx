@@ -563,7 +563,7 @@ function ChatPageInner() {
                 historyHasMore={historyHasMore}
                 historyLoadingMore={historyLoadingMore}
                 historyRefreshing={historyRefreshing}
-                onLoadMoreHistory={() => void loadMoreHistory()}
+                onLoadMoreHistory={() => loadMoreHistory()}
                 onRefreshHistory={() => void refreshHistory()}
                 isStreaming={isStreaming}
                 thinkingStartedAt={thinkingStartedAt}

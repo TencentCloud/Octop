@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal, Spin, message } from "antd";
 import { request } from "../../../api/request";
+import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
@@ -34,7 +35,11 @@ export default function FileEditModal({
     setValue("");
 
     request<{ content: string }>(
-      `/agents/${agentId}/workspace/file?path=${encodeURIComponent(filePath)}`,
+      withFromWorkspace(
+        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
+          filePath,
+        )}`,
+      ),
     )
       .then((data) => {
         if (!cancelled) setValue(data.content ?? "");
@@ -57,9 +62,11 @@ export default function FileEditModal({
     const filename = filePath.replace(/^\//, "");
     try {
       await request(
-        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
-          filePath,
-        )}`,
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
+            filePath,
+          )}`,
+        ),
         { method: "PUT", body: JSON.stringify({ content: value }) },
       );
       await request(`/agents/${agentId}/reload`, { method: "POST" });
