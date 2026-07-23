@@ -33,7 +33,6 @@ import contextlib
 import logging
 import os
 import shutil
-import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +46,14 @@ from pydantic import BaseModel
 from octop.api.common.agent import require_agent_row
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.manager import skills_disabled_set as _disabled_set
+from octop.infra.agents.skill_packages import (
+    SkillPackageError,
+    SkillPackageTooLarge,
+    read_skill_directory,
+    resolve_skill_package,
+    resolve_workspace_uploads,
+    validate_skill_slug,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -518,19 +525,25 @@ async def create_skill(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
-    name = body.name.strip()
-    if not name or "/" in name or name.startswith("."):
-        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name")
-    target = f"skills/{name}/SKILL.md"
+    try:
+        name = validate_skill_slug(body.name)
+        package = resolve_skill_package(
+            slug=name,
+            files=[("SKILL.md", body.content.encode("utf-8"))],
+            source="manual",
+        )
+    except SkillPackageTooLarge as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    except SkillPackageError:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    target = package.workspace_uploads()[0][0]
     # Don't clobber an existing skill — return 409 instead.
     existing = await _aread_text(ctx.workspace, target)
     if existing is not None:
         meta, _ = _parse_frontmatter(existing)
         if not meta.get("removed"):
             raise OctopError(ErrorCode.USERNAME_TAKEN, f"skill {name!r} already exists")
-    err = await _aoverwrite_text(ctx.workspace, target, body.content)
-    if err:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {target!r}: {err}")
+    await ctx.workspace.aupload_many(package.workspace_uploads())
     meta, _body = _parse_frontmatter(body.content)
     return _summary_dict(name, meta, enabled=True, kind="workspace")
 
@@ -586,13 +599,20 @@ async def import_skill_from_url(
             reason=str(exc),
         ) from exc
 
-    skill_name = resolved.name
-    if not skill_name or "/" in skill_name or skill_name.startswith("."):
+    try:
+        package = resolve_workspace_uploads(
+            slug=resolved.name,
+            uploads=resolved.uploads,
+            source="url",
+            source_url=resolved.source_url,
+        )
+    except SkillPackageError as exc:
         raise OctopError.localized(
             ErrorCode.SKILL_IMPORT_FAILED,
             locale,
-            reason="invalid resolved skill name",
-        )
+            reason=str(exc),
+        ) from exc
+    skill_name = package.slug
 
     existing = await _resolve_skill(ctx.workspace, skill_name)
     if existing is not None and not body.overwrite:
@@ -602,7 +622,7 @@ async def import_skill_from_url(
             name=skill_name,
         )
 
-    await ctx.workspace.aupload_many(resolved.uploads)
+    await ctx.workspace.aupload_many(package.workspace_uploads())
 
     if body.enable:
         disabled = _disabled_set(ctx.config)
@@ -610,7 +630,7 @@ async def import_skill_from_url(
         await _persist_disabled(server, agent_id, disabled)
 
     skill_md = next(
-        (content for path, content in resolved.uploads if path.endswith("SKILL.md")),
+        (content for path, content in package.files if path == "SKILL.md"),
         b"",
     )
     meta, _body = _parse_frontmatter(skill_md.decode("utf-8"))
@@ -699,7 +719,7 @@ def _skillhub_uploads(
     display_name: str,
     icon_url: str,
 ) -> list[tuple[str, bytes]]:
-    uploads: list[tuple[str, bytes]] = []
+    transformed: list[tuple[str, bytes]] = []
     for rel, original_content in files:
         normalized = rel.replace("\\", "/")
         content = original_content
@@ -714,43 +734,12 @@ def _skillhub_uploads(
                     display_name=display_name,
                     icon_url=icon_url,
                 ).encode("utf-8")
-        uploads.append((f"skills/{skill_name}/{normalized}", content))
-    return uploads
-
-
-def _read_cli_skill_files(skill_dir: Path) -> list[tuple[str, bytes]]:
-    """Read CLI output without following links or accepting oversized files."""
-    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
-        SkillHubPackageError,
-        SkillHubPackageTooLarge,
-    )
-
-    max_files = 2_000
-    max_bytes = 64 * 1024 * 1024
-    files: list[tuple[str, bytes]] = []
-    total = 0
-    for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
-        current = Path(dirpath)
-        for dirname in dirnames:
-            if (current / dirname).is_symlink():
-                raise SkillHubPackageError(f"Unsupported symlink in skill package: {dirname}")
-        for filename in filenames:
-            path = current / filename
-            entry_stat = path.lstat()
-            if stat.S_ISLNK(entry_stat.st_mode) or not stat.S_ISREG(entry_stat.st_mode):
-                raise SkillHubPackageError(f"Unsupported file type in skill package: {filename}")
-            if entry_stat.st_size > max_bytes:
-                raise SkillHubPackageTooLarge(f"Skill package file is too large: {filename}")
-            total += entry_stat.st_size
-            if total > max_bytes:
-                raise SkillHubPackageTooLarge("Skill package uncompressed size exceeds 64 MB")
-            rel = path.relative_to(skill_dir).as_posix()
-            files.append((rel, path.read_bytes()))
-            if len(files) > max_files:
-                raise SkillHubPackageTooLarge("Skill package has too many files")
-    if "SKILL.md" not in {name for name, _content in files}:
-        raise SkillHubPackageError("SkillHub package does not contain a root SKILL.md")
-    return files
+        transformed.append((normalized, content))
+    return resolve_skill_package(
+        slug=skill_name,
+        files=transformed,
+        source="skillhub",
+    ).workspace_uploads()
 
 
 async def _download_skillhub_package_via_cli(
@@ -813,7 +802,7 @@ async def _download_skillhub_package_via_cli(
         skill_dir = Path(tmpdir) / skill_name
         if not skill_dir.is_dir():
             skill_dir = Path(tmpdir)
-        return _read_cli_skill_files(skill_dir)
+        return read_skill_directory(skill_dir)
 
 
 def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
@@ -986,11 +975,13 @@ async def hub_install_skill(
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
-    skill_name = body.skill_name.strip()
-    if not skill_name or "/" in skill_name or skill_name.startswith("."):
+    try:
+        skill_name = validate_skill_slug(body.skill_name)
+    except SkillPackageError:
         raise HTTPException(
-            status_code=400, detail="skill_name is required and must not contain / or start with ."
-        )
+            status_code=400,
+            detail="skill_name is required and must not contain path separators or start with .",
+        ) from None
     display_name = (body.display_name or "").strip()
     icon_url = (body.icon_url or "").strip()
     if len(display_name) > 200:
@@ -1022,17 +1013,22 @@ async def hub_install_skill(
         transport = "cli"
         try:
             files = await _download_skillhub_package_via_cli(skill_name)
-        except SkillHubPackageTooLarge as package_exc:
+        except (SkillHubPackageTooLarge, SkillPackageTooLarge) as package_exc:
             raise HTTPException(status_code=413, detail=str(package_exc)) from package_exc
-        except SkillHubPackageError as package_exc:
+        except (SkillHubPackageError, SkillPackageError) as package_exc:
             raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
 
-    uploads = _skillhub_uploads(
-        skill_name,
-        files,
-        display_name=display_name,
-        icon_url=icon_url,
-    )
+    try:
+        uploads = _skillhub_uploads(
+            skill_name,
+            files,
+            display_name=display_name,
+            icon_url=icon_url,
+        )
+    except SkillPackageTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except SkillPackageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     if not uploads:
         raise HTTPException(
             status_code=502,

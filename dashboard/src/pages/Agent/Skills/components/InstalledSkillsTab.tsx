@@ -73,15 +73,21 @@ export default function InstalledSkillsTab({
     [skills, kind],
   );
 
-  const supportedSkillUrlPrefixes = [
+  const currentSkillUrlPrefixes = [
     "https://skills.sh/",
     "https://clawhub.ai/",
     "https://skillsmp.com/",
     "https://github.com/",
   ];
 
-  const isSupportedSkillUrl = (url: string) =>
-    supportedSkillUrlPrefixes.some((prefix) => url.startsWith(prefix));
+  const isValidSkillUrl = (value: string) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
 
   const onViewChange = (value: string | number) => {
     setViewMode(value === "table" ? "table" : "card");
@@ -106,7 +112,7 @@ export default function InstalledSkillsTab({
   const handleImportUrlChange = (value: string) => {
     setImportUrl(value);
     const trimmed = value.trim();
-    if (trimmed && !isSupportedSkillUrl(trimmed)) {
+    if (trimmed && !isValidSkillUrl(trimmed)) {
       setImportUrlError(t("skills.invalidSkillUrlSource"));
       return;
     }
@@ -117,7 +123,7 @@ export default function InstalledSkillsTab({
     if (importing) return;
     const trimmed = importUrl.trim();
     if (!trimmed) return;
-    if (!isSupportedSkillUrl(trimmed)) {
+    if (!isValidSkillUrl(trimmed)) {
       setImportUrlError(t("skills.invalidSkillUrlSource"));
       return;
     }
@@ -312,7 +318,7 @@ export default function InstalledSkillsTab({
               {t("skills.supportedSkillUrlSources")}
             </p>
             <div className={styles.importHintSources}>
-              {supportedSkillUrlPrefixes.map((prefix) => (
+              {currentSkillUrlPrefixes.map((prefix) => (
                 <code key={prefix} className={styles.importHintCode}>
                   {prefix}
                 </code>
