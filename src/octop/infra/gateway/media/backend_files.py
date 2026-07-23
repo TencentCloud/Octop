@@ -145,12 +145,12 @@ def file_url_to_abs_path(file_url: str) -> str:
     path = parsed.path
     # file:///C:/… — Windows drive in URL path
     if len(path) >= 3 and path[0] == "/" and path[2] == ":":
-        return path[1:]
+        return str(Path(urllib.parse.unquote(path[1:])))
     # Unix absolute (file:///Users/…) — keep forward slashes; url2pathname
     # would produce \Users\… on Windows and break cross-platform semantics.
     if path.startswith("/"):
         return urllib.parse.unquote(path)
-    return urllib.request.url2pathname(path)
+    return str(Path(urllib.parse.unquote(urllib.request.url2pathname(path))))
 
 
 def agent_id_from_workspace_path(path: str) -> str | None:
