@@ -235,6 +235,14 @@ async def delete_thread(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> None:
-    """Remove a conversation thread and its metadata."""
+    """Remove a conversation thread, its actual checkpoint data, and its metadata.
+
+    Checkpoint deletion runs first: if it fails (as opposed to simply
+    finding nothing to delete — agent not running / no checkpointer),
+    the row is intentionally left in place so the thread stays visible
+    and the caller can retry, instead of orphaning undeleted data with
+    no remaining handle to it.
+    """
     _require_thread(server, agent_id, thread_id, user, as_user)
+    await server.app_runtime.agent_registry.delete_thread_checkpoint(agent_id, thread_id)
     server.app_runtime.gateway.thread_registry.delete_thread(thread_id)

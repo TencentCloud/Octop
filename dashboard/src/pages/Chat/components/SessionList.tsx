@@ -15,6 +15,7 @@ import {
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { showConfirmModal } from "../../../utils/confirmModal";
 import { iconForName } from "../../Experts/components/iconForName";
 import {
   CHANNEL_ICONS,
@@ -141,7 +142,15 @@ const SessionItem = memo(function SessionItem({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        onDelete(session.id);
+        showConfirmModal({
+          title: t("chat.deleteSessionConfirm"),
+          okText: t("common.delete"),
+          cancelText: t("common.cancel"),
+          okButtonProps: { danger: true },
+          onOk: () => {
+            onDelete(session.id);
+          },
+        });
       },
     },
   ];

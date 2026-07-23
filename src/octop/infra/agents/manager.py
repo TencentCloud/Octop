@@ -530,6 +530,37 @@ class AgentManager:
         except KeyError:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not running") from None
 
+    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> bool:
+        """Best-effort delete of a thread's actual conversation data.
+
+        Octop's own ``thread_registry`` only tracks UI metadata (title,
+        pinned, last_active) — the real message content lives in the
+        agent's LangGraph checkpointer. Deleting only the registry row
+        makes "delete conversation" cosmetic: the content stays in the
+        checkpoint store forever. Callers should call this *before*
+        removing their own thread row, so a checkpoint-delete failure
+        leaves the thread visible/retryable instead of orphaning data
+        with no remaining handle to it.
+
+        Returns ``True`` when checkpoint data was actually deleted,
+        ``False`` when there was nothing to delete (agent not currently
+        running, or no checkpointer configured for it) — both are normal,
+        expected states, not errors.
+        """
+        try:
+            harness = self.get_agent(agent_id)
+        except OctopError:
+            logger.warning(
+                "delete_thread_checkpoint: agent %r not running; skipping checkpoint cleanup for thread %r",
+                agent_id,
+                thread_id,
+            )
+            return False
+        adelete = getattr(harness, "adelete_thread", None)
+        if adelete is None:
+            return False
+        return bool(await adelete(thread_id))
+
     # ------------------------------------------------------------------
     # Chat / invoke — stream, call, HITL, thread model overrides
     # ------------------------------------------------------------------

@@ -322,6 +322,61 @@ def test_apply_pending_bootstrap_graph_refresh_recompiles_graph(manager: AgentMa
 
 
 @pytest.mark.asyncio
+async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
+    manager: AgentManager,
+) -> None:
+    # Fresh fixture has no _harness_manager wired up — get_agent raises
+    # OctopError, which must be swallowed (checkpoint cleanup is best-effort).
+    result = await manager.delete_thread_checkpoint("NOPE", "thr_1")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_delegates_to_harness_adelete_thread(
+    manager: AgentManager,
+) -> None:
+    agent = MagicMock()
+    agent.adelete_thread = AsyncMock(return_value=True)
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+    assert result is True
+    agent.adelete_thread.assert_awaited_once_with("thr_1")
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete_thread(
+    manager: AgentManager,
+) -> None:
+    agent = MagicMock(spec=[])  # no adelete_thread attribute at all
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_propagates_unexpected_errors(
+    manager: AgentManager,
+) -> None:
+    """A live agent whose checkpointer delete genuinely fails must not report success."""
+    agent = MagicMock()
+    agent.adelete_thread = AsyncMock(side_effect=RuntimeError("db unavailable"))
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    with pytest.raises(RuntimeError, match="db unavailable"):
+        await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+
+@pytest.mark.asyncio
 async def test_stream_applies_bootstrap_refresh_after_turn(manager: AgentManager) -> None:
     agent_id = "AGT_STREAM"
     agent = MagicMock()
