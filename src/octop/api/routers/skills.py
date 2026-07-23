@@ -30,13 +30,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 import os
 import shutil
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import yaml
 from fastapi import APIRouter, Depends, Request
@@ -45,6 +46,14 @@ from pydantic import BaseModel
 from octop.api.common.agent import require_agent_row
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.manager import skills_disabled_set as _disabled_set
+from octop.infra.agents.skill_packages import (
+    SkillPackageError,
+    SkillPackageTooLarge,
+    read_skill_directory,
+    resolve_skill_package,
+    resolve_workspace_uploads,
+    validate_skill_slug,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -138,14 +147,70 @@ def _summary_dict(
         "enabled": enabled,
         "kind": kind,
     }
-    # Optional metadata.octop.emoji passthrough — handy for finnie-
-    # provenance skills.
+    # Presentation metadata is kept separate from the stable directory slug and
+    # the skill's own frontmatter name. Octop-authored metadata wins, while
+    # upstream formats remain supported for already-installed marketplace skills.
     metadata = meta.get("metadata") or {}
     if isinstance(metadata, dict):
-        ext = metadata.get("octop") or metadata.get("lightclaw") or metadata.get("orca") or {}
-        if isinstance(ext, dict) and "emoji" in ext:
-            out["emoji"] = str(ext["emoji"])
+        has_display_name = False
+        for namespace in ("octop", "lightclaw", "orca", "openclaw"):
+            ext = metadata.get(namespace) or {}
+            if not isinstance(ext, dict):
+                continue
+            display_name = str(ext.get("display_name") or "").strip()
+            if display_name and not has_display_name:
+                out["name"] = display_name
+                has_display_name = True
+            emoji = str(ext.get("emoji") or "").strip()
+            if emoji and "emoji" not in out:
+                out["emoji"] = emoji
+            icon_url = str(ext.get("icon_url") or "").strip()
+            if icon_url and "icon_url" not in out and _valid_skillhub_icon_url(icon_url):
+                out["icon_url"] = icon_url
     return out
+
+
+def _valid_skillhub_icon_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _with_skillhub_presentation_metadata(
+    content: str,
+    *,
+    display_name: str,
+    icon_url: str,
+) -> str:
+    """Persist SkillHub presentation fields without changing the stable skill id."""
+    if not display_name and not icon_url:
+        return content
+
+    meta, body = _parse_frontmatter(content)
+    metadata = meta.get("metadata")
+    metadata = {} if not isinstance(metadata, dict) else dict(metadata)
+    octop_meta = metadata.get("octop")
+    octop_meta = {} if not isinstance(octop_meta, dict) else dict(octop_meta)
+
+    octop_meta["source"] = "skillhub"
+    if display_name:
+        octop_meta["display_name"] = display_name
+    if icon_url:
+        octop_meta["icon_url"] = icon_url
+    metadata["octop"] = octop_meta
+    meta["metadata"] = metadata
+
+    dumped = yaml.safe_dump(
+        meta,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+    ).rstrip()
+    rendered = f"---\n{dumped}\n---\n"
+    if body:
+        rendered += f"\n{body}"
+    if content.endswith("\n") and not rendered.endswith("\n"):
+        rendered += "\n"
+    return rendered
 
 
 def _skill_manifest_path(name: str, kind: str, workspace: Any) -> str:
@@ -270,52 +335,12 @@ async def _install_skillhub_cli() -> str:
     return skillhub_bin
 
 
-async def _skillhub_supports_rankings(skillhub_bin: str) -> bool:
-    """Return True when the CLI exposes ``skill rankings``."""
-    try:
-        rc, _stdout, _stderr = await _run_skillhub_cmd(
-            skillhub_bin,
-            ["skill", "rankings", "--help"],
-            timeout=10,
-        )
-        return rc == 0
-    except Exception:
-        return False
-
-
-async def _ensure_skillhub_cli(*, require_rankings: bool = False) -> str:
-    """Return path to the ``skillhub`` binary, auto-installing or upgrading if needed."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
+async def _ensure_skillhub_cli() -> str:
+    """Return path to the ``skillhub`` binary, auto-installing it if needed."""
     skillhub_bin = _resolve_skillhub_bin()
     if skillhub_bin is None:
         skillhub_bin = await _install_skillhub_cli()
-
-    if require_rankings and not await _skillhub_supports_rankings(skillhub_bin):
-        logger.info("skillhub CLI missing skill rankings support, attempting self-upgrade...")
-        if await _upgrade_skillhub_cli(skillhub_bin):
-            skillhub_bin = _resolve_skillhub_bin() or skillhub_bin
-        if not await _skillhub_supports_rankings(skillhub_bin):
-            logger.info("skillhub self-upgrade insufficient, reinstalling CLI...")
-            skillhub_bin = await _install_skillhub_cli()
-        if not await _skillhub_supports_rankings(skillhub_bin):
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "skillhub CLI does not support skill rankings after upgrade/reinstall. "
-                    f"Install manually: curl -fsSL {_SKILLHUB_INSTALL_URL} | sh"
-                ),
-            )
-
     return skillhub_bin
-
-
-def _skillhub_rankings_args(rtype: str, *, host: str | None = None) -> list[str]:
-    """Build argv for ``skillhub skill rankings``."""
-    args = ["skill", "rankings", "--type", rtype]
-    if host:
-        args += ["--host", host]
-    return args
 
 
 async def _run_skillhub_cmd(
@@ -399,7 +424,7 @@ def _skillhub_cli_failure_detail(action: str, stderr: str, *, locale: str = "en"
 
 def _skillhub_stderr_suggests_upgrade(err_msg: str) -> bool:
     lower = err_msg.lower()
-    return "self-upgrade" in lower or "新版本" in err_msg or "invalid choice: 'rankings'" in lower
+    return "self-upgrade" in lower or "新版本" in err_msg
 
 
 async def _enabled_skill_names(
@@ -500,19 +525,25 @@ async def create_skill(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
-    name = body.name.strip()
-    if not name or "/" in name or name.startswith("."):
-        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name")
-    target = f"skills/{name}/SKILL.md"
+    try:
+        name = validate_skill_slug(body.name)
+        package = resolve_skill_package(
+            slug=name,
+            files=[("SKILL.md", body.content.encode("utf-8"))],
+            source="manual",
+        )
+    except SkillPackageTooLarge as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    except SkillPackageError:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    target = package.workspace_uploads()[0][0]
     # Don't clobber an existing skill — return 409 instead.
     existing = await _aread_text(ctx.workspace, target)
     if existing is not None:
         meta, _ = _parse_frontmatter(existing)
         if not meta.get("removed"):
             raise OctopError(ErrorCode.USERNAME_TAKEN, f"skill {name!r} already exists")
-    err = await _aoverwrite_text(ctx.workspace, target, body.content)
-    if err:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {target!r}: {err}")
+    await ctx.workspace.aupload_many(package.workspace_uploads())
     meta, _body = _parse_frontmatter(body.content)
     return _summary_dict(name, meta, enabled=True, kind="workspace")
 
@@ -568,13 +599,20 @@ async def import_skill_from_url(
             reason=str(exc),
         ) from exc
 
-    skill_name = resolved.name
-    if not skill_name or "/" in skill_name or skill_name.startswith("."):
+    try:
+        package = resolve_workspace_uploads(
+            slug=resolved.name,
+            uploads=resolved.uploads,
+            source="url",
+            source_url=resolved.source_url,
+        )
+    except SkillPackageError as exc:
         raise OctopError.localized(
             ErrorCode.SKILL_IMPORT_FAILED,
             locale,
-            reason="invalid resolved skill name",
-        )
+            reason=str(exc),
+        ) from exc
+    skill_name = package.slug
 
     existing = await _resolve_skill(ctx.workspace, skill_name)
     if existing is not None and not body.overwrite:
@@ -584,7 +622,7 @@ async def import_skill_from_url(
             name=skill_name,
         )
 
-    await ctx.workspace.aupload_many(resolved.uploads)
+    await ctx.workspace.aupload_many(package.workspace_uploads())
 
     if body.enable:
         disabled = _disabled_set(ctx.config)
@@ -592,7 +630,7 @@ async def import_skill_from_url(
         await _persist_disabled(server, agent_id, disabled)
 
     skill_md = next(
-        (content for path, content in resolved.uploads if path.endswith("SKILL.md")),
+        (content for path, content in package.files if path == "SKILL.md"),
         b"",
     )
     meta, _body = _parse_frontmatter(skill_md.decode("utf-8"))
@@ -670,6 +708,101 @@ async def disable_skill(
 class HubInstallBody(BaseModel):
     skill_name: str
     enable: bool = True
+    display_name: str | None = None
+    icon_url: str | None = None
+
+
+def _skillhub_uploads(
+    skill_name: str,
+    files: list[tuple[str, bytes]],
+    *,
+    display_name: str,
+    icon_url: str,
+) -> list[tuple[str, bytes]]:
+    transformed: list[tuple[str, bytes]] = []
+    for rel, original_content in files:
+        normalized = rel.replace("\\", "/")
+        content = original_content
+        if normalized == "SKILL.md":
+            try:
+                manifest = content.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+            else:
+                content = _with_skillhub_presentation_metadata(
+                    manifest,
+                    display_name=display_name,
+                    icon_url=icon_url,
+                ).encode("utf-8")
+        transformed.append((normalized, content))
+    return resolve_skill_package(
+        slug=skill_name,
+        files=transformed,
+        source="skillhub",
+    ).workspace_uploads()
+
+
+async def _download_skillhub_package_via_cli(
+    skill_name: str,
+) -> list[tuple[str, bytes]]:
+    """Compatibility fallback for registries unsupported by the public HTTP path."""
+    from fastapi import HTTPException  # noqa: PLC0415
+
+    skillhub_bin = await _ensure_skillhub_cli()
+    await _upgrade_skillhub_cli(skillhub_bin)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        install_args = ["--dir", tmpdir, "install", skill_name]
+        try:
+            rc, _stdout, stderr = await _run_skillhub_cmd(
+                skillhub_bin,
+                install_args,
+                timeout=120,
+            )
+        except TimeoutError:
+            raise HTTPException(
+                status_code=504, detail=f"skillhub install timed out for '{skill_name}'"
+            ) from None
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
+            ) from exc
+
+        if (
+            rc != 0
+            and _skillhub_stderr_suggests_upgrade(stderr)
+            and await _upgrade_skillhub_cli(skillhub_bin)
+        ):
+            try:
+                rc, _stdout, stderr = await _run_skillhub_cmd(
+                    skillhub_bin,
+                    install_args,
+                    timeout=120,
+                )
+            except TimeoutError:
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"skillhub install timed out for '{skill_name}'",
+                ) from None
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
+                ) from exc
+
+        if rc != 0:
+            err_msg = stderr.strip()
+            mapped = _map_skillhub_install_error(err_msg, skill_name)
+            if mapped is not None:
+                raise mapped
+            raise HTTPException(
+                status_code=502,
+                detail=_skillhub_cli_failure_detail("install", err_msg, locale="en"),
+            )
+
+        skill_dir = Path(tmpdir) / skill_name
+        if not skill_dir.is_dir():
+            skill_dir = Path(tmpdir)
+        return read_skill_directory(skill_dir)
 
 
 def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
@@ -743,7 +876,7 @@ async def hub_search_skills(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Search Tencent SkillHub via the skillhub CLI.
+    """Search Tencent SkillHub over HTTP, with CLI compatibility fallback.
 
     The agent_id param is accepted for auth/routing symmetry with
     the install endpoint but is not used for the search itself.
@@ -755,13 +888,23 @@ async def hub_search_skills(
     # the agent need not be running (unlike chat/workspace endpoints).
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     locale = resolve_request_locale(request)
-    skillhub_bin = await _ensure_skillhub_cli()
     query = q.strip() or "a"
-    # Note: --json is not supported by this CLI version; parse text output instead.
+    effective_limit = max(1, min(limit, 100))
+    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError,
+        search_skillhub,
+    )
+
+    try:
+        return await search_skillhub(query, limit=effective_limit)
+    except SkillHubMarketError as exc:
+        logger.warning("SkillHub HTTP search failed; using CLI fallback: %s", exc)
+
+    skillhub_bin = await _ensure_skillhub_cli()
     try:
         rc, stdout, stderr = await _run_skillhub_cmd(
             skillhub_bin,
-            ["search", "--search-limit", str(limit), query],
+            ["search", "--search-limit", str(effective_limit), query],
             timeout=30,
         )
     except TimeoutError:
@@ -784,71 +927,37 @@ _RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending",
 @router.get("/agents/{agent_id}/skills/hub/rankings")
 async def hub_rankings(
     agent_id: str,
-    request: Request,
     type: str = "all",
-    host: str | None = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Fetch Tencent SkillHub rankings via the skillhub CLI.
+    """Fetch Tencent SkillHub rankings directly over HTTP.
 
-    Runs ``skillhub skill rankings --type <type> [--host <host>]`` and returns
-    the CLI JSON payload (typically ``section``, ``skills``, ``total``).
+    Returns the same payload shape previously produced by
+    ``skillhub skill rankings`` (typically ``section``, ``skills``, ``total``).
     ``type`` selects a section (all / hot / recommended / trending / newest /
-    featured / paid). The host is resolved from the ``host`` query param, else
-    the ``SKILLHUB_HOST`` env var, else the CLI default (https://api.skillhub.cn).
-    Each source is stripped of surrounding whitespace; blank or whitespace-only
-    values are ignored and fall through to the next source. The agent_id is
-    accepted for auth/routing symmetry with search/install; rankings are global.
+    featured / paid). The host is resolved from the server-side ``SKILLHUB_HOST``
+    env var, else https://api.skillhub.cn. The agent_id is accepted for
+    auth/routing symmetry with search/install; rankings are global.
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
-    locale = resolve_request_locale(request)
 
     rtype = type if type in _RANKING_TYPES else "all"
-    skillhub_bin = await _ensure_skillhub_cli(require_rankings=True)
-    # host param > SKILLHUB_HOST env > CLI default. Strip each source and skip
-    # blank / whitespace-only values so they fall through to the next source
-    # (a whitespace-only host param must not short-circuit past the env var).
-    resolved_host = (host or "").strip() or os.environ.get("SKILLHUB_HOST", "").strip()
-    args = _skillhub_rankings_args(rtype, host=resolved_host or None)
+    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError,
+        SkillHubMarketTimeout,
+        fetch_skillhub_rankings,
+    )
 
     try:
-        rc, stdout, stderr = await _run_skillhub_cmd(skillhub_bin, args, timeout=20)
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="skillhub rankings timed out") from None
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to run skillhub CLI: {exc}") from exc
-
-    if (
-        rc != 0
-        and _skillhub_stderr_suggests_upgrade(stderr)
-        and await _upgrade_skillhub_cli(skillhub_bin)
-    ):
-        skillhub_bin = _resolve_skillhub_bin() or skillhub_bin
-        try:
-            rc, stdout, stderr = await _run_skillhub_cmd(skillhub_bin, args, timeout=20)
-        except TimeoutError:
-            raise HTTPException(status_code=504, detail="skillhub rankings timed out") from None
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-            ) from exc
-
-    if rc != 0:
-        raise HTTPException(
-            status_code=502,
-            detail=_skillhub_cli_failure_detail("rankings", stderr, locale=locale),
-        )
-
-    try:
-        return json.loads(stdout)  # type: ignore[no-any-return]
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=502, detail=f"skillhub rankings returned invalid JSON: {exc}"
-        ) from exc
+        return await fetch_skillhub_rankings(rtype)
+    except SkillHubMarketTimeout as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except SkillHubMarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/agents/{agent_id}/skills/hub/install", status_code=201)
@@ -861,93 +970,80 @@ async def hub_install_skill(
 ) -> dict[str, Any]:
     """Install a SkillHub skill into the specified agent's workspace.
 
-    Runs ``skillhub --dir <tmpdir> install <skill_name>``, then copies
-    the resulting skill directory into the agent's backend via
-    ``aupload_files``.
+    Public skills are downloaded and validated directly over HTTP. The CLI is
+    retained as a compatibility fallback for unsupported registry flows.
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
-    skill_name = body.skill_name.strip()
-    if not skill_name or "/" in skill_name or skill_name.startswith("."):
+    try:
+        skill_name = validate_skill_slug(body.skill_name)
+    except SkillPackageError:
         raise HTTPException(
-            status_code=400, detail="skill_name is required and must not contain / or start with ."
-        )
+            status_code=400,
+            detail="skill_name is required and must not contain path separators or start with .",
+        ) from None
+    display_name = (body.display_name or "").strip()
+    icon_url = (body.icon_url or "").strip()
+    if len(display_name) > 200:
+        raise HTTPException(status_code=400, detail="display_name is too long")
+    if len(icon_url) > 2048 or (icon_url and not _valid_skillhub_icon_url(icon_url)):
+        raise HTTPException(status_code=400, detail="icon_url must be an HTTP(S) URL")
+
+    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError,
+        SkillHubPackageError,
+        SkillHubPackageTooLarge,
+        download_skillhub_package,
+    )
 
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
-    skillhub_bin = await _ensure_skillhub_cli()
-    await _upgrade_skillhub_cli(skillhub_bin)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        install_args = ["--dir", tmpdir, "install", skill_name]
+    transport = "http"
+    try:
+        files = await download_skillhub_package(skill_name)
+    except SkillHubPackageTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except SkillHubPackageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except SkillHubMarketError as exc:
+        logger.warning(
+            "SkillHub HTTP install failed for %s; using CLI fallback: %s",
+            skill_name,
+            exc,
+        )
+        transport = "cli"
         try:
-            rc, _stdout, stderr = await _run_skillhub_cmd(
-                skillhub_bin,
-                install_args,
-                timeout=120,
-            )
-        except TimeoutError:
-            raise HTTPException(
-                status_code=504, detail=f"skillhub install timed out for '{skill_name}'"
-            ) from None
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-            ) from exc
+            files = await _download_skillhub_package_via_cli(skill_name)
+        except (SkillHubPackageTooLarge, SkillPackageTooLarge) as package_exc:
+            raise HTTPException(status_code=413, detail=str(package_exc)) from package_exc
+        except (SkillHubPackageError, SkillPackageError) as package_exc:
+            raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
 
-        if (
-            rc != 0
-            and _skillhub_stderr_suggests_upgrade(stderr)
-            and await _upgrade_skillhub_cli(skillhub_bin)
-        ):
-            try:
-                rc, _stdout, stderr = await _run_skillhub_cmd(
-                    skillhub_bin,
-                    install_args,
-                    timeout=120,
-                )
-            except TimeoutError:
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"skillhub install timed out for '{skill_name}'",
-                ) from None
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-                ) from exc
-
-        if rc != 0:
-            err_msg = stderr.strip()
-            mapped = _map_skillhub_install_error(err_msg, skill_name)
-            if mapped is not None:
-                raise mapped
-            raise HTTPException(
-                status_code=502,
-                detail=_skillhub_cli_failure_detail("install", err_msg, locale="en"),
-            )
-
-        uploads: list[tuple[str, bytes]] = []
-        skill_dir = os.path.join(tmpdir, skill_name)
-        if not os.path.isdir(skill_dir):
-            skill_dir = tmpdir
-        for dirpath, _dirnames, filenames in os.walk(skill_dir):
-            for fname in filenames:
-                fpath = os.path.join(dirpath, fname)
-                rel = os.path.relpath(fpath, skill_dir)
-                dest = f"skills/{skill_name}/{rel.replace(chr(92), '/')}"
-                with open(fpath, "rb") as fh:
-                    uploads.append((dest, fh.read()))
-
-        if not uploads:
-            raise HTTPException(
-                status_code=502,
-                detail=f"skillhub installed nothing for '{skill_name}'",
-            )
-
-        await ctx.workspace.aupload_many(uploads)
+    try:
+        uploads = _skillhub_uploads(
+            skill_name,
+            files,
+            display_name=display_name,
+            icon_url=icon_url,
+        )
+    except SkillPackageTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except SkillPackageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not uploads:
+        raise HTTPException(
+            status_code=502,
+            detail=f"skillhub installed nothing for '{skill_name}'",
+        )
+    await ctx.workspace.aupload_many(uploads)
 
     if body.enable:
         disabled = _disabled_set(ctx.config)
         disabled.discard(skill_name)
         await _persist_disabled(server, agent_id, disabled)
 
-    return {"installed": True, "name": skill_name, "enabled": body.enable}
+    return {
+        "installed": True,
+        "name": skill_name,
+        "enabled": body.enable,
+        "transport": transport,
+    }
