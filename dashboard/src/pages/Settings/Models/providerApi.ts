@@ -31,14 +31,12 @@ export async function testProviderDraft(
   });
 }
 
-export async function startCodexOAuth(redirectAfter = "/admin/models") {
-  return request<{ authorize_url: string; state_id: string }>(
-    "/admin/providers/codex-oauth/start",
-    {
-      method: "POST",
-      body: JSON.stringify({ redirect_after: redirectAfter }),
-    },
-  );
+export async function startCodexOAuth() {
+  return request<{
+    state_id: string;
+    user_code: string;
+    verification_url: string;
+  }>("/admin/providers/codex-oauth/start", { method: "POST" });
 }
 
 export async function pollCodexOAuth(stateId: string) {

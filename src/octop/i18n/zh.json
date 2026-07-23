@@ -319,6 +319,7 @@
     "SKILL_IMPORT_FAILED": "技能导入失败：{reason}",
     "SKILL_ALREADY_EXISTS": "技能 {name} 已存在，如需覆盖请启用 overwrite。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
+    "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。"
   },
@@ -351,6 +352,7 @@
     "error_vnc_exposed": "VNC 端口暴露在网络上，请使用 -localhost yes 仅监听 127.0.0.1 后重启。",
     "error_apt_locked": "另一个 apt/dpkg 进程正在占用软件包管理器，请等待其结束后再重试。",
     "error_apt_failed": "系统软件包安装失败，请检查 apt 日志后重试。",
+    "error_el10_unsupported": "远程桌面安装暂不支持 Enterprise Linux 10 及更高版本，因为系统仓库缺少所需的 X11 桌面软件包。请使用 Enterprise Linux 9 或 Debian/Ubuntu。",
     "error_subprocess_stream": "安装输出读取中断，服务端可能仍在后台安装，请稍后刷新状态。"
   },
   "tls": {

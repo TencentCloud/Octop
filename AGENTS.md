@@ -337,6 +337,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | OpenAPI tags and API intro | `api/openapi_meta.py` |
 | Human-readable API reference | `docs/api.md` |
 | SharedServices / RepoBundle | `infra/db/services.py` |
+| Branching & release | [§10](#10-change-workflow) Branching & release; `CONTRIBUTING.md`; `.cursor/skills/publish` |
 
 ## 10. Change workflow
 
@@ -344,6 +345,28 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 2. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
 3. **Verify** — backend: `make all` (`lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`.
 4. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
+
+### Branching & release
+
+```
+feature/* ──PR──► develop ──► release/x.y.z ──PR──► main ──tag v*──► publish
+hotfix/* ──PR──► main (+ tag) and ──PR──► develop
+```
+
+| Branch | Role |
+|--------|------|
+| `main` | Production source of truth; **default branch**; only release / hotfix merges; **only `v*` tags on `main` are production** |
+| `develop` | Daily integration; **base for feature PRs** |
+| `release/x.y.z` | Temporary freeze (version bump / CHANGELOG / bugfixes); **delete after ship** |
+
+**Rules**
+
+- Never push `develop` directly onto `main` — all merges via PR.
+- Release sequence: cut `release/*` from latest `develop` → PR into `main` → **tag `v*` on main tip only after merge** → delete `release/*` → sync `main` → `develop` when needed.
+- Do **not** push a production tag from a release/feature branch before it is on `main`.
+- Hotfix: branch from `main`, PR to `main` (and tag if shipping), then PR into `develop`.
+- Day-to-day feature work: branch from `develop`, open PR **into `develop`** (not `main`).
+- Human detail: `CONTRIBUTING.md`. Agent publish flow: `.cursor/skills/publish`.
 
 ## 11. Communication
 

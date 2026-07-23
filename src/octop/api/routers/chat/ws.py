@@ -67,6 +67,8 @@ async def dashboard_chat_ws(
 
     connection_id = uuid.uuid4().hex
     await websocket.accept()
+    active_thread_id: str | None = None
+    turn_finished = False
 
     # The harness/gateway workers run on the server event loop, but this
     # handler may run on a different loop (e.g. starlette's TestClient portal).
@@ -82,7 +84,10 @@ async def dashboard_chat_ws(
         )
 
     async def send_frame(frame: dict[str, Any]) -> None:
+        nonlocal turn_finished
         await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(_emit_frame(frame), ws_loop))
+        if frame.get("type") in ("done", "error", "hitl_required"):
+            turn_finished = True
 
     hub.register(connection_id, send_frame)
 
@@ -138,6 +143,8 @@ async def dashboard_chat_ws(
                 ws_connection_id=connection_id,
                 user_is_admin=bool(getattr(user, "is_admin", False)),
             )
+            active_thread_id = prepared.thread_id
+            turn_finished = False
             channel_manager.enqueue(WS_CHANNEL_ID, inbound)
 
     except WebSocketDisconnect:
@@ -149,6 +156,8 @@ async def dashboard_chat_ws(
                 await send_frame({"type": "error", "message": "internal error"})
     finally:
         hub.unregister(connection_id)
+        if active_thread_id is not None and not turn_finished:
+            server.app_runtime.agent_registry.cancel_stream(agent_id, active_thread_id)
         if websocket.application_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close()

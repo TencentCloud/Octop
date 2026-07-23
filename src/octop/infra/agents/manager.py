@@ -1066,6 +1066,17 @@ class AgentManager:
         self._schedule_reload(agent_id)
         return row
 
+    async def persist_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
+        """Persist ``skills_disabled`` and hot-sync the running agent (no rebuild).
+
+        Unlike :meth:`update_config_json`, this does not schedule a harness reload.
+        Skill enable/disable and marketplace install only need the filter set updated.
+        """
+        cfg = self.get_config(agent_id)
+        cfg["skills_disabled"] = sorted(disabled)
+        self._repos.agent_repo.update_config(agent_id, config_json=json.dumps(cfg))
+        self.sync_skills_disabled(agent_id, disabled)
+
     async def list_skill_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed skills for *agent_id* (delegates to harness-agent catalog)."""
         agent = self.get_agent(agent_id)

@@ -25,6 +25,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from octop.infra.utils.ssl_errors import looks_like_ssl_error
+
 logger = logging.getLogger(__name__)
 
 MARKET_EXPERT_PREFIX = "skillhub-skillset-"
@@ -79,6 +81,7 @@ class SkillHubMarketErrorKind(StrEnum):
     PACKAGE_INVALID = "package_invalid"
     PACKAGE_TOO_LARGE = "package_too_large"
     UPSTREAM_FAILED = "upstream_failed"
+    SSL_ERROR = "ssl_error"
 
 
 class SkillHubMarketError(RuntimeError):
@@ -473,10 +476,16 @@ def _http_get(url: str, *, accept: str) -> bytes:
             kind=SkillHubMarketErrorKind.UPSTREAM_TIMEOUT,
         ) from exc
     except URLError as exc:
-        reason = str(getattr(exc, "reason", "") or exc).lower()
+        reason = str(getattr(exc, "reason", "") or exc)
+        reason_l = reason.lower()
+        if looks_like_ssl_error(reason):
+            raise SkillHubMarketError(
+                "SkillHub request failed: SSL error",
+                kind=SkillHubMarketErrorKind.SSL_ERROR,
+            ) from exc
         kind = (
             SkillHubMarketErrorKind.UPSTREAM_TIMEOUT
-            if "timed out" in reason or "timeout" in reason
+            if "timed out" in reason_l or "timeout" in reason_l
             else SkillHubMarketErrorKind.UPSTREAM_FAILED
         )
         raise SkillHubMarketError(
@@ -484,6 +493,11 @@ def _http_get(url: str, *, accept: str) -> bytes:
             kind=kind,
         ) from exc
     except OSError as exc:
+        if looks_like_ssl_error(exc):
+            raise SkillHubMarketError(
+                "SkillHub request failed: SSL error",
+                kind=SkillHubMarketErrorKind.SSL_ERROR,
+            ) from exc
         raise SkillHubMarketError(
             "SkillHub request failed",
             kind=SkillHubMarketErrorKind.UPSTREAM_FAILED,

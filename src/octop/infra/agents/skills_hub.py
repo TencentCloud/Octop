@@ -45,9 +45,45 @@ SUPPORTED_URL_PREFIXES = (
 )
 
 
+def supported_skill_url_prefixes() -> tuple[str, ...]:
+    """Return built-in and operator-configured import source prefixes."""
+    configured = os.environ.get("OCTOP_SKILLS_IMPORT_URL_PREFIXES", "")
+    values = [*SUPPORTED_URL_PREFIXES, *(part.strip() for part in configured.split(","))]
+    prefixes: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        if value not in prefixes:
+            prefixes.append(value)
+    return tuple(prefixes)
+
+
+def _url_matches_prefix(url: str, prefix: str) -> bool:
+    candidate = urlparse(url)
+    allowed = urlparse(prefix)
+    try:
+        same_port = candidate.port == allowed.port
+    except ValueError:
+        return False
+    if (
+        candidate.scheme != allowed.scheme
+        or candidate.hostname != allowed.hostname
+        or not same_port
+    ):
+        return False
+    allowed_path = allowed.path.rstrip("/")
+    candidate_path = candidate.path.rstrip("/")
+    return not allowed_path or (
+        candidate_path == allowed_path or candidate_path.startswith(f"{allowed_path}/")
+    )
+
+
 def is_supported_skill_url(url: str) -> bool:
     trimmed = url.strip()
-    return any(trimmed.startswith(prefix) for prefix in SUPPORTED_URL_PREFIXES)
+    return any(_url_matches_prefix(trimmed, prefix) for prefix in supported_skill_url_prefixes())
 
 
 RETRYABLE_HTTP_STATUS = {
@@ -1260,4 +1296,5 @@ __all__ = [
     "is_supported_skill_url",
     "resolve_bundle_from_url",
     "search_hub_skills",
+    "supported_skill_url_prefixes",
 ]

@@ -7,6 +7,7 @@ import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -62,6 +63,18 @@ def _consume_ws_turn_sync(
     return chunks
 
 
+def _disconnect_ws_turn_sync(
+    app: object,
+    aid: str,
+    token: str,
+) -> None:
+    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+        f"/api/agents/{aid}/chat/ws?token={token}"
+    ) as ws:
+        ws.send_json({"type": "user_turn", "text": "cancel me"})
+        ws.receive_text()
+
+
 async def _consume_ws_turn(
     c: httpx.AsyncClient,
     aid: str,
@@ -99,6 +112,34 @@ async def test_ws_emits_chunks_then_done(env: Any) -> None:
     types = [ch.get("type") for ch in chunks]
     assert "token" in types
     assert chunks[-1]["type"] == "done"
+
+
+async def test_ws_disconnect_cancels_active_turn(env: Any) -> None:
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+
+    async def slow_stream(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "node": "agent", "content": "started"}
+        await asyncio.sleep(1)
+
+    agent.stream = slow_stream
+    original_cancel = srv.app_runtime.agent_registry.cancel_stream
+    cancel_spy = MagicMock(wraps=original_cancel)
+    srv.app_runtime.agent_registry.cancel_stream = cancel_spy
+
+    await asyncio.to_thread(
+        _disconnect_ws_turn_sync,
+        c._octop_app,  # type: ignore[attr-defined]
+        aid,
+        ws_token(alice_auth),
+    )
+
+    for _ in range(20):
+        if cancel_spy.called:
+            break
+        await asyncio.sleep(0.01)
+    cancel_spy.assert_called_once()
+    assert cancel_spy.call_args.args[0] == aid
 
 
 async def test_ws_emits_error_frame_on_exception(env: Any) -> None:

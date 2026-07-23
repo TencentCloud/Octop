@@ -47,6 +47,7 @@ _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
     SkillHubMarketErrorKind.PACKAGE_INVALID: "invalid expert package",
     SkillHubMarketErrorKind.PACKAGE_TOO_LARGE: "expert package too large",
     SkillHubMarketErrorKind.UPSTREAM_FAILED: "upstream request failed",
+    SkillHubMarketErrorKind.SSL_ERROR: "ssl error",
 }
 
 
@@ -167,6 +168,12 @@ def _map_skillhub_error(exc: SkillHubMarketError) -> OctopError:
         SkillHubMarketErrorKind.INVALID_SLUG,
     ):
         return OctopError(ErrorCode.NOT_FOUND, "skillhub expert not found")
+    if kind == SkillHubMarketErrorKind.SSL_ERROR:
+        return OctopError(
+            ErrorCode.SKILLHUB_SSL_FAILED,
+            "skillhub ssl error",
+            details={"reason": "ssl_error", "kind": kind.value},
+        )
     reason = _SAFE_MARKET_REASONS.get(
         kind, _SAFE_MARKET_REASONS[SkillHubMarketErrorKind.UPSTREAM_FAILED]
     )

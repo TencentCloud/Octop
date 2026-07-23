@@ -724,6 +724,53 @@ async def test_seed_expert_template_writes_workspace_files(
 
 
 @pytest.mark.asyncio
+async def test_persist_skills_disabled_does_not_schedule_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """skills_disabled is hot-synced; must not tear down the running agent."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    fake_agent = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    fake_hm.acreate_agent = AsyncMock(return_value=MagicMock(agent=fake_agent))
+    fake_hm.shared_factory = object()
+    manager._harness_manager = fake_hm
+
+    row = await manager.create(AgentCreateSpec(name="skills-hot"))
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
+    await manager.persist_skills_disabled(row.agent_id, {"pdf", "docx"})
+
+    cfg = manager.get_config(row.agent_id)
+    assert cfg.get("skills_disabled") == ["docx", "pdf"]
+    fake_agent.set_skills_disabled.assert_called_once_with({"pdf", "docx"})
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_still_schedules_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    fake_agent = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    fake_hm.acreate_agent = AsyncMock(return_value=MagicMock(agent=fake_agent))
+    fake_hm.shared_factory = object()
+    manager._harness_manager = fake_hm
+
+    row = await manager.create(AgentCreateSpec(name="cfg-reload"))
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
+    await manager.update_config_json(row.agent_id, json.dumps({"foo": 1}))
+    assert scheduled == [row.agent_id]
+
+
+@pytest.mark.asyncio
 async def test_reload_agent_does_not_block_event_loop(tmp_path: Path) -> None:
     """Harness create/remove must run off the event loop (MCP init blocks the loop)."""
     import asyncio
