@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -9,7 +10,7 @@ from harness_agent.slash import SlashCommand, SlashSink, thread_message_count
 
 from octop.i18n.domains.agents import agent_error_message
 from octop.i18n.domains.slash import localized_rows, tr
-from octop.infra.gateway.slash.ctx import SlashCtx, chat_type, ensure_thread_id, lang_of, subject_id
+from octop.infra.gateway.slash.ctx import SlashCtx, ensure_thread_id, lang_of
 from octop.infra.gateway.slash.formatting import (
     format_duration,
     markdown_kv_block,
@@ -21,6 +22,8 @@ from octop.infra.utils.locale import Locale, normalize_locale
 if TYPE_CHECKING:
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+logger = logging.getLogger(__name__)
 
 
 def _format_slash_user(
@@ -52,28 +55,67 @@ def _resolve_agent_row(ctx: SlashCtx) -> Any:
 async def cmd_compact(
     d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink
 ) -> None:
+    """Force summarization + history offload on the current thread.
+
+    This mirrors deepagents ``SummarizationMiddleware`` (summary message +
+    ``conversation_history`` offload via ``_summarization_event``). Unlike
+    ``/new``, it does **not** create a fresh thread.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
     lang = lang_of(ctx)
-    old_tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
-    msg_count = 0
-    if old_tid and ctx.agent_manager is not None:
-        try:
-            harness = ctx.agent_manager.get_agent(ctx.agent_id)
-            msg_count = await thread_message_count(harness, old_tid)
-        except Exception:
-            msg_count = 0
-    new_tid = await ctx.thread_registry.reset(
-        agent_id=ctx.agent_id,
-        user_id=ctx.user_id,
-        channel_type=ctx.channel_type,
-        channel_subject_id=subject_id(ctx),
-        channel_chat_type=chat_type(ctx),
-    )
-    if old_tid:
-        d.clear_thread_model_override(ctx, old_tid)
-    archived = ""
-    if old_tid:
-        archived = tr("compact.archived", lang, count=msg_count, short=old_tid[-6:])
-    await sink.text(tr("compact.done", lang, short=new_tid[-6:], archived=archived))
+    tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
+    if not tid:
+        await sink.text(tr("compact.no_thread", lang))
+        return
+    if ctx.agent_manager is None:
+        await sink.text(tr("compact.unavailable", lang))
+        return
+
+    try:
+        harness = ctx.agent_manager.get_agent(ctx.agent_id)
+    except Exception:
+        logger.exception("compact: get_agent failed agent_id=%s", ctx.agent_id)
+        await sink.text(tr("compact.unavailable", lang))
+        return
+
+    compact = getattr(harness, "acompact_conversation", None)
+    if compact is None:
+        await sink.text(tr("compact.unavailable", lang))
+        return
+
+    model_override = d.get_thread_model_override(ctx, tid)
+    try:
+        result = await compact(tid, model=model_override)
+    except Exception:
+        logger.exception("compact: acompact_conversation failed thread=%s", tid)
+        await sink.text(tr("compact.failed", lang))
+        return
+
+    reason = getattr(result, "reason", "") or ""
+    if not getattr(result, "ok", False):
+        err = getattr(result, "error", None)
+        if reason == "nothing_to_compact":
+            await sink.text(tr("compact.nothing", lang, short=tid[-6:]))
+        elif reason == "unavailable":
+            logger.warning("compact unavailable thread=%s err=%s", tid, err)
+            await sink.text(tr("compact.unavailable", lang))
+        else:
+            logger.warning("compact failed thread=%s reason=%s err=%s", tid, reason, err)
+            await sink.text(tr("compact.failed", lang))
+        return
+
+    count = int(getattr(result, "summarized_count", 0) or 0)
+    raw_path = getattr(result, "file_path", None) or ""
+    if raw_path:
+        p = Path(str(raw_path))
+        # Prefer short workspace-relative display over absolute host paths.
+        short_path = f"conversation_history/{p.name}" if p.name else str(raw_path)
+        await sink.text(
+            tr("compact.done_offload", lang, count=count, short=tid[-6:], path=short_path)
+        )
+    else:
+        await sink.text(tr("compact.done", lang, count=count, short=tid[-6:]))
 
 
 async def cmd_history(

@@ -575,6 +575,7 @@
     "expandMore": "展开更多",
     "pin": "置顶",
     "unpin": "取消置顶",
+    "deleteSessionConfirm": "确定删除这段会话吗？删除后无法恢复。",
     "resizeSidebar": "调整侧栏宽度",
     "expandHistorySidebar": "展开对话历史",
     "collapseHistorySidebar": "收起对话历史",
@@ -624,7 +625,8 @@
     "openFile": "查看文件",
     "fileWorkspace": "工作区文件",
     "fileWorkspaceHint": "Agent 已生成或编辑文件",
-    "fileSwitch": "切换文件"
+    "fileSwitch": "切换文件",
+    "loadEarlierMessages": "加载更早的消息"
   },
   "tools": {
     "unknown": "未知工具",
@@ -783,9 +785,9 @@
     "builtinSkillsDesc": "系统预置、开箱即用的技能",
     "importSkills": "导入技能",
     "enterSkillUrl": "输入技能URL",
-    "supportedSkillUrlSources": "当前支持的技能 URL 来源：",
+    "supportedSkillUrlSources": "内置技能 URL 来源（服务端适配器还可扩展）：",
     "urlExamples": "URL 示例：",
-    "invalidSkillUrlSource": "技能 URL 当前需要以 https://skills.sh/、https://clawhub.ai/、https://skillsmp.com/ 或 https://github.com/ 开头",
+    "invalidSkillUrlSource": "请输入有效的 HTTP(S) 技能 URL；具体来源由服务端适配器校验",
     "source": "来源",
     "kindBuiltin": "内置",
     "kindWorkspace": "工作区",
@@ -1693,6 +1695,9 @@
     "codexOAuthFailed": "ChatGPT 登录失败：{{error}}",
     "codexOAuthStartFailed": "无法启动 ChatGPT OAuth",
     "codexOAuthDisclaimer": "此方式使用 ChatGPT 内部 Codex API，非 OpenAI 官方 API Key 路径，可能受 OpenAI 服务条款与稳定性影响，请自行评估风险。",
+    "codexOAuthDeviceHint": "已在新标签页打开验证页面。如未自动打开，请点击下方按钮，输入下面的验证码完成登录，本页会自动更新。",
+    "codexOAuthOpenVerification": "打开验证页面",
+    "codexOAuthWaiting": "等待您完成授权…",
     "cannotDeleteSharedTitle": "无法删除共享 provider",
     "cannotDeleteSharedDesc": "此 provider 由管理员维护(user_id 为空),仅管理员可删除。",
     "deleteProviderTitle": "删除 provider",
@@ -2714,7 +2719,7 @@
     "waitingScreenshot": "正在等待浏览器截图…",
     "firstConnectHint": "首次连接可能需要几秒钟",
     "waitingAgentHint": "等待 Agent 启动浏览器…",
-    "interactiveHint": "🖱️ 可直接在浏览器上点击、滚动和输入",
+    "interactiveHint": "🖱️ 可直接在浏览器上点击、拖动、滚动和输入",
     "returnToAgent": "交还控制权给 Agent",
     "takeover": "人工接管",
     "openDesktopChrome": "在桌面上打开 Chrome 窗口",
@@ -2746,7 +2751,7 @@
     "streaming": "推流中",
     "connectFailed": "浏览器流连接失败",
     "reconnect": "重新连接",
-    "interactiveHint": "🖱️ 可直接在浏览器上点击、滚动和输入"
+    "interactiveHint": "🖱️ 可直接在浏览器上点击、拖动、滚动和输入"
   },
   "embedding": {
     "title": "本地 Embedding 配置",

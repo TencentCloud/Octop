@@ -675,7 +675,7 @@ export function useChat(
     [agentId],
   );
 
-  const loadMoreHistory = useCallback(async () => {
+  const loadMoreHistory = useCallback(async (): Promise<boolean> => {
     const key = stableSessionId;
     const snap = chatStore.getSnapshot(key);
     if (
@@ -686,7 +686,7 @@ export function useChat(
       !agentId ||
       stableSessionId === "__empty__"
     ) {
-      return;
+      return false;
     }
 
     loadMoreInFlightRef.current = true;
@@ -700,6 +700,7 @@ export function useChat(
         nextOffset,
       } = await loadThreadHistory(agentId, stableSessionId, { offset });
       chatStore.prependHistoryMessages(key, older, { hasMore, nextOffset });
+      return true;
     } finally {
       loadMoreInFlightRef.current = false;
       chatStore.setHistoryLoadingMore(key, false);

@@ -318,3 +318,32 @@ async def test_import_rejects_unsupported_url(env: Any) -> None:
     )
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "SKILL_IMPORT_UNSUPPORTED_URL"
+
+
+async def test_import_rejects_adapter_upload_outside_skill_root(
+    env: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    c, _srv, auth, aid = env
+    from octop.infra.agents import skills_hub
+
+    def _fake_resolve(**_kwargs: object) -> skills_hub.BundleResolveResult:
+        return skills_hub.BundleResolveResult(
+            name="imported-skill",
+            uploads=[
+                ("skills/imported-skill/SKILL.md", SAMPLE_SKILL.encode()),
+                ("skills/other/escape.md", b"unsafe"),
+            ],
+            source_url="https://github.com/example/repo",
+        )
+
+    monkeypatch.setattr(skills_hub, "resolve_bundle_from_url", _fake_resolve)
+
+    r = await c.post(
+        f"/api/agents/{aid}/skills/import",
+        headers=auth,
+        json={"bundle_url": "https://github.com/example/repo"},
+    )
+
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "SKILL_IMPORT_FAILED"

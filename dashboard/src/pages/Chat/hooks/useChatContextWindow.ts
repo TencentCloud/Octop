@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import type { ResolvedModel, TokenUsage } from "../../../api/types";
-import { modelOptionValue } from "../../../utils/modelOptions";
+import { modelOptionValue, modelRef } from "../../../utils/modelOptions";
 import type { ChatMessage } from "./useChat";
+
+const DEFAULT_MAX = 128_000;
 
 function usageContextInput(
   usage: TokenUsage | null | undefined,
@@ -16,30 +18,49 @@ function usageContextInput(
   return null;
 }
 
+function modelContextWindow(m: ResolvedModel | undefined): number | null {
+  if (!m) return null;
+  const window =
+    m.context_window ?? m.contextWindow ?? m.max_input_tokens ?? null;
+  return window && window > 0 ? window : null;
+}
+
+function findModelWindow(
+  availableModels: ResolvedModel[],
+  ref: string | null | undefined,
+): number | null {
+  const key = (ref || "").trim();
+  if (!key) return null;
+  const match = availableModels.find((m) => modelOptionValue(m) === key);
+  return modelContextWindow(match);
+}
+
 export function useChatContextWindow(
   messages: ChatMessage[],
   contextUsage: TokenUsage | null | undefined,
   selectedModel: string | null,
   availableModels: ResolvedModel[],
   agentDefaultModel?: string | null,
+  /** Global preferred model (settings active-model) used when composer is Auto. */
+  activeModelRef?: string | null,
 ) {
   const contextMaxTokens = useMemo(() => {
-    if (selectedModel) {
-      const match = availableModels.find(
-        (m) => modelOptionValue(m) === selectedModel,
-      );
-      const window = match?.context_window ?? match?.contextWindow;
-      if (window && window > 0) return window;
-    }
-    if (agentDefaultModel) {
-      const match = availableModels.find(
-        (m) => modelOptionValue(m) === agentDefaultModel,
-      );
-      const window = match?.context_window ?? match?.contextWindow;
-      if (window && window > 0) return window;
-    }
-    return 128_000;
-  }, [selectedModel, availableModels, agentDefaultModel]);
+    const fromSelected = findModelWindow(availableModels, selectedModel);
+    if (fromSelected != null) return fromSelected;
+
+    const fromAgent = findModelWindow(availableModels, agentDefaultModel);
+    if (fromAgent != null) return fromAgent;
+
+    const fromActive = findModelWindow(availableModels, activeModelRef);
+    if (fromActive != null) return fromActive;
+
+    // AUTO with no settings row yet — same order as resolve_first_model_ref.
+    const first = availableModels[0];
+    const fromFirst = modelContextWindow(first);
+    if (fromFirst != null) return fromFirst;
+
+    return DEFAULT_MAX;
+  }, [selectedModel, availableModels, agentDefaultModel, activeModelRef]);
 
   const contextUsedTokens = useMemo(() => {
     const fromStream = usageContextInput(contextUsage);
@@ -52,4 +73,14 @@ export function useChatContextWindow(
   }, [contextUsage, messages]);
 
   return { contextMaxTokens, contextUsedTokens };
+}
+
+/** Build ``provider/model`` ref from an active-model API payload. */
+export function activeModelToRef(
+  active: { provider_name?: string; model?: string } | null | undefined,
+): string | null {
+  const provider = (active?.provider_name || "").trim();
+  const model = (active?.model || "").trim();
+  if (!provider || !model) return null;
+  return modelRef(provider, model);
 }

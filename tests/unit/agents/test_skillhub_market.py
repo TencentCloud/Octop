@@ -5,9 +5,13 @@ from __future__ import annotations
 import io
 import json
 import re
+import urllib.error
 import zipfile
+from typing import Any
 
 import pytest
+
+from octop.infra.agents import skillhub_market
 
 
 def _zip_bytes(files: dict[str, str]) -> bytes:
@@ -473,3 +477,99 @@ def test_map_skillhub_not_found() -> None:
         SkillHubMarketError("missing", kind=SkillHubMarketErrorKind.NOT_FOUND)
     )
     assert mapped.code == ErrorCode.NOT_FOUND
+
+
+class _Response:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self._payload).encode()
+
+
+def test_fetch_ranking_json_uses_showcase_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_urlopen(request: Any, timeout: float) -> _Response:
+        seen["url"] = request.full_url
+        seen["accept"] = request.headers["Accept"]
+        seen["timeout"] = timeout
+        return _Response({"section": "hot_downloads", "skills": [], "total": 0})
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    result = skillhub_market._fetch_ranking_json(
+        "https://api.example.com",
+        "hot",
+        timeout=7,
+    )
+
+    assert result["section"] == "hot_downloads"
+    assert seen == {
+        "url": "https://api.example.com/api/v1/showcase/hot",
+        "accept": "application/json",
+        "timeout": 7,
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_returns_partial_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_fetch(
+        _host: str,
+        ranking_type: str,
+        *,
+        timeout: float,
+    ) -> dict[str, Any]:
+        assert timeout == 10
+        if ranking_type == "hot":
+            raise skillhub_market.SkillHubMarketError("hot unavailable")
+        return {"section": ranking_type, "skills": [], "total": 0}
+
+    monkeypatch.setattr(skillhub_market, "_fetch_ranking_json", fake_fetch)
+
+    result = await skillhub_market.fetch_skillhub_rankings("all")
+
+    assert "hot" not in result["rankings"]
+    assert result["rankings"]["recommended"]["section"] == "recommended"
+    assert result["errors"] == {"hot": "hot unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_raises_timeout_when_every_request_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_fetch(
+        _host: str,
+        ranking_type: str,
+        *,
+        timeout: float,
+    ) -> dict[str, Any]:
+        raise skillhub_market.SkillHubMarketTimeout(f"{ranking_type} timed out")
+
+    monkeypatch.setattr(skillhub_market, "_fetch_ranking_json", fake_fetch)
+
+    with pytest.raises(
+        skillhub_market.SkillHubMarketTimeout,
+        match="All SkillHub ranking requests timed out",
+    ):
+        await skillhub_market.fetch_skillhub_rankings("all")
+
+
+def test_fetch_ranking_maps_url_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_urlopen(_request: Any, timeout: float) -> _Response:
+        raise urllib.error.URLError(TimeoutError())
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubMarketTimeout):
+        skillhub_market._fetch_ranking_json(
+            "https://api.example.com",
+            "recommended",
+            timeout=7,
+        )
