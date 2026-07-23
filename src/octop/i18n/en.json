@@ -96,7 +96,12 @@
       "set": "Model for this thread → {model}."
     },
     "compact": {
-      "done": "Context compacted. Fresh thread {short}{archived}.",
+      "done": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\nChat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
+      "done_offload": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\n- Saved: `{path}`\n- Chat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
+      "nothing": "Nothing to compact on thread `{short}` (too short or already compact).",
+      "no_thread": "No active thread.",
+      "unavailable": "Compact unavailable (agent not ready or harness too old).",
+      "failed": "Compact failed; check logs and retry.",
       "archived": " ({count} messages archived as {short})"
     },
     "agent": {
@@ -197,7 +202,7 @@
       },
       "compact": {
         "label": "Compact memory",
-        "description": "Archive current context and start a fresh thread"
+        "description": "Summarize and offload older context to free the window (same thread)"
       },
       "stop": {
         "label": "Stop generation",

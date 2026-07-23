@@ -248,6 +248,7 @@ function ChatPageInner() {
     selectedSkills,
     chatConnectors,
     availableModels,
+    activeModelRef,
     handleConnectorsChange,
     handleSkillsChange,
   } = useChatComposerResources(
@@ -262,6 +263,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
+    activeModelRef,
   );
 
   const sessionUsage = useMemo(() => {

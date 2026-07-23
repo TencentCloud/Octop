@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { connectorsApi } from "../../../api/modules/connectors";
 import { providerApi } from "../../../api/modules/provider";
+import { request } from "../../../api/request";
 import type { ResolvedModel } from "../../../api/types";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import { CONNECTORS_CHANGED_EVENT } from "../../Agent/Connectors/customMcpUtils";
+import { activeModelToRef } from "./useChatContextWindow";
 import {
   loadSavedConnectors,
   loadSavedSkills,
@@ -22,6 +24,7 @@ export function useChatComposerResources(
     { mcp_server_name: string; label: string; kind: string }[]
   >([]);
   const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
+  const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,6 +95,28 @@ export function useChatComposerResources(
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadActiveModel = () => {
+      void request<{ provider_name: string; model: string }>(
+        "/providers/active-model",
+      )
+        .then((active) => {
+          if (!cancelled) setActiveModelRef(activeModelToRef(active));
+        })
+        .catch(() => {
+          if (!cancelled) setActiveModelRef(null);
+        });
+    };
+    loadActiveModel();
+    const onFocus = () => loadActiveModel();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
   const handleConnectorsChange = useCallback(
     (names: string[]) => {
       setSelectedConnectors(names);
@@ -115,6 +140,7 @@ export function useChatComposerResources(
     selectedSkills,
     chatConnectors,
     availableModels,
+    activeModelRef,
     handleConnectorsChange,
     handleSkillsChange,
   };
