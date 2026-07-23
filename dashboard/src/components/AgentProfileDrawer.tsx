@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
 import { request } from "../api/request";
+import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
 import {
   listAgentSubagents,
@@ -149,9 +150,11 @@ export default function AgentProfileDrawer({
     setFileContent("");
     try {
       const r = await request<{ content: string }>(
-        `/agents/${agent.agent_id}/workspace/file?path=${encodeURIComponent(
-          path,
-        )}`,
+        withFromWorkspace(
+          `/agents/${agent.agent_id}/workspace/file?path=${encodeURIComponent(
+            path,
+          )}`,
+        ),
       );
       setFileContent(r.content ?? "");
     } catch {

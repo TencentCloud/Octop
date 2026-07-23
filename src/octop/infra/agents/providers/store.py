@@ -111,6 +111,10 @@ class ProviderStore:
         explicit = data.get("input")
         inputs = list(explicit) if isinstance(explicit, list) else ["text"]
         data["input"] = _infer_model_input_modalities(model_id, inputs)
+        # Octop catalogs store ``context_window``; harness ModelConfig uses
+        # ``max_input_tokens`` (drives UI breakdown cap + summarization profile).
+        if not data.get("max_input_tokens") and data.get("context_window"):
+            data["max_input_tokens"] = data["context_window"]
         return ModelConfig.from_dict(data)
 
     def is_model_ref_multimodal(self, ref: str) -> bool:

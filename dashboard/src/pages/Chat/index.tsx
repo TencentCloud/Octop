@@ -248,6 +248,7 @@ function ChatPageInner() {
     selectedSkills,
     chatConnectors,
     availableModels,
+    activeModelRef,
     handleConnectorsChange,
     handleSkillsChange,
   } = useChatComposerResources(
@@ -262,6 +263,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
+    activeModelRef,
   );
 
   const sessionUsage = useMemo(() => {
@@ -563,7 +565,7 @@ function ChatPageInner() {
                 historyHasMore={historyHasMore}
                 historyLoadingMore={historyLoadingMore}
                 historyRefreshing={historyRefreshing}
-                onLoadMoreHistory={() => void loadMoreHistory()}
+                onLoadMoreHistory={() => loadMoreHistory()}
                 onRefreshHistory={() => void refreshHistory()}
                 isStreaming={isStreaming}
                 thinkingStartedAt={thinkingStartedAt}

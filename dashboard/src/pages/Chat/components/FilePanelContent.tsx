@@ -24,6 +24,33 @@ function panelFilePath(raw: string): string {
   return trimmed;
 }
 
+/** Legacy ``/outbound|inbound/…`` keys are workspace-relative, not host roots. */
+function isLegacyWorkspaceSlashPath(path: string): boolean {
+  const raw = path.replace(/\\/g, "/");
+  return (
+    raw.startsWith("/outbound/") ||
+    raw.startsWith("/inbound/") ||
+    raw === "/outbound" ||
+    raw === "/inbound"
+  );
+}
+
+/** Path + query for agent workspace file/download APIs. */
+function panelApiRequestPath(resolvedPath: string): string {
+  const raw = resolvedPath.trim();
+  if (!raw) return raw;
+  if (raw.toLowerCase().startsWith("file://")) {
+    return raw;
+  }
+  if (isLegacyWorkspaceSlashPath(raw)) {
+    return raw.replace(/\\/g, "/").replace(/^\//, "");
+  }
+  if (raw.startsWith("/") || /^[A-Za-z]:/.test(raw)) {
+    return raw.startsWith("/") ? `file://${raw}` : `file:///${raw}`;
+  }
+  return raw;
+}
+
 interface FilePanelContentProps {
   agentId: string;
   /** All workspace files written by the agent in this thread. */
@@ -76,13 +103,10 @@ export default function FilePanelContent({
   const showPreviewToggle =
     isText && previewKind !== null && !editMode && content !== "";
 
-  const apiFilePath = useMemo(() => {
-    // Absolute tool paths → file:// so the API passes them through unchanged.
-    if (resolvedPath.startsWith("/") || /^[A-Za-z]:/.test(resolvedPath)) {
-      return `file://${resolvedPath}`;
-    }
-    return resolvedPath;
-  }, [resolvedPath]);
+  const apiFilePath = useMemo(
+    () => panelApiRequestPath(resolvedPath),
+    [resolvedPath],
+  );
 
   useEffect(() => {
     if (!resolvedPath || !agentId) return;
@@ -252,6 +276,7 @@ export default function FilePanelContent({
           <FileViewer
             agentId={agentId}
             path={resolvedPath}
+            fromWorkspace={false}
             editMode={editMode}
             value={content}
             onChange={setContent}

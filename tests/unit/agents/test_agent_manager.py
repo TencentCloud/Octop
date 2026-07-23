@@ -9,7 +9,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from deepagents.backends import CompositeBackend
 
 from octop.config import OctopConfig
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
@@ -24,16 +23,9 @@ from octop.infra.errors import OctopError
 from octop.infra.utils.paths import PathLayout
 
 
-def _assert_default_backend(actual: Any, manager: AgentManager, agent_id: str) -> None:
+def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, str | bool]:
     ws = manager._paths.ensure_agent_workspace(agent_id)
-    expected = default_agent_backend_spec(ws)
-    if isinstance(expected, CompositeBackend):
-        assert isinstance(actual, CompositeBackend)
-        assert actual.artifacts_root == expected.artifacts_root
-        assert getattr(actual, "cwd", None) == getattr(expected, "cwd", None)
-        assert type(actual.default) is type(expected.default)
-        return
-    assert actual == expected
+    return default_agent_backend_spec(ws)
 
 
 @pytest.fixture
@@ -225,23 +217,10 @@ def test_build_harness_config_without_cron_manager_has_no_extra_tools(
 
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
-    _assert_default_backend(cfg.backend, manager, "AGT001")
+    assert cfg.backend == _expected_default_backend(manager, "AGT001")
     assert cfg.workspace_dir.name == "AGT001"
     assert cfg.workspace_dir.parent.name == "agents"
     assert cfg.bootstrap_enabled is True
-    assert cfg.permissions is None
-
-
-def test_build_harness_config_posix_defaults_mounted_composite(manager: AgentManager) -> None:
-    from types import SimpleNamespace
-    from unittest.mock import patch
-
-    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="posix")):
-        cfg = manager._build_harness_config(_row(agent_id="AGT_POSIX"))
-
-    assert isinstance(cfg.backend, CompositeBackend)
-    assert cfg.backend.artifacts_root == str(cfg.workspace_dir.resolve())
-    assert getattr(cfg.backend, "cwd", None) is not None
     assert cfg.permissions is None
 
 
@@ -419,7 +398,7 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     cfg = manager._build_harness_config(_row())
     assert cfg.name == "agent_01AGENT"
     assert cfg.system_prompt is None
-    _assert_default_backend(cfg.backend, manager, "01AGENT")
+    assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
@@ -481,7 +460,7 @@ def test_build_harness_config_passes_default_model_without_embedded_providers(
 
 def test_build_harness_config_tolerates_bad_config_json(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(config_json="{not-json"))
-    _assert_default_backend(cfg.backend, manager, "01AGENT")
+    assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
 @pytest.mark.asyncio
@@ -687,6 +666,53 @@ async def test_seed_expert_template_writes_workspace_files(
     manifest = json.loads((ws / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["id"] == "demo"
     assert manifest["welcome_message"]["zh"] == "欢迎"
+
+
+@pytest.mark.asyncio
+async def test_persist_skills_disabled_does_not_schedule_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """skills_disabled is hot-synced; must not tear down the running agent."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    fake_agent = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    fake_hm.acreate_agent = AsyncMock(return_value=MagicMock(agent=fake_agent))
+    fake_hm.shared_factory = object()
+    manager._harness_manager = fake_hm
+
+    row = await manager.create(AgentCreateSpec(name="skills-hot"))
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
+    await manager.persist_skills_disabled(row.agent_id, {"pdf", "docx"})
+
+    cfg = manager.get_config(row.agent_id)
+    assert cfg.get("skills_disabled") == ["docx", "pdf"]
+    fake_agent.set_skills_disabled.assert_called_once_with({"pdf", "docx"})
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_still_schedules_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    fake_agent = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    fake_hm.acreate_agent = AsyncMock(return_value=MagicMock(agent=fake_agent))
+    fake_hm.shared_factory = object()
+    manager._harness_manager = fake_hm
+
+    row = await manager.create(AgentCreateSpec(name="cfg-reload"))
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
+    await manager.update_config_json(row.agent_id, json.dumps({"foo": 1}))
+    assert scheduled == [row.agent_id]
 
 
 @pytest.mark.asyncio

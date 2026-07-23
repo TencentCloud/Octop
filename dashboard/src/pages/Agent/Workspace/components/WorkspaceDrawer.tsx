@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request, requestBlob, requestUpload } from "../../../../api/request";
+import { withFromWorkspace } from "../../../../utils/fromWorkspace";
 import { workspaceApi } from "../../../../api/modules/workspace";
 import { useAgent } from "../../../../context/AgentContext";
 import { useIsMobile } from "../../../../hooks/useIsMobile";
@@ -343,7 +344,7 @@ export default function WorkspaceDrawer({
       setTreeLoading(true);
       try {
         const data = await request<FileInfo[]>(
-          `/agents/${agentId}/workspace/tree?path=/`,
+          withFromWorkspace(`/agents/${agentId}/workspace/tree?path=/`),
         );
         setTreeData([buildWorkspaceRootNode(toTreeNodes(data))]);
         setExpandedKeys([workspaceRootKey()]);
@@ -386,7 +387,9 @@ export default function WorkspaceDrawer({
     if (!is_dir) return;
     try {
       const data = await request<FileInfo[]>(
-        `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(path)}`,
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(path)}`,
+        ),
       );
       const children = toTreeNodes(data);
       const replace = (nodes: TreeDataNode[]): TreeDataNode[] =>
@@ -416,9 +419,11 @@ export default function WorkspaceDrawer({
       const dirKey = nodeKey({ path: dirPath, is_dir: true });
       try {
         const data = await request<FileInfo[]>(
-          `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(
-            dirPath,
-          )}`,
+          withFromWorkspace(
+            `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(
+              dirPath,
+            )}`,
+          ),
         );
         const children = toTreeNodes(data);
         const replace = (nodes: TreeDataNode[]): TreeDataNode[] =>
@@ -446,9 +451,11 @@ export default function WorkspaceDrawer({
       setDirLoading(true);
       try {
         const data = await request<FileInfo[]>(
-          `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(
-            dirPath,
-          )}`,
+          withFromWorkspace(
+            `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(
+              dirPath,
+            )}`,
+          ),
         );
         setDirEntries(data);
       } catch (err: unknown) {
@@ -542,9 +549,11 @@ export default function WorkspaceDrawer({
           setFileLoading(true);
           try {
             const r = await request<{ content: string }>(
-              `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
-                dest,
-              )}`,
+              withFromWorkspace(
+                `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
+                  dest,
+                )}`,
+              ),
             );
             setContent(r.content);
           } finally {
@@ -739,7 +748,9 @@ export default function WorkspaceDrawer({
     setFileLoading(true);
     try {
       const r = await request<{ content: string }>(
-        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+        ),
       );
       setContent(r.content);
     } catch (err: unknown) {
@@ -864,7 +875,9 @@ export default function WorkspaceDrawer({
     setSaving(true);
     try {
       await request(
-        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+        ),
         {
           method: "PUT",
           body: JSON.stringify({ content }),
@@ -887,9 +900,11 @@ export default function WorkspaceDrawer({
     const { path } = pathFromKey(selectedKey);
     try {
       const blob = await requestBlob(
-        `/agents/${agentId}/workspace/download?path=${encodeURIComponent(
-          path,
-        )}`,
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/download?path=${encodeURIComponent(
+            path,
+          )}`,
+        ),
       );
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -914,9 +929,11 @@ export default function WorkspaceDrawer({
       ? parentDir(selected.path)
       : WORKSPACE_ROOT_PATH;
     const uploadPath = joinPath(uploadDir, file.name);
-    const url = `/agents/${agentId}/workspace/upload?path=${encodeURIComponent(
-      uploadPath,
-    )}`;
+    const url = withFromWorkspace(
+      `/agents/${agentId}/workspace/upload?path=${encodeURIComponent(
+        uploadPath,
+      )}`,
+    );
     try {
       await requestUpload(url, fd);
       message.success(

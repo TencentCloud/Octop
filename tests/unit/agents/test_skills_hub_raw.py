@@ -7,7 +7,10 @@ from urllib.error import HTTPError
 
 import pytest
 
-from octop.infra.agents.skills_hub import resolve_bundle_from_url
+from octop.infra.agents.skills_hub import (
+    is_supported_skill_url,
+    resolve_bundle_from_url,
+)
 
 FIND_SKILLS_MD = """---
 name: find-skills
@@ -72,3 +75,46 @@ def test_resolve_skills_sh_url_falls_back_to_second_branch(
         )
 
     assert resolved.name == "find-skills"
+
+
+def test_custom_import_source_can_be_enabled_without_frontend_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "OCTOP_SKILLS_IMPORT_URL_PREFIXES",
+        "https://market.example/skills/",
+    )
+
+    assert is_supported_skill_url("https://market.example/skills/demo")
+    assert not is_supported_skill_url("https://market.example/other/demo")
+    assert not is_supported_skill_url("https://market.example.evil/skills/demo")
+
+
+def test_custom_json_source_resolves_through_generic_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "OCTOP_SKILLS_IMPORT_URL_PREFIXES",
+        "https://market.example/skills/",
+    )
+    payload = {
+        "name": "custom-source-skill",
+        "content": "---\nname: custom-source-skill\n---\n\n# Custom\n",
+        "files": {"references/doc.md": "# doc"},
+    }
+
+    with patch(
+        "octop.infra.agents.skills_hub._http_json_get",
+        return_value=payload,
+    ):
+        resolved = resolve_bundle_from_url(
+            bundle_url="https://market.example/skills/custom-source-skill",
+        )
+
+    assert resolved.name == "custom-source-skill"
+    assert dict(resolved.uploads) == {
+        "skills/custom-source-skill/SKILL.md": (
+            b"---\nname: custom-source-skill\n---\n\n# Custom\n"
+        ),
+        "skills/custom-source-skill/references/doc.md": b"# doc",
+    }

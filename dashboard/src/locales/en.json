@@ -577,6 +577,7 @@
     "expandMore": "Show more",
     "pin": "Pin",
     "unpin": "Unpin",
+    "deleteSessionConfirm": "Delete this conversation? This cannot be undone.",
     "resizeSidebar": "Resize sidebar",
     "expandHistorySidebar": "Show conversation history",
     "collapseHistorySidebar": "Hide conversation history",
@@ -626,7 +627,8 @@
     "openFile": "View file",
     "fileWorkspace": "Workspace files",
     "fileWorkspaceHint": "Agent created or edited a file",
-    "fileSwitch": "Switch file"
+    "fileSwitch": "Switch file",
+    "loadEarlierMessages": "Load earlier messages"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -786,9 +788,9 @@
     "builtinSkillsDesc": "Bundled skills, ready to use",
     "importSkills": "Import Skill",
     "enterSkillUrl": "Enter Skill URL",
-    "supportedSkillUrlSources": "Currently supported skill URL sources:",
+    "supportedSkillUrlSources": "Built-in skill URL sources (server adapters can extend this list):",
     "urlExamples": "URL examples:",
-    "invalidSkillUrlSource": "Skill URL currently needs to start with https://skills.sh/, https://clawhub.ai/, https://skillsmp.com/, or https://github.com/",
+    "invalidSkillUrlSource": "Enter a valid HTTP(S) skill URL; supported sources are validated by the server adapter",
     "source": "Source",
     "kindBuiltin": "Built-in",
     "kindWorkspace": "Workspace",
@@ -1699,6 +1701,9 @@
     "codexOAuthFailed": "ChatGPT login failed: {{error}}",
     "codexOAuthStartFailed": "Could not start ChatGPT OAuth",
     "codexOAuthDisclaimer": "This uses the ChatGPT Codex internal API, not the official api.openai.com API key flow. Review OpenAI terms and stability risks before use.",
+    "codexOAuthDeviceHint": "The verification page opened in a new tab. If it didn't, click the button below, then enter the code shown here to finish signing in — this page updates automatically.",
+    "codexOAuthOpenVerification": "Open verification page",
+    "codexOAuthWaiting": "Waiting for you to authorize…",
     "cannotDeleteSharedTitle": "Cannot delete shared provider",
     "cannotDeleteSharedDesc": "This provider is maintained by an administrator (user_id is empty); only administrators can delete it.",
     "deleteProviderTitle": "Delete Provider",
@@ -2573,7 +2578,7 @@
     "waitingScreenshot": "Waiting for browser screenshot…",
     "firstConnectHint": "First connection may take a few seconds",
     "waitingAgentHint": "Waiting for Agent to launch the browser…",
-    "interactiveHint": "🖱️ Click, scroll, and type directly on the browser view",
+    "interactiveHint": "🖱️ Click, drag, scroll, and type directly on the browser view",
     "returnToAgent": "Return control to Agent",
     "takeover": "Take over",
     "openDesktopChrome": "Open Chrome window on desktop",
@@ -2605,7 +2610,7 @@
     "streaming": "Streaming",
     "connectFailed": "Failed to connect to browser stream",
     "reconnect": "Reconnect",
-    "interactiveHint": "🖱️ Click, scroll, and type directly on the browser view"
+    "interactiveHint": "🖱️ Click, drag, scroll, and type directly on the browser view"
   },
   "embedding": {
     "title": "Local Embedding Configuration",

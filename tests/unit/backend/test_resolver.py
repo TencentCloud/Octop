@@ -18,40 +18,37 @@ from octop.infra.backend.resolver import (
 )
 
 
-def test_default_agent_backend_spec_posix_scopes_artifacts_to_workspace(tmp_path: Path) -> None:
+def test_default_agent_backend_spec_posix_uses_host_root(tmp_path: Path) -> None:
     ws = tmp_path / "agents" / "AGT001"
     ws.mkdir(parents=True)
     with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="posix")):
-        backend = default_agent_backend_spec(ws)
-
-    assert isinstance(backend, CompositeBackend)
-    assert backend.artifacts_root == str(ws.resolve())
-    assert backend_spec_supports_execution(backend)
-    assert resolve_backend(backend, workspace_dir=ws) is backend
-
-    workspace = BackendWorkspace(backend, ws)
-    workspace.mkdir("source")
-    source = ws / "source" / "note.txt"
-    source.write_text("context summary", encoding="utf-8")
-    workspace.move("source", "moved")
-    assert (ws / "moved" / "note.txt").read_text(encoding="utf-8") == "context summary"
-    workspace.delete("moved")
-    assert not (ws / "moved").exists()
+        spec = default_agent_backend_spec(ws)
+    assert spec == {"type": "local_shell", "root_dir": "/", "virtual_mode": True}
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX backend paths are required")
-def test_default_agent_backend_posix_writes_artifacts_to_workspace(tmp_path: Path) -> None:
+@pytest.mark.skipif(os.name != "posix", reason="POSIX host-root default + workspace artifacts")
+def test_default_agent_backend_resolve_scopes_artifacts_to_workspace(tmp_path: Path) -> None:
     ws = tmp_path / "agents" / "AGT001"
     ws.mkdir(parents=True)
-
     backend = resolve_backend(default_agent_backend_spec(ws), workspace_dir=ws)
 
     assert isinstance(backend, CompositeBackend)
     assert backend.artifacts_root == str(ws.resolve())
-    history_path = ws / "conversation_history" / "thread.md"
-    result = backend.write(str(history_path), "context summary")
+    assert backend_spec_supports_execution(default_agent_backend_spec(ws))
+    assert str(getattr(backend, "cwd", None)) == "/"
+
+    history = ws / "conversation_history" / "thread.md"
+    result = backend.write(str(history), "context summary")
     assert result.error is None
-    assert history_path.read_text(encoding="utf-8") == "context summary"
+    assert history.read_text(encoding="utf-8") == "context summary"
+
+    workspace = BackendWorkspace(backend, ws)
+    workspace.mkdir("source")
+    (ws / "source" / "note.txt").write_text("ok", encoding="utf-8")
+    workspace.move("source", "moved")
+    assert (ws / "moved" / "note.txt").read_text(encoding="utf-8") == "ok"
+    workspace.delete("moved")
+    assert not (ws / "moved").exists()
 
 
 def test_default_agent_backend_spec_windows_scopes_to_workspace(tmp_path: Path) -> None:
