@@ -7,6 +7,7 @@ import { request } from "../../../../api/request";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { SkillHubDetailDrawer } from "./SkillHubDetailDrawer";
 import type { SkillHubSkill } from "./SkillHubDetailDrawer";
+import { loadRankingsCache, saveRankingsCache } from "./skillHubCache";
 import styles from "../index.module.less";
 
 interface SkillHubTabProps {
@@ -26,39 +27,6 @@ const RANKING_TABS: { key: RankingType; labelKey: string }[] = [
 interface RankingsResponse {
   rankings?: Record<string, { section?: string; skills?: SkillHubSkill[] }>;
   errors?: Record<string, string>;
-}
-
-// Cache rankings in localStorage for 1 day to avoid slow repeated fetches.
-const RANKINGS_CACHE_KEY = "octop:skillhub-rankings:v1";
-const RANKINGS_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day in ms
-
-interface RankingsCache {
-  ts: number;
-  data: Record<string, SkillHubSkill[]>;
-}
-
-function loadRankingsCache(): Record<string, SkillHubSkill[]> | null {
-  try {
-    const raw = localStorage.getItem(RANKINGS_CACHE_KEY);
-    if (!raw) return null;
-    const parsed: RankingsCache = JSON.parse(raw);
-    if (Date.now() - parsed.ts > RANKINGS_CACHE_TTL) {
-      localStorage.removeItem(RANKINGS_CACHE_KEY);
-      return null;
-    }
-    return parsed.data;
-  } catch {
-    return null;
-  }
-}
-
-function saveRankingsCache(data: Record<string, SkillHubSkill[]>): void {
-  try {
-    const payload: RankingsCache = { ts: Date.now(), data };
-    localStorage.setItem(RANKINGS_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // localStorage may be full or unavailable; ignore silently.
-  }
 }
 
 function requiresApiKey(skill: SkillHubSkill): boolean {
@@ -228,7 +196,12 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
           enabled: boolean;
         }>(`/agents/${activeAgentId}/skills/hub/install`, {
           method: "POST",
-          body: JSON.stringify({ skill_name: skill.slug, enable: true }),
+          body: JSON.stringify({
+            skill_name: skill.slug,
+            enable: true,
+            display_name: skill.name,
+            icon_url: skill.iconUrl ?? null,
+          }),
         });
         if (result?.installed) {
           message.success(t("skills.installSuccess"));

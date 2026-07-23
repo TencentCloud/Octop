@@ -36,6 +36,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import yaml
 from fastapi import APIRouter, Depends, Request
@@ -137,14 +138,70 @@ def _summary_dict(
         "enabled": enabled,
         "kind": kind,
     }
-    # Optional metadata.octop.emoji passthrough — handy for finnie-
-    # provenance skills.
+    # Presentation metadata is kept separate from the stable directory slug and
+    # the skill's own frontmatter name. Octop-authored metadata wins, while
+    # upstream formats remain supported for already-installed marketplace skills.
     metadata = meta.get("metadata") or {}
     if isinstance(metadata, dict):
-        ext = metadata.get("octop") or metadata.get("lightclaw") or metadata.get("orca") or {}
-        if isinstance(ext, dict) and "emoji" in ext:
-            out["emoji"] = str(ext["emoji"])
+        has_display_name = False
+        for namespace in ("octop", "lightclaw", "orca", "openclaw"):
+            ext = metadata.get(namespace) or {}
+            if not isinstance(ext, dict):
+                continue
+            display_name = str(ext.get("display_name") or "").strip()
+            if display_name and not has_display_name:
+                out["name"] = display_name
+                has_display_name = True
+            emoji = str(ext.get("emoji") or "").strip()
+            if emoji and "emoji" not in out:
+                out["emoji"] = emoji
+            icon_url = str(ext.get("icon_url") or "").strip()
+            if icon_url and "icon_url" not in out and _valid_skillhub_icon_url(icon_url):
+                out["icon_url"] = icon_url
     return out
+
+
+def _valid_skillhub_icon_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _with_skillhub_presentation_metadata(
+    content: str,
+    *,
+    display_name: str,
+    icon_url: str,
+) -> str:
+    """Persist SkillHub presentation fields without changing the stable skill id."""
+    if not display_name and not icon_url:
+        return content
+
+    meta, body = _parse_frontmatter(content)
+    metadata = meta.get("metadata")
+    metadata = {} if not isinstance(metadata, dict) else dict(metadata)
+    octop_meta = metadata.get("octop")
+    octop_meta = {} if not isinstance(octop_meta, dict) else dict(octop_meta)
+
+    octop_meta["source"] = "skillhub"
+    if display_name:
+        octop_meta["display_name"] = display_name
+    if icon_url:
+        octop_meta["icon_url"] = icon_url
+    metadata["octop"] = octop_meta
+    meta["metadata"] = metadata
+
+    dumped = yaml.safe_dump(
+        meta,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+    ).rstrip()
+    rendered = f"---\n{dumped}\n---\n"
+    if body:
+        rendered += f"\n{body}"
+    if content.endswith("\n") and not rendered.endswith("\n"):
+        rendered += "\n"
+    return rendered
 
 
 def _skill_manifest_path(name: str, kind: str, workspace: Any) -> str:
@@ -629,6 +686,8 @@ async def disable_skill(
 class HubInstallBody(BaseModel):
     skill_name: str
     enable: bool = True
+    display_name: str | None = None
+    icon_url: str | None = None
 
 
 def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
@@ -797,6 +856,12 @@ async def hub_install_skill(
         raise HTTPException(
             status_code=400, detail="skill_name is required and must not contain / or start with ."
         )
+    display_name = (body.display_name or "").strip()
+    icon_url = (body.icon_url or "").strip()
+    if len(display_name) > 200:
+        raise HTTPException(status_code=400, detail="display_name is too long")
+    if len(icon_url) > 2048 or (icon_url and not _valid_skillhub_icon_url(icon_url)):
+        raise HTTPException(status_code=400, detail="icon_url must be an HTTP(S) URL")
 
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     skillhub_bin = await _ensure_skillhub_cli()
@@ -860,7 +925,19 @@ async def hub_install_skill(
                 rel = os.path.relpath(fpath, skill_dir)
                 dest = f"skills/{skill_name}/{rel.replace(chr(92), '/')}"
                 with open(fpath, "rb") as fh:
-                    uploads.append((dest, fh.read()))
+                    content = fh.read()
+                if rel.replace(chr(92), "/") == "SKILL.md":
+                    try:
+                        manifest = content.decode("utf-8")
+                    except UnicodeDecodeError:
+                        pass
+                    else:
+                        content = _with_skillhub_presentation_metadata(
+                            manifest,
+                            display_name=display_name,
+                            icon_url=icon_url,
+                        ).encode("utf-8")
+                uploads.append((dest, content))
 
         if not uploads:
             raise HTTPException(

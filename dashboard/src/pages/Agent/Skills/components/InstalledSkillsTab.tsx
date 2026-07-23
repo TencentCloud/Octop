@@ -5,8 +5,9 @@ import { useTranslation } from "react-i18next";
 import { CardSkeleton } from "../../../../components/Skeleton";
 import { useCardTableView } from "../../../../hooks/useCardTableView";
 import { EmptyState } from "../../../../components/EmptyState";
-import { SkillCard } from "./SkillCard";
+import { SkillCard, type SkillHubInfo } from "./SkillCard";
 import { SkillDrawer, type SkillFormValues } from "./SkillDrawer";
+import { loadRankingsCache } from "./skillHubCache";
 import SkillsTable from "./SkillsTable";
 import type { SkillDetail, SkillSpec } from "../useSkills";
 import styles from "../index.module.less";
@@ -47,6 +48,15 @@ export default function InstalledSkillsTab({
   const [editingSkill, setEditingSkill] = useState<SkillDetail | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [form] = Form.useForm<SkillFormValues>();
+
+  const hubSkillsBySlug = useMemo(() => {
+    const bySlug = new Map<string, SkillHubInfo>();
+    const cached = loadRankingsCache() ?? {};
+    for (const rows of Object.values(cached)) {
+      for (const row of rows) bySlug.set(row.slug, row);
+    }
+    return bySlug;
+  }, []);
 
   const filteredSkills = useMemo(
     () =>
@@ -176,6 +186,7 @@ export default function InstalledSkillsTab({
           <SkillCard
             key={`${skill.kind}-${skill.slug}`}
             skill={skill}
+            hubInfo={hubSkillsBySlug.get(skill.slug)}
             isHover={hoverKey === skill.slug}
             onClick={() => void handleEdit(skill)}
             onMouseEnter={() => setHoverKey(skill.slug)}

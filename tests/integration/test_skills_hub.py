@@ -3,6 +3,7 @@ and POST /api/agents/{id}/skills/hub/install."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -113,3 +114,77 @@ async def test_hub_install_unknown_skill(env: Any) -> None:
     # 502/504 if skillhub CLI is absent or network unavailable
     assert r.status_code != 200, f"Expected non-200, got {r.status_code}"
     assert r.status_code in (400, 404, 502, 504), f"Unexpected status {r.status_code}: {r.text}"
+
+
+async def test_hub_install_persists_market_name_and_icon(
+    env: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import skills as skills_router
+    from tests.support.auth import create_agent, seed_openai_provider
+
+    async def fake_ensure_cli(*, require_rankings: bool = False) -> str:
+        assert not require_rankings
+        return "/fake/skillhub"
+
+    async def fake_upgrade(_skillhub_bin: str) -> bool:
+        return False
+
+    async def fake_run(
+        _skillhub_bin: str,
+        args: list[str],
+        *,
+        timeout: float,
+    ) -> tuple[int, str, str]:
+        assert timeout == 120
+        install_dir = Path(args[1]) / args[-1]
+        install_dir.mkdir(parents=True)
+        (install_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: english-package-name\n"
+            "description: English description\n"
+            "metadata:\n"
+            "  openclaw:\n"
+            "    emoji: '📦'\n"
+            "---\n\n"
+            "# Body\n",
+            encoding="utf-8",
+        )
+        return 0, "", ""
+
+    monkeypatch.setattr(skills_router, "_ensure_skillhub_cli", fake_ensure_cli)
+    monkeypatch.setattr(skills_router, "_upgrade_skillhub_cli", fake_upgrade)
+    monkeypatch.setattr(skills_router, "_run_skillhub_cmd", fake_run)
+
+    c, _srv, auth, _main_aid = env
+    await seed_openai_provider(c, auth)
+    aid = await create_agent(c, auth)
+    icon_url = "https://cdn.example.com/skill.png"
+    r = await c.post(
+        f"/api/agents/{aid}/skills/hub/install",
+        headers=auth,
+        json={
+            "skill_name": "stable-english-slug",
+            "enable": True,
+            "display_name": "中文展示名称",
+            "icon_url": icon_url,
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    detail = await c.get(
+        f"/api/agents/{aid}/skills/stable-english-slug",
+        headers=auth,
+    )
+    assert detail.status_code == 200, detail.text
+    payload = detail.json()
+    assert payload["slug"] == "stable-english-slug"
+    assert payload["name"] == "中文展示名称"
+    assert payload["icon_url"] == icon_url
+    assert payload["emoji"] == "📦"
+    assert payload["frontmatter"]["name"] == "english-package-name"
+    assert payload["frontmatter"]["metadata"]["octop"] == {
+        "source": "skillhub",
+        "display_name": "中文展示名称",
+        "icon_url": icon_url,
+    }

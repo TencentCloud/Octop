@@ -202,7 +202,7 @@ export function SkillCard({
   // this installed skill matches a hub skill by slug; fall back to SKILL.md.
   const displayName = hubInfo?.name || skillDisplayName(skill);
   const displayDesc = hubInfo?.description_zh || skill.description;
-  const hubIcon = hubInfo?.iconUrl;
+  const hubIcon = hubInfo?.iconUrl || skill.iconUrl;
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
