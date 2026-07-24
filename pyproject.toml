@@ -34,6 +34,7 @@ dependencies = [
     "boto3>=1.40.61",
     "harness-browser>=0.7.4",
     "playwright>=1.40",
+    "socksio>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +54,10 @@ browser = [
     "playwright>=1.40",
 ]
 desktop = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
+windows-desktop = [
+    "pywebview>=5.0",
+    "pyinstaller>=6.0",
+]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the
@@ -69,6 +74,7 @@ dev = [
 
 [project.scripts]
 octop = "octop.cli.main:cli"
+octop-desktop = "octop.desktop_app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/octop"]
@@ -174,6 +180,7 @@ disable_error_code = ["attr-defined"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+tmp_path_retention_count = 1
 markers = [
     "live: tests that hit real LLM endpoints (skipped by default)",
 ]
