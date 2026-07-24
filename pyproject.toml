@@ -54,6 +54,10 @@ browser = [
     "playwright>=1.40",
 ]
 desktop = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
+windows-desktop = [
+    "pywebview>=5.0",
+    "pyinstaller>=6.0",
+]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the
@@ -70,6 +74,7 @@ dev = [
 
 [project.scripts]
 octop = "octop.cli.main:cli"
+octop-desktop = "octop.desktop_app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/octop"]
