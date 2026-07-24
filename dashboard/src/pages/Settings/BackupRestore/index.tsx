@@ -14,6 +14,7 @@ import type { ColumnsType } from "antd/es/table";
 import {
   Archive,
   Download,
+  PackageOpen,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -29,6 +30,7 @@ import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
+import ImportLightclawModal from "./ImportLightclawModal";
 import styles from "./index.module.less";
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -132,6 +134,7 @@ export default function BackupRestorePanel() {
     null,
   );
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [importLcOpen, setImportLcOpen] = useState(false);
 
   const busy = creating || restoring || uploadPercent !== null || isRestarting;
 
@@ -359,6 +362,13 @@ export default function BackupRestorePanel() {
           >
             {t("common.refresh")}
           </Button>
+          <Button
+            icon={<PackageOpen size={14} />}
+            disabled={busy}
+            onClick={() => setImportLcOpen(true)}
+          >
+            {t("migration.importButton", "从 LightClaw 导入")}
+          </Button>
         </div>
         {(uploadPercent !== null || restoreProgress) && (
           <div className={styles.progressBlock}>
@@ -430,6 +440,12 @@ export default function BackupRestorePanel() {
           {t("backup.importWarning")}
         </div>
       </section>
+
+      <ImportLightclawModal
+        open={importLcOpen}
+        onClose={() => setImportLcOpen(false)}
+        onSuccess={() => void refresh()}
+      />
 
       <Modal
         title={t("backup.importConfirmTitle")}

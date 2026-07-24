@@ -110,6 +110,7 @@ def build_app(server: OctopServer) -> FastAPI:
         mbti,
         memory,
         memory_portable,
+        migration,
         ollama_models,
         plugins,
         preferences,
@@ -190,6 +191,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(desktop.router, "/api", ["desktop"]),
             _RouterMount(ollama_models.router, "/api", ["ollama"]),
             _RouterMount(plugins.router, "/api", ["plugins"]),
+            _RouterMount(migration.router, "/api", ["migration"]),
         ],
     )
 
