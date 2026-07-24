@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Tooltip } from "antd";
 import ThemeSwitcher from "../components/ThemeSwitcher";
+import AvatarDropdown from "../components/AvatarDropdown";
+import AppVersionBadge from "../components/AppVersionBadge";
+import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import {
   Monitor,
   MessageSquareText,
   Timer,
   SlidersHorizontal,
   X,
-  PanelLeftClose,
-  PanelLeftOpen,
   PlugZap,
   Link2,
   Database,
   Users as UsersIcon,
-  ScrollText,
   Activity,
   TerminalSquare,
   Globe,
@@ -28,17 +29,18 @@ import {
   Notebook,
   Bot,
   ChevronDown,
-  RefreshCw,
   Shield,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useUserRole } from "../hooks/useUserRole";
 import { useUpdateStatus } from "../hooks/useUpdateStatus";
+import { authApi } from "../api/modules/auth";
+import type { OctopUser } from "../api/modules/auth";
 import { prefetchRoute } from "../routes/prefetch";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
 
-const EXPANDED_WIDTH = 240;
+const EXPANDED_WIDTH = 220;
 const COLLAPSED_WIDTH = 56;
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
 
@@ -67,7 +69,7 @@ function saveCollapsedGroups(collapsed: Set<string>) {
   }
 }
 
-function useNavGroupCollapse(navGroups: NavGroup[], selectedKey: string) {
+function useNavGroupCollapse(navSections: NavSection[], selectedKey: string) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     loadCollapsedGroups(),
   );
@@ -88,18 +90,20 @@ function useNavGroupCollapse(navGroups: NavGroup[], selectedKey: string) {
   );
 
   useEffect(() => {
-    const activeGroup = navGroups.find((g) =>
-      g.items.some((i) => i.key === selectedKey),
+    const activeSection = navSections.find(
+      (section) =>
+        section.groupKey &&
+        section.items.some((item) => item.key === selectedKey),
     );
-    if (!activeGroup) return;
+    if (!activeSection?.groupKey) return;
     setCollapsedGroups((prev) => {
-      if (!prev.has(activeGroup.groupKey)) return prev;
+      if (!prev.has(activeSection.groupKey!)) return prev;
       const next = new Set(prev);
-      next.delete(activeGroup.groupKey);
+      next.delete(activeSection.groupKey!);
       saveCollapsedGroups(next);
       return next;
     });
-  }, [selectedKey, navGroups]);
+  }, [selectedKey, navSections]);
 
   return { toggleGroup, isGroupCollapsed };
 }
@@ -112,19 +116,18 @@ interface NavItem {
   badge?: string;
 }
 
-interface NavGroup {
-  groupKey: string;
+interface NavSection {
+  /** When omitted, items render flat without a group header. */
+  groupKey?: string;
   items: NavItem[];
 }
 
 const iconSize = 16;
 const iconStroke = 1.8;
 
-function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
-  const groups: NavGroup[] = [
-    // ──────────────── Common ────────────────
+function buildNavSections(role: "admin" | "user" | null): NavSection[] {
+  const sections: NavSection[] = [
     {
-      groupKey: "nav.common",
       items: [
         {
           key: "chat",
@@ -145,12 +148,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           labelKey: "nav.tasks",
         },
         {
-          key: "connectors",
-          path: "/connectors",
-          icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.connectors",
-        },
-        {
           key: "token-usage",
           path: "/token-usage",
           icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
@@ -158,16 +155,9 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
         },
       ],
     },
-    // ──────────────── Control ────────────────
     {
       groupKey: "nav.control",
       items: [
-        {
-          key: "channels",
-          path: "/channels",
-          icon: <PlugZap size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.channels",
-        },
         {
           key: "skills",
           path: "/skills",
@@ -179,6 +169,18 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           path: "/subagents",
           icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.subagents",
+        },
+        {
+          key: "channels",
+          path: "/channels",
+          icon: <PlugZap size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.channels",
+        },
+        {
+          key: "connectors",
+          path: "/connectors",
+          icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.connectors",
         },
         {
           key: "terminal",
@@ -221,7 +223,7 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
   ];
 
   if (role === "admin") {
-    groups.push({
+    sections.push({
       groupKey: "nav.admin",
       items: [
         {
@@ -243,12 +245,6 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           labelKey: "nav.adminStorage",
         },
         {
-          key: "admin-audit",
-          path: "/admin/audit",
-          icon: <ScrollText size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.adminAudit",
-        },
-        {
           key: "admin-plugins",
           path: "/admin/plugins",
           icon: <Puzzle size={iconSize} strokeWidth={iconStroke} />,
@@ -266,16 +262,10 @@ function buildNavGroups(role: "admin" | "user" | null): NavGroup[] {
           icon: <SlidersHorizontal size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.adminAdvanced",
         },
-        {
-          key: "admin-updates",
-          path: "/admin/updates",
-          icon: <RefreshCw size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.checkUpdates",
-        },
       ],
     });
   }
-  return groups;
+  return sections;
 }
 
 interface SidebarProps {
@@ -283,6 +273,114 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   isMobile?: boolean;
+}
+
+function NavItemButton({
+  item,
+  active,
+  isMobile,
+  onNavigate,
+  role,
+  hasUpdate,
+  t,
+}: {
+  item: NavItem;
+  active: boolean;
+  isMobile?: boolean;
+  onNavigate: (path: string) => void;
+  role: "admin" | "user" | null;
+  hasUpdate: boolean;
+  t: TFunction<"translation", undefined>;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(item.path)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        padding: "0 12px",
+        height: 40,
+        border: "none",
+        borderRadius: "var(--fn-radius-md)",
+        background: active ? "var(--fn-sidebar-item-active-bg)" : "transparent",
+        color: active
+          ? "var(--fn-sidebar-item-active-text)"
+          : "var(--fn-text-secondary)",
+        cursor: "pointer",
+        fontSize: typeSize(14, isMobile),
+        fontWeight: active ? 500 : 400,
+        textAlign: "left",
+        transition: "all var(--fn-transition-fast)",
+        marginBottom: 2,
+      }}
+      onMouseEnter={(e) => {
+        prefetchRoute(item.path);
+        if (!active) {
+          e.currentTarget.style.background = "var(--fn-sidebar-item-hover)";
+          e.currentTarget.style.color = "var(--fn-text-primary)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "var(--fn-text-secondary)";
+        }
+      }}
+    >
+      <span
+        style={{
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          color: active
+            ? "var(--fn-sidebar-item-active-text)"
+            : "var(--fn-text-tertiary)",
+        }}
+      >
+        {item.icon}
+      </span>
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        {t(item.labelKey)}
+        {item.key === "admin-advanced" && role === "admin" && hasUpdate ? (
+          <span className={styles.navUpdateBadge}>
+            {t("nav.newVersionBadge", "有新版本")}
+          </span>
+        ) : null}
+        {item.badge && (
+          <span
+            className="nav-badge-new"
+            style={{
+              fontSize: typeSize(9, isMobile),
+              fontWeight: 600,
+              color: "#fff",
+              backgroundColor: "#ff4d4f",
+              padding: "1px 4px",
+              borderRadius: "2px",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              textTransform: "uppercase",
+              lineHeight: 1.2,
+              letterSpacing: "0.5px",
+            }}
+          >
+            {item.badge}
+          </span>
+        )}
+      </span>
+    </button>
+  );
 }
 
 function NavList({
@@ -301,28 +399,56 @@ function NavList({
   const { t } = useTranslation();
   const role = useUserRole();
   const { hasUpdate } = useUpdateStatus();
-  const navGroups = buildNavGroups(role);
+  const navSections = buildNavSections(role);
 
-  // Keys to hide on mobile (these pages are not usable on small screens)
   const MOBILE_HIDDEN_KEYS = new Set<string>();
 
   return (
     <div style={{ padding: "8px 12px" }}>
-      {navGroups.map((group) => {
+      {navSections.map((section, sectionIndex) => {
         const visibleItems = isMobile
-          ? group.items.filter((item) => !MOBILE_HIDDEN_KEYS.has(item.key))
-          : group.items;
+          ? section.items.filter((item) => !MOBILE_HIDDEN_KEYS.has(item.key))
+          : section.items;
         if (visibleItems.length === 0) return null;
-        const groupCollapsed = isGroupCollapsed(group.groupKey);
+
+        const sectionKey = section.groupKey ?? `flat-${sectionIndex}`;
+        const isFlat = !section.groupKey;
+        const groupCollapsed = section.groupKey
+          ? isGroupCollapsed(section.groupKey)
+          : false;
+
+        if (isFlat) {
+          return (
+            <div key={sectionKey} className={styles.navGroup}>
+              <div className={styles.navGroupItems}>
+                {visibleItems.map((item) => (
+                  <NavItemButton
+                    key={item.key}
+                    item={item}
+                    active={selectedKey === item.key}
+                    isMobile={isMobile}
+                    onNavigate={onNavigate}
+                    role={role}
+                    hasUpdate={hasUpdate}
+                    t={t}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        }
+
         return (
-          <div key={group.groupKey} className={styles.navGroup}>
+          <div key={sectionKey} className={styles.navGroup}>
             <button
               type="button"
               className={styles.navGroupHeader}
-              onClick={() => toggleGroup(group.groupKey)}
+              onClick={() => toggleGroup(section.groupKey!)}
               aria-expanded={!groupCollapsed}
             >
-              <span className={styles.navGroupLabel}>{t(group.groupKey)}</span>
+              <span className={styles.navGroupLabel}>
+                {t(section.groupKey!)}
+              </span>
               <ChevronDown
                 size={12}
                 strokeWidth={2}
@@ -335,105 +461,18 @@ function NavList({
 
             {!groupCollapsed && (
               <div className={styles.navGroupItems}>
-                {visibleItems.map((item) => {
-                  const active = selectedKey === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      onClick={() => onNavigate(item.path)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        width: "100%",
-                        padding: "0 12px",
-                        height: 40,
-                        border: "none",
-                        borderRadius: "var(--fn-radius-md)",
-                        background: active
-                          ? "var(--fn-sidebar-item-active-bg)"
-                          : "transparent",
-                        color: active
-                          ? "var(--fn-sidebar-item-active-text)"
-                          : "var(--fn-text-secondary)",
-                        cursor: "pointer",
-                        fontSize: typeSize(14, isMobile),
-                        fontWeight: active ? 500 : 400,
-                        textAlign: "left",
-                        transition: "all var(--fn-transition-fast)",
-                        marginBottom: 2,
-                      }}
-                      onMouseEnter={(e) => {
-                        prefetchRoute(item.path);
-                        if (!active) {
-                          e.currentTarget.style.background =
-                            "var(--fn-sidebar-item-hover)";
-                          e.currentTarget.style.color =
-                            "var(--fn-text-primary)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = "transparent";
-                          e.currentTarget.style.color =
-                            "var(--fn-text-secondary)";
-                        }
-                      }}
-                    >
-                      <span
-                        style={{
-                          flexShrink: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          color: active
-                            ? "var(--fn-sidebar-item-active-text)"
-                            : "var(--fn-text-tertiary)",
-                        }}
-                      >
-                        {item.icon}
-                      </span>
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        {t(item.labelKey)}
-                        {item.key === "admin-updates" &&
-                        role === "admin" &&
-                        hasUpdate ? (
-                          <span className={styles.navUpdateBadge}>
-                            {t("nav.newVersionBadge", "有新版本")}
-                          </span>
-                        ) : null}
-                        {item.badge && (
-                          <span
-                            className="nav-badge-new"
-                            style={{
-                              fontSize: typeSize(9, isMobile),
-                              fontWeight: 600,
-                              color: "#fff",
-                              backgroundColor: "#ff4d4f",
-                              padding: "1px 4px",
-                              borderRadius: "2px",
-                              whiteSpace: "nowrap",
-                              flexShrink: 0,
-                              textTransform: "uppercase",
-                              lineHeight: 1.2,
-                              letterSpacing: "0.5px",
-                            }}
-                          >
-                            {item.badge}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
+                {visibleItems.map((item) => (
+                  <NavItemButton
+                    key={item.key}
+                    item={item}
+                    active={selectedKey === item.key}
+                    isMobile={isMobile}
+                    onNavigate={onNavigate}
+                    role={role}
+                    hasUpdate={hasUpdate}
+                    t={t}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -454,11 +493,22 @@ export default function Sidebar({
   const { isDark } = useTheme();
   const role = useUserRole();
   const { hasUpdate } = useUpdateStatus();
-  const navGroups = buildNavGroups(role);
+  const navSections = buildNavSections(role);
   const { toggleGroup, isGroupCollapsed } = useNavGroupCollapse(
-    navGroups,
+    navSections,
     selectedKey,
   );
+  const [user, setUser] = useState<OctopUser | null>(null);
+
+  useEffect(() => {
+    authApi
+      .me()
+      .then(setUser)
+      .catch(() => {});
+  }, []);
+
+  const isRailCollapsed = collapsed && !isMobile;
+  const wordmarkSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
 
   const handleNavigate = (path: string) => {
     // When navigating to /chat, preserve the current chatId in the URL so the
@@ -471,6 +521,49 @@ export default function Sidebar({
     navigate(path);
     if (isMobile) onToggle();
   };
+
+  const brandInner = (
+    <>
+      <img
+        src={isRailCollapsed ? "/pwa-192.png" : wordmarkSrc}
+        alt="Octop"
+        style={{
+          height: isRailCollapsed ? 32 : isMobile ? 38 : 36,
+          width: isRailCollapsed ? 32 : "auto",
+          maxWidth: isRailCollapsed ? 32 : isMobile ? 190 : 160,
+          objectFit: "contain",
+          display: "block",
+          flexShrink: 0,
+          borderRadius: isRailCollapsed ? 8 : undefined,
+        }}
+      />
+      {!isRailCollapsed && (
+        <>
+          <CurrentVersionBadge isMobile={isMobile} />
+          <AppVersionBadge isMobile={isMobile} />
+        </>
+      )}
+    </>
+  );
+
+  const userFooter = (
+    <div
+      className={styles.sidebarUser}
+      style={{
+        flexShrink: 0,
+        padding: isRailCollapsed ? "10px 0" : "10px 12px",
+        display: "flex",
+        justifyContent: isRailCollapsed ? "center" : "stretch",
+      }}
+    >
+      <AvatarDropdown
+        user={user}
+        onUserChange={setUser}
+        placement="sidebar"
+        compact={isRailCollapsed}
+      />
+    </div>
+  );
 
   // Mobile: fixed overlay drawer
   if (isMobile) {
@@ -500,24 +593,23 @@ export default function Sidebar({
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 12px 0 16px",
-            borderBottom: "1px solid var(--fn-sidebar-border)",
             flexShrink: 0,
+            gap: 8,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <img
-              src={isDark ? "/logo_name_dark.png" : "/logo_name.png"}
-              alt="Octop"
-              style={{
-                height: 38,
-                width: "auto",
-                maxWidth: 190,
-                objectFit: "contain",
-                display: "block",
-              }}
-            />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
+            {brandInner}
           </div>
           <button
+            type="button"
             onClick={onToggle}
             style={{
               display: "flex",
@@ -530,6 +622,7 @@ export default function Sidebar({
               background: "transparent",
               color: "var(--fn-text-tertiary)",
               cursor: "pointer",
+              flexShrink: 0,
             }}
           >
             <X size={16} strokeWidth={1.8} />
@@ -546,12 +639,10 @@ export default function Sidebar({
           />
         </div>
 
-        {/* Theme switcher at bottom of mobile drawer */}
         <div
           style={{
             flexShrink: 0,
-            borderTop: "1px solid var(--fn-sidebar-border)",
-            padding: "12px 16px calc(12px + env(safe-area-inset-bottom, 0px))",
+            padding: "12px 16px 8px",
             display: "flex",
             flexDirection: "column",
             gap: 12,
@@ -575,18 +666,23 @@ export default function Sidebar({
             <ThemeSwitcher />
           </div>
         </div>
+        <div
+          style={{
+            paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
+          {userFooter}
+        </div>
       </div>
     );
   }
 
   // Desktop: custom sidebar with icon-only collapsed mode
-  const isCollapsed = collapsed && !isMobile;
-
   return (
     <div
       style={{
-        width: isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-        minWidth: isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
+        width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
+        minWidth: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         background: "var(--fn-sidebar-bg)",
         borderRight: "1px solid var(--fn-sidebar-border)",
         transition:
@@ -599,6 +695,21 @@ export default function Sidebar({
         minHeight: 0,
       }}
     >
+      <div
+        className={styles.sidebarBrand}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          minWidth: 0,
+          padding: isRailCollapsed ? "12px 0" : "14px 14px 10px",
+          justifyContent: isRailCollapsed ? "center" : "flex-start",
+          flexShrink: 0,
+        }}
+      >
+        {brandInner}
+      </div>
+
       {/* Nav items */}
       <div
         style={{
@@ -608,121 +719,107 @@ export default function Sidebar({
           overflowX: "hidden",
         }}
       >
-        {isCollapsed ? (
-          // Icon-only mode
+        {isRailCollapsed ? (
           <div style={{ padding: "8px 0" }}>
-            {(() => {
-              let visibleGroupIndex = 0;
-              return navGroups.flatMap((group) => {
-                if (isGroupCollapsed(group.groupKey)) return [];
-                const divider =
-                  visibleGroupIndex > 0 ? (
-                    <div
-                      key={`divider-${group.groupKey}`}
+            {navSections.flatMap((section) => {
+              if (section.groupKey && isGroupCollapsed(section.groupKey)) {
+                return [];
+              }
+              return section.items.map((item) => {
+                const active = selectedKey === item.key;
+                const showUpdateBadge =
+                  item.key === "admin-advanced" &&
+                  role === "admin" &&
+                  hasUpdate;
+                return (
+                  <Tooltip
+                    key={item.key}
+                    title={`${t(item.labelKey)}${
+                      showUpdateBadge
+                        ? ` (${t("nav.newVersionBadge", "有新版本")})`
+                        : item.badge
+                        ? ` (${item.badge})`
+                        : ""
+                    }`}
+                    placement="right"
+                    mouseEnterDelay={0.2}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate(item.path)}
                       style={{
-                        height: 1,
-                        background: "var(--fn-sidebar-border)",
-                        margin: "4px 8px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: COLLAPSED_WIDTH,
+                        height: 40,
+                        border: "none",
+                        background: active
+                          ? "var(--fn-sidebar-item-active-bg)"
+                          : "transparent",
+                        color: active
+                          ? "var(--fn-sidebar-item-active-text)"
+                          : "var(--fn-text-tertiary)",
+                        cursor: "pointer",
+                        transition: "all var(--fn-transition-fast)",
+                        marginBottom: 2,
+                        position: "relative",
                       }}
-                    />
-                  ) : null;
-                visibleGroupIndex += 1;
-                const items = group.items.map((item) => {
-                  const active = selectedKey === item.key;
-                  const showUpdateBadge =
-                    item.key === "admin-updates" &&
-                    role === "admin" &&
-                    hasUpdate;
-                  return (
-                    <Tooltip
-                      key={item.key}
-                      title={`${t(item.labelKey)}${
-                        showUpdateBadge
-                          ? ` (${t("nav.newVersionBadge", "有新版本")})`
-                          : item.badge
-                          ? ` (${item.badge})`
-                          : ""
-                      }`}
-                      placement="right"
-                      mouseEnterDelay={0.2}
+                      onMouseEnter={(e) => {
+                        prefetchRoute(item.path);
+                        if (!active) {
+                          e.currentTarget.style.background =
+                            "var(--fn-sidebar-item-hover)";
+                          e.currentTarget.style.color =
+                            "var(--fn-text-primary)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color =
+                            "var(--fn-text-tertiary)";
+                        }
+                      }}
                     >
-                      <button
-                        onClick={() => handleNavigate(item.path)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          width: COLLAPSED_WIDTH,
-                          height: 40,
-                          border: "none",
-                          background: active
-                            ? "var(--fn-sidebar-item-active-bg)"
-                            : "transparent",
-                          color: active
-                            ? "var(--fn-sidebar-item-active-text)"
-                            : "var(--fn-text-tertiary)",
-                          cursor: "pointer",
-                          transition: "all var(--fn-transition-fast)",
-                          marginBottom: 2,
-                          position: "relative",
-                        }}
-                        onMouseEnter={(e) => {
-                          prefetchRoute(item.path);
-                          if (!active) {
-                            e.currentTarget.style.background =
-                              "var(--fn-sidebar-item-hover)";
-                            e.currentTarget.style.color =
-                              "var(--fn-text-primary)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!active) {
-                            e.currentTarget.style.background = "transparent";
-                            e.currentTarget.style.color =
-                              "var(--fn-text-tertiary)";
-                          }
-                        }}
-                      >
-                        {item.icon}
-                        {showUpdateBadge ? (
-                          <span
-                            className={`${styles.navUpdateBadge} ${styles.navUpdateBadgeCollapsed}`}
-                          >
-                            新
-                          </span>
-                        ) : null}
-                        {item.badge && (
-                          <span
-                            className="nav-badge-new nav-badge-new--collapsed"
-                            style={{
-                              position: "absolute",
-                              top: 4,
-                              right: 6,
-                              zIndex: 2,
-                              fontSize: 7,
-                              fontWeight: 700,
-                              color: "#fff",
-                              backgroundColor: "#ff4d4f",
-                              width: 14,
-                              height: 14,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderRadius: "50%",
-                              lineHeight: 1,
-                              pointerEvents: "none",
-                            }}
-                          >
-                            {item.badge.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </button>
-                    </Tooltip>
-                  );
-                });
-                return divider ? [divider, ...items] : items;
+                      {item.icon}
+                      {showUpdateBadge ? (
+                        <span
+                          className={`${styles.navUpdateBadge} ${styles.navUpdateBadgeCollapsed}`}
+                        >
+                          新
+                        </span>
+                      ) : null}
+                      {item.badge && (
+                        <span
+                          className="nav-badge-new nav-badge-new--collapsed"
+                          style={{
+                            position: "absolute",
+                            top: 4,
+                            right: 6,
+                            zIndex: 2,
+                            fontSize: 7,
+                            fontWeight: 700,
+                            color: "#fff",
+                            backgroundColor: "#ff4d4f",
+                            width: 14,
+                            height: 14,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: "50%",
+                            lineHeight: 1,
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {item.badge.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </button>
+                  </Tooltip>
+                );
               });
-            })()}
+            })}
           </div>
         ) : (
           <NavList
@@ -735,66 +832,7 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Collapse toggle button at bottom */}
-      <div
-        style={{
-          flexShrink: 0,
-          borderTop: "1px solid var(--fn-sidebar-border)",
-          padding: isCollapsed ? "8px 0" : "8px 12px",
-          display: "flex",
-          justifyContent: isCollapsed ? "center" : "flex-start",
-        }}
-      >
-        <Tooltip
-          title={
-            isCollapsed
-              ? t("nav.expandSidebar") || "展开"
-              : t("nav.collapseSidebar") || "收起"
-          }
-          placement="right"
-          mouseEnterDelay={0.4}
-        >
-          <button
-            onClick={onToggle}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: isCollapsed ? "center" : "flex-start",
-              gap: 8,
-              width: isCollapsed ? 36 : "100%",
-              height: 36,
-              padding: isCollapsed ? "0" : "0 10px",
-              border: "none",
-              borderRadius: "var(--fn-radius-md)",
-              background: "transparent",
-              color: "var(--fn-text-tertiary)",
-              cursor: "pointer",
-              transition: "all var(--fn-transition-fast)",
-              fontSize: 13,
-              fontWeight: 500,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--fn-sidebar-item-hover)";
-              e.currentTarget.style.color = "var(--fn-text-secondary)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--fn-text-tertiary)";
-            }}
-          >
-            {isCollapsed ? (
-              <PanelLeftOpen size={16} strokeWidth={1.8} />
-            ) : (
-              <>
-                <PanelLeftClose size={16} strokeWidth={1.8} />
-                <span>{t("nav.collapseSidebar") || "收起"}</span>
-              </>
-            )}
-          </button>
-        </Tooltip>
-      </div>
+      {userFooter}
     </div>
   );
 }

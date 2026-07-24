@@ -5,6 +5,22 @@
   background: var(--fn-bg-elevated, #fff);
 }
 
+.sidebarWrapper.sidebarWrapperLayoutRail {
+  padding: 0;
+  height: 100%;
+  align-self: stretch;
+  background: var(--fn-bg-sidebar, var(--fn-bg-elevated, #fff));
+
+  &.sidebarWrapperCollapsed {
+    padding: 0;
+  }
+
+  .sidebar {
+    height: 100%;
+    border-right: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.12));
+  }
+}
+
 .sidebarWrapper {
   z-index: 2;
   padding: 0 16px;
@@ -58,7 +74,7 @@
 }
 
 .sessionList {
-  padding: 22px 14px 10px;
+  padding: 22px 12px 10px;
   display: flex;
   flex-direction: column;
   gap: 0;

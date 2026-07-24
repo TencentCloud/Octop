@@ -11,8 +11,9 @@ import {
   Typography,
   Divider,
   Segmented,
+  Tooltip,
 } from "antd";
-import { LogOut } from "lucide-react";
+import { LogOut, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/modules/auth";
@@ -28,11 +29,20 @@ const { Text } = Typography;
 interface AvatarDropdownProps {
   user: OctopUser | null;
   onUserChange?: (u: OctopUser) => void;
+  /**
+   * ``sidebar`` — brand-rail footer trigger (avatar [+ name when expanded]).
+   * Default keeps a plain avatar button (legacy header style).
+   */
+  placement?: "default" | "sidebar";
+  /** When placement is sidebar and true, show avatar only (collapsed rail). */
+  compact?: boolean;
 }
 
 export default function AvatarDropdown({
   user,
   onUserChange,
+  placement = "default",
+  compact = false,
 }: AvatarDropdownProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -94,28 +104,101 @@ export default function AvatarDropdown({
   const roleLabel =
     role === "admin" ? t("account.roleAdmin") : t("account.roleUser");
 
+  const displayName = user?.display_name || user?.username || "—";
   const initials = (user?.display_name || user?.username || "?")
     .charAt(0)
     .toUpperCase();
 
-  return (
-    <>
-      <Avatar
-        size={32}
+  const avatar = (
+    <Avatar
+      size={32}
+      style={{
+        background: "var(--fn-color-brand, #4f6ef7)",
+        fontSize: 14,
+        userSelect: "none",
+        flexShrink: 0,
+      }}
+    >
+      {initials}
+    </Avatar>
+  );
+
+  const trigger =
+    placement === "sidebar" && !compact ? (
+      <button
+        type="button"
         onClick={() => setDrawerOpen(true)}
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          width: "100%",
+          border: "none",
+          background: "transparent",
+          padding: "8px 10px",
+          borderRadius: "var(--fn-radius-md)",
           cursor: "pointer",
-          background: "var(--fn-color-brand, #4f6ef7)",
-          fontSize: 14,
-          userSelect: "none",
+          textAlign: "left",
+          color: "var(--fn-text-primary)",
+          transition: "background var(--fn-transition-fast)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "var(--fn-sidebar-item-hover)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
         }}
       >
-        {initials}
-      </Avatar>
+        {avatar}
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 13,
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {displayName}
+        </span>
+        <ChevronDown
+          size={14}
+          strokeWidth={1.8}
+          style={{ flexShrink: 0, color: "var(--fn-text-tertiary)" }}
+        />
+      </button>
+    ) : (
+      <Tooltip
+        title={placement === "sidebar" ? displayName : undefined}
+        placement="right"
+        mouseEnterDelay={0.3}
+      >
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => setDrawerOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setDrawerOpen(true);
+            }
+          }}
+          style={{ cursor: "pointer", display: "inline-flex" }}
+        >
+          {avatar}
+        </span>
+      </Tooltip>
+    );
+
+  return (
+    <>
+      {trigger}
 
       <Drawer
         title={t("account.myAccount")}
-        placement="right"
+        placement="left"
         width={400}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -134,9 +217,7 @@ export default function AvatarDropdown({
         <Space direction="vertical" style={{ width: "100%" }} size="large">
           {/* Identity summary */}
           <div>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>
-              {user?.display_name || user?.username || "—"}
-            </div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{displayName}</div>
             {user?.username && (
               <Text type="secondary" style={{ fontSize: 13 }}>
                 @{user.username}

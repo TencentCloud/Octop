@@ -22,12 +22,10 @@ const ModelsPage = lazy(() => import("../pages/Settings/Models"));
 
 // Lazy-loaded pages — Admin
 const OctopAdminUsersPage = lazy(() => import("../pages/Admin/Users"));
-const OctopAdminAuditPage = lazy(() => import("../pages/Admin/Audit"));
 const AdminSecurityPage = lazy(() => import("../pages/Settings/Security"));
 const AdvancedSettingsPage = lazy(
   () => import("../pages/Settings/AdvancedSettings"),
 );
-const AdminUpdatesPage = lazy(() => import("../pages/Admin/Updates"));
 const AdminStoragePage = lazy(() => import("../pages/Admin/Storage"));
 const AdminPluginsPage = lazy(() => import("../pages/Admin/Plugins"));
 
@@ -63,11 +61,9 @@ export const pathToKey: Record<string, string> = {
   // Admin
   "/admin/users": "admin-users",
   "/admin/backend": "admin-storage",
-  "/admin/audit": "admin-audit",
   "/admin/plugins": "admin-plugins",
   "/admin/advanced": "admin-advanced",
   "/admin/security": "admin-security",
-  "/admin/updates": "admin-updates",
 };
 
 /**
@@ -128,7 +124,10 @@ export const routeConfigs: RouteConfig[] = [
   },
   { path: "/models", element: <Navigate to="/admin/models" replace /> },
   { path: "/admin/backend", element: <AdminStoragePage /> },
-  { path: "/admin/audit", element: <OctopAdminAuditPage /> },
+  {
+    path: "/admin/audit",
+    element: <Navigate to="/admin/security?tab=audit" replace />,
+  },
   { path: "/admin/agents", element: <Navigate to="/admin/users" replace /> },
   { path: "/admin/plugins", element: <AdminPluginsPage /> },
   { path: "/admin/advanced", element: <AdvancedSettingsPage /> },
@@ -137,7 +136,10 @@ export const routeConfigs: RouteConfig[] = [
     path: "/admin/voice",
     element: <Navigate to="/admin/advanced?tab=voice" replace />,
   },
-  { path: "/admin/updates", element: <AdminUpdatesPage /> },
+  {
+    path: "/admin/updates",
+    element: <Navigate to="/admin/advanced?tab=updates" replace />,
+  },
 
   // Legacy redirects — keeps old bookmarks working
   { path: "/admin/storage", element: <Navigate to="/admin/backend" replace /> },
@@ -149,7 +151,7 @@ export const routeConfigs: RouteConfig[] = [
   },
   {
     path: "/orca/admin/audit",
-    element: <Navigate to="/admin/audit" replace />,
+    element: <Navigate to="/admin/security?tab=audit" replace />,
   },
   { path: "/octop/cron", element: <Navigate to="/tasks" replace /> },
   { path: "/octop/channels", element: <Navigate to="/channels" replace /> },
@@ -159,7 +161,7 @@ export const routeConfigs: RouteConfig[] = [
   },
   {
     path: "/octop/admin/audit",
-    element: <Navigate to="/admin/audit" replace />,
+    element: <Navigate to="/admin/security?tab=audit" replace />,
   },
   {
     path: "/advanced-settings",
@@ -167,7 +169,10 @@ export const routeConfigs: RouteConfig[] = [
   },
   { path: "/environments", element: <Navigate to="/admin/advanced" replace /> },
   { path: "/agent-config", element: <Navigate to="/admin/advanced" replace /> },
-  { path: "/updates", element: <Navigate to="/admin/updates" replace /> },
+  {
+    path: "/updates",
+    element: <Navigate to="/admin/advanced?tab=updates" replace />,
+  },
   { path: "/personalization", element: <Navigate to="/mbti" replace /> },
   {
     path: "/plugins",

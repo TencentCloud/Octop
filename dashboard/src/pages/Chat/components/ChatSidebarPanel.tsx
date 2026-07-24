@@ -1,5 +1,3 @@
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
 import SessionList from "./SessionList";
@@ -28,6 +26,8 @@ interface ChatSidebarPanelProps {
   onPinSession: (id: string, pinned: boolean) => void;
   onSidebarOpenChange: (open: boolean) => void;
   onSidebarResizeStart: (e: React.PointerEvent) => void;
+  /** Mounted in MainLayout left rail (between app nav and content). */
+  layoutRail?: boolean;
 }
 
 export default function ChatSidebarPanel({
@@ -51,14 +51,15 @@ export default function ChatSidebarPanel({
   onPinSession,
   onSidebarOpenChange,
   onSidebarResizeStart,
+  layoutRail = false,
 }: ChatSidebarPanelProps) {
   const { t } = useTranslation();
 
   return (
     <div
       className={`${styles.sidebarWrapper} ${
-        !isMobile && !sidebarOpen ? styles.sidebarWrapperCollapsed : ""
-      }`}
+        layoutRail ? styles.sidebarWrapperLayoutRail : ""
+      } ${!isMobile && !sidebarOpen ? styles.sidebarWrapperCollapsed : ""}`}
     >
       {isMobile && sidebarOpen && (
         <div
@@ -105,40 +106,6 @@ export default function ChatSidebarPanel({
           />
         )}
       </div>
-
-      {!isMobile && (
-        <Tooltip
-          title={
-            sidebarOpen
-              ? t("chat.collapseHistorySidebar")
-              : t("chat.expandHistorySidebar")
-          }
-          mouseEnterDelay={0.35}
-        >
-          <span
-            className={`${styles.sidebarToggleWrap} ${
-              !sidebarOpen ? styles.sidebarToggleWrapCollapsed : ""
-            }`}
-          >
-            <button
-              type="button"
-              className={styles.sidebarToggleBtn}
-              onClick={() => onSidebarOpenChange(!sidebarOpen)}
-              aria-label={
-                sidebarOpen
-                  ? t("chat.collapseHistorySidebar")
-                  : t("chat.expandHistorySidebar")
-              }
-            >
-              {sidebarOpen ? (
-                <PanelLeftClose size={16} strokeWidth={2} />
-              ) : (
-                <PanelLeftOpen size={16} strokeWidth={2} />
-              )}
-            </button>
-          </span>
-        </Tooltip>
-      )}
     </div>
   );
 }

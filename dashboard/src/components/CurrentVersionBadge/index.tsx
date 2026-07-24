@@ -34,7 +34,7 @@ export default function CurrentVersionBadge({
           className={`${styles.versionBadge} ${
             isMobile ? styles.versionBadgeMobile : ""
           } ${styles.versionBadgeClickable}`}
-          onClick={() => navigate("/admin/updates")}
+          onClick={() => navigate("/admin/advanced?tab=updates")}
           aria-label={tooltip}
         >
           {label}

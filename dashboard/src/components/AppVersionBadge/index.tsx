@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Tooltip } from "antd";
+import { ArrowUpCircle } from "lucide-react";
 import { useUpdateStatus } from "../../hooks/useUpdateStatus";
 import { useUserRole } from "../../hooks/useUserRole";
 import styles from "./index.module.less";
@@ -25,7 +26,7 @@ export default function AppVersionBadge({ isMobile }: AppVersionBadgeProps) {
   });
 
   const handleClick = () => {
-    navigate("/admin/updates");
+    navigate("/admin/advanced?tab=updates");
   };
 
   return (
@@ -38,7 +39,7 @@ export default function AppVersionBadge({ isMobile }: AppVersionBadgeProps) {
         onClick={handleClick}
         aria-label={tooltip}
       >
-        {t("header.newVersionBadge", "有新版本")}
+        <ArrowUpCircle size={isMobile ? 14 : 15} strokeWidth={2} />
       </button>
     </Tooltip>
   );
