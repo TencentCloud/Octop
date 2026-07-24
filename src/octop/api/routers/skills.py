@@ -49,7 +49,7 @@ from octop.infra.agents.manager import skills_disabled_set as _disabled_set
 from octop.infra.agents.skill_packages import (
     SkillPackageError,
     SkillPackageTooLarge,
-    read_skill_directory,
+    read_cli_skill_install,
     resolve_skill_package,
     resolve_workspace_uploads,
     validate_skill_slug,
@@ -799,10 +799,7 @@ async def _download_skillhub_package_via_cli(
                 detail=_skillhub_cli_failure_detail("install", err_msg, locale="en"),
             )
 
-        skill_dir = Path(tmpdir) / skill_name
-        if not skill_dir.is_dir():
-            skill_dir = Path(tmpdir)
-        return read_skill_directory(skill_dir)
+        return read_cli_skill_install(Path(tmpdir))
 
 
 def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:

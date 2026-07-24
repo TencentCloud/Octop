@@ -110,3 +110,38 @@ def test_read_skill_directory_rejects_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(skill_packages.SkillPackageError, match="file type"):
         skill_packages.read_skill_directory(tmp_path)
+
+
+def test_read_cli_skill_install_accepts_files_at_install_root(tmp_path: Path) -> None:
+    (tmp_path / "SKILL.md").write_text("# root skill", encoding="utf-8")
+
+    assert skill_packages.read_cli_skill_install(tmp_path) == [("SKILL.md", b"# root skill")]
+
+
+def test_read_cli_skill_install_discovers_single_wrapper_directory(tmp_path: Path) -> None:
+    wrapper = tmp_path / "cli-generated-directory"
+    wrapper.mkdir()
+    (wrapper / "SKILL.md").write_text("# wrapped skill", encoding="utf-8")
+
+    assert skill_packages.read_cli_skill_install(tmp_path) == [("SKILL.md", b"# wrapped skill")]
+
+
+def test_read_cli_skill_install_rejects_ambiguous_packages(tmp_path: Path) -> None:
+    for name in ("one", "two"):
+        wrapper = tmp_path / name
+        wrapper.mkdir()
+        (wrapper / "SKILL.md").write_text(f"# {name}", encoding="utf-8")
+
+    with pytest.raises(skill_packages.SkillPackageError, match="multiple"):
+        skill_packages.read_cli_skill_install(tmp_path)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symlink semantics are POSIX-specific")
+def test_read_cli_skill_install_does_not_follow_wrapper_symlink(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-skill"
+    outside.mkdir()
+    (outside / "SKILL.md").write_text("# outside", encoding="utf-8")
+    (tmp_path / "wrapper").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(skill_packages.SkillPackageError, match="did not produce"):
+        skill_packages.read_cli_skill_install(tmp_path)
