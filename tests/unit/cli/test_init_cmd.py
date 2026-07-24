@@ -35,12 +35,12 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
     assert (fake_home / ".octop").is_dir()
     assert (fake_home / ".octop" / "octop.db").is_file()
 
-    from octop.infra.db.pool import DBPool
+    from octop.infra.db.pool import SqlitePool
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.utils.paths import PathLayout
 
     paths = PathLayout(fake_home / ".octop")
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     row = UserRepo(db).get_by_username("alice")
     assert row is not None
     assert row.role == "admin"
@@ -75,12 +75,12 @@ def test_init_force_resets(fake_home: Path) -> None:
     r2 = runner.invoke(cli, args_b)
     assert r2.exit_code == 0, r2.output
 
-    from octop.infra.db.pool import DBPool
+    from octop.infra.db.pool import SqlitePool
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.utils.paths import PathLayout
 
     paths = PathLayout(fake_home / ".octop")
-    repo = UserRepo(DBPool(paths.db))
+    repo = UserRepo(SqlitePool(paths.db))
     assert repo.get_by_username("bob") is not None
 
 
@@ -101,10 +101,10 @@ def test_init_env_vars_supply_credentials(fake_home: Path, monkeypatch: pytest.M
     result = runner.invoke(cli, ["init", "--yes"])
     assert result.exit_code == 0, result.output
 
-    from octop.infra.db.pool import DBPool
+    from octop.infra.db.pool import SqlitePool
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.utils.paths import PathLayout
 
     paths = PathLayout(fake_home / ".octop")
-    repo = UserRepo(DBPool(paths.db))
+    repo = UserRepo(SqlitePool(paths.db))
     assert repo.get_by_username("fromenv") is not None

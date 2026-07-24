@@ -17,14 +17,14 @@ from octop.infra.connectors.builder import (
 from octop.infra.connectors.catalog import get_catalog_entry
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.utils.ulid import new_ulid
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "octop.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     return pool
 
@@ -811,7 +811,7 @@ def test_tencent_lexiang_credentials():
     assert payload == {"api_key": "lx-tok", "company_from": "csig"}
 
 
-def test_connector_repo_user_kind_unique(db: DBPool):
+def test_connector_repo_user_kind_unique(db: SqlitePool):
     repo = ConnectorRepo(db)
     with db.transaction() as conn:
         conn.execute(
@@ -834,7 +834,7 @@ def test_connector_repo_user_kind_unique(db: DBPool):
         repo.validate_mcp_servers_for_user(uid, ["other"])
 
 
-def test_validate_mcp_servers_for_user(db: DBPool):
+def test_validate_mcp_servers_for_user(db: SqlitePool):
     repo = ConnectorRepo(db)
     with db.transaction() as conn:
         conn.execute(

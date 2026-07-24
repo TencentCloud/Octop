@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
   Input,
@@ -14,6 +14,7 @@ import {
   Divider,
   message,
   Switch,
+  Modal,
 } from "antd";
 import { Plus, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -29,6 +30,14 @@ import { ModelMetaTags } from "../../Settings/Models/modelMeta";
 import modelStyles from "../../Settings/Models/index.module.less";
 import setupStyles from "../setup.module.less";
 import { enrichWizardModel } from "../../Settings/Models/wizardModelMeta";
+import {
+  groupPresets,
+  isLocalPreset,
+  presetLogoId,
+  presetVariantLabel,
+  type PresetGroup,
+} from "../../Settings/Models/presetUtils";
+import type { ProviderPreset as AdminProviderPreset } from "../../Settings/Models/useProviders";
 
 const { Text } = Typography;
 
@@ -50,7 +59,15 @@ interface ProviderPreset {
   protocol: string;
   api_key_prefix: string;
   models: ProviderPresetModel[];
+  provider_group?: string;
+  provider_group_name?: string;
+  provider_variant?: string;
+  logo_id?: string;
 }
+
+type PresetDisplayItem =
+  | { kind: "single"; preset: ProviderPreset }
+  | { kind: "group"; group: PresetGroup };
 
 interface PresetFormValues {
   name: string;
@@ -83,14 +100,38 @@ interface Props {
 
 type SetupMode = "preset" | "custom";
 
-const WIZARD_FEATURED_IDS = [
-  "openai",
-  "anthropic",
-  "deepseek",
-  "ollama",
-  "zhipu",
-  "kimi-cn",
-];
+/** Match admin/models Cloud tab order (grouped brands, then singles); show this many by default. */
+const WIZARD_FEATURED_COUNT = 6;
+
+function buildWizardPresetDisplay(presets: ProviderPreset[]): {
+  featured: PresetDisplayItem[];
+  more: PresetDisplayItem[];
+} {
+  const cloud = presets.filter((p) => !isLocalPreset(p as AdminProviderPreset));
+  const local = presets.filter((p) => isLocalPreset(p as AdminProviderPreset));
+  const { grouped, ungrouped } = groupPresets(cloud as AdminProviderPreset[]);
+  const ordered: PresetDisplayItem[] = [
+    ...grouped.map((group): PresetDisplayItem => ({ kind: "group", group })),
+    ...ungrouped.map(
+      (preset): PresetDisplayItem => ({
+        kind: "single",
+        preset: preset as ProviderPreset,
+      }),
+    ),
+  ];
+  const featured = ordered.slice(0, WIZARD_FEATURED_COUNT);
+  const more: PresetDisplayItem[] = [
+    ...ordered.slice(WIZARD_FEATURED_COUNT),
+    ...local.map((preset): PresetDisplayItem => ({ kind: "single", preset })),
+  ];
+  return { featured, more };
+}
+
+function defaultPresetFromItem(item: PresetDisplayItem): ProviderPreset {
+  return item.kind === "group"
+    ? (item.group.presets[0] as ProviderPreset)
+    : item.preset;
+}
 
 const CUSTOM_KINDS = [
   { value: "openai", labelKey: "kindOpenaiCompat" as const },
@@ -112,7 +153,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
   const [presets, setPresets] = useState<ProviderPreset[]>([]);
   const [loadingPresets, setLoadingPresets] = useState(true);
   const [mode, setMode] = useState<SetupMode>("preset");
-  const [selectedPresetId, setSelectedPresetId] = useState<string>("openai");
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [showAllPresets, setShowAllPresets] = useState(false);
   const [customModels, setCustomModels] = useState<CustomModelEntry[]>([]);
   const [addingCustomModel, setAddingCustomModel] = useState(false);
@@ -123,8 +164,23 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
+  const [variantGroup, setVariantGroup] = useState<PresetGroup | null>(null);
+  const apiKeySectionRef = useRef<HTMLDivElement>(null);
 
   const resetTest = () => setTestPassed(false);
+
+  const scrollToApiKey = () => {
+    // Wait for Modal close / form re-render before scrolling.
+    window.setTimeout(() => {
+      apiKeySectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      const input =
+        apiKeySectionRef.current?.querySelector<HTMLInputElement>("input");
+      input?.focus({ preventScroll: true });
+    }, 120);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -133,16 +189,16 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       .then((data) => {
         if (!cancelled && Array.isArray(data) && data.length > 0) {
           setPresets(data);
-          const featured =
-            data.find((p) => p.id === "openai") ??
-            data.find((p) => WIZARD_FEATURED_IDS.includes(p.id)) ??
+          const { featured } = buildWizardPresetDisplay(data);
+          const initial =
+            (featured[0] ? defaultPresetFromItem(featured[0]) : null) ??
             data[0];
-          setSelectedPresetId(featured.id);
-          const modelIds = featured.models.map((m) => m.id);
+          setSelectedPresetId(initial.id);
+          const modelIds = initial.models.map((m) => m.id);
           setSelectedModelIds(modelIds);
           presetForm.setFieldsValue({
-            name: featured.name,
-            base_url: featured.base_url,
+            name: initial.name,
+            base_url: initial.base_url,
             selectedModels: modelIds,
           });
         }
@@ -175,22 +231,19 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
     [presets, selectedPresetId],
   );
 
-  const featuredPresets = useMemo(
-    () =>
-      WIZARD_FEATURED_IDS.map((id) => presets.find((p) => p.id === id)).filter(
-        (p): p is ProviderPreset => !!p,
-      ),
-    [presets],
-  );
+  const { featuredDisplayItems, moreDisplayItems } = useMemo(() => {
+    const { featured, more } = buildWizardPresetDisplay(presets);
+    return { featuredDisplayItems: featured, moreDisplayItems: more };
+  }, [presets]);
 
-  const morePresets = useMemo(
-    () => presets.filter((p) => !WIZARD_FEATURED_IDS.includes(p.id)),
-    [presets],
-  );
+  const visibleDisplayItems = showAllPresets
+    ? [...featuredDisplayItems, ...moreDisplayItems]
+    : featuredDisplayItems;
 
-  const visiblePresets = showAllPresets
-    ? [...featuredPresets, ...morePresets]
-    : featuredPresets;
+  const morePresetCount = moreDisplayItems.reduce(
+    (n, item) => n + (item.kind === "group" ? item.group.presets.length : 1),
+    0,
+  );
 
   const isOllama = preset?.id === "ollama";
 
@@ -206,6 +259,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       selectedModels: modelIds,
       api_key: undefined,
     });
+    scrollToApiKey();
   };
 
   const handleSelectAll = () => {
@@ -725,8 +779,59 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
           </Text>
 
           <div className={setupStyles.wizardPresetGrid}>
-            {visiblePresets.map((p) => {
-              const logo = getProviderLogo(p.id) ?? customProviderLogo;
+            {visibleDisplayItems.map((item) => {
+              if (item.kind === "group") {
+                const { group } = item;
+                const logoId = presetLogoId(group.presets[0]);
+                const logo = getProviderLogo(logoId) ?? customProviderLogo;
+                const active = group.presets.some(
+                  (p) => p.id === selectedPresetId,
+                );
+                const modelCount = Math.max(
+                  ...group.presets.map((p) => p.models.length),
+                );
+                return (
+                  <div
+                    key={`group-${group.groupKey}`}
+                    className={`${setupStyles.wizardPresetCard}${
+                      active ? ` ${setupStyles.wizardPresetCardActive}` : ""
+                    }`}
+                    onClick={() => setVariantGroup(group)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        setVariantGroup(group);
+                      }
+                    }}
+                  >
+                    {logo && (
+                      <img
+                        src={logo}
+                        alt={group.groupName}
+                        className={setupStyles.wizardPresetLogo}
+                      />
+                    )}
+                    <div className={setupStyles.wizardPresetMeta}>
+                      <div className={setupStyles.wizardPresetName}>
+                        {group.groupName}
+                      </div>
+                      <div className={setupStyles.wizardPresetCount}>
+                        {t("models.modelsCount", { count: modelCount })}
+                        {" · "}
+                        {t("wizard.model.siteCount", {
+                          count: group.presets.length,
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const p = item.preset;
+              const logo =
+                getProviderLogo(presetLogoId(p as AdminProviderPreset)) ??
+                customProviderLogo;
               const active = p.id === selectedPresetId;
               return (
                 <div
@@ -759,7 +864,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
             })}
           </div>
 
-          {morePresets.length > 0 && (
+          {morePresetCount > 0 && (
             <Button
               type="link"
               size="small"
@@ -769,10 +874,44 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
               {showAllPresets
                 ? t("wizard.model.hideMorePresets")
                 : t("wizard.model.showMorePresets", {
-                    count: morePresets.length,
+                    count: morePresetCount,
                   })}
             </Button>
           )}
+
+          <Modal
+            title={
+              variantGroup
+                ? t("models.selectVariant", { name: variantGroup.groupName })
+                : undefined
+            }
+            open={!!variantGroup}
+            footer={null}
+            onCancel={() => setVariantGroup(null)}
+            destroyOnHidden
+          >
+            {variantGroup && (
+              <div className={modelStyles.variantList}>
+                {variantGroup.presets.map((p) => (
+                  <div
+                    key={p.id}
+                    className={modelStyles.variantItem}
+                    onClick={() => {
+                      applyPreset(p as ProviderPreset);
+                      setVariantGroup(null);
+                    }}
+                  >
+                    <span className={modelStyles.variantItemName}>
+                      {presetVariantLabel(p)}
+                    </span>
+                    <span className={modelStyles.variantItemMeta}>
+                      {p.base_url}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Modal>
 
           <Divider style={{ margin: "12px 0 16px" }} />
 
@@ -793,28 +932,30 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
             <Tag color="blue">{preset.protocol}</Tag>
           </Form.Item>
 
-          <Form.Item
-            name="api_key"
-            label="API Key"
-            rules={
-              isOllama
-                ? []
-                : [{ required: true, message: t("models.pleaseEnterApiKey") }]
-            }
-            extra={isOllama ? t("models.apiKeyExtraOptional") : undefined}
-            getValueFromEvent={(e) =>
-              typeof e === "string" ? e : String(e?.target?.value ?? "")
-            }
-          >
-            <Input.Password
-              placeholder={
-                preset.api_key_prefix
-                  ? `${preset.api_key_prefix}...`
-                  : t("models.apiKeyExtraOptional")
+          <div ref={apiKeySectionRef}>
+            <Form.Item
+              name="api_key"
+              label="API Key"
+              rules={
+                isOllama
+                  ? []
+                  : [{ required: true, message: t("models.pleaseEnterApiKey") }]
               }
-              autoComplete="new-password"
-            />
-          </Form.Item>
+              extra={isOllama ? t("models.apiKeyExtraOptional") : undefined}
+              getValueFromEvent={(e) =>
+                typeof e === "string" ? e : String(e?.target?.value ?? "")
+              }
+            >
+              <Input.Password
+                placeholder={
+                  preset.api_key_prefix
+                    ? `${preset.api_key_prefix}...`
+                    : t("models.apiKeyExtraOptional")
+                }
+                autoComplete="new-password"
+              />
+            </Form.Item>
+          </div>
 
           <Form.Item name="base_url" label="Base URL">
             <Input placeholder={preset.base_url} />

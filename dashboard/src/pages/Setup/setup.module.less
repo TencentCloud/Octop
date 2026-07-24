@@ -19,11 +19,11 @@
 }
 
 .wizardCardNarrow {
-  max-width: 520px;
+  max-width: 640px;
 }
 
 .wizardCardWide {
-  max-width: 720px;
+  max-width: 840px;
 }
 
 .wizardHeader {
@@ -210,6 +210,37 @@
   margin-top: 8px;
   margin-bottom: 4px;
   font-size: 12px;
+}
+
+.dbExpandToggle {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  margin: 4px 0 8px;
+  font-size: 12px;
+  height: auto;
+  padding: 4px 8px;
+}
+
+.dbExpandToggleInner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dbAdvancedPanel {
+  margin: 4px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--fn-border-input);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-secondary, var(--fn-bg-hover, rgba(0, 0, 0, 0.02)));
+}
+
+.dbAdvancedTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  margin-bottom: 10px;
 }
 
 /* ---- Wizard preset provider picker ---- */

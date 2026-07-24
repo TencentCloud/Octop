@@ -9,13 +9,13 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.users import UserRepo, UserRow
 
 
 @pytest.fixture
 def repo(tmp_path: Path) -> UserRepo:
-    db = DBPool(tmp_path / "x.db")
+    db = SqlitePool(tmp_path / "x.db")
     run_migrations(db)
     return UserRepo(db)
 

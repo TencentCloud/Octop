@@ -10,7 +10,7 @@ from harness_agent.teams.inbox import InboxMessage
 from harness_agent.teams.processor import ReplyEvent
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.threads import ThreadRepo
@@ -22,7 +22,7 @@ from octop.infra.gateway.threads import ThreadRegistry
 
 @pytest.fixture
 def processor_env(tmp_path: Path) -> dict[str, object]:
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="parent", user_id=1, name="Parent")

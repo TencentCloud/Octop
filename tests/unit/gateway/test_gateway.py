@@ -11,7 +11,7 @@ import pytest
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.services import build_shared_services
@@ -22,7 +22,7 @@ from octop.infra.utils.ulid import new_ulid
 
 
 def _make_services(tmp_path: Path):
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     return build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
 

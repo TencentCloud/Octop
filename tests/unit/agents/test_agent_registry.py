@@ -18,7 +18,7 @@ from tests.support.harness import build_harness_manager_mock
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentCreateSpec, AgentManager
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
@@ -29,7 +29,7 @@ from octop.infra.utils.paths import PathLayout
 
 
 def _make_services(tmp_path: Path):
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
     services.provider_repo.create(
@@ -685,7 +685,7 @@ async def test_on_provider_changed_noop_when_factory_is_none_and_no_providers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """on_provider_changed() is silent when factory is None and DB has no providers."""
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
     fake_hm = _make_fake_hm()

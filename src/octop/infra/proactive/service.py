@@ -110,6 +110,10 @@ class ProactiveCareService:
             fallback_days=_FALLBACK_WINDOW_DAYS,
         )
 
+    def replace_care_push_repo(self, care_push_repo: CarePushRepo) -> None:
+        """Point dedup storage at a rebound control-plane pool."""
+        self._care_push_repo = care_push_repo
+
     async def run(self, agent_id: str, session_key: str) -> None:
         """Run one proactive care push.
 

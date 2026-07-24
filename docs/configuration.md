@@ -70,8 +70,10 @@ Notes:
   scheduling, and harness. Legacy `cron_timezone` in `config.json` and
   `OCTOP_CRON_TIMEZONE` are still accepted; the new key/env wins when both
   are set.
-- `database.password` is intentionally **not** persisted to disk; supply
-  it through `OCTOP_DATABASE_PASSWORD` when running against PostgreSQL.
+- `database.password`：向导用离散字段配置 PostgreSQL 时**可能**写入
+  `config.json`（便于本机首次启动）。生产环境更推荐只用
+  `OCTOP_DATABASE_PASSWORD` 或带密码的 `OCTOP_DATABASE_URL`，并限制
+  `config.json` 文件权限。环境变量始终覆盖文件中的同名配置。
 - `enable_api_docs=false` keeps `/api/docs` (Scalar) off in production
   while still serving `/api/openapi.json` to the dashboard.
 - `require_setup_password=true` adds the wizard password gate to the
@@ -104,7 +106,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_DATABASE_PORT` | int | `5432` | PostgreSQL port |
 | `OCTOP_DATABASE_NAME` | string | `octop` | PostgreSQL database name |
 | `OCTOP_DATABASE_USER` | string | `octop` | PostgreSQL user |
-| `OCTOP_DATABASE_PASSWORD` | string | empty | PostgreSQL password (env-only, never written to disk) |
+| `OCTOP_DATABASE_PASSWORD` | string | empty | PostgreSQL password (overrides file; prefer env in production) |
 | `OCTOP_ADMIN_USERNAME` | string | empty | Pre-fills the first-admin username in `octop init` |
 | `OCTOP_ADMIN_PASSWORD` | string | empty | Pre-fills the first-admin password in `octop init` |
 | `OCTOP_ADMIN_DISPLAY_NAME` | string | empty | Pre-fills the admin display name |
@@ -118,22 +120,48 @@ remains in effect. `database_env_configured()` returns `True` when any
 `OCTOP_DATABASE_*` is set, which lets `OctopServer.start()` pick the
 configured backend at boot.
 
+### Agent memory vs control plane
+
+Control-plane `database` and agent memory are separate layers. Defaults:
+
+- Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`.
+- Control plane PostgreSQL → agent memory **defaults to the same DSN**
+  (harness-memory per-agent PG schema `agent_<id>`). Runtime also needs
+  ``langgraph-checkpoint-postgres`` (pulled in via
+  ``harness-memory[langgraph-postgres]``) so LangGraph checkpoints work.
+  To keep file memory while the control plane is PG, set on the agent:
+
+```json
+"memory": { "backend": { "type": "sqlite" } }
+```
+
+Or point at another DSN with `"type": "postgres", "dsn": "…"`. There is
+no automatic SQLite→PG memory data migration.
+
+PostgreSQL **extensions** (e.g. `vector`) are instance-level ops, not
+control-plane migrations. Local compose enables `vector` via
+`docker/postgres/init-vector.sql`; managed databases need a DBA /
+provider toggle. See [ADR 002](./adr/002-database-backends.md).
+
 ## First-boot wizard
 
-The first request to a fresh install lands on the setup page. The
-modern flow uses a multi-step wizard exposed under `/api/setup/*`:
+The first request to a fresh install lands on the setup page. Greenfield
+SQLite installs **defer** opening the control-plane DB until the database
+step; password verification works without a pool. The modern flow uses
+`/api/setup/*`:
 
-1. `GET /api/setup/presets` — provider templates the operator can pick.
-2. `POST /api/setup/begin` (or `POST /api/setup/verify-password` when
+1. `POST /api/setup/begin` (or `POST /api/setup/verify-password` when
    `require_setup_password=true`) — issues a short-lived wizard token.
-3. `POST /api/setup/test-provider` — pings the provider draft.
-4. `POST /api/setup/initial-admin` — creates the seed admin.
-5. `POST /api/setup/finish` — finalises config and unlocks the rest of
-   the API.
+2. `POST /api/setup/test-database` / `POST /api/setup/database` — choose
+   SQLite or PostgreSQL, probe, persist `config.json`, bind pool + migrate.
+3. `POST /api/setup/initial-admin` — creates the seed admin (requires DB).
+4. `POST /api/setup/test-provider` — pings an optional provider draft.
+5. `POST /api/setup/finish` — bootstraps default `main` agent and unlocks
+   the rest of the API.
 
-`GET /api/setup/status` still returns `{"required": true}` while the
-`users` table is empty. `setup_lockdown` middleware (installed in
-`api/app.py`) blocks non-setup routes until the wizard completes.
+`GET /api/setup/status` returns `setup_required`, wizard password fields,
+plus `database_bound` / `database_driver`. `setup_lockdown` middleware
+blocks non-setup routes until the wizard completes.
 
 For unattended installs, use `octop init --yes` with
 `OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD` (and

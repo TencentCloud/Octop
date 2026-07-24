@@ -24,6 +24,8 @@ class BackupManifest:
     created_at: str
     home: str
     db_file: str = "db/octop.db"
+    database_driver: str = "sqlite"
+    database_dump_format: str = "sqlite_file"
     agents: list[AgentBackupEntry] = field(default_factory=list)
     includes_config: bool = True
     includes_env: bool = False
@@ -36,6 +38,8 @@ class BackupManifest:
             "created_at": self.created_at,
             "home": self.home,
             "db_file": self.db_file,
+            "database_driver": self.database_driver,
+            "database_dump_format": self.database_dump_format,
             "includes_config": self.includes_config,
             "includes_env": self.includes_env,
             "agents": [asdict(a) for a in self.agents],
@@ -61,6 +65,8 @@ class BackupManifest:
             created_at=str(data.get("created_at", "")),
             home=str(data.get("home", "")),
             db_file=str(data.get("db_file", "db/octop.db")),
+            database_driver=str(data.get("database_driver", "sqlite")),
+            database_dump_format=str(data.get("database_dump_format", "sqlite_file")),
             agents=agents,
             includes_config=bool(data.get("includes_config", True)),
             includes_env=bool(data.get("includes_env", False)),

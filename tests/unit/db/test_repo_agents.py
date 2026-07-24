@@ -8,26 +8,26 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo, AgentRow
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.utils.ulid import new_ulid
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "x.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "x.db")
     run_migrations(pool)
     return pool
 
 
 @pytest.fixture
-def user_id(db: DBPool) -> int:
+def user_id(db: SqlitePool) -> int:
     return UserRepo(db).create(username="alice", password_hash="h", role="admin")
 
 
 @pytest.fixture
-def repo(db: DBPool) -> AgentRepo:
+def repo(db: SqlitePool) -> AgentRepo:
     return AgentRepo(db)
 
 
@@ -64,7 +64,7 @@ def test_system_agents_allow_duplicate_names(repo: AgentRepo):
     assert sum(1 for r in rows if r.name == "system" and r.user_id is None) == 2
 
 
-def test_list_by_user(repo: AgentRepo, user_id: int, db: DBPool):
+def test_list_by_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     other_uid = UserRepo(db).create(username="bob", password_hash="h", role="user")
     repo.create(agent_id=new_ulid(), user_id=user_id, name="a1")
     repo.create(agent_id=new_ulid(), user_id=user_id, name="a2")
@@ -105,7 +105,7 @@ def test_update_config_can_clear_default_model(repo: AgentRepo, user_id: int):
     assert row.default_model is None
 
 
-def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: DBPool):
+def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     aid = new_ulid()
     repo.create(agent_id=aid, user_id=user_id, name="bot")
     assert repo.get(aid) is not None

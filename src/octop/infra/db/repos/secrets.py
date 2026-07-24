@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import now_ts
 
 
 class SecretRepo:
-    def __init__(self, db: DBPool):
+    def __init__(self, db: DatabasePool):
         self._db = db
 
     def get(self, k: str) -> bytes | None:

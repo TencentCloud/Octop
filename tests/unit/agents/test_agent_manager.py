@@ -16,7 +16,7 @@ from octop.infra.agents.experts.catalog import default_library_root
 from octop.infra.agents.manager import AgentManager, _memory_extract_settings
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import build_shared_services
 from octop.infra.errors import OctopError
@@ -32,7 +32,7 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 def manager(tmp_path: Path) -> AgentManager:
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     return AgentManager(repos=services.repos, paths=services.paths)
@@ -319,6 +319,61 @@ def test_apply_pending_bootstrap_graph_refresh_recompiles_graph(manager: AgentMa
 
     agent._init_graph.assert_called_once()
     assert agent_id not in manager._bootstrap_graph_refresh_pending
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
+    manager: AgentManager,
+) -> None:
+    # Fresh fixture has no _harness_manager wired up — get_agent raises
+    # OctopError, which must be swallowed (checkpoint cleanup is best-effort).
+    result = await manager.delete_thread_checkpoint("NOPE", "thr_1")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_delegates_to_harness_adelete_thread(
+    manager: AgentManager,
+) -> None:
+    agent = MagicMock()
+    agent.adelete_thread = AsyncMock(return_value=True)
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+    assert result is True
+    agent.adelete_thread.assert_awaited_once_with("thr_1")
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete_thread(
+    manager: AgentManager,
+) -> None:
+    agent = MagicMock(spec=[])  # no adelete_thread attribute at all
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_propagates_unexpected_errors(
+    manager: AgentManager,
+) -> None:
+    """A live agent whose checkpointer delete genuinely fails must not report success."""
+    agent = MagicMock()
+    agent.adelete_thread = AsyncMock(side_effect=RuntimeError("db unavailable"))
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    with pytest.raises(RuntimeError, match="db unavailable"):
+        await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
 
 @pytest.mark.asyncio
@@ -726,7 +781,7 @@ async def test_reload_agent_does_not_block_event_loop(tmp_path: Path) -> None:
 
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     registry = AgentManager(repos=services.repos, paths=services.paths)

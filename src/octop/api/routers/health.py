@@ -14,11 +14,15 @@ router = APIRouter()
 @router.get("", summary="Health check")
 async def health(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Liveness probe: database reachability, user count, and loaded agents. No auth required."""
-    assert server.app_runtime is not None
+    bound = server.database_bound
+    users = server.user_manager.count() if server.user_manager is not None else 0
+    agents = (
+        len(server.app_runtime.agent_registry.list_rows()) if server.app_runtime is not None else 0
+    )
     return {
         "ok": True,
         "started_at": server._started_at,
-        "db": True,
-        "users_loaded": server.user_manager.count(),
-        "agents_running": len(server.app_runtime.agent_registry.list_rows()),
+        "db": bound,
+        "users_loaded": users,
+        "agents_running": agents,
     }

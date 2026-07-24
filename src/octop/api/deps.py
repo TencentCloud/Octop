@@ -84,9 +84,19 @@ def is_jwt_exempt_request(request: Request) -> bool:
 
 def get_server(request: Request) -> OctopServer:
     server: OctopServer = request.app.state.octop_server
-    if server.services is None or server.app_runtime is None:
+    if not getattr(server, "_started", False):
         raise OctopError(ErrorCode.INTERNAL_ERROR, "server not started")
     return server
+
+
+def require_database(server: OctopServer) -> None:
+    """Raise when the control-plane DB has not been bound yet (deferred setup)."""
+    if not server.database_bound:
+        raise OctopError(
+            ErrorCode.SETUP_REQUIRED,
+            "control-plane database not configured yet",
+            status=503,
+        )
 
 
 def extract_raw_token(

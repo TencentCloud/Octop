@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from octop.config import OctopConfig
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.backends import BackendRepo
@@ -27,7 +27,7 @@ from octop.infra.utils.paths import PathLayout
 
 @dataclass(frozen=True)
 class RepoBundle:
-    db: DBPool
+    db: DatabasePool
 
     user_repo: UserRepo
     agent_repo: AgentRepo
@@ -47,7 +47,7 @@ class RepoBundle:
     proactive_care_config_repo: ProactiveCareConfigRepo
 
     @classmethod
-    def from_pool(cls, db: DBPool) -> RepoBundle:
+    def from_pool(cls, db: DatabasePool) -> RepoBundle:
         return cls(
             db=db,
             user_repo=UserRepo(db),
@@ -76,7 +76,7 @@ class SharedServices:
     repos: RepoBundle
 
     @property
-    def db(self) -> DBPool:
+    def db(self) -> DatabasePool:
         return self.repos.db
 
     @property
@@ -144,7 +144,9 @@ class SharedServices:
         return self.repos.proactive_care_config_repo
 
 
-def build_shared_services(*, db: DBPool, paths: PathLayout, config: OctopConfig) -> SharedServices:
+def build_shared_services(
+    *, db: DatabasePool, paths: PathLayout, config: OctopConfig
+) -> SharedServices:
     return SharedServices(
         paths=paths,
         config=config,

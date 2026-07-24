@@ -9,13 +9,13 @@ import pytest
 from octop.infra.backend.adapter import row_to_backend_spec, storage_backend_kind_agent_resolvable
 from octop.infra.backend.resolver import backend_spec_supports_execution, resolve_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.backends import BackendRepo
 
 
 @pytest.fixture
 def repo(tmp_path: Path) -> BackendRepo:
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     return BackendRepo(db)
 

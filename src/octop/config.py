@@ -8,7 +8,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def database_env_configured() -> bool:
 
 @dataclass(frozen=True)
 class DatabaseConfig:
-    """Database connection settings (SQLite today; PostgreSQL later)."""
+    """Database connection settings (SQLite or PostgreSQL)."""
 
     driver: str = "sqlite"
     sqlite_path: str = "octop.db"
@@ -42,6 +42,7 @@ class DatabaseConfig:
     database: str = "octop"
     user: str = "octop"
     password: str | None = None
+    url: str | None = None  # verbatim OCTOP_DATABASE_URL when set
 
     @property
     def is_sqlite(self) -> bool:
@@ -55,6 +56,16 @@ class DatabaseConfig:
         """Absolute path to the SQLite file (relative paths are under ``octop_root``)."""
         p = Path(self.sqlite_path)
         return p if p.is_absolute() else octop_root / p
+
+    def postgresql_conninfo(self) -> str:
+        """Return a libpq/psycopg conninfo URL for PostgreSQL."""
+        if self.driver != "postgresql":
+            raise ValueError("postgresql_conninfo() requires driver=postgresql")
+        if self.url:
+            return self.url
+        user = quote_plus(self.user)
+        auth = user if not self.password else f"{user}:{quote_plus(self.password)}"
+        return f"postgresql://{auth}@{self.host}:{self.port}/{self.database}"
 
 
 @dataclass(frozen=True)
@@ -96,6 +107,7 @@ def _defaults_for_file() -> dict[str, Any]:
     data.pop("database_in_file", None)
     db = dict(data["database"])
     db.pop("password", None)
+    db.pop("url", None)
     data["database"] = db
     return data
 
@@ -155,6 +167,7 @@ def _parse_database_url(url: str) -> dict[str, Any]:
         "host": parsed.hostname,
         "port": parsed.port or 5432,
         "database": parsed.path.lstrip("/"),
+        "url": url,
     }
     if parsed.username:
         out["user"] = parsed.username
@@ -205,6 +218,9 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
         if not password:
             password = None
 
+    raw_url = merged.get("url")
+    url = str(raw_url).strip() if raw_url is not None and str(raw_url).strip() else None
+
     return DatabaseConfig(
         driver=driver,
         host=host,
@@ -212,6 +228,7 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
         database=database,
         user=user,
         password=password,
+        url=url,
     )
 
 

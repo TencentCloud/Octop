@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 
 
 def _readonly_sqlite_uri(path: Path) -> str:
@@ -44,7 +44,7 @@ def restore_sqlite_file(backup_file: Path, target: Path) -> None:
         src.close()
 
 
-def restore_sqlite_into_pool(backup_file: Path, pool: DBPool) -> None:
+def restore_sqlite_into_pool(backup_file: Path, pool: SqlitePool) -> None:
     """Merge a backup file into the live pooled connection."""
     src = sqlite3.connect(_readonly_sqlite_uri(backup_file), uri=True)
     try:

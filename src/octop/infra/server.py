@@ -10,13 +10,13 @@ from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-from octop.config import load_config
+from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
 from octop.infra.cron.manager import CronManager
-from octop.infra.db.factory import open_database
+from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
@@ -81,11 +81,27 @@ class AppRuntime:
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
 
+    def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
+        """Retarget all runtime singletons onto a new SharedServices / config.
+
+        Used when the setup wizard hot-swaps the control-plane DB while empty.
+        """
+        self.user_manager.replace_services(services)
+        self.agent_registry.replace_persistence(services.repos, config)
+        self.gateway.replace_repos(services.repos)
+        self.cron_manager.replace_repos(services.repos)
+        self.proactive_scheduler.replace_persistence(
+            config_repo=services.repos.proactive_care_config_repo,
+            session_repo=services.repos.session_repo,
+            care_push_repo=services.repos.care_push_repo,
+        )
+
 
 class OctopServer:
     def __init__(self, home: Path | None = None) -> None:
         self._home = home or PathLayout.from_env().root
         self.paths = PathLayout(self._home)
+        self.config: OctopConfig | None = None
         self.services: SharedServices | None = None
         self.app_runtime: AppRuntime | None = None
         self.expert_catalog: ExpertCatalog | None = None
@@ -100,6 +116,10 @@ class OctopServer:
     def user_manager(self) -> UserManager | None:
         return self.app_runtime.user_manager if self.app_runtime else None
 
+    @property
+    def database_bound(self) -> bool:
+        return self.services is not None and self.app_runtime is not None
+
     async def start(self) -> None:
         if self._started:
             return
@@ -109,10 +129,8 @@ class OctopServer:
         apply_env_file(env_file_path(self.paths.root))
         self._setup_logging()
         config = load_config(self.paths.config)
-        db = open_database(config, self.paths)
-        run_migrations(db)
-        self.services = build_shared_services(db=db, paths=self.paths, config=config)
-        self._ensure_jwt_secret()
+        self.config = config
+
         self.expert_catalog = ExpertCatalog(
             default_library_root(),
             extra_roots=[self.paths.expert_market_dir],
@@ -127,7 +145,55 @@ class OctopServer:
         )
         self.plugin_manager.load_installed(install_deps=True)
 
-        # Boot global singletons in dependency order
+        import time  # noqa: PLC0415
+
+        self._started_at = int(time.time())
+
+        if should_defer_control_plane_db(config, self.paths):
+            self._started = True
+            self._emit_wizard_password(user_count=0)
+            logger.info("control-plane database deferred until setup wizard chooses a backend")
+            return
+
+        db = open_database(config, self.paths)
+        run_migrations(db)
+        self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        self._ensure_jwt_secret()
+        await self._boot_runtime(config)
+        self._started = True
+        assert self.user_manager is not None
+        self._emit_wizard_password(user_count=self.user_manager.count())
+
+    async def bind_control_plane(self) -> None:
+        """Open the configured control-plane DB and boot runtime (first-run wizard).
+
+        Idempotent when already bound: no-op. Call after persisting ``database``
+        into ``config.json``. Does not rebind an existing live pool — use
+        ``rebind_control_plane`` only when swapping while ``user_count == 0``.
+        """
+        if self.database_bound:
+            return
+        config = load_config(self.paths.config)
+        self.config = config
+        db = open_database(config, self.paths)
+        try:
+            run_migrations(db)
+        except Exception:
+            db.close()
+            raise
+        self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        self._ensure_jwt_secret()
+        await self._boot_runtime(config)
+        logger.info(
+            "control-plane database bound driver=%s",
+            config.database.driver,
+        )
+
+    async def _boot_runtime(self, config: OctopConfig) -> None:
+        assert self.services is not None
+        assert self.expert_catalog is not None
+        assert self.plugin_manager is not None
+
         registry = AgentManager(
             repos=self.services.repos,
             paths=self.paths,
@@ -142,11 +208,13 @@ class OctopServer:
         )
         await gateway.boot()
 
-        import time  # noqa: PLC0415
-
         from octop import __version__  # noqa: PLC0415
 
-        started_at = int(time.time())
+        started_at = self._started_at
+        if started_at is None:
+            import time  # noqa: PLC0415
+
+            started_at = int(time.time())
         gateway.set_slash_meta(version=__version__, started_at=started_at)
         self._started_at = started_at
 
@@ -162,10 +230,8 @@ class OctopServer:
         install_auto_renewal_job(cron_mgr, paths=self.paths)
 
         registry.set_cron_manager(cron_mgr)
-
         registry.set_team_processor(gateway.processor)
 
-        # Build the proactive care push service and scheduler
         care_service = ProactiveCareService(
             gateway=gateway,
             care_push_repo=self.services.repos.care_push_repo,
@@ -183,8 +249,6 @@ class OctopServer:
 
         user_mgr = UserManager(self.services)
         await user_mgr.boot()
-
-        # Start the proactive care scheduler (after registry.boot(), ensuring agents are loaded)
         await proactive_scheduler.start_all()
 
         self.app_runtime = AppRuntime(
@@ -194,16 +258,20 @@ class OctopServer:
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
         )
-        self._started = True
+
+    def _emit_wizard_password(self, *, user_count: int) -> None:
+        config = self.config
+        if config is None:
+            return
         wizard_home = Path.home()
         if config.require_setup_password:
             try:
-                new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_mgr.count())
+                new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_count)
             except OSError as err:
                 logger.warning("wizard self-heal failed: %s", err)
                 new_pw = None
         else:
-            if user_mgr.count() == 0:
+            if user_count == 0:
                 _wizard_pw.remove_password(wizard_home)
             new_pw = None
         if new_pw is not None:
@@ -224,18 +292,21 @@ class OctopServer:
             )
 
     async def stop(self) -> None:
-        if not self._started or self.app_runtime is None:
+        if not self._started:
             return
-        rt = self.app_runtime
         try:
-            await rt.proactive_scheduler.shutdown()
-            await rt.cron_manager.shutdown()
-            await rt.gateway.shutdown()
-            await rt.agent_registry.shutdown()
-            await rt.user_manager.shutdown_all()
+            if self.app_runtime is not None:
+                rt = self.app_runtime
+                await rt.proactive_scheduler.shutdown()
+                await rt.cron_manager.shutdown()
+                await rt.gateway.shutdown()
+                await rt.agent_registry.shutdown()
+                await rt.user_manager.shutdown_all()
         finally:
             if self.services is not None:
                 self.services.db.close()
+            self.services = None
+            self.app_runtime = None
             self._started = False
             logger.info("octop server stopped")
 
