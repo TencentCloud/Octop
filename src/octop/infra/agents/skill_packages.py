@@ -156,6 +156,39 @@ def read_skill_directory(skill_dir: Path) -> list[tuple[str, bytes]]:
     return list(normalize_skill_files(files))
 
 
+def read_cli_skill_install(install_root: Path) -> list[tuple[str, bytes]]:
+    """Read one CLI-installed skill without deriving a path from its requested slug."""
+    root_manifest = install_root / "SKILL.md"
+    try:
+        root_manifest_mode = root_manifest.lstat().st_mode
+    except FileNotFoundError:
+        root_manifest_mode = 0
+    if stat.S_ISREG(root_manifest_mode):
+        return read_skill_directory(install_root)
+
+    candidates: list[Path] = []
+    for entry in install_root.iterdir():
+        try:
+            entry_mode = entry.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(entry_mode):
+            continue
+        manifest = entry / "SKILL.md"
+        try:
+            manifest_mode = manifest.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(manifest_mode):
+            candidates.append(entry)
+
+    if not candidates:
+        raise SkillPackageError("CLI install did not produce a skill package")
+    if len(candidates) > 1:
+        raise SkillPackageError("CLI install produced multiple skill packages")
+    return read_skill_directory(candidates[0])
+
+
 __all__ = [
     "MAX_SKILL_BYTES",
     "MAX_SKILL_FILES",
@@ -163,6 +196,7 @@ __all__ = [
     "SkillPackageError",
     "SkillPackageTooLarge",
     "normalize_skill_files",
+    "read_cli_skill_install",
     "read_skill_directory",
     "resolve_skill_package",
     "resolve_workspace_uploads",

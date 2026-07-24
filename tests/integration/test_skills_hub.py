@@ -251,7 +251,8 @@ async def test_hub_install_falls_back_to_cli_on_http_failure(
         timeout: float,
     ) -> tuple[int, str, str]:
         assert timeout == 120
-        install_dir = Path(args[1]) / args[-1]
+        assert args[-1] == "fallback-skill"
+        install_dir = Path(args[1]) / "cli-output"
         install_dir.mkdir(parents=True)
         (install_dir / "SKILL.md").write_text(
             "---\nname: fallback-skill\n---\n\n# Body\n",
