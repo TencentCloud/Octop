@@ -11,7 +11,7 @@ from harness_agent.compaction import CompactResult
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.threads import ThreadRepo
@@ -24,7 +24,7 @@ from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.utils.paths import PathLayout
 
 
-def _agent_manager(tmp_path: Path, db: DBPool) -> AgentManager:
+def _agent_manager(tmp_path: Path, db: SqlitePool) -> AgentManager:
     services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
     manager = AgentManager(repos=services.repos, paths=services.paths)
     manager._harness_manager = MagicMock()
@@ -33,7 +33,7 @@ def _agent_manager(tmp_path: Path, db: DBPool) -> AgentManager:
 
 @pytest.fixture
 def ctx(tmp_path: Path) -> SlashCtx:
-    db = DBPool(tmp_path / "x.db")
+    db = SqlitePool(tmp_path / "x.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     agent_repo = AgentRepo(db)
