@@ -1,0 +1,188 @@
+name: Windows Desktop Installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-desktop.yml"
+      - "dashboard/**"
+      - "packaging/windows/**"
+      - "pyproject.toml"
+      - "src/octop/**"
+      - "uv.lock"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-installer:
+    name: Build Octop Setup.exe
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Python dependencies
+        run: uv sync --extra windows-desktop --dev
+
+      - name: Build dashboard
+        shell: pwsh
+        run: |
+          npm ci --prefix dashboard
+          npm run build:prod --prefix dashboard
+
+      - name: Install Playwright Chromium into bundle path
+        run: uv run python -m playwright install chromium
+
+      - name: Build PyInstaller onedir
+        run: uv run pyinstaller --noconfirm packaging/windows/octop-desktop.spec
+
+      - name: Smoke test frozen backend
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Octop\Octop.exe"
+          $env:OCTOP_HOME = Join-Path $env:RUNNER_TEMP "octop-home-frozen"
+          New-Item -ItemType Directory -Force -Path $env:OCTOP_HOME | Out-Null
+          $proc = Start-Process -FilePath $exe -ArgumentList "--no-window --port 18088" -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(180)
+            $healthy = $false
+            do {
+              if ($proc.HasExited) {
+                Write-Host "Octop exited early with code $($proc.ExitCode)"
+                break
+              }
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:18088/api/health" -TimeoutSec 2
+                if ($r.ok -eq $true) {
+                  $healthy = $true
+                  break
+                }
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            } while ((Get-Date) -lt $deadline)
+            if (-not $healthy) {
+              Write-Host "OCTOP_HOME contents:"
+              Get-ChildItem -Force -Recurse $env:OCTOP_HOME | Select-Object FullName, Length, LastWriteTime | Format-Table -AutoSize
+              $log = Join-Path $env:OCTOP_HOME "logs\octop.log"
+              if (Test-Path $log) {
+                Write-Host "octop.log:"
+                Get-Content $log -Tail 200
+              }
+              $startupLog = Join-Path $env:OCTOP_HOME "logs\desktop-startup-error.log"
+              if (Test-Path $startupLog) {
+                Write-Host "desktop-startup-error.log:"
+                Get-Content $startupLog -Tail 200
+              }
+              throw "Octop frozen backend did not become healthy"
+            }
+          } finally {
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+            }
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        run: |
+          $version = uv run python -c "import octop; print(octop.__version__)"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=$version" "/DSourceDir=$PWD\dist\Octop" "packaging\windows\Octop.iss"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: octop-windows-installer
+          path: dist/installer/*.exe
+
+      - name: Smoke test silent installer
+        shell: pwsh
+        run: |
+          $version = uv run python -c "import octop; print(octop.__version__)"
+          $setup = Join-Path $PWD "dist\installer\Octop-Setup-$version.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP "OctopInstall"
+          $installLog = Join-Path $env:RUNNER_TEMP "octop-install.log"
+          $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /LOG=`"$installLog`" /DIR=`"$installDir`"" -PassThru
+          if (-not (Wait-Process -Id $installer.Id -Timeout 600 -ErrorAction SilentlyContinue)) {
+            if (Test-Path $installLog) {
+              Write-Host "Inno install log:"
+              Get-Content $installLog -Tail 200
+            }
+            Stop-Process -Id $installer.Id -Force
+            throw "Silent installer did not finish within 600 seconds"
+          }
+          if ($installer.ExitCode -ne 0) {
+            if (Test-Path $installLog) {
+              Write-Host "Inno install log:"
+              Get-Content $installLog -Tail 200
+            }
+            throw "Silent installer failed with exit code $($installer.ExitCode)"
+          }
+          $exe = Join-Path $installDir "Octop.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Installed Octop.exe was not found"
+          }
+          $env:OCTOP_HOME = Join-Path $env:RUNNER_TEMP "octop-home-installed"
+          New-Item -ItemType Directory -Force -Path $env:OCTOP_HOME | Out-Null
+          $proc = Start-Process -FilePath $exe -ArgumentList "--no-window --port 18089" -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(180)
+            $healthy = $false
+            do {
+              if ($proc.HasExited) {
+                Write-Host "Octop exited early with code $($proc.ExitCode)"
+                break
+              }
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:18089/api/health" -TimeoutSec 2
+                if ($r.ok -eq $true) {
+                  $healthy = $true
+                  break
+                }
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            } while ((Get-Date) -lt $deadline)
+            if (-not $healthy) {
+              Write-Host "OCTOP_HOME contents:"
+              Get-ChildItem -Force -Recurse $env:OCTOP_HOME | Select-Object FullName, Length, LastWriteTime | Format-Table -AutoSize
+              $log = Join-Path $env:OCTOP_HOME "logs\octop.log"
+              if (Test-Path $log) {
+                Write-Host "octop.log:"
+                Get-Content $log -Tail 200
+              }
+              $startupLog = Join-Path $env:OCTOP_HOME "logs\desktop-startup-error.log"
+              if (Test-Path $startupLog) {
+                Write-Host "desktop-startup-error.log:"
+                Get-Content $startupLog -Tail 200
+              }
+              throw "Installed Octop backend did not become healthy"
+            }
+          } finally {
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+            }
+          }
