@@ -34,6 +34,7 @@ dependencies = [
     "boto3>=1.40.61",
     "harness-browser>=0.7.4",
     "playwright>=1.40",
+    "socksio>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -174,6 +175,7 @@ disable_error_code = ["attr-defined"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+tmp_path_retention_count = 1
 markers = [
     "live: tests that hit real LLM endpoints (skipped by default)",
 ]

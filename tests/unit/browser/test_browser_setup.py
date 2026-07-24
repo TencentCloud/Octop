@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -169,9 +170,12 @@ def test_ensure_profile_writable_recreates_when_not_writable(
             assert result == profile or "harness-browser-profiles" in str(result)
             assert _probe_dir_writable(result)
         finally:
-            os.chmod(profile, 0o700)
-            if profile.exists():
-                os.chmod(profile, 0o700)
+            # Restore permissions on the profile and any stale dirs renamed
+            # by ensure_profile_writable (they keep 0o000 → pytest can't rm).
+            for d in [profile, *tmp_path.glob("default.stale-*")]:
+                if d.exists():
+                    with contextlib.suppress(OSError):
+                        os.chmod(d, 0o700)
     else:
         assert ensure_profile_writable(profile) == profile
 
