@@ -47,7 +47,9 @@ def test_explicit_sqlite_overrides_postgresql_control_plane() -> None:
         workspace_dir=Path("/tmp/ws"),
     )
     assert out["memory_backend"]["type"] == "sqlite"
-    assert out["memory_backend"]["db_path"] == "/tmp/ws/memory.sqlite"
+    # Compare as Path so the assertion is separator-agnostic (Windows renders
+    # the db_path with backslashes; the code uses pathlib, not literal "/").
+    assert Path(out["memory_backend"]["db_path"]) == Path("/tmp/ws") / "memory.sqlite"
 
 
 def test_postgres_explicit_dsn() -> None:
