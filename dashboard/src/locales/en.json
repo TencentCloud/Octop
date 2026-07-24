@@ -1402,6 +1402,7 @@
     "tabPii": "PII redaction",
     "tabToolGuard": "Command guard",
     "tabSkillScan": "Skill scan",
+    "tabAudit": "Audit log",
     "hitlEnable": "Require human approval for tools",
     "hitlTools": "Tools requiring approval",
     "hitlHint": "Listed tools pause before execution until approved or rejected in chat.",

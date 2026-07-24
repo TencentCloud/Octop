@@ -510,9 +510,7 @@ function ChatPageInner() {
 
   return (
     <ChatFilePreviewProvider openFilePreview={openFileAt}>
-      {chatHistoryRail
-        ? createPortal(chatSidebarPanel, chatHistoryRail)
-        : null}
+      {chatHistoryRail ? createPortal(chatSidebarPanel, chatHistoryRail) : null}
       <div
         className={`${styles.chatPage} ${
           dockIsResizing ? styles.panelResizeActive : ""

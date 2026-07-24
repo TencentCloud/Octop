@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
@@ -19,6 +20,7 @@ import {
   type FilesystemRule,
   type SecurityPolicy,
 } from "../../../api/modules/security";
+import AuditLogPanel from "./AuditLogPanel";
 import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
 import styles from "./index.module.less";
 
@@ -27,6 +29,35 @@ const { confirm } = Modal;
 const { TextArea } = Input;
 
 const DEFAULT_HITL_TOOLS = ["bash", "execute", "write_file", "edit_file"];
+
+const POLICY_TABS = new Set([
+  "hitl",
+  "filesystem",
+  "pii",
+  "tool_guard",
+  "skill_scan",
+]);
+
+type SecurityTabKey =
+  | "hitl"
+  | "filesystem"
+  | "pii"
+  | "tool_guard"
+  | "skill_scan"
+  | "audit";
+
+function parseTab(raw: string | null): SecurityTabKey {
+  if (
+    raw === "filesystem" ||
+    raw === "pii" ||
+    raw === "tool_guard" ||
+    raw === "skill_scan" ||
+    raw === "audit"
+  ) {
+    return raw;
+  }
+  return "hitl";
+}
 
 function pathsToText(rules: FilesystemRule[]): string {
   const paths = rules.flatMap((r) => r.paths);
@@ -44,10 +75,29 @@ function textToRules(text: string | undefined): FilesystemRule[] {
 
 export default function SecuritySettingsPage() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<SecurityTabKey>(() =>
+    parseTab(searchParams.get("tab")),
+  );
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null);
+
+  useEffect(() => {
+    setActiveTab(parseTab(searchParams.get("tab")));
+  }, [searchParams]);
+
+  const selectTab = (key: string) => {
+    const tab = parseTab(key);
+    setActiveTab(tab);
+    if (tab === "hitl") {
+      searchParams.delete("tab");
+      setSearchParams(searchParams, { replace: true });
+    } else {
+      setSearchParams({ tab }, { replace: true });
+    }
+  };
 
   const fetchPolicy = useCallback(async () => {
     setLoading(true);
@@ -124,15 +174,26 @@ export default function SecuritySettingsPage() {
     }
   };
 
+  const isPolicyTab = POLICY_TABS.has(activeTab);
+
   return (
     <PageShell
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
     >
       <div className={styles.wrap}>
-        <Paragraph type="secondary">{t("security.intro")}</Paragraph>
-        <Form form={form} layout="vertical" disabled={loading}>
+        {isPolicyTab && (
+          <Paragraph type="secondary">{t("security.intro")}</Paragraph>
+        )}
+        <Form
+          form={form}
+          layout="vertical"
+          disabled={loading}
+          component={false}
+        >
           <Tabs
+            activeKey={activeTab}
+            onChange={selectTab}
             destroyInactiveTabPane={false}
             items={[
               {
@@ -294,22 +355,32 @@ export default function SecuritySettingsPage() {
                   </Card>
                 ),
               },
+              {
+                key: "audit",
+                forceRender: false,
+                label: t("security.tabAudit"),
+                children: <AuditLogPanel />,
+              },
             ]}
           />
-          <Space style={{ marginTop: 16 }}>
-            <Button
-              type="primary"
-              loading={saving}
-              onClick={() => void handleSave()}
-            >
-              {t("common.save")}
-            </Button>
-          </Space>
+          {isPolicyTab && (
+            <>
+              <Space style={{ marginTop: 16 }}>
+                <Button
+                  type="primary"
+                  loading={saving}
+                  onClick={() => void handleSave()}
+                >
+                  {t("common.save")}
+                </Button>
+              </Space>
+              <Title level={5} style={{ marginTop: 24 }}>
+                {t("security.runtimeTitle")}
+              </Title>
+              <Text type="secondary">{t("security.runtimeHint")}</Text>
+            </>
+          )}
         </Form>
-        <Title level={5} style={{ marginTop: 24 }}>
-          {t("security.runtimeTitle")}
-        </Title>
-        <Text type="secondary">{t("security.runtimeHint")}</Text>
       </div>
     </PageShell>
   );

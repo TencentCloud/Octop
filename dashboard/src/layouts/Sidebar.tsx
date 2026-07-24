@@ -17,7 +17,6 @@ import {
   Link2,
   Database,
   Users as UsersIcon,
-  ScrollText,
   Activity,
   TerminalSquare,
   Globe,
@@ -30,7 +29,6 @@ import {
   Notebook,
   Bot,
   ChevronDown,
-  RefreshCw,
   Shield,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
@@ -150,12 +148,6 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           labelKey: "nav.tasks",
         },
         {
-          key: "connectors",
-          path: "/connectors",
-          icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.connectors",
-        },
-        {
           key: "token-usage",
           path: "/token-usage",
           icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
@@ -167,12 +159,6 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
       groupKey: "nav.control",
       items: [
         {
-          key: "channels",
-          path: "/channels",
-          icon: <PlugZap size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.channels",
-        },
-        {
           key: "skills",
           path: "/skills",
           icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
@@ -183,6 +169,18 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           path: "/subagents",
           icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.subagents",
+        },
+        {
+          key: "channels",
+          path: "/channels",
+          icon: <PlugZap size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.channels",
+        },
+        {
+          key: "connectors",
+          path: "/connectors",
+          icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.connectors",
         },
         {
           key: "terminal",
@@ -247,12 +245,6 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           labelKey: "nav.adminStorage",
         },
         {
-          key: "admin-audit",
-          path: "/admin/audit",
-          icon: <ScrollText size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.adminAudit",
-        },
-        {
           key: "admin-plugins",
           path: "/admin/plugins",
           icon: <Puzzle size={iconSize} strokeWidth={iconStroke} />,
@@ -269,12 +261,6 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           path: "/admin/advanced",
           icon: <SlidersHorizontal size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.adminAdvanced",
-        },
-        {
-          key: "admin-updates",
-          path: "/admin/updates",
-          icon: <RefreshCw size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.checkUpdates",
         },
       ],
     });
@@ -319,9 +305,7 @@ function NavItemButton({
         height: 40,
         border: "none",
         borderRadius: "var(--fn-radius-md)",
-        background: active
-          ? "var(--fn-sidebar-item-active-bg)"
-          : "transparent",
+        background: active ? "var(--fn-sidebar-item-active-bg)" : "transparent",
         color: active
           ? "var(--fn-sidebar-item-active-text)"
           : "var(--fn-text-secondary)",
@@ -369,7 +353,7 @@ function NavItemButton({
         }}
       >
         {t(item.labelKey)}
-        {item.key === "admin-updates" && role === "admin" && hasUpdate ? (
+        {item.key === "admin-advanced" && role === "admin" && hasUpdate ? (
           <span className={styles.navUpdateBadge}>
             {t("nav.newVersionBadge", "有新版本")}
           </span>
@@ -744,7 +728,7 @@ export default function Sidebar({
               return section.items.map((item) => {
                 const active = selectedKey === item.key;
                 const showUpdateBadge =
-                  item.key === "admin-updates" &&
+                  item.key === "admin-advanced" &&
                   role === "admin" &&
                   hasUpdate;
                 return (
@@ -754,8 +738,8 @@ export default function Sidebar({
                       showUpdateBadge
                         ? ` (${t("nav.newVersionBadge", "有新版本")})`
                         : item.badge
-                          ? ` (${item.badge})`
-                          : ""
+                        ? ` (${item.badge})`
+                        : ""
                     }`}
                     placement="right"
                     mouseEnterDelay={0.2}

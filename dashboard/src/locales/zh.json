@@ -148,7 +148,7 @@
     "adminStorage": "存储",
     "adminAudit": "审计日志",
     "adminAgents": "智能体",
-    "adminAdvanced": "设置",
+    "adminAdvanced": "应用设置",
     "security": "安全防护",
     "adminPlugins": "插件管理"
   },
@@ -1399,6 +1399,7 @@
     "tabPii": "敏感信息",
     "tabToolGuard": "命令防护",
     "tabSkillScan": "技能扫描",
+    "tabAudit": "审计日志",
     "hitlEnable": "启用工具人工审批",
     "hitlTools": "需审批的工具",
     "hitlHint": "命中列表的工具在执行前会暂停，等待用户在对话中批准或拒绝。",

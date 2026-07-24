@@ -17,11 +17,9 @@ const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/admin/models": () => import("../pages/Settings/Models"),
   "/admin/users": () => import("../pages/Admin/Users"),
   "/admin/backend": () => import("../pages/Admin/Storage"),
-  "/admin/audit": () => import("../pages/Admin/Audit"),
   "/admin/plugins": () => import("../pages/Admin/Plugins"),
   "/admin/security": () => import("../pages/Settings/Security"),
   "/admin/advanced": () => import("../pages/Settings/AdvancedSettings"),
-  "/admin/updates": () => import("../pages/Admin/Updates"),
 };
 
 export function prefetchRoute(path: string): void {

@@ -106,7 +106,11 @@ export function CodexOAuthConnect({ onSuccess }: CodexOAuthConnectProps) {
             <Button
               icon={<ExternalLink size={14} />}
               onClick={() =>
-                window.open(device.verificationUrl, "_blank", "noopener,noreferrer")
+                window.open(
+                  device.verificationUrl,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
               }
             >
               {t("models.codexOAuthOpenVerification")}
