@@ -105,6 +105,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyHasMore: false,
   historyLoadingMore: false,
   historyNextOffset: 0,
+  historyHydrated: false,
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -225,6 +226,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyHasMore: state.historyHasMore,
     historyLoadingMore: state.historyLoadingMore,
     historyNextOffset: state.historyNextOffset,
+    historyHydrated: state.historyHydrated,
   };
 }
 
@@ -245,6 +247,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       historyHasMore: false,
       historyNextOffset: 0,
       historyLoadingMore: false,
+      historyHydrated: false,
       listeners: new Set(),
       _snapshot: EMPTY_SNAPSHOT,
     };
@@ -313,6 +316,7 @@ export function setHistoryPage(
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
   state.historyLoadingMore = false;
+  state.historyHydrated = true;
   notify(state);
 }
 
@@ -404,6 +408,13 @@ export function appendPushMessage(text: string) {
 /** Clear all messages for a session. */
 export function clearMessages(sessionId: string) {
   const state = getOrCreate(sessionId);
+  const alreadyEmpty =
+    state.messages.length === 0 &&
+    !state.isStreaming &&
+    !state.historyHydrated &&
+    state.historyNextOffset === 0 &&
+    !state.historyHasMore;
+  if (alreadyEmpty) return;
   state.messages = [];
   clearStreamingFlags(state);
   state.runUsage = null;
@@ -414,6 +425,7 @@ export function clearMessages(sessionId: string) {
   state.historyHasMore = false;
   state.historyNextOffset = 0;
   state.historyLoadingMore = false;
+  state.historyHydrated = false;
   notify(state);
 }
 
@@ -421,14 +433,21 @@ export function clearMessages(sessionId: string) {
 export function cancelStream(sessionId: string) {
   const state = sessionStates.get(sessionId);
   if (!state) return;
+  const hadAbort = Boolean(state.abortController);
+  const hadStreaming = state.isStreaming;
+  const hadStreamingMsgs = state.messages.some((m) => m.status === "streaming");
   state.abortController?.abort();
   state.abortController = null;
   clearStreamingFlags(state);
   state.runUsage = null;
-  state.messages = state.messages.map((m) =>
-    m.status === "streaming" ? { ...m, status: "done" as const } : m,
-  );
-  notify(state);
+  if (hadStreamingMsgs) {
+    state.messages = state.messages.map((m) =>
+      m.status === "streaming" ? { ...m, status: "done" as const } : m,
+    );
+  }
+  if (hadAbort || hadStreaming || hadStreamingMsgs) {
+    notify(state);
+  }
 }
 
 /** Remove a session from the cache entirely. */

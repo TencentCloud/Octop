@@ -53,6 +53,7 @@ void initI18n().then(() => {
 
 // Register SW as early as possible so beforeinstallprompt can fire before the
 // user clicks the header install button (deferring to "load" caused a race).
+// In DEV this only clears stale workers — it never registers (see sw-register).
 if (typeof window !== "undefined") {
   void import("./sw-register").then(({ registerSW }) => registerSW());
 }

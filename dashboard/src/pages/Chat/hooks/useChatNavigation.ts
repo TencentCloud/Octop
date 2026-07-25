@@ -152,9 +152,9 @@ export function useChatNavigation({
       }
       return;
     }
+    // During agent switches the session store is briefly cleared; do not treat
+    // that as "thread deleted" or we bounce the user back to the welcome screen.
     if (sessions.length === 0) {
-      navigate(`/chat/${resolvedAgentId}`, { replace: true });
-      clearMessages();
       return;
     }
     if (sessions.some((s) => s.id === threadId)) {

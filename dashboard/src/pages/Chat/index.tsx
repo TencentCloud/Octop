@@ -178,6 +178,7 @@ function ChatPageInner() {
     historyHasMore,
     historyLoadingMore,
     historyRefreshing,
+    historyHydrated,
     contextUsage,
     sendMessage,
     editAndResend,
@@ -478,6 +479,13 @@ function ChatPageInner() {
   );
 
   const hasMessages = messages.length > 0;
+  // On hard refresh / deep-link into a thread, messages start empty. Showing
+  // Welcome until history returns looks like a full page flash. Keep the list
+  // shell while that thread is still hydrating.
+  const awaitingThreadHistory = Boolean(
+    activeThreadId && !hasMessages && (historyLoading || !historyHydrated),
+  );
+  const showWelcome = !hasMessages && !awaitingThreadHistory;
 
   const chatSidebarPanel = (
     <ChatSidebarPanel
@@ -556,7 +564,7 @@ function ChatPageInner() {
                 noAgents={noAgents}
                 loading={agentsLoading}
               />
-            ) : !hasMessages && !historyLoading ? (
+            ) : showWelcome ? (
               <WelcomeScreen
                 agentName={activeAgent?.name ?? null}
                 welcomeSuffix={welcomeSuffix}
@@ -568,7 +576,7 @@ function ChatPageInner() {
               <MessageList
                 messages={messages}
                 composerLookups={composerLookups}
-                loading={historyLoading}
+                loading={awaitingThreadHistory}
                 historyHasMore={historyHasMore}
                 historyLoadingMore={historyLoadingMore}
                 historyRefreshing={historyRefreshing}

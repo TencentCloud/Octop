@@ -1,33 +1,40 @@
 /**
  * Service Worker registration and lifecycle management.
  *
- * autoUpdate flow:
- *   - vite-plugin-pwa is configured with `registerType: "autoUpdate"` plus
- *     workbox `skipWaiting: true` + `clientsClaim: true`, so a freshly built
- *     SW installs + activates + takes control of open tabs without user
- *     intervention.
- *   - Once the new SW takes control (`controllerchange` fires), we reload
- *     the open tab so it picks up the new index.html and chunks.
- *   - The "pwa:update-ready" event is still dispatched (so any UI listener
- *     can show a toast) but a reload happens automatically a moment later.
+ * Production (all browsers including Chrome / Safari):
+ *   - Register `/sw.js` with workbox `skipWaiting: false` (vite.config).
+ *   - Never auto `location.reload()` on `controllerchange` — that pattern
+ *     caused full-page refresh loops (especially WebKit). Updates apply only
+ *     when the user clicks the banner → `applyUpdate()`.
+ *
+ * Dev:
+ *   - Do not register. Clear any leftover production SW on the same origin
+ *     so Vite HMR and an old worker do not fight over navigations.
  */
 
 let pendingRegistration: ServiceWorkerRegistration | null = null;
-let reloadingForUpdate = false;
+let applyingUpdate = false;
 
 function notifyUpdateReady(): void {
   window.dispatchEvent(new CustomEvent("pwa:update-ready"));
 }
 
+async function unregisterAllServiceWorkers(): Promise<void> {
+  const regs = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(regs.map((r) => r.unregister()));
+  if ("caches" in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+}
+
 /**
- * Force-reload to pick up the new SW's assets.
- *
- * Kept exported so UI code (e.g. an "Update available" toast) can still
- * trigger an immediate refresh even if `controllerchange` was missed.
+ * Apply a waiting Service Worker update and reload once.
+ * Only called from explicit UI actions (PwaUpdatePrompt).
  */
 export function applyUpdate(): void {
-  if (reloadingForUpdate) return;
-  reloadingForUpdate = true;
+  if (applyingUpdate) return;
+  applyingUpdate = true;
   if (pendingRegistration?.waiting) {
     pendingRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
   }
@@ -37,19 +44,22 @@ export function applyUpdate(): void {
 export async function registerSW(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
 
+  if (import.meta.env.DEV) {
+    try {
+      await unregisterAllServiceWorkers();
+    } catch (err) {
+      console.warn("[SW] Dev cleanup failed:", err);
+    }
+    return;
+  }
+
   try {
     const registration = await navigator.serviceWorker.register("/sw.js", {
       scope: "/",
     });
 
-    // When the SW that controls this page changes (i.e. the new one called
-    // skipWaiting + clientsClaim), reload so the new index.html / chunks
-    // become visible. Guarded so we only reload once per session.
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloadingForUpdate) return;
-      reloadingForUpdate = true;
-      window.location.reload();
-    });
+    // Intentionally no controllerchange → location.reload() listener.
+    // Chrome and Safari both pick up new assets via applyUpdate() instead.
 
     if (registration.waiting) {
       pendingRegistration = registration;
@@ -70,7 +80,12 @@ export async function registerSW(): Promise<void> {
       });
     });
 
-    setInterval(() => registration.update(), 60 * 60 * 1000);
+    setInterval(
+      () => {
+        void registration.update();
+      },
+      60 * 60 * 1000,
+    );
   } catch (err) {
     console.error("[SW] Registration failed:", err);
   }

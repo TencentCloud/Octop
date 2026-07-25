@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Image } from "antd";
 import { useTranslation } from "react-i18next";
 import { requestBlob } from "../../../../api/request";
+import { isNotFoundApiError } from "../../../../utils/apiError";
 import { asImageBlob } from "../../../../utils/toolMediaBlocks";
 import type { MediaKind } from "../utils/mediaKind";
 import styles from "../index.module.less";
@@ -64,8 +65,10 @@ function useWorkspaceBlob(
         }
         objectUrlRef.current = objUrl;
         setSrc(objUrl);
-      } catch {
-        if (!cancelled) setSrc("error");
+      } catch (err) {
+        if (!cancelled) {
+          setSrc(isNotFoundApiError(err) ? "missing" : "error");
+        }
       }
     };
 
@@ -112,6 +115,14 @@ function WorkspaceImage({
     refreshToken,
   );
 
+  if (src === "missing") {
+    return (
+      <MediaFallback
+        label={t("workspace.fileMaybeDeleted", "文件可能已被删除")}
+      />
+    );
+  }
+
   if (src === "error") {
     return (
       <MediaFallback label={t("workspace.mediaLoadFailed", "无法加载预览")} />
@@ -149,6 +160,14 @@ function WorkspaceVideo({
     [],
   );
   const src = useWorkspaceBlob(agentId, path, filename, toBlob, refreshToken);
+
+  if (src === "missing") {
+    return (
+      <MediaFallback
+        label={t("workspace.fileMaybeDeleted", "文件可能已被删除")}
+      />
+    );
+  }
 
   if (src === "error") {
     return (
@@ -193,6 +212,14 @@ function WorkspaceAudio({
     [],
   );
   const src = useWorkspaceBlob(agentId, path, filename, toBlob, refreshToken);
+
+  if (src === "missing") {
+    return (
+      <MediaFallback
+        label={t("workspace.fileMaybeDeleted", "文件可能已被删除")}
+      />
+    );
+  }
 
   if (src === "error") {
     return (

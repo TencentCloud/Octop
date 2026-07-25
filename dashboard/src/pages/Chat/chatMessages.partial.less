@@ -13,6 +13,8 @@
   overflow-y: auto;
   padding: 20px 0 24px;
   scrollbar-gutter: stable;
+  /* Disable browser scroll anchoring — fights follow-mode pins while
+     thinking/tool rows grow and causes visible up/down jitter. */
   overflow-anchor: none;
 
   /* Custom scrollbar for visual polish */
@@ -121,6 +123,7 @@
 }
 
 .messageListInner {
+  overflow-anchor: none;
   max-width: 960px;
   min-width: 280px;
   margin: 0 auto;
@@ -159,16 +162,15 @@
   display: flex;
   gap: 10px;
   margin-bottom: 16px;
-  animation: fadeIn 0.25s ease;
 }
 
-/* Grouped assistant turn: process summary + final answer as separate rows */
+/* Grouped assistant turn: process summary + final answer as separate rows.
+   No fadeIn — tool appends must not remount-replay an entrance animation. */
 .assistantTurn {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin-bottom: 16px;
-  animation: fadeIn 0.25s ease;
 
   .messageBubble {
     margin-bottom: 0;
@@ -180,7 +182,6 @@
   display: flex;
   flex-direction: column;
   margin-bottom: 16px;
-  animation: fadeIn 0.25s ease;
   border-radius: 12px;
   transition: background 0.2s ease;
 
@@ -214,6 +215,7 @@
 .userBubble {
   flex-direction: row-reverse;
   justify-content: flex-start;
+  animation: fadeIn 0.25s ease;
 
   /* User bubble content should shrink-to-fit, not stretch full width */
   .bubbleContent {

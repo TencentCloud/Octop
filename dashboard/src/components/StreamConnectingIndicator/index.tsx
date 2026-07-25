@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import styles from "./StreamConnectingIndicator.module.less";
 
-const MASCOT_TYPE = `${import.meta.env.BASE_URL}octop-mascot-type.webm`;
+const MASCOT_TYPE = `${import.meta.env.BASE_URL}octop-mascot-type.webp`;
 
 interface StreamConnectingIndicatorProps {
   /** Status line under the animation (e.g. 「连接中」). */
@@ -20,17 +20,12 @@ export default function StreamConnectingIndicator({
 }: StreamConnectingIndicatorProps) {
   return (
     <div className={styles.root}>
-      <video
+      <img
         className={styles.mascot}
         src={MASCOT_TYPE}
-        autoPlay
-        loop
-        muted
-        playsInline
+        alt=""
         aria-hidden
-        ref={(el) => {
-          if (el) el.muted = true;
-        }}
+        draggable={false}
       />
       <div className={styles.label}>{label}</div>
       {hint ? <div className={styles.hint}>{hint}</div> : null}

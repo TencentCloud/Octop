@@ -620,6 +620,15 @@ class AgentManager:
         if self._harness_manager is not None:
             self._harness_manager.clear_thread_model(agent_id, thread_id)
 
+    def resolve_fallback_model_ref(self) -> str | None:
+        """Settings active model when usable, else the first enabled catalog model."""
+        name, model_id = self._repos.settings_repo.get_active_model()
+        if name and model_id:
+            ref = f"{name}/{model_id}"
+            if self._providers.is_model_ref_usable(ref):
+                return ref
+        return self._providers.resolve_first_model_ref()
+
     # ------------------------------------------------------------------
     # Hot-reload — rebuild harness agents after config / provider changes
     # ------------------------------------------------------------------

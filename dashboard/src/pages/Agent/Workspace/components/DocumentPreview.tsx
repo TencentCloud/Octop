@@ -15,6 +15,7 @@ import { Button, Spin } from "antd";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { requestBlob } from "../../../../api/request";
+import { isNotFoundApiError } from "../../../../utils/apiError";
 import { withFromWorkspace } from "../../../../utils/fromWorkspace";
 import type { DocKind } from "../utils/docKind";
 import styles from "../index.module.less";
@@ -55,7 +56,7 @@ export default function DocumentPreview({
   const { t } = useTranslation();
   const [src, setSrc] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<"missing" | "error" | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const objectUrlRef = useRef<string | undefined>(undefined);
   const pptxViewerRef = useRef<{ destroy: () => void } | null>(null);
@@ -79,7 +80,7 @@ export default function DocumentPreview({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(false);
+    setError(null);
     setSrc("");
     pptxViewerRef.current?.destroy();
     pptxViewerRef.current = null;
@@ -161,9 +162,9 @@ export default function DocumentPreview({
           }
         }
         if (!cancelled) setLoading(false);
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setError(true);
+          setError(isNotFoundApiError(err) ? "missing" : "error");
           setLoading(false);
         }
       }
@@ -186,7 +187,9 @@ export default function DocumentPreview({
     return (
       <div className={styles.viewerEmpty}>
         <p style={{ color: "var(--fn-text-tertiary)", margin: 0 }}>
-          {t("workspace.mediaLoadFailed", "无法加载预览")}
+          {error === "missing"
+            ? t("workspace.fileMaybeDeleted", "文件可能已被删除")
+            : t("workspace.mediaLoadFailed", "无法加载预览")}
         </p>
       </div>
     );

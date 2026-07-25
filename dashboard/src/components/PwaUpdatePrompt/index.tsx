@@ -35,8 +35,7 @@ export default function PwaUpdatePrompt() {
   const handleUpdate = async () => {
     setVisible(false);
     // If running as a system service, trigger backend restart first.
-    // We don't await or block on it — applyUpdate() will reload the page
-    // via the service-worker controllerchange event anyway.
+    // applyUpdate() reloads once after posting SKIP_WAITING.
     if (serviceMode) {
       updateApi.restartService().catch(() => {});
     }

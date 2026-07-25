@@ -402,6 +402,7 @@
     "edit_file": "编辑文件",
     "execute": "执行",
     "current_time": "当前时间",
+    "write_todos": "编写计划",
     "task": "子智能体任务",
     "ls": "列出目录",
     "glob": "查找文件",

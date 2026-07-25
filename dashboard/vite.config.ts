@@ -13,6 +13,45 @@ if (typeof globalThis.crypto === "undefined") {
   });
 }
 
+/**
+ * Vite's `@vite/client` always opens a WebSocket. When that socket drops it
+ * does `waitForSuccessfulPing` → `location.reload()`. On Safari + listen
+ * port 80 (empty `location.port`) / LAN / `hmr: false`, the socket fails
+ * repeatedly and the whole SPA looks like it is "periodically refreshing".
+ *
+ * `server.hmr: false` does NOT disable this client (Vite still uses the WS
+ * for overlays / full-reload). Patch the disconnect path instead.
+ */
+function suppressViteDisconnectReload(): Plugin {
+  return {
+    name: "octop-suppress-vite-disconnect-reload",
+    apply: "serve",
+    enforce: "pre",
+    transform(code, id) {
+      const isViteClient =
+        id.includes("vite/dist/client/client.mjs") ||
+        id.includes("vite/dist/client/client.js") ||
+        /(?:^|\/)@vite\/client(?:\?|$)/.test(id);
+      if (!isViteClient) return;
+      if (!code.includes("server connection lost")) return;
+
+      let next = code.replace(
+        /await waitForSuccessfulPing\(([^)]*)\);\s*location\.reload\(\);/g,
+        "await waitForSuccessfulPing($1); console.warn('[vite] WS restored; reload suppressed');",
+      );
+      // Fallback if formatting differs across Vite versions.
+      if (next === code && code.includes("location.reload()")) {
+        next = code.replace(
+          /console\.log\(`\[vite\] server connection lost\. Polling for restart\.\.\.`\);[\s\S]*?location\.reload\(\);/,
+          'console.warn("[vite] server connection lost (reload suppressed)"); return;',
+        );
+      }
+      if (next === code) return;
+      return { code: next, map: null };
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // Empty = same-origin; frontend and backend served together, no hardcoded host.
@@ -22,6 +61,9 @@ export default defineConfig(({ mode }) => {
 
   const isProd = mode === "production";
   const analyze = env.ANALYZE === "true";
+  // Dev server listens on :80 (LAN / same-origin with some deployments).
+  // Must stay in sync with server.hmr.clientPort — see comment there.
+  const devServerPort = Number(process.env.VITE_DEV_PORT || 80);
 
   // Conditionally load the visualizer plugin (sync require to avoid async issues)
   const extraPlugins: Plugin[] = [];
@@ -127,14 +169,13 @@ export default defineConfig(({ mode }) => {
       MOBILE: false,
     },
     plugins: [
+      suppressViteDisconnectReload(),
       react(),
       VitePWA({
-        // autoUpdate: new SW activates as soon as it's installed. Combined with
-        // skipWaiting + clientsClaim below, a hard-reload (Ctrl+Shift+R) once is
-        // enough — every subsequent deploy is picked up automatically. Using
-        // "prompt" required users to confirm each update via a UI we never
-        // surfaced, so old assets kept getting served forever.
-        registerType: "autoUpdate",
+        // prompt: new SW stays in waiting until the user accepts via
+        // PwaUpdatePrompt → applyUpdate() → SKIP_WAITING. Avoid autoUpdate
+        // skipWaiting + page reload loops (especially Safari/WebKit).
+        registerType: "prompt",
         // SW registration is handled in sw-register.ts for full control.
         injectRegister: false,
         // Use public/manifest.json directly instead of auto-generating one.
@@ -166,13 +207,10 @@ export default defineConfig(({ mode }) => {
           navigateFallback: "/index.html",
           // Keep API, SSE and WebSocket requests completely outside SW control.
           navigateFallbackDenylist: [/^\/api/, /^\/ws/],
-          // Take control of all open tabs as soon as the SW activates so Chrome
-          // counts the SW as "controlling" the page and fires beforeinstallprompt.
+          // Take control on first activation so Chrome can fire beforeinstallprompt.
           clientsClaim: true,
-          // Activate the new SW immediately so stale assets are never served
-          // after a publish. Since chunks have no content-hash in their names,
-          // CacheFirst would return the old file forever without this.
-          skipWaiting: true,
+          // Do not activate updated workers until the user confirms (SKIP_WAITING).
+          skipWaiting: false,
           runtimeCaching: [
             {
               // JS/CSS chunks have no content-hash in their names (fixed names
@@ -239,8 +277,14 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: "0.0.0.0",
-      port: 80,
+      port: devServerPort,
       allowedHosts: true,
+      // NEVER default to `hmr: false` — Vite still injects @vite/client and a
+      // failed WS then triggers location.reload() loops. Pin clientPort so
+      // Safari on :80 does not build `ws://host:/` (empty location.port).
+      hmr: {
+        clientPort: Number(process.env.VITE_HMR_CLIENT_PORT || devServerPort),
+      },
       watch: {
         // Exclude large directories that do not need watching to reduce inotify fd usage.
         ignored: [
@@ -255,6 +299,7 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
+          // Only proxy API websockets — do not steal Vite's HMR upgrade on `/`.
           ws: true,
         },
       },

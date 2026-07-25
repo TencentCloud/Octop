@@ -43,6 +43,7 @@ describe("useAutoScroll", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -92,7 +93,11 @@ describe("useAutoScroll", () => {
   });
 
   it("resumes follow mode when scrollToBottom is called", () => {
-    const container = makeScroller({ scrollTop: 400 });
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 400,
+    });
     const containerRef = { current: container };
     const endRef = { current: document.createElement("div") };
     endRef.current.scrollIntoView = vi.fn();
@@ -113,6 +118,112 @@ describe("useAutoScroll", () => {
     });
 
     expect(result.current.showScrollBtn).toBe(false);
-    expect(endRef.current.scrollIntoView).toHaveBeenCalled();
+    expect(container.scrollTop).toBe(1000);
+  });
+
+  it("enters free mode when scroll moves clearly away from the bottom", () => {
+    vi.useFakeTimers();
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 800,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    // Mount/follow scroll arms a short programmatic guard — expire it first.
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    act(() => {
+      container.scrollTop = 500;
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    expect(result.current.showScrollBtn).toBe(true);
+    expect(result.current.isFollowMode).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("does not leave follow mode when scrollTop dips but still near bottom", () => {
+    vi.useFakeTimers();
+    // At bottom: scrollHeight 1000, client 200 → bottom starts at 800.
+    // A 20px upward nudge (780) is still within AT_BOTTOM_THRESHOLD (80).
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 800,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    act(() => {
+      container.scrollTop = 780;
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    expect(result.current.showScrollBtn).toBe(false);
+    expect(result.current.isFollowMode).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("pins with scrollTop assignment on instant follow scrolls", () => {
+    const container = makeScroller({
+      scrollHeight: 1200,
+      clientHeight: 200,
+      scrollTop: 700,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    act(() => {
+      result.current.scrollToBottom(true);
+    });
+
+    expect(container.scrollTop).toBe(1200);
+    expect(endRef.current.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("skips instant pin when already exactly at the bottom", () => {
+    // gap === 0 → should not rewrite scrollTop.
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 800,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    const before = container.scrollTop;
+    act(() => {
+      result.current.scrollToBottom(true);
+    });
+
+    expect(container.scrollTop).toBe(before);
   });
 });

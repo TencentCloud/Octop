@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Select, message, Tooltip, Segmented } from "antd";
-import { Pencil, Save, ArrowDownToLine, RefreshCw } from "lucide-react";
+import { Pencil, Save, ArrowDownToLine, RefreshCw, FileX } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { request, requestBlob } from "../../../api/request";
+import { probeAuthResource, request, requestBlob } from "../../../api/request";
+import { isNotFoundApiError } from "../../../utils/apiError";
 import FileViewer from "../../Agent/Workspace/components/FileViewer";
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
+import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 import {
   getPreviewKind,
   previewNeedsFillLayout,
@@ -80,6 +82,7 @@ export default function FilePanelContent({
   const [editMode, setEditMode] = useState(false);
   const [previewMode, setPreviewMode] = useState(true);
   const [fileLoading, setFileLoading] = useState(false);
+  const [fileMissing, setFileMissing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
 
@@ -97,11 +100,16 @@ export default function FilePanelContent({
     "";
 
   const docKind = resolvedPath ? getDocKind(resolvedPath) : null;
+  const mediaKind = resolvedPath ? getMediaKind(resolvedPath) : null;
   const previewKind = resolvedPath ? getPreviewKind(resolvedPath) : null;
   const isText = resolvedPath ? isProbablyText(resolvedPath) : false;
-  const showEditButton = isText;
+  const showEditButton = isText && !fileMissing;
   const showPreviewToggle =
-    isText && previewKind !== null && !editMode && content !== "";
+    isText &&
+    previewKind !== null &&
+    !editMode &&
+    content !== "" &&
+    !fileMissing;
 
   const apiFilePath = useMemo(
     () => panelApiRequestPath(resolvedPath),
@@ -113,33 +121,70 @@ export default function FilePanelContent({
     setEditMode(false);
     setPreviewMode(defaultPreviewMode(resolvedPath));
     setContent("");
-    if (!isText) return;
+    setFileMissing(false);
+
     let cancelled = false;
     setFileLoading(true);
-    request<{ content: string }>(
-      `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
-        apiFilePath,
-      )}`,
-    )
-      .then((r) => {
-        if (!cancelled) setContent(r.content);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          message.error(
-            (err instanceof Error ? err.message : String(err)) ||
-              t("workspace.readFailed", "读取失败"),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setFileLoading(false);
-      });
+
+    const finishOk = () => {
+      if (!cancelled) {
+        setFileMissing(false);
+        setFileLoading(false);
+      }
+    };
+    const finishError = (err: unknown) => {
+      if (cancelled) return;
+      setFileLoading(false);
+      if (isNotFoundApiError(err)) {
+        setFileMissing(true);
+        return;
+      }
+      message.error(
+        (err instanceof Error ? err.message : String(err)) ||
+          t("workspace.readFailed", "读取失败"),
+      );
+    };
+
+    // Text: load content. Unknown/binary: light existence probe (no body buffer).
+    // Media/doc: viewers fetch themselves and surface 404 locally.
+    if (isText) {
+      request<{ content: string }>(
+        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
+          apiFilePath,
+        )}`,
+      )
+        .then((r) => {
+          if (!cancelled) {
+            setContent(r.content);
+            finishOk();
+          }
+        })
+        .catch(finishError);
+    } else if (mediaKind || docKind) {
+      finishOk();
+    } else {
+      probeAuthResource(
+        `/agents/${agentId}/workspace/download?path=${encodeURIComponent(
+          apiFilePath,
+        )}`,
+      )
+        .then(() => finishOk())
+        .catch(finishError);
+    }
+
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedPath, apiFilePath, agentId, isText, refreshToken]);
+  }, [
+    resolvedPath,
+    apiFilePath,
+    agentId,
+    isText,
+    mediaKind,
+    docKind,
+    refreshToken,
+  ]);
 
   const refresh = useCallback(() => {
     setEditMode(false);
@@ -182,6 +227,11 @@ export default function FilePanelContent({
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (err: unknown) {
+      if (isNotFoundApiError(err)) {
+        setFileMissing(true);
+        message.warning(t("workspace.fileMaybeDeleted", "文件可能已被删除"));
+        return;
+      }
       message.error(
         (err instanceof Error ? err.message : String(err)) ||
           t("workspace.downloadFailed", "下载失败"),
@@ -190,15 +240,16 @@ export default function FilePanelContent({
   };
 
   const bodyFill =
-    editMode ||
-    docKind !== null ||
-    (previewMode && previewNeedsFillLayout(previewKind));
+    !fileMissing &&
+    (editMode ||
+      docKind !== null ||
+      (previewMode && previewNeedsFillLayout(previewKind)));
 
   return (
     <div className={styles.filePanelBody}>
       <div className={styles.fileModalToolbar}>
         <div className={styles.fileModalToolbarLeft}>
-          {normalizedPaths.length > 1 && (
+          {normalizedPaths.length > 1 ? (
             <Select
               size="small"
               value={resolvedPath}
@@ -207,9 +258,15 @@ export default function FilePanelContent({
               aria-label={t("chat.fileSwitch", "切换文件")}
               options={normalizedPaths.map((p) => ({
                 value: p,
-                label: p.split("/").filter(Boolean).pop() || p,
+                label: p,
               }))}
             />
+          ) : (
+            resolvedPath && (
+              <span className={styles.fileModalName} title={resolvedPath}>
+                {resolvedPath}
+              </span>
+            )
           )}
         </div>
         <div className={styles.fileModalActions}>
@@ -240,6 +297,7 @@ export default function FilePanelContent({
               type="button"
               className={styles.fileModalIconBtn}
               onClick={() => void download()}
+              disabled={fileMissing}
               aria-label={t("common.download")}
             >
               <ArrowDownToLine size={16} strokeWidth={2} />
@@ -272,18 +330,32 @@ export default function FilePanelContent({
           bodyFill ? styles.fileModalBodyFill : ""
         }`}
       >
-        {resolvedPath && (
-          <FileViewer
-            agentId={agentId}
-            path={resolvedPath}
-            fromWorkspace={false}
-            editMode={editMode}
-            value={content}
-            onChange={setContent}
-            fileLoading={fileLoading}
-            previewMode={previewMode}
-            refreshToken={refreshToken}
-          />
+        {fileMissing ? (
+          <div className={styles.fileMissingState} role="status">
+            <FileX
+              size={40}
+              strokeWidth={1.5}
+              className={styles.fileMissingIcon}
+              aria-hidden
+            />
+            <p className={styles.fileMissingTitle}>
+              {t("workspace.fileMaybeDeleted", "文件可能已被删除")}
+            </p>
+          </div>
+        ) : (
+          resolvedPath && (
+            <FileViewer
+              agentId={agentId}
+              path={resolvedPath}
+              fromWorkspace={false}
+              editMode={editMode}
+              value={content}
+              onChange={setContent}
+              fileLoading={fileLoading}
+              previewMode={previewMode}
+              refreshToken={refreshToken}
+            />
+          )
         )}
       </div>
     </div>

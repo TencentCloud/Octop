@@ -402,6 +402,7 @@
     "edit_file": "Edit file",
     "execute": "Execute",
     "current_time": "Current time",
+    "write_todos": "Write plan",
     "task": "Sub-agent task",
     "ls": "List directory",
     "glob": "Find files",

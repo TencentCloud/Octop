@@ -76,8 +76,19 @@
   flex: 1;
 }
 
+.fileModalName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  color: var(--fn-text-primary);
+}
+
 .fileModalSelect {
-  max-width: 320px;
+  max-width: min(100%, 480px);
 }
 
 .fileModalActions {
@@ -130,6 +141,30 @@
   display: flex;
   flex-direction: column;
   padding: 0;
+}
+
+.fileMissingState {
+  flex: 1;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.fileMissingIcon {
+  color: var(--fn-text-tertiary);
+  margin-bottom: 4px;
+}
+
+.fileMissingTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fn-text-secondary);
 }
 
 .agentProfileBtnWrap {

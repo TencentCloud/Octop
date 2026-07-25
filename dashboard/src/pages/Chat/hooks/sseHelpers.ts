@@ -92,6 +92,8 @@ export interface SessionStreamState {
   historyHasMore: boolean;
   historyNextOffset: number;
   historyLoadingMore: boolean;
+  /** True after the first history fetch finished (even if empty). */
+  historyHydrated: boolean;
   listeners: Set<() => void>;
   /** Cached snapshot reference (updated on every notify). */
   _snapshot: SessionSnapshot;
@@ -107,4 +109,5 @@ export interface SessionSnapshot {
   historyHasMore: boolean;
   historyLoadingMore: boolean;
   historyNextOffset: number;
+  historyHydrated: boolean;
 }

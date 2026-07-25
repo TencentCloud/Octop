@@ -84,11 +84,20 @@ async def cmd_compact(
         await sink.text(tr("compact.unavailable", lang))
         return
 
-    model_override = d.get_thread_model_override(ctx, tid)
+    # Prefer the model selected in the chat composer for this turn, then a
+    # sticky thread /model override, then settings active / first usable model.
+    override = d.get_thread_model_override(ctx, tid)
+    if not isinstance(override, str) or not override.strip():
+        override = None
+    model_ref = ctx.model_ref or override or ctx.agent_manager.resolve_fallback_model_ref()
     try:
-        result = await compact(tid, model=model_override)
+        result = await compact(tid, model=model_ref)
     except Exception:
-        logger.exception("compact: acompact_conversation failed thread=%s", tid)
+        logger.exception(
+            "compact: acompact_conversation failed thread=%s model=%s",
+            tid,
+            model_ref,
+        )
         await sink.text(tr("compact.failed", lang))
         return
 
