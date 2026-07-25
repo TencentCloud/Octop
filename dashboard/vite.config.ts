@@ -61,9 +61,9 @@ export default defineConfig(({ mode }) => {
 
   const isProd = mode === "production";
   const analyze = env.ANALYZE === "true";
-  // Dev server listens on :80 (LAN / same-origin with some deployments).
-  // Must stay in sync with server.hmr.clientPort — see comment there.
-  const devServerPort = Number(process.env.VITE_DEV_PORT || 80);
+  // Dev server defaults to Vite's :5173. Override with VITE_DEV_PORT (e.g. 80
+  // for LAN / same-origin setups). Must stay in sync with server.hmr.clientPort.
+  const devServerPort = Number(process.env.VITE_DEV_PORT || 5173);
 
   // Conditionally load the visualizer plugin (sync require to avoid async issues)
   const extraPlugins: Plugin[] = [];
@@ -281,7 +281,8 @@ export default defineConfig(({ mode }) => {
       allowedHosts: true,
       // NEVER default to `hmr: false` — Vite still injects @vite/client and a
       // failed WS then triggers location.reload() loops. Pin clientPort so
-      // Safari on :80 does not build `ws://host:/` (empty location.port).
+      // Safari on privileged ports (e.g. :80 via VITE_DEV_PORT) does not build
+      // `ws://host:/` when location.port is empty.
       hmr: {
         clientPort: Number(process.env.VITE_HMR_CLIENT_PORT || devServerPort),
       },

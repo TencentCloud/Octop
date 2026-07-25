@@ -886,7 +886,7 @@ export default function AdminUsersPage() {
         open={agentDrawerUser !== null}
         onClose={() => setAgentDrawerUser(null)}
         width={400}
-        destroyOnClose
+        destroyOnHidden
       >
         <Spin spinning={agentsLoading}>
           {drawerAgents.length === 0 ? (

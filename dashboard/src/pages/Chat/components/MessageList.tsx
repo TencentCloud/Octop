@@ -348,7 +348,7 @@ export default function MessageList(props: MessageListProps) {
       const blocksLen =
         m.contentBlocks?.reduce((n, b) => n + b.content.length, 0) ?? 0;
       const toolArgs = m.toolData?.arguments?.length ?? 0;
-      const toolResult = m.toolData?.result?.length ?? 0;
+      const toolResult = m.toolData?.output?.length ?? 0;
       token += `|${m.id}:${m.status}:${m.content.length}:${blocksLen}:${toolArgs}:${toolResult}`;
     }
     return token;

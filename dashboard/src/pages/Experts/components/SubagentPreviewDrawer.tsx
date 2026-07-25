@@ -58,7 +58,7 @@ export default function SubagentPreviewDrawer({
       title={title}
       width={isMobile ? "100%" : 480}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       styles={{
         body: isMobile
           ? {

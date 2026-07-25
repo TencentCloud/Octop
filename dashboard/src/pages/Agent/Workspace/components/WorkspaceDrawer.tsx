@@ -1094,7 +1094,7 @@ export default function WorkspaceDrawer({
           overflow: "hidden",
         },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <Modal
         title={t("workspace.archiveImportTitle")}

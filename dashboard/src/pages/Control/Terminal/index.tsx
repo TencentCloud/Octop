@@ -245,9 +245,14 @@ function ThemeColorDot({ color, size = 14 }: { color: string; size?: number }) {
 interface TerminalPageProps {
   /** When true the page is currently visible; used to defer first session creation. */
   isVisible?: boolean;
+  /** Hide standalone page chrome when hosted inside Workbench. */
+  embedded?: boolean;
 }
 
-export default function TerminalPage({ isVisible = true }: TerminalPageProps) {
+export default function TerminalPage({
+  isVisible = true,
+  embedded = false,
+}: TerminalPageProps) {
   const { t } = useTranslation();
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
@@ -578,24 +583,30 @@ export default function TerminalPage({ isVisible = true }: TerminalPageProps) {
     .join(" ");
 
   return (
-    <div className={styles.terminalPage}>
-      <div className={styles.header}>
-        <div className={styles.headerInfo}>
-          <div className={styles.title}>{t("terminal.title")}</div>
-          <p className={styles.description}>{t("terminal.description")}</p>
+    <div
+      className={`${styles.terminalPage}${
+        embedded ? ` ${styles.terminalPageEmbedded}` : ""
+      }`}
+    >
+      {!embedded && (
+        <div className={styles.header}>
+          <div className={styles.headerInfo}>
+            <div className={styles.title}>{t("terminal.title")}</div>
+            <p className={styles.description}>{t("terminal.description")}</p>
+          </div>
+          <Button
+            type={isPanelOpen ? "primary" : "default"}
+            danger={!isPanelOpen}
+            icon={<Bot size={16} />}
+            className={
+              isPanelOpen ? styles.headerAiBtnActive : styles.headerAiBtn
+            }
+            onClick={() => setIsPanelOpen((v) => !v)}
+          >
+            {t("terminal.ai.togglePanel")}
+          </Button>
         </div>
-        <Button
-          type={isPanelOpen ? "primary" : "default"}
-          danger={!isPanelOpen}
-          icon={<Bot size={16} />}
-          className={
-            isPanelOpen ? styles.headerAiBtnActive : styles.headerAiBtn
-          }
-          onClick={() => setIsPanelOpen((v) => !v)}
-        >
-          {t("terminal.ai.togglePanel")}
-        </Button>
-      </div>
+      )}
 
       <div className={contentAreaClass}>
         <div className={tabsCardClass}>

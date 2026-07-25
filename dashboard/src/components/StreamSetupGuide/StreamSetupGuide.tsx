@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button } from "antd";
+import { Button, Tooltip } from "antd";
 
 import styles from "./StreamSetupGuide.module.less";
 
@@ -9,13 +9,14 @@ export interface SetupGuideStep {
 }
 
 export interface SetupGuideAction {
-  label: string;
+  label: ReactNode;
   onClick: () => void;
   loading?: boolean;
   disabled?: boolean;
   icon?: ReactNode;
   type?: "primary" | "default";
   danger?: boolean;
+  title?: string;
 }
 
 interface StreamSetupGuideProps {
@@ -25,6 +26,25 @@ interface StreamSetupGuideProps {
   steps: SetupGuideStep[];
   primaryAction?: SetupGuideAction;
   secondaryAction?: SetupGuideAction;
+  /** Optional third action (e.g. uninstall) rendered after the main pair. */
+  extraAction?: SetupGuideAction;
+}
+
+function ActionButton({ action }: { action: SetupGuideAction }) {
+  const button = (
+    <Button
+      type={action.type ?? "primary"}
+      danger={action.danger}
+      icon={action.icon}
+      loading={action.loading}
+      disabled={action.disabled}
+      onClick={action.onClick}
+    >
+      {action.label}
+    </Button>
+  );
+  if (!action.title) return button;
+  return <Tooltip title={action.title}>{button}</Tooltip>;
 }
 
 export default function StreamSetupGuide({
@@ -34,7 +54,10 @@ export default function StreamSetupGuide({
   steps,
   primaryAction,
   secondaryAction,
+  extraAction,
 }: StreamSetupGuideProps) {
+  const hasActions = primaryAction || secondaryAction || extraAction;
+
   return (
     <div className={styles.wrap}>
       <div className={styles.card}>
@@ -58,32 +81,11 @@ export default function StreamSetupGuide({
             ))}
           </ol>
         ) : null}
-        {primaryAction || secondaryAction ? (
+        {hasActions ? (
           <div className={styles.actions}>
-            {primaryAction ? (
-              <Button
-                type={primaryAction.type ?? "primary"}
-                danger={primaryAction.danger}
-                icon={primaryAction.icon}
-                loading={primaryAction.loading}
-                disabled={primaryAction.disabled}
-                onClick={primaryAction.onClick}
-              >
-                {primaryAction.label}
-              </Button>
-            ) : null}
-            {secondaryAction ? (
-              <Button
-                type={secondaryAction.type ?? "default"}
-                danger={secondaryAction.danger}
-                icon={secondaryAction.icon}
-                loading={secondaryAction.loading}
-                disabled={secondaryAction.disabled}
-                onClick={secondaryAction.onClick}
-              >
-                {secondaryAction.label}
-              </Button>
-            ) : null}
+            {primaryAction ? <ActionButton action={primaryAction} /> : null}
+            {secondaryAction ? <ActionButton action={secondaryAction} /> : null}
+            {extraAction ? <ActionButton action={extraAction} /> : null}
           </div>
         ) : null}
       </div>

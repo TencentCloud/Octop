@@ -563,7 +563,7 @@ export default function ConversationRecords({
         width={isMobile ? "100%" : 480}
         placement="right"
         onClose={closeDrawer}
-        destroyOnClose
+        destroyOnHidden
         className={styles.conversationDrawer}
       >
         {selectedThread ? (

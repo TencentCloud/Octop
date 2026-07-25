@@ -296,17 +296,19 @@ def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:
     if is_allowed_host_temp_path(resolved):
         return True
     ws = workspace.resolve()
-    for prefix in (
-        ws / "outbound",
-        ws / "inbound",
-        legacy_harness_screenshots_dir().resolve(),
-    ):
-        try:
-            resolved.relative_to(prefix)
-            return True
-        except ValueError:
-            continue
-    return False
+    # Any file already inside the agent workspace is previewable (same rule as
+    # host download allowlist). Restricting to outbound/inbound forced a copy
+    # into outbound/ while preview still pointed at the original path.
+    try:
+        resolved.relative_to(ws)
+        return True
+    except ValueError:
+        pass
+    try:
+        resolved.relative_to(legacy_harness_screenshots_dir().resolve())
+        return True
+    except ValueError:
+        return False
 
 
 _DENIED_HOST_DOWNLOAD_PREFIXES = (
@@ -517,6 +519,20 @@ async def ensure_workspace_media_path(
             data = await _download_via_workspace(workspace, abs_path)
         if data is not None:
             return existing
+
+    # Already under this agent workspace (e.g. root-level screenshot.png) —
+    # reuse the relative key; do not duplicate into outbound/.
+    if _is_host_absolute(abs_path):
+        try:
+            rel = Path(abs_path).resolve().relative_to(workspace.workspace_dir.resolve())
+            rel_s = rel.as_posix()
+            data = await _download_via_workspace(workspace, rel_s)
+            if data is None:
+                data = await _download_via_workspace(workspace, abs_path)
+            if data is not None:
+                return rel_s
+        except ValueError:
+            pass
 
     if not _is_host_absolute(abs_path):
         return existing

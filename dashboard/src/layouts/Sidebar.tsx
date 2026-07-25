@@ -18,8 +18,6 @@ import {
   Database,
   Users as UsersIcon,
   Activity,
-  TerminalSquare,
-  Globe,
   Share2,
   Sparkles,
   Puzzle,
@@ -30,6 +28,7 @@ import {
   Bot,
   ChevronDown,
   Shield,
+  PanelsTopLeft,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useUserRole } from "../hooks/useUserRole";
@@ -183,16 +182,10 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           labelKey: "nav.connectors",
         },
         {
-          key: "terminal",
-          path: "/terminal",
-          icon: <TerminalSquare size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.terminal",
-        },
-        {
-          key: "remote-browser",
-          path: "/remote-browser",
-          icon: <Globe size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.remoteBrowser",
+          key: "workbench",
+          path: "/workbench",
+          icon: <PanelsTopLeft size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.workbench",
         },
         {
           key: "remote-desktop",

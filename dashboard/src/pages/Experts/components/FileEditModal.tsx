@@ -96,7 +96,7 @@ export default function FileEditModal({
       okText={t("common.save")}
       cancelText={t("common.cancel")}
       confirmLoading={saving}
-      destroyOnClose
+      destroyOnHidden
     >
       {loading ? (
         <div

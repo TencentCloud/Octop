@@ -459,7 +459,7 @@ export default function AgentProfileDrawer({
           rootClassName={styles.mobileDrawer}
           styles={mobileDrawerStyles}
           onClose={handleDrawerClose}
-          destroyOnClose
+          destroyOnHidden
         >
           {viewingFile ? renderFileContent() : renderProfileContent()}
         </Drawer>
@@ -488,7 +488,7 @@ export default function AgentProfileDrawer({
         title={t("chat.agentProfile.title")}
         width={420}
         onClose={onClose}
-        destroyOnClose
+        destroyOnHidden
       >
         {renderProfileContent()}
       </Drawer>
@@ -498,7 +498,7 @@ export default function AgentProfileDrawer({
         title={viewingFile ? displayName(viewingFile) : ""}
         width={480}
         onClose={closeFileView}
-        destroyOnClose
+        destroyOnHidden
       >
         {renderFileContent()}
       </Drawer>

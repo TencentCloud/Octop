@@ -225,7 +225,7 @@ export default function MBTITest({
       footer={null}
       width={560}
       styles={{ body: { padding: 0, minHeight: 400 } }}
-      destroyOnClose
+      destroyOnHidden
       closable={stage !== "questions"}
     >
       {stage === "intro" && (

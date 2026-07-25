@@ -294,7 +294,20 @@ function BookmarkBar({
 
 // ---------- Main Page ----------
 
-export default function RemoteBrowserPage() {
+interface RemoteBrowserPageProps {
+  /** Hide standalone PageShell chrome when hosted inside Workbench. */
+  embedded?: boolean;
+  /**
+   * When false (hidden workbench tab / left workbench), disconnect the live
+   * stream without clearing the session so it can resume when visible again.
+   */
+  isVisible?: boolean;
+}
+
+export default function RemoteBrowserPage({
+  embedded = false,
+  isVisible = true,
+}: RemoteBrowserPageProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const { activeAgent, activeAgentId, agents } = useAgent();
@@ -526,9 +539,27 @@ export default function RemoteBrowserPage() {
 
   useEffect(() => {
     void refreshEnv();
-    void refreshSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pause/resume live stream with workbench visibility. Keep session metadata
+  // so returning to the tab can reconnect without forcing a full relaunch.
+  useEffect(() => {
+    if (!isVisible) {
+      disconnect();
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+      return;
+    }
+    // Only resume when the user left the stream open (or deep-linked).
+    if (profileIdRef.current && (threadFromUrl || readStreamActive())) {
+      startStream(profileIdRef.current, "");
+      return;
+    }
+    void refreshSessions();
+  }, [isVisible, disconnect, startStream, refreshSessions, threadFromUrl]);
 
   // --- install / uninstall ---
 
@@ -1241,86 +1272,62 @@ export default function RemoteBrowserPage() {
         >
           {t("remoteBrowser.fullscreen", "全屏")}
         </Button>
+        {session ? (
+          <Button
+            block
+            danger
+            icon={<Square size={14} />}
+            onClick={() => {
+              closeControlsDrawer();
+              closeSession();
+            }}
+          >
+            {t("remoteBrowser.stop", "停止")}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
 
-  return (
-    <PageShell
-      title={t("pageShell.browser.title", "浏览器 AI+")}
-      subtitle={t(
-        "pageShell.browser.subtitle",
-        "基于 Chromium 的无头浏览器会话",
-      )}
-      fill
-      actions={
-        <Space size={8} wrap>
-          <Tooltip
-            title={t(
-              "remoteBrowser.checkInstallTip",
-              "检查 Playwright 浏览器是否已安装，未安装则可安装",
-            )}
-          >
-            <Button
-              size={isMobile ? "small" : "middle"}
-              icon={<Globe size={14} />}
-              onClick={openEnvModal}
-              type={envReady ? "default" : "primary"}
-            >
-              {t("remoteBrowser.checkInstallShort", "检查")}
-              {envReady && !envLoading && (
-                <CheckCircle2
-                  size={14}
-                  style={{
-                    marginLeft: 4,
-                    color: "var(--fn-color-success,#52c41a)",
-                  }}
-                />
-              )}
-            </Button>
-          </Tooltip>
-          {session ? (
-            <Tooltip title={t("remoteBrowser.stop", "停止")}>
-              <Button
-                size={isMobile ? "small" : "middle"}
-                danger
-                icon={<Square size={14} />}
-                onClick={closeSession}
-                aria-label={t("remoteBrowser.stop", "停止")}
-              >
-                {!isMobile && t("remoteBrowser.stop", "停止")}
-              </Button>
-            </Tooltip>
-          ) : (
-            <Tooltip
-              title={
-                envReady
-                  ? undefined
-                  : t(
-                      "remoteBrowser.startBrowserDisabled",
-                      "请先完成浏览器环境检查与安装",
-                    )
-              }
-            >
-              <Button
-                size={isMobile ? "small" : "middle"}
-                type="primary"
-                icon={<Play size={14} />}
-                loading={creating}
-                disabled={!envReady}
-                onClick={() => void createSession()}
-                aria-label={t("remoteBrowser.startBrowser", "启动浏览器")}
-              >
-                {!isMobile &&
-                  (creating
-                    ? t("remoteBrowser.ai.startingBrowser", "正在启动...")
-                    : t("remoteBrowser.startBrowser", "启动浏览器"))}
-              </Button>
-            </Tooltip>
-          )}
-        </Space>
+  const checkAction = {
+    label: (
+      <>
+        {t("remoteBrowser.checkInstallShort", "检查")}
+        {envReady && !envLoading ? (
+          <CheckCircle2
+            size={14}
+            style={{
+              marginLeft: 4,
+              color: "var(--fn-color-success,#52c41a)",
+              verticalAlign: "-2px",
+            }}
+          />
+        ) : null}
+      </>
+    ),
+    onClick: openEnvModal,
+    icon: <Globe size={14} />,
+    type: "default" as const,
+    title: t(
+      "remoteBrowser.checkInstallTip",
+      "检查 Playwright 浏览器是否已安装，未安装则可安装",
+    ),
+  };
+
+  const uninstallAction = envStatus?.playwright_chromium
+    ? {
+        label: t("remoteBrowser.uninstall", "卸载"),
+        onClick: handleUninstall,
+        icon: <Trash2 size={14} />,
+        loading: uninstalling,
+        disabled: uninstalling || envLoading,
+        danger: true,
+        type: "default" as const,
       }
-    >
+    : undefined;
+
+  const pageBody = (
+    <>
       <Modal
         title={t("remoteBrowser.checkInstall", "检查浏览器")}
         open={envModalOpen}
@@ -1328,7 +1335,7 @@ export default function RemoteBrowserPage() {
         footer={envModalFooter()}
         width={isMobile ? "100%" : 520}
         style={isMobile ? { top: 20, maxWidth: "100vw" } : undefined}
-        destroyOnClose
+        destroyOnHidden
         maskClosable={installPhase !== "installing"}
       >
         {renderEnvModalContent()}
@@ -1348,7 +1355,7 @@ export default function RemoteBrowserPage() {
         onClose={closeControlsDrawer}
         height={isMobile ? "min(70vh, 520px)" : undefined}
         width={isMobile ? "100%" : 320}
-        destroyOnClose={false}
+        destroyOnHidden={false}
         styles={{ body: { padding: "12px 16px 16px" } }}
       >
         {renderControlsDrawer()}
@@ -1418,6 +1425,17 @@ export default function RemoteBrowserPage() {
                             : t("skillRecordGuide.buttonLabel", "技能录制")}
                         </Button>
                       </Tooltip>
+                      <Tooltip title={t("remoteBrowser.stop", "停止")}>
+                        <Button
+                          size="small"
+                          danger
+                          icon={<Square size={14} />}
+                          onClick={closeSession}
+                          aria-label={t("remoteBrowser.stop", "停止")}
+                        >
+                          {isMobile ? null : t("remoteBrowser.stop", "停止")}
+                        </Button>
+                      </Tooltip>
                     </>
                   }
                   overlay={
@@ -1474,7 +1492,7 @@ export default function RemoteBrowserPage() {
                             {
                               label: t(
                                 "remoteBrowser.startBrowserIdleStep1",
-                                "点击右上角「启动浏览器」建立会话",
+                                "点击下方「启动浏览器」建立会话",
                               ),
                             },
                             {
@@ -1519,24 +1537,10 @@ export default function RemoteBrowserPage() {
                             disabled: !envReady,
                             icon: <Play size={14} />,
                           }
-                        : {
-                            label: t("remoteBrowser.checkInstallShort", "检查"),
-                            onClick: openEnvModal,
-                            icon: <Globe size={14} />,
-                          }
+                        : checkAction
                     }
-                    secondaryAction={
-                      envStatus?.playwright_chromium
-                        ? {
-                            label: t("remoteBrowser.uninstall", "卸载"),
-                            onClick: handleUninstall,
-                            icon: <Trash2 size={14} />,
-                            loading: uninstalling,
-                            disabled: uninstalling || envLoading,
-                            danger: true,
-                          }
-                        : undefined
-                    }
+                    secondaryAction={envReady ? checkAction : uninstallAction}
+                    extraAction={envReady ? uninstallAction : undefined}
                   />
                 )}
               </div>
@@ -1579,6 +1583,23 @@ export default function RemoteBrowserPage() {
           )}
         </div>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className={styles.embeddedRoot}>{pageBody}</div>;
+  }
+
+  return (
+    <PageShell
+      title={t("pageShell.browser.title", "浏览器 AI+")}
+      subtitle={t(
+        "pageShell.browser.subtitle",
+        "基于 Chromium 的无头浏览器会话",
+      )}
+      fill
+    >
+      {pageBody}
     </PageShell>
   );
 }

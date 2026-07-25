@@ -1023,7 +1023,7 @@ export default function RemoteDesktopPage() {
         footer={envModalFooter()}
         width={isMobile ? "100%" : 560}
         style={isMobile ? { top: 20, maxWidth: "100vw" } : undefined}
-        destroyOnClose
+        destroyOnHidden
         maskClosable={installPhase !== "installing"}
       >
         {renderEnvModalContent()}
@@ -1258,7 +1258,7 @@ export default function RemoteDesktopPage() {
         onClose={closeControlsDrawer}
         width={isMobile ? "100%" : 360}
         height={isMobile ? "min(75vh, 560px)" : undefined}
-        destroyOnClose={false}
+        destroyOnHidden={false}
         styles={{ body: { padding: "12px 16px 16px" } }}
       >
         {renderControlsContent()}

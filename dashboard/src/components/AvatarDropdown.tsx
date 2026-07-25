@@ -202,7 +202,7 @@ export default function AvatarDropdown({
         width={400}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <Button
             danger

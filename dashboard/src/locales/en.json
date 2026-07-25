@@ -117,6 +117,7 @@
     "cronJobs": "Cron Jobs",
     "terminal": "Terminal AI+",
     "remoteBrowser": "Browser AI+",
+    "workbench": "Workbench",
     "remoteDesktop": "Remote Desktop",
     "agent": "Agent",
     "skills": "Skills",
@@ -559,6 +560,20 @@
     "processSummaryToolsOnly": "Called {{tools}} tools",
     "processSummaryThinkingOnly": "{{thinking}} deep thoughts",
     "send": "Send",
+    "stop": "Stop",
+    "queue": {
+      "label": "Queued messages",
+      "action": "Queue",
+      "remove": "Remove from queue",
+      "reclaim": "Edit queued message",
+      "reclaimOverwriteTitle": "Replace current draft?",
+      "reclaimOverwrite": "The composer already has text or attachments. Taking this queued message back will replace them.",
+      "full": "Queue is full (max 10). Remove one before adding another.",
+      "attachmentsOnly": "{{count}} attachment(s)",
+      "attachmentCount": "{{count}} attachment(s)",
+      "emptyItem": "Queued message",
+      "flushFailed": "Couldn't send the queued message; it's back in the queue."
+    },
     "agentNoDescription": "No description",
     "noSessionsYet": "Send a message to start chatting",
     "agentNotRunning": "This expert is not enabled",
@@ -2300,6 +2315,14 @@
     "readOnlyHint": "Read-only — This is preset content. After applying, you can edit it in \"Current Scene\".",
     "fileCount": "{{count}} files"
   },
+  "workbench": {
+    "title": "Workbench",
+    "description": "Terminal and browser surfaces for live interaction with your agents",
+    "tabs": {
+      "terminal": "Terminal",
+      "browser": "Browser"
+    }
+  },
   "terminal": {
     "title": "Terminal AI+",
     "description": "Run an interactive shell terminal in the browser",
@@ -2432,7 +2455,7 @@
     "startBrowser": "Launch Browser",
     "startBrowserTitle": "Launch remote browser",
     "startBrowserDesc": "Environment is ready — follow these steps to browse and control remotely",
-    "startBrowserIdleStep1": "Click Launch Browser in the top-right to start a session",
+    "startBrowserIdleStep1": "Click Launch Browser below to start a session",
     "startBrowserIdleStep2": "Enter a URL in the address bar, or use bookmarks and the AI assistant",
     "setupTitle": "Browser environment setup required",
     "setupDesc": "Follow these steps to configure Playwright and Chromium",
@@ -2440,7 +2463,7 @@
     "setupStep2": "If components are missing, install the browser environment from the dialog",
     "setupStep3": "When installation finishes, click Launch Browser to start a session",
     "startBrowserDisabled": "Complete browser environment check and installation first",
-    "startBrowserHeaderHint": "Click Launch Browser in the top-right to start a session",
+    "startBrowserHeaderHint": "Click Launch Browser below to start a session",
     "closeSession": "Close session",
     "urlPlaceholderExtended": "example.com or https://…",
     "refreshScreenshot": "Refresh screenshot",

@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 // Lazy-loaded pages — Common
 const ExpertsPage = lazy(() => import("../pages/Experts"));
@@ -11,7 +11,6 @@ const TokenUsagePage = lazy(() => import("../pages/Control/TokenUsage"));
 
 // Lazy-loaded pages — Control
 const ChannelsPage = lazy(() => import("../pages/Control/Channels"));
-const RemoteBrowserPage = lazy(() => import("../pages/Control/RemoteBrowser"));
 const RemoteDesktopPage = lazy(() => import("../pages/Control/RemoteDesktop"));
 const SubagentsPage = lazy(() => import("../pages/Control/Subagents"));
 const MBTIPage = lazy(() => import("../pages/Agent/MBTI"));
@@ -32,6 +31,11 @@ const AdminPluginsPage = lazy(() => import("../pages/Admin/Plugins"));
 // Misc
 const PwaDebugPage = lazy(() => import("../pages/PwaDebug"));
 
+function RedirectPreserveSearch({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
+
 export interface RouteConfig {
   path: string;
   element: React.ReactNode;
@@ -50,8 +54,11 @@ export const pathToKey: Record<string, string> = {
   "/token-usage": "token-usage",
   // Control
   "/channels": "channels",
-  "/terminal": "terminal",
-  "/remote-browser": "remote-browser",
+  "/workbench": "workbench",
+  "/workbench/terminal": "workbench",
+  "/workbench/browser": "workbench",
+  "/terminal": "workbench",
+  "/remote-browser": "workbench",
   "/remote-desktop": "remote-desktop",
   "/subagents": "subagents",
   "/mbti": "mbti",
@@ -70,9 +77,10 @@ export const pathToKey: Record<string, string> = {
  * Pages that should fill the entire content area without padding/scroll wrapper.
  */
 export const FULLSCREEN_PATHS = new Set([
-  "/terminal",
+  "/workbench",
+  "/workbench/terminal",
+  "/workbench/browser",
   "/chat",
-  "/remote-browser",
   "/remote-desktop",
 ]);
 
@@ -84,9 +92,14 @@ export const SELF_HEADER_PATHS = new Set<string>([]);
 /** Mobile-only fullscreen pages (custom header + no content padding). */
 export const MOBILE_FULLSCREEN_PATHS = new Set(["/subagents"]);
 
+export function isWorkbenchPath(pathname: string): boolean {
+  return pathname === "/workbench" || pathname.startsWith("/workbench/");
+}
+
 export function resolveSelectedKey(pathname: string): string {
   if (pathToKey[pathname]) return pathToKey[pathname];
   if (pathname.startsWith("/chat/")) return "chat";
+  if (pathname.startsWith("/workbench/")) return "workbench";
   return "chat";
 }
 
@@ -106,7 +119,18 @@ export const routeConfigs: RouteConfig[] = [
 
   // Control
   { path: "/channels", element: <ChannelsPage /> },
-  { path: "/remote-browser", element: <RemoteBrowserPage /> },
+  // Workbench (terminal + browser) is keep-alive mounted in MainLayout.
+  { path: "/workbench", element: null },
+  { path: "/workbench/terminal", element: null },
+  { path: "/workbench/browser", element: null },
+  {
+    path: "/terminal",
+    element: <RedirectPreserveSearch to="/workbench/terminal" />,
+  },
+  {
+    path: "/remote-browser",
+    element: <RedirectPreserveSearch to="/workbench/browser" />,
+  },
   { path: "/remote-desktop", element: <RemoteDesktopPage /> },
   { path: "/subagents", element: <SubagentsPage /> },
   { path: "/mbti", element: <MBTIPage /> },

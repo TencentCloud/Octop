@@ -12,6 +12,7 @@ import {
   FULLSCREEN_PATHS,
   MOBILE_FULLSCREEN_PATHS,
   SELF_HEADER_PATHS,
+  isWorkbenchPath,
 } from "../../routes";
 import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -19,7 +20,7 @@ import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import RequireAdmin from "../../components/RequireAdmin";
 
 const Chat = lazy(() => import("../../pages/Chat"));
-const TerminalPage = lazy(() => import("../../pages/Control/Terminal"));
+const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
 
 const { Content } = Layout;
 
@@ -53,18 +54,17 @@ export default function MainLayout() {
     FULLSCREEN_PATHS.has(currentPath) ||
     [...FULLSCREEN_PATHS].some((p) => currentPath.startsWith(p + "/")) ||
     (isMobile && MOBILE_FULLSCREEN_PATHS.has(currentPath));
+  const onWorkbench = isWorkbenchPath(currentPath);
 
   const [collapsed, setCollapsed] = useState(() => getSavedCollapsed());
   const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
-  const [terminalMounted, setTerminalMounted] = useState(
-    () => currentPath === "/terminal",
-  );
+  const [workbenchMounted, setWorkbenchMounted] = useState(() => onWorkbench);
 
   useEffect(() => {
-    if (currentPath === "/terminal") {
-      setTerminalMounted(true);
+    if (onWorkbench) {
+      setWorkbenchMounted(true);
     }
-  }, [currentPath]);
+  }, [onWorkbench]);
 
   const toggleCollapsed = useCallback(() => {
     if (!isMobile && isChatPath(currentPath)) {
@@ -238,13 +238,13 @@ export default function MainLayout() {
               <PwaUpdatePrompt />
               <PwaAutoPrompt />
 
-              {terminalMounted && (
+              {workbenchMounted && (
                 <div
                   style={{
                     flex: 1,
                     minHeight: 0,
                     overflow: "hidden",
-                    display: currentPath === "/terminal" ? "flex" : "none",
+                    display: onWorkbench ? "flex" : "none",
                     flexDirection: "column",
                   }}
                 >
@@ -262,12 +262,12 @@ export default function MainLayout() {
                       </div>
                     }
                   >
-                    <TerminalPage isVisible={currentPath === "/terminal"} />
+                    <WorkbenchPage isVisible={onWorkbench} />
                   </Suspense>
                 </div>
               )}
 
-              {currentPath !== "/terminal" &&
+              {!onWorkbench &&
                 (isFullscreen ? (
                   <div
                     style={{

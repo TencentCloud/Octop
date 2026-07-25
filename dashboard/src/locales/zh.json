@@ -117,6 +117,7 @@
     "cronJobs": "定时任务",
     "terminal": "终端 AI+",
     "remoteBrowser": "浏览器 AI+",
+    "workbench": "工作台",
     "remoteDesktop": "远程桌面",
     "agent": "智能体",
     "skills": "技能",
@@ -557,6 +558,20 @@
     "processSummaryToolsOnly": "已调用 {{tools}} 次工具",
     "processSummaryThinkingOnly": "{{thinking}} 次深度思考",
     "send": "发送",
+    "stop": "停止",
+    "queue": {
+      "label": "排队中的消息",
+      "action": "排队",
+      "remove": "从队列移除",
+      "reclaim": "取回编辑",
+      "reclaimOverwriteTitle": "替换当前草稿？",
+      "reclaimOverwrite": "输入框里已有内容或附件，取回排队消息会覆盖它们。",
+      "full": "队列已满（最多 10 条），请先移除一条再添加。",
+      "attachmentsOnly": "{{count}} 个附件",
+      "attachmentCount": "{{count}} 个附件",
+      "emptyItem": "排队消息",
+      "flushFailed": "排队消息发送失败，已放回队列。"
+    },
     "agentNoDescription": "暂无描述",
     "noSessionsYet": "直接发消息即可开始对话",
     "agentNotRunning": "此专家未启用",
@@ -2442,6 +2457,14 @@
     "readOnlyHint": "只读模式 — 此为场景预设内容，应用后可在「当前场景」中编辑",
     "fileCount": "{{count}} 个文件"
   },
+  "workbench": {
+    "title": "工作台",
+    "description": "终端与浏览器合一，实时查看并接管 Agent 的执行面",
+    "tabs": {
+      "terminal": "终端",
+      "browser": "浏览器"
+    }
+  },
   "terminal": {
     "title": "终端 AI+",
     "description": "在浏览器中运行交互式 Shell 终端",
@@ -2573,7 +2596,7 @@
     "startBrowser": "启动浏览器",
     "startBrowserTitle": "启动远程浏览器",
     "startBrowserDesc": "环境已就绪，按以下步骤开始远程浏览与操控",
-    "startBrowserIdleStep1": "点击右上角「启动浏览器」建立会话",
+    "startBrowserIdleStep1": "点击下方「启动浏览器」建立会话",
     "startBrowserIdleStep2": "在地址栏输入网址并访问，也可使用收藏夹与 AI 助手",
     "setupTitle": "需要配置浏览器环境",
     "setupDesc": "按以下步骤完成 Playwright / Chromium 环境配置",
@@ -2581,7 +2604,7 @@
     "setupStep2": "若组件缺失，在弹窗中一键安装浏览器环境",
     "setupStep3": "安装完成后，点击「启动浏览器」开始会话",
     "startBrowserDisabled": "请先完成浏览器环境检查与安装",
-    "startBrowserHeaderHint": "点击右上角「启动浏览器」开始会话",
+    "startBrowserHeaderHint": "点击下方「启动浏览器」开始会话",
     "closeSession": "关闭会话",
     "urlPlaceholderExtended": "example.com 或 https://…",
     "refreshScreenshot": "刷新截图",

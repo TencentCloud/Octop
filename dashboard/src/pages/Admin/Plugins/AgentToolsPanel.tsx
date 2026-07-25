@@ -233,7 +233,7 @@ export function AgentToolsPanel() {
         open={!!configTool}
         onClose={() => setConfigTool(null)}
         width={420}
-        destroyOnClose
+        destroyOnHidden
         extra={
           <Button
             type="primary"

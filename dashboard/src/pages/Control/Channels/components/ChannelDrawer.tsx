@@ -1072,7 +1072,7 @@ export function ChannelDrawer({
       }
       open={open}
       onClose={handleClose}
-      destroyOnClose
+      destroyOnHidden
       footer={
         !loadingConfig ? (
           <div className={styles.drawerFooter}>

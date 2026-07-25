@@ -78,7 +78,7 @@ export function JobDetailDrawer({
       open={open}
       onClose={onClose}
       width={480}
-      destroyOnClose
+      destroyOnHidden
       footer={
         agentPrompt ? (
           <div style={{ display: "flex", justifyContent: "flex-end" }}>

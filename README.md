@@ -402,7 +402,7 @@ make install          # pip install -e ".[dev]"
 make all              # lint + typecheck + test (ship bar)
 
 # Frontend (separate terminal)
-make dev-frontend     # Vite dev server on :5173
+make dev-frontend     # Vite dev server on :5173 (override with VITE_DEV_PORT)
 make build-frontend   # production build → src/octop/dashboard/
 cd dashboard && npx tsc --noEmit
 ```

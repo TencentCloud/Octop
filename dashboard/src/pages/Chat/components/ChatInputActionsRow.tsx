@@ -445,7 +445,7 @@ export default function ChatInputActionsRow({
             title={t("chat.composerMore", "更多工具")}
             className={styles.mobilePickerDrawer}
             styles={{ body: { padding: 0 } }}
-            destroyOnClose
+            destroyOnHidden
           >
             {renderMobileOverflowMenu()}
           </Drawer>
@@ -457,7 +457,7 @@ export default function ChatInputActionsRow({
             title={mobilePicker ? mobilePickerTitle[mobilePicker] : ""}
             className={styles.mobilePickerDrawer}
             styles={{ body: { padding: 0 } }}
-            destroyOnClose
+            destroyOnHidden
           >
             {renderMobilePickerContent()}
           </Drawer>
@@ -790,20 +790,37 @@ export default function ChatInputActionsRow({
           </Tooltip>
         )}
         {isStreaming ? (
-          <button
-            className={`${styles.sendBtn} ${styles.cancelBtn}`}
-            onClick={onCancel}
-            title="Stop"
-            type="button"
-          >
-            <Square size={18} />
-          </button>
+          canSend ? (
+            <Tooltip title={t("chat.queue.action")} mouseEnterDelay={0.4}>
+              <button
+                className={styles.sendBtn}
+                onClick={onSubmit}
+                title={t("chat.queue.action")}
+                type="button"
+                aria-label={t("chat.queue.action")}
+              >
+                <Send size={18} />
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip title={t("chat.stop", "Stop")} mouseEnterDelay={0.4}>
+              <button
+                className={`${styles.sendBtn} ${styles.cancelBtn}`}
+                onClick={onCancel}
+                title={t("chat.stop", "Stop")}
+                type="button"
+                aria-label={t("chat.stop", "Stop")}
+              >
+                <Square size={18} />
+              </button>
+            </Tooltip>
+          )
         ) : (
           <button
             className={styles.sendBtn}
             onClick={onSubmit}
             disabled={!canSend}
-            title="Send"
+            title={t("chat.send", "Send")}
             type="button"
           >
             <Send size={18} />

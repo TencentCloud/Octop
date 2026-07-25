@@ -500,6 +500,121 @@
   }
 }
 
+/* ---------- Queued messages (while streaming) ---------- */
+.queuedMessages {
+  max-width: 960px;
+  width: calc(100% - 48px);
+  margin: 0 auto 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 132px;
+  overflow-y: auto;
+  flex-shrink: 0;
+
+  @media (max-width: 767px) {
+    width: calc(100% - 24px);
+  }
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--fn-border-primary);
+    border-radius: 2px;
+  }
+}
+
+.queuedMessageItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 6px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-secondary, var(--fn-bg-primary));
+}
+
+.queuedMessageIndex {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fn-text-tertiary);
+  background: var(--fn-bg-elevated, #fff);
+  border: 1px solid var(--fn-border-secondary);
+}
+
+.queuedMessageBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--fn-text-primary);
+
+  &:hover .queuedMessageText {
+    color: var(--fn-color-brand, #e85d75);
+  }
+}
+
+.queuedMessageText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.35;
+  transition: color var(--fn-transition-fast);
+}
+
+.queuedMessageAttach {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+.queuedMessageRemove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--fn-radius-full);
+  background: transparent;
+  color: var(--fn-text-quaternary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+    background: var(--fn-bg-tertiary, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.sendBtnGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* ---------- Image upload & preview ---------- */
 .imagePreviewBar {
   display: flex;

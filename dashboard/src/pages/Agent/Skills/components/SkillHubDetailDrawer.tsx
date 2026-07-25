@@ -132,7 +132,7 @@ export function SkillHubDetailDrawer({
       onClose={onClose}
       open={open}
       width={520}
-      destroyOnClose
+      destroyOnHidden
       title={
         <div
           style={{
