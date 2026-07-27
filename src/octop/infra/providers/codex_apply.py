@@ -19,6 +19,9 @@ CODEX_MODELS = [
     {"id": "gpt-5.4", "name": "GPT-5.4", "enabled": True, "input": ["text"]},
     {"id": "gpt-5.4-mini", "name": "GPT-5.4 mini", "enabled": True, "input": ["text"]},
     {"id": "gpt-5.5", "name": "GPT-5.5", "enabled": True, "input": ["text"]},
+    {"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "enabled": True, "input": ["text"]},
+    {"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "enabled": True, "input": ["text"]},
+    {"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "enabled": True, "input": ["text"]},
 ]
 
 

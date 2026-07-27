@@ -97,3 +97,4 @@ def test_build_codex_headers_includes_account_id() -> None:
 def test_codex_provider_constants() -> None:
     assert CODEX_PROVIDER_NAME == "openai-codex"
     assert any(m["id"] == "gpt-5.4" for m in CODEX_MODELS)
+    assert {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} <= {m["id"] for m in CODEX_MODELS}

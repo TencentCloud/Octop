@@ -54,6 +54,9 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
             "base_url": base_url,
             "api_key": row.api_key or "",
             "use_responses_api": True,
+            "store": False,
+            "streaming": True,
+            "output_version": "v0",
         }
         if headers:
             kwargs["default_headers"] = dict(headers)
