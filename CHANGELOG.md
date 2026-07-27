@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 修复 ChatGPT/Codex 提供商连通性测试因 Responses API 参数不兼容而失败的问题
+
 ## [0.9.14] - 2026-07-25
 
 ### 新增

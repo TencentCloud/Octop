@@ -26,3 +26,29 @@ def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     assert provider.name == "HAI"
     assert model.id == "MiniMax-M2.7"
     assert model.name == "MiniMax-M2.7"
+
+
+def test_build_chat_model_uses_codex_responses_compatibility_options() -> None:
+    row = SimpleNamespace(
+        name="Codex",
+        kind="openai",
+        base_url="https://chatgpt.com/backend-api/codex",
+        api_key="codex-token",
+        extra_json='{"headers": {"ChatGPT-Account-Id": "account-id"}}',
+        get_models=lambda: [{"id": "gpt-5.4", "name": "GPT-5.4"}],
+    )
+
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        mock_chat_openai.return_value = object()
+        _build_chat_model(row, model_id="gpt-5.4")
+
+    assert mock_chat_openai.call_args.kwargs == {
+        "model": "gpt-5.4",
+        "base_url": "https://chatgpt.com/backend-api/codex",
+        "api_key": "codex-token",
+        "use_responses_api": True,
+        "store": False,
+        "streaming": True,
+        "output_version": "v0",
+        "default_headers": {"ChatGPT-Account-Id": "account-id"},
+    }
