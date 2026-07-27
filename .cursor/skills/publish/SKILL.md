@@ -258,9 +258,10 @@ EOF
 
 3. 提示用户到 Actions 确认：
    - `Auto Tag On Release Merge` 成功；
-   - `Release` 与 `Docker Publish` 随 `v*` tag 触发并通过。
+   - `Release` 与 `Docker Publish` 随 `v*` tag 触发并通过；
+   - `Sync Main Into Develop` 在 GitHub Release 发布后把 `main` 同步回 `develop`。
 
-### 步骤 7 — 删除 release 分支并同步 develop
+### 步骤 7 — 删除 release 分支；develop 由 Action 同步
 
 1. 删除远程与本地 release 分支：
    ```bash
@@ -269,15 +270,10 @@ EOF
    ```
    删除失败则警告（非致命），提示手动删除。
 
-2. 若 `main` 与 `develop` 有差异（merge commit 或仅在 main 上的修复），创建同步 PR：
-   ```bash
-   gh pr create \
-     --base {INTEGRATION_BRANCH} \
-     --head {TARGET_BRANCH} \
-     --title "chore: sync main into develop after {version}" \
-     --body "Post-release sync so develop contains the shipped main tip."
-   ```
-   若已快进无差异，跳过并说明。
+2. **develop 同步**：GitHub Release 发布成功后，`sync-main-to-develop.yml` 会自动开 `main → develop` PR，并在无冲突时用 **merge commit** 合入。
+   - 若已快进无差异，Action 会跳过。
+   - 若有冲突或分支保护拦截，Action 留下 PR 并告警，需人工处理。
+   - 技能侧无需再手动创建 sync PR（除非 Action 失败）。
 
 ### 步骤 8 — 切回原分支
 
@@ -319,7 +315,7 @@ git checkout {original_branch}
 **始终：**
 - 从最新 `{REMOTE}/{INTEGRATION_BRANCH}` 切 release
 - 先合入 `{TARGET_BRANCH}`，再由 Action 在 main tip 打 tag
-- 发版后删除 `release/*`，并在需要时同步回 `develop`
+- 发版后删除 `release/*`；`main → develop` 由 `sync-main-to-develop.yml` 自动同步（失败时再手动补）
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果
