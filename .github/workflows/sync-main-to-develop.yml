@@ -1,0 +1,80 @@
+name: Sync Main Into Develop
+
+# After a GitHub Release is published (Release workflow: PyPI → github-release),
+# open a main → develop sync PR and merge it when possible.
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync main into develop
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open or merge sync PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          git fetch origin main develop
+
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "develop already contains main tip; nothing to sync."
+            exit 0
+          fi
+
+          existing="$(
+            gh pr list \
+              --base develop \
+              --head main \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [ -z "$existing" ]; then
+            url="$(
+              gh pr create \
+                --base develop \
+                --head main \
+                --title "chore: sync main into develop after ${version}" \
+                --body "Post-release sync so develop contains the shipped main tip (${TAG})."
+            )"
+            echo "Created sync PR: ${url}"
+            existing="$(
+              gh pr list \
+                --base develop \
+                --head main \
+                --state open \
+                --json number \
+                --jq '.[0].number // empty'
+            )"
+          else
+            echo "Sync PR already open: #${existing}"
+          fi
+
+          if [ -z "$existing" ]; then
+            echo "::error::Failed to resolve sync PR number."
+            exit 1
+          fi
+
+          # Prefer merge commit (not squash) so main stays an ancestor of develop.
+          if gh pr merge "$existing" --merge --delete-branch=false; then
+            echo "Merged #${existing} into develop."
+          else
+            echo "::warning::Could not auto-merge #${existing} (conflicts or branch protection). Merge manually."
+            gh pr view "$existing" --json url --jq .url
+          fi
