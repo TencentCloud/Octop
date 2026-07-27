@@ -2,10 +2,12 @@ name: Sync Main Into Develop
 
 # After a GitHub Release is published (Release workflow: PyPI → github-release),
 # open a main → develop sync PR and merge it when possible.
+# Also allow manual runs from the Actions tab.
 on:
   release:
     types:
       - published
+  workflow_dispatch:
 
 permissions:
   contents: write
