@@ -39,6 +39,10 @@ def test_load_provider_presets_integration() -> None:
     gpt4o = next(m for m in openai["models"] if m["id"] == "gpt-4o")
     assert gpt4o.get("input") == ["text", "image"]
 
+    codex = next(p for p in presets if p["id"] == "openai-codex")
+    codex_ids = {m["id"] for m in codex["models"]}
+    assert {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} <= codex_ids
+
     kimi_cn = next(p for p in presets if p["id"] == "kimi-cn")
     kimi_k25 = next(m for m in kimi_cn["models"] if m["id"] == "kimi-k2.5")
     assert kimi_k25.get("input") == ["text", "image"]

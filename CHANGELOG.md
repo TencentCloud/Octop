@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- ChatGPT/Codex 基础模型列表新增 GPT-5.6 Sol、Terra 和 Luna
+
 ### 修复
 - 修复 ChatGPT/Codex 提供商连通性测试因 Responses API 参数不兼容而失败的问题
 
