@@ -249,6 +249,7 @@ export default function MemoryPage() {
       title={t("pageShell.memory.title")}
       subtitle={t("pageShell.memory.subtitle")}
       agentScoped
+      fill
     >
       <Tabs
         className={styles.memoryTabs}

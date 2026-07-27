@@ -246,6 +246,7 @@ See [`.env.example`](.env.example) for the full list.
   - [Contributing](#-contributing)
   - [Changelog](#-changelog)
   - [Related projects](#-related-projects)
+  - [WeCom customer group](#-wecom-customer-group-cn)
   - [License](#-license)
 
 ## 📦 Install options
@@ -443,6 +444,16 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | harness-browser | CDP browser automation with persistent profiles |
 
 > These `harness-*` projects are being prepared for open-sourcing; repository links will be added once they are published.
+
+## 💬 WeCom Customer Group (CN)
+
+For the customer WeCom support group, scan:
+
+<p align="center">
+  <img src="docs/assets/qrcode.png" alt="WeCom customer group QR code" width="220" />
+</p>
+
+> This QR code is valid until **2026-08-03** (UTC+8). Please ask the maintainer for an updated code after it expires.
 
 ## 📄 License
 

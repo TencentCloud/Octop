@@ -8,6 +8,8 @@ import {
 import PwaInstallPrompt from "../components/PwaInstallPrompt";
 import pwaStyles from "../components/PwaInstallPrompt/index.module.less";
 import ThemeSwitcher from "../components/ThemeSwitcher";
+import AppVersionBadge from "../components/AppVersionBadge";
+import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import { useTheme } from "../context/ThemeContext";
 import { typeSize } from "../utils/mobileTypeScale";
 
@@ -87,18 +89,32 @@ export default function Header({
           </button>
         )}
         {isMobile && (
-          <img
-            src={mobileLogoSrc}
-            alt="octop"
-            style={{
-              height: 36,
-              width: "auto",
-              maxWidth: 230,
-              objectFit: "contain",
-              flexShrink: 0,
-              display: "block",
-            }}
-          />
+          <>
+            <img
+              src={mobileLogoSrc}
+              alt="octop"
+              style={{
+                height: 36,
+                width: "auto",
+                maxWidth: 160,
+                objectFit: "contain",
+                flexShrink: 0,
+                display: "block",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                minWidth: 0,
+                flexShrink: 1,
+              }}
+            >
+              <CurrentVersionBadge isMobile />
+              <AppVersionBadge isMobile />
+            </div>
+          </>
         )}
       </div>
 
@@ -126,7 +142,7 @@ export default function Header({
           </a>
         )}
         <PwaInstallPrompt compact={isMobile} />
-        {!isMobile && <ThemeSwitcher compact />}
+        <ThemeSwitcher compact />
       </div>
     </AntHeader>
   );

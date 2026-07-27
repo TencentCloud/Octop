@@ -209,7 +209,7 @@ export default function AgentExpertsTable({
   const handleOpenChat = useCallback(
     (agentId: string) => {
       setActiveAgent(agentId);
-      navigate("/chat");
+      navigate(`/chat/${agentId}`);
     },
     [setActiveAgent, navigate],
   );

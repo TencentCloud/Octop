@@ -150,12 +150,23 @@ interface HighlightedCodeProps {
   language: string;
   code: string;
   isDark: boolean;
+  /** Prefer plain `<pre>` while streaming; highlighter still preloads in the background. */
+  plain?: boolean;
 }
+
+const plainCodeStyle: CSSProperties = {
+  margin: 0,
+  borderRadius: "0 0 8px 8px",
+  fontSize: 13,
+  padding: "12px 16px",
+  overflow: "auto",
+};
 
 export function HighlightedCode({
   language,
   code,
   isDark,
+  plain = false,
 }: HighlightedCodeProps) {
   const [SyntaxHighlighter, setSyntaxHighlighter] = useState<PrismLight | null>(
     null,
@@ -164,6 +175,8 @@ export function HighlightedCode({
     null,
   );
 
+  // Preload highlighter during streaming so the plain→colored switch is one paint,
+  // not a delayed second jump after the stream ends.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -182,17 +195,9 @@ export function HighlightedCode({
     };
   }, [language, isDark]);
 
-  if (!SyntaxHighlighter || !highlightStyle) {
+  if (plain || !SyntaxHighlighter || !highlightStyle) {
     return (
-      <pre
-        style={{
-          margin: 0,
-          borderRadius: "0 0 8px 8px",
-          fontSize: 13,
-          padding: "12px 16px",
-          overflow: "auto",
-        }}
-      >
+      <pre style={plainCodeStyle}>
         <code>{code}</code>
       </pre>
     );
@@ -207,6 +212,7 @@ export function HighlightedCode({
         margin: 0,
         borderRadius: "0 0 8px 8px",
         fontSize: 13,
+        padding: "12px 16px",
       }}
     >
       {code}
