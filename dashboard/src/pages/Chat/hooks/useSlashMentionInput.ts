@@ -73,7 +73,7 @@ export function useSlashMentionInput({
   onSend,
   onNewChat,
   onCancel,
-  isStreaming,
+  isStreaming: _isStreaming,
   onSubmitRef,
   enterToSend = true,
 }: UseSlashMentionInputParams) {
@@ -325,13 +325,12 @@ export function useSlashMentionInput({
 
       if (enterToSend && e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        if (isStreaming) return;
+        // During streaming, submit queues the message instead of sending.
         onSubmitRef.current();
       }
     },
     [
       enterToSend,
-      isStreaming,
       onSubmitRef,
       mentionMenuOpen,
       mentionItems,

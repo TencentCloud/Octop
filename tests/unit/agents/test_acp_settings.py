@@ -9,7 +9,7 @@ import pytest
 
 from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.users import UserRepo
@@ -17,7 +17,7 @@ from octop.infra.db.repos.users import UserRepo
 
 @pytest.fixture
 def acp_store(tmp_path: Path) -> tuple[ACPSettingsStore, AgentRepo, int]:
-    db = DBPool(tmp_path / "test.db")
+    db = SqlitePool(tmp_path / "test.db")
     run_migrations(db)
     settings = SettingsRepo(db)
     agents = AgentRepo(db)

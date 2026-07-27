@@ -64,7 +64,7 @@ function getSidebarSnapshot() {
   return sidebarOpen;
 }
 
-function useSidebarOpen(): [
+export function useChatSidebarOpen(): [
   boolean,
   (v: boolean | ((prev: boolean) => boolean)) => void,
 ] {
@@ -94,7 +94,7 @@ function applySidebarWidth(el: HTMLElement | null, width: number) {
  * main source of jank. React state + localStorage commit only on pointerup.
  */
 export function useChatSidebarState(isMobile: boolean) {
-  const [sidebarOpen, setSidebarOpen] = useSidebarOpen();
+  const [sidebarOpen, setSidebarOpen] = useChatSidebarOpen();
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);

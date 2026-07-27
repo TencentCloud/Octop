@@ -10,6 +10,9 @@ from typing import Any
 
 import pytest
 
+# Workspace UI semantics: leading '/' is relative to agent workspace.
+FROM_WORKSPACE = {"from_workspace": "true"}
+
 
 @pytest.fixture
 async def env(env_with_agent):
@@ -21,7 +24,7 @@ async def env(env_with_agent):
 
 async def test_tree_returns_empty_for_fresh_workspace(env: Any) -> None:
     c, _srv, auth, aid = env
-    r = await c.get(f"/api/agents/{aid}/workspace/tree", headers=auth)
+    r = await c.get(f"/api/agents/{aid}/workspace/tree?from_workspace=true", headers=auth)
     assert r.status_code == 200, r.text
     rows = r.json()
     assert isinstance(rows, list)
@@ -36,14 +39,14 @@ async def test_tree_lists_root_files(env: Any) -> None:
     agent = srv.app_runtime.agent_registry.get_agent(aid)
     await agent.workspace.aupload_bytes("notes.md", b"hello")
 
-    r = await c.get(f"/api/agents/{aid}/workspace/tree?path=/", headers=auth)
+    r = await c.get(f"/api/agents/{aid}/workspace/tree?path=/&from_workspace=true", headers=auth)
     assert r.status_code == 200, r.text
     rows = r.json()
     paths = {row["path"] for row in rows}
     assert any("notes.md" in p for p in paths)
 
     r = await c.get(
-        f"/api/agents/{aid}/workspace/file?path=%2Fnotes.md",
+        f"/api/agents/{aid}/workspace/file?path=%2Fnotes.md&from_workspace=true",
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -54,14 +57,14 @@ async def test_tree_lists_subdirectory(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/sub/nested.txt"},
+        params={**FROM_WORKSPACE, "path": "/sub/nested.txt"},
         headers=auth,
         json={"content": "nested content"},
     )
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/tree",
-        params={"path": "/sub"},
+        params={**FROM_WORKSPACE, "path": "/sub"},
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -70,7 +73,7 @@ async def test_tree_lists_subdirectory(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/sub/nested.txt"},
+        params={**FROM_WORKSPACE, "path": "/sub/nested.txt"},
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -79,7 +82,7 @@ async def test_tree_lists_subdirectory(env: Any) -> None:
 
 async def test_tree_for_unknown_agent_404(env: Any) -> None:
     c, _srv, auth, _aid = env
-    r = await c.get("/api/agents/no-such-agent/workspace/tree", headers=auth)
+    r = await c.get("/api/agents/no-such-agent/workspace/tree?from_workspace=true", headers=auth)
     assert r.status_code == 404
 
 
@@ -91,7 +94,7 @@ async def test_write_then_read_roundtrip(env: Any) -> None:
     payload = "hello from workspace test\n"
     r = await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/notes.md"},
+        params={**FROM_WORKSPACE, "path": "/notes.md"},
         headers=auth,
         json={"content": payload},
     )
@@ -101,7 +104,7 @@ async def test_write_then_read_roundtrip(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/notes.md"},
+        params={**FROM_WORKSPACE, "path": "/notes.md"},
         headers=auth,
     )
     assert r.status_code == 200
@@ -114,7 +117,7 @@ async def test_read_missing_file_404(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/no-such-file.txt"},
+        params={**FROM_WORKSPACE, "path": "/no-such-file.txt"},
         headers=auth,
     )
     assert r.status_code == 404
@@ -129,6 +132,7 @@ async def test_upload_then_download_binary(env: Any) -> None:
     files = {"file": ("logo.png", blob, "image/png")}
     r = await c.post(
         f"/api/agents/{aid}/workspace/upload",
+        params={**FROM_WORKSPACE},
         headers=auth,
         files=files,
     )
@@ -137,7 +141,7 @@ async def test_upload_then_download_binary(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/download",
-        params={"path": "/logo.png"},
+        params={**FROM_WORKSPACE, "path": "/logo.png"},
         headers=auth,
     )
     assert r.status_code == 200
@@ -152,7 +156,7 @@ async def test_download_non_ascii_filename(env: Any) -> None:
     path = f"/outbound/{fname}"
     r = await c.post(
         f"/api/agents/{aid}/workspace/upload",
-        params={"path": path},
+        params={**FROM_WORKSPACE, "path": path},
         headers=auth,
         files={"file": (fname, b"PK\x03\x04fake", "application/vnd.ms-powerpoint")},
     )
@@ -160,7 +164,7 @@ async def test_download_non_ascii_filename(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/download",
-        params={"path": path},
+        params={**FROM_WORKSPACE, "path": path},
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -175,7 +179,7 @@ async def test_upload_with_explicit_path_query(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.post(
         f"/api/agents/{aid}/workspace/upload",
-        params={"path": "/sub/dir/named.txt"},
+        params={**FROM_WORKSPACE, "path": "/sub/dir/named.txt"},
         headers=auth,
         files={"file": ("ignored.txt", b"x", "text/plain")},
     )
@@ -191,13 +195,13 @@ async def test_glob_after_seeding(env: Any) -> None:
     for fname in ("a.md", "b.md", "c.txt"):
         await c.put(
             f"/api/agents/{aid}/workspace/file",
-            params={"path": f"/{fname}"},
+            params={**FROM_WORKSPACE, "path": f"/{fname}"},
             headers=auth,
             json={"content": "x"},
         )
     r = await c.get(
         f"/api/agents/{aid}/workspace/glob",
-        params={"pattern": "*.md", "path": "/"},
+        params={**FROM_WORKSPACE, "pattern": "*.md", "path": "/"},
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -212,13 +216,13 @@ async def test_grep_after_seeding(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/needle.txt"},
+        params={**FROM_WORKSPACE, "path": "/needle.txt"},
         headers=auth,
         json={"content": "alpha\nNEEDLE here\ngamma\n"},
     )
     r = await c.get(
         f"/api/agents/{aid}/workspace/grep",
-        params={"pattern": "NEEDLE", "path": "/"},
+        params={**FROM_WORKSPACE, "pattern": "NEEDLE", "path": "/"},
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -261,20 +265,20 @@ async def test_delete_file(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/trash-me.txt"},
+        params={**FROM_WORKSPACE, "path": "/trash-me.txt"},
         headers=auth,
         json={"content": "bye"},
     )
     r = await c.delete(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/trash-me.txt"},
+        params={**FROM_WORKSPACE, "path": "/trash-me.txt"},
         headers=auth,
     )
     assert r.status_code == 204, r.text
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/trash-me.txt"},
+        params={**FROM_WORKSPACE, "path": "/trash-me.txt"},
         headers=auth,
     )
     assert r.status_code == 404
@@ -284,13 +288,13 @@ async def test_move_file(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/src.txt"},
+        params={**FROM_WORKSPACE, "path": "/src.txt"},
         headers=auth,
         json={"content": "payload"},
     )
     r = await c.post(
         f"/api/agents/{aid}/workspace/move",
-        params={"path": "/src.txt"},
+        params={**FROM_WORKSPACE, "path": "/src.txt"},
         headers=auth,
         json={"destination": "/moved/src.txt"},
     )
@@ -299,7 +303,7 @@ async def test_move_file(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/moved/src.txt"},
+        params={**FROM_WORKSPACE, "path": "/moved/src.txt"},
         headers=auth,
     )
     assert r.status_code == 200
@@ -307,7 +311,7 @@ async def test_move_file(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/src.txt"},
+        params={**FROM_WORKSPACE, "path": "/src.txt"},
         headers=auth,
     )
     assert r.status_code == 404
@@ -317,20 +321,20 @@ async def test_rename_file(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/old-name.md"},
+        params={**FROM_WORKSPACE, "path": "/old-name.md"},
         headers=auth,
         json={"content": "x"},
     )
     r = await c.post(
         f"/api/agents/{aid}/workspace/move",
-        params={"path": "/old-name.md"},
+        params={**FROM_WORKSPACE, "path": "/old-name.md"},
         headers=auth,
         json={"destination": "/new-name.md"},
     )
     assert r.status_code == 200, r.text
     r = await c.get(
         f"/api/agents/{aid}/workspace/tree",
-        params={"path": "/"},
+        params={**FROM_WORKSPACE, "path": "/"},
         headers=auth,
     )
     paths = {row["path"].rsplit("/", 1)[-1] for row in r.json()}
@@ -342,7 +346,7 @@ async def test_mkdir_creates_directory(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.post(
         f"/api/agents/{aid}/workspace/mkdir",
-        params={"path": "/projects/demo"},
+        params={**FROM_WORKSPACE, "path": "/projects/demo"},
         headers=auth,
     )
     assert r.status_code == 201, r.text
@@ -352,7 +356,7 @@ async def test_mkdir_creates_directory(env: Any) -> None:
 
     r = await c.get(
         f"/api/agents/{aid}/workspace/tree",
-        params={"path": "/projects"},
+        params={**FROM_WORKSPACE, "path": "/projects"},
         headers=auth,
     )
     assert r.status_code == 200, r.text
@@ -364,19 +368,19 @@ async def test_delete_directory(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/box/a.txt"},
+        params={**FROM_WORKSPACE, "path": "/box/a.txt"},
         headers=auth,
         json={"content": "a"},
     )
     r = await c.delete(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/box"},
+        params={**FROM_WORKSPACE, "path": "/box"},
         headers=auth,
     )
     assert r.status_code == 204, r.text
     r = await c.get(
         f"/api/agents/{aid}/workspace/tree",
-        params={"path": "/"},
+        params={**FROM_WORKSPACE, "path": "/"},
         headers=auth,
     )
     names = {row["path"].rsplit("/", 1)[-1] for row in r.json()}
@@ -387,7 +391,7 @@ async def test_delete_builtin_skills_forbidden(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.delete(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/_builtin_skills/foo/SKILL.md"},
+        params={**FROM_WORKSPACE, "path": "/_builtin_skills/foo/SKILL.md"},
         headers=auth,
     )
     assert r.status_code == 403

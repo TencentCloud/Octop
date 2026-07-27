@@ -1,12 +1,6 @@
 /**
- * Admin → Audit log page (plan §14.7).
- *
- * Paginated table with filters (since / actor / action). Backed by
- * GET /api/admin/audit-log?since=&actor=&action=&limit=.
- *
- * Mobile (<= 767 px) shows the same rows as a stacked list of items so
- * the time/actor/action/target fields stay readable without horizontal
- * scrolling. Desktop keeps the antd Table.
+ * Audit log panel — filters + table/list for GET /api/admin/audit-log.
+ * Used as the last tab on Admin → Security.
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -23,12 +17,11 @@ import {
 } from "antd";
 import { RefreshCw, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import { request } from "../../../api/request";
-import styles from "./index.module.less";
+import styles from "./auditLog.module.less";
 
 const { Text } = Typography;
 
@@ -87,7 +80,7 @@ function formatTs(ts: number, timeZone: string): string {
   return formatServerDateTime(ts, timeZone);
 }
 
-export default function AdminAuditPage() {
+export default function AuditLogPanel() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
@@ -142,7 +135,6 @@ export default function AdminAuditPage() {
   const formatTarget = useCallback(
     (target: string | null, action: string) => {
       if (!target) return null;
-      // Agent actions: show payload (agent name) + target (agent id)
       if (AGENT_ACTIONS.has(action)) {
         const row = rows.find(
           (r) => r.target === target && r.action === action,
@@ -156,79 +148,80 @@ export default function AdminAuditPage() {
   );
 
   return (
-    <PageShell
-      title={t("pageShell.adminAudit.title")}
-      subtitle={t("pageShell.adminAudit.subtitle")}
-      actions={
-        <Space>
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={() => fetchAudit(form.getFieldsValue())}
-          >
-            {t("common.refresh")}
-          </Button>
-        </Space>
-      }
-    >
-      <Form<FilterValues>
-        form={form}
-        layout={isMobile ? "vertical" : "inline"}
-        style={{
-          marginBottom: 16,
-          gap: isMobile ? 8 : 12,
-        }}
-        onFinish={fetchAudit}
-        initialValues={{ limit: 100 }}
-      >
-        <Form.Item label={t("adminAudit.actor")} name="actor">
-          <Select
-            allowClear
-            placeholder={t("adminAudit.actorPlaceholder")}
-            options={[
-              { value: "_system", label: t("adminAudit.actorSystem") },
-              { value: "_admin", label: t("adminAudit.actorAdmin") },
-            ]}
-          />
-        </Form.Item>
-        <Form.Item label={t("adminAudit.action")} name="action">
-          <Select
-            allowClear
-            showSearch
-            placeholder={t("adminAudit.actionPlaceholder")}
-            options={ACTION_OPTIONS.map((a) => ({
-              value: a,
-              label: formatAction(a),
-            }))}
-            optionFilterProp="label"
-          />
-        </Form.Item>
-        <Form.Item
-          label={t("adminAudit.since")}
-          name="since"
-          getValueFromEvent={(_, s) => s}
+    <div>
+      <div className={styles.toolbar}>
+        <Form<FilterValues>
+          form={form}
+          layout={isMobile ? "vertical" : "inline"}
+          style={{
+            marginBottom: 0,
+            gap: isMobile ? 8 : 12,
+            flex: 1,
+          }}
+          onFinish={fetchAudit}
+          initialValues={{ limit: 100 }}
         >
-          <DatePicker showTime format="YYYY-MM-DDTHH:mm:ss" />
-        </Form.Item>
-        <Form.Item label={t("adminAudit.limit")} name="limit">
-          <Select
-            options={[
-              { value: 50, label: "50" },
-              { value: 100, label: "100" },
-              { value: 200, label: "200" },
-              { value: 500, label: "500" },
-            ]}
-            style={{ width: 80 }}
-          />
-        </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit" icon={<Search size={14} />}>
-            {t("adminAudit.filter")}
-          </Button>
-        </Form.Item>
-      </Form>
+          <Form.Item label={t("adminAudit.actor")} name="actor">
+            <Select
+              allowClear
+              placeholder={t("adminAudit.actorPlaceholder")}
+              options={[
+                { value: "_system", label: t("adminAudit.actorSystem") },
+                { value: "_admin", label: t("adminAudit.actorAdmin") },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label={t("adminAudit.action")} name="action">
+            <Select
+              allowClear
+              showSearch
+              placeholder={t("adminAudit.actionPlaceholder")}
+              options={ACTION_OPTIONS.map((a) => ({
+                value: a,
+                label: formatAction(a),
+              }))}
+              optionFilterProp="label"
+            />
+          </Form.Item>
+          <Form.Item
+            label={t("adminAudit.since")}
+            name="since"
+            getValueFromEvent={(_, s) => s}
+          >
+            <DatePicker showTime format="YYYY-MM-DDTHH:mm:ss" />
+          </Form.Item>
+          <Form.Item label={t("adminAudit.limit")} name="limit">
+            <Select
+              options={[
+                { value: 50, label: "50" },
+                { value: 100, label: "100" },
+                { value: 200, label: "200" },
+                { value: 500, label: "500" },
+              ]}
+              style={{ width: 80 }}
+            />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button
+                type="primary"
+                htmlType="submit"
+                icon={<Search size={14} />}
+              >
+                {t("adminAudit.filter")}
+              </Button>
+              <Button
+                icon={<RefreshCw size={14} />}
+                onClick={() => void fetchAudit(form.getFieldsValue())}
+              >
+                {t("common.refresh")}
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </div>
 
       {isMobile ? (
-        // Mobile: stacked item list
         <div className={styles.itemList}>
           {rows.map((row) => (
             <div key={row.id} className={styles.item}>
@@ -316,6 +309,6 @@ export default function AdminAuditPage() {
           ]}
         />
       )}
-    </PageShell>
+    </div>
   );
 }

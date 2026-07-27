@@ -20,9 +20,9 @@ def test_sql_unix_day_bucket_postgresql():
 
 def test_insert_returning_id(tmp_path):
     from octop.infra.db.migrate import run_migrations
-    from octop.infra.db.pool import DBPool
+    from octop.infra.db.pool import SqlitePool
 
-    db = DBPool(tmp_path / "x.db")
+    db = SqlitePool(tmp_path / "x.db")
     run_migrations(db)
     with db.transaction() as conn:
         uid = insert_returning_id(

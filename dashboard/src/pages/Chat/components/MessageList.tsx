@@ -7,7 +7,7 @@ import {
   useState,
   useLayoutEffect,
 } from "react";
-import { Spin } from "antd";
+import { Spin, Button } from "antd";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
@@ -23,6 +23,7 @@ import {
   groupConsecutiveAssistantMessages,
   type MessageGroup,
 } from "../utils/messageGrouping";
+import { nextCanLoadOlder, shouldReleaseLoadMoreLatch } from "./loadOlderGate";
 import styles from "../index.module.less";
 
 /** Virtualize long threads; short chats keep the simpler DOM path. */
@@ -54,7 +55,8 @@ interface MessageListProps {
   historyHasMore?: boolean;
   historyLoadingMore?: boolean;
   historyRefreshing?: boolean;
-  onLoadMoreHistory?: () => void;
+  /** Return false when the load did not start (caller must release any latch). */
+  onLoadMoreHistory?: () => boolean | void | Promise<boolean | void>;
   onRefreshHistory?: () => void;
   isStreaming?: boolean;
   thinkingStartedAt?: number | null;
@@ -152,7 +154,7 @@ function renderMessageGroup(
     );
   }
 
-  const groupKey = group.messages.map((m) => m.id).join("|");
+  const groupKey = group.messages[0]?.id ?? "assistant-turn";
   return (
     <div
       key={groupKey}
@@ -251,6 +253,7 @@ export default function MessageList(props: MessageListProps) {
       !historyHasMore ||
       historyLoadingMore ||
       loading ||
+      isStreaming ||
       !onLoadMoreHistory ||
       loadMoreRequestedRef.current
     ) {
@@ -261,11 +264,25 @@ export default function MessageList(props: MessageListProps) {
       scrollHeightBeforePrependRef.current = scroller.scrollHeight;
     }
     loadMoreRequestedRef.current = true;
-    onLoadMoreHistory();
+    void Promise.resolve(onLoadMoreHistory()).then(
+      (started) => {
+        // Early-return in loadMoreHistory leaves historyLoadingMore false, so the
+        // effect below never clears this latch — release it explicitly.
+        if (shouldReleaseLoadMoreLatch(started)) {
+          loadMoreRequestedRef.current = false;
+          scrollHeightBeforePrependRef.current = null;
+        }
+      },
+      () => {
+        loadMoreRequestedRef.current = false;
+        scrollHeightBeforePrependRef.current = null;
+      },
+    );
   }, [
     historyHasMore,
     historyLoadingMore,
     loading,
+    isStreaming,
     onLoadMoreHistory,
     useVirtual,
   ]);
@@ -318,17 +335,24 @@ export default function MessageList(props: MessageListProps) {
     [useVirtual, messageGroups.length],
   );
 
-  const scrollFollowDeps = useMemo(
-    () => ({
-      count: messages.length,
-      lastId: lastMsg?.id ?? "",
-      lastContent: lastMsg?.content ?? "",
-      lastStatus: lastMsg?.status ?? "",
-      showThinking,
-      showContinuing,
-    }),
-    [messages.length, lastMsg, showThinking, showContinuing],
-  );
+  // Fingerprint the in-progress assistant turn (not only the last message).
+  // Thinking often lives on an earlier bubble while tools stream on later ones;
+  // tool results grow in toolData without changing `content`.
+  const scrollFollowToken = useMemo(() => {
+    let token = `${messages.length}|${showThinking ? 1 : 0}|${
+      showContinuing ? 1 : 0
+    }`;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "user") break;
+      const blocksLen =
+        m.contentBlocks?.reduce((n, b) => n + b.content.length, 0) ?? 0;
+      const toolArgs = m.toolData?.arguments?.length ?? 0;
+      const toolResult = m.toolData?.output?.length ?? 0;
+      token += `|${m.id}:${m.status}:${m.content.length}:${blocksLen}:${toolArgs}:${toolResult}`;
+    }
+    return token;
+  }, [messages, showThinking, showContinuing]);
 
   const {
     showScrollBtn,
@@ -342,22 +366,9 @@ export default function MessageList(props: MessageListProps) {
     scrollerMountKey,
     onNearTop: requestOlderMessages,
     onOverscrollBottom: requestRefreshMessages,
-    deps: [
-      scrollFollowDeps.count,
-      scrollFollowDeps.lastId,
-      scrollFollowDeps.lastContent,
-      scrollFollowDeps.lastStatus,
-      scrollFollowDeps.showThinking,
-      scrollFollowDeps.showContinuing,
-    ],
+    deps: [scrollFollowToken],
     skipNextDepsScrollRef,
   });
-
-  useEffect(() => {
-    if (!loading && messages.length > 0) {
-      canLoadOlderRef.current = true;
-    }
-  }, [loading, messages.length]);
 
   useEffect(() => {
     if (!historyLoadingMore) {
@@ -387,11 +398,18 @@ export default function MessageList(props: MessageListProps) {
             <span>{t("chat.loadingEarlierMessages")}</span>
           </>
         ) : (
-          <span>{t("chat.scrollForEarlierMessages")}</span>
+          <Button
+            type="link"
+            size="small"
+            className={styles.historyLoadMoreBtn}
+            onClick={requestOlderMessages}
+          >
+            {t("chat.loadEarlierMessages")}
+          </Button>
         )}
       </div>
     );
-  }, [historyHasMore, historyLoadingMore, t]);
+  }, [historyHasMore, historyLoadingMore, requestOlderMessages, t]);
 
   const refreshFooter = useMemo(() => {
     if (!historyRefreshing) return null;
@@ -424,14 +442,66 @@ export default function MessageList(props: MessageListProps) {
     [],
   );
 
+  // Keep scrollToBottom identity out of session-reset deps: virtual itemCount
+  // changes every message and would re-disarm canLoadOlder permanently.
+  const scrollToBottomRef = useRef(scrollToBottom);
+  scrollToBottomRef.current = scrollToBottom;
+
   useEffect(() => {
     setUseVirtualLocked(false);
     loadMoreRequestedRef.current = false;
-    canLoadOlderRef.current = false;
+    canLoadOlderRef.current = nextCanLoadOlder({
+      kind: "session-reset",
+      loading: !!loading,
+      messageCount: messages.length,
+    });
     lastSmoothScrolledUserIdRef.current = null;
     scrollHeightBeforePrependRef.current = null;
-    scrollToBottom(true);
-  }, [stableSessionKey, scrollToBottom]);
+    scrollToBottomRef.current(true);
+    // Intentionally only sessionKey — see scrollToBottomRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- session switch only
+  }, [stableSessionKey]);
+
+  // Re-arm after session reset (must run after the effect above).
+  useEffect(() => {
+    if (
+      nextCanLoadOlder({
+        kind: "history-ready",
+        loading: !!loading,
+        messageCount: messages.length,
+      })
+    ) {
+      canLoadOlderRef.current = true;
+    }
+  }, [loading, messages.length, stableSessionKey]);
+
+  // When the list does not overflow, scroll-to-top never fires — keep loading
+  // older pages until content can scroll or the server says there is no more.
+  useEffect(() => {
+    if (
+      !historyHasMore ||
+      historyLoadingMore ||
+      loading ||
+      isStreaming ||
+      !canLoadOlderRef.current
+    ) {
+      return;
+    }
+    const scroller = useVirtual ? scrollerRef.current : containerRef.current;
+    if (!(scroller instanceof HTMLElement)) return;
+    if (scroller.scrollHeight <= scroller.clientHeight + 80) {
+      requestOlderMessages();
+    }
+  }, [
+    historyHasMore,
+    historyLoadingMore,
+    loading,
+    isStreaming,
+    messages.length,
+    useVirtual,
+    scrollerMountKey,
+    requestOlderMessages,
+  ]);
 
   useEffect(() => {
     if (messageGroups.length >= VIRTUALIZE_THRESHOLD) {
@@ -439,12 +509,24 @@ export default function MessageList(props: MessageListProps) {
     }
   }, [messageGroups.length]);
 
-  useEffect(() => {
-    if (prevInitialLoadingRef.current && !loading && messages.length > 0) {
-      scrollToBottom(true);
+  useLayoutEffect(() => {
+    // First paint after history arrives: pin before the browser paints the
+    // top-of-thread frame (avoids a visible top→bottom jump on refresh).
+    if (messages.length === 0) return;
+    if (!(prevInitialLoadingRef.current || loading)) return;
+    const scroller = useVirtual ? scrollerRef.current : containerRef.current;
+    if (scroller instanceof HTMLElement) {
+      armProgrammaticGuard(320);
+      scroller.scrollTop = scroller.scrollHeight;
+    } else {
+      scrollToBottomRef.current(true);
     }
     prevInitialLoadingRef.current = !!loading;
-  }, [loading, messages.length, scrollToBottom]);
+  }, [loading, messages.length, useVirtual, armProgrammaticGuard]);
+
+  useEffect(() => {
+    prevInitialLoadingRef.current = !!loading;
+  }, [loading]);
 
   useLayoutEffect(() => {
     if (!isStreaming) {
@@ -500,7 +582,7 @@ export default function MessageList(props: MessageListProps) {
     ],
   );
 
-  if (loading) {
+  if (loading && messages.length === 0) {
     return (
       <div className={styles.messageListLoading}>
         <Spin />
@@ -557,7 +639,9 @@ export default function MessageList(props: MessageListProps) {
           <div className={styles.messageListInner}>
             {historyHeader}
             {messageGroups.map((group, groupIndex) => (
-              <div key={group.messages.map((m) => m.id).join("|")}>
+              // Stable key: first message id only. Joining all ids remounts the
+              // whole assistant turn whenever a tool/thinking bubble is appended.
+              <div key={group.messages[0]?.id ?? `g-${groupIndex}`}>
                 {renderMessageGroup(group, groupIndex, groupContext)}
               </div>
             ))}

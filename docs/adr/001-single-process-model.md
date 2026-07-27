@@ -17,7 +17,7 @@ Everything runs in a single Python process served by uvicorn. There is no extern
 
 - **Self-hosted target:** Operators install with `pip install octop && octop init`. Adding Redis or a process supervisor doubles the ops burden for the primary audience.
 - **Workload profile:** Agent calls are LLM-bound (seconds to minutes of I/O wait). Python's asyncio handles this fan-out efficiently without threads or processes.
-- **SQLite is sufficient:** Concurrent writes are rare (one writer per agent at a time); WAL mode handles the load. Migrating to Postgres requires only a new `DBPool` implementation.
+- **SQLite is sufficient:** Concurrent writes are rare (one writer per agent at a time); WAL mode handles the load. Migrating to Postgres requires only a new `SqlitePool` implementation.
 - **Restart semantics are simple:** `OctopServer.start()` rebuilds the entire runtime tree from the SQLite file. No external state to reconcile.
 
 ## Trade-offs

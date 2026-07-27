@@ -27,7 +27,7 @@ export default function MbtiCatalogDrawer({
       open={open}
       onClose={onClose}
       width="min(1080px, 92vw)"
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { padding: "16px 20px 20px" } }}
     >
       {agentId ? (

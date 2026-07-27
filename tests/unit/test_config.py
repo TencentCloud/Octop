@@ -85,6 +85,40 @@ def test_database_env_url_postgresql(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert cfg.database.password == "secret"
 
 
+def test_database_url_preserves_query_for_conninfo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(
+        "OCTOP_DATABASE_URL",
+        "postgresql://alice:secret@db.example.com:5433/mydb?sslmode=require",
+    )
+    cfg = load_config(tmp_path / "config.json")
+    assert cfg.database.is_postgresql
+    assert cfg.database.url == "postgresql://alice:secret@db.example.com:5433/mydb?sslmode=require"
+    assert "sslmode=require" in cfg.database.postgresql_conninfo()
+
+
+def test_postgresql_conninfo_from_discrete_fields(tmp_path: Path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "database": {
+                    "driver": "postgresql",
+                    "host": "127.0.0.1",
+                    "port": 5432,
+                    "database": "octop",
+                    "user": "octop",
+                    "password": "s3cret",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = load_config(tmp_path / "config.json")
+    info = cfg.database.postgresql_conninfo()
+    assert info.startswith("postgresql://")
+    assert "octop" in info
+    assert "s3cret" in info
+
+
 def test_database_env_password_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(

@@ -58,7 +58,7 @@ export function ACPDrawer({
       open={open}
       onClose={onClose}
       width={520}
-      destroyOnClose
+      destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <div>

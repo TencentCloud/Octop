@@ -25,7 +25,7 @@ export default function AgentPickerModal({
       onCancel={onClose}
       footer={null}
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       {agents.length === 0 ? (
         <Empty description={t("skills.noAgents", "No agents available")} />

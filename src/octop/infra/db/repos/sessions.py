@@ -8,7 +8,7 @@ from typing import Any
 
 from harness_gateway.models import ChannelSubject
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, now_ts, sql_in_placeholders
 
 
@@ -109,7 +109,7 @@ class SessionRow:
 
 
 class SessionRepo:
-    def __init__(self, db: DBPool) -> None:
+    def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
     def get(self, session_key: str) -> SessionRow | None:
@@ -230,7 +230,7 @@ class SessionRepo:
             rows = conn.execute(
                 f"SELECT agent_id, SUM(unread_count) AS total FROM sessions "
                 f"WHERE user_id = ? AND agent_id IN ({placeholders}) "
-                f"GROUP BY agent_id HAVING total > 0",
+                f"GROUP BY agent_id HAVING SUM(unread_count) > 0",
                 (user_id, *agent_ids),
             ).fetchall()
         return {str(r["agent_id"]): int(r["total"]) for r in rows}

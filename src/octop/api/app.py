@@ -50,7 +50,7 @@ def _install_exception_handlers(app: FastAPI) -> None:
 
 
 def build_app(server: OctopServer) -> FastAPI:
-    cfg = server.services.config if server.services else None
+    cfg = server.services.config if server.services else getattr(server, "config", None)
     enable_dashboard = cfg.enable_dashboard if cfg else True
     enable_api_docs = cfg.enable_api_docs if cfg else False
 

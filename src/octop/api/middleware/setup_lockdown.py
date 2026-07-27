@@ -27,7 +27,7 @@ def install(app: Any, server: Any) -> None:
         path = request.url.path
         if not path.startswith("/api/"):
             return await call_next(request)
-        cfg = server.services.config if server.services else None
+        cfg = server.services.config if server.services else getattr(server, "config", None)
         open_exact = ["/api/health"]
         if cfg and cfg.enable_api_docs:
             open_exact.extend(("/api/docs", "/api/openapi.json"))

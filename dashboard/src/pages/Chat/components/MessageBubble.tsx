@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback, useRef } from "react";
+import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { Image, Button, message as antMessage } from "antd";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import {
@@ -490,6 +490,7 @@ function MessageBubble({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { speakingId, speak } = useVoiceOutputContext();
 
@@ -504,6 +505,15 @@ function MessageBubble({
     setEditText(message.content);
     setIsEditing(false);
   }, [message.content]);
+
+  // Grow the edit box with content so short/long messages both feel usable.
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = editTextareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 120), 360)}px`;
+  }, [isEditing, editText]);
   const usageParts = useMemo(
     () =>
       formatTokenUsage(message.usage, {
@@ -659,10 +669,12 @@ function MessageBubble({
             {isEditing ? (
               <div className={styles.editArea}>
                 <textarea
+                  ref={editTextareaRef}
                   className={styles.editTextarea}
                   value={editText}
                   onChange={(e) => setEditText(e.target.value)}
                   autoFocus
+                  rows={4}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();

@@ -107,6 +107,10 @@ export function useChatAttachments(agentId: string | null | undefined) {
     setAttachments([]);
   }, []);
 
+  const restoreAttachments = useCallback((next: ChatAttachment[]) => {
+    setAttachments(next.map((a) => ({ ...a })));
+  }, []);
+
   const handlePaste = useCallback(
     (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -167,6 +171,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
     handleFileChange,
     removeAttachment,
     clearAttachments,
+    restoreAttachments,
     handlePaste,
     handleDragEnter,
     handleDragLeave,

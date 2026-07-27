@@ -1,4 +1,5 @@
 import { request } from "../../../api/request";
+import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
 export interface NamedFileContent {
   name: string;
@@ -52,15 +53,17 @@ export function filterConfigMdFiles(entries: WorkspaceEntry[]): string[] {
 /** List root-level config markdown files (fast tree listing, glob fallback). */
 export async function fetchConfigMdFiles(agentId: string): Promise<string[]> {
   const treeEntries = await request<WorkspaceEntry[]>(
-    `/agents/${agentId}/workspace/tree?path=/`,
+    withFromWorkspace(`/agents/${agentId}/workspace/tree?path=/`),
   );
   const fromTree = filterConfigMdFiles(treeEntries);
   if (fromTree.length > 0) return fromTree;
 
   const globEntries = await request<WorkspaceEntry[]>(
-    `/agents/${agentId}/workspace/glob?pattern=${encodeURIComponent(
-      "**/*.md",
-    )}&path=/`,
+    withFromWorkspace(
+      `/agents/${agentId}/workspace/glob?pattern=${encodeURIComponent(
+        "**/*.md",
+      )}&path=/`,
+    ),
   );
   return filterConfigMdFiles(globEntries);
 }

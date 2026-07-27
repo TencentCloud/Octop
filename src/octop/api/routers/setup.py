@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
 
-from octop.api.deps import get_server, resolve_user_from_token, sign_token
+from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
 from octop.infra.errors import ErrorCode, OctopError
@@ -68,19 +68,50 @@ class ProviderTestBody(BaseModel):
     model_id: str = Field(min_length=1)
 
 
+class DatabaseSetupBody(BaseModel):
+    driver: str = Field(description="sqlite | postgresql")
+    sqlite_path: str | None = None
+    host: str | None = None
+    port: int = 5432
+    database: str | None = None
+    user: str | None = None
+    password: str | None = None
+    url: str | None = None
+
+    def as_payload(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"driver": self.driver.strip().lower()}
+        if self.sqlite_path is not None:
+            out["sqlite_path"] = self.sqlite_path
+        if self.host is not None:
+            out["host"] = self.host
+        out["port"] = self.port
+        if self.database is not None:
+            out["database"] = self.database
+        if self.user is not None:
+            out["user"] = self.user
+        if self.password is not None:
+            out["password"] = self.password
+        if self.url is not None:
+            out["url"] = self.url
+        return out
+
+
 def _setup_password_required(server: Any) -> bool:
-    return bool(server.services and server.services.config.require_setup_password)
+    cfg = server.services.config if server.services else getattr(server, "config", None)
+    return bool(cfg and cfg.require_setup_password)
 
 
 def _enforce_wizard_open(server: Any) -> None:
-    if server.user_manager.count() != 0:
+    um = server.user_manager
+    if um is not None and um.count() != 0:
         _wizard.remove_password(Path.home())
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
 def _enforce_wizard_token_phase(server: Any) -> None:
     """Allow wizard token operations while initial setup is still in progress."""
-    if server.user_manager.count() > 1:
+    um = server.user_manager
+    if um is not None and um.count() > 1:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
@@ -110,7 +141,8 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
     token = _extract_bearer(authorization)
     if server.wizard_tokens.validate(token):
         return token
-    if server.user_manager.count() == 1:
+    um = server.user_manager
+    if um is not None and um.count() == 1:
         try:
             user = resolve_user_from_token(server, token)
             if user.is_admin:
@@ -209,13 +241,75 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Whether initial admin creation is still required and wizard password file state."""
     wizard_path = str(Path.home() / _wizard.WIZARD_FILE_NAME)
     password_required = _setup_password_required(server)
+    um = server.user_manager
+    setup_required = um is None or um.count() == 0
+    database_driver = None
+    if server.database_bound and server.services is not None:
+        database_driver = server.services.config.database.driver
     return {
-        "setup_required": server.user_manager.count() == 0,
+        "setup_required": setup_required,
         "wizard_password_required": password_required,
         "wizard_password_exists": (
             password_required and _wizard.read_password(Path.home()) is not None
         ),
         "wizard_password_path": wizard_path if password_required else None,
+        "database_driver": database_driver,
+        "database_bound": server.database_bound,
+    }
+
+
+@router.post("/setup/test-database", summary="Probe control-plane database connectivity")
+async def test_database(
+    body: DatabaseSetupBody,
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Validate DSN/settings with a short-lived pool (does not replace the process pool)."""
+    _enforce_wizard_open(server)
+    from octop.infra.db.probe import probe_database
+    from octop.infra.db.rebind import database_config_from_payload
+
+    try:
+        db_cfg = database_config_from_payload(body.as_payload())
+    except ValueError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    probe_database(db_cfg, server.paths)
+    return {"ok": True, "driver": db_cfg.driver}
+
+
+@router.post("/setup/database", summary="Persist control-plane database and bind")
+async def apply_database(
+    body: DatabaseSetupBody,
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Write ``config.json`` database section, open the pool, migrate, and boot runtime.
+
+    First-run path binds once (no prior pool). If already bound with zero users
+    (e.g. changing engine mid-wizard), swaps via rebind.
+    """
+    _enforce_wizard_open(server)
+    from octop.infra.db.probe import probe_database
+    from octop.infra.db.rebind import (
+        assert_control_plane_database_empty,
+        database_config_from_payload,
+        persist_database_config,
+        rebind_control_plane,
+    )
+
+    try:
+        db_cfg = database_config_from_payload(body.as_payload())
+    except ValueError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    probe_database(db_cfg, server.paths)
+    assert_control_plane_database_empty(db_cfg, server.paths)
+    persist_database_config(server.paths.config, db_cfg)
+    if server.database_bound:
+        rebind_control_plane(server)
+    else:
+        await server.bind_control_plane()
+    assert server.services is not None
+    return {
+        "ok": True,
+        "driver": server.services.config.database.driver,
     }
 
 
@@ -260,8 +354,11 @@ async def initial_admin(
 ) -> dict[str, Any]:
     """Create the first admin user. Default ``main`` agent is created at ``/setup/finish``."""
     _enforce_wizard_open(server)
+    require_database(server)
     _require_wizard_token(authorization, server)
     locale = normalize_locale(body.locale or resolve_request_locale(request))
+    assert server.user_manager is not None
+    assert server.services is not None
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
@@ -289,6 +386,8 @@ async def initial_admin(
 async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Issue a new wizard token after the admin exists but before finish."""
     _enforce_wizard_token_phase(server)
+    require_database(server)
+    assert server.user_manager is not None
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.AUTH_FAILED, "admin not created yet", status=400)
     token, ttl = server.wizard_tokens.issue()
@@ -324,6 +423,8 @@ async def finish(
 ) -> dict[str, Any]:
     """Apply optional provider draft, bootstrap default ``main`` agent, clear wizard token."""
     _enforce_wizard_token_phase(server)
+    require_database(server)
+    assert server.user_manager is not None
     wizard_token = _authorize_setup_mid_wizard(authorization, server)
     if body.provider_draft is not None:
         try:

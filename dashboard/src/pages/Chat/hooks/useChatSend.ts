@@ -49,6 +49,20 @@ function deriveThreadTitle(msg: string): string {
   return normalized.length > 40 ? `${normalized.slice(0, 39)}…` : normalized;
 }
 
+/** Optional composer snapshot used when flushing a queued message. */
+export type ChatSendOverrides = {
+  selectedModel?: string | null;
+  selectedConnectors?: string[];
+  selectedSkills?: string[];
+  selectedTargetAgents?: string[];
+  composerContext?: UserComposerContext;
+  modelRef?: string | null;
+  /** Send to this thread instead of the active one (queued flush). */
+  threadId?: string | null;
+  /** Send as this agent instead of the active one (queued flush). */
+  agentId?: string | null;
+};
+
 export function useChatSend({
   resolvedAgentId,
   activeThreadId,
@@ -67,16 +81,21 @@ export function useChatSend({
 }: UseChatSendParams) {
   const navigate = useNavigate();
 
+  /** @returns false when the send was rejected before starting a turn. */
   const handleSend = useCallback(
-    (text: string, attachments?: ChatAttachment[]) => {
-      const agent = resolvedAgentId;
+    (
+      text: string,
+      attachments?: ChatAttachment[],
+      overrides?: ChatSendOverrides,
+    ): boolean => {
+      const agent = overrides?.agentId ?? resolvedAgentId;
       if (!agent) {
         message.warning(t("chat.pickAgent", "请先选择一个 Agent"));
-        return;
+        return false;
       }
 
       const trimmed = text.trim();
-      if (!trimmed && !(attachments && attachments.length > 0)) return;
+      if (!trimmed && !(attachments && attachments.length > 0)) return false;
 
       const maybeRenameNewThread = (tid: string, hadMessages: boolean) => {
         const current = sessions.find((s) => s.id === tid);
@@ -85,14 +104,28 @@ export function useChatSend({
         }
       };
 
-      const composerContext = buildComposerContext({
-        skills: selectedSkills,
-        connectors: selectedConnectors,
-        targetAgents: selectedTargetAgents,
-        selectedModel,
-      });
+      const skills = overrides?.selectedSkills ?? selectedSkills;
+      const connectors = overrides?.selectedConnectors ?? selectedConnectors;
+      const targetAgents =
+        overrides?.selectedTargetAgents ?? selectedTargetAgents;
+      const modelSelection =
+        overrides?.selectedModel !== undefined
+          ? overrides.selectedModel
+          : selectedModel;
 
-      const modelOverride = resolveTurnModelRef(selectedModel, defaultModel);
+      const composerContext =
+        overrides?.composerContext ??
+        buildComposerContext({
+          skills,
+          connectors,
+          targetAgents,
+          selectedModel: modelSelection,
+        });
+
+      const modelOverride =
+        overrides?.modelRef !== undefined
+          ? overrides.modelRef
+          : resolveTurnModelRef(modelSelection, defaultModel);
 
       const runSend = (tid: string, hadMessages: boolean) => {
         maybeRenameNewThread(tid, hadMessages);
@@ -103,16 +136,23 @@ export function useChatSend({
           attachments,
           tid,
           modelOverride,
-          selectedConnectors,
-          selectedSkills,
-          selectedTargetAgents,
+          connectors,
+          skills,
+          targetAgents,
           composerContext,
         );
       };
 
-      if (activeThreadId) {
-        runSend(activeThreadId, messagesLength > 0);
-        return;
+      const targetThreadId =
+        overrides?.threadId !== undefined ? overrides.threadId : activeThreadId;
+
+      if (targetThreadId) {
+        const hadMessages =
+          targetThreadId === activeThreadId
+            ? messagesLength > 0
+            : chatStore.getSnapshot(targetThreadId).messages.length > 0;
+        runSend(targetThreadId, hadMessages);
+        return true;
       }
 
       const userMsg = buildUserMessage(trimmed, attachments, composerContext);
@@ -144,12 +184,13 @@ export function useChatSend({
           undefined,
           modelOverride,
           tid,
-          selectedConnectors,
-          selectedSkills,
-          selectedTargetAgents,
+          connectors,
+          skills,
+          targetAgents,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
+      return true;
     },
     [
       activeThreadId,

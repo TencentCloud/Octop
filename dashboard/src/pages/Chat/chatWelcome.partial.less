@@ -12,18 +12,6 @@
   overflow-x: hidden;
   position: relative;
   z-index: 2;
-  animation: welcomeFadeIn 0.35s ease both;
-}
-
-@keyframes welcomeFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes promptCardIn {
@@ -67,7 +55,6 @@
   height: 104px;
   object-fit: contain;
   opacity: 1;
-  filter: drop-shadow(0 4px 12px rgba(232, 93, 117, 0.25));
 
   @media (max-width: 767px) {
     width: 76px;
@@ -88,18 +75,16 @@
 // Mascot image shown above the greeting title
 .welcomeMascot {
   width: 132px;
+  aspect-ratio: 352 / 320;
   height: auto;
   object-fit: contain;
   margin-bottom: -12px;
   cursor: pointer;
-  animation: mascotBounceIn 0.5s ease both;
-  transition:
-    transform 0.18s ease,
-    filter 0.18s ease;
+  background: transparent;
+  transition: transform 0.18s ease;
 
   &:hover {
     transform: scale(1.04) translateY(-2px);
-    filter: drop-shadow(0 6px 16px rgba(232, 93, 117, 0.35));
   }
 
   &:active {
@@ -120,17 +105,6 @@
   @media (min-width: 1200px) {
     width: 172px;
     margin-bottom: -16px;
-  }
-}
-
-@keyframes mascotBounceIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.94);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
   }
 }
 

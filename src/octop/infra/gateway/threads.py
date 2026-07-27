@@ -52,6 +52,11 @@ class ThreadRegistry:
         self._threads = thread_repo
         self._lock = asyncio.Lock()
 
+    def replace_repos(self, *, session_repo: SessionRepo, thread_repo: ThreadRepo) -> None:
+        """Point at repos from a rebound control-plane pool."""
+        self._sessions = session_repo
+        self._threads = thread_repo
+
     async def get_or_create(
         self,
         *,

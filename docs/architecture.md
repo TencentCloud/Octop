@@ -25,7 +25,7 @@ HTTP/WebSocket API, and a web UI.
 ├──────────────────────────────────────────────────────────────────┤
 │  Reusable libs    │  harness-agent   harness-gateway            │
 ├──────────────────────────────────────────────────────────────────┤
-│  Storage          │  SQLite (~/.octop/octop.db)  + file workspaces│
+│  Storage          │  SQLite or PostgreSQL control plane + file workspaces│
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,7 +44,7 @@ both `infra/server` and `api/app`).
 OctopServer.start()
  ├─ PathLayout.from_env()            (root + DB + secrets dirs)
  ├─ load_config(config.json)        (env overrides on top)
- ├─ open_database()                  (SQLite WAL today; PG behind a seam)
+ ├─ open_database()                  (SQLite WAL or PostgreSQL via PostgresPool)
  ├─ run_migrations()                 (infra/db/migrations/*.sql, versioned)
  ├─ SharedServices (repos + factories)
  ├─ WizardTokenStore                 (5-min TTL setup tokens)
@@ -102,10 +102,20 @@ see `infra/gateway/threads.py` for the full state machine.
 
 ## 4. Storage
 
-A single SQLite file at `~/.octop/octop.db` holds users, agents,
-providers, channels, cron jobs, chat sessions, audit log, and the
-JWT secret. Migrations live in `src/octop/infra/db/migrations/`. The
-wheel ships the built dashboard SPA, so the entire stack is one
+The **control plane** (users, agents, providers, channels, cron,
+sessions, audit, JWT secret) lives in either:
+
+* SQLite — default file under `~/.octop/` (legacy `octop.db` or
+  `config.json` → `database.sqlite_path`), or
+* PostgreSQL — `config.json` / `OCTOP_DATABASE_*` / Setup wizard database step.
+
+Migrations: `src/octop/infra/db/migrations/NNN_*.sql` (SQLite) and
+`NNN_*.pg.sql` (PostgreSQL). Connection PRAGMAs live on the SQLite pool;
+PostgreSQL extensions (e.g. `vector`) are docker/ops init, not app
+migrations. Agent memory DDL is owned by harness-memory. See
+[ADR 002](./adr/002-database-backends.md).
+
+The wheel ships the built dashboard SPA, so the entire stack is one
 `pip install`.
 
 Per-agent workspace files (Markdown, skills, expert templates) are

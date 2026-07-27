@@ -33,6 +33,7 @@ from harness_gateway.models import (
 from octop.infra.gateway.media.backend_files import (
     dashboard_media_url,
     extract_workspace_rel,
+    file_url_to_abs_path,
     media_preview_url,
     read_file_url_bytes,
     resolve_dashboard_media_url,
@@ -116,6 +117,7 @@ def _workspace_rel_from_preview(preview: str) -> str | None:
 
 
 def _resolve_block_workspace_rel(block: dict[str, Any], preview: str = "") -> str | None:
+    """Return inbound/outbound relative path when present (image/media convention)."""
     raw_path = block.get("path")
     if isinstance(raw_path, str) and raw_path.strip():
         rel = extract_workspace_rel(raw_path.strip())
@@ -228,10 +230,10 @@ def enrich_media_block_preview(block: Any, *, agent_id: str) -> Any:
         return block
     btype = str(block.get("type") or "")
     if btype == "file":
-        rel = _resolve_block_workspace_rel(block, str(block.get("preview_url") or ""))
-        _, mime, _ = _block_file_refs(block)
-        if rel:
-            return _slim_file_block(block, rel=rel, mime=mime)
+        raw_url, mime, _ = _block_file_refs(block)
+        path = _file_block_path(block, raw_url)
+        if path:
+            return _slim_file_block(block, rel=path, mime=mime)
         # Fall through to try deriving a path from file:// URL fields.
     elif block.get("preview_url"):
         return block
@@ -338,6 +340,33 @@ async def enrich_tool_result_with_backend(
     return out
 
 
+def _file_block_path(block: dict[str, Any], raw_url: str) -> str | None:
+    """Resolve the path to store on a slimmed file block.
+
+    Prefer an explicit absolute / ``file://`` path from the tool (BackendWorkspace
+    can read it directly). Fall back to inbound/outbound relatives. Never invent
+    a relative rewrite of a host-absolute path.
+    """
+    raw_path = block.get("path")
+    if isinstance(raw_path, str) and raw_path.strip():
+        candidate = raw_path.strip()
+        if candidate.startswith("file://"):
+            return file_url_to_abs_path(candidate)
+        # Leading '/' (and Windows drive) = host absolute under download default.
+        if candidate.startswith("/") or (len(candidate) >= 2 and candidate[1] == ":"):
+            return candidate
+        rel = extract_workspace_rel(candidate)
+        if rel:
+            return rel
+        return candidate.lstrip("/") or None
+
+    if raw_url.startswith("file://"):
+        return file_url_to_abs_path(raw_url)
+    if raw_url.startswith("/") or (len(raw_url) >= 2 and raw_url[1] == ":"):
+        return raw_url
+    return extract_workspace_rel(raw_url)
+
+
 async def _enrich_block_with_backend(
     block: Any, *, agent_id: str, workspace: BackendWorkspace
 ) -> Any:
@@ -347,16 +376,19 @@ async def _enrich_block_with_backend(
     # File blocks may already be path-only (no preview_url).
     if block.get("preview_url") and btype != "file":
         return block
-    if (
-        btype == "file"
-        and isinstance(block.get("path"), str)
-        and block["path"].startswith(("inbound/", "outbound/"))
-    ):
-        # Already workspace-relative — just slim the block.
-        _, mime, _ = _block_file_refs(block)
-        return _slim_file_block(block, rel=block["path"].lstrip("/"), mime=mime)
 
     raw_url, mime, filename = _block_file_refs(block)
+    if btype == "file":
+        # Keep the tool's absolute path as-is — BackendWorkspace reads it
+        # directly. Do not copy into outbound/ or collapse to a relative path.
+        path = _file_block_path(block, raw_url)
+        if path:
+            return _slim_file_block(block, rel=path, mime=mime)
+        return enrich_media_block_preview(block, agent_id=agent_id)
+
+    if isinstance(block.get("path"), str) and block["path"].startswith(("inbound/", "outbound/")):
+        return block
+
     if not raw_url.startswith("file://"):
         return enrich_media_block_preview(block, agent_id=agent_id)
 
@@ -519,11 +551,12 @@ async def attachment_frames_from_tool_result(
                     )
 
             btype = str(block.get("type") or "file")
-            # File cards: derive download URL from workspace path when preview_url was slimmed away.
+            # File cards: derive download URL from path (absolute or relative).
             if btype == "file" and (not isinstance(preview_url, str) or not preview_url):
-                rel = _resolve_block_workspace_rel(block, "")
-                if rel:
-                    preview_url = workspace_download_url(agent_id, rel)
+                raw_url, _, _ = _block_file_refs(block)
+                file_path = _file_block_path(block, raw_url)
+                if file_path:
+                    preview_url = workspace_download_url(agent_id, file_path)
 
             if not preview_url:
                 attachment = await _attachment_frame_from_bytes(block, workspace=workspace)
@@ -541,9 +574,12 @@ async def attachment_frames_from_tool_result(
             if isinstance(fn, str) and fn.strip():
                 frame["filename"] = display_name_from_stored(fn.strip())
             if btype == "file":
-                rel = _resolve_block_workspace_rel(block, preview_url)
-                if rel:
-                    frame["path"] = rel
+                raw_url, _, _ = _block_file_refs(block)
+                file_path = _file_block_path(block, raw_url) or _resolve_block_workspace_rel(
+                    block, preview_url if isinstance(preview_url, str) else ""
+                )
+                if file_path:
+                    frame["path"] = file_path
             block_mime = (
                 block.get("mime_type")
                 or block.get("media_type")

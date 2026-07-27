@@ -4,7 +4,7 @@ Sub-packages:
     agents   — agent factory, runtime, manager, MBTI personas, expert templates
     channels — IM channels, processor, slash commands
     cron     — CronJob, CronManager, trigger parsing
-    db       — DBPool, SQL migrations, Repo classes, RepoBundle
+    db       — SqlitePool, SQL migrations, Repo classes, RepoBundle
     users    — User/Role/UserToken identity, manager, password
 
 Top-level modules:

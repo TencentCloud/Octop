@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
 import { request } from "../api/request";
+import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
 import {
   listAgentSubagents,
@@ -149,9 +150,11 @@ export default function AgentProfileDrawer({
     setFileContent("");
     try {
       const r = await request<{ content: string }>(
-        `/agents/${agent.agent_id}/workspace/file?path=${encodeURIComponent(
-          path,
-        )}`,
+        withFromWorkspace(
+          `/agents/${agent.agent_id}/workspace/file?path=${encodeURIComponent(
+            path,
+          )}`,
+        ),
       );
       setFileContent(r.content ?? "");
     } catch {
@@ -456,7 +459,7 @@ export default function AgentProfileDrawer({
           rootClassName={styles.mobileDrawer}
           styles={mobileDrawerStyles}
           onClose={handleDrawerClose}
-          destroyOnClose
+          destroyOnHidden
         >
           {viewingFile ? renderFileContent() : renderProfileContent()}
         </Drawer>
@@ -485,7 +488,7 @@ export default function AgentProfileDrawer({
         title={t("chat.agentProfile.title")}
         width={420}
         onClose={onClose}
-        destroyOnClose
+        destroyOnHidden
       >
         {renderProfileContent()}
       </Drawer>
@@ -495,7 +498,7 @@ export default function AgentProfileDrawer({
         title={viewingFile ? displayName(viewingFile) : ""}
         width={480}
         onClose={closeFileView}
-        destroyOnClose
+        destroyOnHidden
       >
         {renderFileContent()}
       </Drawer>

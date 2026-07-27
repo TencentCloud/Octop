@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from tests.support.app import write_octop_config
+from tests.support.app import ensure_control_plane_bound, write_octop_config
 from tests.support.auth import bearer, bootstrap_admin, login
 
 from octop.api.app import build_app
@@ -35,6 +35,7 @@ def test_exempt_paths() -> None:
 async def client(tmp_path: Path):
     srv = OctopServer(home=tmp_path)
     await srv.start()
+    await ensure_control_plane_bound(srv)
     app = build_app(srv)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
@@ -62,6 +63,7 @@ async def test_middleware_allows_api_docs_without_token(tmp_path: Path) -> None:
     write_octop_config(tmp_path, enable_api_docs=True)
     srv = OctopServer(home=tmp_path)
     await srv.start()
+    await ensure_control_plane_bound(srv)
     app = build_app(srv)
     try:
         async with httpx.AsyncClient(

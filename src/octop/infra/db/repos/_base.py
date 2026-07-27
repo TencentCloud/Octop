@@ -76,4 +76,6 @@ def insert_returning_id(conn: Any, sql: str, params: Sequence[object]) -> int:
     row = conn.execute(f"{sql} RETURNING id", params).fetchone()
     if row is None:
         raise RuntimeError("INSERT RETURNING id returned no row")
+    if isinstance(row, Mapping):
+        return int(row["id"])
     return int(row[0])

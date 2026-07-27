@@ -1,15 +1,13 @@
-import { useEffect, useState } from "react";
 import { Layout } from "antd";
-import { Menu as MenuIcon, Github } from "lucide-react";
+import {
+  Menu as MenuIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Github,
+} from "lucide-react";
 import PwaInstallPrompt from "../components/PwaInstallPrompt";
 import pwaStyles from "../components/PwaInstallPrompt/index.module.less";
-import AppVersionBadge from "../components/AppVersionBadge";
-import BetaBadge from "../components/BetaBadge";
-import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import ThemeSwitcher from "../components/ThemeSwitcher";
-import AvatarDropdown from "../components/AvatarDropdown";
-import { authApi } from "../api/modules/auth";
-import type { OctopUser } from "../api/modules/auth";
 import { useTheme } from "../context/ThemeContext";
 import { typeSize } from "../utils/mobileTypeScale";
 
@@ -22,24 +20,20 @@ interface HeaderProps {
   isMobile?: boolean;
 }
 
-export default function Header({ onToggle, isMobile }: HeaderProps) {
+/** Thin top chrome: mobile brand + sidebar toggle + GitHub / Install / theme. */
+export default function Header({
+  collapsed = false,
+  onToggle,
+  isMobile,
+}: HeaderProps) {
   const { isDark } = useTheme();
-  const [user, setUser] = useState<OctopUser | null>(null);
-
-  useEffect(() => {
-    authApi
-      .me()
-      .then(setUser)
-      .catch(() => {});
-  }, []);
-
-  const logoSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
+  const mobileLogoSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
 
   return (
     <AntHeader
       style={{
         height: "var(--fn-header-height)",
-        padding: isMobile ? "0 12px" : "0 20px",
+        padding: isMobile ? "0 12px" : "0 20px 0 4px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -52,19 +46,20 @@ export default function Header({ onToggle, isMobile }: HeaderProps) {
         zIndex: 20,
       }}
     >
-      {/* Left: mobile toggle + logo */}
       <div
         style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
       >
-        {isMobile && onToggle && (
+        {onToggle && (
           <button
+            type="button"
             onClick={onToggle}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: typeSize(34, isMobile),
-              height: typeSize(34, isMobile),
+              width: typeSize(34, !!isMobile),
+              height: typeSize(34, !!isMobile),
               border: "none",
               borderRadius: "var(--fn-radius-md)",
               background: "transparent",
@@ -82,37 +77,31 @@ export default function Header({ onToggle, isMobile }: HeaderProps) {
               e.currentTarget.style.color = "var(--fn-text-tertiary)";
             }}
           >
-            <MenuIcon size={20} strokeWidth={1.8} />
+            {isMobile ? (
+              <MenuIcon size={20} strokeWidth={1.8} />
+            ) : collapsed ? (
+              <PanelLeftOpen size={18} strokeWidth={1.8} />
+            ) : (
+              <PanelLeftClose size={18} strokeWidth={1.8} />
+            )}
           </button>
         )}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            minWidth: 0,
-            flexShrink: 1,
-          }}
-        >
+        {isMobile && (
           <img
-            src={logoSrc}
+            src={mobileLogoSrc}
             alt="octop"
             style={{
-              height: isMobile ? 36 : 42,
+              height: 36,
               width: "auto",
-              maxWidth: isMobile ? 230 : 280,
+              maxWidth: 230,
               objectFit: "contain",
               flexShrink: 0,
               display: "block",
             }}
           />
-          <BetaBadge isMobile={isMobile} />
-          <CurrentVersionBadge isMobile={isMobile} />
-          <AppVersionBadge isMobile={isMobile} />
-        </div>
+        )}
       </div>
 
-      {/* Right: GitHub + PWA install + avatar dropdown */}
       <div
         style={{
           display: "flex",
@@ -138,7 +127,6 @@ export default function Header({ onToggle, isMobile }: HeaderProps) {
         )}
         <PwaInstallPrompt compact={isMobile} />
         {!isMobile && <ThemeSwitcher compact />}
-        <AvatarDropdown user={user} onUserChange={setUser} />
       </div>
     </AntHeader>
   );

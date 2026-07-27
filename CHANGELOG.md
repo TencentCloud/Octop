@@ -6,11 +6,55 @@
 
 ## [Unreleased]
 
+## [0.9.14] - 2026-07-25
+
+### 新增
+- 控制平面支持 PostgreSQL 双后端（统一 DatabasePool、并行 PG 迁移、安装向导选择/绑定、pg_dump 备份；PostgreSQL 下记忆默认复用控制平面 DSN）(#60)
+- SkillHub 改为走 HTTP API，支持来源中立的技能包安装与搜索 (#55)
+- 远程浏览器/桌面支持真实拖拽（转发 CDP 指针事件），并共享推流连接中指示 (#50)
+- 聊天界面布局与交互打磨：历史侧栏、消息队列、自动滚动与欢迎页等体验优化 (#66, #69, #70)
+
 ### 修复
-- 修复取消聊天任务后再次提问会一直停留在思考状态的问题 (#42)
+- 修复 macOS/Linux 上 Agent 上下文历史写入主机根目录的问题：依赖 harness-agent≥0.9.12 将 deepagents artifacts 落到 Agent 工作区 (#57)
+- Provider catalog 的 `context_window` 映射为 harness `max_input_tokens`，修复 Auto/摘要阈值与 UI 上下文环按错误上限计算的问题
+- 元宝扫码绑定后保存官方 API 与 WebSocket 地址，并升级网关至 0.8.7 以支持完整媒体收发 (#56)
+- ChatGPT/Codex OAuth 改为 device code 流程，修复非 localhost 部署下授权失败 (#54)
+- 技能 CLI 安装不再根据用户输入的 slug 推导路径，避免装错包 (#63)
+- 删除会话时同步清理 harness checkpoint，避免「删除」后消息历史仍残留 (#60)
+- 修正 PostgreSQL 记忆可移植导出的误导性 pg_dump 提示（共享 schema 下按 namespace 隔离，不可整库导出单 agent）(#60)
+- 技能启用/禁用与 SkillHub 安装不再触发整机 Agent rebuild，避免切到技能列表时短暂「未找到 Agent」
+- 修复聊天向上滚动加载更早消息失效，并在列表未溢出时提供可点击回退
+- 工作区路径语义澄清（`from_workspace`），并加固 Windows 下 file URL / 主机路径校验
+
+### 变更
+- `/compact` 改为在当前话题强制触发一次 Summarization（总结较早消息并 offload 到 `conversation_history/`），不再新建线程；新建空话题请用 `/new`
+- `/compact` 成功提示明确：聊天界面仍保留完整历史，压缩的是下一轮模型可见上下文
+- 文档与发布流程改为 develop 日常集成、先合入 main 再打 tag (#48)
+
+## [0.9.13] - 2026-07-23
+
+### 新增
+- SkillHub 改为走 HTTP API，支持来源中立的技能包安装与搜索 (#55)
+- 远程浏览器/桌面支持真实拖拽（转发 CDP 指针事件），并共享推流连接中指示 (#50)
+
+### 修复
+- 修复 macOS/Linux 上 Agent 上下文历史写入主机根目录的问题：依赖 harness-agent≥0.9.12 将 deepagents artifacts 落到 Agent 工作区 (#49, #57)
+- Provider catalog 的 `context_window` 映射为 harness `max_input_tokens`，修复 Auto/摘要阈值与 UI 上下文环按错误上限（如 128k）计算的问题
+- 修复取消聊天任务后再次提问会一直停留在思考状态的问题 (#42, #43)
 - 技能启用/禁用与 SkillHub 安装不再触发整机 Agent rebuild，避免切到技能列表时短暂「未找到 Agent」
 - 内置专家卡片标题与图标水平对齐
-- SkillHub / 专家市场在 Python SSL 失败时给出可操作提示，并修正技能市场错误态「Retry」未本地化为「刷新」(#44)
+- SkillHub / 专家市场在 Python SSL 失败时给出可操作提示，并修正技能市场错误态「Retry」未本地化为「刷新」(#44, #46)
+- 元宝扫码绑定后保存官方 API 与 WebSocket 地址，并升级网关至 0.8.7 以支持完整媒体收发 (#56)
+- ChatGPT/Codex OAuth 改为 device code 流程，修复非 localhost 部署下授权失败 (#54)
+- 远程桌面安装拒绝不支持的 EL10 环境 (#41)
+- 聊天上下文占用图例在空会话时对齐 (#40)
+- 修复聊天向上滚动加载更早消息失效，并在列表未溢出时提供可点击回退
+- 工作区路径语义澄清（`from_workspace`），并加固 Windows 下 file URL / 主机路径校验
+
+### 变更
+- `/compact` 改为在当前话题强制触发一次 Summarization（总结较早消息并 offload 到 `conversation_history/`），不再新建线程；新建空话题请用 `/new`
+- `/compact` 成功提示明确：聊天界面仍保留完整历史，压缩的是下一轮模型可见上下文
+- 文档与发布流程改为 develop 日常集成、先合入 main 再打 tag (#48)
 
 ## [0.9.12] - 2026-07-21
 
@@ -142,4 +186,3 @@
 
 ### 移除
 - 移除模型配置提示弹窗、旧聊天流模块、slash 上下文与附件签名测试
-

@@ -1,0 +1,42 @@
+# =============================================================================
+# Local PostgreSQL (+ pgvector) for Octop dual-backend development / tests
+#
+# From repo root:
+#   docker compose -f docker/docker-compose.postgres.yml up -d
+#   docker compose -f docker/docker-compose.postgres.yml down
+#
+# Connection (default):
+#   postgresql://octop:octop@127.0.0.1:5432/octop
+#
+# For pytest / Octop:
+#   export OCTOP_TEST_DATABASE_URL='postgresql://octop:octop@127.0.0.1:5432/octop'
+#   export OCTOP_DATABASE_URL='postgresql://octop:octop@127.0.0.1:5432/octop'
+#
+# Init layers (ADR 002):
+#   - Control-plane schema → Octop migrate (NNN_*.pg.sql), not this compose
+#   - CREATE EXTENSION vector → postgres/init-vector.sql (initdb.d only)
+#   - Agent memory tables → harness-memory at runtime
+# =============================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: octop-postgres
+    restart: unless-stopped
+    ports:
+      - "${OCTOP_PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${OCTOP_PG_USER:-octop}
+      POSTGRES_PASSWORD: ${OCTOP_PG_PASSWORD:-octop}
+      POSTGRES_DB: ${OCTOP_PG_DB:-octop}
+    volumes:
+      - octop_pgdata:/var/lib/postgresql/data
+      - ./postgres/init-vector.sql:/docker-entrypoint-initdb.d/01-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  octop_pgdata:

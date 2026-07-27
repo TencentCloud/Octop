@@ -129,9 +129,10 @@ async def resolve_harness_session(
 
     await prepare_harness_profile_for_launch(profile)
     # Virtual desktop (Xvnc :99) → headed Chrome so the window shows on
-    # remote desktop; otherwise keep auto (headless on servers without X).
+    # remote desktop; otherwise force headless (do not use mode=auto — a
+    # stale $DISPLAY would still resolve to headed and crash Chromium).
     display = resolve_browser_display()
-    launch_mode = "headed" if display else "auto"
+    launch_mode = "headed" if display else "headless"
 
     # Fresh ProfileManager picks up any BROWSER_USE_PROFILES_DIR relocation
     # done by prepare (default singleton is bound at import time).
@@ -165,7 +166,7 @@ async def resolve_harness_session(
             )
             await prepare_harness_profile_for_launch(profile, force_recover=True)
             display = resolve_browser_display()
-            launch_mode = "headed" if display else "auto"
+            launch_mode = "headed" if display else "headless"
             profile_manager = ProfileManager(base_dir=Path(hb_settings.profiles_dir))
             try:
                 sess = await BrowserSession.create(

@@ -4,9 +4,9 @@ import { useWelcomeQuickCardsLayout } from "../hooks/useWelcomeQuickCardsLayout"
 import WelcomeQuickCards, { WelcomeQuickCardProbe } from "./WelcomeQuickCards";
 import styles from "../index.module.less";
 
-// Idle (peeking) is the default; tap cycles to the typing variant.
-const MASCOT_PEEK = "/octop-mascot-peek.webm";
-const MASCOT_TYPE = "/octop-mascot-type.webm";
+// Animated WebP keeps alpha on Safari; VP9 WebM alpha is unreliable there.
+const MASCOT_PEEK = "/octop-mascot-peek.webp";
+const MASCOT_TYPE = "/octop-mascot-type.webp";
 const MASCOT_IMAGES = [MASCOT_PEEK, MASCOT_TYPE];
 
 function getRandomMascot(current?: string): string {
@@ -60,28 +60,23 @@ export default function WelcomeScreen({
     setMascotSrc((prev) => getRandomMascot(prev));
   };
 
+  const showMascot = !hideMascot && !autoHideMascot;
+
   return (
     <div className={styles.welcome} ref={welcomeRef}>
       <div className={styles.welcomeInner}>
         <div className={styles.welcomeHeading} ref={headingRef}>
-          {!hideMascot && !autoHideMascot && (
-            <video
-              key={mascotSrc}
+          {showMascot && (
+            <img
               className={styles.welcomeMascot}
               src={mascotSrc}
-              autoPlay
-              loop
-              muted
-              playsInline
-              aria-label="Octop mascot"
+              alt=""
               draggable={false}
               onClick={handleMascotClick}
               role="button"
               tabIndex={0}
               title={t("chatWelcome.mascotSwitchHint")}
-              ref={(el) => {
-                if (el) el.muted = true;
-              }}
+              aria-label="Octop mascot"
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();

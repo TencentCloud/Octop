@@ -7,26 +7,26 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.utils.locale import normalize_locale, resolve_locale
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "octop.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     return pool
 
 
-def test_users_table_has_locale_default_zh(db: DBPool):
+def test_users_table_has_locale_default_zh(db: SqlitePool):
     uid = UserRepo(db).create(username="u", password_hash="h", role="user")
     row = UserRepo(db).get(uid)
     assert row is not None
     assert row.locale == "zh"
 
 
-def test_user_repo_create_accepts_explicit_locale(db: DBPool):
+def test_user_repo_create_accepts_explicit_locale(db: SqlitePool):
     uid = UserRepo(db).create(username="en-user", password_hash="h", role="admin", locale="en")
     row = UserRepo(db).get(uid)
     assert row is not None
@@ -34,7 +34,7 @@ def test_user_repo_create_accepts_explicit_locale(db: DBPool):
 
 
 def test_legacy_users_table_gets_locale_column(tmp_path: Path):
-    pool = DBPool(tmp_path / "legacy.db")
+    pool = SqlitePool(tmp_path / "legacy.db")
     with pool.connect() as conn:
         conn.executescript(
             """
@@ -61,7 +61,7 @@ def test_legacy_users_table_gets_locale_column(tmp_path: Path):
     assert row.locale == "zh"
 
 
-def test_set_locale_persists(db: DBPool):
+def test_set_locale_persists(db: SqlitePool):
     repo = UserRepo(db)
     uid = repo.create(username="u", password_hash="h", role="user")
     repo.set_locale(uid, "en")

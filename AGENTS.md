@@ -45,7 +45,7 @@ No external queue. No required services beyond an LLM provider.
 | Language | Python 3.11+ |
 | Web framework | FastAPI + uvicorn |
 | Async runtime | asyncio (no threads except `run_in_executor`) |
-| Database | SQLite via `aiosqlite` (WAL mode) |
+| Database | SQLite via sync `sqlite3` (WAL) **or** PostgreSQL via `psycopg` / `psycopg_pool` |
 | LLM runtime | `harness-agent` (LangGraph) at `/workspace/harness-agent` |
 | Gateway | `harness-gateway` at `/workspace/harness-gateway` |
 | Frontend | React 18 + TypeScript + Vite |
@@ -111,7 +111,7 @@ cli/ ──► launch.py ──► api/ + infra/
 | `infra/backend/` | Workspace storage adapter, resolver, remote probe (COS/S3/…) | `agents/`, `api/routers/workspace*.py` |
 | `infra/connectors/` | Connector catalog, OAuth, MCP gateway, credential crypto | `api/routers/connectors.py`, `internal_mcp.py`, `agents/manager.py` (MCP assembly) |
 | `infra/cron/` | Cron jobs, triggers, agent tool hooks | `server.py`, `api/routers/cron.py` |
-| `infra/db/` | `DBPool`, migrations, `RepoBundle` / `SharedServices` in `services.py` | all domain code needing persistence |
+| `infra/db/` | `SqlitePool`, migrations, `RepoBundle` / `SharedServices` in `services.py` | all domain code needing persistence |
 | `infra/gateway/` | IM ingress (`processor.py`), threads, slash commands (`slash/`), bot setup (`bot_creators/`) | `server.py`, `api/routers/chat.py`, `channels.py` |
 | `infra/setup/` | First-run wizard, system service install, TLS / Let's Encrypt | `server.py`, `launch.py`, `api/routers/setup.py`, `api/routers/tls.py` |
 | `infra/users/` | Users, roles, password hashing, `UserManager` | `server.py`, `api/routers/auth.py`, `users.py` |
@@ -211,7 +211,10 @@ make build-frontend                     # dashboard/ → src/octop/dashboard/
 
 **Chat attachments:** Dashboard uploads go to `{workspace}/inbound/` via `api/common/attachments.py` + `api/routers/uploads.py`, not a separate `~/.octop/uploads/` store.
 
-**Database:** Add columns via a new numbered migration (`infra/db/migrations/00N_description.sql`), then bump the version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 1`).
+**Database:** Add columns via a new numbered migration
+(`infra/db/migrations/00N_description.sql` **and** matching
+`00N_description.pg.sql` for PostgreSQL), then bump the version
+assertion in `tests/unit/db/test_db_pool.py` (currently `v == 1`).
 
 **Slash commands:** `infra/gateway/slash/dispatcher.py` routes; `handlers/` implements; catalog in `catalog.py`.
 
@@ -334,6 +337,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | OpenAPI tags and API intro | `api/openapi_meta.py` |
 | Human-readable API reference | `docs/api.md` |
 | SharedServices / RepoBundle | `infra/db/services.py` |
+| Branching & release | [§10](#10-change-workflow) Branching & release; `CONTRIBUTING.md`; `.cursor/skills/publish` |
 
 ## 10. Change workflow
 
@@ -341,6 +345,28 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 2. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
 3. **Verify** — backend: `make all` (`lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`.
 4. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
+
+### Branching & release
+
+```
+feature/* ──PR──► develop ──► release/x.y.z ──PR──► main ──tag v*──► publish
+hotfix/* ──PR──► main (+ tag) and ──PR──► develop
+```
+
+| Branch | Role |
+|--------|------|
+| `main` | Production source of truth; **default branch**; only release / hotfix merges; **only `v*` tags on `main` are production** |
+| `develop` | Daily integration; **base for feature PRs** |
+| `release/x.y.z` | Temporary freeze (version bump / CHANGELOG / bugfixes); **delete after ship** |
+
+**Rules**
+
+- Never push `develop` directly onto `main` — all merges via PR.
+- Release sequence: cut `release/*` from latest `develop` → PR into `main` → **tag `v*` on main tip only after merge** → delete `release/*` → sync `main` → `develop` when needed.
+- Do **not** push a production tag from a release/feature branch before it is on `main`.
+- Hotfix: branch from `main`, PR to `main` (and tag if shipping), then PR into `develop`.
+- Day-to-day feature work: branch from `develop`, open PR **into `develop`** (not `main`).
+- Human detail: `CONTRIBUTING.md`. Agent publish flow: `.cursor/skills/publish`.
 
 ## 11. Communication
 

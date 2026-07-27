@@ -8,6 +8,10 @@ Client → Server::
    "reuse_session": true, "session_id": "<profile>"}
   {"type": "navigate", "url": "https://..."}
   {"type": "click", "x": 100, "y": 200}
+  {"type": "mousedown", "x": 100, "y": 200, "button": "left", "buttons": 1}
+  {"type": "mousemove", "x": 150, "y": 250, "button": "left", "buttons": 1}
+  {"type": "mousemove", "x": 160, "y": 260, "button": "none", "buttons": 0}
+  {"type": "mouseup", "x": 150, "y": 250, "button": "left", "buttons": 0}
   {"type": "stop"}
 
 Server → Client::
@@ -117,6 +121,55 @@ async def _stream_loop(
         await asyncio.sleep(_FRAME_INTERVAL_S)
 
 
+_CDP_BUTTON_MASK = {"left": 1, "right": 2, "middle": 4, "none": 0}
+
+
+def _cdp_button(raw: object) -> str:
+    name = str(raw or "left").lower()
+    return name if name in _CDP_BUTTON_MASK else "left"
+
+
+def _cdp_buttons(msg: dict[str, Any], *, button: str, event: str) -> int:
+    if "buttons" in msg and msg["buttons"] is not None:
+        try:
+            return max(0, int(msg["buttons"]))
+        except (TypeError, ValueError):
+            pass
+    if event == "mouseup" or button == "none":
+        return 0
+    return _CDP_BUTTON_MASK.get(button, 0)
+
+
+async def _dispatch_mouse(
+    sess: Any,
+    *,
+    event_type: str,
+    x: int,
+    y: int,
+    button: str = "none",
+    buttons: int = 0,
+    click_count: int = 0,
+) -> None:
+    params: dict[str, Any] = {
+        "type": event_type,
+        "x": x,
+        "y": y,
+        "button": button,
+        "buttons": buttons,
+    }
+    if click_count:
+        params["clickCount"] = click_count
+    await sess._internal.client.send("Input.dispatchMouseEvent", params)  # noqa: SLF001
+
+
+def _cdp_click_count(msg: dict[str, Any]) -> int:
+    raw = msg.get("clickCount", msg.get("click_count", 1))
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
 async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
     t = msg.get("type")
     if t == "navigate":
@@ -135,8 +188,40 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         x, y = int(msg.get("x") or 0), int(msg.get("y") or 0)
         await sess.click(x=x, y=y)
         await sess.click(x=x, y=y)
-    elif t in ("mousedown", "mouseup"):
-        pass  # click path covers typical UI; avoid duplicate CDP events
+    elif t in ("mousedown", "mouseup", "mousemove"):
+        x, y = int(msg.get("x") or 0), int(msg.get("y") or 0)
+        button = _cdp_button(msg.get("button"))
+        buttons = _cdp_buttons(msg, button=button, event=str(t))
+        click_count = _cdp_click_count(msg)
+        if t == "mousedown":
+            await _dispatch_mouse(
+                sess,
+                event_type="mousePressed",
+                x=x,
+                y=y,
+                button=button if button != "none" else "left",
+                buttons=buttons or _CDP_BUTTON_MASK.get(button, 1),
+                click_count=click_count,
+            )
+        elif t == "mouseup":
+            await _dispatch_mouse(
+                sess,
+                event_type="mouseReleased",
+                x=x,
+                y=y,
+                button=button if button != "none" else "left",
+                buttons=0,
+                click_count=click_count,
+            )
+        else:
+            await _dispatch_mouse(
+                sess,
+                event_type="mouseMoved",
+                x=x,
+                y=y,
+                button=button,
+                buttons=buttons,
+            )
     elif t == "scroll":
         delta_x = float(msg.get("deltaX") or msg.get("delta_x") or 0)
         delta_y = float(msg.get("deltaY") or msg.get("delta_y") or 0)
@@ -144,10 +229,7 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         y = int(msg.get("y") or 0)
         if abs(delta_x) > 0.5 or abs(delta_y) > 0.5:
             with contextlib.suppress(Exception):
-                await sess._internal.client.send(  # noqa: SLF001
-                    "Input.dispatchMouseEvent",
-                    {"type": "mouseMoved", "x": x, "y": y},
-                )
+                await _dispatch_mouse(sess, event_type="mouseMoved", x=x, y=y)
                 await sess._internal.client.send(  # noqa: SLF001
                     "Input.dispatchMouseEvent",
                     {

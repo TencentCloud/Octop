@@ -538,7 +538,7 @@ export default function MBTISelector({
         open={!!selectedType}
         onCancel={() => setSelectedType(null)}
         width={560}
-        destroyOnClose
+        destroyOnHidden
         footer={null}
         closable
         className={styles.mbtiModal}

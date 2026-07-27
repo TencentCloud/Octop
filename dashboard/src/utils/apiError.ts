@@ -47,6 +47,14 @@ export function parseApiError(error: unknown): ParsedApiError | null {
   return null;
 }
 
+/** True when a failed ``request`` / ``requestBlob`` looks like HTTP 404 / NOT_FOUND. */
+export function isNotFoundApiError(error: unknown): boolean {
+  const parsed = parseApiError(error);
+  if (parsed?.code === "NOT_FOUND") return true;
+  const msg = error instanceof Error ? error.message : String(error ?? "");
+  return /\b404\b/i.test(msg) || /not found/i.test(msg);
+}
+
 /**
  * Turn a failed API call into user-facing text.
  * When `t` is provided, known `apiErrors.<CODE>` keys take precedence.

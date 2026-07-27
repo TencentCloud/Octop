@@ -1,33 +1,30 @@
 .headerVersion {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  padding: 0;
   margin: 0;
   border: none;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  color: #fff;
-  background: #ff4d4f;
-  white-space: nowrap;
+  border-radius: 0;
+  color: var(--fn-color-error, #ff4d4f);
+  background: transparent;
   flex-shrink: 0;
   cursor: default;
   transition:
-    background 0.15s ease,
-    filter 0.15s ease;
+    color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .headerVersionMobile {
-  font-size: 10px;
-  padding: 2px 7px;
+  /* size handled by lucide icon prop */
 }
 
 .headerVersionClickable {
   cursor: pointer;
 
   &:hover {
-    filter: brightness(1.08);
+    opacity: 0.85;
   }
 }

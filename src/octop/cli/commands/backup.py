@@ -38,8 +38,12 @@ def create(output: Path | None, home: Path | None) -> None:
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=config)
     rows = services.agent_repo.list_all()
-    db_path = db.path
-    data, suggested = create_system_backup(paths=paths, db_path=db_path, agent_rows=rows)
+    data, suggested = create_system_backup(
+        paths=paths,
+        agent_rows=rows,
+        pool=db,
+        db_config=config.database,
+    )
     db.close()
 
     if output is None:
@@ -72,8 +76,8 @@ def restore(archive: Path, home: Path | None, no_config: bool, yes: bool) -> Non
     result = restore_system_backup(
         raw,
         paths=paths,
-        db_path=db.path,
         pool=db,
+        db_config=config.database,
         restore_config=not no_config,
     )
     db.close()

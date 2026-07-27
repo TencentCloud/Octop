@@ -355,7 +355,7 @@ export default function ExpertMarketTab({
       <Drawer
         open={!!selected}
         width={560}
-        destroyOnClose
+        destroyOnHidden
         onClose={() => setSelected(null)}
         title={selected ? labelOf(selected, lang) : ""}
         footer={

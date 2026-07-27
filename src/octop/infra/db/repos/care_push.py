@@ -10,13 +10,13 @@ import time
 import uuid
 from collections.abc import Sequence
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 
 
 class CarePushRepo:
     """Data-access object for the care_push_records table."""
 
-    def __init__(self, db: DBPool) -> None:
+    def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
     def insert(

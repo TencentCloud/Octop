@@ -197,7 +197,7 @@ export default function CreateFromExpertDrawer({
       title={title}
       width={520}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button className={styles.drawerCancelBtn} onClick={onClose}>

@@ -54,8 +54,12 @@ def resolve_browser_display() -> str | None:
     """Pick a usable X11 display for headed Chrome (virtual desktop or env).
 
     When Octop's Linux virtual desktop (Xvnc ``:99``) is running, inject
-    ``DISPLAY`` into the process env so harness-browser ``mode=auto`` becomes
-    headed and the window appears on the remote desktop.
+    ``DISPLAY`` into the process env so harness-browser launches headed and
+    the window appears on the remote desktop.
+
+    Returns ``None`` when no live X11 socket exists. A stale ``$DISPLAY``
+    (common on SSH / containers) must not force headed mode — Chromium then
+    exits immediately with ``Missing X server or $DISPLAY``.
     """
     if sys.platform != "linux":
         current = (os.environ.get("DISPLAY") or "").strip()
@@ -83,7 +87,14 @@ def resolve_browser_display() -> str | None:
             logger.info("Browser will use DISPLAY=%s (socket %s)", display, sock)
             return display
 
-    return (os.environ.get("DISPLAY") or "").strip() or None
+    stale = (os.environ.get("DISPLAY") or "").strip()
+    if stale:
+        logger.info(
+            "Ignoring unusable DISPLAY=%s (no X11 socket); browser will run headless",
+            stale,
+        )
+        os.environ.pop("DISPLAY", None)
+    return None
 
 
 def clear_profile_locks(profile_dir: Path) -> list[str]:

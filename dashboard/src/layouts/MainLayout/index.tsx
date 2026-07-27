@@ -12,12 +12,15 @@ import {
   FULLSCREEN_PATHS,
   MOBILE_FULLSCREEN_PATHS,
   SELF_HEADER_PATHS,
+  isWorkbenchPath,
 } from "../../routes";
+import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import RequireAdmin from "../../components/RequireAdmin";
 
 const Chat = lazy(() => import("../../pages/Chat"));
-const TerminalPage = lazy(() => import("../../pages/Control/Terminal"));
+const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
 
 const { Content } = Layout;
 
@@ -51,19 +54,29 @@ export default function MainLayout() {
     FULLSCREEN_PATHS.has(currentPath) ||
     [...FULLSCREEN_PATHS].some((p) => currentPath.startsWith(p + "/")) ||
     (isMobile && MOBILE_FULLSCREEN_PATHS.has(currentPath));
+  const onWorkbench = isWorkbenchPath(currentPath);
 
   const [collapsed, setCollapsed] = useState(() => getSavedCollapsed());
-  const [terminalMounted, setTerminalMounted] = useState(
-    () => currentPath === "/terminal",
-  );
+  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
+  const [workbenchMounted, setWorkbenchMounted] = useState(() => onWorkbench);
 
   useEffect(() => {
-    if (currentPath === "/terminal") {
-      setTerminalMounted(true);
+    if (onWorkbench) {
+      setWorkbenchMounted(true);
     }
-  }, [currentPath]);
+  }, [onWorkbench]);
 
   const toggleCollapsed = useCallback(() => {
+    if (!isMobile && isChatPath(currentPath)) {
+      if (!collapsed && chatSidebarOpen) {
+        setChatSidebarOpen(false);
+        return;
+      }
+      if (collapsed) {
+        setChatSidebarOpen(true);
+      }
+    }
+
     setCollapsed((prev) => {
       const next = !prev;
       try {
@@ -73,7 +86,7 @@ export default function MainLayout() {
       }
       return next;
     });
-  }, []);
+  }, [chatSidebarOpen, collapsed, currentPath, isMobile, setChatSidebarOpen]);
 
   // When switching to mobile, always collapse; restore saved preference on desktop
   useEffect(() => {
@@ -126,65 +139,79 @@ export default function MainLayout() {
     </Suspense>
   );
 
+  const isChatRoute = isChatPath(currentPath);
+
   return (
     <ServiceRestartProvider>
-      {/* Outer: full-height column (header on top, body below) */}
       <div
         style={{
           height: "100dvh",
           display: "flex",
-          flexDirection: "column",
+          flexDirection: "row",
           background: "var(--fn-bg-layout)",
           transition: "background var(--fn-transition)",
           overflow: "hidden",
         }}
       >
-        {/* Global header — hidden on mobile only for pages that provide their
-         own compact header (e.g. Chat). Other fullscreen pages like
-         RemoteBrowser / Terminal still show the global header on mobile. */}
-        {!(
-          isMobile &&
-          (SELF_HEADER_PATHS.has(currentPath) ||
-            [...SELF_HEADER_PATHS].some((p) => currentPath.startsWith(p + "/")))
-        ) && (
-          <Header
-            selectedKey={selectedKey}
-            collapsed={collapsed}
-            onToggle={toggleCollapsed}
-            isMobile={isMobile}
+        {/* Mobile overlay backdrop */}
+        {isMobile && !collapsed && (
+          <div
+            onClick={toggleCollapsed}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.40)",
+              zIndex: 99,
+            }}
           />
         )}
 
+        <Sidebar
+          selectedKey={selectedKey}
+          collapsed={collapsed}
+          onToggle={toggleCollapsed}
+          isMobile={isMobile}
+        />
+
+        {isChatRoute && (
+          <div
+            id={CHAT_HISTORY_RAIL_ID}
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignSelf: "stretch",
+              minHeight: 0,
+              height: "100%",
+            }}
+          />
+        )}
+
+        {/* Right column: header on top, page content below */}
         <div
           style={{
-            display: "flex",
             flex: 1,
+            minWidth: 0,
             minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
             overflow: "hidden",
-            position: "relative",
           }}
         >
-          {/* Mobile overlay backdrop */}
-          {isMobile && !collapsed && (
-            <div
-              onClick={toggleCollapsed}
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0, 0, 0, 0.40)",
-                zIndex: 99,
-              }}
+          {!(
+            isMobile &&
+            (SELF_HEADER_PATHS.has(currentPath) ||
+              [...SELF_HEADER_PATHS].some((p) =>
+                currentPath.startsWith(p + "/"),
+              ))
+          ) && (
+            <Header
+              selectedKey={selectedKey}
+              collapsed={collapsed}
+              onToggle={toggleCollapsed}
+              isMobile={isMobile}
             />
           )}
 
-          <Sidebar
-            selectedKey={selectedKey}
-            collapsed={collapsed}
-            onToggle={toggleCollapsed}
-            isMobile={isMobile}
-          />
-
-          {/* Main content area */}
           <Layout
             style={{
               background: "transparent",
@@ -193,6 +220,7 @@ export default function MainLayout() {
               flexDirection: "column",
               overflow: "hidden",
               minWidth: 0,
+              minHeight: 0,
             }}
           >
             <Content
@@ -204,19 +232,19 @@ export default function MainLayout() {
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
+                minHeight: 0,
               }}
             >
               <PwaUpdatePrompt />
               <PwaAutoPrompt />
 
-              {/* Terminal chunk loads on first visit; stays mounted to preserve state. */}
-              {terminalMounted && (
+              {workbenchMounted && (
                 <div
                   style={{
                     flex: 1,
                     minHeight: 0,
                     overflow: "hidden",
-                    display: currentPath === "/terminal" ? "flex" : "none",
+                    display: onWorkbench ? "flex" : "none",
                     flexDirection: "column",
                   }}
                 >
@@ -234,14 +262,13 @@ export default function MainLayout() {
                       </div>
                     }
                   >
-                    <TerminalPage isVisible={currentPath === "/terminal"} />
+                    <WorkbenchPage isVisible={onWorkbench} />
                   </Suspense>
                 </div>
               )}
 
-              {currentPath !== "/terminal" &&
+              {!onWorkbench &&
                 (isFullscreen ? (
-                  // Fullscreen pages: no padding/scroll wrapper
                   <div
                     style={{
                       flex: 1,
@@ -254,7 +281,6 @@ export default function MainLayout() {
                     {routes}
                   </div>
                 ) : (
-                  // Normal pages: scrollable with padding
                   <div className="page-content">{routes}</div>
                 ))}
             </Content>

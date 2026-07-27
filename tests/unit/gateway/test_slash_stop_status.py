@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.threads import ThreadRepo
@@ -20,7 +20,7 @@ from octop.infra.gateway.threads import ThreadRegistry
 
 @pytest.fixture
 def ctx(tmp_path: Path):
-    db = DBPool(tmp_path / "x.db")
+    db = SqlitePool(tmp_path / "x.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="a1", user_id=1, name="bot", default_model="openai/gpt-4o")

@@ -99,7 +99,7 @@ export default function SkillRecordGuideModal({
           </Button>
         </Space>
       }
-      destroyOnClose
+      destroyOnHidden
     >
       <div style={{ padding: "8px 0" }}>
         <Typography.Paragraph

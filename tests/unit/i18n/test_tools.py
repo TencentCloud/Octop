@@ -10,6 +10,7 @@ from octop.i18n import all_tool_labels, tool_display_name
 
 def test_tool_display_name_known_zh():
     assert tool_display_name("read_file", "zh") == "读取文件"
+    assert tool_display_name("write_todos", "zh") == "编写计划"
 
 
 def test_tool_display_name_unknown_passthrough():

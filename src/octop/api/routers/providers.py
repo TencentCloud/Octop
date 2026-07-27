@@ -7,8 +7,7 @@ import json
 import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from octop.api.deps import current_admin, current_user, get_server
@@ -25,9 +24,11 @@ from octop.infra.providers.codex_apply import (
     sync_refreshed_codex_api_key,
 )
 from octop.infra.providers.codex_oauth import (
-    exchange_authorization_code,
+    DEVICE_POLL_TIMEOUT_S,
+    exchange_device_code,
     get_valid_access_token,
-    prepare_pkce_authorize,
+    poll_device_token,
+    request_device_code,
 )
 from octop.infra.utils.ulid import new_ulid
 
@@ -78,10 +79,6 @@ class ProviderTestDraftBody(BaseModel):
     base_url: str | None = None
     model_id: str
     extra_json: str | None = None
-
-
-class CodexOAuthStartBody(BaseModel):
-    redirect_after: str | None = None
 
 
 def _provider_headers(row: Any) -> dict[str, str]:
@@ -184,76 +181,6 @@ async def list_providers(
 ) -> list[dict[str, Any]]:
     """Return all providers. Read-only for regular users."""
     return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
-
-
-@router.get("/codex-oauth/callback", summary="ChatGPT OAuth callback")
-async def codex_oauth_callback(
-    request: Request,
-    code: str | None = Query(None),
-    state: str | None = Query(None),
-    error: str | None = Query(None),
-    server: Any = Depends(get_server),
-) -> HTMLResponse:
-    """OAuth redirect target for ChatGPT Codex login. No JWT required."""
-    if error:
-        return HTMLResponse(f"<html><body>授权失败: {error}</body></html>", status_code=400)
-    if not code or not state:
-        return HTMLResponse("<html><body>缺少 code 或 state</body></html>", status_code=400)
-
-    settings = server.services.settings_repo
-    flow_raw = settings.get(f"codex_oauth.flow.{state}")
-    if not flow_raw:
-        return HTMLResponse("<html><body>无效或过期的 OAuth 会话</body></html>", status_code=400)
-    try:
-        flow = json.loads(flow_raw)
-    except json.JSONDecodeError:
-        return HTMLResponse("<html><body>OAuth 会话损坏</body></html>", status_code=400)
-
-    state_id = flow.get("state_id")
-    verifier = flow.get("verifier")
-    redirect_after = flow.get("redirect_after") or "/admin/models"
-    if not state_id or not verifier:
-        return HTMLResponse("<html><body>OAuth 会话不完整</body></html>", status_code=400)
-
-    base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base}/api/providers/codex-oauth/callback"
-    try:
-        cred = await asyncio.to_thread(
-            exchange_authorization_code,
-            code=code,
-            verifier=verifier,
-            redirect_uri=redirect_uri,
-        )
-        pid = apply_codex_credentials(server.services, server.services.paths, cred)
-        if server.app_runtime is not None:
-            await server.app_runtime.agent_registry.on_provider_changed(
-                provider_name=CODEX_PROVIDER_NAME,
-            )
-        settings.set(
-            f"codex_oauth.pending.{state_id}",
-            json.dumps(
-                {
-                    "status": "ok",
-                    "provider_id": pid,
-                    "provider_name": CODEX_PROVIDER_NAME,
-                    "user_id": flow.get("user_id"),
-                }
-            ),
-        )
-        settings.delete(f"codex_oauth.flow.{state}")
-    except Exception as exc:
-        logger.exception("codex oauth callback failed")
-        settings.set(
-            f"codex_oauth.pending.{state_id}",
-            json.dumps({"status": "error", "error": str(exc), "user_id": flow.get("user_id")}),
-        )
-
-    return HTMLResponse(
-        f"""<!DOCTYPE html><html><body><script>
-window.opener && window.opener.postMessage({{ type: 'octop:codex-oauth', state_id: '{state_id}' }}, '*');
-window.location.href = '{redirect_after}?codex_oauth={state_id}';
-</script><p>登录完成，正在返回…</p></body></html>"""
-    )
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────────────
@@ -365,29 +292,81 @@ async def admin_test_provider_draft(
     return await probe_provider_row(row, model_id=model_id)
 
 
-@admin_router.post("/codex-oauth/start", summary="Start ChatGPT OAuth login")
+async def _run_codex_device_poll(
+    server: Any,
+    *,
+    state_id: str,
+    device_auth_id: str,
+    user_code: str,
+    interval_s: float,
+    user_id: int,
+) -> None:
+    """Background task: poll OpenAI until the user authorizes, then apply credentials."""
+    settings = server.services.settings_repo
+    deadline = asyncio.get_running_loop().time() + DEVICE_POLL_TIMEOUT_S
+    try:
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(interval_s)
+            result = await asyncio.to_thread(poll_device_token, device_auth_id, user_code)
+            if result is None:
+                continue
+            code, verifier = result
+            cred = await asyncio.to_thread(exchange_device_code, code, verifier)
+            pid = apply_codex_credentials(server.services, server.services.paths, cred)
+            if server.app_runtime is not None:
+                await server.app_runtime.agent_registry.on_provider_changed(
+                    provider_name=CODEX_PROVIDER_NAME,
+                )
+            settings.set(
+                f"codex_oauth.pending.{state_id}",
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "provider_id": pid,
+                        "provider_name": CODEX_PROVIDER_NAME,
+                        "user_id": user_id,
+                    }
+                ),
+            )
+            return
+        settings.set(
+            f"codex_oauth.pending.{state_id}",
+            json.dumps({"status": "error", "error": "登录超时，请重新开始", "user_id": user_id}),
+        )
+    except Exception as exc:
+        logger.exception("codex device oauth poll failed")
+        settings.set(
+            f"codex_oauth.pending.{state_id}",
+            json.dumps({"status": "error", "error": str(exc), "user_id": user_id}),
+        )
+
+
+@admin_router.post("/codex-oauth/start", summary="Start ChatGPT OAuth device login")
 async def codex_oauth_start(
-    body: CodexOAuthStartBody,
-    request: Request,
     user: Any = Depends(current_admin),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base}/api/providers/codex-oauth/callback"
-    authorize_url, pkce_state, verifier = prepare_pkce_authorize(redirect_uri=redirect_uri)
+    info = await asyncio.to_thread(request_device_code)
     state_id = new_ulid()
     server.services.settings_repo.set(
-        f"codex_oauth.flow.{pkce_state}",
-        json.dumps(
-            {
-                "state_id": state_id,
-                "verifier": verifier,
-                "user_id": user.id,
-                "redirect_after": body.redirect_after or "/admin/models",
-            }
-        ),
+        f"codex_oauth.pending.{state_id}",
+        json.dumps({"status": "pending", "user_id": user.id}),
     )
-    return {"authorize_url": authorize_url, "state_id": state_id}
+    asyncio.create_task(
+        _run_codex_device_poll(
+            server,
+            state_id=state_id,
+            device_auth_id=info["device_auth_id"],
+            user_code=info["user_code"],
+            interval_s=info["interval_s"],
+            user_id=user.id,
+        )
+    )
+    return {
+        "state_id": state_id,
+        "user_code": info["user_code"],
+        "verification_url": info["verification_url"],
+    }
 
 
 @admin_router.get("/codex-oauth/pending/{state_id}", summary="Poll ChatGPT OAuth result")

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from octop.config import OctopConfig
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.utils.paths import PathLayout
 
@@ -15,7 +15,7 @@ def test_build_shared_services(tmp_path: Path):
     cfg = OctopConfig()
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=cfg)
     assert isinstance(services, SharedServices)

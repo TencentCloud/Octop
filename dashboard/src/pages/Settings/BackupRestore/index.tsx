@@ -26,6 +26,7 @@ import { backupApi, type BackupFileItem } from "../../../api/modules/backup";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
@@ -198,8 +199,7 @@ export default function BackupRestorePanel() {
       setPendingRestore(null);
       await refresh();
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : String(err);
-      message.error(detail || t("backup.importFailed"));
+      message.error(apiErrorMessage(err, t("backup.importFailed"), t));
     } finally {
       setRestoreProgress(false);
       setRestoring(false);

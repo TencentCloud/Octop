@@ -38,6 +38,8 @@ class SlashCtx:
     octop_version: str | None = None
     server_started_at: int | None = None
     locale: str = "zh"
+    """Dashboard composer / turn ``metadata.model`` (``provider/model``), if any."""
+    model_ref: str | None = None
 
 
 def lang_of(ctx: SlashCtx) -> Locale:
@@ -120,7 +122,18 @@ def build_slash_ctx(
         user_row = user_repo.get(user_id)
         user_loc = user_row.locale if user_row is not None else None
 
+    from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY  # noqa: PLC0415
+
     resolved_meta = channel_metadata if channel_metadata is not None else metadata
+    model_ref: str | None = None
+    if resolved_meta:
+        raw_model = resolved_meta.get("model")
+        if not (isinstance(raw_model, str) and raw_model.strip()):
+            composer = resolved_meta.get(COMPOSER_CTX_KEY)
+            if isinstance(composer, dict):
+                raw_model = composer.get("model")
+        if isinstance(raw_model, str) and raw_model.strip():
+            model_ref = raw_model.strip()
     return SlashCtx(
         agent_id=agent_id,
         user_id=user_id,
@@ -142,4 +155,5 @@ def build_slash_ctx(
         gateway_channels=gw_channels,
         octop_version=octop_version or (meta.version if meta else None),
         server_started_at=server_started_at or (meta.started_at if meta else None),
+        model_ref=model_ref,
     )

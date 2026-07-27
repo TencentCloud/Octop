@@ -28,6 +28,8 @@ export interface SkillSpec {
   /** "workspace" for octop (no built-in registry). Kept for finnie parity. */
   kind: "workspace" | "builtin";
   emoji?: string;
+  /** Persisted SkillHub marketplace icon. */
+  iconUrl?: string;
 }
 
 export interface SkillDetail extends SkillSpec {
@@ -48,6 +50,7 @@ interface ServerSummary {
   enabled: boolean;
   kind?: "workspace" | "builtin";
   emoji?: string;
+  icon_url?: string;
 }
 
 interface ServerDetail extends ServerSummary {
@@ -65,6 +68,7 @@ const toSpec = (row: ServerSummary): SkillSpec => ({
   enabled: row.enabled,
   kind: row.kind === "builtin" ? "builtin" : "workspace",
   emoji: row.emoji,
+  iconUrl: row.icon_url,
 });
 
 const toDetail = (row: ServerDetail): SkillDetail => ({

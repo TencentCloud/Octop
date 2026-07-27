@@ -40,7 +40,7 @@ export default function EditDrawer({
       placement="right"
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       title={title}
     >
       <div className={styles.drawerContent}>

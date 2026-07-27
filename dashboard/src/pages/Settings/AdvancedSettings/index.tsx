@@ -7,6 +7,7 @@ import { VoiceSettingsPanel } from "../Voice";
 import { ObservabilitySettingsPanel } from "../Observability";
 import BackupRestorePanel from "../BackupRestore";
 import { HttpsSettingsPanel } from "../HttpsSettings";
+import UpdateConfig from "./UpdateConfig";
 import PageShell from "../../../layouts/PageShell";
 import styles from "./index.module.less";
 import tabStyles from "./tabContent.module.less";
@@ -17,7 +18,8 @@ type TabKey =
   | "voice"
   | "observability"
   | "backup"
-  | "https";
+  | "https"
+  | "updates";
 
 const TABS: { key: TabKey; labelKey: string }[] = [
   { key: "env-vars", labelKey: "nav.environments" },
@@ -26,6 +28,7 @@ const TABS: { key: TabKey; labelKey: string }[] = [
   { key: "observability", labelKey: "nav.observability" },
   { key: "backup", labelKey: "nav.backupRestore" },
   { key: "https", labelKey: "nav.https" },
+  { key: "updates", labelKey: "nav.checkUpdates" },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -34,7 +37,8 @@ function parseTab(raw: string | null): TabKey {
     raw === "voice" ||
     raw === "observability" ||
     raw === "backup" ||
-    raw === "https"
+    raw === "https" ||
+    raw === "updates"
   ) {
     return raw;
   }
@@ -76,6 +80,8 @@ export default function AdvancedSettingsPage() {
         return <BackupRestorePanel />;
       case "https":
         return <HttpsSettingsPanel />;
+      case "updates":
+        return <UpdateConfig />;
     }
   };
 

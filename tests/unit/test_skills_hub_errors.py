@@ -12,7 +12,6 @@ from octop.api.routers.skills import (
     _close_subprocess,
     _map_skillhub_install_error,
     _run_skillhub_cmd,
-    _skillhub_rankings_args,
     _skillhub_stderr_suggests_upgrade,
 )
 
@@ -75,22 +74,7 @@ def test_stderr_suggests_upgrade() -> None:
     assert _skillhub_stderr_suggests_upgrade(
         "[skillhub] 发现新版本 2026.6.18（当前 2026.6.17）。运行 `skillhub self-upgrade` 进行升级。"
     )
-    assert _skillhub_stderr_suggests_upgrade(
-        "skills_store_cli.py: error: argument command: invalid choice: 'rankings'"
-    )
     assert not _skillhub_stderr_suggests_upgrade("Download failed: HTTP 404")
-
-
-def test_skillhub_rankings_args() -> None:
-    assert _skillhub_rankings_args("hot") == ["skill", "rankings", "--type", "hot"]
-    assert _skillhub_rankings_args("all", host="https://api.example.com") == [
-        "skill",
-        "rankings",
-        "--type",
-        "all",
-        "--host",
-        "https://api.example.com",
-    ]
 
 
 @pytest.mark.asyncio

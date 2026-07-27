@@ -27,7 +27,7 @@ export default function SkillCatalogDrawer({
       open={open}
       onClose={onClose}
       width={isMobile ? "100%" : "min(1080px, 92vw)"}
-      destroyOnClose
+      destroyOnHidden
       rootClassName={isMobile ? styles.catalogDrawerRoot : undefined}
       styles={{
         body: {

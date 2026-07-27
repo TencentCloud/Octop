@@ -14,6 +14,8 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
         for m in provider.get_models():
             if not m.get("enabled", True):
                 continue
+            # Catalogs may store either name; both feed the chat context ring.
+            window = m.get("max_input_tokens") or m.get("context_window")
             resolved.append(
                 {
                     "provider_id": provider.id,
@@ -23,9 +25,9 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
                     "name": m.get("name") or m["id"],
                     "input": m.get("input") or ["text"],
                     "reasoning": m.get("reasoning"),
-                    "context_window": m.get("context_window"),
+                    "context_window": window,
                     "max_tokens": m.get("max_tokens"),
-                    "max_input_tokens": m.get("context_window"),
+                    "max_input_tokens": window,
                 }
             )
     return resolved

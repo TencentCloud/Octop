@@ -7,7 +7,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { message as antMessage } from "antd";
+import { message as antMessage, Modal } from "antd";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
@@ -19,12 +19,21 @@ import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import MentionPickerMenu from "./MentionPickerMenu";
 import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
+import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
 import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
 import { readInputDraft, writeInputDraft } from "../hooks/chatStore";
+import {
+  buildComposerContext,
+  resolveTurnModelRef,
+} from "../utils/chatMessages";
+import type {
+  EnqueueChatItemInput,
+  QueuedChatItem,
+} from "../hooks/useChatMessageQueue";
 import styles from "../index.module.less";
 
 /** Imperative handle exposed via ref for programmatic text injection. */
@@ -34,6 +43,11 @@ export interface ChatInputHandle {
 
 interface ChatInputProps {
   onSend: (text: string, attachments?: ChatAttachment[]) => void;
+  /** Queue a message while the current turn is still streaming. */
+  onQueue?: (item: EnqueueChatItemInput) => "ok" | "empty" | "full";
+  queuedItems?: QueuedChatItem[];
+  onRemoveQueued?: (id: string) => void;
+  onReclaimQueued?: (id: string) => QueuedChatItem | null;
   onCancel: () => void;
   onNewChat: () => void;
   onUserInput?: () => void;
@@ -74,6 +88,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   function ChatInput(
     {
       onSend,
+      onQueue,
+      queuedItems = [],
+      onRemoveQueued,
+      onReclaimQueued,
       onCancel,
       onNewChat,
       onUserInput,
@@ -202,6 +220,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       handleFileChange,
       removeAttachment,
       clearAttachments,
+      restoreAttachments,
       handlePaste,
       handleDragEnter,
       handleDragLeave,
@@ -258,46 +277,140 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       enterToSend: !isMobile,
     });
 
+    const resetComposerAfterSubmit = useCallback(
+      (prevHeight: number) => {
+        setText("");
+        writeInputDraft(agentId, threadId, "");
+        clearAttachments();
+        userHasEditedRef.current = false;
+        prevInitialTextRef.current = "";
+        requestAnimationFrame(() => {
+          const ta = textareaRef.current;
+          if (ta && prevHeight > MIN_TEXTAREA_HEIGHT) {
+            ta.style.transition = "none";
+            ta.style.height = `${prevHeight}px`;
+            // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+            ta.offsetHeight;
+            ta.style.transition = "";
+            ta.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
+          }
+        });
+      },
+      [agentId, threadId, clearAttachments, MIN_TEXTAREA_HEIGHT],
+    );
+
     const submitMessage = useCallback(() => {
       const trimmed = text.trim();
       if ((!trimmed && attachments.length === 0) || disabled) return;
       const slashItem = matchSlashCommand(trimmed);
       if (slashItem && slashItem.spec.client_action !== "none") {
+        // Slash actions are never queued — run immediately or leave input alone.
+        if (isStreaming) return;
         runSlashCommand(slashItem);
         return;
       }
       const ta = textareaRef.current;
       const prevHeight = ta ? ta.getBoundingClientRect().height : 0;
-      onSend(trimmed, attachments.length > 0 ? attachments : undefined);
-      setText("");
-      writeInputDraft(agentId, threadId, "");
-      clearAttachments();
-      userHasEditedRef.current = false;
-      prevInitialTextRef.current = "";
-      requestAnimationFrame(() => {
-        if (ta && prevHeight > MIN_TEXTAREA_HEIGHT) {
-          ta.style.transition = "none";
-          ta.style.height = `${prevHeight}px`;
-          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-          ta.offsetHeight;
-          ta.style.transition = "";
-          ta.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
+
+      if (isStreaming) {
+        if (!onQueue) return;
+        const result = onQueue({
+          text: trimmed,
+          attachments: attachments.length > 0 ? attachments : undefined,
+          composerContext: buildComposerContext({
+            skills: selectedSkills,
+            connectors: selectedConnectors,
+            targetAgents: selectedTargetAgents,
+            selectedModel,
+          }),
+          modelRef: resolveTurnModelRef(selectedModel, defaultModel),
+        });
+        if (result === "full") {
+          antMessage.warning(t("chat.queue.full"));
+          return;
         }
-      });
+        if (result === "empty") return;
+        resetComposerAfterSubmit(prevHeight);
+        return;
+      }
+
+      onSend(trimmed, attachments.length > 0 ? attachments : undefined);
+      resetComposerAfterSubmit(prevHeight);
     }, [
       text,
       attachments,
       onSend,
+      onQueue,
       disabled,
+      isStreaming,
       matchSlashCommand,
       runSlashCommand,
-      clearAttachments,
-      MIN_TEXTAREA_HEIGHT,
-      agentId,
-      threadId,
+      resetComposerAfterSubmit,
+      selectedSkills,
+      selectedConnectors,
+      selectedTargetAgents,
+      selectedModel,
+      defaultModel,
+      t,
     ]);
 
     submitRef.current = submitMessage;
+
+    const handleReclaimQueued = useCallback(
+      (id: string) => {
+        if (!onReclaimQueued) return;
+        const apply = () => {
+          const item = onReclaimQueued(id);
+          if (!item) return;
+          userHasEditedRef.current = true;
+          setText(item.text);
+          restoreAttachments(item.attachments ?? []);
+          const ctx = item.composerContext;
+          if (ctx) {
+            onSkillsChange?.(ctx.skills ?? []);
+            onConnectorsChange?.(ctx.connectors ?? []);
+            onTargetAgentsChange?.(ctx.targetAgents ?? []);
+            if (ctx.model !== undefined) {
+              onModelChange?.(ctx.model);
+            } else if (item.modelRef !== undefined) {
+              onModelChange?.(item.modelRef);
+            }
+          } else if (item.modelRef !== undefined) {
+            onModelChange?.(item.modelRef);
+          }
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        };
+
+        if (text.trim() || attachments.length > 0) {
+          Modal.confirm({
+            title: t("chat.queue.reclaimOverwriteTitle"),
+            content: t("chat.queue.reclaimOverwrite"),
+            okText: t("common.confirm", "确认"),
+            cancelText: t("common.cancel", "取消"),
+            onOk: apply,
+          });
+          return;
+        }
+        apply();
+      },
+      [
+        onReclaimQueued,
+        restoreAttachments,
+        text,
+        attachments.length,
+        t,
+        onSkillsChange,
+        onConnectorsChange,
+        onTargetAgentsChange,
+        onModelChange,
+      ],
+    );
 
     // Pixel Avatar: listen for user input.
     useEffect(() => {
@@ -380,6 +493,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
+        {onRemoveQueued && onReclaimQueued && (
+          <ChatQueuedMessages
+            items={queuedItems}
+            onRemove={onRemoveQueued}
+            onReclaim={handleReclaimQueued}
+          />
+        )}
         <div className={styles.inputWrapper}>
           <ChatInputPreviewBar
             attachments={attachments}

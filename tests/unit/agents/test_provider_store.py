@@ -11,7 +11,7 @@ from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.providers import KIND_TO_PROTOCOL, ProviderStore
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import build_shared_services
 from octop.infra.utils.paths import PathLayout
@@ -21,7 +21,7 @@ from octop.infra.utils.paths import PathLayout
 def store(tmp_path: Path) -> ProviderStore:
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     return ProviderStore(
@@ -122,6 +122,29 @@ def test_build_harness_configs_maps_kind_to_protocol(store: ProviderStore) -> No
     assert providers[0].protocol == "anthropic"
 
 
+def test_build_harness_configs_maps_context_window_to_max_input_tokens(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="hai",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "MiniMax-M2.7",
+                    "name": "MiniMax",
+                    "enabled": True,
+                    "context_window": 1_000_000,
+                }
+            ]
+        ),
+    )
+    providers = store.build_harness_configs()
+    assert providers[0].models[0].max_input_tokens == 1_000_000
+
+
 def test_resolve_default_model_returns_none_when_stale(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="hai",
@@ -164,7 +187,7 @@ def test_resolve_default_model_returns_explicit_ref_when_usable(store: ProviderS
 def test_manager_exposes_provider_store(tmp_path: Path) -> None:
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
-    db = DBPool(paths.db)
+    db = SqlitePool(paths.db)
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     manager = AgentManager(repos=services.repos, paths=services.paths)

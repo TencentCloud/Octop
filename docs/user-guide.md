@@ -138,7 +138,7 @@ docker run -d \
 
 ### 3.1 启动服务
 
-安装完成后，直接启动服务即可，首次运行所需的数据库、JWT 密钥与首个管理员都会在**设置向导**中自动创建：
+安装完成后，直接启动服务即可。首次运行时，控制面数据库、JWT 密钥与首个管理员都会在**设置向导**中创建（绿场默认延后打开数据库，直到向导里确认 SQLite / PostgreSQL）：
 
 ```bash
 octop run       # 前台启动 API + Web 控制台
@@ -152,20 +152,29 @@ octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
 
 启动后打开 **http://127.0.0.1:8088**。
 
-首次访问会**自动跳转到设置向导页面**（URL 类似 `/setup`）。向导会先要求输入一个"设置密码"以保护首次配置过程。
+首次访问会**自动跳转到设置向导页面**（URL 类似 `/setup`）。若启用了启动密码保护，向导会先要求输入一次性「设置密码」。
 
 ### 3.2 向导步骤说明
 
-设置向导为分步引导，依次完成以下步骤：
+设置向导为分步引导，依次完成以下步骤（若关闭了 `require_setup_password`，则从「数据库」步开始）：
 
 ![图 3.1 — 设置向导步骤条](assets/setup-01-steps.png)
 
-**步骤 1：设置密码**
+**步骤 1：设置密码（可选）**
 
-- 首次配置需要一个临时"设置密码"作为保护。
-- 输入并确认后进入下一步。
+- 首次配置需要一个临时「设置密码」作为保护（默认开启）。
+- 密码打印在启动终端，并写入服务器上的引导文件（常见为 `~/octop-login.txt`）。
+- 此步**不依赖**控制面数据库是否已打开。
 
-**步骤 2：创建管理员账号**
+**步骤 2：选择控制面数据库**
+
+- 默认使用本地 **SQLite**（路径相对 `~/.octop/`，通常为 `octop.db`），点击「保存并继续」即可。
+- 「展开更多」可配置 **PostgreSQL**（内测）：填写主机等并先「测试连接」，再「使用 PostgreSQL 并继续」。
+- 向导会把选择写入 `config.json` 的 `database` 段，并在服务进程内**首次绑定**连接池、跑迁移。
+- 也可事先用环境变量指定（见 [configuration.md](configuration.md) 的 `OCTOP_DATABASE_*`）；已有库文件的升级安装不会延后建连。
+- 本步只配置**控制面**；若选用 PostgreSQL，Agent 记忆默认复用同一 DSN（可用 `memory.backend.type=sqlite` 强制文件记忆）。详见 [configuration.md](configuration.md)。
+
+**步骤 3：创建管理员账号**
 
 - 填写 **用户名**（默认 `admin`）、**密码**、**显示名称**。
 - 该账号为首个管理员，拥有用户管理、系统设置等最高权限。
@@ -173,21 +182,23 @@ octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
 
 ![图 3.2 — 创建管理员账号](assets/setup-02-admin.png)
 
-**步骤 3：配置模型（LLM 供应商）**
+**步骤 4：配置模型（LLM 供应商）**
 
 - 选择预设供应商（如 OpenAI、DeepSeek、Ollama 等）或自定义供应商。
 - 填写 API Key、Base URL，勾选要启用的模型。
 - 点击 **测试连接**，通过后点击 **继续**。
-- 该步骤可**跳过**（Skip），稍后在控制台"设置 → 模型 / 供应商"中再配置。
+- 该步骤可**跳过**（Skip），稍后在控制台「设置 → 模型 / 供应商」中再配置。
 
 详见下一节 [四、配置模型](#四配置模型llm-供应商)。
 
 ![图 3.3 — 向导中的模型配置](assets/setup-03-model.png)
 
-**步骤 4：完成**
+**步骤 5：完成**
 
 - 向导写入配置、解锁完整 API，并自动以刚创建的管理员身份登录。
 - 完成后进入 Web 控制台首页。
+
+> **备份提示：** 系统备份按控制面引擎区分（SQLite 文件 vs `pg_dump`）。SQLite 与 PostgreSQL 的备份**不能跨引擎互恢**；恢复前运行时引擎须与备份一致。PostgreSQL 模式下主机需提供 `pg_dump` / `pg_restore`。
 
 ### 3.3 无人值守 / 跳过向导
 
@@ -405,8 +416,8 @@ Octop 支持两个方向的 ACP 集成：
 
 ```
 ~/.octop/
-├── config.json              # 进程级配置（地址、端口、CORS、TLS …）
-├── octop.db                 # SQLite — 用户、Agent、通道、定时任务 …
+├── config.json              # 进程级配置（地址、端口、CORS、TLS、database …）
+├── octop.db                 # 默认 SQLite 控制面 — 用户、Agent、通道、定时任务 …
 ├── secrets/                 # JWT 密钥、通道 Token
 ├── agents/<agent_id>/       # 各 Agent 工作区（SOUL.md、skills …）
 ├── security/tool_guard/     # Shell 命令允许 / 拒绝规则

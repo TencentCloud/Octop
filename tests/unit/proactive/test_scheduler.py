@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig, ProactiveCareConfigRepo
 from octop.infra.db.repos.users import UserRepo
@@ -36,14 +36,14 @@ from octop.infra.utils.ulid import new_ulid
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "test.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "test.db")
     run_migrations(pool)
     return pool
 
 
 @pytest.fixture
-def agent_id(db: DBPool) -> str:
+def agent_id(db: SqlitePool) -> str:
     uid = UserRepo(db).create(username="alice", password_hash="h", role="admin")
     aid = new_ulid()
     AgentRepo(db).create(agent_id=aid, user_id=uid, name="bot")
@@ -51,7 +51,7 @@ def agent_id(db: DBPool) -> str:
 
 
 @pytest.fixture
-def config_repo(db: DBPool) -> ProactiveCareConfigRepo:
+def config_repo(db: SqlitePool) -> ProactiveCareConfigRepo:
     return ProactiveCareConfigRepo(db)
 
 
@@ -214,7 +214,7 @@ def test_config_repo_upsert_update(agent_id: str, config_repo: ProactiveCareConf
     assert got.min_interval_hours == 12
 
 
-def test_config_repo_list_enabled(db: DBPool, config_repo: ProactiveCareConfigRepo):
+def test_config_repo_list_enabled(db: SqlitePool, config_repo: ProactiveCareConfigRepo):
     """list_enabled should return only enabled configs."""
     uid = UserRepo(db).create(username="bob", password_hash="h", role="admin")
     aid1 = new_ulid()
@@ -240,7 +240,7 @@ def test_config_repo_list_enabled(db: DBPool, config_repo: ProactiveCareConfigRe
 async def test_scheduler_cancel_stops_task(
     agent_id: str,
     config_repo: ProactiveCareConfigRepo,
-    db: DBPool,
+    db: SqlitePool,
 ):
     """cancel should stop the scheduled task."""
     from octop.infra.db.repos.sessions import SessionRepo
@@ -272,7 +272,7 @@ async def test_scheduler_cancel_stops_task(
 async def test_scheduler_reschedule_disabled(
     agent_id: str,
     config_repo: ProactiveCareConfigRepo,
-    db: DBPool,
+    db: SqlitePool,
 ):
     """reschedule should cancel the task when enabled=false."""
     from octop.infra.db.repos.sessions import SessionRepo
@@ -300,7 +300,7 @@ async def test_scheduler_reschedule_disabled(
 @pytest.mark.asyncio
 async def test_scheduler_start_all_no_enabled(
     config_repo: ProactiveCareConfigRepo,
-    db: DBPool,
+    db: SqlitePool,
 ):
     """start_all should not create tasks when no agent is enabled."""
     from octop.infra.db.repos.sessions import SessionRepo

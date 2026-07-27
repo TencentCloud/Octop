@@ -13,9 +13,12 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
     """Harness backend for agents with no explicit ``backend`` in config.
 
     On POSIX this matches harness ``DEFAULT_BACKEND_SPEC`` (host-rooted virtual
-    paths). On Windows ``root_dir='/'`` resolves to the process current-drive
-    root, which often differs from the drive hosting ``workspace_dir`` — scope
-    the default to the agent workspace instead.
+    paths). harness ``resolve_backend(..., workspace_dir=...)`` wraps that
+    host root in a composite whose ``artifacts_root`` is the agent workspace,
+    so deepagents conversation history stays writable. On Windows
+    ``root_dir='/'`` resolves to the process current-drive root, which often
+    differs from the drive hosting ``workspace_dir`` — scope the default to
+    the agent workspace instead.
     """
     from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
 

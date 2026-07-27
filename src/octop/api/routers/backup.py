@@ -28,14 +28,6 @@ router = APIRouter()
 _MAX_IMPORT_BYTES = 512 * 1024 * 1024
 
 
-def _resolve_db_path(server: Any) -> Any:
-    assert server.services is not None
-    config = server.services.config
-    if config.database_in_file or config.database.is_sqlite:
-        return config.database.resolve_sqlite_path(server.paths.root)
-    return server.paths.db
-
-
 def _agent_rows(server: Any) -> list[Any]:
     assert server.app_runtime is not None
     return cast(list[Any], server.app_runtime.agent_registry.list_rows())
@@ -74,11 +66,12 @@ async def create_backup(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create a full backup archive and persist it under ``backups_dir``."""
-    db_path = _resolve_db_path(server)
+    assert server.services is not None
     data, filename = create_system_backup(
         paths=server.paths,
-        db_path=db_path,
         agent_rows=_agent_rows(server),
+        pool=server.services.db,
+        db_config=server.services.config.database,
     )
     entry = write_backup_file(server.paths, filename, data)
     return {"ok": True, "item": entry.to_dict()}
@@ -120,12 +113,11 @@ async def restore_backup_file(
     assert server.services is not None
     safe = normalize_backup_filename(filename)
     raw = read_backup_file(server.paths, safe)
-    db_path = _resolve_db_path(server)
     result = restore_system_backup(
         raw,
         paths=server.paths,
-        db_path=db_path,
         pool=server.services.db,
+        db_config=server.services.config.database,
         restore_config=restore_config,
     )
     await _rehydrate_runtime_after_restore(server)
@@ -159,11 +151,12 @@ async def export_backup(
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
     """Create and stream a backup without persisting to ``backups_dir``."""
-    db_path = _resolve_db_path(server)
+    assert server.services is not None
     data, filename = create_system_backup(
         paths=server.paths,
-        db_path=db_path,
         agent_rows=_agent_rows(server),
+        pool=server.services.db,
+        db_config=server.services.config.database,
     )
     return StreamingResponse(
         iter([data]),

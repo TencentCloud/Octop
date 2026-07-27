@@ -14,7 +14,7 @@ from octop.config import OctopConfig
 from octop.infra.cron.manager import CronManager
 from octop.infra.cron.tools import build_cronjob_tools
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import build_shared_services
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.utils.paths import PathLayout
@@ -31,7 +31,7 @@ def _configurable(**kwargs: object):
 
 
 def _make_services(tmp_path: Path):
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     return build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
 

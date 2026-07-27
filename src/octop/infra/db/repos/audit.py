@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, map_rows, now_ts
 
 ACTOR_SYSTEM = "_system"
@@ -33,7 +33,7 @@ class AuditRow:
 
 
 class AuditRepo:
-    def __init__(self, db: DBPool) -> None:
+    def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
     def write(
@@ -110,4 +110,4 @@ class AuditRepo:
         """Delete audit rows older than ``cutoff_ts``. Returns deleted count."""
         with self._db.transaction() as conn:
             cursor = conn.execute("DELETE FROM audit_log WHERE ts < ?", (cutoff_ts,))
-        return cursor.rowcount
+        return int(cursor.rowcount or 0)

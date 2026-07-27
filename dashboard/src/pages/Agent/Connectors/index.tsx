@@ -491,7 +491,7 @@ function ConnectorConfigDrawer({
       open={open}
       onClose={onClose}
       width={440}
-      destroyOnClose
+      destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button onClick={onClose}>{t("common.cancel")}</Button>

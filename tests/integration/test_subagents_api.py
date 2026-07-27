@@ -176,7 +176,10 @@ async def test_install_catalog_subagent(env: Any) -> None:
 
     r_file = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/agents/engineering-software-architect.md"},
+        params={
+            "path": "/agents/engineering-software-architect.md",
+            "from_workspace": "true",
+        },
         headers=auth,
     )
     assert r_file.status_code == 200, r_file.text
@@ -204,7 +207,10 @@ async def test_install_catalog_subagent_locale_override(env: Any) -> None:
 
     r_file = await c.get(
         f"/api/agents/{aid}/workspace/file",
-        params={"path": "/agents/engineering-software-architect.md"},
+        params={
+            "path": "/agents/engineering-software-architect.md",
+            "from_workspace": "true",
+        },
         headers=auth,
     )
     assert r_file.status_code == 200, r_file.text

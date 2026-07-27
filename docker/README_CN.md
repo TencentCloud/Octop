@@ -12,6 +12,8 @@
 | `../.dockerignore` | 构建上下文忽略规则（Podman 与 BuildKit 均适用） |
 | `docker_build.sh` | 从源码构建镜像（默认开启 BuildKit 缓存） |
 | `docker-compose.yml` | 本地开发 / 自托管一键启动 |
+| `docker-compose.postgres.yml` | 仅 PostgreSQL（+ pgvector）开发/测试库；扩展在 `postgres/init-vector.sql` |
+| `postgres/init-vector.sql` | 实例级 `CREATE EXTENSION vector`（initdb.d；**不**进 Octop 迁移） |
 | `docker-entrypoint.sh` | 容器入口：首次初始化数据库并启动服务 |
 
 ### 快速开始

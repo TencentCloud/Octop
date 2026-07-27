@@ -575,6 +575,7 @@ export function useChat(
     contextUsage,
     historyHasMore,
     historyLoadingMore,
+    historyHydrated,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -640,17 +641,17 @@ export function useChat(
       const snap = chatStore.getSnapshot(key);
       if (snap.isStreaming) return;
 
-      chatStore.cancelStream(key);
-
       if (!targetThreadId || !agentId) {
         chatStore.clearMessages(key);
         return;
       }
 
-      // Reuse in-memory messages when returning to a thread (no full reload).
-      if (snap.messages.length > 0) {
+      // Reuse in-memory messages, or skip if we already hydrated an empty thread.
+      if (snap.messages.length > 0 || snap.historyHydrated) {
         return;
       }
+
+      chatStore.cancelStream(key);
 
       const gen = ++loadGenRef.current;
       setHistoryLoading(true);
@@ -675,7 +676,7 @@ export function useChat(
     [agentId],
   );
 
-  const loadMoreHistory = useCallback(async () => {
+  const loadMoreHistory = useCallback(async (): Promise<boolean> => {
     const key = stableSessionId;
     const snap = chatStore.getSnapshot(key);
     if (
@@ -686,7 +687,7 @@ export function useChat(
       !agentId ||
       stableSessionId === "__empty__"
     ) {
-      return;
+      return false;
     }
 
     loadMoreInFlightRef.current = true;
@@ -700,6 +701,7 @@ export function useChat(
         nextOffset,
       } = await loadThreadHistory(agentId, stableSessionId, { offset });
       chatStore.prependHistoryMessages(key, older, { hasMore, nextOffset });
+      return true;
     } finally {
       loadMoreInFlightRef.current = false;
       chatStore.setHistoryLoadingMore(key, false);
@@ -820,6 +822,7 @@ export function useChat(
     historyHasMore,
     historyLoadingMore,
     historyRefreshing,
+    historyHydrated,
     sendMessage,
     editAndResend,
     cancelStream,

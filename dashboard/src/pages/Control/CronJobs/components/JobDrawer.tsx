@@ -171,7 +171,7 @@ export function JobDrawer({
       title={editingJob ? t("cronJobs.editJob") : t("cronJobs.createJob")}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}

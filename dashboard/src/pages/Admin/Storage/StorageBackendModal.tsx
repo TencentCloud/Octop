@@ -246,7 +246,7 @@ export function StorageBackendDrawer({
       title={drawerTitle}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       width={520}
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

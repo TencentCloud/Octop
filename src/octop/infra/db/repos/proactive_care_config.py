@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import DatabasePool
 
 
 @dataclass
@@ -30,7 +30,7 @@ _DEFAULT_CONFIG = ProactiveCareConfig(agent_id="")
 class ProactiveCareConfigRepo:
     """Data-access object for the proactive_care_config table."""
 
-    def __init__(self, db: DBPool) -> None:
+    def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
     def get(self, agent_id: str) -> ProactiveCareConfig:

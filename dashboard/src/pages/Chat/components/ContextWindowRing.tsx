@@ -351,7 +351,7 @@ export default function ContextWindowRing({
               padding: "12px 16px calc(16px + env(safe-area-inset-bottom))",
             },
           }}
-          destroyOnClose
+          destroyOnHidden
         >
           {popoverContent}
         </Drawer>

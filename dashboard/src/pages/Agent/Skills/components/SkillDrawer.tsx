@@ -283,7 +283,7 @@ export function SkillDrawer({
       title={isCreate ? t("skills.createSkill") : t("skills.viewSkill")}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       styles={{
         body: {
           padding: 0,

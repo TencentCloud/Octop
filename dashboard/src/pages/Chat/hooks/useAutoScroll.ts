@@ -23,6 +23,9 @@ export const AT_BOTTOM_THRESHOLD = 80;
 /** ms to keep the programmatic-scroll guard alive (covers smooth-scroll animation) */
 const PROGRAMMATIC_GUARD_MS = 700;
 
+/** Instant follow after streaming layout — longer than one paint on Safari. */
+const INSTANT_FOLLOW_GUARD_MS = 320;
+
 /** ms to wait after touchend before re-checking (iOS momentum settle) */
 const MOMENTUM_SETTLE_MS = 200;
 
@@ -151,25 +154,49 @@ export function useAutoScroll({
     }
   }, []);
 
+  const pinScrollerToBottom = useCallback(
+    (scroller: HTMLElement, instant: boolean) => {
+      const gap =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      // Already exactly at bottom — skip rewrite.
+      if (instant && gap === 0) {
+        prevScrollTopRef.current = scroller.scrollTop;
+        return;
+      }
+      armProgrammaticGuard(
+        instant ? INSTANT_FOLLOW_GUARD_MS : PROGRAMMATIC_GUARD_MS,
+      );
+      if (instant) {
+        scroller.scrollTop = scroller.scrollHeight;
+      } else {
+        scroller.scrollTo({
+          top: scroller.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+      prevScrollTopRef.current = scroller.scrollTop;
+    },
+    [armProgrammaticGuard],
+  );
+
   const scrollToBottomInFollowMode = useCallback(
     (instant = false) => {
       if (scrollModeRef.current !== "follow") return;
 
+      // Coalesce deps + ResizeObserver storms into one pin after layout.
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
         if (scrollModeRef.current !== "follow") return;
 
-        armProgrammaticGuard(instant ? 50 : PROGRAMMATIC_GUARD_MS);
-
         if (virtual && virtual.itemCount > 0) {
           const scroller = virtual.scrollerRef.current;
           if (scroller) {
-            scroller.scrollTo({
-              top: scroller.scrollHeight,
-              behavior: instant ? "auto" : "smooth",
-            });
+            pinScrollerToBottom(scroller, instant);
           } else {
+            armProgrammaticGuard(
+              instant ? INSTANT_FOLLOW_GUARD_MS : PROGRAMMATIC_GUARD_MS,
+            );
             virtual.virtuosoRef.current?.scrollToIndex({
               index: virtual.itemCount - 1,
               align: "end",
@@ -179,15 +206,29 @@ export function useAutoScroll({
           return;
         }
 
+        const scroller = getScroller();
+        if (instant && scroller) {
+          pinScrollerToBottom(scroller, instant);
+          return;
+        }
+
         const end = endRef.current;
         if (!end) return;
+        armProgrammaticGuard(PROGRAMMATIC_GUARD_MS);
         end.scrollIntoView({
           behavior: instant || !smooth ? "instant" : "smooth",
           block: "end",
         });
       });
     },
-    [smooth, armProgrammaticGuard, virtual, endRef],
+    [
+      smooth,
+      armProgrammaticGuard,
+      pinScrollerToBottom,
+      virtual,
+      endRef,
+      getScroller,
+    ],
   );
 
   const scrollToBottom = useCallback(
@@ -265,13 +306,18 @@ export function useAutoScroll({
         onNearTop();
       }
 
+      if (isProgrammaticRef.current) return;
+
+      // Streaming / markdown reflow can nudge scrollTop down while the user is
+      // still glued to the bottom (especially Safari). Only leave follow mode
+      // when the viewport has actually left the bottom sticky zone.
       if (scrolledUp) {
         resetOverscroll();
-        enterFreeMode();
+        if (!isAtBottom()) {
+          enterFreeMode();
+        }
         return;
       }
-
-      if (isProgrammaticRef.current) return;
 
       if (isAtBottom()) {
         enterFollowMode();
@@ -338,6 +384,13 @@ export function useAutoScroll({
 
     const ro = new ResizeObserver(handleResize);
     ro.observe(container);
+    // Streaming thinking/tools grow inside content children; the scroller
+    // box itself often does not resize. Observe every direct child.
+    for (const child of Array.from(container.children)) {
+      if (child instanceof HTMLElement) {
+        ro.observe(child);
+      }
+    }
 
     container.addEventListener("scroll", handleScroll, { passive: true });
     container.addEventListener("wheel", handleWheel, { passive: true });

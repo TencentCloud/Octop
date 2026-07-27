@@ -96,7 +96,12 @@
       "set": "Model for this thread → {model}."
     },
     "compact": {
-      "done": "Context compacted. Fresh thread {short}{archived}.",
+      "done": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\nChat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
+      "done_offload": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\n- Saved: `{path}`\n- Chat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
+      "nothing": "Nothing to compact on thread `{short}` (too short or already compact).",
+      "no_thread": "No active thread.",
+      "unavailable": "Compact unavailable (agent not ready or harness too old).",
+      "failed": "Compact failed; check logs and retry.",
       "archived": " ({count} messages archived as {short})"
     },
     "agent": {
@@ -197,7 +202,7 @@
       },
       "compact": {
         "label": "Compact memory",
-        "description": "Archive current context and start a fresh thread"
+        "description": "Summarize and offload older context to free the window (same thread)"
       },
       "stop": {
         "label": "Stop generation",
@@ -277,6 +282,8 @@
     "AUTH_FAILED": "Authentication failed.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
+    "DATABASE_NOT_EMPTY": "The target database already has users. Use an empty database, or log in with the existing admin.",
+    "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "FORBIDDEN": "Permission denied.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
@@ -395,6 +402,7 @@
     "edit_file": "Edit file",
     "execute": "Execute",
     "current_time": "Current time",
+    "write_todos": "Write plan",
     "task": "Sub-agent task",
     "ls": "List directory",
     "glob": "Find files",

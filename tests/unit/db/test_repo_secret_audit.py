@@ -8,25 +8,25 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.audit import AuditRepo, AuditRow
 from octop.infra.db.repos.secrets import SecretRepo
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "x.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "x.db")
     run_migrations(pool)
     return pool
 
 
 @pytest.fixture
-def secrets(db: DBPool) -> SecretRepo:
+def secrets(db: SqlitePool) -> SecretRepo:
     return SecretRepo(db)
 
 
 @pytest.fixture
-def audit(db: DBPool) -> AuditRepo:
+def audit(db: SqlitePool) -> AuditRepo:
     return AuditRepo(db)
 
 

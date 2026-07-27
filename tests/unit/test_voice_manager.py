@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo
 from octop.infra.errors import ErrorCode, OctopError
@@ -16,7 +16,7 @@ from octop.infra.voice.manager import VoiceManager
 
 @pytest.fixture
 def voice_mgr(tmp_path: Path) -> VoiceManager:
-    db = DBPool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
     settings = SettingsRepo(db)
     repo = VoiceProviderRepo(db)

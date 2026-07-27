@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import DBPool
+from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.channels import ChannelRepo, ChannelRow
 from octop.infra.db.repos.users import UserRepo
@@ -16,14 +16,14 @@ from octop.infra.utils.ulid import new_ulid
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> DBPool:
-    pool = DBPool(tmp_path / "x.db")
+def db(tmp_path: Path) -> SqlitePool:
+    pool = SqlitePool(tmp_path / "x.db")
     run_migrations(pool)
     return pool
 
 
 @pytest.fixture
-def agent_id(db: DBPool) -> str:
+def agent_id(db: SqlitePool) -> str:
     uid = UserRepo(db).create(username="alice", password_hash="h", role="admin")
     aid = new_ulid()
     AgentRepo(db).create(agent_id=aid, user_id=uid, name="bot")
@@ -31,12 +31,12 @@ def agent_id(db: DBPool) -> str:
 
 
 @pytest.fixture
-def user_id(db: DBPool) -> int:
+def user_id(db: SqlitePool) -> int:
     return UserRepo(db).get_by_username("alice").id
 
 
 @pytest.fixture
-def repo(db: DBPool) -> ChannelRepo:
+def repo(db: SqlitePool) -> ChannelRepo:
     return ChannelRepo(db)
 
 

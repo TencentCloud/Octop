@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Spin } from "antd";
 import { getAuthToken } from "../api/request";
 import { authApi } from "../api/modules/auth";
@@ -13,12 +13,17 @@ interface AuthGuardProps {
  * Gate every protected route on (a) the initial admin existing and
  * (b) a valid JWT in localStorage. Octop always requires auth — there is
  * no "password protection disabled" mode like finnie had.
+ *
+ * Auth is checked once on mount (not on every pathname change). When a JWT
+ * is already present we render the shell immediately and validate in the
+ * background — a full-page Spin on every hard refresh feels like the app
+ * is "reloading" even though routing did not change.
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [checking, setChecking] = useState(true);
-  const [authed, setAuthed] = useState(false);
+  const hadToken = Boolean(getAuthToken());
+  const [checking, setChecking] = useState(!hadToken);
+  const [authed, setAuthed] = useState(hadToken);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +41,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         // Setup done. Need a token.
         const token = getAuthToken();
         if (!token) {
-          if (!cancelled) navigate("/login", { replace: true });
+          if (!cancelled) {
+            setAuthed(false);
+            setChecking(false);
+            navigate("/login", { replace: true });
+          }
           return;
         }
 
@@ -51,7 +60,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             setChecking(false);
           }
         } catch {
-          if (!cancelled) navigate("/login", { replace: true });
+          if (!cancelled) {
+            setAuthed(false);
+            setChecking(false);
+            navigate("/login", { replace: true });
+          }
         }
       } catch {
         // Backend unreachable — let the user through. The next API call
@@ -63,11 +76,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       }
     };
 
-    check();
+    void check();
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, navigate]);
+  }, [navigate]);
 
   if (checking && !authed) {
     return (

@@ -146,6 +146,33 @@ def test_resolve_browser_display_uses_x_socket(
     assert os.environ["DISPLAY"] == ":99"
 
 
+@posix_only
+def test_resolve_browser_display_clears_stale_display(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stale $DISPLAY without an X socket must not force headed Chrome."""
+    from octop.infra.browser import setup as browser_setup
+
+    monkeypatch.setattr(browser_setup.sys, "platform", "linux")
+    sock_dir = tmp_path / "X11"
+    sock_dir.mkdir()
+    monkeypatch.setattr(
+        browser_setup,
+        "_x11_socket_path",
+        lambda display: (
+            sock_dir / f"X{display.lstrip(':').split('.')[0]}" if display.startswith(":") else None
+        ),
+    )
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(
+        "octop.infra.desktop.setup._display_from_env_file",
+        lambda: None,
+    )
+
+    assert resolve_browser_display() is None
+    assert "DISPLAY" not in os.environ
+
+
 def test_ensure_profile_writable_recreates_when_not_writable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

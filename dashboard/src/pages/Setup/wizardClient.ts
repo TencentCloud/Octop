@@ -45,9 +45,21 @@ const DRAFT_KEY = "octop:wizard-draft";
 const STEP_KEY = "octop:wizard-step";
 
 export const STEP_PASSWORD = 0;
-export const STEP_ADMIN = 1;
-export const STEP_MODEL = 2;
-export const STEP_FINISH = 3;
+export const STEP_DATABASE = 1;
+export const STEP_ADMIN = 2;
+export const STEP_MODEL = 3;
+export const STEP_FINISH = 4;
+
+export interface DatabaseSetupBody {
+  driver: "sqlite" | "postgresql" | string;
+  sqlite_path?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
+  url?: string;
+}
 
 export const wizardSession = {
   saveToken(token: string): void {
@@ -108,6 +120,18 @@ export const wizardApi = {
   begin: () =>
     request<VerifyResponse>("/setup/begin", {
       method: "POST",
+    }),
+
+  testDatabase: (body: DatabaseSetupBody) =>
+    request<{ ok: boolean; driver: string }>("/setup/test-database", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  applyDatabase: (body: DatabaseSetupBody) =>
+    request<{ ok: boolean; driver: string }>("/setup/database", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 
   verifyPassword: (password: string) =>

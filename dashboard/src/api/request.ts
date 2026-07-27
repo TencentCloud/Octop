@@ -288,6 +288,44 @@ export async function requestBlob(
   return response.blob();
 }
 
+/**
+ * Authenticated GET that only checks success — cancels the body without
+ * buffering it (existence probes for large workspace files).
+ */
+export async function probeAuthResource(
+  path: string,
+  options: RequestInit = {},
+): Promise<void> {
+  const url = getApiUrl(path);
+  const headers = buildAuthHeaders(path);
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...headers, ...(options.headers as Record<string, string>) },
+  });
+
+  if (await check503ForSetupRequired(path, response)) {
+    throw new Error("Setup required — redirecting to /setup");
+  }
+
+  await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Request failed: ${response.status} ${response.statusText}${
+        text ? ` - ${text}` : ""
+      }`,
+    );
+  }
+
+  try {
+    await response.body?.cancel();
+  } catch {
+    /* ignore cancel failures */
+  }
+}
+
 export type UploadProgressHandler = (percent: number) => void;
 
 /**
