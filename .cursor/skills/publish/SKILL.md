@@ -2,10 +2,9 @@
 name: publish
 description: >-
   Publish the Octop Python package: cut a release branch from develop, bump
-  version, update CHANGELOG, open a PR to main, wait for merge, then tag on
-  main (triggers GitHub Actions for PyPI / Docker Hub), delete the release
-  branch, and sync develop. Use when the user asks to publish, release, bump
-  version, cut a release, or run /publish.
+  version, update CHANGELOG, open a PR to main; after merge, Actions tag on
+  main (PyPI / Docker Hub) and sync main into develop. Use when the user asks
+  to publish, release, bump version, cut a release, or run /publish.
 disable-model-invocation: true
 ---
 
