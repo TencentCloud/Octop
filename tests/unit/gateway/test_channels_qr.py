@@ -99,12 +99,11 @@ def test_wecom_qrcode_poll_returns_status(mock_server_and_user):
 
 def test_pkill_chrome_profile_accepts_resolved_path():
     """pkill pattern must not fail validation on the '=' separator."""
-    from pathlib import Path
-
     from octop.api.routers.channels import _pkill_chrome_profile, _safe_profile_directory
+    from octop.infra.utils.browser_media import octop_browser_profiles_dir
 
     profile_dir = _safe_profile_directory("feishu")
-    assert profile_dir == Path.home() / ".harness-browser" / "profiles" / "octop-feishu-bot"
+    assert profile_dir == octop_browser_profiles_dir() / "octop-feishu-bot"
 
     with patch("octop.api.routers.channels.asyncio.to_thread", new_callable=AsyncMock):
         import asyncio
