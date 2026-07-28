@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import os
 import re
 import time
+import zipfile
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlencode, urlparse
+from urllib.parse import quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+from octop.infra.agents.skill_packages import MAX_SKILL_BYTES, MAX_SKILL_FILES
 from octop.infra.utils.frontmatter import parse_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -275,6 +278,92 @@ def _http_text_get(url: str, params: dict[str, Any] | None = None) -> str:
         params=params,
         accept="text/plain, text/markdown, */*",
     )
+
+
+def _http_bytes_get(
+    url: str,
+    params: dict[str, Any] | None = None,
+    accept: str = "application/octet-stream, application/zip, */*",
+    max_bytes: int = MAX_SKILL_BYTES * 4,
+) -> bytes:
+    full_url = url
+    if params:
+        full_url = f"{url}?{urlencode(params)}"
+    req = Request(
+        full_url,
+        headers={
+            "Accept": accept,
+            "User-Agent": "octop-skills-hub/1.0",
+        },
+    )
+    retries = _hub_http_retries()
+    timeout = _hub_http_timeout()
+    attempts = retries + 1
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                chunks: list[bytes] = []
+                total = 0
+                while True:
+                    chunk = resp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError(
+                            f"Remote archive exceeds size limit ({max_bytes} bytes)"
+                        )
+                    chunks.append(chunk)
+                return b"".join(chunks)
+        except HTTPError as e:
+            last_error = e
+            status = getattr(e, "code", 0) or 0
+            if attempt < attempts and status in RETRYABLE_HTTP_STATUS:
+                delay = _compute_backoff_seconds(attempt)
+                logger.warning(
+                    "Hub HTTP %s on %s (attempt %d/%d), retrying in %.2fs",
+                    status,
+                    full_url,
+                    attempt,
+                    attempts,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+            raise
+        except URLError as e:
+            last_error = e
+            if attempt < attempts:
+                delay = _compute_backoff_seconds(attempt)
+                logger.warning(
+                    "Hub URL error on %s (attempt %d/%d), retrying in %.2fs: %s",
+                    full_url,
+                    attempt,
+                    attempts,
+                    delay,
+                    e,
+                )
+                time.sleep(delay)
+                continue
+            raise
+        except TimeoutError as e:
+            last_error = e
+            if attempt < attempts:
+                delay = _compute_backoff_seconds(attempt)
+                logger.warning(
+                    "Hub timeout on %s (attempt %d/%d), retrying in %.2fs",
+                    full_url,
+                    attempt,
+                    attempts,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+            raise
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Failed to request hub URL: {full_url}")
 
 
 def _norm_search_items(data: Any) -> list[dict[str, Any]]:
@@ -668,6 +757,10 @@ def _github_raw_url(owner: str, repo: str, ref: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{cleaned}"
 
 
+def _github_archive_url(owner: str, repo: str, ref: str) -> str:
+    return f"https://github.com/{owner}/{repo}/archive/{quote(ref, safe='')}.zip"
+
+
 def _github_has_token() -> bool:
     return bool(os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN"))
 
@@ -707,6 +800,13 @@ def _branch_candidates(owner: str, repo: str, requested_version: str) -> list[st
 def _skill_md_root_candidates(skill_hint: str) -> list[str]:
     skill = skill_hint.strip()
     if skill:
+        if skill.startswith("skills/"):
+            trimmed = skill[len("skills/") :].strip("/")
+            candidates = [skill]
+            if trimmed:
+                candidates.append(trimmed)
+            candidates.append("")
+            return candidates
         return [
             _join_repo_path("skills", skill),
             skill,
@@ -747,6 +847,51 @@ def _find_skill_bundle_via_raw(
                             raise
             return branch, root, files
     return None
+
+
+def _github_collect_archive_files(
+    owner: str,
+    repo: str,
+    ref: str,
+    root: str,
+    *,
+    max_files: int = MAX_SKILL_FILES,
+) -> dict[str, str]:
+    root_prefix = root.strip("/")
+    payload = _http_bytes_get(_github_archive_url(owner, repo, ref))
+    files: dict[str, str] = {}
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+            path = member.filename.replace("\\", "/")
+            if "/" not in path:
+                continue
+            rel_repo_path = path.split("/", 1)[1]
+            if root_prefix:
+                prefix = f"{root_prefix}/"
+                if rel_repo_path == root_prefix:
+                    continue
+                if not rel_repo_path.startswith(prefix):
+                    continue
+                rel = rel_repo_path[len(prefix) :]
+            else:
+                rel = rel_repo_path
+            if not rel:
+                continue
+            try:
+                content = archive.read(member).decode("utf-8")
+            except UnicodeDecodeError:
+                logger.warning("Skip non-UTF8 file in GitHub archive: %s", rel_repo_path)
+                continue
+            files[rel] = content
+            if len(files) > max_files:
+                raise ValueError(
+                    f"GitHub archive has too many files under selected path ({max_files} max)"
+                )
+    if "SKILL.md" not in files:
+        raise ValueError("GitHub archive does not contain SKILL.md under selected path")
+    return files
 
 
 def _github_get_default_branch(owner: str, repo: str) -> str:
@@ -1004,7 +1149,18 @@ def _fetch_bundle_from_github_repo(
         requested_version,
     )
     if raw_bundle is not None:
-        _branch, _root, raw_files = raw_bundle
+        branch, root, raw_files = raw_bundle
+        try:
+            archive_files = _github_collect_archive_files(owner, repo, branch, root)
+            return {"name": display_name, "files": archive_files}, source_url
+        except Exception as exc:
+            logger.warning(
+                "GitHub archive fetch failed for %s/%s@%s (%s), falling back to raw/API",
+                owner,
+                repo,
+                branch,
+                exc,
+            )
         return {"name": display_name, "files": raw_files}, source_url
 
     if not _github_has_token():
@@ -1098,6 +1254,40 @@ def _fetch_bundle_from_github_url(
     elif path_hint == "SKILL.md":
         path_hint = ""
     branch = requested_version.strip() or branch_in_url.strip()
+    if (
+        requested_version.strip() == ""
+        and branch_in_url.strip()
+        and "/skills/" in path_hint
+        and not path_hint.startswith("skills/")
+    ):
+        extra_branch, skill_path = path_hint.split("/skills/", 1)
+        if extra_branch.strip():
+            branch = f"{branch_in_url.strip()}/{extra_branch.strip('/')}"
+            path_hint = f"skills/{skill_path}"
+    if (
+        requested_version.strip() == ""
+        and branch_in_url.strip()
+        and path_hint
+        and "/" in path_hint
+        and _find_skill_bundle_via_raw(owner, repo, path_hint, branch) is None
+    ):
+        # GitHub tree URLs encode branch and path in one slash-delimited tail.
+        # Try all split points to recover branch names like "feature/x".
+        tail = [branch_in_url.strip(), *[p for p in path_hint.split("/") if p]]
+        for split in range(len(tail), 0, -1):
+            candidate_branch = "/".join(tail[:split]).strip("/")
+            candidate_path = "/".join(tail[split:]).strip("/")
+            if not candidate_branch:
+                continue
+            if _find_skill_bundle_via_raw(
+                owner,
+                repo,
+                candidate_path,
+                candidate_branch,
+            ) is not None:
+                branch = candidate_branch
+                path_hint = candidate_path
+                break
     return _fetch_bundle_from_repo_and_skill_hint(
         owner=owner,
         repo=repo,
