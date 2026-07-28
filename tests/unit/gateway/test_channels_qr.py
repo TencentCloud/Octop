@@ -97,13 +97,20 @@ def test_wecom_qrcode_poll_returns_status(mock_server_and_user):
     assert data["status"] == "pending"
 
 
-def test_pkill_chrome_profile_accepts_resolved_path():
+def test_pkill_chrome_profile_accepts_resolved_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
     """pkill pattern must not fail validation on the '=' separator."""
     from octop.api.routers.channels import _pkill_chrome_profile, _safe_profile_directory
-    from octop.infra.utils.browser_media import octop_browser_profiles_dir
+
+    # Isolate from BROWSER_USE_PROFILES_DIR left by earlier agent/browser tests.
+    root = (tmp_path / "browser-profiles").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("BROWSER_USE_PROFILES_DIR", str(root))
+    monkeypatch.delenv("HARNESS_BROWSER_PROFILES_DIR", raising=False)
 
     profile_dir = _safe_profile_directory("feishu")
-    assert profile_dir == octop_browser_profiles_dir() / "octop-feishu-bot"
+    assert profile_dir == root / "octop-feishu-bot"
 
     with patch("octop.api.routers.channels.asyncio.to_thread", new_callable=AsyncMock):
         import asyncio
