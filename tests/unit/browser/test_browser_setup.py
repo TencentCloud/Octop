@@ -279,17 +279,16 @@ def test_legacy_profiles_migrated_once(tmp_path: Path, monkeypatch: pytest.Monke
     from octop.infra.utils import browser_media as media
     from octop.infra.utils.paths import PathLayout
 
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    # Path.home() reads HOME on Unix.
-    legacy = home / ".harness-browser" / "profiles" / "default"
+    # Do not rely on HOME/USERPROFILE — Path.home() differs on Windows.
+    legacy_root = tmp_path / "legacy-profiles"
+    legacy = legacy_root / "default"
     legacy.mkdir(parents=True)
-    (legacy / "Preferences").write_text("{}")
+    (legacy / "Preferences").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(media, "legacy_harness_profiles_dir", lambda: legacy_root)
 
     paths = PathLayout(root=tmp_path / "octop")
     dest = media.octop_browser_profiles_dir(paths)
-    assert (dest / "default" / "Preferences").read_text() == "{}"
+    assert (dest / "default" / "Preferences").read_text(encoding="utf-8") == "{}"
     assert not legacy.exists()
 
     # Second call must not fail when legacy is empty/gone.
