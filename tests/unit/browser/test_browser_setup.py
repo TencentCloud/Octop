@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from stat import S_IMODE
 
 import pytest
 
@@ -116,6 +117,7 @@ def test_ensure_chrome_runtime_env_forces_tmp_dir(
     assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
     assert os.access(path, os.W_OK | os.X_OK)
+    assert S_IMODE(path.stat().st_mode) == 0o700
 
 
 @posix_only
@@ -181,22 +183,14 @@ def test_ensure_profile_writable_recreates_when_not_writable(
     profile.mkdir()
     (profile / "Preferences").write_text("{}")
 
-    # Simulate unwritable dir by making probe always fail once, then succeed
-    # after recreate — easier: chmod 0 if posix.
     if os.name == "posix":
         os.chmod(profile, 0o000)
-        monkeypatch.setattr(
-            browser_setup,
-            "_try_fix_ownership",
-            lambda _p: None,
-        )
         monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
         try:
             result = ensure_profile_writable(profile)
             assert result == profile or "harness-browser-profiles" in str(result)
             assert _probe_dir_writable(result)
         finally:
-            os.chmod(profile, 0o700)
             if profile.exists():
                 os.chmod(profile, 0o700)
     else:
@@ -223,3 +217,103 @@ def test_ensure_profile_writable_relocates_root_home(
 
     result = ensure_profile_writable(profile)
     assert result == tmp_path / "relocated" / "default"
+
+
+@posix_only
+def test_ensure_profile_writable_never_chmods_system_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for #84: profile prep must not chmod / or /tmp."""
+    from octop.infra.browser import setup as browser_setup
+
+    chmod_targets: list[str] = []
+    real_chmod = os.chmod
+
+    def tracking_chmod(path: str | bytes | os.PathLike[str], mode: int) -> None:
+        text = os.fspath(path)
+        chmod_targets.append(text)
+        if text in ("/", "/tmp"):
+            raise AssertionError(f"must not chmod system path {path}")
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr(os, "chmod", tracking_chmod)
+    monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
+    monkeypatch.setattr(browser_setup, "_probe_dir_writable", lambda _p: True)
+
+    profile = Path(f"/tmp/harness-browser-profiles-{os.getuid()}") / "default"
+    ensure_profile_writable(profile)
+
+    # Profile prep no longer chmod/chown at all — recreate/relocate only.
+    assert chmod_targets == []
+
+
+def test_octop_browser_profiles_dir_shared(tmp_path: Path) -> None:
+    from octop.infra.utils.browser_media import (
+        BROWSER_PROFILES_REL,
+        octop_browser_profiles_dir,
+    )
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(root=tmp_path / "octop")
+    dest = octop_browser_profiles_dir(paths)
+    assert dest == paths.root / BROWSER_PROFILES_REL
+    assert dest.is_dir()
+    # Shared root — not under any agent workspace.
+    assert "agents" not in dest.parts
+
+
+def test_configure_browser_profiles_dir_sets_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.utils.browser_media import configure_browser_profiles_dir
+
+    monkeypatch.delenv("BROWSER_USE_PROFILES_DIR", raising=False)
+    root = tmp_path / "browser-profiles"
+    result = configure_browser_profiles_dir(root)
+    assert result == root.resolve()
+    assert root.is_dir()
+    assert os.environ["BROWSER_USE_PROFILES_DIR"] == str(root.resolve())
+
+
+def test_legacy_profiles_migrated_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.utils import browser_media as media
+    from octop.infra.utils.paths import PathLayout
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    # Path.home() reads HOME on Unix.
+    legacy = home / ".harness-browser" / "profiles" / "default"
+    legacy.mkdir(parents=True)
+    (legacy / "Preferences").write_text("{}")
+
+    paths = PathLayout(root=tmp_path / "octop")
+    dest = media.octop_browser_profiles_dir(paths)
+    assert (dest / "default" / "Preferences").read_text() == "{}"
+    assert not legacy.exists()
+
+    # Second call must not fail when legacy is empty/gone.
+    media.octop_browser_profiles_dir(paths)
+    assert (dest / "default" / "Preferences").exists()
+
+
+@posix_only
+def test_under_root_home_exempts_octop_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.browser import setup as browser_setup
+    from octop.infra.utils.paths import PathLayout
+
+    if not Path("/root").is_dir():
+        pytest.skip("/root not available")
+
+    monkeypatch.setattr(browser_setup.sys, "platform", "linux")
+
+    def _fake_from_env() -> PathLayout:
+        return PathLayout(root=Path("/root/.octop"))
+
+    monkeypatch.setattr(
+        "octop.infra.utils.paths.PathLayout.from_env",
+        staticmethod(_fake_from_env),
+    )
+
+    assert browser_setup._under_root_home(Path("/root/.octop/browser-profiles/default")) is False
+    assert browser_setup._under_root_home(Path("/root/.harness-browser/profiles/default")) is True

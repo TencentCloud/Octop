@@ -29,13 +29,15 @@ def bot_creator_script(name: str) -> Path:
 
 
 def resolve_profiles_root() -> Path:
-    default = Path.home() / ".harness-browser" / "profiles"
-    raw = os.environ.get("HARNESS_BROWSER_PROFILES_DIR")
+    """Shared Octop profiles root; honor env overrides when present."""
+    raw = (os.environ.get("BROWSER_USE_PROFILES_DIR") or "").strip()
     if not raw:
-        return default
-    if len(raw) > 2048:
-        return default
-    return Path(raw).expanduser()
+        raw = (os.environ.get("HARNESS_BROWSER_PROFILES_DIR") or "").strip()
+    if raw and len(raw) <= 2048:
+        return Path(raw).expanduser()
+    from octop.infra.utils.browser_media import octop_browser_profiles_dir  # noqa: PLC0415
+
+    return octop_browser_profiles_dir()
 
 
 def feishu_profile_dir(platform: str) -> Path:
