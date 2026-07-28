@@ -1770,7 +1770,16 @@
     "configured": "Configured",
     "presetNameExists": "A provider with this name already exists, please edit it directly",
     "sharedProviders": "Shared Providers (Admin)",
-    "pleaseEnterApiKey": "Please enter API Key"
+    "pleaseEnterApiKey": "Please enter API Key",
+    "fetchModels": "Fetch models",
+    "fetchingModels": "Fetching…",
+    "fetchModelsSuccess": "Fetched {{count}} models (disabled by default)",
+    "fetchModelsMerged": "Added {{count}} new models to list (existing ones unchanged)",
+    "fetchModelsNoNew": "No new models to add",
+    "fetchModelsFailed": "Failed to fetch models: {{error}}",
+    "fetchModelsUnsupportedKind": "Auto-fetch is only supported for OpenAI-compatible providers",
+    "customModelsLabel": "Models",
+    "customModelsHint": "Fetched models are off by default — enable, test, edit, or remove; or add manually"
   },
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",

@@ -11,8 +11,8 @@ import { Button, Divider, Form, Input, Modal, Select, message } from "antd";
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
-import type { ProviderRow } from "../../useProviders";
-import { testProviderDraft } from "../../providerApi";
+import type { ProviderRow, ProviderModel } from "../../useProviders";
+import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
 import { ModelListEditor } from "./ModelListEditor";
 import styles from "../../index.module.less";
@@ -78,7 +78,9 @@ export function ProviderConfigModal({
   const [saving, setSaving] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [form] = Form.useForm<ProviderConfigForm>();
+  const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
 
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
   const isOllama = isOllamaProvider(provider);
@@ -304,21 +306,32 @@ export function ProviderConfigModal({
   }, [hasApiKey, t]);
 
   useEffect(() => {
-    if (open) {
-      // Derive current default model: first from models list
-      const currentDefaultModel = provider.models?.length
-        ? provider.models[0].id
-        : "";
-      form.setFieldsValue({
-        kind: provider.kind,
-        base_url: provider.base_url ?? "",
-        api_key: undefined,
-        model: currentDefaultModel,
-        note: provider.note ?? "",
-      });
-      setFormDirty(false);
-    }
-  }, [provider, form, open]);
+    if (!open) return;
+    // Only hydrate when the modal opens (or provider id changes), so
+    // background refreshes / local model toggles do not reset the form.
+    const currentDefaultModel = provider.models?.length
+      ? provider.models[0].id
+      : "";
+    form.setFieldsValue({
+      kind: provider.kind,
+      base_url: provider.base_url ?? "",
+      api_key: undefined,
+      model: currentDefaultModel,
+      note: provider.note ?? "",
+    });
+    setDraftModels(
+      (provider.models ?? []).map((m) => ({
+        ...m,
+        enabled: m.enabled !== false,
+      })),
+    );
+    setFormDirty(false);
+  }, [open, provider.id, form]);
+
+  const handleModelsChange = (models: ProviderModel[]) => {
+    setDraftModels(models);
+    setFormDirty(true);
+  };
 
   const handleSubmit = async () => {
     try {
@@ -339,6 +352,17 @@ export function ProviderConfigModal({
         : "";
       if ((values.model ?? "") !== existingDefault)
         payload.model = values.model?.trim() || null;
+
+      const modelsChanged =
+        JSON.stringify(
+          (provider.models ?? []).map((m) => ({
+            ...m,
+            enabled: m.enabled !== false,
+          })),
+        ) !== JSON.stringify(draftModels);
+      if (modelsChanged) {
+        payload.models = draftModels;
+      }
 
       if (Object.keys(payload).length === 0) {
         message.info(t("models.noChanges"));
@@ -397,8 +421,8 @@ export function ProviderConfigModal({
       const values = form.getFieldsValue();
       const modelId =
         (values.model as string | undefined)?.trim() ||
-        provider.models?.find((m) => m.enabled)?.id ||
-        provider.models?.[0]?.id;
+        draftModels.find((m) => m.enabled !== false)?.id ||
+        draftModels[0]?.id;
       if (!modelId) {
         message.warning(t("models.testDraftNeedModel"));
         return;
@@ -456,6 +480,70 @@ export function ProviderConfigModal({
       );
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleFetchModels = async () => {
+    try {
+      const values = form.getFieldsValue();
+      const kind = (values.kind as string | undefined) ?? provider.kind;
+      if (kind !== "openai") {
+        message.warning(t("models.fetchModelsUnsupportedKind"));
+        return;
+      }
+      const draftApiKey = (values.api_key as string | undefined)?.trim();
+      const draftBaseUrl = (values.base_url as string | undefined)?.trim();
+      const apiKey = draftApiKey || provider.api_key || "";
+      if (!apiKey) {
+        message.warning(t("models.pleaseEnterApiKey"));
+        return;
+      }
+
+      setFetchingModels(true);
+      const result = await fetchProviderModels({
+        kind: "openai",
+        api_key: apiKey,
+        base_url: draftBaseUrl || provider.base_url,
+      });
+      if (!result.ok) {
+        message.error(
+          t("models.fetchModelsFailed", {
+            error: result.error ?? "unknown",
+          }),
+        );
+        return;
+      }
+      const fetched = result.models ?? [];
+      if (fetched.length === 0) {
+        message.info(t("models.fetchModelsNoNew"));
+        return;
+      }
+
+      const existingIds = new Set(draftModels.map((m) => m.id));
+      const missing = fetched.filter((m) => !existingIds.has(m.id));
+      if (missing.length === 0) {
+        message.info(t("models.fetchModelsNoNew"));
+        return;
+      }
+
+      const added: ProviderModel[] = missing.map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+        enabled: false,
+        input: ["text"],
+        thinking: null,
+      }));
+      setDraftModels((prev) => [...prev, ...added]);
+      setFormDirty(true);
+      message.success(t("models.fetchModelsMerged", { count: missing.length }));
+    } catch (err) {
+      message.error(
+        err instanceof Error
+          ? err.message
+          : t("models.fetchModelsFailed", { error: "unknown" }),
+      );
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -524,12 +612,12 @@ export function ProviderConfigModal({
             "测试连接时使用此模型；留空则使用第一个已启用的模型",
           )}
         >
-          {provider.models?.length ? (
+          {draftModels.length ? (
             <Select
               showSearch
               allowClear
               placeholder={t("models.defaultModelPlaceholder")}
-              options={provider.models.map((m) => ({
+              options={draftModels.map((m) => ({
                 value: m.id,
                 label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
               }))}
@@ -553,15 +641,15 @@ export function ProviderConfigModal({
         >
           {t("models.testConnection")}
         </Button>
-        <span
-          style={{
-            fontSize: 11,
-            color: "var(--fn-text-quaternary)",
-            marginLeft: 8,
-          }}
+        <Button
+          size="small"
+          icon={<Download size={12} />}
+          loading={fetchingModels}
+          onClick={handleFetchModels}
+          style={{ marginLeft: 8 }}
         >
-          {t("models.testPingHint")}
-        </span>
+          {t("models.fetchModels")}
+        </Button>
       </div>
 
       {/* ===== Models section ===== */}
@@ -571,7 +659,8 @@ export function ProviderConfigModal({
 
       <ModelListEditor
         provider={provider}
-        onSaved={onSaved}
+        models={draftModels}
+        onModelsChange={handleModelsChange}
         apiPrefix={apiPrefix}
       />
 

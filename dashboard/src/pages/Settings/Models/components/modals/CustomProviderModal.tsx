@@ -1,30 +1,14 @@
 /**
- * CustomProviderModal — create a new provider with a multi-model list.
- *
- * Mirrors finnie's CustomProviderModal shape:
- *   - Provider metadata form (name, kind, base_url, api_key)
- *   - Inline model list editor (add / remove models with input types)
+ * CustomProviderModal — create a new custom provider.
  */
-import { useEffect, useState } from "react";
-import {
-  Button,
-  Divider,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  message,
-} from "antd";
-import { ChevronDown, ChevronUp, Plus, Trash2, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Divider, Form, Input, Modal, Select, Space, message } from "antd";
+import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
-import type { ProviderRow } from "../../useProviders";
-import { ModelMetaTags } from "../../modelMeta";
-import { enrichWizardModel } from "../../wizardModelMeta";
-import { testProviderDraft } from "../../providerApi";
+import type { ProviderModel, ProviderRow } from "../../useProviders";
+import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { ModelListEditor } from "./ModelListEditor";
 import styles from "../../index.module.less";
 
 interface CustomProviderModalProps {
@@ -35,25 +19,10 @@ interface CustomProviderModalProps {
   apiPrefix?: string;
 }
 
-interface InitialModel {
-  id: string;
-  name: string;
-  input: string[];
-  max_tokens?: number;
-  context_window?: number;
-  reasoning?: boolean;
-}
-
 const KINDS = [
   { value: "openai", labelKey: "kindOpenaiCompat" as const },
   { value: "anthropic", labelKey: "anthropic" as const },
   { value: "bedrock", labelKey: "bedrock" as const },
-];
-
-const INPUT_TYPE_OPTIONS = [
-  { value: "text", label: "inputTypeText" as const },
-  { value: "image", label: "inputTypeImage" as const },
-  { value: "audio", label: "inputTypeAudio" as const },
 ];
 
 export function CustomProviderModal({
@@ -65,80 +34,61 @@ export function CustomProviderModal({
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [form] = Form.useForm();
-  const [models, setModels] = useState<InitialModel[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [modelForm] = Form.useForm();
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [form] = Form.useForm<{
+    name: string;
+    kind: string;
+    base_url?: string;
+    api_key?: string;
+    note?: string;
+  }>();
+  const kind = Form.useWatch("kind", form) as string | undefined;
+  const apiKey = Form.useWatch("api_key", form) as string | undefined;
+  const [models, setModels] = useState<ProviderModel[]>([]);
+  const canTest = !!apiKey?.trim();
+
+  const draftProvider = useMemo<ProviderRow>(
+    () => ({
+      id: 0,
+      name: (form.getFieldValue("name") as string | undefined) || "draft",
+      kind: (form.getFieldValue("kind") as string | undefined) || "openai",
+      base_url: (form.getFieldValue("base_url") as string | undefined) || null,
+      api_key: (form.getFieldValue("api_key") as string | undefined) || null,
+      models,
+      note: null,
+      enabled: true,
+    }),
+    [form, models],
+  );
 
   useEffect(() => {
     if (open) {
       form.resetFields();
       form.setFieldsValue({ kind: "openai" });
-      modelForm.resetFields();
       setModels([]);
-      setAdding(false);
-      setShowAdvanced(false);
     }
-  }, [open, form, modelForm]);
+  }, [open, form]);
 
-  const handleAddModel = async () => {
-    try {
-      const values = await modelForm.validateFields();
-      const id = (values.id as string).trim();
-      if (models.some((m) => m.id === id)) {
-        message.warning(t("models.initialModelDuplicate", { name: id }));
-        return;
-      }
-      const name = (values.name as string | undefined)?.trim() || id;
-      const input: string[] = (values.input as string[] | undefined) || [
-        "text",
-      ];
-      const contextWindow =
-        values.context_window != null
-          ? (values.context_window as number)
-          : undefined;
-      const maxTokens =
-        values.max_tokens != null ? (values.max_tokens as number) : undefined;
-      const reasoning =
-        values.reasoning != null ? (values.reasoning as boolean) : undefined;
-      const meta = enrichWizardModel(
-        {
-          id,
-          name,
-          input,
-          context_window: contextWindow,
-          max_tokens: maxTokens,
-          reasoning,
-        },
-        t,
-      );
-      const entry: InitialModel = {
-        id,
-        name,
-        input: meta.input,
-      };
-      if (maxTokens != null) entry.max_tokens = maxTokens;
-      if (contextWindow != null) entry.context_window = contextWindow;
-      if (meta.reasoning) entry.reasoning = true;
-      setModels((prev) => [...prev, entry]);
-      modelForm.resetFields();
-      setAdding(false);
-      setShowAdvanced(false);
-    } catch {
-      // validation error — ignore
+  const testDraftModel = async (modelId: string) => {
+    const values = await form.validateFields(["name", "kind", "api_key", "base_url"]);
+    const key = (values.api_key as string | undefined)?.trim();
+    if (!key) {
+      return { ok: false, error: t("models.pleaseEnterApiKey") };
     }
+    return testProviderDraft({
+      name: (values.name || "draft").trim(),
+      kind: values.kind,
+      api_key: key,
+      base_url: values.base_url?.trim() || null,
+      model_id: modelId,
+    });
   };
 
-  const handleRemoveModel = (modelId: string) => {
-    setModels((prev) => prev.filter((m) => m.id !== modelId));
-  };
-
-  const handleTest = async () => {
+  const handleFetchModels = async () => {
     try {
-      const values = await form.validateFields();
-      if (models.length === 0) {
-        message.warning(t("models.testDraftNeedModel"));
+      const values = await form.validateFields(["kind", "api_key", "base_url"]);
+      if ((values.kind as string) !== "openai") {
+        message.warning(t("models.fetchModelsUnsupportedKind"));
         return;
       }
       const apiKey = (values.api_key as string | undefined)?.trim();
@@ -146,35 +96,48 @@ export function CustomProviderModal({
         message.warning(t("models.pleaseEnterApiKey"));
         return;
       }
-      setTesting(true);
-      const result = await testProviderDraft({
-        name: (values.name as string).trim(),
-        kind: values.kind as string,
+      setFetchingModels(true);
+      const result = await fetchProviderModels({
+        kind: "openai",
         api_key: apiKey,
         base_url: (values.base_url as string | undefined)?.trim() || null,
-        model_id: models[0].id,
       });
-      if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: models[0].name,
-            time: result.latency_ms ?? 0,
-          }),
-        );
-      } else {
+      if (!result.ok) {
         message.error(
-          t("models.testConnectionFailed", {
+          t("models.fetchModelsFailed", {
             error: result.error ?? "unknown",
           }),
         );
+        return;
+      }
+      const remote: ProviderModel[] = (result.models ?? []).map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+        enabled: false,
+        input: ["text"],
+        thinking: null,
+      }));
+      let addedCount = 0;
+      setModels((prev) => {
+        const existing = new Set(prev.map((m) => m.id));
+        const added = remote.filter((m) => !existing.has(m.id));
+        addedCount = added.length;
+        return [...prev, ...added];
+      });
+      if (addedCount === 0) {
+        message.info(t("models.fetchModelsNoNew"));
+      } else {
+        message.success(t("models.fetchModelsMerged", { count: addedCount }));
       }
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
       message.error(
-        err instanceof Error ? err.message : t("models.testFailedSimple"),
+        err instanceof Error
+          ? err.message
+          : t("models.fetchModelsFailed", { error: "unknown" }),
       );
     } finally {
-      setTesting(false);
+      setFetchingModels(false);
     }
   };
 
@@ -187,7 +150,7 @@ export function CustomProviderModal({
         const entry: Record<string, unknown> = {
           id: m.id,
           name: m.name,
-          enabled: true,
+          enabled: m.enabled,
           input: m.input.length > 0 ? m.input : ["text"],
           thinking: null,
         };
@@ -237,23 +200,15 @@ export function CustomProviderModal({
       destroyOnHidden
       width={560}
       footer={
-        <Space>
-          <Button onClick={onClose}>{t("common.cancel")}</Button>
-          <Button
-            icon={<Zap size={14} />}
-            loading={testing}
-            onClick={() => void handleTest()}
-          >
-            {t("models.testConnection")}
-          </Button>
-          <Button
-            type="primary"
-            loading={saving}
-            onClick={() => void handleSubmit()}
-          >
-            {t("common.create")}
-          </Button>
-        </Space>
+        <div className={styles.modalFooter}>
+          <div className={styles.modalFooterLeft} />
+          <div className={styles.modalFooterRight}>
+            <Button onClick={onClose}>{t("common.cancel")}</Button>
+            <Button type="primary" loading={saving} onClick={() => void handleSubmit()}>
+              {t("common.create")}
+            </Button>
+          </div>
+        </div>
       }
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
@@ -277,8 +232,8 @@ export function CustomProviderModal({
                 k.value === "openai"
                   ? t("models.kindOpenaiCompat")
                   : k.value === "anthropic"
-                  ? "Anthropic"
-                  : "AWS Bedrock",
+                    ? "Anthropic"
+                    : "AWS Bedrock",
             }))}
           />
         </Form.Item>
@@ -295,188 +250,65 @@ export function CustomProviderModal({
           <Input.Password placeholder="sk-..." visibilityToggle />
         </Form.Item>
 
+        {kind === "openai" && (
+          <Form.Item style={{ marginBottom: 12 }}>
+            <Button
+              icon={<Download size={14} />}
+              loading={fetchingModels}
+              onClick={() => void handleFetchModels()}
+            >
+              {fetchingModels
+                ? t("models.fetchingModels")
+                : t("models.fetchModels")}
+            </Button>
+          </Form.Item>
+        )}
+
         <Form.Item name="note" label={t("models.noteLabel")}>
           <Input.TextArea rows={2} placeholder={t("models.notePlaceholder")} />
         </Form.Item>
       </Form>
 
-      {/* ── Model list ── */}
-      <Divider style={{ margin: "8px 0 12px" }}>
-        {t("models.initialModelsLabel")}
-      </Divider>
-
-      <div className={styles.initialModelsHintText} style={{ marginBottom: 8 }}>
-        {t("models.initialModelsHint")}
-      </div>
-
-      <div className={styles.modelList}>
-        {models.length === 0 ? (
-          <div className={styles.modelListEmpty}>{t("models.noModels")}</div>
-        ) : (
-          models.map((m) => (
-            <div key={m.id} className={styles.modelListItem}>
-              <div className={styles.modelListItemInfo}>
-                <span className={styles.modelListItemName}>{m.name}</span>
-                {m.name !== m.id && (
-                  <span className={styles.modelListItemId}>{m.id}</span>
-                )}
-                <ModelMetaTags
-                  includeText
-                  input={m.input}
-                  context_window={m.context_window}
-                  max_tokens={m.max_tokens}
-                  reasoning={m.reasoning}
-                />
-              </div>
-              <div className={styles.modelListItemActions}>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<Trash2 size={14} />}
-                  onClick={() => handleRemoveModel(m.id)}
-                />
-              </div>
-            </div>
-          ))
+      <div style={{ marginBottom: 16 }}>
+        <Button size="small" icon={<Zap size={12} />} loading={testing} onClick={async () => {
+          try {
+            setTesting(true);
+            const modelId = models.find((m) => m.enabled !== false)?.id || models[0]?.id;
+            if (!modelId) {
+              message.warning(t("models.testDraftNeedModel"));
+              return;
+            }
+            const result = await testDraftModel(modelId);
+            if (result.ok) {
+              const latency = result.latency_ms != null ? t("models.testConnectionLatency", { time: result.latency_ms }) : "";
+              message.success(t("models.testConnectionSuccess", { name: (form.getFieldValue("name") as string) || "draft", latency }));
+            } else {
+              message.error(t("models.testConnectionFailed", { error: result.error ?? "unknown" }));
+            }
+          } finally {
+            setTesting(false);
+          }
+        }}>
+          {t("models.testConnection")}
+        </Button>
+        {kind === "openai" && (
+          <Button size="small" icon={<Download size={12} />} loading={fetchingModels} onClick={() => void handleFetchModels()} style={{ marginLeft: 8 }}>
+            {t("models.fetchModels")}
+          </Button>
         )}
       </div>
 
-      {/* ── Add model form ── */}
-      {adding ? (
-        <div className={styles.modelAddForm}>
-          <Form form={modelForm} layout="vertical" style={{ marginBottom: 0 }}>
-            <Form.Item
-              name="id"
-              label={t("models.modelIdLabel")}
-              rules={[{ required: true, message: t("models.modelIdLabel") }]}
-              style={{ marginBottom: 12 }}
-            >
-              <Input placeholder={t("models.modelIdPlaceholder")} />
-            </Form.Item>
-            <Form.Item
-              name="name"
-              label={t("models.modelNameLabel")}
-              style={{ marginBottom: 12 }}
-            >
-              <Input placeholder={t("models.modelNamePlaceholder")} />
-            </Form.Item>
-            <Form.Item
-              name="input"
-              label={t("models.inputTypes")}
-              initialValue={["text"]}
-              style={{ marginBottom: 12 }}
-            >
-              <Select
-                mode="multiple"
-                allowClear
-                placeholder={t("models.inputTypes")}
-                options={INPUT_TYPE_OPTIONS.map((opt) => ({
-                  value: opt.value,
-                  label: t(`models.${opt.label}`),
-                }))}
-              />
-            </Form.Item>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: showAdvanced ? 8 : 12,
-              }}
-            >
-              <Button
-                type="link"
-                size="small"
-                style={{ padding: 0 }}
-                icon={
-                  showAdvanced ? (
-                    <ChevronUp size={14} />
-                  ) : (
-                    <ChevronDown size={14} />
-                  )
-                }
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                {showAdvanced
-                  ? t("models.hideAdvanced")
-                  : t("models.showAdvanced")}
-              </Button>
-            </div>
-            {showAdvanced && (
-              <div
-                style={{
-                  background:
-                    "var(--ant-color-fill-quaternary, rgba(0,0,0,0.02))",
-                  borderRadius: 6,
-                  padding: "12px 12px 4px",
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ display: "flex", gap: 12 }}>
-                  <Form.Item
-                    name="context_window"
-                    label={t("models.contextWindow")}
-                    style={{ flex: 1, marginBottom: 10 }}
-                  >
-                    <InputNumber
-                      min={0}
-                      style={{ width: "100%" }}
-                      placeholder={t("models.contextWindowPlaceholder")}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="max_tokens"
-                    label={t("models.maxTokens")}
-                    style={{ flex: 1, marginBottom: 10 }}
-                  >
-                    <InputNumber
-                      min={0}
-                      style={{ width: "100%" }}
-                      placeholder={t("models.maxTokensPlaceholder")}
-                    />
-                  </Form.Item>
-                </div>
-                <Form.Item
-                  name="reasoning"
-                  label={t("models.reasoning")}
-                  valuePropName="checked"
-                  style={{ marginBottom: 10 }}
-                >
-                  <Switch size="small" />
-                </Form.Item>
-              </div>
-            )}
-            <div
-              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
-            >
-              <Button
-                size="small"
-                onClick={() => {
-                  setAdding(false);
-                  setShowAdvanced(false);
-                  modelForm.resetFields();
-                }}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button type="primary" size="small" onClick={handleAddModel}>
-                {t("models.addModel")}
-              </Button>
-            </div>
-          </Form>
-        </div>
-      ) : (
-        <Button
-          type="dashed"
-          block
-          icon={<Plus size={14} />}
-          onClick={() => setAdding(true)}
-          style={{ marginTop: 12 }}
-        >
-          {t("models.addModel")}
-        </Button>
-      )}
+      <Divider orientation="left" style={{ fontSize: 13 }}>
+        {t("models.manageModels")}
+      </Divider>
+      <ModelListEditor
+        provider={draftProvider}
+        models={models}
+        onModelsChange={setModels}
+        apiPrefix={apiPrefix}
+        canTest={canTest}
+        onTestModel={(modelId) => testDraftModel(modelId)}
+      />
     </Modal>
   );
 }
