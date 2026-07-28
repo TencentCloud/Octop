@@ -97,9 +97,7 @@ def test_wecom_qrcode_poll_returns_status(mock_server_and_user):
     assert data["status"] == "pending"
 
 
-def test_pkill_chrome_profile_accepts_resolved_path(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-):
+def test_pkill_chrome_profile_accepts_resolved_path(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """pkill pattern must not fail validation on the '=' separator."""
     from octop.api.routers.channels import _pkill_chrome_profile, _safe_profile_directory
 
