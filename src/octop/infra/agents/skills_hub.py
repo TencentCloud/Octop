@@ -311,9 +311,7 @@ def _http_bytes_get(
                         break
                     total += len(chunk)
                     if total > max_bytes:
-                        raise ValueError(
-                            f"Remote archive exceeds size limit ({max_bytes} bytes)"
-                        )
+                        raise ValueError(f"Remote archive exceeds size limit ({max_bytes} bytes)")
                     chunks.append(chunk)
                 return b"".join(chunks)
         except HTTPError as e:
@@ -1279,12 +1277,15 @@ def _fetch_bundle_from_github_url(
             candidate_path = "/".join(tail[split:]).strip("/")
             if not candidate_branch:
                 continue
-            if _find_skill_bundle_via_raw(
-                owner,
-                repo,
-                candidate_path,
-                candidate_branch,
-            ) is not None:
+            if (
+                _find_skill_bundle_via_raw(
+                    owner,
+                    repo,
+                    candidate_path,
+                    candidate_branch,
+                )
+                is not None
+            ):
                 branch = candidate_branch
                 path_hint = candidate_path
                 break

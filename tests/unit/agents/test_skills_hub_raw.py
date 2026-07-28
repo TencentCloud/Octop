@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import io
+import zipfile
 from unittest.mock import patch
 from urllib.error import HTTPError
-import zipfile
 
 import pytest
 
+from octop.infra.agents import skills_hub
 from octop.infra.agents.skills_hub import (
     is_supported_skill_url,
     resolve_bundle_from_url,
 )
-from octop.infra.agents import skills_hub
 
 FIND_SKILLS_MD = """---
 name: find-skills
