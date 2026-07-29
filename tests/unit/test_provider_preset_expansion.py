@@ -51,3 +51,27 @@ def test_load_provider_presets_integration() -> None:
     coding_ids = {m["id"] for m in coding["models"]}
     assert "DeepSeek-V4-Flash" in coding_ids
     assert "kimi-k2.6" in coding_ids
+
+    opencode_ids = {
+        "opencode-zen-openai",
+        "opencode-zen-anthropic",
+        "opencode-go-openai",
+        "opencode-go-anthropic",
+    }
+    assert opencode_ids <= ids
+
+    zen_oai = next(p for p in presets if p["id"] == "opencode-zen-openai")
+    assert zen_oai["base_url"] == "https://opencode.ai/zen/v1"
+    assert zen_oai.get("provider_group") == "opencode"
+    assert zen_oai.get("provider_variant") == "zen_compatible"
+    assert zen_oai.get("protocol") == "openai"
+
+    zen_ant = next(p for p in presets if p["id"] == "opencode-zen-anthropic")
+    assert zen_ant["base_url"] == "https://opencode.ai/zen"
+    assert zen_ant.get("protocol") == "anthropic"
+
+    go_oai = next(p for p in presets if p["id"] == "opencode-go-openai")
+    assert go_oai["base_url"] == "https://opencode.ai/zen/go/v1"
+
+    go_ant = next(p for p in presets if p["id"] == "opencode-go-anthropic")
+    assert go_ant["base_url"] == "https://opencode.ai/zen/go"
