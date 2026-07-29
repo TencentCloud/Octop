@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,30 @@ def test_dashboard_api_errors_match_backend():
     dash_codes = set(dash_en["apiErrors"].keys())
     backend_codes = set(backend_en["errors"].keys())
     assert dash_codes == backend_codes == {c.value for c in ErrorCode}
+
+
+# i18next uses ``{{name}}``; a lone ``{name}`` is left uninterpolated in the UI.
+_DASHBOARD_SINGLE_BRACE = re.compile(r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})")
+
+
+def test_dashboard_api_errors_use_i18next_placeholders():
+    repo = Path(__file__).resolve().parents[3]
+    for locale in ("en", "zh"):
+        data = json.loads(
+            (repo / f"dashboard/src/locales/{locale}.json").read_text(encoding="utf-8")
+        )
+        for code, msg in data["apiErrors"].items():
+            found = _DASHBOARD_SINGLE_BRACE.findall(msg)
+            assert not found, (
+                f"{locale} apiErrors.{code} uses Python-style {{{', '.join(found)}}} — "
+                "dashboard i18next needs {{name}} double braces"
+            )
+
+
+def test_login_locked_interpolates_minutes():
+    assert "15" in error_message("LOGIN_LOCKED", "zh", minutes=15)
+    assert "minutes" not in error_message("LOGIN_LOCKED", "zh", minutes=15).lower()
+    assert "{minutes}" not in error_message("LOGIN_LOCKED", "en", minutes=15)
 
 
 def test_localized_message_falls_back_when_key_missing(monkeypatch: pytest.MonkeyPatch):

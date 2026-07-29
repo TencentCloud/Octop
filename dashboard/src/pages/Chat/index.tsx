@@ -684,6 +684,9 @@ function ChatPageInner() {
             isStreaming={isStreaming}
             disabled={!agentChatReady || noAgents}
             initialText={prefillInputRef.current}
+            onComposerCleared={() => {
+              prefillInputRef.current = "";
+            }}
             availableModels={availableModels}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}

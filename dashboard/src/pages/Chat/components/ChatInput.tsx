@@ -61,6 +61,8 @@ interface ChatInputProps {
   disabled?: boolean;
   /** Pre-fill the input with this text on mount (e.g. navigated from another page). */
   initialText?: string;
+  /** Called when the composer is cleared after a successful send/queue. */
+  onComposerCleared?: () => void;
   availableModels?: ResolvedModel[];
   selectedModel?: string | null;
   onModelChange?: (model: string | null) => void;
@@ -104,6 +106,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       isStreaming,
       disabled,
       initialText = "",
+      onComposerCleared,
       availableModels,
       selectedModel,
       onModelChange,
@@ -136,6 +139,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // Once they start editing, we must not overwrite their input with a new
     // initialText value (e.g. from a parent re-render or a stale effect).
     const userHasEditedRef = useRef(false);
+    // After submit, ignore one re-application of this exact initialText value
+    // (parent may still hold the prefill string in a ref across the next render).
+    const ignoreInitialTextRef = useRef<string | null>(null);
 
     const handleVoiceText = useCallback(
       (spoken: string) => {
@@ -156,6 +162,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     useImperativeHandle(ref, () => ({
       setPrefillText: (newText: string) => {
         userHasEditedRef.current = false;
+        ignoreInitialTextRef.current = null;
         prevInitialTextRef.current = newText;
         setText(newText);
         setTimeout(() => {
@@ -174,6 +181,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const prevInitialTextRef = useRef(initialText);
     const prevComposerKeyRef = useRef(`${agentId ?? ""}:${threadId ?? ""}`);
     useEffect(() => {
+      if (
+        ignoreInitialTextRef.current !== null &&
+        initialText === ignoreInitialTextRef.current
+      ) {
+        // Stale post-submit prop — acknowledge without restoring cleared text.
+        ignoreInitialTextRef.current = null;
+        prevInitialTextRef.current = initialText;
+        return;
+      }
+      if (ignoreInitialTextRef.current !== null) {
+        // A different (or empty) prop arrived — stop ignoring.
+        ignoreInitialTextRef.current = null;
+      }
       if (
         initialText &&
         initialText !== prevInitialTextRef.current &&
@@ -198,6 +218,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (composerKey === prevComposerKeyRef.current) return;
       prevComposerKeyRef.current = composerKey;
       userHasEditedRef.current = false;
+      ignoreInitialTextRef.current = null;
       prevInitialTextRef.current = "";
       setText(initialText || readInputDraft(agentId, threadId));
     }, [agentId, threadId, initialText]);
@@ -278,12 +299,16 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     });
 
     const resetComposerAfterSubmit = useCallback(
-      (prevHeight: number) => {
+      (prevHeight: number, submittedText: string) => {
         setText("");
         writeInputDraft(agentId, threadId, "");
         clearAttachments();
         userHasEditedRef.current = false;
-        prevInitialTextRef.current = "";
+        // Parent may re-pass the same prefill as initialText on the next render
+        // (skill-card / cron keep it in a ref). Ignore that exact value once.
+        ignoreInitialTextRef.current = submittedText;
+        prevInitialTextRef.current = initialText;
+        onComposerCleared?.();
         requestAnimationFrame(() => {
           const ta = textareaRef.current;
           if (ta && prevHeight > MIN_TEXTAREA_HEIGHT) {
@@ -296,7 +321,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           }
         });
       },
-      [agentId, threadId, clearAttachments, MIN_TEXTAREA_HEIGHT],
+      [
+        agentId,
+        threadId,
+        clearAttachments,
+        MIN_TEXTAREA_HEIGHT,
+        initialText,
+        onComposerCleared,
+      ],
     );
 
     const submitMessage = useCallback(() => {
@@ -330,12 +362,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           return;
         }
         if (result === "empty") return;
-        resetComposerAfterSubmit(prevHeight);
+        resetComposerAfterSubmit(prevHeight, trimmed);
         return;
       }
 
       onSend(trimmed, attachments.length > 0 ? attachments : undefined);
-      resetComposerAfterSubmit(prevHeight);
+      resetComposerAfterSubmit(prevHeight, trimmed);
     }, [
       text,
       attachments,
