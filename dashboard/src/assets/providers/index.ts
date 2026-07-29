@@ -16,6 +16,7 @@ import mimoLogo from "./mimo.svg";
 import minimaxLogo from "./minimax.png";
 import volcesLogo from "./volces.svg";
 import customProviderLogo from "./custom-provider.svg";
+import opencodeLogo from "./opencode.svg";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -36,6 +37,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   mimo: mimoLogo,
   minimax: minimaxLogo,
   volces: volcesLogo,
+  opencode: opencodeLogo,
 };
 
 export { customProviderLogo };
@@ -53,6 +55,7 @@ export function getProviderLogo(providerId: string): string | undefined {
     volcengine: volcesLogo,
     siliconflow: siliconLogo,
     tencent: tencentCodingPlanLogo,
+    opencode: opencodeLogo,
   };
   return groupLogo[base];
 }
@@ -79,6 +82,11 @@ export const PROVIDER_DOCS: Record<string, string> = {
   mimo: "https://platform.xiaomimimo.com/",
   minimax: "https://platform.minimaxi.com/",
   volces: "https://www.volcengine.com/docs/82379/1399008",
+  opencode: "https://opencode.ai/docs/zh-cn/zen/",
+  "opencode-zen-openai": "https://opencode.ai/docs/zh-cn/zen/",
+  "opencode-zen-anthropic": "https://opencode.ai/docs/zh-cn/zen/",
+  "opencode-go-openai": "https://opencode.ai/docs/zh-cn/go/",
+  "opencode-go-anthropic": "https://opencode.ai/docs/zh-cn/go/",
 };
 
 export function getProviderDocs(providerId: string): string | undefined {

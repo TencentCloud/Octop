@@ -11,6 +11,7 @@ const PRESET_GROUP_ORDER = [
   "tencent",
   "kimi",
   "minimax",
+  "opencode",
   "siliconflow",
   "aliyun",
   "volcengine",
@@ -45,6 +46,10 @@ const VARIANT_LABELS: Record<string, string> = {
   hai: "HAI",
   china: "China",
   international: "International",
+  zen_compatible: "Zen · Compatible",
+  zen_anthropic: "Zen · Anthropic",
+  go_compatible: "Go · Compatible",
+  go_anthropic: "Go · Anthropic",
 };
 
 export function presetVariantLabel(preset: ProviderPreset): string {
