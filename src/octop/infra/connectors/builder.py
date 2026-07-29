@@ -9,12 +9,7 @@ from urllib.parse import quote
 
 from octop.config import OctopConfig
 from octop.infra.connectors.catalog import ConnectorCatalogEntry, get_catalog_entry
-
-_MAIL_PROVIDER_PRESETS: dict[str, tuple[str, int, str, int]] = {
-    "qq": ("imap.qq.com", 993, "smtp.qq.com", 587),
-    "netease": ("imap.163.com", 993, "smtp.163.com", 587),
-    "gmail": ("imap.gmail.com", 993, "smtp.gmail.com", 587),
-}
+from octop.infra.connectors.mail_servers import resolve_mail_servers
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
@@ -36,28 +31,6 @@ def normalize_weiyun_mcp_token(raw: str) -> str:
     if match:
         return match.group(1).strip()
     return text
-
-
-def _resolve_mail_servers(credentials: dict[str, Any]) -> tuple[str, int, str, int]:
-    provider = str(credentials.get("mail_provider") or "").strip().lower()
-    if provider in _MAIL_PROVIDER_PRESETS:
-        return _MAIL_PROVIDER_PRESETS[provider]
-
-    email = str(credentials.get("email") or "").strip().lower()
-    domain = email.rsplit("@", 1)[-1] if "@" in email else ""
-    if domain in ("qq.com", "foxmail.com"):
-        return _MAIL_PROVIDER_PRESETS["qq"]
-    if domain in ("163.com", "126.com", "yeah.net"):
-        return _MAIL_PROVIDER_PRESETS["netease"]
-    if domain == "gmail.com":
-        return _MAIL_PROVIDER_PRESETS["gmail"]
-
-    return (
-        str(credentials.get("imap_host") or "imap.qq.com"),
-        int(credentials.get("imap_port") or 993),
-        str(credentials.get("smtp_host") or "smtp.qq.com"),
-        int(credentials.get("smtp_port") or 587),
-    )
 
 
 def mcp_server_name(kind: str, instance_id: str) -> str:
@@ -292,7 +265,7 @@ def validate_create_credentials(
         password = str(credentials.get("password") or "").strip()
         if not email or not password:
             raise ValueError("email and password (authorization code) are required")
-        imap_host, imap_port, smtp_host, smtp_port = _resolve_mail_servers(credentials)
+        imap_host, imap_port, smtp_host, smtp_port = resolve_mail_servers(credentials)
         internal_token = new_internal_token()
         out = {
             "email": email,

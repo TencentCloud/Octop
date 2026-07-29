@@ -25,6 +25,7 @@ import MemorySettings from "./MemorySettings";
 
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
+import { useIsMobile } from "../../../hooks/useIsMobile";
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import styles from "./index.module.less";
 
@@ -75,6 +76,7 @@ const TABS: TabDef[] = [
 export default function MemoryPage() {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
+  const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<MemoryTab>("overview");
   const [libraryView, setLibraryView] = useState<LibraryView>("tree");
@@ -249,6 +251,8 @@ export default function MemoryPage() {
       title={t("pageShell.memory.title")}
       subtitle={t("pageShell.memory.subtitle")}
       agentScoped
+      // Mobile CSS lets tab panes grow (overflow:visible); PageShell must scroll.
+      fill={!isMobile}
     >
       <Tabs
         className={styles.memoryTabs}

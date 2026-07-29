@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  # Allow Auto Tag On Release Merge to cascade after a GITHUB_TOKEN tag push
+  # (token-authored pushes do not retrigger push workflows).
+  workflow_dispatch:
 
 permissions:
   contents: write

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import tarfile
 import tempfile
@@ -16,11 +17,14 @@ from octop.config import DatabaseConfig
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
 from octop.infra.backup.pg_dump import dump_postgres, restore_postgres
 from octop.infra.backup.snapshot import (
+    capture_users_from_pool,
     restore_sqlite_into_pool,
+    restore_users_into_pool,
     snapshot_sqlite_file,
 )
 from octop.infra.db.migrate import _current_version
 from octop.infra.db.pool import DatabasePool, SqlitePool
+from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import env_file_path
 from octop.infra.utils.paths import PathLayout
@@ -31,6 +35,7 @@ _WORKSPACES_DIR = "workspaces"
 _MANIFEST_NAME = "manifest.json"
 _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
+_MIGRATION_VERSION_SUFFIX = "-migrated-from-lightclaw"
 
 
 def _timestamp() -> str:
@@ -163,6 +168,11 @@ def _read_tar_members(data: bytes) -> dict[str, bytes]:
     return out
 
 
+def _is_migration_backup(manifest: BackupManifest) -> bool:
+    """Return True when the backup was produced by the LightClaw migration tool."""
+    return manifest.octop_version.endswith(_MIGRATION_VERSION_SUFFIX)
+
+
 def restore_system_backup(
     data: bytes,
     *,
@@ -170,10 +180,28 @@ def restore_system_backup(
     pool: DatabasePool,
     db_config: DatabaseConfig,
     restore_config: bool = True,
+    preserve_users: bool | None = None,
 ) -> dict[str, Any]:
-    """Restore database, workspaces, and optional config from a tar.gz archive."""
+    """Restore database, workspaces, and optional config from a tar.gz archive.
+
+    ``preserve_users`` controls whether the *current* Octop instance's ``users``
+    table is written back after the database is replaced:
+
+    * ``None`` (default) — auto-detect: preserves users when the backup was
+      produced by an external migration tool (``octop_version`` ends with
+      ``"-migrated-from-lightclaw"``).
+    * ``True`` — always preserve the current users (useful for any cross-system
+      import where passwords must remain valid).
+    * ``False`` — restore the users table as-is from the backup (normal
+      same-instance restore).
+    """
     members = _read_tar_members(data)
     manifest = _extract_manifest(members)
+
+    # Resolve effective preserve_users flag before touching the DB.
+    effective_preserve_users = (
+        _is_migration_backup(manifest) if preserve_users is None else preserve_users
+    )
 
     archive_driver = manifest.database_driver or "sqlite"
     if archive_driver != pool.dialect:
@@ -188,6 +216,11 @@ def restore_system_backup(
     db_blob = members.get(manifest.db_file)
     if db_blob is None:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
+
+    # Capture current users before overwriting the DB (only when needed).
+    saved_users: list[tuple[object, ...]] = []
+    if effective_preserve_users and pool is not None:
+        saved_users = capture_users_from_pool(pool)
 
     with tempfile.TemporaryDirectory() as tmp:
         if pool.dialect == "postgresql":
@@ -213,6 +246,17 @@ def restore_system_backup(
                 env_path.parent.mkdir(parents=True, exist_ok=True)
                 env_path.write_bytes(env_blob)
 
+        # Write back saved users after DB is fully restored.
+        if saved_users and pool is not None:
+            restore_users_into_pool(pool, saved_users)
+
+        # After a migration restore the secrets table arrives from a foreign
+        # system and will not contain a valid JWT secret for this instance.
+        # Ensure one exists (create if absent) so the server can start without
+        # a manual `_ensure_jwt_secret` call.
+        if effective_preserve_users and pool is not None:
+            SecretRepo(pool).get_or_create("jwt", lambda: os.urandom(32))
+
         restored_workspaces = 0
         prefix = f"{_WORKSPACES_DIR}/"
         for name, blob in members.items():
@@ -235,5 +279,6 @@ def restore_system_backup(
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
         "restore_config": restore_config,
+        "users_preserved": effective_preserve_users,
         "database_driver": archive_driver,
     }

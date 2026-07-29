@@ -23,6 +23,18 @@ def _sse(event: dict[str, object]) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
+def _runtime_dir_for_uid(uid: int | None = None) -> Path:
+    if uid is None:
+        uid = os.getuid() if hasattr(os, "getuid") else 0
+    return Path(f"/tmp/runtime-harness-browser-{uid}")
+
+
+def _relocated_profiles_root_for_uid(uid: int | None = None) -> Path:
+    if uid is None:
+        uid = os.getuid() if hasattr(os, "getuid") else 0
+    return Path(f"/tmp/harness-browser-profiles-{uid}")
+
+
 def ensure_chrome_runtime_env() -> Path:
     """Force a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
 
@@ -30,9 +42,11 @@ def ensure_chrome_runtime_env() -> Path:
     unwritable on headless / root / container hosts (``mkdir: cannot create
     directory '/run/user/0': Permission denied``). Always point at a private
     ``/tmp`` directory owned by the current process.
+
+    Chrome expects ``XDG_RUNTIME_DIR`` mode ``0700``; set that only on the
+    directory we just created — never on profile trees or system paths.
     """
-    uid = os.getuid() if hasattr(os, "getuid") else 0
-    path = Path(f"/tmp/runtime-harness-browser-{uid}")
+    path = _runtime_dir_for_uid()
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(path, 0o700)
@@ -104,9 +118,6 @@ def clear_profile_locks(profile_dir: Path) -> list[str]:
         lock_path = profile_dir / lock_name
         try:
             if lock_path.exists() or lock_path.is_symlink():
-                with contextlib.suppress(OSError):
-                    if not lock_path.is_symlink():
-                        lock_path.chmod(0o644)
                 lock_path.unlink()
                 cleared.append(lock_name)
         except FileNotFoundError:
@@ -133,43 +144,35 @@ def _probe_dir_writable(directory: Path) -> bool:
 
 
 def _under_root_home(path: Path) -> bool:
+    """True for paths under ``/root`` that are unsafe for Chrome (YunJing).
+
+    Octop home (``OCTOP_HOME`` / ``~/.octop``) is exempt so shared profiles
+    at ``~/.octop/browser-profiles`` stay put even when running as root.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
     try:
-        path = path.resolve()
+        resolved = path.resolve()
         root_home = Path("/root").resolve()
-        return path == root_home or root_home in path.parents
+        if resolved != root_home and root_home not in resolved.parents:
+            return False
+        from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+        octop_root = PathLayout.from_env().root.resolve()
+        return not (resolved == octop_root or octop_root in resolved.parents)
     except OSError:
         return False
 
 
-def _try_fix_ownership(path: Path) -> None:
-    """Best-effort chmod/chown so the current uid can write *path*."""
-    from octop.infra.utils.posix_compat import chown, getuid  # noqa: PLC0415
-
-    uid = getuid()
-    # getuid returns -1 on non-POSIX; skip chown there.
-    if uid >= 0:
-        with contextlib.suppress(OSError):
-            chown(path, uid)
-    with contextlib.suppress(OSError):
-        path.chmod(0o700)
-
-
 def _relocate_profiles_root(profile_dir: Path) -> Path:
     """Move profiles off an unsafe root (e.g. ``/root/.harness-browser``)."""
-    uid = os.getuid() if hasattr(os, "getuid") else 0
-    alt_root = Path(f"/tmp/harness-browser-profiles-{uid}")
-    alt_root.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(alt_root, 0o700)
-    os.environ["BROWSER_USE_PROFILES_DIR"] = str(alt_root)
-    with contextlib.suppress(Exception):
-        from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
+    from octop.infra.utils.browser_media import (  # noqa: PLC0415
+        configure_browser_profiles_dir,
+    )
 
-        hb_settings.profiles_dir = alt_root
+    alt_root = configure_browser_profiles_dir(_relocated_profiles_root_for_uid())
     alt = alt_root / profile_dir.name
     alt.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        alt.chmod(0o700)
     logger.warning(
         "Falling back to writable profiles dir %s (set BROWSER_USE_PROFILES_DIR)",
         alt_root,
@@ -180,15 +183,15 @@ def _relocate_profiles_root(profile_dir: Path) -> Path:
 def ensure_profile_writable(profile_dir: Path) -> Path:
     """Ensure *profile_dir* is writable by the current process and by Chrome.
 
-    Profiles under ``/root/...`` are relocated to ``/tmp`` proactively: host
-    security agents (e.g. YunJing) often allow Python writes but deny the
-    Chrome binary, which surfaces as ``SingletonLock: Permission denied``.
+    Does not chmod/chown existing trees (that previously broke ``/`` and
+    ``/tmp``). Strategy: probe → recreate empty → relocate under
+    ``/tmp/harness-browser-profiles-<uid>``.
+
+    Profiles under ``/root/...`` are relocated proactively: host security
+    agents (e.g. YunJing) often allow Python writes but deny the Chrome
+    binary, which surfaces as ``SingletonLock: Permission denied``.
     """
     profile_dir = Path(profile_dir)
-    parents = [profile_dir, *list(profile_dir.parents)[:3]]
-    for parent in reversed(parents):
-        if parent.exists():
-            _try_fix_ownership(parent)
 
     # Chrome on hardened CVM images cannot write under /root even as uid 0.
     if sys.platform.startswith("linux") and _under_root_home(profile_dir):
@@ -215,7 +218,6 @@ def ensure_profile_writable(profile_dir: Path) -> Path:
             with contextlib.suppress(OSError):
                 shutil.rmtree(profile_dir)
     profile_dir.mkdir(parents=True, exist_ok=True)
-    _try_fix_ownership(profile_dir)
     if not _probe_dir_writable(profile_dir):
         return _relocate_profiles_root(profile_dir)
     return profile_dir
@@ -225,7 +227,6 @@ def recover_stale_profile(profile_dir: Path) -> None:
     """Last-resort: move/wipe an unusable profile so Chrome can start fresh."""
     if not profile_dir.exists():
         profile_dir.mkdir(parents=True, exist_ok=True)
-        _try_fix_ownership(profile_dir)
         return
     stamp = int(time.time())
     stale = profile_dir.with_name(f"{profile_dir.name}.stale-{stamp}")
@@ -238,7 +239,6 @@ def recover_stale_profile(profile_dir: Path) -> None:
         with contextlib.suppress(OSError):
             shutil.rmtree(profile_dir)
     profile_dir.mkdir(parents=True, exist_ok=True)
-    _try_fix_ownership(profile_dir)
     ensure_profile_writable(profile_dir)
 
 
@@ -246,17 +246,25 @@ async def prepare_harness_profile_for_launch(
     profile_name: str,
     *,
     force_recover: bool = False,
+    profiles_root: Path | None = None,
 ) -> Path:
     """Make a harness-browser profile safe to (re)launch Chrome against.
 
     - Forces a writable ``XDG_RUNTIME_DIR``
     - Injects virtual-desktop ``DISPLAY`` when Xvnc is up
+    - Prefers shared ``~/.octop/browser-profiles`` (cross-agent)
     - If CDP is already listening, leaves the running browser alone
     - Otherwise kills leftover Chrome for this profile and clears Singleton locks
-    - Ensures the profile directory is writable (chmod / recreate if needed)
+    - Ensures the profile directory is writable (recreate / relocate if needed)
     """
     ensure_chrome_runtime_env()
     resolve_browser_display()
+
+    from octop.infra.utils.browser_media import (  # noqa: PLC0415
+        configure_browser_profiles_dir,
+    )
+
+    await asyncio.to_thread(configure_browser_profiles_dir, profiles_root)
 
     data_dir = await asyncio.to_thread(_profile_data_dir, profile_name)
     data_dir = await asyncio.to_thread(ensure_profile_writable, data_dir)
@@ -321,7 +329,9 @@ def _profiles_root() -> Path:
 
         return Path(_settings.profiles_dir)
     except Exception:  # noqa: BLE001
-        return Path.home() / ".harness-browser" / "profiles"
+        from octop.infra.utils.browser_media import octop_browser_profiles_dir  # noqa: PLC0415
+
+        return octop_browser_profiles_dir()
 
 
 def _playwright_cache_roots() -> list[Path]:

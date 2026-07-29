@@ -8,6 +8,7 @@ import {
   isPendingThread,
   clearPendingThread,
   type Session,
+  type ThreadProbeResult,
 } from "./useSessions";
 import { EMPTY_CHAT_SESSION_KEY } from "../constants";
 
@@ -21,7 +22,7 @@ interface UseChatNavigationParams {
   prefillInputRef: React.MutableRefObject<string>;
   loadHistory: (threadId: string) => Promise<void>;
   clearMessages: () => void;
-  ensureThreadInList: (threadId: string) => Promise<boolean>;
+  ensureThreadInList: (threadId: string) => Promise<ThreadProbeResult>;
   fetchSessions: (activeId?: string) => Promise<Session[]>;
   refreshAgents: (opts?: { silent?: boolean }) => Promise<void>;
 }
@@ -152,23 +153,22 @@ export function useChatNavigation({
       }
       return;
     }
-    // During agent switches the session store is briefly cleared; do not treat
-    // that as "thread deleted" or we bounce the user back to the welcome screen.
-    if (sessions.length === 0) {
-      return;
-    }
     if (sessions.some((s) => s.id === threadId)) {
       ensureThreadAttemptRef.current = null;
       return;
     }
+    // Thread missing from the visible page (or list is empty after load).
+    // Probe the API — only rewrite the URL when the probe confirms absence.
+    // Do not treat a still-loading / failed list as "deleted".
     const attemptKey = `${resolvedAgentId}:${threadId}`;
     if (ensureThreadAttemptRef.current === attemptKey) {
       return;
     }
     ensureThreadAttemptRef.current = attemptKey;
-    void ensureThreadInList(threadId).then((found) => {
+    void ensureThreadInList(threadId).then((result) => {
       if (ensureThreadAttemptRef.current !== attemptKey) return;
-      if (found) return;
+      // Only rewrite when the probe confirms absence — keep URL on found/unknown.
+      if (result !== "missing") return;
       const preferred = pickPreferredSession(sessions);
       if (preferred) {
         void octopThreadsApi
@@ -186,7 +186,6 @@ export function useChatNavigation({
     sessionsLoading,
     navigate,
     ensureThreadInList,
-    clearMessages,
   ]);
 
   const resetNavForAgentSwitch = () => {

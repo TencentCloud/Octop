@@ -327,12 +327,16 @@ def _sanitize_ip_address(value: str) -> str:
 
 def _resolve_profiles_root() -> _FsPath:
     """Resolve browser profile root; ignore unsafe env overrides."""
-    default = _FsPath.home() / ".harness-browser" / "profiles"
-    raw = os.environ.get("HARNESS_BROWSER_PROFILES_DIR")
+    from octop.infra.utils.browser_media import octop_browser_profiles_dir  # noqa: PLC0415
+
+    default = _FsPath(octop_browser_profiles_dir())
+    raw = os.environ.get("BROWSER_USE_PROFILES_DIR") or os.environ.get(
+        "HARNESS_BROWSER_PROFILES_DIR"
+    )
     if not raw:
         return default
     if len(raw) > _MAX_ARG_LEN or not _SAFE_ARG_RE.match(raw):
-        logger.warning("Ignoring unsafe HARNESS_BROWSER_PROFILES_DIR=%r", raw)
+        logger.warning("Ignoring unsafe browser profiles dir override=%r", raw)
         return default
     return _FsPath(raw).expanduser()
 

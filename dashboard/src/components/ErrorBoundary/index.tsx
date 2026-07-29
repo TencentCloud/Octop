@@ -1,5 +1,9 @@
 import { Component, type ReactNode } from "react";
 import { Result, Button, Space } from "antd";
+import {
+  isChunkLoadError,
+  tryReloadOnStaleChunk,
+} from "../../utils/reloadOnStaleChunk";
 
 interface Props {
   children: ReactNode;
@@ -25,6 +29,7 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    if (tryReloadOnStaleChunk(error)) return;
     console.error("[GlobalErrorBoundary]", error, info.componentStack);
   }
 
@@ -43,6 +48,10 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      // Stale chunk → silent soft reload; avoid flashing the error page.
+      if (isChunkLoadError(this.state.error)) {
+        return null;
+      }
       const canRetry = this.state.retryCount < MAX_RETRIES;
       return (
         <div

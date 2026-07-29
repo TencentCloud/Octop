@@ -2,10 +2,9 @@
 name: publish
 description: >-
   Publish the Octop Python package: cut a release branch from develop, bump
-  version, update CHANGELOG, open a PR to main, wait for merge, then tag on
-  main (triggers GitHub Actions for PyPI / Docker Hub), delete the release
-  branch, and sync develop. Use when the user asks to publish, release, bump
-  version, cut a release, or run /publish.
+  version, update CHANGELOG, open a PR to main; after merge, Actions tag on
+  main (PyPI / Docker Hub) and sync main into develop. Use when the user asks
+  to publish, release, bump version, cut a release, or run /publish.
 disable-model-invocation: true
 ---
 
@@ -218,7 +217,7 @@ git push -u {REMOTE} {RELEASE_BRANCH_PREFIX}{version}
 
 推送失败则中止。
 
-### 步骤 5 — 创建合入 main 的 Pull Request（先合，后 tag）
+### 步骤 5 — 创建合入 main 的 Pull Request（先合，后自动 tag）
 
 使用 `gh` CLI：
 
@@ -233,46 +232,35 @@ gh pr create \
 ## Release checklist
 - [ ] CI green
 - [ ] Merge this PR into main
-- [ ] Then tag v{version} on main tip (publish skill step 6)
+- [ ] After merge, GitHub Action auto-pushes v{version} tag on main tip
 EOF
 )"
 ```
 
-- 成功时展示 PR URL，并明确告知：**在 PR 合并前不要打 tag。**
+- 成功时展示 PR URL，并明确告知：
+  - 合并前不要手动打 tag；
+  - 合并后会自动发版（自动打 tag）。
 - 若 `gh` 失败：中止（此时尚未发版），提示手动创建 PR：
   `{RELEASE_BRANCH_PREFIX}{version}` → `{TARGET_BRANCH}`
 
-### 步骤 6 — 等待合入后，在 main tip 打 tag
+### 步骤 6 — 等待合入后，由 Action 在 main tip 打 tag
 
 1. 询问用户 PR 是否已合并，或轮询：
    ```bash
    gh pr view {pr_url} --json state,mergedAt
    ```
-   未合并则**不要**打 tag；可暂停并提示用户合并后再说「继续」。
+   未合并则等待；无需本地执行打 tag。
 
 2. 合并后：
-   ```bash
-   git fetch {REMOTE} {TARGET_BRANCH}
-   git checkout {TARGET_BRANCH}
-   git pull {REMOTE} {TARGET_BRANCH}
-   ```
-   确认 `pyproject.toml` 版本已是目标版本（合入结果在 main 上）。
+   - `auto-tag-on-release.yml` 会读取合并后 `main` 的 `pyproject.toml` 版本并推送 `{TAG_PREFIX}{version}`。
+   - 若 tag 已存在，Action 会跳过并输出日志。
 
-3. 打 tag 并推送（触发 GitHub Action）：
+3. 提示用户到 Actions 确认：
+   - `Auto Tag On Release Merge` 成功；
+   - `Release` 与 `Docker Publish` 随 `v*` tag 触发并通过；
+   - `Sync Main Into Develop` 在 GitHub Release 发布后把 `main` 同步回 `develop`。
 
-   - `release.yml`：`build` → PyPI `publish` → `github-release`
-   - `docker-publish.yml`：推送 Docker Hub
-
-   ```bash
-   git tag {TAG_PREFIX}{version}
-   git push {REMOTE} {TAG_PREFIX}{version}
-   ```
-
-   若 tag 已存在：中止并给出删除指令（仅在确认该 tag 未用于错误发布时）。
-
-4. 提示用户到 Actions 确认 `Release` 与 `Docker Publish` 通过。
-
-### 步骤 7 — 删除 release 分支并同步 develop
+### 步骤 7 — 删除 release 分支；develop 由 Action 同步
 
 1. 删除远程与本地 release 分支：
    ```bash
@@ -281,15 +269,10 @@ EOF
    ```
    删除失败则警告（非致命），提示手动删除。
 
-2. 若 `main` 与 `develop` 有差异（merge commit 或仅在 main 上的修复），创建同步 PR：
-   ```bash
-   gh pr create \
-     --base {INTEGRATION_BRANCH} \
-     --head {TARGET_BRANCH} \
-     --title "chore: sync main into develop after {version}" \
-     --body "Post-release sync so develop contains the shipped main tip."
-   ```
-   若已快进无差异，跳过并说明。
+2. **develop 同步**：GitHub Release 发布成功后，`sync-main-to-develop.yml` 会自动开 `main → develop` PR，并在无冲突时用 **merge commit** 合入。
+   - 若已快进无差异，Action 会跳过。
+   - 若有冲突或分支保护拦截，Action 留下 PR 并告警，需人工处理。
+   - 技能侧无需再手动创建 sync PR（除非 Action 失败）。
 
 ### 步骤 8 — 切回原分支
 
@@ -311,7 +294,7 @@ git checkout {original_branch}
 | Release 分支已存在 | 中止并给出删除指令 |
 | 步骤 4 推送失败 | 中止：文件已在本地更新但未推送 |
 | 步骤 5 PR 创建失败 | 中止（尚未打 tag / 未发版） |
-| 步骤 6 在未合入时打 tag | **禁止** — 硬红线 |
+| 步骤 6 在未合入时手动打 tag | **禁止** — 硬红线 |
 | 步骤 6 tag 已存在 | 中止并给出删除指令 |
 | 步骤 6 tag 推送成功但 Action 失败 | 非致命：提示到 Actions Re-run |
 | 步骤 7 删分支或 sync PR 失败 | 警告并给出手动命令 |
@@ -330,8 +313,8 @@ git checkout {original_branch}
 
 **始终：**
 - 从最新 `{REMOTE}/{INTEGRATION_BRANCH}` 切 release
-- 先合入 `{TARGET_BRANCH}`，再在 main tip 打 tag
-- 发版后删除 `release/*`，并在需要时同步回 `develop`
+- 先合入 `{TARGET_BRANCH}`，再由 Action 在 main tip 打 tag
+- 发版后删除 `release/*`；`main → develop` 由 `sync-main-to-develop.yml` 自动同步（失败时再手动补）
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果

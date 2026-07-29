@@ -22,6 +22,7 @@ import { isShellLanguage } from "../../utils/shellCodeBlock";
 import { loadMermaid } from "./mermaidLoader";
 import { HighlightedCode } from "./syntaxHighlight";
 import { useMathPlugins } from "./mathPlugins";
+import { stabilizeStreamingMarkdown } from "./stabilizeStreamingMarkdown";
 import styles from "./index.module.less";
 
 /* ---- Mermaid block component ---- */
@@ -288,13 +289,22 @@ const Markdown = memo(function Markdown({
   const isDark = useIsDark();
   const { t } = useTranslation();
   const runLabel = shellCommandLabel ?? t("terminal.ai.execBtn");
+  const renderContent = useMemo(
+    () => (isStreaming ? stabilizeStreamingMarkdown(content) : content),
+    [content, isStreaming],
+  );
   const { remarkPlugins: mathRemark, rehypePlugins: mathRehype } =
-    useMathPlugins(content);
+    useMathPlugins(renderContent);
   const remarkPlugins = useMemo(() => [remarkGfm, ...mathRemark], [mathRemark]);
   const rehypePlugins = useMemo(() => [...mathRehype], [mathRehype]);
 
   return (
-    <div className={`${styles.markdownBody} ${className || ""}`} style={style}>
+    <div
+      className={`${styles.markdownBody} ${
+        isStreaming ? styles.markdownStreaming : ""
+      } ${className || ""}`}
+      style={style}
+    >
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
@@ -321,6 +331,7 @@ const Markdown = memo(function Markdown({
                       language="text"
                       code={codeString}
                       isDark={isDark}
+                      plain
                     />
                   </div>
                 );
@@ -352,6 +363,7 @@ const Markdown = memo(function Markdown({
                     language={match[1]}
                     code={codeString}
                     isDark={isDark}
+                    plain={!!isStreaming}
                   />
                 </div>
               );
@@ -373,6 +385,7 @@ const Markdown = memo(function Markdown({
                     language="text"
                     code={codeString}
                     isDark={isDark}
+                    plain={!!isStreaming}
                   />
                 </div>
               );
@@ -437,7 +450,7 @@ const Markdown = memo(function Markdown({
           },
         }}
       >
-        {content}
+        {renderContent}
       </ReactMarkdown>
     </div>
   );

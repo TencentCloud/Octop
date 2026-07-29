@@ -1,16 +1,21 @@
 /**
- * PresetProviderModal — quick setup dialog for a built-in preset provider.
+ * PresetProviderModal — create a provider from preset using unified layout.
  */
-import { useEffect, useState } from "react";
-import { Form, Input, Modal, Tag, message, Button, Space } from "antd";
-import { Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Divider, Form, Input, Modal, message } from "antd";
+import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import { enrichWizardModel } from "../../wizardModelMeta";
-import type { ProviderPreset, ProviderRow } from "../../useProviders";
-import { PresetModelPicker } from "../PresetModelPicker";
+import type {
+  ProviderModel,
+  ProviderPreset,
+  ProviderRow,
+} from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
-import { testProviderDraft } from "../../providerApi";
+import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { ModelListEditor } from "./ModelListEditor";
+import styles from "../../index.module.less";
 
 interface PresetProviderModalProps {
   preset: ProviderPreset;
@@ -23,8 +28,7 @@ interface PresetForm {
   name: string;
   base_url: string;
   api_key?: string;
-  selectedModels: string[];
-  customModel?: string;
+  kind: string;
 }
 
 export function PresetProviderModal({
@@ -36,34 +40,144 @@ export function PresetProviderModal({
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
   const [form] = Form.useForm<PresetForm>();
   const isOllama = preset.id === "ollama";
   const isCodexOAuth = preset.auth_method === "codex_oauth";
+  const apiKey = Form.useWatch("api_key", form) as string | undefined;
+  const canTest = !!(apiKey?.trim() || isOllama);
+
+  const draftProvider = useMemo<ProviderRow>(
+    () => ({
+      id: 0,
+      name: (form.getFieldValue("name") as string | undefined) || preset.name,
+      kind: preset.protocol,
+      base_url:
+        (form.getFieldValue("base_url") as string | undefined) ||
+        preset.base_url,
+      api_key:
+        (form.getFieldValue("api_key") as string | undefined) ||
+        (isOllama ? "ollama" : null),
+      models: draftModels,
+      note: null,
+      enabled: true,
+    }),
+    [
+      draftModels,
+      form,
+      isOllama,
+      preset.base_url,
+      preset.name,
+      preset.protocol,
+    ],
+  );
 
   useEffect(() => {
     if (open) {
+      const baseModels: ProviderModel[] = preset.models.map((m) => {
+        const meta = enrichWizardModel(m, t);
+        const ctx =
+          m.context_window ?? m.max_input_tokens ?? meta.context_window;
+        const entry: ProviderModel = {
+          id: m.id,
+          name: m.name,
+          enabled: true,
+          input: meta.input,
+          thinking: null,
+        };
+        if (meta.reasoning) entry.reasoning = true;
+        if (ctx) entry.context_window = ctx;
+        if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
+        return entry;
+      });
+      setDraftModels(baseModels);
       form.resetFields();
       form.setFieldsValue({
         name: preset.name,
         base_url: preset.base_url,
-        selectedModels: preset.models.map((m) => m.id),
+        kind: preset.protocol,
       });
     }
-  }, [open, preset, form]);
+  }, [open, preset, form, t]);
 
-  const resolveModelId = (values: PresetForm): string | null => {
-    const selectedIds = new Set(values.selectedModels ?? []);
-    const first = preset.models.find((m) => selectedIds.has(m.id));
-    if (first) return first.id;
-    const custom = values.customModel?.trim();
-    return custom || null;
+  const handleFetchModels = async () => {
+    if (isCodexOAuth) return;
+    try {
+      const values = await form.validateFields(["base_url", "api_key"]);
+      const apiKey = values.api_key?.trim() || (isOllama ? "ollama" : "");
+      if (!apiKey) {
+        message.warning(t("models.pleaseEnterApiKey"));
+        return;
+      }
+      setFetchingModels(true);
+      const result = await fetchProviderModels({
+        kind: "openai",
+        api_key: apiKey,
+        base_url: values.base_url?.trim() || preset.base_url,
+      });
+      if (!result.ok) {
+        message.error(
+          t("models.fetchModelsFailed", {
+            error: result.error ?? "unknown",
+          }),
+        );
+        return;
+      }
+      const fetched = result.models ?? [];
+      if (fetched.length === 0) {
+        message.info(t("models.fetchModelsNoNew"));
+        return;
+      }
+      const existingIds = new Set(draftModels.map((m) => m.id));
+      const missing: ProviderModel[] = fetched
+        .filter((m) => !existingIds.has(m.id))
+        .map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          enabled: false,
+          input: ["text"],
+          thinking: null,
+        }));
+      if (missing.length === 0) {
+        message.info(t("models.fetchModelsNoNew"));
+        return;
+      }
+      setDraftModels((prev) => [...prev, ...missing]);
+      message.success(t("models.fetchModelsMerged", { count: missing.length }));
+    } catch (err) {
+      if (err && typeof err === "object" && "errorFields" in err) return;
+      message.error(
+        err instanceof Error
+          ? err.message
+          : t("models.fetchModelsFailed", { error: "unknown" }),
+      );
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const testDraftModel = async (modelId: string) => {
+    const values = await form.validateFields(["name", "base_url", "api_key"]);
+    const key = values.api_key?.trim() || (isOllama ? "ollama" : "");
+    if (!key) {
+      return { ok: false, error: t("models.pleaseEnterApiKey") };
+    }
+    return testProviderDraft({
+      name: values.name.trim(),
+      kind: preset.protocol,
+      api_key: key,
+      base_url: values.base_url?.trim() || preset.base_url,
+      model_id: modelId,
+    });
   };
 
   const handleTest = async () => {
     if (isCodexOAuth) return;
     try {
       const values = await form.validateFields();
-      const modelId = resolveModelId(values);
+      const modelId =
+        draftModels.find((m) => m.enabled !== false)?.id || draftModels[0]?.id;
       if (!modelId) {
         message.warning(t("models.testDraftNeedModel"));
         return;
@@ -74,17 +188,11 @@ export function PresetProviderModal({
         return;
       }
       setTesting(true);
-      const result = await testProviderDraft({
-        name: values.name.trim(),
-        kind: preset.protocol,
-        api_key: apiKey,
-        base_url: values.base_url?.trim() || preset.base_url,
-        model_id: modelId,
-      });
+      const result = await testDraftModel(modelId);
       if (result.ok) {
         message.success(
           t("models.testSuccess", {
-            name: modelId,
+            name: values.name,
             time: result.latency_ms ?? 0,
           }),
         );
@@ -111,39 +219,6 @@ export function PresetProviderModal({
       const values = await form.validateFields();
       setSaving(true);
 
-      const selectedIds = new Set(values.selectedModels ?? []);
-      const modelEntries = preset.models
-        .filter((m) => selectedIds.has(m.id))
-        .map((m) => {
-          const meta = enrichWizardModel(m, t);
-          const entry: Record<string, unknown> = {
-            id: m.id,
-            name: m.name,
-            enabled: true,
-            input: meta.input,
-            thinking: null,
-          };
-          if (meta.reasoning) entry.reasoning = true;
-          const ctx =
-            m.context_window ?? m.max_input_tokens ?? meta.context_window;
-          if (ctx) entry.context_window = ctx;
-          if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
-          return entry;
-        });
-
-      if (values.customModel?.trim()) {
-        const cid = values.customModel.trim();
-        if (!modelEntries.some((m) => m.id === cid)) {
-          modelEntries.push({
-            id: cid,
-            name: cid,
-            enabled: true,
-            input: ["text"],
-            thinking: null,
-          });
-        }
-      }
-
       await request<ProviderRow>("/admin/providers", {
         method: "POST",
         body: JSON.stringify({
@@ -151,7 +226,7 @@ export function PresetProviderModal({
           kind: preset.protocol,
           base_url: values.base_url?.trim() || null,
           api_key: values.api_key?.trim() || (isOllama ? "ollama" : null),
-          models: modelEntries,
+          models: draftModels,
         }),
       });
       message.success(
@@ -192,23 +267,19 @@ export function PresetProviderModal({
         isCodexOAuth ? (
           <Button onClick={onClose}>{t("common.cancel")}</Button>
         ) : (
-          <Space>
-            <Button onClick={onClose}>{t("common.cancel")}</Button>
-            <Button
-              icon={<Zap size={14} />}
-              loading={testing}
-              onClick={() => void handleTest()}
-            >
-              {t("models.testConnection")}
-            </Button>
-            <Button
-              type="primary"
-              loading={saving}
-              onClick={() => void handleSubmit()}
-            >
-              {t("common.create")}
-            </Button>
-          </Space>
+          <div className={styles.modalFooter}>
+            <div className={styles.modalFooterLeft} />
+            <div className={styles.modalFooterRight}>
+              <Button onClick={onClose}>{t("common.cancel")}</Button>
+              <Button
+                type="primary"
+                loading={saving}
+                onClick={() => void handleSubmit()}
+              >
+                {t("common.create")}
+              </Button>
+            </div>
+          </div>
         )
       }
     >
@@ -220,68 +291,77 @@ export function PresetProviderModal({
           }}
         />
       ) : (
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            name="name"
-            label={t("models.nameLabel")}
-            rules={[{ required: true }]}
-          >
-            <Input placeholder={preset.name} />
-          </Form.Item>
-
-          <Form.Item label={t("models.kindLabel")}>
-            <Tag color="blue">{preset.protocol}</Tag>
-          </Form.Item>
-
-          <Form.Item name="base_url" label="Base URL">
-            <Input placeholder={preset.base_url || "https://..."} />
-          </Form.Item>
-
-          <Form.Item
-            name="api_key"
-            label="API Key"
-            rules={
-              isOllama
-                ? []
-                : [{ required: true, message: t("models.pleaseEnterApiKey") }]
-            }
-            extra={isOllama ? t("models.apiKeyExtraOptional") : undefined}
-          >
-            <Input.Password
-              placeholder={
-                isOllama ? t("models.apiKeyExtraOptional") : apiKeyPlaceholder
-              }
-              visibilityToggle
-            />
-          </Form.Item>
-
-          {preset.models.length > 0 && (
+        <>
+          <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
             <Form.Item
-              name="selectedModels"
-              label={t("models.initialModelsLabel")}
-              rules={[
-                {
-                  validator: (_, ids: string[] | undefined) =>
-                    (ids?.length ?? 0) > 0
-                      ? Promise.resolve()
-                      : Promise.reject(
-                          new Error(t("models.selectAtLeastOneModel")),
-                        ),
-                },
-              ]}
+              name="name"
+              label={t("models.nameLabel")}
+              rules={[{ required: true }]}
             >
-              <PresetModelPicker models={preset.models} />
+              <Input placeholder={preset.name} />
             </Form.Item>
-          )}
 
-          <Form.Item
-            name="customModel"
-            label={t("models.addModel")}
-            extra={t("models.modelIdPlaceholder")}
-          >
-            <Input placeholder={t("models.modelIdPlaceholder")} />
-          </Form.Item>
-        </Form>
+            <Form.Item name="kind" label={t("models.kindLabel")}>
+              <Input disabled style={{ color: "var(--fn-text-secondary)" }} />
+            </Form.Item>
+
+            <Form.Item
+              name="base_url"
+              label="Base URL"
+              extra={t("models.baseUrlExtra")}
+            >
+              <Input placeholder={preset.base_url || "https://..."} />
+            </Form.Item>
+
+            <Form.Item
+              name="api_key"
+              label="API Key"
+              rules={
+                isOllama
+                  ? []
+                  : [{ required: true, message: t("models.pleaseEnterApiKey") }]
+              }
+              extra={isOllama ? t("models.apiKeyExtraOptional") : undefined}
+            >
+              <Input.Password
+                placeholder={
+                  isOllama ? t("models.apiKeyExtraOptional") : apiKeyPlaceholder
+                }
+                visibilityToggle
+              />
+            </Form.Item>
+          </Form>
+
+          <div style={{ marginBottom: 16 }}>
+            <Button
+              icon={<Zap size={14} />}
+              loading={testing}
+              onClick={() => void handleTest()}
+            >
+              {t("models.testConnection")}
+            </Button>
+            <Button
+              icon={<Download size={14} />}
+              loading={fetchingModels}
+              onClick={() => void handleFetchModels()}
+              style={{ marginLeft: 8 }}
+            >
+              {t("models.fetchModels")}
+            </Button>
+          </div>
+
+          <Divider orientation="left" style={{ fontSize: 13 }}>
+            {t("models.manageModels")}
+          </Divider>
+          <ModelListEditor
+            provider={draftProvider}
+            models={draftModels}
+            onModelsChange={setDraftModels}
+            apiPrefix="/admin/providers"
+            canTest={canTest}
+            onTestModel={(modelId) => testDraftModel(modelId)}
+          />
+        </>
       )}
     </Modal>
   );

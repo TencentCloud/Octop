@@ -774,9 +774,6 @@ function MessageBubble({
                     shellCommandDisabledTitle={shellCommandDisabledTitle}
                   />
                 )}
-                {isStreaming && textContent && (
-                  <span className={styles.cursor} />
-                )}
               </div>
             )}
           </>

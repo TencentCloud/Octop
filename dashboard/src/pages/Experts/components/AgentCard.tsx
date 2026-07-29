@@ -176,7 +176,7 @@ export const AgentCard = memo(function AgentCard({
 
   const handleOpenChat = useCallback(() => {
     setActiveAgent(agent.agent_id);
-    navigate("/chat");
+    navigate(`/chat/${agent.agent_id}`);
   }, [agent.agent_id, setActiveAgent, navigate]);
 
   const copyAgentId = useCallback(async () => {

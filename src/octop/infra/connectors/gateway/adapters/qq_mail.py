@@ -10,6 +10,13 @@ import smtplib
 from email.mime.text import MIMEText
 from typing import Any
 
+from octop.infra.connectors.mail_servers import (
+    IMAP_CONNECT_TIMEOUT,
+    NETEASE_IMAP_HOSTS,
+    correct_netease_imap_host,
+    correct_netease_smtp_host,
+)
+
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_emails",
@@ -51,6 +58,13 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+_IMAP_ID_ARGS = (
+    '("name" "Octop" "version" "1.0.0" "vendor" "Octop" "support-email" "support@octop.local")'
+)
+
+# imaplib 默认未注册 ID 命令。
+imaplib.Commands["ID"] = ("AUTH", "NONAUTH", "SELECTED")
+
 
 def list_tools() -> list[dict[str, Any]]:
     return TOOLS
@@ -72,7 +86,8 @@ def _email_search(creds: dict[str, Any], args: dict[str, Any]) -> str:
     imap = _imap_login(creds)
     try:
         imap.select("INBOX")
-        _typ, data = imap.uid("search", "UTF-8", query)
+        # NetEase rejects CHARSET UTF-8 on UID SEARCH; omit charset for compatibility.
+        _typ, data = imap.uid("search", query)
         uids = (data[0] or b"").split()
         uids = uids[-limit:]
         out: list[dict[str, str]] = []
@@ -136,30 +151,50 @@ def _email_send(creds: dict[str, Any], args: dict[str, Any]) -> str:
     msg["Subject"] = subject
     msg["From"] = from_addr
     msg["To"] = to_addr
-    host = str(creds.get("smtp_host") or "smtp.qq.com")
+    host = correct_netease_smtp_host(from_addr, creds.get("smtp_host"))
     port = int(creds.get("smtp_port") or 587)
-    with smtplib.SMTP(host, port, timeout=30) as smtp:
+    with smtplib.SMTP(host, port, timeout=IMAP_CONNECT_TIMEOUT) as smtp:
         smtp.starttls()
         smtp.login(from_addr, str(creds.get("password") or ""))
         smtp.send_message(msg)
     return json.dumps({"ok": True, "to": to_addr}, ensure_ascii=False)
 
 
+def _should_send_imap_id(imap: imaplib.IMAP4_SSL, host: str) -> bool:
+    if host in NETEASE_IMAP_HOSTS:
+        return True
+    caps = {str(c).upper() for c in (imap.capabilities or ())}
+    return "ID" in caps
+
+
+def _imap_send_id(imap: imaplib.IMAP4_SSL) -> None:
+    typ, _data = imap._simple_command("ID", _IMAP_ID_ARGS)
+    if typ != "OK":
+        raise imaplib.IMAP4.error(f"IMAP ID failed: {typ}")
+
+
 def _imap_login(creds: dict[str, Any]) -> imaplib.IMAP4_SSL:
-    host = str(creds.get("imap_host") or "imap.qq.com")
-    port = int(creds.get("imap_port") or 993)
     user = str(creds.get("email") or "")
+    host = correct_netease_imap_host(user, creds.get("imap_host"))
+    port = int(creds.get("imap_port") or 993)
     password = str(creds.get("password") or "")
-    imap: imaplib.IMAP4_SSL = imaplib.IMAP4_SSL(host, port)
+    imap: imaplib.IMAP4_SSL = imaplib.IMAP4_SSL(host, port, timeout=IMAP_CONNECT_TIMEOUT)
+    if _should_send_imap_id(imap, host):
+        _imap_send_id(imap)
     imap.login(user, password)
     return imap
 
 
 def probe_credentials(creds: dict[str, Any]) -> None:
-    """Validate mailbox credentials via IMAP login."""
+    """Validate mailbox credentials via IMAP login + INBOX select."""
     imap = _imap_login(creds)
-    with contextlib.suppress(Exception):
-        imap.logout()
+    try:
+        typ, _data = imap.select("INBOX")
+        if typ != "OK":
+            raise imaplib.IMAP4.error(f"SELECT INBOX failed: {_data}")
+    finally:
+        with contextlib.suppress(Exception):
+            imap.logout()
 
 
 def _extract_body(msg: email.message.Message) -> str:

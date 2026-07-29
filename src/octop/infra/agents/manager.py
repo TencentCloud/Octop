@@ -1383,12 +1383,16 @@ class AgentManager:
     ) -> tuple[HarnessAgentConfig, dict[str, Any], list[str], str]:
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             agent_outbound_screenshots_dir,
+            configure_browser_profiles_dir,
             configure_browser_screenshots_dir,
+            octop_browser_profiles_dir,
         )
 
         configure_browser_screenshots_dir(
             agent_outbound_screenshots_dir(self._paths, row.agent_id),
         )
+        # Shared across agents — not under a single agent workspace.
+        configure_browser_profiles_dir(octop_browser_profiles_dir(self._paths))
         user_display = "User"
         if row.user_id is not None:
             owner = self._repos.user_repo.get(row.user_id)

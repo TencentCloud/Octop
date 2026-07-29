@@ -95,6 +95,158 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     assert manifest["database_driver"] == "sqlite"
 
 
+def _make_migration_backup(
+    layout: PathLayout,
+    *,
+    username: str = "lc_user",
+) -> tuple[bytes, SqlitePool]:
+    """Build a fake LightClaw migration backup and return (data, source_pool)."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            (username, "lc_hash", "user", 1),
+        )
+        conn.execute(
+            "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
+            " VALUES (?, (SELECT id FROM users WHERE username=?), ?, 1, 1)",
+            ("agent-lc", username, "LC Agent"),
+        )
+
+    class Row:
+        agent_id = "agent-lc"
+        name = "LC Agent"
+
+    data, _ = create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+    )
+    # Rewrite octop_version to signal a LightClaw migration backup.
+    members: dict[str, bytes] = {}
+    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+        for m in tf.getmembers():
+            if m.isfile():
+                f = tf.extractfile(m)
+                assert f is not None
+                members[m.name] = f.read()
+    manifest_obj = json.loads(members["manifest.json"])
+    manifest_obj["octop_version"] = manifest_obj["octop_version"] + "-migrated-from-lightclaw"
+    members["manifest.json"] = json.dumps(manifest_obj).encode()
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name, blob in members.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(blob)
+            tf.addfile(info, BytesIO(blob))
+    return buf.getvalue(), pool
+
+
+def test_migration_restore_preserves_current_users_and_imported_agents(
+    tmp_path: Path,
+) -> None:
+    """Restoring a LightClaw backup writes back current users without CASCADE-deleting agents.
+
+    Regression guard: with ``PRAGMA foreign_keys = ON`` a bare
+    ``DELETE FROM users`` cascades to agents, sessions, threads, … and wipes
+    the data that was just restored from the backup.  The upsert+prune strategy
+    must not trigger that cascade.
+
+    After restore the expected state is:
+    - agents from the backup (``agent-lc``) are present.
+    - users table contains only the *current instance* users (``octop_admin``).
+    - the LightClaw user (``lc_user``) is gone — replaced by the current users.
+    """
+    # --- source: simulate a LightClaw migration export with one agent ---
+    src_layout = PathLayout(tmp_path / "src")
+    src_layout.root.mkdir()
+    migration_data, src_pool = _make_migration_backup(src_layout, username="lc_user")
+    src_pool.close()
+
+    # --- target: a fresh Octop instance with its own admin user ---
+    tgt_layout = PathLayout(tmp_path / "tgt")
+    tgt_layout.root.mkdir()
+    tgt_pool = SqlitePool(tgt_layout.db)
+    run_migrations(tgt_pool)
+    with tgt_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("octop_admin", "admin_hash", "admin", 2),
+        )
+
+    result = restore_system_backup(
+        migration_data,
+        paths=tgt_layout,
+        pool=tgt_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+
+    assert result["users_preserved"] is True
+
+    with tgt_pool.connect() as conn:
+        # The target instance's admin must survive with original password hash.
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE username = ?", ("octop_admin",)
+        ).fetchone()
+        assert row is not None, "octop_admin was deleted — users not preserved"
+        assert row[0] == "admin_hash"
+
+        # The imported agent from the backup must still exist after users write-back.
+        # With the old DELETE-then-INSERT, foreign_keys=ON would cascade-delete this row.
+        agent_row = conn.execute(
+            "SELECT agent_id FROM agents WHERE agent_id = ?", ("agent-lc",)
+        ).fetchone()
+        assert agent_row is not None, (
+            "agent-lc was deleted — upsert strategy triggered CASCADE on agents"
+        )
+
+        # The LightClaw source user must not appear in the target users table.
+        lc_row = conn.execute("SELECT id FROM users WHERE username = ?", ("lc_user",)).fetchone()
+        assert lc_row is None, "lc_user from backup was not removed after user write-back"
+
+    tgt_pool.close()
+
+
+def test_migration_restore_via_none_autodetect(tmp_path: Path) -> None:
+    """preserve_users=None auto-detects the migration flag from octop_version."""
+    src_layout = PathLayout(tmp_path / "src")
+    src_layout.root.mkdir()
+    migration_data, src_pool = _make_migration_backup(src_layout, username="lc_auto")
+    src_pool.close()
+
+    tgt_layout = PathLayout(tmp_path / "tgt")
+    tgt_layout.root.mkdir()
+    tgt_pool = SqlitePool(tgt_layout.db)
+    run_migrations(tgt_pool)
+    with tgt_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("local_admin", "lhash", "admin", 3),
+        )
+
+    # preserve_users=None — should auto-detect and preserve
+    result = restore_system_backup(
+        migration_data,
+        paths=tgt_layout,
+        pool=tgt_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+        preserve_users=None,
+    )
+    assert result["users_preserved"] is True
+
+    with tgt_pool.connect() as conn:
+        row = conn.execute(
+            "SELECT username FROM users WHERE username = ?", ("local_admin",)
+        ).fetchone()
+        assert row is not None, "local_admin was lost after auto-detect migration restore"
+
+    tgt_pool.close()
+
+
 def test_refuse_cross_engine_restore(layout: PathLayout) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)

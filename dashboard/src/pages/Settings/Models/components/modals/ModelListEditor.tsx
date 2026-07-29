@@ -1,10 +1,8 @@
 /**
- * ModelListEditor — manage models within a single octop provider.
+ * ModelListEditor — edit the draft models list for a provider.
  *
- * Adapts finnie's ModelListEditor to octop's data model:
- *   - octop has no per-model add/remove/toggle API endpoints
- *   - instead, we PATCH the full `models` array via PATCH /providers/{id}
- *   - models are stored as ProviderModel[] on the ProviderRow
+ * Mutations stay local until the parent modal saves (PATCH full models array).
+ * Connectivity tests still hit the live provider endpoint.
  */
 import { useState } from "react";
 import {
@@ -35,9 +33,15 @@ import styles from "../../index.module.less";
 
 interface ModelListEditorProps {
   provider: ProviderRow;
-  onSaved: () => void | Promise<void>;
-  /** API path prefix for PATCH. Defaults to "/providers". */
+  models: ProviderModel[];
+  onModelsChange: (models: ProviderModel[]) => void;
+  /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
+  canTest?: boolean;
+  onTestModel?: (
+    modelId: string,
+    modelName: string,
+  ) => Promise<{ ok: boolean; latency_ms?: number; error?: string }>;
 }
 
 const INPUT_TYPE_OPTIONS = [
@@ -48,14 +52,16 @@ const INPUT_TYPE_OPTIONS = [
 
 export function ModelListEditor({
   provider,
-  onSaved,
+  models,
+  onModelsChange,
   apiPrefix = "/providers",
+  canTest,
+  onTestModel,
 }: ModelListEditorProps) {
   const { t } = useTranslation();
   const [adding, setAdding] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [testResults, setTestResults] = useState<
     Map<string, "success" | "failure">
@@ -63,37 +69,14 @@ export function ModelListEditor({
   const [testingForm, setTestingForm] = useState(false);
   const [form] = Form.useForm();
 
-  const models = provider.models ?? [];
-
-  /** Save the updated models list to the backend. */
-  const saveModels = async (updated: ProviderModel[]) => {
-    await request(`${apiPrefix}/${provider.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ models: updated }),
-    });
-    await onSaved();
-  };
-
-  const handleToggleEnabled = async (
+  const handleToggleEnabled = (
     modelId: string,
-    modelName: string,
+    _modelName: string,
     enabled: boolean,
   ) => {
-    try {
-      const updated = models.map((m) =>
-        m.id === modelId ? { ...m, enabled } : m,
-      );
-      await saveModels(updated);
-      message.success(
-        enabled
-          ? t("models.modelEnabled", { name: modelName })
-          : t("models.modelDisabled", { name: modelName }),
-      );
-    } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("models.toggleFailed"),
-      );
-    }
+    onModelsChange(
+      models.map((m) => (m.id === modelId ? { ...m, enabled } : m)),
+    );
   };
 
   const handleRemoveModel = (modelId: string, modelName: string) => {
@@ -106,31 +89,35 @@ export function ModelListEditor({
       okText: t("common.delete"),
       okButtonProps: { danger: true },
       cancelText: t("common.cancel"),
-      onOk: async () => {
-        try {
-          const updated = models.filter((m) => m.id !== modelId);
-          await saveModels(updated);
-          message.success(t("models.modelRemoved", { name: modelName }));
-        } catch (err) {
-          message.error(
-            err instanceof Error ? err.message : t("models.modelRemoveFailed"),
-          );
-        }
+      onOk: () => {
+        onModelsChange(models.filter((m) => m.id !== modelId));
+        if (editingModelId === modelId) resetForm();
+        message.success(t("models.modelRemoved", { name: modelName }));
       },
+    });
+  };
+
+  const runTest = async (
+    modelId: string,
+    modelName: string,
+  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
+    if (onTestModel) {
+      return onTestModel(modelId, modelName);
+    }
+    return request<{
+      ok: boolean;
+      latency_ms?: number;
+      error?: string;
+    }>(`${apiPrefix}/${provider.id}/test`, {
+      method: "POST",
+      body: JSON.stringify({ model_id: modelId }),
     });
   };
 
   const handleTestModel = async (modelId: string, modelName: string) => {
     setTestingIds((prev) => new Set(prev).add(modelId));
     try {
-      const result = await request<{
-        ok: boolean;
-        latency_ms?: number;
-        error?: string;
-      }>(`${apiPrefix}/${provider.id}/test`, {
-        method: "POST",
-        body: JSON.stringify({ model_id: modelId }),
-      });
+      const result = await runTest(modelId, modelName);
       if (result.ok) {
         message.success(
           t("models.testSuccess", {
@@ -171,20 +158,13 @@ export function ModelListEditor({
       message.warning(t("models.modelIdLabel"));
       return;
     }
-    if (!provider.api_key) {
+    if (!(canTest ?? !!provider.api_key)) {
       message.warning(t("models.testRequiresAuth"));
       return;
     }
     setTestingForm(true);
     try {
-      const result = await request<{
-        ok: boolean;
-        latency_ms?: number;
-        error?: string;
-      }>(`${apiPrefix}/${provider.id}/test`, {
-        method: "POST",
-        body: JSON.stringify({ model_id: modelId }),
-      });
+      const result = await runTest(modelId, modelId);
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
@@ -227,22 +207,16 @@ export function ModelListEditor({
   const handleAddModel = async () => {
     try {
       const values = await form.validateFields();
-      setSaving(true);
       const entry = buildModelEntry(values as Record<string, unknown>);
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
         return;
       }
-      await saveModels([...models, entry]);
+      onModelsChange([...models, entry]);
       message.success(t("models.modelAdded", { name: entry.name }));
       resetForm();
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
-      message.error(
-        err instanceof Error ? err.message : t("models.modelAddFailed"),
-      );
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -250,24 +224,16 @@ export function ModelListEditor({
     if (!editingModelId) return;
     try {
       const values = await form.validateFields();
-      setSaving(true);
       const entry = buildModelEntry(values as Record<string, unknown>);
-      // Preserve enabled state from existing model
       const existing = models.find((m) => m.id === editingModelId);
       if (existing) {
         entry.enabled = existing.enabled;
       }
-      const updated = models.map((m) => (m.id === editingModelId ? entry : m));
-      await saveModels(updated);
+      onModelsChange(models.map((m) => (m.id === editingModelId ? entry : m)));
       message.success(t("models.modelUpdated", { name: entry.name }));
       resetForm();
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
-      message.error(
-        err instanceof Error ? err.message : t("models.modelUpdateFailed"),
-      );
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -306,11 +272,10 @@ export function ModelListEditor({
 
   const isEditing = editingModelId !== null;
   const isFormVisible = adding || isEditing;
-  const hasApiKey = !!provider.api_key;
+  const hasApiKey = canTest ?? !!provider.api_key;
 
   return (
     <div>
-      {/* Model list */}
       <div className={styles.modelList}>
         {models.length === 0 ? (
           <div className={styles.modelListEmpty}>{t("models.noModels")}</div>
@@ -349,7 +314,6 @@ export function ModelListEditor({
                 </div>
                 <div className={styles.modelListItemActions}>
                   {hasApiKey &&
-                    isEnabled &&
                     (isTesting ? (
                       <Button
                         type="text"
@@ -406,7 +370,6 @@ export function ModelListEditor({
         )}
       </div>
 
-      {/* Add / Edit model form */}
       {isFormVisible ? (
         <div className={styles.modelAddForm}>
           <Form form={form} layout="vertical" style={{ marginBottom: 0 }}>
@@ -521,24 +484,25 @@ export function ModelListEditor({
             <div
               style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
             >
-              <Button size="small" onClick={resetForm}>
-                {t("common.cancel")}
-              </Button>
               {hasApiKey && (
                 <Button
                   size="small"
                   icon={<Zap size={14} />}
                   loading={testingForm}
-                  onClick={handleTestFormModel}
+                  onClick={() => void handleTestFormModel()}
                 >
                   {t("models.testConnection")}
                 </Button>
               )}
+              <Button size="small" onClick={resetForm}>
+                {t("common.cancel")}
+              </Button>
               <Button
                 type="primary"
                 size="small"
-                loading={saving}
-                onClick={isEditing ? handleEditModel : handleAddModel}
+                onClick={() =>
+                  void (isEditing ? handleEditModel() : handleAddModel())
+                }
               >
                 {isEditing ? t("models.saveEdit") : t("models.addModel")}
               </Button>

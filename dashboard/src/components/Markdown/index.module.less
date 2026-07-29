@@ -228,3 +228,34 @@
     }
   }
 }
+
+/* Keep the caret at the end of the last block while streaming — a sibling
+   cursor under block-level <p>/<pre> jumps to a new line and looks like jitter. */
+.markdownStreaming {
+  > :last-child::after {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--fn-color-brand);
+    border-radius: 1px;
+    animation: markdownCaretBlink 0.8s steps(2) infinite;
+  }
+
+  /* Code blocks / pre: caret on its own line looks fine and avoids breaking layout. */
+  > pre:last-child::after,
+  > .codeBlockWrapper:last-child::after {
+    display: none;
+  }
+}
+
+@keyframes markdownCaretBlink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

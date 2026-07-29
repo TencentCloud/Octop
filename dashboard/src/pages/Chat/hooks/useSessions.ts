@@ -14,6 +14,9 @@ export interface Session {
   pinned?: boolean;
 }
 
+/** Result of probing whether a thread exists for the current agent. */
+export type ThreadProbeResult = "found" | "missing" | "unknown";
+
 export function toSession(row: {
   thread_id: string;
   title: string | null;
@@ -192,7 +195,45 @@ function setModuleLoadingMore(value: boolean) {
   notifyListeners();
 }
 
+/**
+ * Drop previous-agent threads before the first paint of a new agent.
+ * Clearing only in useEffect leaks stale sessions for one render, and
+ * chat nav can then write `/chat/{newAgent}/{oldThread}` into the URL.
+ */
+function syncStoreToAgent(agentId: string | null) {
+  if (_storeAgentId === agentId) return;
+  _storeAgentId = agentId;
+  _sessions = [];
+  _loading = agentId != null;
+  _hasMore = false;
+  _loadingMore = false;
+  _snapshot = {
+    sessions: _sessions,
+    loading: _loading,
+    hasMore: _hasMore,
+    loadingMore: _loadingMore,
+  };
+}
+
+/** Reset module session store between vitest cases. */
+export function resetSessionStoreForTests() {
+  _storeAgentId = null;
+  _sessions = [];
+  _loading = true;
+  _hasMore = false;
+  _loadingMore = false;
+  _loadedLimitByAgent.clear();
+  _pendingThreadIds.clear();
+  _snapshot = {
+    sessions: _sessions,
+    loading: _loading,
+    hasMore: _hasMore,
+    loadingMore: _loadingMore,
+  };
+}
+
 export function useSessions(agentId: string | null) {
+  syncStoreToAgent(agentId);
   const { sessions, loading, hasMore, loadingMore } = useSyncExternalStore(
     subscribeSessionStore,
     getSessionSnapshot,
@@ -264,9 +305,9 @@ export function useSessions(agentId: string | null) {
   );
 
   const ensureThreadInList = useCallback(
-    async (threadId: string): Promise<boolean> => {
-      if (!agentId || !threadId) return false;
-      if (_sessions.some((s) => s.id === threadId)) return true;
+    async (threadId: string): Promise<ThreadProbeResult> => {
+      if (!agentId || !threadId) return "missing";
+      if (_sessions.some((s) => s.id === threadId)) return "found";
       try {
         const limit = getLoadedLimit(agentId);
         const probeLimit = Math.max(limit + 1, 50);
@@ -274,9 +315,10 @@ export function useSessions(agentId: string | null) {
           agentId,
           probeLimit,
         );
-        if (_storeAgentId !== agentId) return false;
+        // Agent switched while the probe was in flight — do not rewrite URL.
+        if (_storeAgentId !== agentId) return "unknown";
         const found = valid.some((s) => s.id === threadId);
-        if (!found) return false;
+        if (!found) return "missing";
         applySessionPage(
           valid,
           more || valid.length > limit,
@@ -284,23 +326,20 @@ export function useSessions(agentId: string | null) {
           agentId,
           threadId,
         );
-        return true;
+        return "found";
       } catch {
-        return false;
+        // Network/API failure — keep the URL until a later successful probe.
+        return "unknown";
       }
     },
     [agentId],
   );
 
+  // Fetch only: agent switches are synced in-render via syncStoreToAgent.
   useEffect(() => {
-    _storeAgentId = agentId;
-    setModuleLoading(true);
-    setModuleSessions([]);
-    if (!agentId) {
-      setModuleLoading(false);
-      return;
-    }
+    if (!agentId) return;
     resetSessionPagination(agentId);
+    setModuleLoading(true);
     void (async () => {
       const requestedAgent = agentId;
       try {

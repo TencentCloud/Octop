@@ -76,6 +76,7 @@ help:
 	@echo "  check-all        lint-all + typecheck-all + test"
 	@echo ""
 	@echo "Utility targets:"
+	@echo "  install-hooks    Point git to .githooks (pre-commit runs make all + npm run build)"
 	@echo "  install          Install Python dev dependencies (alias: install-dev)"
 	@echo "  install-dev      uv sync / pip install -e \".[dev]\""
 	@echo "  install-tools    Install build + twine for publishing"
@@ -259,6 +260,14 @@ typecheck-all: typecheck typecheck-frontend
 check-all: lint-all typecheck-all test
 
 # ─── Utilities ───────────────────────────────────────────────────────────────
+
+.PHONY: install-hooks
+install-hooks:
+	@echo "[install-hooks] Setting core.hooksPath=.githooks"
+	git config core.hooksPath .githooks
+	@chmod +x "$(REPO_ROOT)/.githooks/"* 2>/dev/null || true
+	@echo "[install-hooks] Done. Pre-commit will run: make all && (cd dashboard && npm run build)"
+	@echo "[install-hooks] Bypass: SKIP_PRECOMMIT=1 git commit …   or   git commit --no-verify"
 
 .PHONY: install install-dev
 install install-dev:

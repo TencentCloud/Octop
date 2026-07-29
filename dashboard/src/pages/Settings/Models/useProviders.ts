@@ -3,7 +3,7 @@
  *
  * Fetches all providers and presets via the admin endpoints.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
 import { providerApi } from "../../../api/modules/provider";
@@ -82,9 +82,12 @@ export function useProviders(): UseProvidersResult {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const fetchAll = useCallback(async () => {
-    setLoading(true);
+    // Only show full-page loading on first load so open config modals
+    // are not unmounted by subsequent refreshes.
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
       const [rows, presetList, resolved, active] = await Promise.all([
@@ -121,6 +124,7 @@ export function useProviders(): UseProvidersResult {
       console.error("Failed to load providers:", err);
       setError(msg);
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, [t]);

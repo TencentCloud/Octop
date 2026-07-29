@@ -495,6 +495,32 @@ def test_mail_provider_netease():
     assert payload["smtp_host"] == "smtp.163.com"
 
 
+def test_mail_provider_netease_126_uses_126_hosts():
+    payload = validate_create_credentials(
+        "qq-mail",
+        {
+            "email": "a@126.com",
+            "password": "code",
+            "mail_provider": "netease",
+        },
+    )
+    assert payload["imap_host"] == "imap.126.com"
+    assert payload["smtp_host"] == "smtp.126.com"
+
+
+def test_mail_provider_netease_yeah_uses_yeah_hosts():
+    payload = validate_create_credentials(
+        "qq-mail",
+        {
+            "email": "a@yeah.net",
+            "password": "code",
+            "mail_provider": "netease",
+        },
+    )
+    assert payload["imap_host"] == "imap.yeah.net"
+    assert payload["smtp_host"] == "smtp.yeah.net"
+
+
 def test_catalog_entry_dict_has_no_tools():
     from octop.infra.connectors.catalog import catalog_entry_to_dict, get_catalog_entry
 

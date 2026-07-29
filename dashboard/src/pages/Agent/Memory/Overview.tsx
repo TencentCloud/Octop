@@ -218,17 +218,26 @@ export default function Overview({
             />
           ) : (
             <div className={styles.growthChart}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart
                   data={state.growth.series}
-                  margin={{ top: 8, right: 8, bottom: 0, left: -20 }}
+                  margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="date"
                     tickFormatter={(date: string) => date.slice(5)}
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    height={24}
+                    dy={4}
                   />
-                  <YAxis allowDecimals={false} />
+                  <YAxis
+                    allowDecimals={false}
+                    width={36}
+                    tick={{ fontSize: 11 }}
+                  />
                   <ChartTooltip
                     formatter={(value) => [
                       value,
@@ -255,14 +264,14 @@ export default function Overview({
             />
           ) : (
             <div className={styles.kindChart}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
                     data={state.kinds.series}
                     dataKey="count"
                     nameKey="kind"
-                    innerRadius={48}
-                    outerRadius={76}
+                    innerRadius={42}
+                    outerRadius={68}
                     paddingAngle={3}
                     stroke="none"
                   >

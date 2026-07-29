@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Pre-commit gate: backend ship bar + dashboard production build.
+# Enable once per clone:  make install-hooks
+# Bypass (emergency only): SKIP_PRECOMMIT=1 git commit ...
+# Or: git commit --no-verify
+set -euo pipefail
+
+if [[ "${SKIP_PRECOMMIT:-}" == "1" ]]; then
+  echo "[pre-commit] SKIP_PRECOMMIT=1 — skipping checks"
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+echo "[pre-commit] make all  (lint + typecheck + test)"
+make all
+
+echo "[pre-commit] dashboard npm run build"
+(
+  cd "$ROOT/dashboard"
+  npm run build
+)
+
+echo "[pre-commit] all checks passed"

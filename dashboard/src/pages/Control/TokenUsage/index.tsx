@@ -1,20 +1,14 @@
 /**
- * Token Usage — orca-flavoured summary page.
+ * Token Usage — account-level analytics.
  *
- * Backed by ``GET /api/usage/summary`` (P1.1). Three controls at the
- * top: time window, granularity, optional agent scope. Body shows a
- * stat row with totals + a bar chart (when granularity ≠ total) +
- * a sortable bucket table.
- *
- * Replaced ~1050 LOC of finnie code that targeted endpoints octop
- * doesn't expose (per-channel histogram, dayjs-driven custom range,
- * per-turn drilldown). Those flows can be reintroduced as analytical
- * needs harden — for the MVP the contract is "tokens by day / agent /
- * model, scoped to the caller".
+ * Views (peer Segmented): summary | by day | by expert | by model.
+ * Summary composes totals + donut/pie charts from existing
+ * ``GET /api/usage/summary`` granularities (no backend changes).
+ * Dimension views: stacked bar + sortable table.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Card, Select, Spin, Table, Empty, Tag, Space } from "antd";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Card, Select, Spin, Table, Empty, Tag, Segmented } from "antd";
 import {
   BarChart,
   Bar,
@@ -23,12 +17,17 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from "recharts";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { request } from "../../../api/request";
 import { useAgent } from "../../../context/AgentContext";
+import styles from "./index.module.less";
 
 interface UsageBucket {
   key: string;
@@ -52,20 +51,26 @@ interface UsageSummary {
   buckets: UsageBucket[];
 }
 
-const WINDOW_OPTIONS = [
-  { value: "today", label: "今天" },
-  { value: "yesterday", label: "昨天" },
-  { value: "last_7d", label: "最近 7 天" },
-  { value: "last_30d", label: "最近 30 天" },
-  { value: "all", label: "全部" },
+type ViewMode = "summary" | "by_day" | "by_agent" | "by_model";
+type DimGranularity = Exclude<ViewMode, "summary">;
+
+const CHART_COLORS = [
+  "#4f6ef7",
+  "#a06ef7",
+  "#22c55e",
+  "#f59e0b",
+  "#ef4444",
+  "#06b6d4",
+  "#ec4899",
+  "#84cc16",
+  "#64748b",
+  "#8b5cf6",
 ];
 
-const GRANULARITY_OPTIONS = [
-  { value: "total", label: "汇总" },
-  { value: "by_day", label: "按天" },
-  { value: "by_agent", label: "按 Agent" },
-  { value: "by_model", label: "按模型" },
-];
+const IO_COLORS = {
+  input: "#4f6ef7",
+  output: "#a06ef7",
+};
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
@@ -79,196 +84,352 @@ function StatBlock({
   value: string | number;
 }) {
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: "12px 16px",
-        background: "var(--fn-bg-secondary)",
-        borderRadius: 6,
-        border: "1px solid var(--fn-border-secondary)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--fn-text-tertiary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4 }}>{value}</div>
+    <div className={styles.statBlock}>
+      <div className={styles.statLabel}>{label}</div>
+      <div className={styles.statValue}>{value}</div>
     </div>
   );
 }
 
-export default function TokenUsagePage() {
-  const { t } = useTranslation();
-  const { agents, activeAgentId } = useAgent();
-  const isMobile = useIsMobile();
-  const [windowKey, setWindowKey] = useState("last_30d");
-  const [granularity, setGranularity] = useState("by_day");
-  const [agentFilter, setAgentFilter] = useState<string | "all">("all");
-  const [data, setData] = useState<UsageSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function bucketColumnTitle(
+  granularity: DimGranularity,
+  t: (key: string) => string,
+): string {
+  if (granularity === "by_day") return t("tokenUsage.date");
+  if (granularity === "by_agent") return t("tokenUsage.expert");
+  return t("tokenUsage.model");
+}
 
-  // Default the agent filter to the currently-active one if it's set,
-  // so the page reads as "look at the agent I'm chatting with right now".
-  useEffect(() => {
-    if (activeAgentId && agentFilter === "all") {
-      setAgentFilter(activeAgentId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAgentId]);
+function resolveAgentLabels(
+  buckets: UsageBucket[],
+  agentNameById: Map<string, string>,
+): UsageBucket[] {
+  return buckets.map((b) => ({
+    ...b,
+    label: agentNameById.get(b.key) ?? b.label ?? b.key,
+  }));
+}
 
-  const refresh = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        window: windowKey,
-        granularity,
-      });
-      if (agentFilter !== "all") {
-        params.set("agent_id", agentFilter);
-      }
-      const summary = await request<UsageSummary>(`/usage/summary?${params}`);
-      setData(summary);
-    } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : String(err);
-      setError(detail);
-    } finally {
-      setLoading(false);
-    }
+function toPieData(buckets: UsageBucket[], limit = 8) {
+  const sorted = [...buckets].sort((a, b) => b.total_tokens - a.total_tokens);
+  if (sorted.length <= limit) {
+    return sorted.map((b) => ({
+      name: b.label,
+      value: b.total_tokens,
+      turns: b.turns,
+    }));
+  }
+  const head = sorted.slice(0, limit - 1);
+  const rest = sorted.slice(limit - 1);
+  const otherValue = rest.reduce((s, b) => s + b.total_tokens, 0);
+  const otherTurns = rest.reduce((s, b) => s + b.turns, 0);
+  return [
+    ...head.map((b) => ({
+      name: b.label,
+      value: b.total_tokens,
+      turns: b.turns,
+    })),
+    { name: "…", value: otherValue, turns: otherTurns },
+  ];
+}
+
+function fetchSummary(
+  windowKey: string,
+  granularity: string,
+  agentFilter: string | "all",
+): Promise<UsageSummary> {
+  const params = new URLSearchParams({ window: windowKey, granularity });
+  if (agentFilter !== "all") {
+    params.set("agent_id", agentFilter);
+  }
+  return request<UsageSummary>(`/usage/summary?${params}`);
+}
+
+function DonutCard({
+  title,
+  data,
+  emptyText,
+  colors = CHART_COLORS,
+}: {
+  title: string;
+  data: { name: string; value: number }[];
+  emptyText: string;
+  colors?: string[] | Record<string, string>;
+}) {
+  const colorFor = (name: string, index: number) => {
+    if (Array.isArray(colors)) return colors[index % colors.length];
+    return colors[name] ?? CHART_COLORS[index % CHART_COLORS.length];
   };
 
-  useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [windowKey, granularity, agentFilter]);
+  return (
+    <Card size="small" title={title} className={styles.chartCard}>
+      {data.length === 0 || data.every((d) => d.value === 0) ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+      ) : (
+        <div className={styles.chartArea}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius="42%"
+                outerRadius="68%"
+                paddingAngle={2}
+                stroke="none"
+              >
+                {data.map((entry, i) => (
+                  <Cell key={entry.name} fill={colorFor(entry.name, i)} />
+                ))}
+              </Pie>
+              <RechartsTooltip
+                formatter={(value) => formatNumber(Number(value ?? 0))}
+                contentStyle={{
+                  background: "var(--fn-bg-elevated)",
+                  border: "1px solid var(--fn-border-secondary)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: 12 }}
+                formatter={(value) => (
+                  <span style={{ color: "var(--fn-text-secondary)" }}>
+                    {value}
+                  </span>
+                )}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Card>
+  );
+}
 
-  // The bar chart consumes buckets in display order. ``by_day`` is
-  // returned newest-first by the API so we reverse for chronological
-  // x-axis; the other granularities are already sorted by total desc
-  // which reads more naturally in chart form.
-  const chartBuckets = useMemo(() => {
-    if (!data) return [];
-    if (data.granularity === "by_day") return [...data.buckets].reverse();
-    return data.buckets.slice(0, 20);
-  }, [data]);
+function SummaryView({
+  totals,
+  byExpert,
+  byModel,
+  byDay,
+  isMobile,
+}: {
+  totals: UsageSummary;
+  byExpert: UsageBucket[];
+  byModel: UsageBucket[];
+  byDay: UsageBucket[];
+  isMobile: boolean;
+}) {
+  const { t } = useTranslation();
+
+  const ioData = useMemo(
+    () => [
+      { name: t("tokenUsage.input"), value: totals.input_tokens },
+      { name: t("tokenUsage.output"), value: totals.output_tokens },
+    ],
+    [totals.input_tokens, totals.output_tokens, t],
+  );
+
+  const expertPie = useMemo(() => toPieData(byExpert), [byExpert]);
+  const modelPie = useMemo(() => toPieData(byModel), [byModel]);
+  const dayBars = useMemo(() => [...byDay].reverse().slice(-14), [byDay]);
 
   return (
-    <PageShell
-      title={t("pageShell.tokenUsage.title")}
-      subtitle={t("pageShell.tokenUsage.subtitle")}
-      agentScoped
-    >
-      {/* Filter controls — stack on mobile, inline on desktop */}
-      {isMobile ? (
+    <div className={styles.summaryBody}>
+      <div
+        className={styles.statsGrid}
+        style={{
+          gridTemplateColumns: isMobile
+            ? "repeat(2, minmax(0, 1fr))"
+            : "repeat(5, minmax(0, 1fr))",
+        }}
+      >
+        <StatBlock
+          label={t("tokenUsage.totalTokens")}
+          value={formatNumber(totals.total_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.input")}
+          value={formatNumber(totals.input_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.output")}
+          value={formatNumber(totals.output_tokens)}
+        />
+        <StatBlock label={t("tokenUsage.turns")} value={totals.turns} />
+        <StatBlock
+          label={t("tokenUsage.avgPerTurn")}
+          value={formatNumber(totals.avg_per_turn)}
+        />
+      </div>
+
+      <div
+        className={styles.pieGrid}
+        style={{
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+        }}
+      >
+        <DonutCard
+          title={t("tokenUsage.ioBreakdown")}
+          data={ioData}
+          emptyText={t("tokenUsage.noRecordsInRange")}
+          colors={{
+            [t("tokenUsage.input")]: IO_COLORS.input,
+            [t("tokenUsage.output")]: IO_COLORS.output,
+          }}
+        />
+        <DonutCard
+          title={t("tokenUsage.expertBreakdown")}
+          data={expertPie}
+          emptyText={t("tokenUsage.noRecordsInRange")}
+        />
+        <DonutCard
+          title={t("tokenUsage.modelBreakdown")}
+          data={modelPie}
+          emptyText={t("tokenUsage.noRecordsInRange")}
+        />
+      </div>
+
+      <Card
+        size="small"
+        title={t("tokenUsage.dailyTrend")}
+        className={`${styles.chartCard} ${styles.trendCard}`}
+      >
+        {dayBars.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t("tokenUsage.noRecordsInRange")}
+            style={{ padding: "24px 0" }}
+          />
+        ) : (
+          <div className={styles.chartArea}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              <BarChart
+                data={dayBars}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--fn-border-secondary)"
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  tickLine={false}
+                  axisLine={false}
+                  height={24}
+                />
+                <YAxis tick={{ fontSize: 11 }} width={48} />
+                <RechartsTooltip
+                  contentStyle={{
+                    background: "var(--fn-bg-elevated)",
+                    border: "1px solid var(--fn-border-secondary)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar
+                  dataKey="input_tokens"
+                  stackId="a"
+                  fill={IO_COLORS.input}
+                  name={t("tokenUsage.input")}
+                />
+                <Bar
+                  dataKey="output_tokens"
+                  stackId="a"
+                  fill={IO_COLORS.output}
+                  name={t("tokenUsage.output")}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function DimensionView({
+  granularity,
+  buckets,
+  totals,
+  isMobile,
+}: {
+  granularity: DimGranularity;
+  buckets: UsageBucket[];
+  totals: UsageSummary;
+  isMobile: boolean;
+}) {
+  const { t } = useTranslation();
+
+  const chartBuckets = useMemo(() => {
+    if (granularity === "by_day") return [...buckets].reverse();
+    return buckets.slice(0, 20);
+  }, [buckets, granularity]);
+
+  const pieData = useMemo(
+    () =>
+      granularity === "by_day" ? [] : toPieData(buckets, isMobile ? 6 : 10),
+    [buckets, granularity, isMobile],
+  );
+
+  return (
+    <div className={styles.summaryBody}>
+      <div
+        className={styles.statsGrid}
+        style={{
+          gridTemplateColumns: isMobile
+            ? "repeat(2, minmax(0, 1fr))"
+            : "repeat(5, minmax(0, 1fr))",
+        }}
+      >
+        <StatBlock
+          label={t("tokenUsage.totalTokens")}
+          value={formatNumber(totals.total_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.input")}
+          value={formatNumber(totals.input_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.output")}
+          value={formatNumber(totals.output_tokens)}
+        />
+        <StatBlock label={t("tokenUsage.turns")} value={totals.turns} />
+        <StatBlock
+          label={t("tokenUsage.avgPerTurn")}
+          value={formatNumber(totals.avg_per_turn)}
+        />
+      </div>
+
+      {granularity !== "by_day" && pieData.length > 0 && (
         <div
+          className={styles.dimChartRow}
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginBottom: 16,
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1.4fr",
           }}
         >
-          <Select
-            value={windowKey}
-            onChange={setWindowKey}
-            style={{ width: "100%" }}
-            options={WINDOW_OPTIONS}
+          <DonutCard
+            title={
+              granularity === "by_agent"
+                ? t("tokenUsage.expertBreakdown")
+                : t("tokenUsage.modelBreakdown")
+            }
+            data={pieData}
+            emptyText={t("tokenUsage.noRecordsInRange")}
           />
-          <Select
-            value={granularity}
-            onChange={setGranularity}
-            style={{ width: "100%" }}
-            options={GRANULARITY_OPTIONS}
-          />
-          <Select
-            value={agentFilter}
-            onChange={(v) => setAgentFilter(v)}
-            style={{ width: "100%" }}
-            options={[
-              { value: "all", label: "全部 Agent" },
-              ...agents.map((a) => ({ value: a.agent_id, label: a.name })),
-            ]}
-          />
-        </div>
-      ) : (
-        <Space style={{ marginBottom: 16 }} wrap>
-          <Select
-            value={windowKey}
-            onChange={setWindowKey}
-            style={{ width: 140 }}
-            options={WINDOW_OPTIONS}
-          />
-          <Select
-            value={granularity}
-            onChange={setGranularity}
-            style={{ width: 140 }}
-            options={GRANULARITY_OPTIONS}
-          />
-          <Select
-            value={agentFilter}
-            onChange={(v) => setAgentFilter(v)}
-            style={{ width: 200 }}
-            options={[
-              { value: "all", label: "全部 Agent" },
-              ...agents.map((a) => ({ value: a.agent_id, label: a.name })),
-            ]}
-          />
-        </Space>
-      )}
-
-      {error && (
-        <Card
-          size="small"
-          style={{ borderColor: "var(--fn-color-error)", marginBottom: 16 }}
-        >
-          <span style={{ color: "var(--fn-color-error)" }}>{error}</span>
-        </Card>
-      )}
-
-      {loading && !data ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-          <Spin />
-        </div>
-      ) : data ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Stats row — 5-up on desktop, 2-column grid on mobile */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(0, 1fr))"
-                : "repeat(5, minmax(0, 1fr))",
-              gap: 12,
-            }}
+          <Card
+            size="small"
+            title={t("tokenUsage.ioBarChart")}
+            className={styles.chartCard}
           >
-            <StatBlock
-              label="总 tokens"
-              value={formatNumber(data.total_tokens)}
-            />
-            <StatBlock label="输入" value={formatNumber(data.input_tokens)} />
-            <StatBlock label="输出" value={formatNumber(data.output_tokens)} />
-            <StatBlock label="对话轮数" value={data.turns} />
-            <StatBlock
-              label="均值/轮"
-              value={formatNumber(data.avg_per_turn)}
-            />
-          </div>
-
-          {/* Chart */}
-          {data.granularity !== "total" && data.buckets.length > 0 && (
-            <Card
-              size="small"
-              style={{ borderColor: "var(--fn-border-secondary)" }}
-            >
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={chartBuckets}>
+            <div className={styles.chartArea}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <BarChart
+                  data={chartBuckets}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="var(--fn-border-secondary)"
@@ -277,8 +438,11 @@ export default function TokenUsagePage() {
                     dataKey="label"
                     tick={{ fontSize: 11 }}
                     interval="preserveStartEnd"
+                    tickLine={false}
+                    axisLine={false}
+                    height={24}
                   />
-                  <YAxis tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={48} />
                   <RechartsTooltip
                     contentStyle={{
                       background: "var(--fn-bg-elevated)",
@@ -290,130 +454,313 @@ export default function TokenUsagePage() {
                   <Bar
                     dataKey="input_tokens"
                     stackId="a"
-                    fill="#4f6ef7"
-                    name="input"
+                    fill={IO_COLORS.input}
+                    name={t("tokenUsage.input")}
                   />
                   <Bar
                     dataKey="output_tokens"
                     stackId="a"
-                    fill="#a06ef7"
-                    name="output"
+                    fill={IO_COLORS.output}
+                    name={t("tokenUsage.output")}
                   />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {granularity === "by_day" && buckets.length > 0 && (
+        <Card
+          size="small"
+          className={`${styles.chartCard} ${styles.trendCard}`}
+        >
+          <div className={styles.chartArea}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              <BarChart
+                data={chartBuckets}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--fn-border-secondary)"
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  tickLine={false}
+                  axisLine={false}
+                  height={24}
+                />
+                <YAxis tick={{ fontSize: 11 }} width={48} />
+                <RechartsTooltip
+                  contentStyle={{
+                    background: "var(--fn-bg-elevated)",
+                    border: "1px solid var(--fn-border-secondary)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar
+                  dataKey="input_tokens"
+                  stackId="a"
+                  fill={IO_COLORS.input}
+                  name={t("tokenUsage.input")}
+                />
+                <Bar
+                  dataKey="output_tokens"
+                  stackId="a"
+                  fill={IO_COLORS.output}
+                  name={t("tokenUsage.output")}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
+      <Card
+        size="small"
+        title={t("tokenUsage.detail")}
+        className={`${styles.chartCard} ${styles.dimTableCard}`}
+        styles={{ body: { padding: isMobile ? 0 : 16 } }}
+      >
+        {buckets.length === 0 ? (
+          <Empty
+            description={t("tokenUsage.noRecordsInRange")}
+            style={{ padding: isMobile ? "20px 0" : undefined }}
+          />
+        ) : isMobile ? (
+          <div>
+            {buckets.map((b) => (
+              <div key={b.key} className={styles.mobileRow}>
+                <div className={styles.mobileRowTop}>
+                  <Tag style={{ margin: 0 }}>{b.label}</Tag>
+                  <span className={styles.mobileTotal}>
+                    {formatNumber(b.total_tokens)}
+                  </span>
+                </div>
+                <div className={styles.mobileMeta}>
+                  <span>
+                    {t("tokenUsage.input")} {formatNumber(b.input_tokens)}
+                  </span>
+                  <span>
+                    {t("tokenUsage.output")} {formatNumber(b.output_tokens)}
+                  </span>
+                  <span>{t("tokenUsage.turnsCount", { count: b.turns })}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Table<UsageBucket>
+            rowKey="key"
+            size="small"
+            pagination={false}
+            dataSource={buckets}
+            scroll={{ x: "max-content" }}
+            columns={[
+              {
+                title: bucketColumnTitle(granularity, t),
+                dataIndex: "label",
+                fixed: "left",
+                width: 160,
+                render: (v) => <Tag>{v}</Tag>,
+              },
+              {
+                title: t("tokenUsage.input"),
+                dataIndex: "input_tokens",
+                render: formatNumber,
+                sorter: (a, b) => a.input_tokens - b.input_tokens,
+                align: "right",
+              },
+              {
+                title: t("tokenUsage.output"),
+                dataIndex: "output_tokens",
+                render: formatNumber,
+                sorter: (a, b) => a.output_tokens - b.output_tokens,
+                align: "right",
+              },
+              {
+                title: t("tokenUsage.total"),
+                dataIndex: "total_tokens",
+                render: formatNumber,
+                sorter: (a, b) => a.total_tokens - b.total_tokens,
+                defaultSortOrder: "descend",
+                align: "right",
+              },
+              {
+                title: t("tokenUsage.turns"),
+                dataIndex: "turns",
+                sorter: (a, b) => a.turns - b.turns,
+                align: "right",
+              },
+            ]}
+          />
+        )}
+      </Card>
+    </div>
+  );
+}
+
+export default function TokenUsagePage() {
+  const { t } = useTranslation();
+  const { agents } = useAgent();
+  const isMobile = useIsMobile();
+  const [windowKey, setWindowKey] = useState("last_30d");
+  const [view, setView] = useState<ViewMode>("summary");
+  const [agentFilter, setAgentFilter] = useState<string | "all">("all");
+
+  const [totals, setTotals] = useState<UsageSummary | null>(null);
+  const [dimBuckets, setDimBuckets] = useState<UsageBucket[]>([]);
+  const [summaryExpert, setSummaryExpert] = useState<UsageBucket[]>([]);
+  const [summaryModel, setSummaryModel] = useState<UsageBucket[]>([]);
+  const [summaryDay, setSummaryDay] = useState<UsageBucket[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const agentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) {
+      map.set(a.agent_id, a.name);
+    }
+    return map;
+  }, [agents]);
+
+  const windowOptions = useMemo(
+    () => [
+      { value: "today", label: t("tokenUsage.today") },
+      { value: "yesterday", label: t("tokenUsage.yesterday") },
+      { value: "last_7d", label: t("tokenUsage.last7d") },
+      { value: "last_30d", label: t("tokenUsage.last30d") },
+      { value: "all", label: t("tokenUsage.allTime") },
+    ],
+    [t],
+  );
+
+  const agentOptions = useMemo(
+    () => [
+      { value: "all", label: t("tokenUsage.allExperts") },
+      ...agents.map((a) => ({ value: a.agent_id, label: a.name })),
+    ],
+    [agents, t],
+  );
+
+  const viewOptions = useMemo(
+    () => [
+      { value: "summary", label: t("tokenUsage.summary") },
+      { value: "by_day", label: t("tokenUsage.byDay") },
+      { value: "by_agent", label: t("tokenUsage.byExpert") },
+      { value: "by_model", label: t("tokenUsage.byModel") },
+    ],
+    [t],
+  );
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (view === "summary") {
+        const [expertRes, modelRes, dayRes] = await Promise.all([
+          fetchSummary(windowKey, "by_agent", agentFilter),
+          fetchSummary(windowKey, "by_model", agentFilter),
+          fetchSummary(windowKey, "by_day", agentFilter),
+        ]);
+        setTotals(expertRes);
+        setSummaryExpert(resolveAgentLabels(expertRes.buckets, agentNameById));
+        setSummaryModel(modelRes.buckets);
+        setSummaryDay(dayRes.buckets);
+        setDimBuckets([]);
+      } else {
+        const res = await fetchSummary(windowKey, view, agentFilter);
+        setTotals(res);
+        const buckets =
+          view === "by_agent"
+            ? resolveAgentLabels(res.buckets, agentNameById)
+            : res.buckets;
+        setDimBuckets(buckets);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [view, windowKey, agentFilter, agentNameById]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return (
+    <PageShell
+      title={t("pageShell.tokenUsage.title")}
+      subtitle={t("pageShell.tokenUsage.subtitle")}
+      fill
+    >
+      <div className={styles.page}>
+        <div className={styles.toolbar}>
+          <div className={styles.toolbarViews}>
+            <Segmented
+              value={view}
+              onChange={(v) => setView(v as ViewMode)}
+              options={viewOptions}
+              size={isMobile ? "small" : "middle"}
+            />
+          </div>
+          <div className={styles.toolbarFilters}>
+            <Select
+              value={windowKey}
+              onChange={setWindowKey}
+              className={styles.toolbarFilterSelect}
+              style={{ width: isMobile ? undefined : 140 }}
+              options={windowOptions}
+            />
+            <Select
+              value={agentFilter}
+              onChange={(v) => setAgentFilter(v)}
+              className={styles.toolbarFilterSelect}
+              style={{ width: isMobile ? undefined : 200 }}
+              options={agentOptions}
+            />
+          </div>
+        </div>
+
+        <div className={styles.content}>
+          {error && (
+            <Card
+              size="small"
+              style={{ borderColor: "var(--fn-color-error)", marginBottom: 12 }}
+            >
+              <span style={{ color: "var(--fn-color-error)" }}>{error}</span>
             </Card>
           )}
 
-          {/* Bucket table / item list — desktop: antd Table; mobile: stacked items */}
-          {data.granularity !== "total" && (
-            <Card
-              size="small"
-              title="明细"
-              style={{ borderColor: "var(--fn-border-secondary)" }}
-              styles={{ body: { padding: isMobile ? 0 : 24 } }}
-            >
-              {data.buckets.length === 0 ? (
-                <Empty
-                  description="区间内无记录"
-                  style={{ padding: isMobile ? "20px 0" : undefined }}
-                />
-              ) : isMobile ? (
-                <div>
-                  {data.buckets.map((b) => (
-                    <div
-                      key={b.key}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                        padding: "12px 16px",
-                        borderBottom: "1px solid var(--fn-border-secondary)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <Tag style={{ margin: 0 }}>{b.label}</Tag>
-                        <span
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "var(--fn-text-primary)",
-                          }}
-                        >
-                          {formatNumber(b.total_tokens)}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr 1fr",
-                          gap: 4,
-                          fontSize: 11,
-                          color: "var(--fn-text-tertiary)",
-                        }}
-                      >
-                        <span>输入 {formatNumber(b.input_tokens)}</span>
-                        <span>输出 {formatNumber(b.output_tokens)}</span>
-                        <span>{b.turns} 轮</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <Table<UsageBucket>
-                  rowKey="key"
-                  size="small"
-                  pagination={false}
-                  dataSource={data.buckets}
-                  scroll={{ x: "max-content" }}
-                  columns={[
-                    {
-                      title: granularity === "by_day" ? "日期" : "Key",
-                      dataIndex: "label",
-                      fixed: "left",
-                      width: 120,
-                      render: (v) => <Tag>{v}</Tag>,
-                    },
-                    {
-                      title: "输入",
-                      dataIndex: "input_tokens",
-                      render: formatNumber,
-                      sorter: (a, b) => a.input_tokens - b.input_tokens,
-                      align: "right",
-                    },
-                    {
-                      title: "输出",
-                      dataIndex: "output_tokens",
-                      render: formatNumber,
-                      sorter: (a, b) => a.output_tokens - b.output_tokens,
-                      align: "right",
-                    },
-                    {
-                      title: "总计",
-                      dataIndex: "total_tokens",
-                      render: formatNumber,
-                      sorter: (a, b) => a.total_tokens - b.total_tokens,
-                      defaultSortOrder: "descend",
-                      align: "right",
-                    },
-                    {
-                      title: "轮次",
-                      dataIndex: "turns",
-                      sorter: (a, b) => a.turns - b.turns,
-                      align: "right",
-                    },
-                  ]}
-                />
-              )}
-            </Card>
-          )}
+          {loading && !totals ? (
+            <div className={styles.loadingWrap}>
+              <Spin />
+            </div>
+          ) : totals ? (
+            view === "summary" ? (
+              <SummaryView
+                totals={totals}
+                byExpert={summaryExpert}
+                byModel={summaryModel}
+                byDay={summaryDay}
+                isMobile={isMobile}
+              />
+            ) : (
+              <DimensionView
+                granularity={view}
+                buckets={dimBuckets}
+                totals={totals}
+                isMobile={isMobile}
+              />
+            )
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </PageShell>
   );
 }

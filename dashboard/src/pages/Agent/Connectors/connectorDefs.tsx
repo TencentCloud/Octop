@@ -15,7 +15,7 @@ export const MAIL_PROVIDERS = [
     id: "netease",
     label: "网易邮箱",
     guideUrl: "https://mail.163.com/",
-    emailPlaceholder: "you@163.com",
+    emailPlaceholder: "you@163.com / you@126.com",
   },
   {
     id: "gmail",

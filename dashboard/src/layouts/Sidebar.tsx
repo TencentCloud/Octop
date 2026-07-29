@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Tooltip } from "antd";
-import ThemeSwitcher from "../components/ThemeSwitcher";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
@@ -25,7 +24,7 @@ import {
   GraduationCap,
   Brain,
   Notebook,
-  Bot,
+  Boxes,
   ChevronDown,
   Shield,
   PanelsTopLeft,
@@ -166,7 +165,7 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
         {
           key: "subagents",
           path: "/subagents",
-          icon: <Bot size={iconSize} strokeWidth={iconStroke} />,
+          icon: <Boxes size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.subagents",
         },
         {
@@ -530,7 +529,7 @@ export default function Sidebar({
           borderRadius: isRailCollapsed ? 8 : undefined,
         }}
       />
-      {!isRailCollapsed && (
+      {!isRailCollapsed && !isMobile && (
         <>
           <CurrentVersionBadge isMobile={isMobile} />
           <AppVersionBadge isMobile={isMobile} />
@@ -632,33 +631,6 @@ export default function Sidebar({
           />
         </div>
 
-        <div
-          style={{
-            flexShrink: 0,
-            padding: "12px 16px 8px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <span
-              style={{
-                fontSize: typeSize(13, true),
-                color: "var(--fn-text-tertiary)",
-              }}
-            >
-              {t("nav.theme") || "主题"}
-            </span>
-            <ThemeSwitcher />
-          </div>
-        </div>
         <div
           style={{
             paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))",

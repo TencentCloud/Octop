@@ -6,8 +6,17 @@ import "./pwa-prompt";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { initI18n } from "./i18n";
+import {
+  clearChunkReloadFlag,
+  installChunkLoadRecovery,
+  isChunkLoadError,
+  tryReloadOnStaleChunk,
+} from "./utils/reloadOnStaleChunk";
 
 if (typeof window !== "undefined") {
+  // Recover from post-deploy stale hashed chunks (white screen → soft reload).
+  installChunkLoadRecovery();
+
   const originalError = console.error;
   const originalWarn = console.warn;
 
@@ -34,6 +43,8 @@ if (typeof window !== "undefined") {
   // Catch unhandled Promise rejections (e.g. uncaught async errors)
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason;
+    // Chunk recovery (installChunkLoadRecovery) already handles these.
+    if (isChunkLoadError(reason)) return;
     // Suppress common benign errors
     const msg = reason?.message || String(reason) || "";
     if (
@@ -47,9 +58,15 @@ if (typeof window !== "undefined") {
   });
 }
 
-void initI18n().then(() => {
-  createRoot(document.getElementById("root")!).render(<App />);
-});
+void initI18n()
+  .then(() => {
+    clearChunkReloadFlag();
+    createRoot(document.getElementById("root")!).render(<App />);
+  })
+  .catch((err: unknown) => {
+    if (tryReloadOnStaleChunk(err)) return;
+    console.error("[initI18n]", err);
+  });
 
 // Register SW as early as possible so beforeinstallprompt can fire before the
 // user clicks the header install button (deferring to "load" caused a race).

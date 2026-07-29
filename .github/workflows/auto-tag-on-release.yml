@@ -1,0 +1,75 @@
+name: Auto Tag On Release Merge
+
+on:
+  pull_request_target:
+    types:
+      - closed
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    name: Tag merged release PR
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      (startsWith(github.event.pull_request.head.ref, 'release/') ||
+      startsWith(github.event.pull_request.head.ref, 'hotfix/')) &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merged main tip
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          version=$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          print(data["project"]["version"])
+          PY
+          )
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag does not already exist
+        id: check_tag
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists locally, skip."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --tags origin "$tag" | grep -q "$tag"; then
+            echo "Tag $tag already exists on origin, skip."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "Tag $tag is available."
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.should_publish == 'true'
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          git tag "$tag"
+          git push origin "$tag"
+
+      # GITHUB_TOKEN tag pushes do not cascade to other workflows. Explicitly
+      # dispatch Release / Docker Publish (workflow_dispatch is exempt).
+      - name: Trigger Release and Docker Publish
+        if: steps.check_tag.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          gh workflow run release.yml --ref "$tag"
+          gh workflow run docker-publish.yml --ref "$tag"

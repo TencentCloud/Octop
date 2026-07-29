@@ -1,0 +1,247 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.toolbarViews {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.toolbarFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+}
+
+.toolbarFilterSelect {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .page {
+    height: auto;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbarViews {
+    width: 100%;
+  }
+
+  .toolbarViews :global(.ant-segmented),
+  .toolbarViews :global(.octop-segmented) {
+    width: 100%;
+  }
+
+  .toolbarViews :global(.ant-segmented-item),
+  .toolbarViews :global(.octop-segmented-item) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .toolbarFilters {
+    width: 100%;
+  }
+
+  .toolbarFilterSelect {
+    flex: 1 1 calc(50% - 4px);
+  }
+}
+
+/* Body below the toolbar: fills leftover height; scrolls only if needed
+   (e.g. dimension tables with many rows). */
+.content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.summaryBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.statsGrid {
+  display: grid;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.statBlock {
+  flex: 1;
+  padding: 12px 16px;
+  background: var(--fn-bg-secondary);
+  border-radius: 6px;
+  border: 1px solid var(--fn-border-secondary);
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statValue {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.pieGrid,
+.dimChartRow {
+  display: grid;
+  gap: 12px;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+/* Summary donuts stay a stable size; only the daily trend fills leftover space. */
+.pieGrid .chartArea {
+  flex: none;
+  height: 200px;
+  min-height: 200px;
+}
+
+.dimChartRow {
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+
+.trendCard {
+  flex: 1 1 auto;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dimTableCard {
+  flex: 1 1 auto;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dimTableCard :global(.ant-card-body),
+.dimTableCard :global(.octop-card-body) {
+  overflow: auto;
+}
+
+.chartCard {
+  border-color: var(--fn-border-secondary);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chartCard :global(.ant-card-head),
+.chartCard :global(.octop-card-head) {
+  min-height: 40px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+/* Override global `.ant-card-body { height: 100% }` for flex fill. */
+.chartCard :global(.ant-card-body),
+.chartCard :global(.octop-card-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 10px;
+}
+
+.chartArea {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 140px;
+}
+
+.loadingWrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  padding: 40px;
+}
+
+.mobileRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+}
+
+.mobileRowTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobileTotal {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.mobileMeta {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+@media (max-width: 768px) {
+  .summaryBody {
+    min-height: 0;
+  }
+
+  .dimChartRow,
+  .trendCard,
+  .dimTableCard {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .chartCard {
+    height: auto;
+  }
+
+  .pieGrid .chartArea,
+  .chartArea {
+    flex: none;
+    height: 220px;
+    min-height: 220px;
+  }
+}

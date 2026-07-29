@@ -127,6 +127,7 @@ async def resolve_harness_session(
         resolve_browser_display,
     )
 
+    # Shared ~/.octop/browser-profiles (not per-agent workspace).
     await prepare_harness_profile_for_launch(profile)
     # Virtual desktop (Xvnc :99) → headed Chrome so the window shows on
     # remote desktop; otherwise force headless (do not use mode=auto — a

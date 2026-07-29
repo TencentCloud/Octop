@@ -2264,7 +2264,7 @@ requires-dist = [
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.14" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.16" },
     { name = "pillow", marker = "extra == 'desktop'", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2399,7 +2399,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "0.9.14"
+version = "0.9.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2417,9 +2417,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/33/80a29f1c80310c417dc506d24eedfce459c4abd05b2243bf338b43eab26a/orcakit_harness_agent-0.9.14.tar.gz", hash = "sha256:64cdbb89668cebd4636d0ef84fed10a724cf8d4e0b62313c9277b8fdae8c4bf4", size = 1118967, upload-time = "2026-07-25T10:01:38.891Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/62/e4ed11dc81018fbad1210c74daa29b24913567f2f1fa56850906606351dc/orcakit_harness_agent-0.9.16.tar.gz", hash = "sha256:3d012f342ab79559c1e88cfde8534ea89678876d9920ad05b4ebc9026af24fb1", size = 1118860, upload-time = "2026-07-29T03:46:23.766Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/f3/fc73cb06f3b14365a23e2b692d361e81da759328d983803a7fe555201f8f/orcakit_harness_agent-0.9.14-py3-none-any.whl", hash = "sha256:a7d9a18e7cc5c181321bf0d43e91784d8775eb5bc22207a5d1228881479d3734", size = 1339865, upload-time = "2026-07-25T10:01:35.55Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/39/778d31146e27510c9dc001f84bcf66ca742bcb7db99e4920eecd93ecb5eb/orcakit_harness_agent-0.9.16-py3-none-any.whl", hash = "sha256:6517ee47a2ba6de9159fba3543c75f6b5a577faab605fb48be8633bfb2455bb8", size = 1339452, upload-time = "2026-07-29T03:46:19.519Z" },
 ]
 
 [package.optional-dependencies]
