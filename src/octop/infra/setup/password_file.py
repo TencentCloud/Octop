@@ -9,6 +9,7 @@ from pathlib import Path
 
 WIZARD_FILE_NAME = "octop-login.txt"
 _TOKEN_BYTES = 16
+_PASSWORD_LABEL_PREFIX = "Password:"
 
 
 def _password_path(home: Path) -> Path:
@@ -37,10 +38,32 @@ def ensure_password(home: Path) -> str | None:
 
 
 def read_password(home: Path) -> str | None:
+    """Return the wizard password, or ``None`` if the file is absent/empty.
+
+    Supports two layouts:
+      * Plain — the password is the file's first non-empty line, as written
+        by :func:`ensure_password`.
+      * Labeled — a ``Password: <value>`` line, used by deployment scripts
+        (e.g. the Lighthouse image builder) that rewrite the plain file into
+        a human-readable "URL / Password" card after first boot. Checked
+        first so a labeled file always wins; falls back to the plain layout
+        so existing callers/tests are unaffected.
+    """
     target = _password_path(home)
     if not target.exists():
         return None
-    return target.read_text(encoding="utf-8").strip()
+    lines = target.read_text(encoding="utf-8").splitlines()
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(_PASSWORD_LABEL_PREFIX):
+            value = stripped[len(_PASSWORD_LABEL_PREFIX) :].strip()
+            if value:
+                return value
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
 
 
 def remove_password(home: Path) -> None:
