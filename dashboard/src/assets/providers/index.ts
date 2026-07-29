@@ -85,12 +85,41 @@ export const PROVIDER_DOCS: Record<string, string> = {
   opencode: "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-zen-openai": "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-zen-anthropic": "https://opencode.ai/docs/zh-cn/zen/",
+  "opencode-zen-compatible": "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-go-openai": "https://opencode.ai/docs/zh-cn/go/",
   "opencode-go-anthropic": "https://opencode.ai/docs/zh-cn/go/",
+  "opencode-go-compatible": "https://opencode.ai/docs/zh-cn/go/",
 };
 
+const OPENCODE_ZEN_DOCS = "https://opencode.ai/docs/zh-cn/zen/";
+const OPENCODE_GO_DOCS = "https://opencode.ai/docs/zh-cn/go/";
+
+function normalizeProviderDocsKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/[\s·]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function opencodeDocsFallback(normalized: string): string | undefined {
+  if (!normalized.startsWith("opencode")) return undefined;
+  if (normalized.includes("-go-")) return OPENCODE_GO_DOCS;
+  return OPENCODE_ZEN_DOCS;
+}
+
 export function getProviderDocs(providerId: string): string | undefined {
-  return PROVIDER_DOCS[providerId];
+  const direct = PROVIDER_DOCS[providerId];
+  if (direct) return direct;
+
+  const normalized = normalizeProviderDocsKey(providerId);
+  if (normalized !== providerId) {
+    const fromNormalized = PROVIDER_DOCS[normalized];
+    if (fromNormalized) return fromNormalized;
+  }
+
+  return opencodeDocsFallback(normalized);
 }
 
 /**
