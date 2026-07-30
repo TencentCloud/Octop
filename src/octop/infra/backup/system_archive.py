@@ -32,6 +32,7 @@ from octop.infra.utils.paths import PathLayout
 _CONFIG_DIR = "config"
 _DB_DIR = "db"
 _WORKSPACES_DIR = "workspaces"
+_SKILL_PACKAGES_DIR = "skill-packages"
 _MANIFEST_NAME = "manifest.json"
 _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
@@ -134,6 +135,8 @@ def create_system_backup(
                 ws = paths.agent_workspace(str(row.agent_id))
                 if ws.is_dir():
                     _add_dir(tf, ws, f"{_WORKSPACES_DIR}/{row.agent_id}")
+            if paths.skill_packages_dir.is_dir():
+                _add_dir(tf, paths.skill_packages_dir, _SKILL_PACKAGES_DIR)
 
     filename = f"octop-backup-{_timestamp()}.tar.gz"
     return buf.getvalue(), filename
@@ -273,11 +276,30 @@ def restore_system_backup(
             dest.write_bytes(blob)
             restored_workspaces += 1
 
+        # Replace skill-package files wholesale so leftover package dirs cannot
+        # outlive a restored database that no longer references them.
+        if paths.skill_packages_dir.exists():
+            shutil.rmtree(paths.skill_packages_dir)
+        paths.skill_packages_dir.mkdir(parents=True, exist_ok=True)
+        restored_skill_package_files = 0
+        skill_packages_prefix = f"{_SKILL_PACKAGES_DIR}/"
+        for name, blob in members.items():
+            if not name.startswith(skill_packages_prefix):
+                continue
+            rel = name[len(skill_packages_prefix) :]
+            if not rel:
+                continue
+            dest = paths.skill_packages_dir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(blob)
+            restored_skill_package_files += 1
+
     return {
         "schema_version": manifest.schema_version,
         "octop_version": manifest.octop_version,
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
+        "skill_package_files": restored_skill_package_files,
         "restore_config": restore_config,
         "users_preserved": effective_preserve_users,
         "database_driver": archive_driver,

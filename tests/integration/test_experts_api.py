@@ -7,7 +7,10 @@ shape matches production exactly.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 
 async def test_list_experts_returns_bundled_library(env: Any) -> None:
@@ -115,6 +118,123 @@ async def test_create_agent_from_expert_with_provider_config(env: Any) -> None:
         },
     )
     assert r.status_code == 201
+
+
+async def test_create_agent_from_expert_mounts_skill_packages(env: Any) -> None:
+    c, _srv, auth = env
+    package_ids = [
+        (
+            await c.post(
+                "/api/skill-packages",
+                headers=auth,
+                json={"name": name},
+            )
+        ).json()["id"]
+        for name in ("Office", "Engineering")
+    ]
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "packaged-expert", "skill_package_ids": package_ids},
+    )
+
+    assert created.status_code == 201, created.text
+    mounted = await c.get(
+        f"/api/agents/{created.json()['agent_id']}/skill-packages",
+        headers=auth,
+    )
+    assert mounted.status_code == 200, mounted.text
+    assert mounted.json()["package_ids"] == package_ids
+    assert [package["id"] for package in mounted.json()["packages"]] == package_ids
+
+
+async def test_create_agent_from_expert_rejects_unknown_package_before_creation(env: Any) -> None:
+    c, _server, auth = env
+    agents_before = (await c.get("/api/agents", headers=auth)).json()
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "missing-package-expert", "skill_package_ids": ["MISSING"]},
+    )
+
+    assert created.status_code == 404, created.text
+    assert created.json()["error"]["code"] == "SKILL_PACKAGE_NOT_FOUND"
+    agents_after = (await c.get("/api/agents", headers=auth)).json()
+    assert {agent["agent_id"] for agent in agents_after} == {
+        agent["agent_id"] for agent in agents_before
+    }
+
+
+async def test_hub_install_mounts_skill_packages(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import experts as experts_router
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    c, server, auth = env
+    package_id = (
+        await c.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Hub package"},
+        )
+    ).json()["id"]
+    row = await server.app_runtime.agent_registry.create(
+        AgentCreateSpec(name="hub-packaged-expert", user_id=1),
+        defer_bootstrap=True,
+    )
+
+    async def fake_create_skillhub_market_agent(**_kwargs: Any) -> Any:
+        return SimpleNamespace(
+            row=row,
+            expert_id="hub-expert",
+            icon_name=None,
+            color=None,
+            slug="hub-expert",
+            welcome_enrichment="skipped",
+        )
+
+    monkeypatch.setattr(
+        experts_router, "create_skillhub_market_agent", fake_create_skillhub_market_agent
+    )
+    created = await c.post(
+        "/api/experts/hub/hub-expert/install",
+        headers=auth,
+        json={"skill_package_ids": [package_id]},
+    )
+
+    assert created.status_code == 201, created.text
+    mounted = await c.get(f"/api/agents/{row.agent_id}/skill-packages", headers=auth)
+    assert mounted.status_code == 200, mounted.text
+    assert mounted.json()["package_ids"] == [package_id]
+    assert [package["id"] for package in mounted.json()["packages"]] == [package_id]
+
+
+async def test_hub_install_rejects_unknown_package_before_creation(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers import experts as experts_router
+
+    c, _server, auth = env
+    create_called = False
+
+    async def fake_create_skillhub_market_agent(**_kwargs: Any) -> Any:
+        nonlocal create_called
+        create_called = True
+        raise AssertionError("agent creation must not run for an unknown package")
+
+    monkeypatch.setattr(
+        experts_router, "create_skillhub_market_agent", fake_create_skillhub_market_agent
+    )
+    created = await c.post(
+        "/api/experts/hub/hub-expert/install",
+        headers=auth,
+        json={"skill_package_ids": ["MISSING"]},
+    )
+
+    assert created.status_code == 404, created.text
+    assert created.json()["error"]["code"] == "SKILL_PACKAGE_NOT_FOUND"
+    assert create_called is False
 
 
 async def test_get_expert_includes_file_contents(env: Any) -> None:

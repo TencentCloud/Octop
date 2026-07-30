@@ -269,6 +269,20 @@ def _download_skillhub_package(
     return parse_skillhub_package(payload)
 
 
+def download_skillhub_package_files(
+    slug: str,
+    *,
+    host: str | None = None,
+    timeout: float = 30.0,
+) -> list[tuple[str, bytes]]:
+    """Synchronously download and validate one public SkillHub skill package."""
+    return _download_skillhub_package(
+        _resolve_host(host),
+        slug,
+        timeout=timeout,
+    )
+
+
 def _fetch_ranking_json(
     host: str,
     ranking_type: str,
@@ -335,9 +349,9 @@ async def download_skillhub_package(
 ) -> list[tuple[str, bytes]]:
     """Download and validate a public SkillHub skill package over HTTP."""
     return await asyncio.to_thread(
-        _download_skillhub_package,
-        _resolve_host(host),
+        download_skillhub_package_files,
         slug,
+        host=host,
         timeout=timeout,
     )
 
@@ -409,6 +423,7 @@ __all__ = [
     "SkillHubMarketTimeout",
     "SkillHubPackageError",
     "SkillHubPackageTooLarge",
+    "download_skillhub_package_files",
     "download_skillhub_package",
     "fetch_skillhub_rankings",
     "parse_skillhub_package",

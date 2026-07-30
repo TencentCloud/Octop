@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,6 +32,25 @@ __all__ = [
 ]
 
 
+def _encode_mcp_servers(names: list[str] | None) -> str:
+    cleaned = [str(n).strip() for n in (names or []) if str(n).strip()]
+    return json.dumps(cleaned, ensure_ascii=False)
+
+
+def _decode_mcp_servers(raw: Any) -> list[str]:
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [str(n).strip() for n in raw if str(n).strip()]
+    try:
+        parsed = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(n).strip() for n in parsed if str(n).strip()]
+
+
 @dataclass(frozen=True)
 class CronJobRow:
     id: int
@@ -44,6 +64,7 @@ class CronJobRow:
     fresh_thread: int
     enabled: int
     task_type: str
+    mcp_servers: list[str]
     last_run_at: int | None
     last_status: str | None
     last_error: str | None
@@ -64,6 +85,7 @@ class CronJobRow:
             fresh_thread=r["fresh_thread"],
             enabled=r["enabled"],
             task_type=normalize_cron_task_type(str(r["task_type"])),
+            mcp_servers=_decode_mcp_servers(r["mcp_servers"]),
             last_run_at=r["last_run_at"],
             last_status=r["last_status"],
             last_error=r["last_error"],
@@ -81,6 +103,7 @@ class CronJobRow:
             "fresh_thread": bool(self.fresh_thread),
             "enabled": bool(self.enabled),
             "task_type": self.task_type,
+            "mcp_servers": list(self.mcp_servers),
             "last_run_at": self.last_run_at,
             "last_status": self.last_status,
         }
@@ -106,13 +129,15 @@ class CronJobRepo:
         fresh_thread: bool = False,
         model: str | None = None,
         task_type: CronTaskType = DEFAULT_CRON_TASK_TYPE,
+        mcp_servers: list[str] | None = None,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO cron_jobs(cron_id, agent_id, user_id, schedule_spec, prompt, "
-                "session_key, model, fresh_thread, task_type, enabled, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                "session_key, model, fresh_thread, task_type, mcp_servers, enabled, "
+                "created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
                 (
                     cron_id,
                     agent_id,
@@ -123,6 +148,7 @@ class CronJobRepo:
                     model,
                     bool_int(fresh_thread),
                     task_type,
+                    _encode_mcp_servers(mcp_servers),
                     ts,
                     ts,
                 ),
@@ -178,6 +204,7 @@ class CronJobRepo:
         enabled: bool | None = None,
         task_type: CronTaskType | None = None,
         model: str | None | object = UNSET,
+        mcp_servers: list[str] | None | object = UNSET,
     ) -> None:
         fields, params = partial_updates(
             [
@@ -193,6 +220,11 @@ class CronJobRepo:
         if model is not UNSET:
             fields.append("model = ?")
             params.append(model)
+        if mcp_servers is not UNSET:
+            fields.append("mcp_servers = ?")
+            params.append(
+                _encode_mcp_servers(mcp_servers if isinstance(mcp_servers, list) else None)
+            )
         if enabled is not None:
             fields.append("enabled = ?")
             params.append(bool_int(enabled))

@@ -11,3 +11,134 @@
     padding: 8px 12px;
   }
 }
+
+/** Desktop path-tab label: icon + text. */
+.pathTabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/**
+ * Mobile path tabs (Workbench / Personalization): full-width Segmented
+ * under the title, not squeezed into the title row.
+ */
+.pathTabsMobile {
+  flex-shrink: 0;
+  margin: -4px 0 12px;
+}
+
+.pathTabsMobileSegmented {
+  width: 100%;
+
+  :global(.ant-segmented-item-label),
+  :global(.octop-segmented-item-label) {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+}
+
+/**
+ * Pin Ant Design Tabs nav; only the active pane scrolls.
+ * Use inside PageShell with `fill` (desktop).
+ */
+.fillTabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* App uses ConfigProvider prefixCls="octop"; keep ant-* as fallback. */
+  :global(.octop-tabs),
+  :global(.ant-tabs) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :global(.octop-tabs-nav),
+  :global(.ant-tabs-nav) {
+    margin-bottom: 12px;
+    flex-shrink: 0;
+  }
+
+  :global(.octop-tabs-content-holder),
+  :global(.ant-tabs-content-holder) {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  :global(.octop-tabs-content),
+  :global(.ant-tabs-content) {
+    height: 100% !important;
+  }
+
+  :global(.octop-tabs-tabpane),
+  :global(.ant-tabs-tabpane) {
+    height: 100% !important;
+  }
+
+  @media (max-width: 767px) {
+    flex: none;
+    overflow: visible;
+
+    :global(.octop-tabs-content-holder),
+    :global(.ant-tabs-content-holder),
+    :global(.octop-tabs-content),
+    :global(.ant-tabs-content),
+    :global(.octop-tabs-tabpane),
+    :global(.ant-tabs-tabpane) {
+      height: auto !important;
+      overflow: visible;
+    }
+  }
+}
+
+/**
+ * Custom tab bar + body: pin the first sticky child (tab bar),
+ * scroll the remaining body. Use inside PageShell with `fill`.
+ */
+.tabbed {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  @media (max-width: 767px) {
+    flex: none;
+    overflow: visible;
+  }
+}
+
+.tabbedBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* Keep card tops / hover translateY inside the scrollport (margin on
+     the tab bar sits outside this box and cannot prevent clipping). */
+  padding-top: 8px;
+
+  @media (max-width: 767px) {
+    flex: none;
+    overflow: visible;
+    padding-top: 0;
+  }
+}
+
+/** Stretch a child that manages its own internal scroll (skills / memory panels). */
+.fillChild {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  @media (max-width: 767px) {
+    flex: none;
+    overflow: visible;
+  }
+}

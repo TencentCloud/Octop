@@ -77,6 +77,59 @@
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.3;
+  min-width: 0;
+}
+
+.agentCard2NameRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agentCard2NameActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .agentCard2NameActions {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .agentCard2NameRow:hover .agentCard2NameActions,
+  .agentCard2NameRow:focus-within .agentCard2NameActions {
+    opacity: 1;
+  }
+}
+
+.agentCard2NameActionBtn,
+.agentCard2NameDelBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--fn-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: var(--fn-text-tertiary);
+  transition:
+    color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+    background: var(--fn-sidebar-item-hover);
+  }
+}
+
+.agentCard2NameDelBtn:hover {
+  color: #ff4d4f;
 }
 
 .agentCardId {

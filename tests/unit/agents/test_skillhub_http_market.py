@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from octop.infra.agents import skillhub_market
+from octop.infra.skills import skillhub_market
 
 
 class _BytesResponse:

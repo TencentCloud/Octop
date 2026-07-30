@@ -1,9 +1,3 @@
-.connectorsPage {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .loadingState {
   display: flex;
   justify-content: center;
@@ -35,6 +29,9 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
+  /* Extra room for 2px border + hover translateY(-2px) inside overflow. */
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 .instanceGrid {
@@ -514,9 +511,26 @@
 .tabBar {
   display: flex;
   gap: 0;
-  margin-bottom: 4px;
+  margin-bottom: 16px;
   border-bottom: 1px solid var(--fn-border-secondary);
   flex-shrink: 0;
+  background: var(--fn-bg-container, var(--fn-bg-elevated));
+}
+
+.listToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.listToolbarMeta {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fn-text-secondary);
+  min-width: 0;
 }
 
 .tab {

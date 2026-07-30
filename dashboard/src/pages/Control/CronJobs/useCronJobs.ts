@@ -29,6 +29,7 @@ export interface CronJobFormValues {
   model?: string;
   fresh_thread: boolean;
   session_key?: string | null;
+  mcp_servers?: string[];
 }
 
 function promptLabel(prompt: string, id: string): string {
@@ -78,6 +79,7 @@ function fromOctop(row: OctopCronRow, timezone: string): CronJob {
       octop_session_key: row.session_key,
       octop_model: row.model,
       octop_task_type: row.task_type,
+      octop_mcp_servers: row.mcp_servers ?? [],
       octop_last_run_at: row.last_run_at,
       octop_last_status: row.last_status,
       octop_last_error: row.last_error,
@@ -125,6 +127,9 @@ export function jobToFormValues(
       typeof meta.octop_session_key === "string"
         ? meta.octop_session_key
         : null,
+    mcp_servers: Array.isArray(meta.octop_mcp_servers)
+      ? (meta.octop_mcp_servers as string[])
+      : [],
     _scheduleMode: matchedPreset ? "preset" : "custom",
     _preset: matchedPreset || "daily_9am",
   };
@@ -147,6 +152,7 @@ function toOctopCreateBody(values: CronJobFormValues) {
     session_key: values.session_key || null,
     fresh_thread: Boolean(values.fresh_thread),
     model: defaultModelFromForm(values.model),
+    mcp_servers: values.mcp_servers ?? [],
   };
 }
 

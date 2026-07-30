@@ -58,62 +58,36 @@
   overflow: hidden;
 }
 
-.fileModalToolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-  background: var(--fn-bg-secondary);
-  flex: none;
-}
-
-.fileModalToolbarLeft {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  flex: 1;
-}
-
 .fileModalName {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  font-family: var(--fn-font-mono, ui-monospace, monospace);
   color: var(--fn-text-primary);
 }
 
 .fileModalSelect {
-  max-width: min(100%, 480px);
-}
-
-.fileModalActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
+  max-width: min(100%, 360px);
 }
 
 .fileModalIconBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--fn-border-secondary);
-  border-radius: var(--fn-radius-medium);
-  background: var(--fn-bg-primary);
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--fn-text-secondary);
   cursor: pointer;
   padding: 0;
 
   &:hover:not(:disabled) {
-    color: var(--fn-text-brand);
-    border-color: var(--fn-color-brand);
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-secondary);
   }
 
   &:focus-visible {

@@ -32,6 +32,8 @@ interface SkillCardProps {
   onMouseLeave: () => void;
   onToggleEnabled: (e: React.MouseEvent) => void;
   onDelete?: (e?: React.MouseEvent) => void;
+  /** When false, hide the enable/disable action (e.g. package not mounted). */
+  showEnableToggle?: boolean;
 }
 
 /**
@@ -190,6 +192,7 @@ export function SkillCard({
   onMouseLeave,
   onToggleEnabled,
   onDelete,
+  showEnableToggle = true,
 }: SkillCardProps) {
   const { t } = useTranslation();
   const skillDisplayName = useSkillDisplayName();
@@ -279,36 +282,40 @@ export function SkillCard({
             {t("common.viewDetail")}
           </button>
 
-          <div className={styles.footerActions}>
-            {isCustomized && onDelete && (
-              <button
-                type="button"
-                className={styles.deleteIconBtn}
-                onClick={handleDeleteClick}
-                disabled={skill.enabled}
-                aria-label={t("common.delete")}
-                title={
-                  skill.enabled
-                    ? t("skills.disableBeforeDelete")
-                    : (t("common.delete") as string)
-                }
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
-            <button
-              type="button"
-              className={`${styles.applyBtn} ${
-                skill.enabled ? styles.appliedBtn : styles.applyActiveBtn
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleEnabled(e);
-              }}
-            >
-              {skill.enabled ? t("common.disable") : t("skills.applyNow")}
-            </button>
-          </div>
+          {(isCustomized && onDelete) || showEnableToggle ? (
+            <div className={styles.footerActions}>
+              {isCustomized && onDelete && (
+                <button
+                  type="button"
+                  className={styles.deleteIconBtn}
+                  onClick={handleDeleteClick}
+                  disabled={skill.enabled}
+                  aria-label={t("common.delete")}
+                  title={
+                    skill.enabled
+                      ? t("skills.disableBeforeDelete")
+                      : (t("common.delete") as string)
+                  }
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+              {showEnableToggle ? (
+                <button
+                  type="button"
+                  className={`${styles.applyBtn} ${
+                    skill.enabled ? styles.appliedBtn : styles.applyActiveBtn
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleEnabled(e);
+                  }}
+                >
+                  {skill.enabled ? t("common.disable") : t("skills.applyNow")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

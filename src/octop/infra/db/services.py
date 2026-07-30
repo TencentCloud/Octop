@@ -18,6 +18,7 @@ from octop.infra.db.repos.providers import ProviderRepo
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.settings import SettingsRepo
+from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.users import UserRepo
@@ -42,6 +43,7 @@ class RepoBundle:
     settings_repo: SettingsRepo
     storage_backend_repo: BackendRepo
     connector_repo: ConnectorRepo
+    skill_package_repo: SkillPackageRepo
     voice_provider_repo: VoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
@@ -63,6 +65,7 @@ class RepoBundle:
             settings_repo=SettingsRepo(db),
             storage_backend_repo=BackendRepo(db),
             connector_repo=ConnectorRepo(db),
+            skill_package_repo=SkillPackageRepo(db),
             voice_provider_repo=VoiceProviderRepo(db),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
@@ -130,6 +133,10 @@ class SharedServices:
     @property
     def connector_repo(self) -> ConnectorRepo:
         return self.repos.connector_repo
+
+    @property
+    def skill_package_repo(self) -> SkillPackageRepo:
+        return self.repos.skill_package_repo
 
     @property
     def voice_provider_repo(self) -> VoiceProviderRepo:

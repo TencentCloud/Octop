@@ -127,7 +127,7 @@ def test_gateway_ima_tools():
         creds={"api_key": "k", "client_id": "c"},
         body={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
     )
-    assert len(tools["result"]["tools"]) == 4
+    assert len(tools["result"]["tools"]) == 14
 
 
 def test_gateway_ima_tool_call_dispatch():
@@ -188,7 +188,7 @@ def test_gateway_probe_accepts_valid_ima_credentials(monkeypatch: pytest.MonkeyP
         )
     )
     assert out["ok"] is True
-    assert out["tool_count"] == 4
+    assert out["tool_count"] == 14
 
 
 def test_gateway_wechat_reading_tools():

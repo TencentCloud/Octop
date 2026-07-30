@@ -22,7 +22,7 @@ import {
   CHANNEL_LABEL_KEYS,
   CHANNEL_LABELS,
   type ChannelKey,
-} from "../../Control/Channels/components/constants";
+} from "../../Agent/Channels/components/constants";
 import styles from "../index.module.less";
 
 function isChannelKey(value: string): value is ChannelKey {

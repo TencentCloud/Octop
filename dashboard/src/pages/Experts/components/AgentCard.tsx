@@ -14,10 +14,14 @@ import {
   MessageSquare,
   Bot,
   Sparkles,
+  Notebook,
+  Waypoints,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
+import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
+import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -80,6 +84,8 @@ export const AgentCard = memo(function AgentCard({
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
   const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
+  const [channelCatalogOpen, setChannelCatalogOpen] = useState(false);
+  const [memoryCatalogOpen, setMemoryCatalogOpen] = useState(false);
   const [mbtiCatalogOpen, setMbtiCatalogOpen] = useState(false);
   const [installedSubagentSlugs, setInstalledSubagentSlugs] = useState<
     Set<string>
@@ -232,7 +238,42 @@ export const AgentCard = memo(function AgentCard({
           </div>
 
           <div className={styles.agentCard2TitleBlock}>
-            <div className={styles.agentCard2Name}>{agent.name}</div>
+            <div className={styles.agentCard2NameRow}>
+              <div className={styles.agentCard2Name}>{agent.name}</div>
+              <div className={styles.agentCard2NameActions}>
+                <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.agentCard2NameActionBtn}
+                    onClick={() => onEdit(agent.agent_id)}
+                    aria-label={t("common.edit", "Edit")}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </Tooltip>
+                <Popconfirm
+                  title={t("experts.confirmDelete", { name: agent.name })}
+                  description={t("experts.confirmDeleteHint")}
+                  onConfirm={() => void handleDelete()}
+                  okText={t("common.delete", "Delete")}
+                  cancelText={t("common.cancel")}
+                  okButtonProps={{ danger: true }}
+                >
+                  <Tooltip
+                    title={t("common.delete", "Delete")}
+                    mouseEnterDelay={0.5}
+                  >
+                    <button
+                      type="button"
+                      className={styles.agentCard2NameDelBtn}
+                      aria-label={t("common.delete", "Delete")}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </Tooltip>
+                </Popconfirm>
+              </div>
+            </div>
             <Tooltip title={t("experts.copyAgentId")}>
               <button
                 type="button"
@@ -354,31 +395,27 @@ export const AgentCard = memo(function AgentCard({
             </button>
           </Tooltip>
 
-          <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
+          <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
             <button
               type="button"
               className={styles.agentCard2EditBtn}
-              onClick={() => onEdit(agent.agent_id)}
-              aria-label={t("common.edit", "Edit")}
+              onClick={() => setChannelCatalogOpen(true)}
+              aria-label={t("experts.channelsBtn")}
             >
-              <Pencil size={13} />
+              <Waypoints size={13} />
             </button>
           </Tooltip>
 
-          <Popconfirm
-            title={t("experts.confirmDelete", { name: agent.name })}
-            description={t("experts.confirmDeleteHint")}
-            onConfirm={() => void handleDelete()}
-            okText={t("common.delete", "Delete")}
-            cancelText={t("common.cancel")}
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title={t("common.delete", "Delete")} mouseEnterDelay={0.5}>
-              <button className={styles.agentCard2DelBtn}>
-                <Trash2 size={13} />
-              </button>
-            </Tooltip>
-          </Popconfirm>
+          <Tooltip title={t("experts.memoryBtn")} mouseEnterDelay={0.5}>
+            <button
+              type="button"
+              className={styles.agentCard2EditBtn}
+              onClick={() => setMemoryCatalogOpen(true)}
+              aria-label={t("experts.memoryBtn")}
+            >
+              <Notebook size={13} />
+            </button>
+          </Tooltip>
 
           {chatReady ? (
             <button
@@ -426,6 +463,16 @@ export const AgentCard = memo(function AgentCard({
         agentId={agent.agent_id}
         open={skillCatalogOpen}
         onClose={() => setSkillCatalogOpen(false)}
+      />
+      <ChannelCatalogDrawer
+        agentId={agent.agent_id}
+        open={channelCatalogOpen}
+        onClose={() => setChannelCatalogOpen(false)}
+      />
+      <MemoryCatalogDrawer
+        agentId={agent.agent_id}
+        open={memoryCatalogOpen}
+        onClose={() => setMemoryCatalogOpen(false)}
       />
       <MbtiCatalogDrawer
         open={mbtiCatalogOpen}

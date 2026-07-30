@@ -98,27 +98,55 @@
   background: rgba(0, 0, 0, 0.65);
 }
 
-/* Chat-only toolbar: mode switch (left) + close (right). Draggable in popup. */
+/* Unified dock chrome: title | actions | divider | layout + close. Draggable in popup. */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: 6px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--fn-border-secondary);
-  background: var(--fn-bg-secondary);
+  background: var(--fn-bg-primary);
   color: var(--fn-text-primary);
   flex-shrink: 0;
   cursor: grab;
+  min-height: 40px;
 
   &:active {
     cursor: grabbing;
   }
 }
 
+.toolbarTitle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: min(50%, 420px);
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--fn-border-secondary);
+  flex-shrink: 0;
+}
+
 .toolbarModes {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
@@ -127,9 +155,25 @@
   min-width: 0;
 }
 
+.toolbarIconBtn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  color: var(--fn-text-secondary) !important;
+  border-radius: 6px !important;
+
+  &:hover {
+    color: var(--fn-text-primary) !important;
+    background: var(--fn-bg-secondary) !important;
+  }
+}
+
 /* Active-mode indicator on the layout toggle buttons. */
 .modeActive {
-  color: var(--fn-text-brand) !important;
-  background: var(--fn-bg-active) !important;
-  border-radius: 4px;
+  color: var(--fn-text-primary) !important;
+  background: var(--fn-bg-secondary) !important;
+  border-radius: 6px;
 }

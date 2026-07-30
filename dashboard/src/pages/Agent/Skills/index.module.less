@@ -89,6 +89,125 @@
   padding: 20px 0 40px;
 }
 
+.skillPackagesLoading {
+  display: block;
+  margin: 48px auto;
+}
+
+.packageMountHint {
+  margin: 0 0 12px;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.packageDetailDesc {
+  margin: 0 0 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.packageDetailHint {
+  margin: 0 0 16px;
+  color: var(--fn-text-secondary);
+}
+
+.packageConflictHint {
+  display: block;
+  margin: 6px 0 12px;
+  color: var(--fn-warning-color, #d48806);
+}
+
+.packageSkillRowList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.packageSkillRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  overflow: hidden;
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal, var(--fn-border-secondary));
+  border-radius: var(--fn-radius-md);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+
+  &:hover {
+    border-color: var(--fn-color-brand);
+    box-shadow: var(--fn-shadow-sm);
+  }
+}
+
+.packageSkillRowMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.packageSkillRowIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--fn-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.packageSkillRowIconImg {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--fn-radius-sm);
+  object-fit: cover;
+}
+
+.packageSkillRowEmoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.packageSkillRowMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.packageSkillRowLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.packageSkillRowDesc {
+  font-size: 11px;
+  color: var(--fn-text-quaternary, var(--fn-text-tertiary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.packageSkillRowAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-left: 1px solid var(--fn-border-secondary);
+  flex-shrink: 0;
+}
+
+
 .skillsTable {
   width: 100%;
 
@@ -436,6 +555,13 @@
   .skillCard:hover & {
     transform: scale(1.08);
   }
+}
+
+.packageIconImage {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
 }
 
 .cardMeta {
@@ -829,4 +955,21 @@
   margin-top: 8px;
   font-size: 13px;
   color: var(--fn-text-secondary);
+}
+
+.importOverwriteRow {
+  margin-top: 14px;
+}
+
+.zipPickerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.zipFileName {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  word-break: break-all;
 }

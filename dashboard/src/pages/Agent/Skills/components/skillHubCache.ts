@@ -1,3 +1,4 @@
+import type { SkillHubInfo } from "./SkillCard";
 import type { SkillHubSkill } from "./SkillHubDetailDrawer";
 
 const RANKINGS_CACHE_KEY = "octop:skillhub-rankings:v1";
@@ -30,4 +31,16 @@ export function saveRankingsCache(data: Record<string, SkillHubSkill[]>): void {
   } catch {
     // localStorage may be full or unavailable; ignore silently.
   }
+}
+
+/** Flatten rankings cache into a slug → presentation map (same as installed skills). */
+export function hubInfoBySlugFromCache(): Map<string, SkillHubInfo> {
+  const bySlug = new Map<string, SkillHubInfo>();
+  const cached = loadRankingsCache() ?? {};
+  for (const rows of Object.values(cached)) {
+    for (const row of rows) {
+      bySlug.set(row.slug, row);
+    }
+  }
+  return bySlug;
 }

@@ -29,6 +29,7 @@ delete is the right long-term answer.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import logging
 import os
@@ -37,7 +38,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import urlparse
 
 import yaml
 from fastapi import APIRouter, Depends, Request
@@ -45,16 +45,21 @@ from pydantic import BaseModel
 
 from octop.api.common.agent import require_agent_row
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.manager import skills_disabled_set as _disabled_set
-from octop.infra.agents.skill_packages import (
+from octop.infra.agents.manager import (
+    skill_package_ids_list,
+)
+from octop.infra.agents.manager import (
+    skills_disabled_set as _disabled_set,
+)
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.skills.skill_package_store import SkillPackageStore
+from octop.infra.skills.skill_packages import (
     SkillPackageError,
     SkillPackageTooLarge,
     read_cli_skill_install,
     resolve_skill_package,
-    resolve_workspace_uploads,
     validate_skill_slug,
 )
-from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
@@ -171,8 +176,9 @@ def _summary_dict(
 
 
 def _valid_skillhub_icon_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+    from octop.infra.skills.install import valid_skillhub_icon_url  # noqa: PLC0415
+
+    return valid_skillhub_icon_url(value)
 
 
 def _with_skillhub_presentation_metadata(
@@ -181,36 +187,15 @@ def _with_skillhub_presentation_metadata(
     display_name: str,
     icon_url: str,
 ) -> str:
-    """Persist SkillHub presentation fields without changing the stable skill id."""
-    if not display_name and not icon_url:
-        return content
+    from octop.infra.skills.install import (  # noqa: PLC0415
+        with_skillhub_presentation_metadata,
+    )
 
-    meta, body = _parse_frontmatter(content)
-    metadata = meta.get("metadata")
-    metadata = {} if not isinstance(metadata, dict) else dict(metadata)
-    octop_meta = metadata.get("octop")
-    octop_meta = {} if not isinstance(octop_meta, dict) else dict(octop_meta)
-
-    octop_meta["source"] = "skillhub"
-    if display_name:
-        octop_meta["display_name"] = display_name
-    if icon_url:
-        octop_meta["icon_url"] = icon_url
-    metadata["octop"] = octop_meta
-    meta["metadata"] = metadata
-
-    dumped = yaml.safe_dump(
-        meta,
-        allow_unicode=True,
-        default_flow_style=False,
-        sort_keys=False,
-    ).rstrip()
-    rendered = f"---\n{dumped}\n---\n"
-    if body:
-        rendered += f"\n{body}"
-    if content.endswith("\n") and not rendered.endswith("\n"):
-        rendered += "\n"
-    return rendered
+    return with_skillhub_presentation_metadata(
+        content,
+        display_name=display_name,
+        icon_url=icon_url,
+    )
 
 
 def _skill_manifest_path(name: str, kind: str, workspace: Any) -> str:
@@ -233,6 +218,32 @@ async def _resolve_skill(
             continue
         return manifest_path, kind, body
     return None
+
+
+async def _guard_package_only_skill_write(
+    workspace: Any,
+    config: dict[str, Any],
+    server: Any,
+    slug: str,
+) -> None:
+    """Reject writes that would alter a skill supplied only by a mounted package."""
+    workspace_manifest = await _aread_text(workspace, f"{_SKILLS_ROOT}/{slug}/SKILL.md")
+    if workspace_manifest is not None:
+        metadata, _body = _parse_frontmatter(workspace_manifest)
+        if not metadata.get("removed"):
+            return
+
+    assert server.services is not None
+    store = SkillPackageStore(
+        repo=server.services.skill_package_repo,
+        root=server.paths.skill_packages_dir,
+    )
+    for package_id in skill_package_ids_list(config):
+        if any(skill["slug"] == slug for skill in store.list_skill_summaries(package_id)):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                f"skill {slug!r} is supplied by a mounted package",
+            )
 
 
 def _resolve_skillhub_bin() -> str | None:
@@ -476,6 +487,62 @@ async def list_skills(
     )
 
 
+class SkillPackageMountBody(BaseModel):
+    package_ids: list[str]
+
+
+@router.get(
+    "/agents/{agent_id}/skill-packages",
+    summary="List global skill packages mounted on an agent",
+)
+async def list_skill_package_mounts(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    assert server.app_runtime is not None
+    package_ids = skill_package_ids_list(server.app_runtime.agent_registry.get_config(agent_id))
+    assert server.services is not None
+    store = SkillPackageStore(
+        repo=server.services.skill_package_repo,
+        root=server.paths.skill_packages_dir,
+    )
+    packages: list[dict[str, Any]] = []
+    for package_id in package_ids:
+        package = store.repo.get(package_id)
+        if package is None:
+            continue
+        packages.append(
+            {
+                "id": package.id,
+                "name": package.name,
+                "description": package.description,
+                "skills": store.list_skill_summaries(package_id),
+            }
+        )
+    return {"package_ids": package_ids, "packages": packages}
+
+
+@router.put(
+    "/agents/{agent_id}/skill-packages",
+    summary="Replace global skill packages mounted on an agent",
+)
+async def replace_skill_package_mounts(
+    agent_id: str,
+    body: SkillPackageMountBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, list[str]]:
+    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    assert server.app_runtime is not None
+    package_ids = skill_package_ids_list({"skill_package_ids": body.package_ids})
+    await server.app_runtime.agent_registry.persist_skill_package_ids(agent_id, package_ids)
+    return {"package_ids": package_ids}
+
+
 @router.get("/agents/{agent_id}/skills/{name}")
 async def get_skill(
     agent_id: str,
@@ -504,9 +571,21 @@ async def get_skill(
 # --- write endpoints --------------------------------------------------------
 
 
+class SkillFilePart(BaseModel):
+    path: str
+    content_base64: str
+
+
 class CreateSkillBody(BaseModel):
     name: str
-    content: str
+    content: str = ""
+    files: list[SkillFilePart] | None = None
+    overwrite: bool = False
+
+
+class UpdateSkillBody(BaseModel):
+    content: str = ""
+    files: list[SkillFilePart] | None = None
 
 
 class ImportSkillBody(BaseModel):
@@ -514,6 +593,27 @@ class ImportSkillBody(BaseModel):
     version: str = ""
     enable: bool = True
     overwrite: bool = False
+
+
+def _files_from_skill_body(
+    *,
+    content: str,
+    files: list[SkillFilePart] | None,
+) -> list[tuple[str, bytes]]:
+    if files:
+        decoded: list[tuple[str, bytes]] = []
+        for part in files:
+            try:
+                decoded.append((part.path, base64.b64decode(part.content_base64, validate=True)))
+            except Exception as exc:
+                raise OctopError(
+                    ErrorCode.SLASH_BAD_ARGS,
+                    f"invalid base64 content for {part.path!r}",
+                ) from exc
+        return decoded
+    if not content:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "content or files is required")
+    return [("SKILL.md", content.encode("utf-8"))]
 
 
 @router.post("/agents/{agent_id}/skills", status_code=201)
@@ -529,7 +629,7 @@ async def create_skill(
         name = validate_skill_slug(body.name)
         package = resolve_skill_package(
             slug=name,
-            files=[("SKILL.md", body.content.encode("utf-8"))],
+            files=_files_from_skill_body(content=body.content, files=body.files),
             source="manual",
         )
     except SkillPackageTooLarge as exc:
@@ -537,15 +637,105 @@ async def create_skill(
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
     target = package.workspace_uploads()[0][0]
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
     # Don't clobber an existing skill — return 409 instead.
     existing = await _aread_text(ctx.workspace, target)
     if existing is not None:
         meta, _ = _parse_frontmatter(existing)
-        if not meta.get("removed"):
-            raise OctopError(ErrorCode.USERNAME_TAKEN, f"skill {name!r} already exists")
+        if not meta.get("removed") and not body.overwrite:
+            raise OctopError(ErrorCode.SKILL_ALREADY_EXISTS, f"skill {name!r} already exists")
+    with contextlib.suppress(Exception):
+        await ctx.workspace.adelete(f"skills/{name}")
     await ctx.workspace.aupload_many(package.workspace_uploads())
-    meta, _body = _parse_frontmatter(body.content)
+    skill_md = next(
+        (content for path, content in package.files if path == "SKILL.md"),
+        body.content.encode("utf-8"),
+    )
+    meta, _body = _parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
     return _summary_dict(name, meta, enabled=True, kind="workspace")
+
+
+@router.put("/agents/{agent_id}/skills/{name}")
+async def update_skill(
+    agent_id: str,
+    name: str,
+    body: UpdateSkillBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Overwrite an installed workspace skill via BackendWorkspace only."""
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    try:
+        slug = validate_skill_slug(name)
+        package = resolve_skill_package(
+            slug=slug,
+            files=_files_from_skill_body(content=body.content, files=body.files),
+            source="manual",
+        )
+    except SkillPackageTooLarge as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    except SkillPackageError:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+
+    target = package.workspace_uploads()[0][0]
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
+    existing = await _aread_text(ctx.workspace, target)
+    if existing is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
+    meta_existing, _ = _parse_frontmatter(existing)
+    if meta_existing.get("removed"):
+        raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
+
+    with contextlib.suppress(Exception):
+        await ctx.workspace.adelete(f"skills/{slug}")
+    await ctx.workspace.aupload_many(package.workspace_uploads())
+    skill_md = next(
+        (content for path, content in package.files if path == "SKILL.md"),
+        body.content.encode("utf-8"),
+    )
+    meta, _body = _parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+    disabled = _disabled_set(ctx.config)
+    return _summary_dict(
+        slug,
+        meta,
+        enabled=slug not in disabled,
+        kind="workspace",
+    )
+
+
+class _AgentWorkspaceInstallTarget:
+    """Install skills into an agent workspace (``skills/<slug>/``)."""
+
+    def __init__(
+        self,
+        *,
+        workspace: Any,
+        config: dict[str, Any],
+        server: Any,
+        agent_id: str,
+    ) -> None:
+        self._workspace = workspace
+        self._config = config
+        self._server = server
+        self._agent_id = agent_id
+
+    async def skill_exists(self, slug: str) -> bool:
+        return await _resolve_skill(self._workspace, slug) is not None
+
+    async def write_files(self, slug: str, files: list[tuple[str, bytes]]) -> None:
+        skill_root = f"skills/{slug}"
+        with contextlib.suppress(Exception):
+            await self._workspace.adelete(skill_root)
+        uploads = [(f"{skill_root}/{path}", content) for path, content in files]
+        await self._workspace.aupload_many(uploads)
+
+    async def after_install(self, slug: str, *, enable: bool | None = None) -> None:
+        if not enable:
+            return
+        disabled = _disabled_set(self._config)
+        disabled.discard(slug)
+        await _persist_disabled(self._server, self._agent_id, disabled)
 
 
 @router.post("/agents/{agent_id}/skills/import", status_code=201)
@@ -560,10 +750,12 @@ async def import_skill_from_url(
     """Import a skill bundle from a supported external URL into the agent workspace."""
     from urllib.error import HTTPError, URLError
 
-    from octop.infra.agents.skills_hub import (  # noqa: PLC0415
-        is_supported_skill_url,
-        resolve_bundle_from_url,
+    from octop.infra.skills.install import (  # noqa: PLC0415
+        SkillAlreadyExistsError,
+        commit_skill_install,
+        resolve_url_import,
     )
+    from octop.infra.skills.skills_hub import is_supported_skill_url  # noqa: PLC0415
 
     locale = resolve_request_locale(request)
     bundle_url = body.bundle_url.strip()
@@ -573,13 +765,37 @@ async def import_skill_from_url(
         raise OctopError.localized(ErrorCode.SKILL_IMPORT_UNSUPPORTED_URL, locale)
 
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    target = _AgentWorkspaceInstallTarget(
+        workspace=ctx.workspace,
+        config=ctx.config,
+        server=server,
+        agent_id=agent_id,
+    )
 
     try:
-        resolved = await asyncio.to_thread(
-            resolve_bundle_from_url,
+        package = await asyncio.to_thread(
+            resolve_url_import,
             bundle_url=bundle_url,
             version=body.version,
         )
+        await commit_skill_install(
+            target,
+            package,
+            overwrite=body.overwrite,
+            enable=body.enable,
+        )
+    except SkillAlreadyExistsError as exc:
+        raise OctopError.localized(
+            ErrorCode.SKILL_ALREADY_EXISTS,
+            locale,
+            name=exc.slug,
+        ) from exc
+    except SkillPackageError as exc:
+        raise OctopError.localized(
+            ErrorCode.SKILL_IMPORT_FAILED,
+            locale,
+            reason=str(exc),
+        ) from exc
     except ValueError as exc:
         raise OctopError.localized(
             ErrorCode.SKILL_IMPORT_FAILED,
@@ -599,43 +815,13 @@ async def import_skill_from_url(
             reason=str(exc),
         ) from exc
 
-    try:
-        package = resolve_workspace_uploads(
-            slug=resolved.name,
-            uploads=resolved.uploads,
-            source="url",
-            source_url=resolved.source_url,
-        )
-    except SkillPackageError as exc:
-        raise OctopError.localized(
-            ErrorCode.SKILL_IMPORT_FAILED,
-            locale,
-            reason=str(exc),
-        ) from exc
-    skill_name = package.slug
-
-    existing = await _resolve_skill(ctx.workspace, skill_name)
-    if existing is not None and not body.overwrite:
-        raise OctopError.localized(
-            ErrorCode.SKILL_ALREADY_EXISTS,
-            locale,
-            name=skill_name,
-        )
-
-    await ctx.workspace.aupload_many(package.workspace_uploads())
-
-    if body.enable:
-        disabled = _disabled_set(ctx.config)
-        disabled.discard(skill_name)
-        await _persist_disabled(server, agent_id, disabled)
-
     skill_md = next(
         (content for path, content in package.files if path == "SKILL.md"),
         b"",
     )
     meta, _body = _parse_frontmatter(skill_md.decode("utf-8"))
     return _summary_dict(
-        skill_name,
+        package.slug,
         meta,
         enabled=body.enable,
         kind="workspace",
@@ -652,9 +838,14 @@ async def delete_skill(
 ) -> None:
     """Soft-delete via marker — see module docstring for rationale."""
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
-    resolved = await _resolve_skill(ctx.workspace, name)
+    try:
+        slug = validate_skill_slug(name)
+    except SkillPackageError:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
+    resolved = await _resolve_skill(ctx.workspace, slug)
     if resolved is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")
+        raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
     manifest_path, kind, _body = resolved
     if kind == "builtin":
         raise OctopError(ErrorCode.NOT_FOUND, f"builtin skill {name!r} cannot be deleted")
@@ -719,26 +910,13 @@ def _skillhub_uploads(
     display_name: str,
     icon_url: str,
 ) -> list[tuple[str, bytes]]:
-    transformed: list[tuple[str, bytes]] = []
-    for rel, original_content in files:
-        normalized = rel.replace("\\", "/")
-        content = original_content
-        if normalized == "SKILL.md":
-            try:
-                manifest = content.decode("utf-8")
-            except UnicodeDecodeError:
-                pass
-            else:
-                content = _with_skillhub_presentation_metadata(
-                    manifest,
-                    display_name=display_name,
-                    icon_url=icon_url,
-                ).encode("utf-8")
-        transformed.append((normalized, content))
-    return resolve_skill_package(
-        slug=skill_name,
-        files=transformed,
-        source="skillhub",
+    from octop.infra.skills.install import prepare_skillhub_package  # noqa: PLC0415
+
+    return prepare_skillhub_package(
+        skill_name,
+        files,
+        display_name=display_name,
+        icon_url=icon_url,
     ).workspace_uploads()
 
 
@@ -887,7 +1065,7 @@ async def hub_search_skills(
     locale = resolve_request_locale(request)
     query = q.strip() or "a"
     effective_limit = max(1, min(limit, 100))
-    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
+    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         search_skillhub,
     )
@@ -943,7 +1121,7 @@ async def hub_rankings(
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
 
     rtype = type if type in _RANKING_TYPES else "all"
-    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
+    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         SkillHubMarketTimeout,
         fetch_skillhub_rankings,
@@ -972,6 +1150,18 @@ async def hub_install_skill(
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
+    from octop.infra.skills.install import (  # noqa: PLC0415
+        SkillAlreadyExistsError,
+        install_skill_from_skillhub,
+        valid_skillhub_icon_url,
+    )
+    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError,
+        SkillHubPackageError,
+        SkillHubPackageTooLarge,
+        download_skillhub_package,
+    )
+
     try:
         skill_name = validate_skill_slug(body.skill_name)
     except SkillPackageError:
@@ -983,17 +1173,16 @@ async def hub_install_skill(
     icon_url = (body.icon_url or "").strip()
     if len(display_name) > 200:
         raise HTTPException(status_code=400, detail="display_name is too long")
-    if len(icon_url) > 2048 or (icon_url and not _valid_skillhub_icon_url(icon_url)):
+    if len(icon_url) > 2048 or (icon_url and not valid_skillhub_icon_url(icon_url)):
         raise HTTPException(status_code=400, detail="icon_url must be an HTTP(S) URL")
 
-    from octop.infra.agents.skillhub_market import (  # noqa: PLC0415
-        SkillHubMarketError,
-        SkillHubPackageError,
-        SkillHubPackageTooLarge,
-        download_skillhub_package,
-    )
-
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    target = _AgentWorkspaceInstallTarget(
+        workspace=ctx.workspace,
+        config=ctx.config,
+        server=server,
+        agent_id=agent_id,
+    )
     transport = "http"
     try:
         files = await download_skillhub_package(skill_name)
@@ -1016,27 +1205,24 @@ async def hub_install_skill(
             raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
 
     try:
-        uploads = _skillhub_uploads(
-            skill_name,
-            files,
+        await install_skill_from_skillhub(
+            target,
+            skill_name=skill_name,
+            files=files,
             display_name=display_name,
             icon_url=icon_url,
+            overwrite=True,
+            enable=body.enable,
         )
+    except SkillAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"skill '{exc.slug}' already exists",
+        ) from exc
     except SkillPackageTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except SkillPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if not uploads:
-        raise HTTPException(
-            status_code=502,
-            detail=f"skillhub installed nothing for '{skill_name}'",
-        )
-    await ctx.workspace.aupload_many(uploads)
-
-    if body.enable:
-        disabled = _disabled_set(ctx.config)
-        disabled.discard(skill_name)
-        await _persist_disabled(server, agent_id, disabled)
 
     return {
         "installed": True,

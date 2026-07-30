@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ClipboardPaste,
   ExternalLink,
+  RefreshCw,
   Sparkles,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -952,6 +953,15 @@ export default function ConnectorsPage() {
     return map;
   }, [instances]);
 
+  const configuredCount = useMemo(() => {
+    let count = 0;
+    for (const entry of catalog) {
+      const inst = instanceByKind.get(entry.kind);
+      if (inst?.has_credentials) count += 1;
+    }
+    return count;
+  }, [catalog, instanceByKind]);
+
   useEffect(() => {
     const oauthState = searchParams.get("oauth_state");
     if (!oauthState) return;
@@ -1009,11 +1019,10 @@ export default function ConnectorsPage() {
   }, []);
 
   return (
-    <PageShell
+    <PageShell.Tabbed
       title={t("pageShell.connectors.title")}
       subtitle={t("pageShell.connectors.subtitle")}
-    >
-      <div className={styles.connectorsPage}>
+      tabBar={
         <div className={styles.tabBar}>
           <button
             type="button"
@@ -1034,29 +1043,50 @@ export default function ConnectorsPage() {
             {t("connectors.tabCustom", "自定义连接器")}
           </button>
         </div>
-
-        {activeTab === "custom" ? (
-          <CustomMcpTab />
-        ) : loading ? (
-          <div className={styles.loadingState}>
-            <Spin />
+      }
+    >
+      {activeTab === "custom" ? (
+        <CustomMcpTab />
+      ) : (
+        <>
+          <div className={styles.listToolbar}>
+            <span className={styles.listToolbarMeta}>
+              {t("connectors.listSummary", {
+                total: catalog.length,
+                configured: configuredCount,
+                defaultValue:
+                  "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
+              })}
+            </span>
+            <Button
+              icon={<RefreshCw size={14} />}
+              loading={loading}
+              onClick={() => void refresh()}
+            >
+              {t("common.refresh")}
+            </Button>
           </div>
-        ) : (
-          <div className={styles.typeGrid}>
-            {catalog.map((entry) => (
-              <ConnectorCard
-                key={entry.kind}
-                entry={entry}
-                instance={instanceByKind.get(entry.kind) ?? null}
-                onConfigure={handleConfigure}
-                onToggleEnabled={(inst, enabled) =>
-                  void handleToggleEnabled(inst, enabled)
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
+          {loading ? (
+            <div className={styles.loadingState}>
+              <Spin />
+            </div>
+          ) : (
+            <div className={styles.typeGrid}>
+              {catalog.map((entry) => (
+                <ConnectorCard
+                  key={entry.kind}
+                  entry={entry}
+                  instance={instanceByKind.get(entry.kind) ?? null}
+                  onConfigure={handleConfigure}
+                  onToggleEnabled={(inst, enabled) =>
+                    void handleToggleEnabled(inst, enabled)
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       <ConnectorConfigDrawer
         open={drawerEntry !== null}
@@ -1065,6 +1095,6 @@ export default function ConnectorsPage() {
         onClose={handleCloseDrawer}
         onSaved={() => void handleSaved()}
       />
-    </PageShell>
+    </PageShell.Tabbed>
   );
 }

@@ -389,7 +389,7 @@ export default function ExpertsPage() {
   );
 
   return (
-    <PageShell
+    <PageShell.FillTabs
       title={t("pageShell.experts.title")}
       subtitle={t("pageShell.experts.subtitle")}
     >
@@ -429,6 +429,6 @@ export default function ExpertsPage() {
         onClose={() => setCreateExpert(null)}
         onCreated={handleCreated}
       />
-    </PageShell>
+    </PageShell.FillTabs>
   );
 }

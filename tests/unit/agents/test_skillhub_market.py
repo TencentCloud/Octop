@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from octop.infra.agents import skillhub_market
+from octop.infra.skills import skillhub_market
 
 
 def _zip_bytes(files: dict[str, str]) -> bytes:

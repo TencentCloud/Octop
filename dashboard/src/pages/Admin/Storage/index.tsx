@@ -141,7 +141,7 @@ export default function AdminStoragePage() {
   );
 
   return (
-    <PageShell
+    <PageShell.FillTabs
       title={t("storage.pageTitle")}
       subtitle={t("storage.pageSubtitle")}
     >
@@ -171,6 +171,6 @@ export default function AdminStoragePage() {
         onSaved={handleCreated}
         presetKind={presetKind}
       />
-    </PageShell>
+    </PageShell.FillTabs>
   );
 }

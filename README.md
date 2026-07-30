@@ -120,7 +120,7 @@ Built-in outbound runners include OpenCode, CodeBuddy, Claude Code, and Codex.
 
 Full setup: **[docs/acp.md](docs/acp.md)**.
 
-## 🗺️ Roadmap
+## 🧭 Roadmap
 
 Here are our mid-to-long term plans:
 

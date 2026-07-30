@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from octop.infra.agents.skill_packages import MAX_SKILL_BYTES, MAX_SKILL_FILES
+from octop.infra.skills.skill_packages import MAX_SKILL_BYTES, MAX_SKILL_FILES
 from octop.infra.utils.frontmatter import parse_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -1466,10 +1466,12 @@ def _fetch_bundle_data(
 def resolve_bundle_from_url(
     *,
     bundle_url: str,
-    version: str = "",
+    version: str | None = "",
 ) -> BundleResolveResult:
     """Fetch a remote skill bundle and return workspace upload payloads."""
-    data, source_url = _fetch_bundle_data(bundle_url, version=version)
+    # Callers sometimes pass None for an omitted version; treat as "".
+    resolved_version = (version or "").strip()
+    data, source_url = _fetch_bundle_data(bundle_url, version=resolved_version)
     name, content, references, scripts, extra_files = _normalize_bundle(data)
     if not name:
         fallback = urlparse(bundle_url).path.strip("/").split("/")[-1]

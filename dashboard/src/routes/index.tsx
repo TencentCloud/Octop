@@ -6,15 +6,14 @@ const ExpertsPage = lazy(() => import("../pages/Experts"));
 const CronJobsPage = lazy(() => import("../pages/Control/CronJobs"));
 const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const ACPPage = lazy(() => import("../pages/Agent/ACP"));
-const SkillsPage = lazy(() => import("../pages/Agent/Skills"));
+const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
+const PersonalizationPage = lazy(
+  () => import("../pages/Agent/Personalization"),
+);
 const TokenUsagePage = lazy(() => import("../pages/Control/TokenUsage"));
 
 // Lazy-loaded pages — Control
-const ChannelsPage = lazy(() => import("../pages/Control/Channels"));
 const RemoteDesktopPage = lazy(() => import("../pages/Control/RemoteDesktop"));
-const SubagentsPage = lazy(() => import("../pages/Control/Subagents"));
-const MBTIPage = lazy(() => import("../pages/Agent/MBTI"));
-const MemoryPage = lazy(() => import("../pages/Agent/Memory"));
 
 // Lazy-loaded pages — Settings
 const ModelsPage = lazy(() => import("../pages/Settings/Models"));
@@ -49,8 +48,15 @@ export const pathToKey: Record<string, string> = {
   "/experts": "experts",
   "/tasks": "tasks",
   "/connectors": "connectors",
+  "/skill-packages": "skill-packages",
   "/acp": "acp",
-  "/skills": "skills",
+  "/personalization": "personalization",
+  "/personalization/skills": "personalization",
+  "/personalization/subagents": "personalization",
+  "/personalization/channels": "channels",
+  "/personalization/mbti": "personalization",
+  "/personalization/memory": "personalization",
+  "/skills": "personalization",
   "/token-usage": "token-usage",
   // Control
   "/channels": "channels",
@@ -60,9 +66,9 @@ export const pathToKey: Record<string, string> = {
   "/terminal": "workbench",
   "/remote-browser": "workbench",
   "/remote-desktop": "remote-desktop",
-  "/subagents": "subagents",
-  "/mbti": "mbti",
-  "/memory": "memory",
+  "/subagents": "personalization",
+  "/mbti": "personalization",
+  "/memory": "personalization",
   // Admin
   "/admin/models": "models",
   // Admin
@@ -90,16 +96,23 @@ export const FULLSCREEN_PATHS = new Set([
 export const SELF_HEADER_PATHS = new Set<string>([]);
 
 /** Mobile-only fullscreen pages (custom header + no content padding). */
-export const MOBILE_FULLSCREEN_PATHS = new Set(["/subagents"]);
+export const MOBILE_FULLSCREEN_PATHS = new Set<string>([]);
 
 export function isWorkbenchPath(pathname: string): boolean {
   return pathname === "/workbench" || pathname.startsWith("/workbench/");
+}
+
+export function isPersonalizationPath(pathname: string): boolean {
+  return (
+    pathname === "/personalization" || pathname.startsWith("/personalization/")
+  );
 }
 
 export function resolveSelectedKey(pathname: string): string {
   if (pathToKey[pathname]) return pathToKey[pathname];
   if (pathname.startsWith("/chat/")) return "chat";
   if (pathname.startsWith("/workbench/")) return "workbench";
+  if (pathname.startsWith("/personalization/")) return "personalization";
   return "chat";
 }
 
@@ -113,12 +126,20 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/experts", element: <ExpertsPage /> },
   { path: "/tasks", element: <CronJobsPage /> },
   { path: "/connectors", element: <ConnectorsPage /> },
+  { path: "/skill-packages", element: <SkillPackagesPage /> },
   { path: "/acp", element: <ACPPage /> },
-  { path: "/skills", element: <SkillsPage /> },
+  { path: "/personalization/*", element: <PersonalizationPage /> },
+  {
+    path: "/skills",
+    element: <RedirectPreserveSearch to="/personalization/skills" />,
+  },
   { path: "/token-usage", element: <TokenUsagePage /> },
 
   // Control
-  { path: "/channels", element: <ChannelsPage /> },
+  {
+    path: "/channels",
+    element: <RedirectPreserveSearch to="/personalization/channels" />,
+  },
   // Workbench (terminal + browser) is keep-alive mounted in MainLayout.
   { path: "/workbench", element: null },
   { path: "/workbench/terminal", element: null },
@@ -132,9 +153,18 @@ export const routeConfigs: RouteConfig[] = [
     element: <RedirectPreserveSearch to="/workbench/browser" />,
   },
   { path: "/remote-desktop", element: <RemoteDesktopPage /> },
-  { path: "/subagents", element: <SubagentsPage /> },
-  { path: "/mbti", element: <MBTIPage /> },
-  { path: "/memory", element: <MemoryPage /> },
+  {
+    path: "/subagents",
+    element: <RedirectPreserveSearch to="/personalization/subagents" />,
+  },
+  {
+    path: "/mbti",
+    element: <RedirectPreserveSearch to="/personalization/mbti" />,
+  },
+  {
+    path: "/memory",
+    element: <RedirectPreserveSearch to="/personalization/memory" />,
+  },
   { path: "/workspace", element: <Navigate to="/experts" replace /> },
 
   // Settings
@@ -197,7 +227,6 @@ export const routeConfigs: RouteConfig[] = [
     path: "/updates",
     element: <Navigate to="/admin/advanced?tab=updates" replace />,
   },
-  { path: "/personalization", element: <Navigate to="/mbti" replace /> },
   {
     path: "/plugins",
     element: <Navigate to="/admin/plugins?tab=agent-tools" replace />,

@@ -85,6 +85,38 @@ def _ensure_column(db: DatabasePool, table: str, column: str, definition: str) -
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+def _ensure_skill_packages_table(db: DatabasePool) -> None:
+    """Create skill_packages if missing (idempotent for partial / renamed upgrades)."""
+    if _table_exists(db, "skill_packages"):
+        return
+    with db.connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE skill_packages (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              skill_count INTEGER NOT NULL DEFAULT 0,
+              icon_name TEXT NOT NULL DEFAULT '',
+              icon_url TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def _ensure_skill_packages_name_unique_index(db: DatabasePool) -> None:
+    """Backfill unique package names for DBs that applied v2 before this index existed."""
+    if not _table_exists(db, "skill_packages"):
+        return
+    with db.connect() as conn:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_packages_name ON skill_packages(name)"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -99,11 +131,49 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
             "task_type",
             "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent'))",
         )
+        _ensure_column(
+            db,
+            "cron_jobs",
+            "mcp_servers",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )
+    _ensure_skill_packages_table(db)
+    if _table_exists(db, "skill_packages"):
+        _ensure_column(db, "skill_packages", "icon_name", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "skill_packages", "icon_url", "TEXT NOT NULL DEFAULT ''")
+        _ensure_skill_packages_name_unique_index(db)
 
 
 def _apply_postgresql_migration(conn: Any, sql: str) -> None:
     for stmt in _split_pg_sql(sql):
         conn.execute(stmt)
+
+
+def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
+    """Apply one SQLite migration.
+
+    Version 2 uses ``_ensure_column`` / table helpers so re-running after a
+    partial upgrade does not fail.
+    """
+    if version == 2:
+        if _table_exists(db, "cron_jobs"):
+            _ensure_column(
+                db,
+                "cron_jobs",
+                "mcp_servers",
+                "TEXT NOT NULL DEFAULT '[]'",
+            )
+        _ensure_skill_packages_table(db)
+        if _table_exists(db, "skill_packages"):
+            _ensure_column(db, "skill_packages", "icon_name", "TEXT NOT NULL DEFAULT ''")
+            _ensure_column(db, "skill_packages", "icon_url", "TEXT NOT NULL DEFAULT ''")
+            _ensure_skill_packages_name_unique_index(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    sql = path.read_text(encoding="utf-8")
+    with db.connect() as conn:
+        conn.executescript(sql)
 
 
 def run_migrations(db: DatabasePool) -> None:
@@ -112,10 +182,9 @@ def run_migrations(db: DatabasePool) -> None:
     for version, path in _discover(db.dialect):
         if version <= _current_version(db):
             continue
-        sql = path.read_text(encoding="utf-8")
-        with db.connect() as conn:
-            if db.dialect == "postgresql":
-                with conn.transaction():
-                    _apply_postgresql_migration(conn, sql)
-            else:
-                conn.executescript(sql)
+        if db.dialect == "postgresql":
+            sql = path.read_text(encoding="utf-8")
+            with db.connect() as conn, conn.transaction():
+                _apply_postgresql_migration(conn, sql)
+        else:
+            _apply_sqlite_migration(db, version, path)

@@ -7,7 +7,7 @@ import { TFunction } from "i18next";
 import {
   CHANNEL_ICONS,
   CHANNEL_LABEL_KEYS,
-} from "../../Channels/components/constants";
+} from "../../../Agent/Channels/components/constants";
 import {
   channelFromSessionKey,
   extractPromptFromJob,

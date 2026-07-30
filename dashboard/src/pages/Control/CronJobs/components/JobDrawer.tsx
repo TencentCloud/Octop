@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import { providerApi } from "../../../../api/modules/provider";
+import { connectorsApi } from "../../../../api/modules/connectors";
 import { octopThreadsApi } from "../../../../api/modules/octopThreads";
 import {
   buildDefaultFormValues,
@@ -92,6 +93,10 @@ export function JobDrawer({
     Array<{ label: string; value: string }>
   >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [connectorOptions, setConnectorOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [connectorsLoading, setConnectorsLoading] = useState(false);
 
   const presetOptions = useMemo(
     () =>
@@ -158,6 +163,28 @@ export function JobDrawer({
       .catch(() => setSessionOptions([]))
       .finally(() => setSessionsLoading(false));
   }, [open, activeAgentId]);
+
+  useEffect(() => {
+    if (!open) {
+      setConnectorOptions([]);
+      return;
+    }
+    setConnectorsLoading(true);
+    void connectorsApi
+      .listInstances()
+      .then((instances) => {
+        setConnectorOptions(
+          (instances || []).map((i) => ({
+            value: i.mcp_server_name,
+            label: i.display_name?.trim()
+              ? `${i.display_name} (${i.mcp_server_name})`
+              : i.mcp_server_name,
+          })),
+        );
+      })
+      .catch(() => setConnectorOptions([]))
+      .finally(() => setConnectorsLoading(false));
+  }, [open]);
 
   const modelOptions = buildModelSelectOptions(
     models,
@@ -346,6 +373,27 @@ export function JobDrawer({
                 .toLowerCase()
                 .includes(input.toLowerCase())
             }
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="mcp_servers"
+          label={t("cronJobs.form.connectors")}
+          tooltip={t("cronJobs.form.connectorsTooltip")}
+          extra={
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t("cronJobs.form.connectorsHint")}
+            </Text>
+          }
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            loading={connectorsLoading}
+            placeholder={t("cronJobs.form.connectorsPlaceholder")}
+            options={connectorOptions}
+            optionFilterProp="label"
           />
         </Form.Item>
 

@@ -339,6 +339,25 @@ def install_skillset_template(*, slug: str, cache_root: Path) -> SkillHubSkillse
         return _install_skillset_template_locked(slug=safe_slug, cache_root=cache_root)
 
 
+def skill_slugs_for_skillset(item: SkillHubSkillset) -> list[str]:
+    """Return a skillset's skills, using its download manifest when needed."""
+    if item.skill_slugs:
+        return list(item.skill_slugs)
+    package = _download_skillset_package(item.slug)
+    manifest, _prompt = _parse_skillset_package(
+        package,
+        skillset_slug=item.slug,
+        fallback_content=item.content,
+    )
+    skill_slugs = _manifest_skill_slugs(manifest)
+    if not skill_slugs:
+        raise SkillHubMarketError(
+            f"SkillHub skillset {item.slug!r} has no skills",
+            kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
+        )
+    return skill_slugs
+
+
 def _install_skillset_template_locked(*, slug: str, cache_root: Path) -> SkillHubSkillset:
     item = fetch_skillset(slug)
     package = _download_skillset_package(item.slug)

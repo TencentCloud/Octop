@@ -143,6 +143,61 @@
   word-break: break-word;
 }
 
+.contentViewBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.contentViewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contentViewLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
+}
+
+.editorTabs {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.previewPane {
+  min-height: 200px;
+  padding: 12px;
+  border: 1px solid var(--fn-border-input);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-secondary);
+  overflow-y: auto;
+}
+
+.sourcePane {
+  min-height: 200px;
+  max-height: min(480px, 50vh);
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--fn-border-input);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-secondary);
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+}
+
+.emptyContent {
+  color: var(--fn-text-tertiary);
+}
+
 .viewNote {
   padding: 12px;
   background-color: var(--fn-bg-warning-light);

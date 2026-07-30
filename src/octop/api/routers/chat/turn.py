@@ -27,6 +27,7 @@ from octop.infra.gateway.media.inbound_store import inbound_rel_path
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
+    build_composer_context,
 )
 from octop.infra.gateway.process.usage_record import extract_usage_from_chunk
 from octop.infra.gateway.threads import ThreadRegistry
@@ -42,29 +43,6 @@ __all__ = [
     "prepare_dashboard_turn",
     "turn_has_content",
 ]
-
-
-def build_composer_context(
-    *,
-    mcp_servers: list[str] | None,
-    skills: list[str] | None,
-    target_agent_ids: list[str] | None,
-    model_ref: str | None,
-    default_model: str | None,
-) -> dict[str, Any] | None:
-    """Snapshot of per-turn composer selections for history display."""
-    ctx: dict[str, Any] = {}
-    if mcp_servers:
-        ctx["connectors"] = list(mcp_servers)
-    if skills:
-        ctx["skills"] = list(skills)
-    if target_agent_ids:
-        ctx["targetAgents"] = [str(x) for x in target_agent_ids]
-    model = (model_ref or "").strip()
-    default = (default_model or "").strip()
-    if model and model != default:
-        ctx["model"] = model
-    return ctx or None
 
 
 @dataclass

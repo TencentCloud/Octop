@@ -3,6 +3,7 @@ import { message, Modal } from "antd";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
 import { useAsyncResource } from "../../../hooks/useAsyncResource";
+import { parseApiError } from "../../../utils/apiError";
 import { showApiError } from "../../../utils/showApiToast";
 
 /**
@@ -25,8 +26,8 @@ export interface SkillSpec {
   name: string;
   description: string;
   enabled: boolean;
-  /** "workspace" for octop (no built-in registry). Kept for finnie parity. */
-  kind: "workspace" | "builtin";
+  /** Source of the skill. */
+  kind: "workspace" | "builtin" | "package";
   emoji?: string;
   /** Persisted SkillHub marketplace icon. */
   iconUrl?: string;
@@ -48,7 +49,7 @@ interface ServerSummary {
   name: string;
   description: string;
   enabled: boolean;
-  kind?: "workspace" | "builtin";
+  kind?: "workspace" | "builtin" | "package";
   emoji?: string;
   icon_url?: string;
 }
@@ -66,7 +67,12 @@ const toSpec = (row: ServerSummary): SkillSpec => ({
   name: row.name,
   description: row.description || "",
   enabled: row.enabled,
-  kind: row.kind === "builtin" ? "builtin" : "workspace",
+  kind:
+    row.kind === "builtin"
+      ? "builtin"
+      : row.kind === "package"
+        ? "package"
+        : "workspace",
   emoji: row.emoji,
   iconUrl: row.icon_url,
 });
@@ -148,6 +154,26 @@ export function useSkills(
     [agentId, fetchSkills, t],
   );
 
+  const updateSkill = useCallback(
+    async (slug: string, content: string): Promise<boolean> => {
+      if (!agentId) return false;
+      try {
+        await request(`/agents/${agentId}/skills/${slug}`, {
+          method: "PUT",
+          body: JSON.stringify({ content }),
+        });
+        message.success(t("skills.updateSuccess"));
+        await fetchSkills();
+        return true;
+      } catch (error) {
+        console.error("Failed to update skill", error);
+        showApiError(error, t("skills.updateFailed"), t);
+        return false;
+      }
+    },
+    [agentId, fetchSkills, t],
+  );
+
   const toggleEnabled = useCallback(
     async (skill: SkillSpec): Promise<boolean> => {
       if (!agentId) return false;
@@ -212,7 +238,10 @@ export function useSkills(
   const [importing, setImporting] = useState(false);
 
   const importFromUrl = useCallback(
-    async (bundleUrl: string): Promise<boolean> => {
+    async (
+      bundleUrl: string,
+      options?: { overwrite?: boolean },
+    ): Promise<boolean> => {
       if (!agentId) return false;
       const trimmed = bundleUrl.trim();
       if (!trimmed) return false;
@@ -220,7 +249,11 @@ export function useSkills(
         setImporting(true);
         await request(`/agents/${agentId}/skills/import`, {
           method: "POST",
-          body: JSON.stringify({ bundle_url: trimmed, enable: true }),
+          body: JSON.stringify({
+            bundle_url: trimmed,
+            enable: true,
+            overwrite: Boolean(options?.overwrite),
+          }),
         });
         message.success(t("skills.importSuccess"));
         await fetchSkills();
@@ -236,13 +269,65 @@ export function useSkills(
     [agentId, fetchSkills, t],
   );
 
+  const importFromZip = useCallback(
+    async (
+      skillsToImport: Array<{
+        slug: string;
+        files: Array<{ path: string; contentBase64: string }>;
+      }>,
+      options?: { overwrite?: boolean },
+    ) => {
+      if (!agentId) return false as const;
+      const overwrite = Boolean(options?.overwrite);
+      let imported = 0;
+      let skipped = 0;
+      let failed = 0;
+      setImporting(true);
+      try {
+        for (const skill of skillsToImport) {
+          try {
+            await request(`/agents/${agentId}/skills`, {
+              method: "POST",
+              body: JSON.stringify({
+                name: skill.slug,
+                files: skill.files.map((file) => ({
+                  path: file.path,
+                  content_base64: file.contentBase64,
+                })),
+                overwrite,
+              }),
+            });
+            imported += 1;
+          } catch (error) {
+            const code = parseApiError(error)?.code;
+            if (!overwrite && code === "SKILL_ALREADY_EXISTS") {
+              skipped += 1;
+              continue;
+            }
+            failed += 1;
+          }
+        }
+        await fetchSkills();
+        message.success(
+          t("skills.zipImportSummary", { imported, skipped, failed }),
+        );
+        return { imported, skipped, failed };
+      } finally {
+        setImporting(false);
+      }
+    },
+    [agentId, fetchSkills, t],
+  );
+
   return {
     skills,
     loading,
     fetchSkills,
     getDetail,
     createSkill,
+    updateSkill,
     importFromUrl,
+    importFromZip,
     importing,
     toggleEnabled,
     deleteSkill,

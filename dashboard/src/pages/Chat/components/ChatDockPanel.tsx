@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Tooltip } from "antd";
+import { RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import BrowserWorkspace, {
   type PanelMode,
 } from "../../../components/BrowserWorkspace";
@@ -6,7 +9,8 @@ import ChatDockPanelShell from "../../../components/BrowserWorkspace/ChatDockPan
 import type { DisplayEnvironment } from "../../../api/types/browser";
 import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import type { DockKind } from "../hooks/useChatDockPanel";
-import FilePanelContent from "./FilePanelContent";
+import styles from "../index.module.less";
+import FilePanelContent, { type FilePanelChrome } from "./FilePanelContent";
 
 interface ChatDockPanelProps {
   kind: DockKind;
@@ -38,15 +42,50 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   initialPath,
   browserEnvironment = "desktop",
 }) => {
+  const { t } = useTranslation();
   const [fileMounted, setFileMounted] = useState(kind === "file");
   const [browserMounted, setBrowserMounted] = useState(kind === "browser");
+  const [fileChrome, setFileChrome] = useState<FilePanelChrome | null>(null);
+  const browserRefreshRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (kind === "file") setFileMounted(true);
     if (kind === "browser") setBrowserMounted(true);
   }, [kind]);
 
+  const handleFileChromeChange = useCallback(
+    (chrome: FilePanelChrome | null) => {
+      setFileChrome(chrome);
+    },
+    [],
+  );
+
+  const handleBrowserRefreshReady = useCallback((refresh: () => void) => {
+    browserRefreshRef.current = refresh;
+  }, []);
+
   const sessionId = resolveBrowserProfile();
+
+  const title =
+    kind === "browser"
+      ? t("chat.remoteBrowserTitle", "远程浏览器")
+      : (fileChrome?.title ?? null);
+
+  const toolbarActions =
+    kind === "browser" ? (
+      <Tooltip title={t("browserWorkspace.reconnect")}>
+        <button
+          type="button"
+          className={styles.fileModalIconBtn}
+          onClick={() => browserRefreshRef.current?.()}
+          aria-label={t("browserWorkspace.reconnect")}
+        >
+          <RefreshCw size={16} strokeWidth={2} />
+        </button>
+      </Tooltip>
+    ) : (
+      (fileChrome?.actions ?? null)
+    );
 
   return (
     <ChatDockPanelShell
@@ -54,6 +93,8 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       onModeChange={onModeChange}
       onClose={onClose}
       style={style}
+      title={title}
+      toolbarActions={toolbarActions}
     >
       {fileMounted && (
         <div
@@ -69,6 +110,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             agentId={agentId}
             filePaths={filePaths}
             initialPath={initialPath}
+            onChromeChange={handleFileChromeChange}
           />
         </div>
       )}
@@ -86,6 +128,8 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             sessionId={sessionId}
             environment={browserEnvironment}
             style={{ flex: 1, minHeight: 0 }}
+            hideHeaderRefresh
+            onRefreshReady={handleBrowserRefreshReady}
           />
         </div>
       )}

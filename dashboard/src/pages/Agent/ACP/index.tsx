@@ -16,7 +16,7 @@ import {
   runnerToFormValues,
 } from "./components/ACPDrawer";
 import { BUILTIN_RUNNER_ORDER, isBuiltinRunner } from "./constants";
-import channelStyles from "../../Control/Channels/index.module.less";
+import channelStyles from "../Channels/index.module.less";
 import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};

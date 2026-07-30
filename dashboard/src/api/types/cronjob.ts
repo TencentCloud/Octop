@@ -75,6 +75,7 @@ export interface OctopCronRow {
   enabled: boolean;
   task_type: "text" | "agent";
   model: string | null;
+  mcp_servers?: string[];
   last_run_at: number | null;
   last_status: string | null;
   last_error: string | null;
@@ -88,6 +89,7 @@ export interface OctopCronCreateBody {
   fresh_thread?: boolean;
   model?: string | null;
   task_type?: "text" | "agent";
+  mcp_servers?: string[];
 }
 
 /** Body sent to PATCH /api/agents/:id/cron/:cron_id */
@@ -99,4 +101,5 @@ export interface OctopCronPatchBody {
   enabled?: boolean;
   model?: string | null;
   task_type?: "text" | "agent";
+  mcp_servers?: string[];
 }

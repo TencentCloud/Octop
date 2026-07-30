@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from harness_gateway.models import ImageContent, InboundMessage
 
 from octop.infra.gateway.threads import ThreadRegistry
@@ -9,6 +11,37 @@ from octop.infra.gateway.threads import ThreadRegistry
 # Persisted on HumanMessage.additional_kwargs for dashboard history UI.
 COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
+
+
+def build_composer_context(
+    *,
+    mcp_servers: list[str] | None,
+    skills: list[str] | None,
+    target_agent_ids: list[str] | None,
+    model_ref: str | None,
+    default_model: str | None,
+) -> dict[str, Any] | None:
+    """Snapshot of per-turn composer selections for history display chips.
+
+    Shared by dashboard chat and cron agent runs so MessageBubble can render
+    connector / skill / model tags the same way.
+
+    Only stamped on newly written HumanMessages — existing history is not
+    backfilled when job/chat settings change.
+    """
+    ctx: dict[str, Any] = {}
+    if mcp_servers:
+        ctx["connectors"] = list(mcp_servers)
+    if skills:
+        ctx["skills"] = list(skills)
+    if target_agent_ids:
+        ctx["targetAgents"] = [str(x) for x in target_agent_ids]
+    model = (model_ref or "").strip()
+    default = (default_model or "").strip()
+    if model and model != default:
+        ctx["model"] = model
+    return ctx or None
+
 
 try:
     from harness_gateway.push_routing import EPHEMERAL_PUSH_META

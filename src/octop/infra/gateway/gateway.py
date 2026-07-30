@@ -332,6 +332,7 @@ class Gateway:
         *,
         task_type: CronTaskType | str = "agent",
         model: str | None = None,
+        mcp_servers: list[str] | None = None,
     ) -> None:
         """Cron delivery: run agent if needed, then push text (IM channel or dashboard WS)."""
         session = self._require_session(agent_id, session_key)
@@ -343,6 +344,34 @@ class Gateway:
         if normalize_cron_task_type(str(task_type)) == "text":
             outbound = text
         else:
+            # Stamp composer chips on this run's HumanMessage only (no history backfill).
+            from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
+                COMPOSER_CTX_KEY,
+                build_composer_context,
+            )
+
+            servers = [s.strip() for s in (mcp_servers or []) if s and str(s).strip()]
+            if servers:
+                failed = await self._agent_manager.prepare_chat_mcp(
+                    agent_id,
+                    servers,
+                    connector_user_id=session.user_id,
+                )
+                if failed:
+                    raise OctopError(
+                        ErrorCode.CONNECTOR_MCP_LOAD_FAILED,
+                        f"mcp load failed: {', '.join(failed)}",
+                    )
+            row = self._agent_manager.get_row(agent_id)
+            default_model = (row.default_model if row is not None else None) or None
+            composer = build_composer_context(
+                mcp_servers=servers or None,
+                skills=None,
+                target_agent_ids=None,
+                model_ref=model,
+                default_model=default_model,
+            )
+            message_kwargs = {COMPOSER_CTX_KEY: composer} if composer else None
             request = build_harness_request(
                 thread_id=session.thread_id,
                 user_id=session.user_id,
@@ -351,7 +380,10 @@ class Gateway:
                 source=session.channel_type,
                 text=text,
                 model=model,
+                message_kwargs=message_kwargs,
             )
+            if servers:
+                request["mcp_servers"] = servers
             parts: list[str] = []
             async for chunk in self._agent_manager.stream(agent_id, request):
                 if chunk.get("type") in ("token", "delta"):

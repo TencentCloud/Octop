@@ -86,31 +86,30 @@ export default function AdvancedSettingsPage() {
   };
 
   return (
-    <PageShell
+    <PageShell.Tabbed
       title={t("pageShell.adminAdvanced.title")}
       subtitle={t("pageShell.adminAdvanced.subtitle")}
-    >
-      <div className={styles.tabBar} role="tablist">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            role="tab"
-            aria-selected={activeTab === tab.key}
-            className={`${styles.tab} ${
-              activeTab === tab.key ? styles.active : ""
-            }`}
-            onClick={() => selectTab(tab.key)}
-          >
-            {t(tab.labelKey)}
-          </button>
-        ))}
-      </div>
-
-      <div className={styles.tabContent} role="tabpanel">
-        <div className={styles.tabInner}>
-          <div className={tabStyles.panel}>{renderTab()}</div>
+      tabBar={
+        <div className={styles.tabBar} role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              className={`${styles.tab} ${
+                activeTab === tab.key ? styles.active : ""
+              }`}
+              onClick={() => selectTab(tab.key)}
+            >
+              {t(tab.labelKey)}
+            </button>
+          ))}
         </div>
+      }
+    >
+      <div className={styles.tabInner}>
+        <div className={tabStyles.panel}>{renderTab()}</div>
       </div>
-    </PageShell>
+    </PageShell.Tabbed>
   );
 }

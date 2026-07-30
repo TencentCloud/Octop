@@ -57,6 +57,7 @@ def test_run_migrations_creates_tables(db: SqlitePool):
         "voice_providers",
         "proactive_care_config",
         "care_push_records",
+        "skill_packages",
     }
     assert expected.issubset(names)
 
@@ -67,11 +68,16 @@ def test_run_migrations_idempotent(db: SqlitePool):
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 1
+    assert v == 2
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
     assert "task_type" in cron_cols
+    assert "mcp_servers" in cron_cols
+    assert "skill_packages" in {
+        r["name"]
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
 
 
 def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
@@ -91,6 +97,30 @@ def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
     with pool.connect() as conn:
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
     assert "task_type" in cron_cols
+
+
+def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) -> None:
+    """Partial upgrade: mcp_servers exists but version still 1 must not fail."""
+    db_path = tmp_path / "octop.db"
+    pool = SqlitePool(db_path)
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("ALTER TABLE cron_jobs ADD COLUMN mcp_servers TEXT NOT NULL DEFAULT '[]'")
+    run_migrations(pool)
+    with pool.connect() as conn:
+        v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
+    assert v == 2
+    assert "mcp_servers" in cron_cols
+    assert "skill_packages" in {
+        r["name"]
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
 
 
 def test_foreign_keys_enabled(db: SqlitePool):

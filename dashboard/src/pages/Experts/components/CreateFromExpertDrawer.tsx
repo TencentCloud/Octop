@@ -12,6 +12,8 @@ import {
   message,
 } from "antd";
 import { request } from "../../../api/request";
+import { skillPackagesApi } from "../../../api/modules/skillPackages";
+import type { SkillPackage } from "../../../api/types/skillPackage";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { pickLocale } from "../../../utils/localizedText";
@@ -66,6 +68,7 @@ export default function CreateFromExpertDrawer({
     backend_choice: string;
     composite_default: string;
     root_dir?: string;
+    skill_package_ids?: string[];
   }>();
   const [submitting, setSubmitting] = useState(false);
 
@@ -76,6 +79,8 @@ export default function CreateFromExpertDrawer({
 
   const [fileContents, setFileContents] = useState<FileContent[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
+  const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
@@ -91,6 +96,7 @@ export default function CreateFromExpertDrawer({
       default_model: MODEL_AUTO_VALUE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
+      skill_package_ids: [],
     });
 
     setDetailLoading(true);
@@ -109,6 +115,26 @@ export default function CreateFromExpertDrawer({
       cancelled = true;
     };
   }, [open, expert, lang, form]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setSkillPackagesLoading(true);
+    skillPackagesApi
+      .list()
+      .then((packages) => {
+        if (!cancelled) setSkillPackages(packages);
+      })
+      .catch(() => {
+        if (!cancelled) setSkillPackages([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSkillPackagesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const handleCreate = async () => {
     if (!expert) return;
@@ -150,6 +176,7 @@ export default function CreateFromExpertDrawer({
             default_model:
               defaultModelFromForm(values.default_model) ?? undefined,
             backend: backendSpec,
+            skill_package_ids: values.skill_package_ids ?? [],
           }),
         },
       );
@@ -256,6 +283,23 @@ export default function CreateFromExpertDrawer({
                 .toLowerCase()
                 .includes(input.toLowerCase())
             }
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="skill_package_ids"
+          label={t("experts.skillPackagesLabel")}
+          extra={t("experts.skillPackagesHint")}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            loading={skillPackagesLoading}
+            options={skillPackages.map((pack) => ({
+              value: pack.id,
+              label: pack.name,
+            }))}
+            placeholder={t("experts.skillPackagesPlaceholder")}
           />
         </Form.Item>
 

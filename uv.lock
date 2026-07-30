@@ -1271,11 +1271,11 @@ wheels = [
 
 [[package]]
 name = "harness-memory"
-version = "0.9.3"
+version = "0.9.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fc/3e/220f5d35f1fe1d9f1ba06abac33d71f9a85a388552f37d8bbf76ee71c62c/harness_memory-0.9.3.tar.gz", hash = "sha256:cb7549113e026b5b33b9734836ea71fcc40a3495a96080a35f4286a3f1b5314c", size = 932780 }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/ad/decd50f77d824cc5d34e76e3e2a6c702ca6d1abe9e7fae34e97474a6bcbb/harness_memory-0.9.4.tar.gz", hash = "sha256:67a07bec97587fbf10897a73051bad1401c460ddc0f54e141f68f00958deeaa0", size = 932800 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/d2/0e730fe11180f11f25e95d6fad3ebfdda859c22479cb59e457cf623e4023/harness_memory-0.9.3-py3-none-any.whl", hash = "sha256:d7831c5bd5e7b9267de93cb34700867f67869fb847e56f43dca79a297ebf3919", size = 316102 },
+    { url = "https://files.pythonhosted.org/packages/a1/d6/2dfd7203a0ecbdd1e55f4f281db335107e5dda6477c17189a079eb54b7b7/harness_memory-0.9.4-py3-none-any.whl", hash = "sha256:74b72db5ae3a09bbca4ff729a17cb6fecd79e04928e32c0b9b60e67a4dbde3ee", size = 316117 },
 ]
 
 [[package]]
@@ -2263,7 +2263,7 @@ requires-dist = [
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], editable = "../harness-agent" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.17" },
     { name = "pillow", marker = "extra == 'desktop'", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2397,8 +2397,8 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "0.9.15"
-source = { editable = "../harness-agent" }
+version = "0.9.17"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
     { name = "harness-browser" },
@@ -2414,6 +2414,10 @@ dependencies = [
     { name = "markdownify" },
     { name = "mcp" },
     { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/85/36/33232312e9e3f14bcdbf18b74606bce1e8d6e573815272ae00390d1b9b2e/orcakit_harness_agent-0.9.17.tar.gz", hash = "sha256:5775d9d7d5ed6842d6c13875806eba538fdb58cb89cbb0648be1345641f47114", size = 1119450 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/00/2335d06c28f1d8fd4dd7772a3dae223b3e70ea22e68f6b583652b7ef5be5/orcakit_harness_agent-0.9.17-py3-none-any.whl", hash = "sha256:cf17bb730c1151aa2e167c96309a592d98ae582d484bb2f938c91e906218f691", size = 1340377 },
 ]
 
 [package.optional-dependencies]
@@ -2432,77 +2436,6 @@ all = [
     { name = "pillow" },
     { name = "psutil" },
     { name = "pynput" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", marker = "extra == 'acp'", specifier = ">=0.9.0" },
-    { name = "agent-client-protocol", marker = "extra == 'all'", specifier = ">=0.9.0" },
-    { name = "click", marker = "extra == 'cli'", specifier = ">=8.1" },
-    { name = "cos-python-sdk-v5", marker = "extra == 'all'", specifier = ">=1.9" },
-    { name = "cos-python-sdk-v5", marker = "extra == 'object-storage'", specifier = ">=1.9" },
-    { name = "deepagents", specifier = ">=0.6,<1.0" },
-    { name = "deepagents-backends", marker = "python_full_version >= '3.12' and extra == 'all'", specifier = ">=0.2" },
-    { name = "deepagents-backends", marker = "python_full_version >= '3.12' and extra == 'remote-backends'", specifier = ">=0.2" },
-    { name = "esdk-obs-python", marker = "extra == 'all'", specifier = ">=3.24" },
-    { name = "esdk-obs-python", marker = "extra == 'object-storage'", specifier = ">=3.24" },
-    { name = "google-api-python-client", marker = "extra == 'all'", specifier = ">=2.0" },
-    { name = "google-api-python-client", marker = "extra == 'web-search-all'", specifier = ">=2.0" },
-    { name = "harness-browser", specifier = ">=0.7.2" },
-    { name = "harness-memory", specifier = ">=0.9.3" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "langchain", specifier = ">=1.3,<2.0" },
-    { name = "langchain-anthropic", specifier = ">=1.4,<2.0" },
-    { name = "langchain-aws", marker = "extra == 'all'", specifier = ">=0.2" },
-    { name = "langchain-aws", marker = "extra == 'bedrock'", specifier = ">=0.2" },
-    { name = "langchain-community", marker = "extra == 'all'", specifier = ">=0.3" },
-    { name = "langchain-community", marker = "extra == 'web-search-all'", specifier = ">=0.3" },
-    { name = "langchain-core", specifier = ">=1.4,<2.0" },
-    { name = "langchain-mcp-adapters", specifier = ">=0.3.0" },
-    { name = "langchain-openai", specifier = ">=0.3" },
-    { name = "langchain-tavily", marker = "extra == 'all'", specifier = ">=0.1" },
-    { name = "langchain-tavily", marker = "extra == 'web-search-all'", specifier = ">=0.1" },
-    { name = "langfuse", marker = "extra == 'all'", specifier = ">=4.9.0" },
-    { name = "langfuse", marker = "extra == 'observability'", specifier = ">=4.9.0" },
-    { name = "langgraph", specifier = ">=1.0,<2.0" },
-    { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
-    { name = "markdownify", specifier = ">=0.13" },
-    { name = "mcp", specifier = ">=1.27.1" },
-    { name = "mss", marker = "extra == 'all'", specifier = ">=9.0" },
-    { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
-    { name = "oss2", marker = "extra == 'all'", specifier = ">=2.18" },
-    { name = "oss2", marker = "extra == 'object-storage'", specifier = ">=2.18" },
-    { name = "pillow", marker = "extra == 'all'", specifier = ">=10.0" },
-    { name = "pillow", marker = "extra == 'desktop'", specifier = ">=10.0" },
-    { name = "prompt-toolkit", marker = "extra == 'cli'", specifier = ">=3.0" },
-    { name = "psutil", marker = "extra == 'acp'", specifier = ">=5.9" },
-    { name = "psutil", marker = "extra == 'all'", specifier = ">=5.9" },
-    { name = "pynput", marker = "extra == 'all'", specifier = ">=1.7" },
-    { name = "pynput", marker = "extra == 'desktop'", specifier = ">=1.7" },
-    { name = "python-dotenv", marker = "extra == 'cli'", specifier = ">=1.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rich", marker = "extra == 'cli'", specifier = ">=13.0" },
-]
-provides-extras = ["cli", "bedrock", "remote-backends", "observability", "acp", "desktop", "web-search-all", "object-storage", "all"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "agent-client-protocol", specifier = ">=0.9.0" },
-    { name = "click", specifier = ">=8.1" },
-    { name = "harness-browser", specifier = ">=0.7.2" },
-    { name = "langfuse", specifier = ">=4.9.0" },
-    { name = "mss", specifier = ">=9.0" },
-    { name = "mypy", specifier = ">=1.11" },
-    { name = "pre-commit", specifier = ">=3.8" },
-    { name = "prompt-toolkit", specifier = ">=3.0" },
-    { name = "psutil", specifier = ">=5.9" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "rich", specifier = ">=13.0" },
-    { name = "ruff", specifier = ">=0.6" },
-    { name = "types-requests" },
 ]
 
 [[package]]

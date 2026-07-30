@@ -77,6 +77,8 @@ const iconMap: Record<string, (size: number) => ReactNode> = {
   "refresh-cw": (size) => <RefreshCw size={size} />,
 };
 
+export const EXPERT_ICON_NAMES = Object.keys(iconMap);
+
 export function iconForName(
   name: string | null | undefined,
   size = 22,

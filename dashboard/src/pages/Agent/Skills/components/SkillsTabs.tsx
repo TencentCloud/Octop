@@ -13,11 +13,12 @@ import { useState } from "react";
 import { Empty } from "antd";
 import { useTranslation } from "react-i18next";
 import InstalledSkillsTab from "./InstalledSkillsTab";
+import SkillPackagesTab from "./SkillPackagesTab";
 import SkillHubTab from "./SkillHubTab";
 import { useSkills } from "../useSkills";
 import styles from "../index.module.less";
 
-type SkillsTab = "custom" | "builtin" | "skillhub";
+type SkillsTab = "custom" | "builtin" | "skillhub" | "packages";
 
 interface SkillsTabsProps {
   /** Agent whose skills are shown. */
@@ -27,7 +28,8 @@ interface SkillsTabsProps {
 export default function SkillsTabs({ agentId }: SkillsTabsProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SkillsTab>("custom");
-  const onInstalledTab = activeTab === "custom" || activeTab === "builtin";
+  const onInstalledTab =
+    activeTab === "custom" || activeTab === "builtin" || activeTab === "packages";
   const installedSkills = useSkills(agentId, { enabled: onInstalledTab });
 
   const noAgent = (
@@ -64,6 +66,14 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
         >
           {t("skills.tencentSkillHub")}
         </button>
+        <button
+          className={`${styles.tab}${
+            activeTab === "packages" ? ` ${styles.active}` : ""
+          }`}
+          onClick={() => setActiveTab("packages")}
+        >
+          {t("skills.skillPackages")}
+        </button>
       </div>
 
       <div className={styles.skillsTabsContent}>
@@ -77,8 +87,19 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
           ) : (
             noAgent
           )
-        ) : agentId ? (
-          <SkillHubTab key={agentId} activeAgentId={agentId} />
+        ) : activeTab === "skillhub" && agentId ? (
+          <SkillHubTab
+            key={agentId}
+            target={{ type: "agent", agentId }}
+          />
+        ) : activeTab === "packages" && agentId ? (
+          <SkillPackagesTab
+            key={agentId}
+            agentId={agentId}
+            skills={installedSkills.skills}
+            fetchSkills={installedSkills.fetchSkills}
+            toggleEnabled={installedSkills.toggleEnabled}
+          />
         ) : (
           noAgent
         )}

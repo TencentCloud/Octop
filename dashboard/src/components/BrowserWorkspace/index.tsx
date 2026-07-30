@@ -50,6 +50,10 @@ interface BrowserWorkspaceProps {
   /** Bookmark state for the current URL (forwarded to the address bar). */
   bookmarked?: boolean;
   onToggleBookmark?: (url: string, title: string) => void;
+  /** Hide the reconnect control in the secondary header (dock chrome owns it). */
+  hideHeaderRefresh?: boolean;
+  /** Expose reconnect handler to the parent dock toolbar. */
+  onRefreshReady?: (refresh: () => void) => void;
 }
 
 const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
@@ -58,6 +62,8 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   style,
   bookmarked = false,
   onToggleBookmark,
+  hideHeaderRefresh = false,
+  onRefreshReady,
 }) => {
   const { t } = useTranslation();
   // Viewport defaults to a fixed 1280×800 — suitable when the view is small
@@ -275,6 +281,10 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     startStream(sessionId ?? "", "");
   }, [disconnect, sessionId, startStream]);
 
+  useEffect(() => {
+    onRefreshReady?.(handleRetry);
+  }, [handleRetry, onRefreshReady]);
+
   const sessionStateLabel = useMemo(() => {
     if (controlOwner === "user") return t("browserWorkspace.userTakeoverShort");
     const key = `browserWorkspace.state.${stateLabel}`;
@@ -336,14 +346,16 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
               style={{ width: 96 }}
             />
           </Tooltip>
-          <Tooltip title={t("browserWorkspace.reconnect")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<RefreshCw size={14} />}
-              onClick={handleRetry}
-            />
-          </Tooltip>
+          {!hideHeaderRefresh && (
+            <Tooltip title={t("browserWorkspace.reconnect")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<RefreshCw size={14} />}
+                onClick={handleRetry}
+              />
+            </Tooltip>
+          )}
         </div>
       </div>
 

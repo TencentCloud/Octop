@@ -15,7 +15,7 @@ import {
   CHANNEL_ICONS,
   CHANNEL_LABEL_KEYS,
   getChannelColor,
-} from "../../Channels/components/constants";
+} from "../../../Agent/Channels/components/constants";
 import {
   channelFromSessionKey,
   extractPromptFromJob,

@@ -21,10 +21,14 @@ import {
   MessageSquare,
   Bot,
   Sparkles,
+  Notebook,
+  Waypoints,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
+import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
+import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
@@ -72,6 +76,12 @@ export default function AgentExpertsTable({
   const [skillCatalogAgentId, setSkillCatalogAgentId] = useState<string | null>(
     null,
   );
+  const [channelCatalogAgentId, setChannelCatalogAgentId] = useState<
+    string | null
+  >(null);
+  const [memoryCatalogAgentId, setMemoryCatalogAgentId] = useState<
+    string | null
+  >(null);
   const [subagentCatalogAgentId, setSubagentCatalogAgentId] = useState<
     string | null
   >(null);
@@ -343,7 +353,7 @@ export default function AgentExpertsTable({
     {
       title: t("experts.table.actions", "操作"),
       key: "actions",
-      width: 340,
+      width: 370,
       fixed: "right",
       render: (_v, row) => {
         const state = localStates[row.agent_id] ?? row.state;
@@ -399,6 +409,26 @@ export default function AgentExpertsTable({
                 aria-label={t("experts.subagentsBtn")}
               >
                 <Bot size={13} />
+              </button>
+            </Tooltip>
+            <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
+              <button
+                type="button"
+                className={styles.tableActionBtn}
+                onClick={() => setChannelCatalogAgentId(row.agent_id)}
+                aria-label={t("experts.channelsBtn")}
+              >
+                <Waypoints size={13} />
+              </button>
+            </Tooltip>
+            <Tooltip title={t("experts.memoryBtn")} mouseEnterDelay={0.5}>
+              <button
+                type="button"
+                className={styles.tableActionBtn}
+                onClick={() => setMemoryCatalogAgentId(row.agent_id)}
+                aria-label={t("experts.memoryBtn")}
+              >
+                <Notebook size={13} />
               </button>
             </Tooltip>
             <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
@@ -465,7 +495,7 @@ export default function AgentExpertsTable({
           rowKey="agent_id"
           dataSource={agents}
           columns={columns}
-          scroll={{ x: 1304, y: scrollY }}
+          scroll={{ x: 1370, y: scrollY }}
           pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,
@@ -483,6 +513,16 @@ export default function AgentExpertsTable({
         agentId={skillCatalogAgentId ?? ""}
         open={skillCatalogAgentId !== null}
         onClose={() => setSkillCatalogAgentId(null)}
+      />
+      <ChannelCatalogDrawer
+        agentId={channelCatalogAgentId ?? ""}
+        open={channelCatalogAgentId !== null}
+        onClose={() => setChannelCatalogAgentId(null)}
+      />
+      <MemoryCatalogDrawer
+        agentId={memoryCatalogAgentId ?? ""}
+        open={memoryCatalogAgentId !== null}
+        onClose={() => setMemoryCatalogAgentId(null)}
       />
       <SubagentCatalogDrawer
         agentId={subagentCatalogAgentId ?? ""}

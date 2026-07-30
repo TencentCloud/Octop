@@ -11,6 +11,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from tests.support.fakes import FakeHarnessAgent
 
 
+def _sync_fake_skill_dirs(agent: FakeHarnessAgent, config: Any) -> None:
+    """Mirror harness ``skills_dir`` onto the fake so package skills list correctly."""
+    skills_dir = getattr(config, "skills_dir", None)
+    agent.config.skills_dir = skills_dir
+    roots: list[dict[str, str]] = []
+    for raw in skills_dir or ():
+        path = Path(str(raw))
+        package_id = ""
+        parts = path.parts
+        if "skill-packages" in parts:
+            idx = parts.index("skill-packages")
+            if idx + 1 < len(parts):
+                package_id = parts[idx + 1]
+        if package_id:
+            roots.append({"id": package_id, "path": str(path)})
+    agent.config.skill_package_roots = roots or None
+
+
 def _wire_add_provider(mock_manager: MagicMock) -> None:
     def _add_provider(provider: Any) -> None:
         mock_manager._providers.append(provider)
@@ -53,6 +71,8 @@ def build_harness_manager_mock(
             if isinstance(backend_cfg, dict):
                 virtual_mode = bool(backend_cfg.get("virtual_mode", True))
             entry_agent.use_workspace_dir(Path(str(ws_dir)), virtual_mode=virtual_mode)
+        if isinstance(entry_agent, FakeHarnessAgent):
+            _sync_fake_skill_dirs(entry_agent, config)
         entry = AgentEntry(
             agent_id=aid,
             agent=entry_agent,
@@ -89,6 +109,7 @@ def build_harness_manager_mock(
             if isinstance(backend_cfg, dict):
                 virtual_mode = bool(backend_cfg.get("virtual_mode", True))
             old_agent.use_workspace_dir(ws_dir, virtual_mode=virtual_mode)
+            _sync_fake_skill_dirs(old_agent, config)
             entry = AgentEntry(
                 agent_id=agent_id,
                 agent=old_agent,
@@ -108,6 +129,7 @@ def build_harness_manager_mock(
             if isinstance(backend_cfg, dict):
                 virtual_mode = bool(backend_cfg.get("virtual_mode", True))
             entry.agent.use_workspace_dir(ws_dir, virtual_mode=virtual_mode)
+            _sync_fake_skill_dirs(entry.agent, config)
         return entry
 
     async def _aremove(agent_id: str) -> None:

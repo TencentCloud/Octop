@@ -267,8 +267,18 @@ export default function MainLayout() {
                 </div>
               )}
 
-              {!onWorkbench &&
-                (isFullscreen ? (
+              {/* Keep Routes mounted when visiting Workbench so leaving/re-entering
+                  does not remount every lazy page (lag + lost UI state). */}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                  display: onWorkbench ? "none" : "flex",
+                  flexDirection: "column",
+                }}
+              >
+                {isFullscreen ? (
                   <div
                     style={{
                       flex: 1,
@@ -282,7 +292,8 @@ export default function MainLayout() {
                   </div>
                 ) : (
                   <div className="page-content">{routes}</div>
-                ))}
+                )}
+              </div>
             </Content>
           </Layout>
         </div>

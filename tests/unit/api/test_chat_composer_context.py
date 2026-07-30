@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.api.routers.chat.turn import build_composer_context
+from octop.infra.gateway.process.message_keys import build_composer_context
 
 
 def test_build_composer_context_omits_default_model() -> None:

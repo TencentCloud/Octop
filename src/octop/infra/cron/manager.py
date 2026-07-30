@@ -39,6 +39,7 @@ class CronCreateSpec:
     fresh_thread: bool = False
     model: str | None = None
     task_type: str = "agent"
+    mcp_servers: list[str] = field(default_factory=list)
     enabled: bool = True
     meta: dict[str, Any] = field(default_factory=dict)
     username: str | None = None
@@ -100,6 +101,7 @@ class CronManager:
                 fresh_thread=spec.fresh_thread,
                 model=(spec.model or "").strip() or None,
                 task_type=normalize_cron_task_type(spec.task_type),
+                mcp_servers=list(spec.mcp_servers or []),
             )
             row = self._repos.cron_repo.get(spec.cron_id)
             assert row is not None
@@ -134,6 +136,7 @@ class CronManager:
         enabled: int | None = None,
         task_type: str | None = None,
         model: str | None | object = UNSET,
+        mcp_servers: list[str] | None | object = UNSET,
     ) -> CronJobRow:
         if trigger is not None:
             build_trigger(trigger)
@@ -154,6 +157,10 @@ class CronManager:
             if model is not UNSET:
                 raw = model if isinstance(model, str) else None
                 repo_kwargs["model"] = (raw or "").strip() or None
+            if mcp_servers is not UNSET:
+                repo_kwargs["mcp_servers"] = (
+                    list(mcp_servers) if isinstance(mcp_servers, list) else []
+                )
             self._repos.cron_repo.update(cron_id, **repo_kwargs)
             row = self._repos.cron_repo.get(cron_id)
             if row is None:

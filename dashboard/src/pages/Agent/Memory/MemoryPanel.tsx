@@ -1,10 +1,6 @@
 /**
- * Memory — per-agent memory dashboard.
- *
- * Episodes are intentionally isolated from normal conversational recall and
- * shown as the emotional-diary tab for proactive care and summaries.
- * The memory library is a single user-facing surface with tree and list views;
- * pending candidates keep a badge on the review tab.
+ * Embeddable memory dashboard (tabs + content). Used by the Memory page,
+ * Experts MemoryCatalogDrawer, and Personalization.
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -23,9 +19,6 @@ import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
 
-import PageShell from "../../../layouts/PageShell";
-import { useAgent } from "../../../context/AgentContext";
-import { useIsMobile } from "../../../hooks/useIsMobile";
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import styles from "./index.module.less";
 
@@ -40,18 +33,15 @@ type MemoryTab =
   | "proactive"
   | "settings";
 
-/** Internal view for the memory-library tab. */
 type LibraryView = "tree" | "atoms" | "raw";
 
 interface TabDef {
   key: MemoryTab;
   labelKey: string;
   fallback: string;
-  /** Whether to show the pending-memory badge. */
   showPendingBadge?: boolean;
 }
 
-// Tab order: overview -> profile -> library -> episodes -> candidates -> journal -> conversations -> proactive care.
 const TABS: TabDef[] = [
   { key: "overview", labelKey: "memory.tabs.overview", fallback: "概览" },
   { key: "profile", labelKey: "memory.tabs.profile", fallback: "用户画像" },
@@ -73,10 +63,17 @@ const TABS: TabDef[] = [
   { key: "settings", labelKey: "memory.tabs.settings", fallback: "设置" },
 ];
 
-export default function MemoryPage() {
+export interface MemoryPanelProps {
+  agentId: string | null;
+  /** Stretch tabs to fill parent height (desktop PageShell / drawer). */
+  fill?: boolean;
+}
+
+export default function MemoryPanel({
+  agentId,
+  fill = true,
+}: MemoryPanelProps) {
   const { t } = useTranslation();
-  const { activeAgentId } = useAgent();
-  const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<MemoryTab>("overview");
   const [libraryView, setLibraryView] = useState<LibraryView>("tree");
@@ -84,19 +81,17 @@ export default function MemoryPage() {
   const [expandEntityId, setExpandEntityId] = useState<string | undefined>(
     undefined,
   );
-  // Increment on profile-page jumps to force MemoryTree remounts, even for the same entityId.
   const [expandKey, setExpandKey] = useState(0);
 
-  // Fetch candidates_pending for the review-tab badge.
   useEffect(() => {
-    if (!activeAgentId) {
+    if (!agentId) {
       setPendingCount(0);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const c = await memoryDashboardApi.statsCounts(activeAgentId);
+        const c = await memoryDashboardApi.statsCounts(agentId);
         if (!cancelled) setPendingCount(c.candidates_pending ?? 0);
       } catch {
         if (!cancelled) setPendingCount(0);
@@ -105,10 +100,10 @@ export default function MemoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeAgentId, activeTab]);
+  }, [agentId, activeTab]);
 
   const tabItems = useMemo(() => {
-    if (!activeAgentId) return [];
+    if (!agentId) return [];
 
     const library = (
       <div>
@@ -138,26 +133,26 @@ export default function MemoryPage() {
                   "按人、项目、工具等主题，分组浏览相关记忆",
                 )
               : libraryView === "atoms"
-              ? t(
-                  "memory.library.hintAtoms",
-                  "扁平展示全部记忆，可按重要程度筛选",
-                )
-              : t(
-                  "memory.library.hintRaw",
-                  "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
-                )}
+                ? t(
+                    "memory.library.hintAtoms",
+                    "扁平展示全部记忆，可按重要程度筛选",
+                  )
+                : t(
+                    "memory.library.hintRaw",
+                    "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
+                  )}
           </span>
         </div>
         {libraryView === "tree" ? (
           <MemoryTree
             key={expandKey}
-            agentId={activeAgentId}
+            agentId={agentId}
             initialExpandEntityId={expandEntityId}
           />
         ) : libraryView === "atoms" ? (
-          <AtomsList agentId={activeAgentId} />
+          <AtomsList agentId={agentId} />
         ) : (
-          <RawEventsList agentId={activeAgentId} />
+          <RawEventsList agentId={agentId} />
         )}
       </div>
     );
@@ -178,7 +173,7 @@ export default function MemoryPage() {
         case "overview":
           children = (
             <Overview
-              agentId={activeAgentId}
+              agentId={agentId}
               onViewConversations={() => setActiveTab("conversations")}
               onReviewCandidates={() => setActiveTab("candidates")}
               onOpenSettings={() => setActiveTab("settings")}
@@ -188,7 +183,7 @@ export default function MemoryPage() {
         case "profile":
           children = (
             <ProfileOverview
-              agentId={activeAgentId}
+              agentId={agentId}
               onReview={() => setActiveTab("candidates")}
               onViewAll={(entityId) => {
                 setExpandEntityId(entityId);
@@ -203,64 +198,51 @@ export default function MemoryPage() {
           children = library;
           break;
         case "episodes":
-          children = <EpisodesList agentId={activeAgentId} />;
+          children = <EpisodesList agentId={agentId} />;
           break;
         case "candidates":
-          children = <CandidatesReview agentId={activeAgentId} />;
+          children = <CandidatesReview agentId={agentId} />;
           break;
         case "journal":
-          children = <JournalList agentId={activeAgentId} />;
+          children = <JournalList agentId={agentId} />;
           break;
         case "conversations":
-          children = <ConversationRecords agentId={activeAgentId} />;
+          children = <ConversationRecords agentId={agentId} />;
           break;
         case "proactive":
           children = (
             <ProactiveConfig
-              agentId={activeAgentId}
+              agentId={agentId}
               onSwitchToEpisodes={() => setActiveTab("episodes")}
             />
           );
           break;
         case "settings":
-          children = <MemorySettings agentId={activeAgentId} />;
+          children = <MemorySettings agentId={agentId} />;
           break;
       }
 
       return { key: tab.key, label, children };
     });
-  }, [activeAgentId, expandEntityId, expandKey, libraryView, pendingCount, t]);
+  }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t]);
 
-  if (!activeAgentId) {
+  if (!agentId) {
     return (
-      <PageShell
-        title={t("pageShell.memory.title")}
-        subtitle={t("pageShell.memory.subtitle")}
-        agentScoped
-      >
-        <Empty
-          description={t("memory.noAgentSelected")}
-          style={{ marginTop: 64 }}
-        />
-      </PageShell>
+      <Empty
+        description={t("memory.noAgentSelected")}
+        style={{ marginTop: 64 }}
+      />
     );
   }
 
   return (
-    <PageShell
-      title={t("pageShell.memory.title")}
-      subtitle={t("pageShell.memory.subtitle")}
-      agentScoped
-      // Mobile CSS lets tab panes grow (overflow:visible); PageShell must scroll.
-      fill={!isMobile}
-    >
-      <Tabs
-        className={styles.memoryTabs}
-        activeKey={activeTab}
-        onChange={(k) => setActiveTab(k as MemoryTab)}
-        destroyOnHidden
-        items={tabItems}
-      />
-    </PageShell>
+    <Tabs
+      className={styles.memoryTabs}
+      style={fill ? undefined : { height: "auto" }}
+      activeKey={activeTab}
+      onChange={(k) => setActiveTab(k as MemoryTab)}
+      destroyOnHidden
+      items={tabItems}
+    />
   );
 }

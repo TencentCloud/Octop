@@ -61,7 +61,7 @@ export default function SkillPickerPopover({
       footerLabel={t("skills.importSkills")}
       onFooterClick={() => {
         onNavigateAway?.();
-        navigate("/skills");
+        navigate("/personalization/skills");
       }}
       renderItem={(skill) => {
         const active = selectedSkills.includes(skill.slug);

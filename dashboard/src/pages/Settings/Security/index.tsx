@@ -177,13 +177,15 @@ export default function SecuritySettingsPage() {
   const isPolicyTab = POLICY_TABS.has(activeTab);
 
   return (
-    <PageShell
+    <PageShell.FillTabs
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
     >
       <div className={styles.wrap}>
         {isPolicyTab && (
-          <Paragraph type="secondary">{t("security.intro")}</Paragraph>
+          <Paragraph type="secondary" style={{ flexShrink: 0 }}>
+            {t("security.intro")}
+          </Paragraph>
         )}
         <Form
           form={form}
@@ -382,6 +384,6 @@ export default function SecuritySettingsPage() {
           )}
         </Form>
       </div>
-    </PageShell>
+    </PageShell.FillTabs>
   );
 }

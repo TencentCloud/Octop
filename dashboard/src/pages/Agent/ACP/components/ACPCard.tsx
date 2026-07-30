@@ -3,7 +3,7 @@ import { CheckCircle, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ACPRunnerConfig } from "../../../../api/types/acp";
 import { runnerIcon, runnerIntroKey, runnerLabelKey } from "../constants";
-import styles from "../../../Control/Channels/index.module.less";
+import styles from "../../Channels/index.module.less";
 
 interface ACPCardProps {
   runnerKey: string;

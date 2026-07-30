@@ -54,6 +54,9 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
 
     ws = layout.ensure_agent_workspace("agent01")
     (ws / "SOUL.md").write_text("# soul", encoding="utf-8")
+    pkg_skill = layout.skill_packages_dir / "pkg01" / "skills" / "writer" / "SKILL.md"
+    pkg_skill.parent.mkdir(parents=True, exist_ok=True)
+    pkg_skill.write_text("---\nname: writer\ndescription: x\n---\n", encoding="utf-8")
     layout.config.write_text('{"port": 8088}', encoding="utf-8")
 
     class Row:
@@ -84,15 +87,66 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     restore_pool.close()
 
     assert result["agents"] == 1
+    assert result["skill_package_files"] == 1
     assert (restore_layout.agent_workspace("agent01") / "SOUL.md").read_text(
         encoding="utf-8"
     ) == "# soul"
+    assert (
+        (restore_layout.skill_packages_dir / "pkg01" / "skills" / "writer" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .startswith("---")
+    )
     assert json.loads(restore_layout.config.read_text(encoding="utf-8"))["port"] == 8088
 
     with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
         manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
     assert manifest["manifest_version"] == MANIFEST_VERSION
     assert manifest["database_driver"] == "sqlite"
+
+
+def test_restore_replaces_stale_skill_package_files(layout: PathLayout) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+
+    kept = layout.skill_packages_dir / "kept" / "skills" / "a" / "SKILL.md"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text("---\nname: a\ndescription: keep\n---\n", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+
+    data, _ = create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+    )
+    pool.close()
+
+    restore_layout = PathLayout(layout.root.parent / "restored-packages")
+    restore_pool = SqlitePool(restore_layout.db)
+    run_migrations(restore_pool)
+    stale = restore_layout.skill_packages_dir / "stale" / "skills" / "old" / "SKILL.md"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("---\nname: old\ndescription: stale\n---\n", encoding="utf-8")
+
+    restore_system_backup(
+        data,
+        paths=restore_layout,
+        pool=restore_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    restore_pool.close()
+
+    assert (restore_layout.skill_packages_dir / "kept" / "skills" / "a" / "SKILL.md").is_file()
+    assert not (restore_layout.skill_packages_dir / "stale").exists()
 
 
 def _make_migration_backup(

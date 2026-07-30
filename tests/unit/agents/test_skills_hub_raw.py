@@ -9,8 +9,8 @@ from urllib.error import HTTPError
 
 import pytest
 
-from octop.infra.agents import skills_hub
-from octop.infra.agents.skills_hub import (
+from octop.infra.skills import skills_hub
+from octop.infra.skills.skills_hub import (
     is_supported_skill_url,
     resolve_bundle_from_url,
 )
@@ -40,7 +40,7 @@ def test_resolve_skills_sh_url_uses_raw_github_without_token(
         raise AssertionError(f"unexpected raw fetch: {url}")
 
     with patch(
-        "octop.infra.agents.skills_hub._http_text_get",
+        "octop.infra.skills.skills_hub._http_text_get",
         side_effect=_fake_http_text_get,
     ):
         resolved = resolve_bundle_from_url(
@@ -70,11 +70,40 @@ def test_resolve_skills_sh_url_falls_back_to_second_branch(
         raise AssertionError(f"unexpected raw fetch: {url}")
 
     with patch(
-        "octop.infra.agents.skills_hub._http_text_get",
+        "octop.infra.skills.skills_hub._http_text_get",
         side_effect=_fake_http_text_get,
     ):
         resolved = resolve_bundle_from_url(
             bundle_url="https://skills.sh/vercel-labs/skills/find-skills",
+        )
+
+    assert resolved.name == "find-skills"
+
+
+def test_resolve_github_url_accepts_none_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers may pass version=None; must not crash on .strip()."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+
+    def _fake_http_text_get(url: str, params: dict | None = None) -> str:
+        del params
+        if url.endswith("/skills/find-skills/SKILL.md"):
+            return FIND_SKILLS_MD
+        raise HTTPError(url, 404, "Not Found", None, None)
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("skills-repo-main/skills/find-skills/SKILL.md", FIND_SKILLS_MD)
+
+    with (
+        patch("octop.infra.skills.skills_hub._http_text_get", side_effect=_fake_http_text_get),
+        patch("octop.infra.skills.skills_hub._http_bytes_get", return_value=archive.getvalue()),
+    ):
+        resolved = resolve_bundle_from_url(
+            bundle_url="https://github.com/example/skills-repo/tree/main/skills/find-skills",
+            version=None,  # type: ignore[arg-type]
         )
 
     assert resolved.name == "find-skills"
@@ -101,8 +130,8 @@ def test_resolve_github_url_imports_all_files_from_skill_directory_without_token
         zf.writestr("skills-repo-main/skills/find-skills/meta/config.json", "{}")
 
     with (
-        patch("octop.infra.agents.skills_hub._http_text_get", side_effect=_fake_http_text_get),
-        patch("octop.infra.agents.skills_hub._http_bytes_get", return_value=archive.getvalue()),
+        patch("octop.infra.skills.skills_hub._http_text_get", side_effect=_fake_http_text_get),
+        patch("octop.infra.skills.skills_hub._http_bytes_get", return_value=archive.getvalue()),
     ):
         resolved = resolve_bundle_from_url(
             bundle_url="https://github.com/example/skills-repo/tree/main/skills/find-skills",
@@ -138,8 +167,8 @@ def test_resolve_github_url_with_slash_branch_uses_encoded_archive_ref(
         return archive.getvalue()
 
     with (
-        patch("octop.infra.agents.skills_hub._http_text_get", side_effect=_fake_http_text_get),
-        patch("octop.infra.agents.skills_hub._http_bytes_get", side_effect=_fake_http_bytes_get),
+        patch("octop.infra.skills.skills_hub._http_text_get", side_effect=_fake_http_text_get),
+        patch("octop.infra.skills.skills_hub._http_bytes_get", side_effect=_fake_http_bytes_get),
     ):
         resolved = resolve_bundle_from_url(
             bundle_url="https://github.com/example/skills-repo/tree/feature/x/skills/find-skills",
@@ -194,7 +223,7 @@ def test_custom_json_source_resolves_through_generic_adapter(
     }
 
     with patch(
-        "octop.infra.agents.skills_hub._http_json_get",
+        "octop.infra.skills.skills_hub._http_json_get",
         return_value=payload,
     ):
         resolved = resolve_bundle_from_url(

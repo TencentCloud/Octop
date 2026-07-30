@@ -41,36 +41,35 @@ export default function AdminPluginsPage() {
   };
 
   return (
-    <PageShell
+    <PageShell.Tabbed
       title={t("pageShell.adminPlugins.title")}
       subtitle={t("pageShell.adminPlugins.subtitle")}
+      tabBar={
+        <div className={advStyles.tabBar} role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              className={`${advStyles.tab} ${
+                activeTab === tab.key ? advStyles.active : ""
+              }`}
+              onClick={() => selectTab(tab.key)}
+            >
+              {t(tab.labelKey)}
+            </button>
+          ))}
+        </div>
+      }
     >
-      <div className={advStyles.tabBar} role="tablist">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.key}
-            className={`${advStyles.tab} ${
-              activeTab === tab.key ? advStyles.active : ""
-            }`}
-            onClick={() => selectTab(tab.key)}
-          >
-            {t(tab.labelKey)}
-          </button>
-        ))}
-      </div>
-
-      <div className={advStyles.tabContent} role="tabpanel">
-        <Card>
-          {activeTab === "installed" ? (
-            <InstalledPluginsPanel />
-          ) : (
-            <AgentToolsPanel />
-          )}
-        </Card>
-      </div>
-    </PageShell>
+      <Card>
+        {activeTab === "installed" ? (
+          <InstalledPluginsPanel />
+        ) : (
+          <AgentToolsPanel />
+        )}
+      </Card>
+    </PageShell.Tabbed>
   );
 }

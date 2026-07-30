@@ -1,0 +1,361 @@
+.layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-lg);
+  overflow: hidden;
+  background: var(--fn-bg-container);
+}
+
+.layoutResizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.packageList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 0;
+  width: var(--skill-packages-sidebar-width, 280px);
+  padding: 16px;
+  background: var(--fn-bg-secondary);
+}
+
+.packageListActions {
+  display: flex;
+  gap: 8px;
+}
+
+.packageListActions > :first-child {
+  flex: 1;
+}
+
+.list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.list :global(.ant-list-items) {
+  padding-bottom: 8px;
+}
+
+.list :global(.ant-list-item) {
+  border-bottom: none !important;
+}
+
+.listRow {
+  padding: 0 !important;
+  margin: 0 0 12px !important;
+}
+
+.listRow:last-child {
+  margin-bottom: 0 !important;
+}
+
+.listItem {
+  display: block !important;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 116px;
+  padding: 12px !important;
+  border: 1px solid var(--fn-border-secondary) !important;
+  border-radius: var(--fn-radius-md);
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--fn-color-brand) 45%, var(--fn-border-secondary)) !important;
+    box-shadow: var(--fn-shadow-sm);
+    transform: translateY(-1px);
+  }
+}
+
+.active {
+  border-color: color-mix(in srgb, var(--fn-color-brand) 65%, var(--fn-border-secondary)) !important;
+  background: color-mix(in srgb, var(--fn-color-brand) 20%, var(--fn-bg-container));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--fn-color-brand) 30%, transparent),
+    0 8px 20px color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
+}
+
+.listName {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  color: var(--fn-text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listName > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listIcon,
+.iconPreview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.listIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #8b5cf6;
+  background: #8b5cf61a;
+  overflow: hidden;
+}
+
+.listIconImage,
+.iconPreviewImage {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.iconPreview {
+  width: 18px;
+  height: 18px;
+  color: #8b5cf6;
+}
+
+.iconOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.listDescription {
+  margin: 6px 0 10px;
+  overflow: hidden;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: 34px;
+  word-break: break-word;
+}
+
+.listMeta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+.listCountTag {
+  margin-inline-end: 0;
+  border-color: var(--fn-border-secondary);
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-tertiary);
+}
+
+.splitDivider {
+  position: relative;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 8px;
+  margin: 0 -1px;
+  z-index: 2;
+  background: var(--fn-border-secondary);
+}
+
+.resizeHandle {
+  position: absolute;
+  inset: 0;
+  cursor: col-resize;
+  z-index: 1;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 36px;
+    border-radius: 2px;
+    background: var(--fn-border-secondary);
+    opacity: 0.55;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
+  }
+
+  &:hover::after,
+  .layoutResizing &::after {
+    opacity: 1;
+    background: var(--fn-text-tertiary);
+  }
+}
+
+.detail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 16px 20px 0;
+}
+
+.detailLoadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 48px;
+  background: color-mix(in srgb, var(--fn-bg-container) 72%, transparent);
+  pointer-events: none;
+}
+
+.detailHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detailTitleGroup {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.detailTitle {
+  margin: 0 !important;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobileBackBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  margin-top: 2px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.detailDescription {
+  margin: 0 !important;
+  max-width: 100%;
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detailBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.centered,
+.emptyDetail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 180px;
+}
+
+.layoutMobile {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.layoutMobile .packageList {
+  width: 100% !important;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.layoutMobile .listItem {
+  min-height: 104px;
+}
+
+.layoutMobile .detail {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: var(--fn-bg-container);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-lg);
+}
+
+.layoutMobile .detailHeader {
+  padding: 0 4px 12px;
+}
+
+.layoutMobile .detailTitleRow {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.layoutMobile .actions {
+  width: 100%;
+}
+
+.layoutMobile .actions > * {
+  flex: 1;
+}
+
+.layoutMobile .detailBody {
+  padding: 0 4px;
+}
+
+.layoutMobile :global(.ant-typography) {
+  word-break: break-word;
+}

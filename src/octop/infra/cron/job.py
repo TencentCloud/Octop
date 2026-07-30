@@ -28,6 +28,7 @@ class CronJob:
         session_key: str,
         model: str | None,
         task_type: str,
+        mcp_servers: list[str] | None,
         gateway: Gateway,
         cron_repo: CronJobRepo,
         audit_repo: AuditRepo,
@@ -39,6 +40,7 @@ class CronJob:
         self._session_key = session_key
         self._model = model
         self._task_type = normalize_cron_task_type(task_type)
+        self._mcp_servers = list(mcp_servers or [])
         self._gateway = gateway
         self._cron_repo = cron_repo
         self._audit_repo = audit_repo
@@ -60,6 +62,7 @@ class CronJob:
             session_key=row.session_key,
             model=row.model,
             task_type=row.task_type,
+            mcp_servers=list(row.mcp_servers),
             gateway=gateway,
             cron_repo=cron_repo,
             audit_repo=audit_repo,
@@ -93,6 +96,7 @@ class CronJob:
                 self._prompt,
                 task_type=self._task_type,
                 model=self._model,
+                mcp_servers=self._mcp_servers or None,
             )
         except Exception as exc:
             METRICS.inc("cron_errors_total")

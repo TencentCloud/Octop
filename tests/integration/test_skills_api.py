@@ -6,9 +6,15 @@ Requires a running harness agent; skills are read/written via
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import pytest
+
+
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
 
 SAMPLE_SKILL = """---
 name: file-reader
@@ -254,12 +260,94 @@ async def test_delete_unknown_skill_404(env: Any) -> None:
     assert r.status_code == 404
 
 
+# --- update (PUT) ----------------------------------------------------------
+
+
+UPDATED_SKILL = """---
+name: file-reader
+description: Updated description
+metadata:
+  octop:
+    emoji: 📘
+---
+# File Reader Updated
+
+Edited body content.
+"""
+
+
+async def test_put_updates_workspace_skill(env: Any) -> None:
+    c, srv, auth, aid = env
+    await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "file-reader", "content": SAMPLE_SKILL},
+    )
+
+    r = await c.put(
+        f"/api/agents/{aid}/skills/file-reader",
+        headers=auth,
+        json={"content": UPDATED_SKILL},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["name"] == "file-reader"
+    assert body["kind"] == "workspace"
+    assert body["description"] == "Updated description"
+    assert body["emoji"] == "📘"
+
+    detail = (await c.get(f"/api/agents/{aid}/skills/file-reader", headers=auth)).json()
+    assert detail["raw"] == UPDATED_SKILL
+    assert "Edited body content" in detail["body"]
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    raw = await agent.workspace.aread_text("skills/file-reader/SKILL.md")
+    assert raw == UPDATED_SKILL
+
+
+async def test_put_rejects_missing_skill(env: Any) -> None:
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/skills/nope",
+        headers=auth,
+        json={"content": UPDATED_SKILL},
+    )
+    assert r.status_code == 404
+
+
+async def test_put_rejects_builtin_only_skill(env: Any) -> None:
+    c, _srv, auth, aid = env
+    await _seed_builtin_skill(env)
+    r = await c.put(
+        f"/api/agents/{aid}/skills/web-search",
+        headers=auth,
+        json={"content": WORKSPACE_OVERRIDE_SKILL},
+    )
+    assert r.status_code == 404
+
+
+async def test_put_rejects_removed_skill(env: Any) -> None:
+    c, _srv, auth, aid = env
+    await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "tmp-skill", "content": SAMPLE_SKILL},
+    )
+    await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)
+    r = await c.put(
+        f"/api/agents/{aid}/skills/tmp-skill",
+        headers=auth,
+        json={"content": UPDATED_SKILL},
+    )
+    assert r.status_code == 404
+
+
 # --- URL import ------------------------------------------------------------
 
 
 async def test_import_skill_from_url(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     c, srv, auth, aid = env
-    from octop.infra.agents import skills_hub
+    from octop.infra.skills import skills_hub
 
     uploads = [
         (
@@ -325,7 +413,7 @@ async def test_import_rejects_adapter_upload_outside_skill_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     c, _srv, auth, aid = env
-    from octop.infra.agents import skills_hub
+    from octop.infra.skills import skills_hub
 
     def _fake_resolve(**_kwargs: object) -> skills_hub.BundleResolveResult:
         return skills_hub.BundleResolveResult(
@@ -347,3 +435,102 @@ async def test_import_rejects_adapter_upload_outside_skill_root(
 
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "SKILL_IMPORT_FAILED"
+
+
+# --- local zip-style files create / overwrite -----------------------------
+
+
+async def test_create_skill_from_files_payload(env: Any) -> None:
+    """Local ZIP import posts ``files`` + base64 content (not just ``content``)."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: zip-demo\ndescription: from zip\n---\n\n# Zip Demo\n"
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+                {"path": "notes.txt", "content_base64": _b64("hello")},
+                {"path": "scripts/run.py", "content_base64": _b64("print(1)\n")},
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["name"] == "zip-demo"
+    assert r.json()["description"] == "from zip"
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    notes = await agent.workspace.aread_text("skills/zip-demo/notes.txt")
+    script = await agent.workspace.aread_text("skills/zip-demo/scripts/run.py")
+    assert notes == "hello"
+    assert script == "print(1)\n"
+
+
+async def test_create_skill_files_conflict_without_overwrite(env: Any) -> None:
+    c, _srv, auth, aid = env
+    await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "zip-demo", "content": SAMPLE_SKILL},
+    )
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [{"path": "SKILL.md", "content_base64": _b64(SAMPLE_SKILL)}],
+            "overwrite": False,
+        },
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "SKILL_ALREADY_EXISTS"
+
+
+async def test_create_skill_files_overwrite_replaces_stale_siblings(env: Any) -> None:
+    c, srv, auth, aid = env
+    first = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(SAMPLE_SKILL)},
+                {"path": "stale.txt", "content_base64": _b64("old")},
+            ],
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    updated_md = "---\nname: zip-demo\ndescription: replaced\n---\n\n# New\n"
+    second = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(updated_md)},
+                {"path": "fresh.txt", "content_base64": _b64("new")},
+            ],
+            "overwrite": True,
+        },
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["description"] == "replaced"
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aread_text("skills/zip-demo/fresh.txt") == "new"
+    assert await agent.workspace.aread_text("skills/zip-demo/stale.txt") is None
+
+
+async def test_create_skill_rejects_invalid_base64_files(env: Any) -> None:
+    c, _srv, auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "bad-b64",
+            "files": [{"path": "SKILL.md", "content_base64": "%%%not-base64%%%"}],
+        },
+    )
+    assert r.status_code == 400, r.text

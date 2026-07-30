@@ -1,13 +1,14 @@
 import { useMemo, useState, useCallback } from "react";
-import { Form, Modal, Segmented, Tooltip, Button } from "antd";
+import { Form, Segmented, Tooltip } from "antd";
 import { Download, LayoutGrid, List, Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CardSkeleton } from "../../../../components/Skeleton";
 import { useCardTableView } from "../../../../hooks/useCardTableView";
 import { EmptyState } from "../../../../components/EmptyState";
-import { SkillCard, type SkillHubInfo } from "./SkillCard";
+import { SkillCard } from "./SkillCard";
 import { SkillDrawer, type SkillFormValues } from "./SkillDrawer";
-import { loadRankingsCache } from "./skillHubCache";
+import { SkillImportModal } from "./SkillImportModal";
+import { hubInfoBySlugFromCache } from "./skillHubCache";
 import SkillsTable from "./SkillsTable";
 import type { SkillDetail, SkillSpec } from "../useSkills";
 import styles from "../index.module.less";
@@ -19,7 +20,25 @@ interface InstalledSkillsTabProps {
   fetchSkills: () => Promise<void>;
   getDetail: (slug: string) => Promise<SkillDetail | null>;
   createSkill: (name: string, content: string) => Promise<boolean>;
-  importFromUrl: (bundleUrl: string) => Promise<boolean>;
+  updateSkill: (slug: string, content: string) => Promise<boolean>;
+  importFromUrl: (
+    bundleUrl: string,
+    options?: { overwrite?: boolean },
+  ) => Promise<boolean>;
+  importFromZip: (
+    skills: Array<{
+      slug: string;
+      files: Array<{ path: string; contentBase64: string }>;
+    }>,
+    options?: { overwrite?: boolean },
+  ) => Promise<
+    | false
+    | {
+        imported: number;
+        skipped: number;
+        failed: number;
+      }
+  >;
   importing: boolean;
   toggleEnabled: (skill: SkillSpec) => Promise<boolean>;
   deleteSkill: (skill: SkillSpec) => Promise<boolean>;
@@ -32,7 +51,9 @@ export default function InstalledSkillsTab({
   fetchSkills,
   getDetail,
   createSkill,
+  updateSkill,
   importFromUrl,
+  importFromZip,
   importing,
   toggleEnabled,
   deleteSkill,
@@ -43,26 +64,17 @@ export default function InstalledSkillsTab({
   const [refreshing, setRefreshing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [importUrl, setImportUrl] = useState("");
-  const [importUrlError, setImportUrlError] = useState("");
   const [editingSkill, setEditingSkill] = useState<SkillDetail | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [form] = Form.useForm<SkillFormValues>();
 
-  const hubSkillsBySlug = useMemo(() => {
-    const bySlug = new Map<string, SkillHubInfo>();
-    const cached = loadRankingsCache() ?? {};
-    for (const rows of Object.values(cached)) {
-      for (const row of rows) bySlug.set(row.slug, row);
-    }
-    return bySlug;
-  }, []);
+  const hubSkillsBySlug = useMemo(() => hubInfoBySlugFromCache(), []);
 
   const filteredSkills = useMemo(
     () =>
       skills
         .filter((s) =>
-          kind === "builtin" ? s.kind === "builtin" : s.kind !== "builtin",
+          kind === "builtin" ? s.kind === "builtin" : s.kind === "workspace",
         )
         .slice()
         .sort((a, b) => {
@@ -72,22 +84,6 @@ export default function InstalledSkillsTab({
         }),
     [skills, kind],
   );
-
-  const currentSkillUrlPrefixes = [
-    "https://skills.sh/",
-    "https://clawhub.ai/",
-    "https://skillsmp.com/",
-    "https://github.com/",
-  ];
-
-  const isValidSkillUrl = (value: string) => {
-    try {
-      const parsed = new URL(value);
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
-    } catch {
-      return false;
-    }
-  };
 
   const onViewChange = (value: string | number) => {
     setViewMode(value === "table" ? "table" : "card");
@@ -101,35 +97,6 @@ export default function InstalledSkillsTab({
       setRefreshing(false);
     }
   }, [fetchSkills]);
-
-  const closeImportModal = () => {
-    if (importing) return;
-    setImportModalOpen(false);
-    setImportUrl("");
-    setImportUrlError("");
-  };
-
-  const handleImportUrlChange = (value: string) => {
-    setImportUrl(value);
-    const trimmed = value.trim();
-    if (trimmed && !isValidSkillUrl(trimmed)) {
-      setImportUrlError(t("skills.invalidSkillUrlSource"));
-      return;
-    }
-    setImportUrlError("");
-  };
-
-  const handleConfirmImport = async () => {
-    if (importing) return;
-    const trimmed = importUrl.trim();
-    if (!trimmed) return;
-    if (!isValidSkillUrl(trimmed)) {
-      setImportUrlError(t("skills.invalidSkillUrlSource"));
-      return;
-    }
-    const success = await importFromUrl(trimmed);
-    if (success) closeImportModal();
-  };
 
   const handleCreate = () => {
     setEditingSkill(null);
@@ -165,7 +132,9 @@ export default function InstalledSkillsTab({
 
   const handleSubmit = async (values: SkillFormValues) => {
     const content = values.content ?? "";
-    const ok = await createSkill(values.name, content);
+    const ok = editingSkill
+      ? await updateSkill(editingSkill.slug, content)
+      : await createSkill(values.name, content);
     if (ok) setDrawerOpen(false);
   };
 
@@ -285,74 +254,13 @@ export default function InstalledSkillsTab({
       </div>
 
       {kind === "custom" ? (
-        <Modal
-          title={t("skills.importSkills")}
+        <SkillImportModal
           open={importModalOpen}
-          onCancel={closeImportModal}
-          maskClosable={!importing}
-          closable={!importing}
-          keyboard={!importing}
-          footer={
-            <div style={{ textAlign: "right" }}>
-              <Button
-                onClick={closeImportModal}
-                disabled={importing}
-                style={{ marginRight: 8 }}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="primary"
-                onClick={() => void handleConfirmImport()}
-                loading={importing}
-                disabled={importing || !importUrl.trim() || !!importUrlError}
-              >
-                {t("skills.importSkills")}
-              </Button>
-            </div>
-          }
-          width={760}
-        >
-          <div className={styles.importHintBlock}>
-            <p className={styles.importHintTitle}>
-              {t("skills.supportedSkillUrlSources")}
-            </p>
-            <div className={styles.importHintSources}>
-              {currentSkillUrlPrefixes.map((prefix) => (
-                <code key={prefix} className={styles.importHintCode}>
-                  {prefix}
-                </code>
-              ))}
-            </div>
-            <p className={styles.importHintTitle} style={{ marginTop: 10 }}>
-              {t("skills.urlExamples")}
-            </p>
-            <div className={styles.importHintExamples}>
-              <code className={styles.importHintCode}>
-                https://skills.sh/vercel-labs/skills/find-skills
-              </code>
-              <code className={styles.importHintCode}>
-                https://github.com/anthropics/skills/tree/main/skills/skill-creator
-              </code>
-            </div>
-          </div>
-
-          <input
-            className={styles.importUrlInput}
-            value={importUrl}
-            onChange={(e) => handleImportUrlChange(e.target.value)}
-            placeholder={t("skills.enterSkillUrl")}
-            disabled={importing}
-          />
-          {importUrlError ? (
-            <div className={styles.importUrlError}>{importUrlError}</div>
-          ) : null}
-          {importing ? (
-            <div className={styles.importLoadingText}>
-              {t("common.loading")}
-            </div>
-          ) : null}
-        </Modal>
+          importing={importing}
+          onClose={() => setImportModalOpen(false)}
+          onImportUrl={importFromUrl}
+          onImportZip={importFromZip}
+        />
       ) : null}
 
       <div className={styles.skillsListArea}>{listContent}</div>

@@ -11,6 +11,10 @@ interface ChatDockPanelShellProps {
   onModeChange: (mode: PanelMode) => void;
   onClose: () => void;
   style?: React.CSSProperties;
+  /** Left-side title (filename / “远程浏览器”). */
+  title?: React.ReactNode;
+  /** Content actions left of the layout/close group (mode, refresh, download…). */
+  toolbarActions?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -30,6 +34,8 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   onModeChange,
   onClose,
   style,
+  title,
+  toolbarActions,
   children,
 }) => {
   const { t } = useTranslation();
@@ -83,6 +89,8 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         target.closest("input") ||
         target.closest("a") ||
         target.closest('[role="button"]') ||
+        target.closest(".ant-select") ||
+        target.closest(".ant-segmented") ||
         target.closest(`.${styles.popupResizeHandle}`)
       ) {
         return;
@@ -242,13 +250,21 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
       style={popupStyle}
     >
       <div className={styles.toolbar} onPointerDown={handlePopupDragStart}>
+        <div className={styles.toolbarTitle}>{title}</div>
+        <div className={styles.toolbarSpacer} />
+        {toolbarActions ? (
+          <div className={styles.toolbarActions}>{toolbarActions}</div>
+        ) : null}
+        <div className={styles.toolbarDivider} aria-hidden />
         <div className={styles.toolbarModes}>
           <Tooltip title={t("browserWorkspace.panelBottom")}>
             <Button
               type="text"
               size="small"
               icon={<PanelBottom size={14} />}
-              className={mode === "bottom" ? styles.modeActive : ""}
+              className={`${styles.toolbarIconBtn} ${
+                mode === "bottom" ? styles.modeActive : ""
+              }`}
               onClick={() => onModeChange("bottom")}
             />
           </Tooltip>
@@ -257,7 +273,9 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
               type="text"
               size="small"
               icon={<PanelRight size={14} />}
-              className={mode === "right" ? styles.modeActive : ""}
+              className={`${styles.toolbarIconBtn} ${
+                mode === "right" ? styles.modeActive : ""
+              }`}
               onClick={() => onModeChange("right")}
             />
           </Tooltip>
@@ -266,18 +284,21 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
               type="text"
               size="small"
               icon={<PictureInPicture2 size={14} />}
-              className={mode === "popup" ? styles.modeActive : ""}
+              className={`${styles.toolbarIconBtn} ${
+                mode === "popup" ? styles.modeActive : ""
+              }`}
               onClick={() => onModeChange("popup")}
             />
           </Tooltip>
+          <Button
+            type="text"
+            size="small"
+            icon={<X size={14} />}
+            className={styles.toolbarIconBtn}
+            onClick={onClose}
+            aria-label={t("common.close", "关闭")}
+          />
         </div>
-        <div className={styles.toolbarSpacer} />
-        <Button
-          type="text"
-          size="small"
-          icon={<X size={14} />}
-          onClick={onClose}
-        />
       </div>
       {children}
       {mode === "popup" && (

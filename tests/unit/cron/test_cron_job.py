@@ -63,6 +63,7 @@ def _job(
     gateway: MagicMock,
     fresh_thread: bool = False,
     task_type: str = "agent",
+    mcp_servers: list[str] | None = None,
 ) -> CronJob:
     return CronJob(
         cron_id=cid,
@@ -72,6 +73,7 @@ def _job(
         session_key=session_key,
         model=None,
         task_type=task_type,
+        mcp_servers=mcp_servers,
         gateway=gateway,
         cron_repo=cron_repo,
         audit_repo=audit,
@@ -116,6 +118,31 @@ async def test_run_uses_session_key(setup) -> None:
     assert args.args[1] == session_key
     assert args.args[2] == "hi"
     assert args.kwargs["task_type"] == "agent"
+
+
+@pytest.mark.asyncio
+async def test_run_passes_mcp_servers(setup) -> None:
+    cron_repo, audit, cid, session_key = setup
+
+    gateway = MagicMock()
+    gateway.thread_registry = MagicMock()
+    gateway.thread_registry.get_session = MagicMock(
+        return_value=SessionRepo(cron_repo._db).get(session_key)
+    )
+    gateway.push_text_from_session = AsyncMock()
+
+    job = _job(
+        cron_repo=cron_repo,
+        audit=audit,
+        cid=cid,
+        session_key=session_key,
+        gateway=gateway,
+        mcp_servers=["github__1"],
+    )
+    await job.run()
+
+    args = gateway.push_text_from_session.call_args
+    assert args.kwargs["mcp_servers"] == ["github__1"]
 
 
 @pytest.mark.asyncio

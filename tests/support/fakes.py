@@ -48,7 +48,11 @@ class FakeHarnessAgent:
             self._workspace_dir = Path(tempfile.mkdtemp(prefix="octop-fake-ws-"))
             self._backend = _FakeBackend()
             self._workspace = BackendWorkspace(self._backend, self._workspace_dir)
-        self.config = SimpleNamespace(mcp_server_configs={}, skills_disabled=frozenset())
+        self.config = SimpleNamespace(
+            mcp_server_configs={},
+            skills_disabled=frozenset(),
+            skill_package_roots=None,
+        )
         self._mcp_tools: list[Any] = []
         self._mcp_tool_name_set: frozenset[str] = frozenset()
 
@@ -180,6 +184,10 @@ description: General-purpose agent
         """Hot-update disabled skills (mirrors harness_agent.HarnessAgent)."""
         self.config.skills_disabled = frozenset(str(x) for x in (disabled or ()))
 
+    def set_skill_package_roots(self, roots: list[dict[str, str]] | None) -> None:
+        """Hot-update skill package roots (mirrors harness_agent.HarnessAgent)."""
+        self.config.skill_package_roots = roots
+
     async def list_skill_summaries(self) -> list[dict[str, Any]]:
         """Mirror harness skill catalog: list workspace + builtin ``SKILL.md`` manifests.
 
@@ -220,9 +228,36 @@ description: General-purpose agent
                             continue
 
         disabled = frozenset(str(x) for x in getattr(self.config, "skills_disabled", frozenset()))
-        # Merge by slug, mirroring the harness catalog: a workspace skill
-        # overrides a builtin of the same slug (later roots win).
+        # Merge by slug, mirroring the harness catalog: workspace skills
+        # override package and builtin skills (later roots win).
         merged: dict[str, dict[str, Any]] = {}
+        for root in getattr(self.config, "skill_package_roots", None) or ():
+            package_id = str(root.get("id") or "")
+            package_root = Path(str(root.get("path") or ""))
+            if not package_id or not package_root.is_dir():
+                continue
+            for skill_dir in sorted(package_root.iterdir()):
+                manifest = skill_dir / "SKILL.md"
+                if not skill_dir.is_dir() or not manifest.is_file():
+                    continue
+                try:
+                    meta, _ = parse_frontmatter(manifest.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError):
+                    continue
+                if meta.get("removed"):
+                    continue
+                slug = skill_dir.name
+                name = str(meta.get("name") or slug)
+                is_disabled = slug in disabled or name in disabled
+                merged[slug] = {
+                    "slug": slug,
+                    "name": name,
+                    "description": str(meta.get("description") or ""),
+                    "kind": "package",
+                    "package_id": package_id,
+                    "enabled": not is_disabled,
+                    "disabled": is_disabled,
+                }
         for path in sorted(collected):
             meta, _ = parse_frontmatter(collected[path])
             # Slug is the skill directory name (parent of SKILL.md), matching the
@@ -234,7 +269,9 @@ description: General-purpose agent
             if meta.get("removed"):
                 continue
             kind = "builtin" if path.startswith("_builtin_skills/") else "workspace"
-            if slug in merged and not (merged[slug]["kind"] == "builtin" and kind == "workspace"):
+            if slug in merged and not (
+                merged[slug]["kind"] in {"builtin", "package"} and kind == "workspace"
+            ):
                 continue
             name = str(meta.get("name") or slug)
             is_disabled = slug in disabled or name in disabled
@@ -258,7 +295,10 @@ description: General-purpose agent
             merged[slug] = row
         return sorted(
             merged.values(),
-            key=lambda row: (0 if row["kind"] == "builtin" else 1, str(row["slug"])),
+            key=lambda row: (
+                {"builtin": 0, "package": 1, "workspace": 2}.get(str(row["kind"]), 99),
+                str(row["slug"]),
+            ),
         )
 
 

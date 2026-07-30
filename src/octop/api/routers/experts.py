@@ -57,6 +57,7 @@ class FromExpertBody(BaseModel):
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    skill_package_ids: list[str] | None = None
 
 
 class LocalizedTextResponse(BaseModel):
@@ -246,6 +247,14 @@ async def install_expert_hub_item(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create an agent from a SkillHub skillset-backed expert template."""
+    assert server.app_runtime is not None
+    package_ids = (
+        server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
+        if body.skill_package_ids is not None
+        else None
+    )
+    if package_ids:
+        server.app_runtime.agent_registry.assert_backend_supports_skill_packages(body.backend)
     try:
         result = await create_skillhub_market_agent(
             server=server,
@@ -263,6 +272,8 @@ async def install_expert_hub_item(
         raise _map_skillhub_error(exc) from exc
 
     row = result.row
+    if package_ids is not None:
+        await server.app_runtime.agent_registry.persist_skill_package_ids(row.agent_id, package_ids)
     return {
         "id": row.id,
         "agent_id": row.agent_id,
@@ -310,6 +321,13 @@ async def create_agent_from_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     assert server.app_runtime is not None
+    package_ids = (
+        server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
+        if body.skill_package_ids is not None
+        else None
+    )
+    if package_ids:
+        server.app_runtime.agent_registry.assert_backend_supports_skill_packages(body.backend)
 
     config_extra: dict[str, Any] = {}
     if body.providers:
@@ -332,6 +350,8 @@ async def create_agent_from_expert(
         config_extra=config_extra or None,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
+    if package_ids is not None:
+        await server.app_runtime.agent_registry.persist_skill_package_ids(row.agent_id, package_ids)
     return {
         "id": row.id,
         "agent_id": row.agent_id,

@@ -54,8 +54,11 @@ a,
 
 .page-content {
   flex: 1 1 auto;
-  overflow: auto;
+  overflow: hidden;
   padding: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .table-container {

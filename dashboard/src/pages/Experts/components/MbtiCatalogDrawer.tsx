@@ -2,9 +2,9 @@
  * MBTI Catalog Drawer — wraps MBTISelector inside a Drawer
  * so experts page can browse and apply MBTI types without leaving the page.
  */
-import { Drawer } from "antd";
 import { useTranslation } from "react-i18next";
 import MBTISelector from "../../Agent/Personalization/components/MBTISelector";
+import CatalogDrawer from "./CatalogDrawer";
 
 interface MbtiCatalogDrawerProps {
   open: boolean;
@@ -22,13 +22,10 @@ export default function MbtiCatalogDrawer({
   const { t } = useTranslation();
 
   return (
-    <Drawer
+    <CatalogDrawer
       title={t("personalization.mbti.catalogTitle")}
       open={open}
       onClose={onClose}
-      width="min(1080px, 92vw)"
-      destroyOnHidden
-      styles={{ body: { padding: "16px 20px 20px" } }}
     >
       {agentId ? (
         <MBTISelector
@@ -38,6 +35,6 @@ export default function MbtiCatalogDrawer({
           onApplied={onApplied}
         />
       ) : null}
-    </Drawer>
+    </CatalogDrawer>
   );
 }

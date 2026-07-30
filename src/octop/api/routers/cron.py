@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_row
 from octop.api.deps import current_user, get_server
@@ -24,6 +24,7 @@ class CronCreateBody(BaseModel):
     fresh_thread: bool = False
     model: str | None = None
     task_type: str = "text"
+    mcp_servers: list[str] = Field(default_factory=list)
 
 
 class CronPatchBody(BaseModel):
@@ -34,6 +35,7 @@ class CronPatchBody(BaseModel):
     enabled: bool | None = None
     model: str | None = None
     task_type: str | None = None
+    mcp_servers: list[str] | None = None
 
 
 def _get_cron_manager(server: Any) -> Any:
@@ -72,8 +74,12 @@ async def create_cron(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Schedule a recurring prompt. `trigger` uses cron syntax or natural `@every` aliases."""
+    from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
     from octop.infra.cron.manager import CronCreateSpec  # noqa: PLC0415
 
+    mcp_servers = (
+        await validate_chat_mcp_servers(server, user_id=user.id, names=body.mcp_servers) or []
+    )
     spec = CronCreateSpec(
         cron_id=new_cron_id(),
         agent_id=agent_id,
@@ -84,6 +90,7 @@ async def create_cron(
         fresh_thread=body.fresh_thread,
         model=(body.model or "").strip() or None,
         task_type=normalize_cron_task_type(body.task_type),
+        mcp_servers=mcp_servers,
         username=user.username,
     )
     row = await _get_cron_manager(server).create(spec)
@@ -113,6 +120,9 @@ async def patch_cron(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Update trigger, prompt, session binding, or enabled flag."""
+    from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
+    from octop.infra.db.repos._base import UNSET  # noqa: PLC0415
+
     mgr = _get_cron_manager(server)
     existing = mgr.get(cron_id)
     if existing is None or existing.agent_id != agent_id:
@@ -120,6 +130,11 @@ async def patch_cron(
     if body.trigger is not None:
         build_trigger(body.trigger)
     patch_fields = body.model_dump(exclude_unset=True)
+    mcp_arg: object = UNSET
+    if "mcp_servers" in patch_fields:
+        mcp_arg = await validate_chat_mcp_servers(
+            server, user_id=user.id, names=body.mcp_servers or []
+        )
     row = await mgr.update(
         cron_id,
         trigger=body.trigger,
@@ -129,6 +144,7 @@ async def patch_cron(
         enabled=int(body.enabled) if body.enabled is not None else None,
         task_type=normalize_cron_task_type(body.task_type) if body.task_type is not None else None,
         **({"model": (body.model or "").strip() or None} if "model" in patch_fields else {}),
+        mcp_servers=mcp_arg,
     )
     return cast(dict[str, Any], row.to_public_dict(include_agent=True))
 

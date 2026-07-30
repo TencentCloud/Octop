@@ -8,11 +8,20 @@ import { apiErrorMessage } from "../../../../utils/apiError";
 import { SkillHubDetailDrawer } from "./SkillHubDetailDrawer";
 import type { SkillHubSkill } from "./SkillHubDetailDrawer";
 import { loadRankingsCache, saveRankingsCache } from "./skillHubCache";
+import {
+  skillHubInstallPath,
+  skillHubRankingsPath,
+  skillHubSearchPath,
+  skillListPath,
+  type SkillInstallTarget,
+} from "./skillInstallTarget";
 import styles from "../index.module.less";
 
 interface SkillHubTabProps {
-  /** The currently active agent (used as default in picker). */
-  activeAgentId: string | null;
+  /** Install destination: agent workspace or global skill package. */
+  target: SkillInstallTarget | null;
+  /** Called after a successful install (e.g. refresh package detail). */
+  onInstalled?: () => void;
 }
 
 type RankingType = "recommended" | "trending" | "hot" | "newest";
@@ -38,7 +47,23 @@ function skillDesc(skill: SkillHubSkill): string {
   return skill.description_zh || skill.description || "";
 }
 
-export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
+function normalizeHubSkill(raw: Record<string, unknown>): SkillHubSkill {
+  const slug = String(raw.slug ?? raw.name ?? "");
+  return {
+    ...(raw as unknown as SkillHubSkill),
+    slug,
+    name: String(raw.name ?? raw.display_name_zh ?? raw.display_name ?? slug),
+    iconUrl:
+      (raw.iconUrl as string | null | undefined) ??
+      (raw.icon_url as string | null | undefined) ??
+      null,
+  };
+}
+
+export default function SkillHubTab({
+  target,
+  onInstalled,
+}: SkillHubTabProps) {
   const { t } = useTranslation();
   const [hubSkills, setHubSkills] = useState<SkillHubSkill[]>([]);
   const [rankings, setRankings] = useState<Record<string, SkillHubSkill[]>>(
@@ -46,7 +71,6 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
   );
   const [activeRanking, setActiveRanking] =
     useState<RankingType>("recommended");
-  // If we already have cached data, start in non-loading state.
   const [loading, setLoading] = useState(
     () => Object.keys(loadRankingsCache() ?? {}).length === 0,
   );
@@ -62,8 +86,27 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Fetch all ranking sections in one call; tab switching is then local.
-  // Skips the network request when a fresh cache entry exists.
+  const agentId = target?.type === "agent" ? target.agentId : undefined;
+  const packageId = target?.type === "package" ? target.packageId : undefined;
+
+  const browseTarget = useMemo<SkillInstallTarget>(() => {
+    if (target?.type === "package" && packageId) {
+      return { type: "package", packageId };
+    }
+    return { type: "agent", agentId: agentId ?? "_" };
+  }, [target?.type, agentId, packageId]);
+
+  const installTarget = useMemo<SkillInstallTarget | null>(() => {
+    if (target?.type === "package" && packageId) {
+      return { type: "package", packageId };
+    }
+    if (target?.type === "agent" && agentId) {
+      return { type: "agent", agentId };
+    }
+    return null;
+  }, [target?.type, agentId, packageId]);
+
+
   const fetchRankings = useCallback(
     async (force = false) => {
       if (!force) {
@@ -80,20 +123,19 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
       setLoading(true);
       setLoadError(null);
       try {
-        const agentId = activeAgentId ?? "_";
         const resp = await request<RankingsResponse>(
-          `/agents/${agentId}/skills/hub/rankings?type=all`,
+          skillHubRankingsPath(browseTarget),
           { signal: controller.signal },
         );
         if (!controller.signal.aborted) {
           const sections = resp?.rankings ?? {};
           const map: Record<string, SkillHubSkill[]> = {};
           for (const key of Object.keys(sections)) {
-            map[key] = sections[key]?.skills ?? [];
+            map[key] = (sections[key]?.skills ?? []).map((skill) =>
+              normalizeHubSkill(skill as unknown as Record<string, unknown>),
+            );
           }
           setRankings(map);
-          // Do not cache a partial response for a full day, so a later visit
-          // can retry after the transient upstream failure has recovered.
           if (Object.keys(resp?.errors ?? {}).length === 0) {
             saveRankingsCache(map);
           }
@@ -110,7 +152,7 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
         if (!controller.signal.aborted) setLoading(false);
       }
     },
-    [activeAgentId],
+    [browseTarget],
   );
 
   const fetchHubSkills = useCallback(
@@ -121,14 +163,13 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
       setSearching(true);
       setLoadError(null);
       try {
-        const agentId = activeAgentId ?? "_";
-        const results = await request<SkillHubSkill[]>(
-          `/agents/${agentId}/skills/hub/search?q=${encodeURIComponent(
-            query,
-          )}&limit=50`,
+        const results = await request<Record<string, unknown>[]>(
+          skillHubSearchPath(browseTarget, query),
           { signal: controller.signal },
         );
-        if (!controller.signal.aborted) setHubSkills(results ?? []);
+        if (!controller.signal.aborted) {
+          setHubSkills((results ?? []).map(normalizeHubSkill));
+        }
       } catch (err) {
         if (!controller.signal.aborted) {
           setLoadError(
@@ -139,10 +180,9 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
         if (!controller.signal.aborted) setSearching(false);
       }
     },
-    [activeAgentId],
+    [browseTarget],
   );
 
-  // Empty keyword -> rankings (immediate). Non-empty -> debounced search.
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     if (!searchKeyword) {
@@ -157,11 +197,13 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
     };
   }, [searchKeyword, fetchRankings, fetchHubSkills]);
 
-  // Seed installed slugs from agent's existing skills
   useEffect(() => {
-    if (!activeAgentId) return;
+    if (!installTarget) {
+      setInstalledSlugs(new Set());
+      return;
+    }
     request<Array<{ name: string; slug?: string }>>(
-      `/agents/${activeAgentId}/skills`,
+      skillListPath(installTarget),
     )
       .then((rows) =>
         setInstalledSlugs(new Set((rows ?? []).map((r) => r.slug ?? r.name))),
@@ -169,7 +211,7 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
       .catch(() => {
         // non-critical: installed indicators may be stale
       });
-  }, [activeAgentId]);
+  }, [installTarget]);
 
   const isInstalled = useCallback(
     (slug: string) => installedSlugs.has(slug),
@@ -178,34 +220,34 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
 
   const handleInstall = useCallback(
     async (skill: SkillHubSkill) => {
-      // Allow re-install: an installed skill can be re-downloaded (the backend
-      // overwrites), so a user who edited / disabled / deleted it can always
-      // restore it from the marketplace. Only block while a request is in
-      // flight.
       if (installingSlug) return;
-      if (!activeAgentId) {
+      if (!installTarget) {
         message.warning(t("skills.noAgentSelected"));
         return;
       }
       setDrawerOpen(false);
       setInstallingSlug(skill.slug);
       try {
-        const result = await request<{
-          installed: boolean;
-          name: string;
-          enabled: boolean;
-        }>(`/agents/${activeAgentId}/skills/hub/install`, {
-          method: "POST",
-          body: JSON.stringify({
-            skill_name: skill.slug,
-            enable: true,
-            display_name: skill.name,
-            icon_url: skill.iconUrl ?? null,
-          }),
-        });
+        const body: Record<string, unknown> = {
+          skill_name: skill.slug,
+          display_name: skill.name,
+          icon_url: skill.iconUrl ?? null,
+          overwrite: true,
+        };
+        if (installTarget.type === "agent") {
+          body.enable = true;
+        }
+        const result = await request<{ installed: boolean; name: string }>(
+          skillHubInstallPath(installTarget),
+          {
+            method: "POST",
+            body: JSON.stringify(body),
+          },
+        );
         if (result?.installed) {
           message.success(t("skills.installSuccess"));
           setInstalledSlugs((prev) => new Set([...prev, skill.slug]));
+          onInstalled?.();
         } else {
           message.error(t("skills.installFailed"));
         }
@@ -215,7 +257,7 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
         setInstallingSlug(null);
       }
     },
-    [activeAgentId, installingSlug, t],
+    [installTarget, installingSlug, onInstalled, t],
   );
 
   const displaySkills = useMemo(() => {
@@ -274,7 +316,6 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
 
   return (
     <div className={styles.skillHubContainer}>
-      {/* Toolbar */}
       <div className={styles.skillHubToolbar}>
         <Input
           className={styles.skillHubSearch}
@@ -305,7 +346,6 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
         </Button>
       </div>
 
-      {/* Ranking tabs — full-width segmented control, equal quarters (browse mode) */}
       {!searchKeyword && (
         <Segmented
           block
@@ -320,7 +360,6 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
         />
       )}
 
-      {/* Grid */}
       {displaySkills.length === 0 ? (
         <div
           style={{
@@ -408,7 +447,6 @@ export default function SkillHubTab({ activeAgentId }: SkillHubTabProps) {
         </div>
       )}
 
-      {/* Detail drawer */}
       <SkillHubDetailDrawer
         open={drawerOpen}
         skill={selectedSkill}

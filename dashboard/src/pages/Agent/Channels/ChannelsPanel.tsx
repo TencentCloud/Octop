@@ -1,27 +1,13 @@
 /**
- * Per-agent channels page — preset-card grid style (finnie-compatible).
- *
- * Shows a fixed grid of all supported channel kinds. Each card represents
- * one ChannelKey. If the active agent has a channel row for that kind the
- * card shows as enabled (brand background + green badge); otherwise it
- * shows as inactive.
- *
- * Clicking a card always opens ChannelDrawer:
- *   - no existing row  → create mode (kind pre-set and locked)
- *   - existing row     → edit mode
- *
- * Toggle switch:
- *   - no existing row  → open drawer (must configure first)
- *   - existing row     → PATCH enabled flag directly
+ * Embeddable per-agent channels grid (preset cards + ChannelDrawer).
+ * Lives under Agent/Channels — shared by Personalization tab and Experts drawer.
  */
 import { useCallback, useMemo, useState } from "react";
 import { Form, Button, Empty, message } from "antd";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
-import { useAgent } from "../../../context/AgentContext";
 import {
   ChannelCard,
   ChannelDrawer,
@@ -80,9 +66,12 @@ interface TestState {
   results: Partial<Record<ChannelKey, { ok: boolean; error?: string }>>;
 }
 
-export default function ChannelsPage() {
+export interface ChannelsPanelProps {
+  agentId: string | null;
+}
+
+export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   const { t } = useTranslation();
-  const { activeAgentId } = useAgent();
   const {
     channels,
     loading,
@@ -92,7 +81,7 @@ export default function ChannelsPage() {
     updateChannel,
     deleteChannel,
     probeChannelConfig,
-  } = useChannels(activeAgentId);
+  } = useChannels(agentId);
 
   const [hoverId, setHoverId] = useState<ChannelKey | null>(null);
   const [enableLoadingKey, setEnableLoadingKey] = useState<ChannelKey | null>(
@@ -113,10 +102,6 @@ export default function ChannelsPage() {
   const [deleting, setDeleting] = useState(false);
   const [form] = Form.useForm<ChannelFormValues>();
 
-  /**
-   * Index: ChannelKey → best ChannelRow for the active agent.
-   * "Best" = enabled row if multiple exist for the same kind, else first row.
-   */
   const channelByKind = useMemo<Map<ChannelKey, ChannelRow>>(() => {
     const map = new Map<ChannelKey, ChannelRow>();
     for (const row of channels) {
@@ -273,7 +258,6 @@ export default function ChannelsPage() {
     async (key: ChannelKey, checked: boolean) => {
       const row = channelByKind.get(key);
       if (!row) {
-        // No row yet — open drawer to configure first.
         openCreate(key);
         return;
       }
@@ -332,27 +316,24 @@ export default function ChannelsPage() {
     }
   }, [editing, form, probeChannelConfig, t]);
 
-  if (!activeAgentId) {
+  if (!agentId) {
     return (
-      <PageShell
-        title={t("pageShell.channels.title")}
-        subtitle={t("pageShell.channels.subtitle")}
-        agentScoped
-      >
-        <Empty
-          description={t("channels.noAgentSelected")}
-          style={{ marginTop: 60 }}
-        />
-      </PageShell>
+      <Empty
+        description={t("channels.noAgentSelected")}
+        style={{ marginTop: 60 }}
+      />
     );
   }
 
   return (
-    <PageShell
-      title={t("pageShell.channels.title")}
-      subtitle={t("pageShell.channels.subtitle")}
-      agentScoped
-      actions={
+    <div className={styles.channelsPanel}>
+      <div className={styles.channelsToolbar}>
+        <span className={styles.channelsStats}>
+          {t("channels.statsSummary", {
+            supported: CHANNEL_KEYS.length,
+            configured: channelByKind.size,
+          })}
+        </span>
         <Button
           icon={<RefreshCw size={14} />}
           onClick={() => void fetchChannels()}
@@ -360,8 +341,8 @@ export default function ChannelsPage() {
         >
           {t("common.refresh")}
         </Button>
-      }
-    >
+      </div>
+
       {loading && channels.length === 0 ? (
         <CardSkeleton count={10} />
       ) : (
@@ -407,8 +388,8 @@ export default function ChannelsPage() {
             ((form.getFieldValue("kind") as ChannelKey | undefined) ??
               (editing?.kind as ChannelKey | undefined))
         }
-        agentId={activeAgentId}
+        agentId={agentId}
       />
-    </PageShell>
+    </div>
   );
 }
