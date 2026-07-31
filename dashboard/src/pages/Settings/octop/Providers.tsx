@@ -19,11 +19,12 @@ import {
   Input,
   Select,
   Tag,
-  message,
   Space,
   Popconfirm,
   Typography,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Plus, RefreshCw } from "lucide-react";
 import { request } from "../../../api/request";
 import { authApi } from "../../../api/modules/auth";

@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Drawer, Form, Input, Select, Spin, message } from "antd";
+import { Button, Drawer, Form, Input, Select, Spin } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   Activity,
   CheckCircle2,
   ClipboardPaste,
+  Copy,
+  Download,
   ExternalLink,
   RefreshCw,
   Sparkles,
@@ -12,14 +16,17 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
+import { useUserRole } from "../../../hooks/useUserRole";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   connectorsApi,
   type ConnectorAuthInfo,
   type ConnectorCatalogEntry,
+  type ConnectorCliInstallResult,
   type ConnectorCredentialsPreview,
   type ConnectorInstance,
   type ConnectorInstanceDetail,
+  type FeishuUserAuthStartResult,
 } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
 import { CustomMcpTab } from "./CustomMcpTab";
@@ -56,13 +63,27 @@ function buildCredentials(
     const code = String(values.auth_code ?? "").trim();
     if (code) credentials.code = code;
   } else if (entry.auth_kind === "api_key") {
-    const api_key = String(values.api_key ?? "").trim();
-    if (api_key) credentials.api_key = api_key;
-    if (entry.kind === "tencent-ima" && values.client_id) {
-      credentials.client_id = values.client_id;
-    }
-    if (entry.kind === "tencent-lexiang" && values.client_id) {
-      credentials.client_id = values.client_id;
+    if (entry.kind === "feishu-cli") {
+      if (values.app_id) credentials.app_id = String(values.app_id).trim();
+      const app_secret = String(values.app_secret ?? "").trim();
+      if (app_secret) credentials.app_secret = app_secret;
+      if (values.default_as === "user") credentials.default_as = "user";
+      if (values.cli_config_key) {
+        credentials.cli_config_key = String(values.cli_config_key).trim();
+      }
+    } else if (entry.kind === "wecom-cli") {
+      if (values.bot_id) credentials.bot_id = String(values.bot_id).trim();
+      const bot_secret = String(values.bot_secret ?? "").trim();
+      if (bot_secret) credentials.bot_secret = bot_secret;
+    } else {
+      const api_key = String(values.api_key ?? "").trim();
+      if (api_key) credentials.api_key = api_key;
+      if (entry.kind === "tencent-ima" && values.client_id) {
+        credentials.client_id = values.client_id;
+      }
+      if (entry.kind === "tencent-lexiang" && values.client_id) {
+        credentials.client_id = values.client_id;
+      }
     }
   } else if (entry.auth_kind === "imap_app_password") {
     credentials.email = values.email;
@@ -103,6 +124,9 @@ function previewToFormValues(
   if (preview.knowledge_base_id)
     values.knowledge_base_id = preview.knowledge_base_id;
   if (preview.app_id) values.app_id = preview.app_id;
+  if (preview.bot_id) values.bot_id = preview.bot_id;
+  if (preview.cli_config_key) values.cli_config_key = preview.cli_config_key;
+  if (preview.default_as === "user") values.default_as = "user";
   if (preview.client_id) values.client_id = preview.client_id;
   if (preview.sdk_id) values.sdk_id = preview.sdk_id;
   if (entry.auth_kind === "oauth2" && preview.oauth_configured) {
@@ -126,6 +150,12 @@ function hasFreshCredentialInput(
     return Boolean(String(values.auth_code ?? "").trim());
   }
   if (entry.auth_kind === "api_key") {
+    if (entry.kind === "feishu-cli") {
+      return Boolean(String(values.app_secret ?? "").trim());
+    }
+    if (entry.kind === "wecom-cli") {
+      return Boolean(String(values.bot_secret ?? "").trim());
+    }
     return Boolean(String(values.api_key ?? "").trim());
   }
   if (entry.auth_kind === "imap_app_password") {
@@ -179,6 +209,10 @@ function configuredExtra(
   return t("connectors.secretConfigured", "已配置，留空表示不修改");
 }
 
+function isHostCliConnector(kind: string): boolean {
+  return kind === "feishu-cli" || kind === "wecom-cli";
+}
+
 function ConnectorConfigDrawer({
   open,
   entry,
@@ -193,6 +227,8 @@ function ConnectorConfigDrawer({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
+  const role = useUserRole();
+  const isAdmin = role === "admin";
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -205,6 +241,18 @@ function ConnectorConfigDrawer({
     { name: string; description: string }[] | null
   >(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [cliInfo, setCliInfo] = useState<ConnectorCliInstallResult | null>(
+    null,
+  );
+  const [installingCli, setInstallingCli] = useState(false);
+  const [feishuUserAuth, setFeishuUserAuth] =
+    useState<FeishuUserAuthStartResult | null>(null);
+  const [feishuUserAuthBusy, setFeishuUserAuthBusy] = useState(false);
+  const [feishuUserReady, setFeishuUserReady] = useState(false);
+  const [feishuAuthNeedsReauth, setFeishuAuthNeedsReauth] = useState(false);
+  const [feishuRefreshExpiresAt, setFeishuRefreshExpiresAt] = useState<
+    string | null
+  >(null);
 
   const hasStoredCredentials = Boolean(instance?.has_credentials);
   const mailProvider = Form.useWatch("mail_provider", form) ?? "qq";
@@ -216,6 +264,11 @@ function ConnectorConfigDrawer({
     setAuthInfo(null);
     setInstanceDetail(null);
     setProbeResult(null);
+    setCliInfo(null);
+    setFeishuUserAuth(null);
+    setFeishuUserReady(false);
+    setFeishuAuthNeedsReauth(false);
+    setFeishuRefreshExpiresAt(null);
     form.resetFields();
     form.setFieldsValue({ display_name: entry.name });
 
@@ -233,6 +286,15 @@ function ConnectorConfigDrawer({
         });
       });
 
+    if (isHostCliConnector(entry.kind)) {
+      void connectorsApi
+        .cliStatus(entry.kind)
+        .then(setCliInfo)
+        .catch(() => {
+          setCliInfo(null);
+        });
+    }
+
     if (instance) {
       setLoadingDetail(true);
       void connectorsApi
@@ -242,6 +304,16 @@ function ConnectorConfigDrawer({
           form.setFieldsValue(previewToFormValues(entry, detail));
           if (detail.credentials_preview?.oauth_configured) {
             setShowManual(false);
+          }
+          if (detail.credentials_preview?.user_auth_configured) {
+            const needs =
+              detail.credentials_preview.user_auth_needs_reauth === true ||
+              detail.credentials_preview.user_auth_valid === false;
+            setFeishuAuthNeedsReauth(needs);
+            setFeishuUserReady(!needs);
+            setFeishuRefreshExpiresAt(
+              detail.credentials_preview.user_refresh_expires_at ?? null,
+            );
           }
         })
         .catch(() => {
@@ -258,12 +330,270 @@ function ConnectorConfigDrawer({
     window.open(url, "octop-connector-auth", "width=720,height=800");
   };
 
+  /** Open sync under the click gesture so popup blockers don't swallow async opens. */
+  const openAuthPopupPlaceholder = (): Window | null => {
+    const popup = window.open(
+      "about:blank",
+      "octop-connector-auth",
+      "width=720,height=800",
+    );
+    if (popup) {
+      try {
+        popup.document.title = "Feishu Auth";
+        popup.document.body.innerHTML =
+          "<p style=\"font:14px/1.5 system-ui;padding:24px;color:#666\">Loading…</p>";
+      } catch {
+        // Cross-origin / closed — ignore.
+      }
+    }
+    return popup;
+  };
+
+  const navigateAuthPopup = (
+    popup: Window | null,
+    url: string | null | undefined,
+  ) => {
+    if (!url) return;
+    if (popup && !popup.closed) {
+      try {
+        popup.location.replace(url);
+        popup.focus();
+        return;
+      } catch {
+        // Fall through to a fresh open.
+      }
+    }
+    openUrl(url);
+  };
+
   const handleOpenAuthorize = () => {
     openUrl(authInfo?.authorize_url);
   };
 
   const handleOpenLogin = () => {
     openUrl(authInfo?.login_url);
+  };
+
+  const handleCopyInstallCommand = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      message.success(t("connectors.cliInstallCopied", "安装命令已复制"));
+    } catch {
+      message.error(
+        t("connectors.clipboardDenied", "无法读取剪贴板，请手动粘贴"),
+      );
+    }
+  };
+
+  const handleRefreshCliStatus = async () => {
+    if (!entry || !isHostCliConnector(entry.kind)) return;
+    try {
+      const status = await connectorsApi.cliStatus(entry.kind);
+      setCliInfo(status);
+      if (status.installed) {
+        message.success(
+          t("connectors.cliAlreadyInstalled", {
+            binary: status.binary,
+            defaultValue: `${status.binary} 已安装`,
+          }),
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      message.error(
+        apiErrorMessage(
+          e,
+          t("connectors.cliInstallFailed", "主机 CLI 安装失败"),
+          t,
+        ),
+      );
+    }
+  };
+
+  const handleInstallCli = async () => {
+    if (!entry || !isHostCliConnector(entry.kind) || installingCli) return;
+    if (cliInfo?.installed) {
+      await handleRefreshCliStatus();
+      return;
+    }
+    setInstallingCli(true);
+    try {
+      const result = await connectorsApi.installCli(entry.kind);
+      setCliInfo(result);
+      if (result.ok) {
+        message.success(
+          result.already_installed
+            ? t("connectors.cliAlreadyInstalled", {
+                binary: result.binary,
+                defaultValue: `${result.binary} 已安装`,
+              })
+            : t("connectors.cliInstallSuccess", {
+                binary: result.binary,
+                defaultValue: `${result.binary} 安装成功`,
+              }),
+        );
+      } else {
+        message.error(
+          result.error ??
+            t("connectors.cliInstallFailed", "主机 CLI 安装失败"),
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      message.error(
+        apiErrorMessage(
+          e,
+          t("connectors.cliInstallFailed", "主机 CLI 安装失败"),
+          t,
+        ),
+      );
+    } finally {
+      setInstallingCli(false);
+    }
+  };
+
+  const handleFeishuUserAuthStart = async () => {
+    if (!entry || entry.kind !== "feishu-cli" || feishuUserAuthBusy) return;
+    const popup = openAuthPopupPlaceholder();
+    setFeishuUserAuthBusy(true);
+    try {
+      let started: FeishuUserAuthStartResult;
+      if (instance?.instance_id && hasStoredCredentials) {
+        started = await connectorsApi.feishuUserAuthStartInstance(
+          instance.instance_id,
+        );
+      } else {
+        try {
+          await form.validateFields(["app_id", "app_secret"]);
+        } catch {
+          popup?.close();
+          message.warning(
+            t(
+              "connectors.feishuUserAuthNeedApp",
+              "请先填写 App ID 与 App Secret",
+            ),
+          );
+          return;
+        }
+        const values = form.getFieldsValue();
+        const app_id = String(values.app_id ?? "").trim();
+        const app_secret = String(values.app_secret ?? "").trim();
+        if (!app_id || !app_secret) {
+          popup?.close();
+          message.warning(
+            t(
+              "connectors.feishuUserAuthNeedApp",
+              "请先填写 App ID 与 App Secret",
+            ),
+          );
+          return;
+        }
+        started = await connectorsApi.feishuUserAuthStart({
+          app_id,
+          app_secret,
+          cli_config_key: String(values.cli_config_key ?? "").trim() || undefined,
+        });
+      }
+      form.setFieldsValue({ cli_config_key: started.cli_config_key });
+      setFeishuUserAuth(started);
+      setFeishuUserReady(false);
+      navigateAuthPopup(popup, started.verification_url);
+      message.success(
+        t(
+          "connectors.feishuUserAuthStarted",
+          "已打开授权页，完成后点「我已授权」",
+        ),
+      );
+    } catch (e) {
+      popup?.close();
+      console.error(e);
+      message.error(
+        apiErrorMessage(
+          e,
+          t("connectors.feishuUserAuthFailed", "授权失败"),
+          t,
+        ),
+      );
+    } finally {
+      setFeishuUserAuthBusy(false);
+    }
+  };
+
+  const handleFeishuUserAuthComplete = async () => {
+    if (!entry || entry.kind !== "feishu-cli" || !feishuUserAuth) return;
+    setFeishuUserAuthBusy(true);
+    try {
+      let done;
+      if (instance?.instance_id && hasStoredCredentials) {
+        done = await connectorsApi.feishuUserAuthCompleteInstance(
+          instance.instance_id,
+          {
+            device_code: feishuUserAuth.device_code,
+            cli_config_key: feishuUserAuth.cli_config_key,
+          },
+        );
+      } else {
+        const values = form.getFieldsValue();
+        const app_id = String(values.app_id ?? "").trim();
+        const app_secret = String(values.app_secret ?? "").trim();
+        const cli_config_key = String(
+          values.cli_config_key ?? feishuUserAuth.cli_config_key ?? "",
+        ).trim();
+        if (!app_id || !app_secret || !cli_config_key) {
+          message.warning(
+            t(
+              "connectors.feishuUserAuthNeedApp",
+              "请先填写 App ID 与 App Secret",
+            ),
+          );
+          return;
+        }
+        done = await connectorsApi.feishuUserAuthComplete({
+          app_id,
+          app_secret,
+          device_code: feishuUserAuth.device_code,
+          cli_config_key,
+        });
+      }
+      form.setFieldsValue({
+        default_as: "user",
+        cli_config_key: done.cli_config_key,
+      });
+      setFeishuUserReady(true);
+      setFeishuAuthNeedsReauth(false);
+      setFeishuUserAuth(null);
+      const persisted =
+        Boolean(instance?.instance_id) && hasStoredCredentials;
+      if (done.warning || done.search_docs_scope === false) {
+        message.warning(
+          done.warning
+            || t(
+              "connectors.feishuUserAuthWarning",
+              "已登录，但文档搜索权限可能未开通，请检查开放平台权限后重新授权",
+            ),
+        );
+      } else {
+        message.success(
+          persisted
+            ? t("connectors.feishuUserAuthSuccessSaved", "授权完成")
+            : t(
+                "connectors.feishuUserAuthSuccess",
+                "授权完成，请保存连接器",
+              ),
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      message.error(
+        apiErrorMessage(
+          e,
+          t("connectors.feishuUserAuthFailed", "授权失败"),
+          t,
+        ),
+      );
+    } finally {
+      setFeishuUserAuthBusy(false);
+    }
   };
 
   const extractPastedCredential = (text: string): string => {
@@ -373,7 +703,33 @@ function ConnectorConfigDrawer({
   const handleProbe = async () => {
     if (!entry) return;
     const values = form.getFieldsValue();
-    const freshInput = hasFreshCredentialInput(entry, values);
+    const preview = instanceDetail?.credentials_preview ?? {};
+    const freshSecret = hasFreshCredentialInput(entry, values);
+    const feishuAppIdChanged =
+      entry.kind === "feishu-cli" &&
+      Boolean(preview.app_id) &&
+      String(values.app_id ?? "").trim() !== String(preview.app_id ?? "").trim();
+    const wecomBotIdChanged =
+      entry.kind === "wecom-cli" &&
+      Boolean(preview.bot_id) &&
+      String(values.bot_id ?? "").trim() !== String(preview.bot_id ?? "").trim();
+    const identityChanged = feishuAppIdChanged || wecomBotIdChanged;
+    if (identityChanged && !freshSecret) {
+      message.warning(
+        entry.kind === "feishu-cli"
+          ? t(
+              "connectors.probeNeedSecretAfterAppIdChange",
+              "App ID 已修改，请填写 App Secret 后再探测",
+            )
+          : t(
+              "connectors.probeNeedSecretAfterBotIdChange",
+              "Bot ID 已修改，请填写 Secret 后再探测",
+            ),
+      );
+      return;
+    }
+    const freshInput = freshSecret || identityChanged;
+    // Only reuse saved creds when the form still matches the stored identity.
     const canUseStored = hasStoredCredentials && instance && !freshInput;
 
     if (!canUseStored) {
@@ -399,6 +755,14 @@ function ConnectorConfigDrawer({
       if (r.ok) {
         const tools = r.tools ?? [];
         setProbeResult(tools);
+        if (canUseStored) {
+          message.success(
+            t(
+              "connectors.probeUsedStoredCredentials",
+              "探测通过（使用已保存的凭证）",
+            ),
+          );
+        }
       } else {
         setProbeResult(null);
         message.error(r.error ?? t("connectors.probeFailed", "探测失败"));
@@ -531,6 +895,76 @@ function ConnectorConfigDrawer({
         )}
 
         <div className={styles.quickAuthBar}>
+          {entry && isHostCliConnector(entry.kind) && (
+            <>
+              {isAdmin && (
+                <Button
+                  type={cliInfo?.installed ? "default" : "primary"}
+                  icon={
+                    cliInfo?.installed ? (
+                      <CheckCircle2 size={14} />
+                    ) : (
+                      <Download size={14} />
+                    )
+                  }
+                  loading={installingCli}
+                  onClick={() => void handleInstallCli()}
+                >
+                  {cliInfo?.installed
+                    ? t("connectors.cliReady", "CLI 已就绪")
+                    : t("connectors.installCli", "安装 CLI")}
+                </Button>
+              )}
+              {!isAdmin && cliInfo?.installed && (
+                <Button type="default" icon={<CheckCircle2 size={14} />} disabled>
+                  {t("connectors.cliReady", "CLI 已就绪")}
+                </Button>
+              )}
+              {!isAdmin && !cliInfo?.installed && (
+                <span className={styles.feishuUserAuthHint}>
+                  {t(
+                    "connectors.cliInstallAdminOnly",
+                    "主机 CLI 需管理员安装；可复制命令交给管理员执行",
+                  )}
+                </span>
+              )}
+              {(cliInfo?.install_command ||
+                entry.kind === "feishu-cli" ||
+                entry.kind === "wecom-cli") && (
+                <Button
+                  icon={<Copy size={14} />}
+                  onClick={() =>
+                    void handleCopyInstallCommand(
+                      cliInfo?.install_command ??
+                        (entry.kind === "feishu-cli"
+                          ? "npm install -g @larksuite/cli"
+                          : "npm install -g @wecom/cli"),
+                    )
+                  }
+                >
+                  {t("connectors.copyInstallCommand", "复制安装命令")}
+                </Button>
+              )}
+              {(cliInfo?.guide_url ||
+                cliInfo?.doc_url ||
+                entry.guide_url ||
+                entry.doc_url) && (
+                <Button
+                  icon={<ExternalLink size={14} />}
+                  onClick={() =>
+                    openUrl(
+                      cliInfo?.guide_url ||
+                        entry.guide_url ||
+                        cliInfo?.doc_url ||
+                        entry.doc_url,
+                    )
+                  }
+                >
+                  {t("connectors.openCliDocs", "安装文档")}
+                </Button>
+              )}
+            </>
+          )}
           {hasOAuthPopup && (
             <Button
               type="primary"
@@ -570,7 +1004,9 @@ function ConnectorConfigDrawer({
             )}
           {(entry.auth_kind === "personal_token" ||
             entry.auth_kind === "auth_code" ||
-            entry.auth_kind === "api_key") && (
+            (entry.auth_kind === "api_key" &&
+              entry.kind !== "feishu-cli" &&
+              entry.kind !== "wecom-cli")) && (
             <Button
               icon={<ClipboardPaste size={14} />}
               onClick={() => void handlePasteToken()}
@@ -579,6 +1015,64 @@ function ConnectorConfigDrawer({
             </Button>
           )}
         </div>
+
+        {entry && isHostCliConnector(entry.kind) && cliInfo && (
+          <div
+            className={
+              cliInfo.ok === false || !cliInfo.installed
+                ? styles.cliInstallHintError
+                : styles.cliInstallHint
+            }
+          >
+            {cliInfo.installed ? (
+              <div>
+                {t("connectors.cliInstalledHint", {
+                  binary: cliInfo.binary,
+                  version: cliInfo.version ?? "",
+                  defaultValue: cliInfo.version
+                    ? `主机已检测到 ${cliInfo.binary}（${cliInfo.version}）`
+                    : `主机已检测到 ${cliInfo.binary}`,
+                })}
+              </div>
+            ) : (
+              <div>
+                {cliInfo.error ??
+                  t(
+                    "connectors.cliMissingHint",
+                    "主机尚未安装 CLI。可点击「安装 CLI」，或在 Octop 主机终端手动执行下方命令。",
+                  )}
+              </div>
+            )}
+            {(!cliInfo.installed || cliInfo.ok === false) &&
+              cliInfo.install_command && (
+                <code className={styles.cliInstallCommand}>
+                  {cliInfo.install_command}
+                </code>
+              )}
+            {(!cliInfo.installed || cliInfo.ok === false) && (
+              <div className={styles.cliInstallLinks}>
+                {(cliInfo.guide_url || entry.guide_url) && (
+                  <a
+                    href={cliInfo.guide_url || entry.guide_url || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("connectors.openCliDocs", "安装文档")}
+                  </a>
+                )}
+                {(cliInfo.doc_url || entry.doc_url) && (
+                  <a
+                    href={cliInfo.doc_url || entry.doc_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("connectors.openCliRepo", "项目主页")}
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <Form form={form} layout="vertical">
           <div className={styles.configSectionTitle}>
@@ -646,7 +1140,176 @@ function ConnectorConfigDrawer({
             </>
           )}
 
-          {entry.auth_kind === "api_key" && (
+          {entry.kind === "feishu-cli" && (
+            <>
+              <Form.Item name="default_as" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item name="cli_config_key" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="app_id"
+                label={t("connectors.feishuAppId", "App ID")}
+                rules={[{ required: true }]}
+                extra={
+                  !hideFieldGuide && manualUrl ? (
+                    <a href={manualUrl} target="_blank" rel="noreferrer">
+                      {t(
+                        "connectors.feishuAppCredDoc",
+                        "在飞书开放平台创建应用并获取 App ID / App Secret",
+                      )}
+                    </a>
+                  ) : undefined
+                }
+              >
+                <Input
+                  placeholder={t(
+                    "connectors.feishuAppIdPlaceholder",
+                    "例如 cli_xxxxxxxx",
+                  )}
+                />
+              </Form.Item>
+              <Form.Item
+                name="app_secret"
+                label={t("connectors.feishuAppSecret", "App Secret")}
+                rules={secretFieldRules(secretRequired)}
+                extra={configuredExtra(preview, "app_secret_configured", t)}
+              >
+                <Input.Password
+                  placeholder={
+                    hasStoredCredentials
+                      ? t("connectors.secretPlaceholder", "留空表示不修改")
+                      : t(
+                          "connectors.feishuAppSecretPlaceholder",
+                          "飞书应用 App Secret",
+                        )
+                  }
+                />
+              </Form.Item>
+              <div className={styles.feishuUserAuthBox}>
+                <div className={styles.feishuUserAuthTitle}>
+                  {t("connectors.feishuUserAuthTitle", "飞书账号授权")}
+                </div>
+                <p className={styles.feishuUserAuthWhy}>
+                  {t(
+                    "connectors.feishuUserAuthWhy",
+                    "上方 App ID / Secret 只代表应用（Bot）。文档搜索、访问你云空间里的个人文档和日程等，必须以你的飞书账号身份调用，因此需要额外授权一次。授权后 Agent 只能访问你本人有权限的内容。",
+                  )}
+                </p>
+                <div className={styles.feishuUserAuthHint}>
+                  {feishuAuthNeedsReauth
+                    ? t(
+                        "connectors.feishuUserAuthExpired",
+                        "用户授权已失效，请重新登录授权。",
+                      )
+                    : feishuUserReady
+                      ? t(
+                          "connectors.feishuUserAuthReady",
+                          "已授权，可搜索文档。",
+                        )
+                      : feishuUserAuth
+                        ? t(
+                            "connectors.feishuUserAuthPendingHint",
+                            "请在弹出的页面完成授权，然后点「我已授权」。",
+                          )
+                        : t(
+                            "connectors.feishuUserAuthHint",
+                            "点击登录授权，完成后点「我已授权」。",
+                          )}
+                </div>
+                {feishuUserReady && feishuRefreshExpiresAt && (
+                  <div className={styles.feishuUserAuthHint}>
+                    {t(
+                      "connectors.feishuUserAuthRefreshUntil",
+                      "刷新令牌约有效至 {{time}}（到期后需重新授权）",
+                      { time: feishuRefreshExpiresAt },
+                    )}
+                  </div>
+                )}
+                <div className={styles.quickAuthBar}>
+                  <Button
+                    type={feishuUserReady && !feishuAuthNeedsReauth ? "default" : "primary"}
+                    loading={feishuUserAuthBusy}
+                    onClick={() => void handleFeishuUserAuthStart()}
+                  >
+                    {feishuUserReady || feishuAuthNeedsReauth
+                      ? t("connectors.feishuUserAuthAgain", "重新授权")
+                      : t("connectors.feishuUserAuthStart", "登录授权")}
+                  </Button>
+                  {feishuUserAuth && (
+                    <Button
+                      type="primary"
+                      loading={feishuUserAuthBusy}
+                      onClick={() => void handleFeishuUserAuthComplete()}
+                    >
+                      {t("connectors.feishuUserAuthConfirm", "我已授权")}
+                    </Button>
+                  )}
+                </div>
+                {feishuUserAuth && (
+                  <button
+                    type="button"
+                    className={styles.feishuUserAuthReopen}
+                    onClick={() => openUrl(feishuUserAuth.verification_url)}
+                  >
+                    {t(
+                      "connectors.feishuUserAuthReopen",
+                      "未弹出？再打开一次",
+                    )}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {entry.kind === "wecom-cli" && (
+            <>
+              <Form.Item
+                name="bot_id"
+                label={t("connectors.wecomBotId", "Bot ID")}
+                rules={[{ required: true }]}
+                extra={
+                  !hideFieldGuide && manualUrl ? (
+                    <a href={manualUrl} target="_blank" rel="noreferrer">
+                      {t(
+                        "connectors.wecomBotCredDoc",
+                        "在企业微信开放平台获取智能机器人 Bot ID / Secret",
+                      )}
+                    </a>
+                  ) : undefined
+                }
+              >
+                <Input
+                  placeholder={t(
+                    "connectors.wecomBotIdPlaceholder",
+                    "企业微信智能机器人 Bot ID",
+                  )}
+                />
+              </Form.Item>
+              <Form.Item
+                name="bot_secret"
+                label={t("connectors.wecomBotSecret", "Secret")}
+                rules={secretFieldRules(secretRequired)}
+                extra={configuredExtra(preview, "bot_secret_configured", t)}
+              >
+                <Input.Password
+                  placeholder={
+                    hasStoredCredentials
+                      ? t("connectors.secretPlaceholder", "留空表示不修改")
+                      : t(
+                          "connectors.wecomBotSecretPlaceholder",
+                          "企业微信机器人 Secret",
+                        )
+                  }
+                />
+              </Form.Item>
+            </>
+          )}
+
+          {entry.auth_kind === "api_key" &&
+            entry.kind !== "feishu-cli" &&
+            entry.kind !== "wecom-cli" && (
             <>
               <Form.Item
                 name="api_key"

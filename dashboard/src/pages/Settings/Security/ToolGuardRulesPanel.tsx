@@ -10,8 +10,9 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import { securityApi, type ToolGuardRule } from "../../../api/modules/security";

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Empty, Form, Modal, Switch, message } from "antd";
+import { Button, Empty, Form, Modal, Switch } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";

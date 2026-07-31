@@ -39,24 +39,24 @@
   position: absolute;
   bottom: 20px;
   left: 50%;
-  z-index: 10;
+  z-index: 20;
 
-  /* Base appearance */
+  /* Base appearance — more prominent jump affordance */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 7px 16px 7px 14px;
-  background: var(--fn-bg-primary);
-  border: 1px solid rgba(232, 93, 117, 0.18);
+  gap: 6px;
+  padding: 9px 18px 9px 14px;
+  background: var(--fn-bg-elevated, var(--fn-bg-primary));
+  border: 1px solid rgba(232, 93, 117, 0.35);
   border-radius: 999px;
-  color: var(--fn-text-secondary);
+  color: var(--fn-text-brand);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.1),
-    0 1px 4px rgba(232, 93, 117, 0.08);
+    0 6px 20px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(232, 93, 117, 0.16);
   white-space: nowrap;
 
   /* Smooth transitions for hover and visibility changes */
@@ -64,6 +64,7 @@
     background var(--fn-transition-fast),
     color var(--fn-transition-fast),
     box-shadow var(--fn-transition-fast),
+    border-color var(--fn-transition-fast),
     opacity 0.22s ease,
     transform 0.22s ease,
     visibility 0.22s;
@@ -77,10 +78,10 @@
   &:hover {
     background: var(--fn-bg-hover);
     color: var(--fn-text-brand);
-    border-color: rgba(232, 93, 117, 0.32);
+    border-color: rgba(232, 93, 117, 0.55);
     box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.12),
-      0 2px 8px rgba(232, 93, 117, 0.14);
+      0 8px 24px rgba(0, 0, 0, 0.14),
+      0 3px 10px rgba(232, 93, 117, 0.22);
     transform: translateX(-50%) translateY(-2px);
   }
 
@@ -155,6 +156,10 @@
   font-size: 12px;
   height: auto;
   padding: 0 4px;
+}
+
+.historyLoadMoreHint {
+  color: inherit;
 }
 
 /* ---------- Message bubbles ---------- */
@@ -456,20 +461,26 @@
   }
 }
 
-/* "Continuing" indicator — shown between tool completion and next text delta */
-.continuingIndicator {
+/* Unified bottom waiting state — fixed slot for the whole stream. */
+.generatingSlot {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 4px 4px 8px;
+  box-sizing: border-box;
+}
+
+.generatingIndicator {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 4px;
-  animation: fadeIn 0.3s ease;
+  padding: 4px 0;
 }
 
-.continuingText {
+.generatingText {
   font-size: 12px;
   color: var(--fn-text-tertiary);
   margin-left: 4px;
-  animation: thinkingFadeInOut 2s ease-in-out infinite;
 }
 
 /* ---------- Tool-only message row (no bubble wrapper) ---------- */

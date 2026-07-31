@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { message, Spin, Modal } from "antd";
+import { Spin, Modal } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { FlaskConical, Sparkles, Check } from "lucide-react";

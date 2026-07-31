@@ -17,3 +17,21 @@ export function nextCanLoadOlder(opts: {
 export function shouldReleaseLoadMoreLatch(started: boolean | void): boolean {
   return started === false;
 }
+
+/**
+ * Non-overflow auto-fill of older pages. Must NOT take isStreaming — users need
+ * to grow the thread while a reply is in flight (scroll-up / short lists).
+ */
+export function shouldAutoFillOlderHistory(opts: {
+  historyHasMore: boolean;
+  historyLoadingMore: boolean;
+  loading: boolean;
+  canLoadOlder: boolean;
+}): boolean {
+  return (
+    opts.historyHasMore &&
+    !opts.historyLoadingMore &&
+    !opts.loading &&
+    opts.canLoadOlder
+  );
+}

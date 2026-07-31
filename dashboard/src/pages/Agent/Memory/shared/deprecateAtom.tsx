@@ -4,7 +4,8 @@
  * Reuses the same confirm dialog, optional reason input, deprecateAtom call,
  * and toast behavior across tree and list drawers.
  */
-import { Input, Modal, Typography, message } from "antd";
+import { Input, Modal, Typography } from "antd";
+import { message } from "@/utils/antdMessage";
 
 import {
   memoryDashboardApi,

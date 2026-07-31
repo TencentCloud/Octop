@@ -5,7 +5,9 @@
  * enabled toggle, edit and delete actions.
  */
 import { useState } from "react";
-import { Button, Modal, Switch, Tooltip, message } from "antd";
+import { Button, Modal, Switch, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   Pencil,
   Trash2,

@@ -21,8 +21,9 @@ import {
   Tag,
   Typography,
   Upload,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   CheckCircle,
   CloudDownload,

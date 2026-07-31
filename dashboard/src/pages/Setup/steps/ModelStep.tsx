@@ -12,10 +12,11 @@ import {
   InputNumber,
   Tag,
   Divider,
-  message,
   Switch,
   Modal,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Plus, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";

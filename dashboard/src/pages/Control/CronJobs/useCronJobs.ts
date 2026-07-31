@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { message } from "antd";
 import { useTranslation } from "react-i18next";
 import { octopCronApi } from "../../../api/modules/cronjob";
 import { useAgent } from "../../../context/AgentContext";
 import type { CronJobSpecOutput, OctopCronRow } from "../../../api/types";
 import { channelFromSessionKey } from "./cronDisplay";
 import { presetToCron, cronToPreset } from "./components/constants";
+import { message } from "@/utils/antdMessage";
+
 import {
   defaultModelFromForm,
   defaultModelToForm,

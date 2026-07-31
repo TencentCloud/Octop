@@ -1,4 +1,6 @@
-import { Button, Modal, message } from "antd";
+import { Button, Modal } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Activity, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

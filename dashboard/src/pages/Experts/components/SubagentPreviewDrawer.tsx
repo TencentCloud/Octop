@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Drawer, Spin, message } from "antd";
+import { Drawer, Spin } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import { getSubagentCatalogItem } from "../../../api/modules/subagents";
 import { useIsMobile } from "../../../hooks/useIsMobile";

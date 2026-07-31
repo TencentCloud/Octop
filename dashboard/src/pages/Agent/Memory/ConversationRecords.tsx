@@ -19,8 +19,9 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { ColumnsType } from "antd/es/table";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";

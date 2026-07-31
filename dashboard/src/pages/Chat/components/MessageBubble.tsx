@@ -1,5 +1,7 @@
 import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
-import { Image, Button, message as antMessage } from "antd";
+import { Image, Button } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
+
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import {
   ChevronRight,

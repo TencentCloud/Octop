@@ -114,3 +114,22 @@ class PathLayout:
         out = self.ssl_dir
         out.mkdir(parents=True, exist_ok=True)
         return out
+
+    @property
+    def connector_cli_dir(self) -> Path:
+        """Per-instance CLI config roots: ``~/.octop/connector-cli/``."""
+        return self.root / "connector-cli"
+
+    def connector_cli_instance_dir(self, kind: str, instance_key: str) -> Path:
+        """Isolated config dir for one connector CLI instance."""
+        safe_kind = Path(kind).name
+        safe_key = (
+            "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in instance_key)[:80]
+            or "default"
+        )
+        return self.connector_cli_dir / safe_kind / safe_key
+
+    def ensure_connector_cli_instance_dir(self, kind: str, instance_key: str) -> Path:
+        out = self.connector_cli_instance_dir(kind, instance_key)
+        out.mkdir(parents=True, exist_ok=True)
+        return out

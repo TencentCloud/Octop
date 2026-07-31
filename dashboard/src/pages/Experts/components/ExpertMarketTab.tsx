@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, Drawer, Input, message, Segmented, Spin, Tag } from "antd";
+import { Button, Drawer, Input, Segmented, Spin, Tag } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   CircleCheck,
   Download,

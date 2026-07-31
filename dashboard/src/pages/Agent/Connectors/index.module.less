@@ -495,6 +495,96 @@
   font-size: 13px;
 }
 
+.cliInstallHint,
+.cliInstallHintError {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cliInstallHint {
+  color: var(--fn-text-secondary);
+  background: var(--fn-surface-sunken);
+}
+
+.cliInstallHintError {
+  color: var(--fn-text-secondary);
+  background: color-mix(in srgb, var(--fn-danger, #c0392b) 8%, var(--fn-surface-sunken));
+  border: 1px solid color-mix(in srgb, var(--fn-danger, #c0392b) 25%, transparent);
+}
+
+.cliInstallCommand {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--fn-radius-sm);
+  background: var(--fn-surface);
+  color: var(--fn-text-primary);
+  word-break: break-all;
+}
+
+.cliInstallLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.feishuUserAuthBox {
+  margin: 8px 0 16px;
+  padding: 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feishuUserAuthTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.feishuUserAuthWhy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+}
+
+.feishuUserAuthHint {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.5;
+}
+
+.feishuUserAuthReopen {
+  align-self: flex-start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--fn-text-link, var(--fn-accent));
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.feishuUserAuthPending {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
 .manualToggle {
   margin-top: 8px;
   font-size: 13px;

@@ -23,6 +23,7 @@ import {
   type ToolCallChunk,
 } from "../../../utils/parseHarnessChunk";
 import { buildUserMessageContent } from "../utils/chatAttachments";
+import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 
 // ── Pending prefill text ──────────────────────────────────────────────────
 // Set by external pages (e.g. cron-jobs suggestions) before navigating to
@@ -631,6 +632,12 @@ function handleHarnessChunk(
   notify(state);
 }
 
+/** Seal all streaming assistants before opening a new bubble (avoids multi-caret). */
+function sealPriorStreamingAssistants(state: SessionStreamState): void {
+  const next = sealPriorStreamingAssistantsMessages(state.messages);
+  if (next !== state.messages) state.messages = next;
+}
+
 /** Append a token fragment to the last streaming assistant text bubble,
  *  starting a new bubble if the last message is something else. */
 function appendStreamingToken(
@@ -670,6 +677,7 @@ function appendStreamingToken(
     ];
     return;
   }
+  sealPriorStreamingAssistants(state);
   state.streamId = generateId();
   state.messages = [
     ...state.messages,
@@ -712,6 +720,7 @@ function appendStreamingReasoning(
     ];
     return;
   }
+  sealPriorStreamingAssistants(state);
   const id = generateId();
   state.streamId = id;
   state.messages = [
@@ -826,6 +835,7 @@ function upsertToolCall(
     }
     return;
   }
+  sealPriorStreamingAssistants(state);
   const msgId = generateId();
   registerToolCallKeys(state, msgId, chunk);
   state.messages = [

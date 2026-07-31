@@ -9,12 +9,13 @@ import {
   Button,
   Select,
   Space,
-  message,
   Typography,
   DatePicker,
   Form,
   Tag,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { RefreshCw, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useIsMobile } from "../../../hooks/useIsMobile";

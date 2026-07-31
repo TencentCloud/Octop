@@ -6,10 +6,10 @@ import React, {
   useState,
 } from "react";
 import { Button, Tooltip, Tag, Spin } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
+
 import { Bot, X, Square, Play, Loader2, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { message as antMessage } from "antd";
-
 import type { OctopAgent } from "../context/AgentContext";
 import AgentSelector from "../components/AgentSelector";
 import { useAgentThreadChat } from "../hooks/useAgentThreadChat";

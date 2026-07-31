@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { message } from "antd";
 import i18n from "../i18n";
 import { probeHealth } from "../api/probeHealth";
 import { updateApi } from "../api/modules/update";
+
+import { message } from "@/utils/antdMessage";
 
 const RESTART_POLL_TIMEOUT = 120_000;
 const RESTART_POLL_INTERVAL = 800;

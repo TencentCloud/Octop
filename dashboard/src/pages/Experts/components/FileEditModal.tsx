@@ -1,7 +1,9 @@
 // dashboard/src/pages/Experts/components/FileEditModal.tsx
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, Spin, message } from "antd";
+import { Modal, Spin } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { request } from "../../../api/request";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
 

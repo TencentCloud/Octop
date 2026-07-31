@@ -14,8 +14,9 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   ChevronLeft,
   Download,

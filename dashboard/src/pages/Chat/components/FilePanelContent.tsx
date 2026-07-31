@@ -6,7 +6,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Button, Select, message, Tooltip, Segmented } from "antd";
+import { Button, Select, Tooltip, Segmented } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Pencil, Save, ArrowDownToLine, RefreshCw, FileX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { probeAuthResource, request, requestBlob } from "../../../api/request";

@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
-import { message as antMessage } from "antd";
 import { useTranslation } from "react-i18next";
 import { uploadFile } from "../../../api/modules/upload";
 import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
 import type { ChatAttachment } from "./useChat";
+import { message as antMessage } from "@/utils/antdMessage";
+
 import {
   CHAT_ACCEPT_ATTR,
   CHAT_MAX_ATTACHMENT_BYTES,

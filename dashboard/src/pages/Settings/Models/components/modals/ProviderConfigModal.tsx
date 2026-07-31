@@ -7,7 +7,9 @@
  *     with local model list, download, and delete UI
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Divider, Form, Input, Modal, Select, message } from "antd";
+import { Button, Divider, Form, Input, Modal, Select } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";

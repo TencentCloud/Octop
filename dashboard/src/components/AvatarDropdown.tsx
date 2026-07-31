@@ -7,12 +7,13 @@ import {
   Button,
   Tag,
   Space,
-  message,
   Typography,
   Divider,
   Segmented,
   Tooltip,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { LogOut, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";

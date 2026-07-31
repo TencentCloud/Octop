@@ -7,10 +7,11 @@ import {
   Space,
   Tag,
   Typography,
-  message,
   Input,
   Select,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Mic2, Mic, Volume2, RefreshCw, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {

@@ -683,7 +683,6 @@ export function useChat(
       loadMoreInFlightRef.current ||
       snap.historyLoadingMore ||
       !snap.historyHasMore ||
-      snap.isStreaming ||
       !agentId ||
       stableSessionId === "__empty__"
     ) {

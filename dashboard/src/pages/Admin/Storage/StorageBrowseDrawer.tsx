@@ -2,7 +2,9 @@
  * StorageBrowseDrawer — browse files/directories on a configured storage backend.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Drawer, Empty, Spin, Tree, message } from "antd";
+import { Drawer, Empty, Spin, Tree } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { TreeDataNode } from "antd";
 import { Folder, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";

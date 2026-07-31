@@ -1,5 +1,4 @@
 import { useCallback, useState } from "react";
-import { message as antMessage } from "antd";
 import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { downloadAuthFile } from "../../../components/AuthFileDownloadLink";
@@ -13,6 +12,8 @@ import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import { useChatFilePreview } from "../ChatFilePreviewContext";
 import styles from "../index.module.less";
+
+import { message as antMessage } from "@/utils/antdMessage";
 
 /** Files the browser can render inline (vs. pure binary blobs). */
 function isPreviewable(name: string): boolean {

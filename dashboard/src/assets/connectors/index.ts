@@ -1,5 +1,6 @@
 import baiduMap from "./baidu-map.png";
 import ctripWendao from "./ctrip-wendao.png";
+import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
 import notion from "./notion.png";
@@ -12,6 +13,7 @@ import tencentNews from "./tencent-news.png";
 import tencentLexiang from "./tencent-lexiang.png";
 import tencentWeiyun from "./tencent-weiyun.png";
 import wechatReading from "./wechat-reading.png";
+import wecomCli from "./wecom-cli.png";
 import youdaoNote from "./youdao-note.png";
 import yuandian from "./yuandian.png";
 
@@ -25,6 +27,8 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "meituan-travel": meituanTravel,
   yuandian,
   "tencent-ima": tencentIma,
+  "feishu-cli": feishuCli,
+  "wecom-cli": wecomCli,
   "tencent-lexiang": tencentLexiang,
   "tencent-meeting": tencentMeeting,
   notion,

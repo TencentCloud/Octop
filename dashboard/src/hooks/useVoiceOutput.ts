@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from "react";
-import { message as antMessage } from "antd";
 import { useTranslation } from "react-i18next";
 import { voiceApi } from "../api/modules/voice";
 import { cachedActiveVoice, fetchActiveVoice } from "./useVoiceConfig";
@@ -11,6 +10,8 @@ import {
 import { prepareSpeechText } from "../utils/plainTextForSpeech";
 import { speakBrowserText, stopBrowserSpeech } from "../utils/browserSpeech";
 import { isMobileUserAgent } from "../utils/mobileDevice";
+
+import { message as antMessage } from "@/utils/antdMessage";
 
 export function useVoiceOutput() {
   const { t } = useTranslation();

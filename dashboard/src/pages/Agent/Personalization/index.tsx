@@ -16,24 +16,24 @@ import styles from "./index.module.less";
 export type PersonalizationTab =
   | "skills"
   | "subagents"
-  | "channels"
   | "mbti"
-  | "memory";
+  | "memory"
+  | "channels";
 
 const PERSONALIZATION_TABS = [
   "skills",
   "subagents",
-  "channels",
   "mbti",
   "memory",
+  "channels",
 ] as const satisfies readonly PersonalizationTab[];
 
 const TAB_ICONS = {
   skills: Sparkles,
   subagents: Bot,
-  channels: Waypoints,
   mbti: Brain,
   memory: Notebook,
+  channels: Waypoints,
 } as const;
 
 export default function PersonalizationPage() {
@@ -112,18 +112,6 @@ export default function PersonalizationPage() {
           </div>
         )}
 
-        {isMounted("channels") && (
-          <div
-            className={styles.panel}
-            style={{ display: activeTab === "channels" ? "flex" : "none" }}
-            aria-hidden={activeTab !== "channels"}
-          >
-            <div className={pageShellStyles.fillChild}>
-              <ChannelsPanel agentId={activeAgentId} />
-            </div>
-          </div>
-        )}
-
         {isMounted("mbti") && (
           <div
             className={styles.panel}
@@ -160,6 +148,18 @@ export default function PersonalizationPage() {
                 <MemoryPanel agentId={activeAgentId} fill />
               </div>
             )}
+          </div>
+        )}
+
+        {isMounted("channels") && (
+          <div
+            className={styles.panel}
+            style={{ display: activeTab === "channels" ? "flex" : "none" }}
+            aria-hidden={activeTab !== "channels"}
+          >
+            <div className={pageShellStyles.fillChild}>
+              <ChannelsPanel agentId={activeAgentId} />
+            </div>
           </div>
         )}
       </div>

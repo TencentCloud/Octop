@@ -19,8 +19,9 @@ import {
   Spin,
   Tooltip,
   Typography,
-  message as antMessage,
 } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
+
 import {
   Bot,
   CheckCircle2,

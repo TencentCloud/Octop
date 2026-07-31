@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_admin, current_user, get_server
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -29,6 +29,13 @@ from octop.infra.connectors.custom_mcp import (
     is_custom_mcp_kind,
     parse_synthetic_instance_id,
 )
+from octop.infra.connectors.gateway.cli_dirs import cleanup_creds_cli_dirs, cleanup_keys_for_creds
+from octop.infra.connectors.gateway.cli_install import (
+    cli_install_status,
+    get_cli_install_spec,
+    install_connector_cli,
+)
+from octop.infra.connectors.gateway.feishu_user_auth import live_user_auth_preview
 from octop.infra.connectors.oauth import (
     auth_info_for_kind,
     delete_oauth_ctx,
@@ -76,6 +83,20 @@ class ExchangeAuthCodeBody(BaseModel):
 class TestCredentialsBody(BaseModel):
     kind: str
     credentials: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeishuUserAuthStartBody(BaseModel):
+    app_id: str
+    app_secret: str
+    cli_config_key: str | None = None
+    domains: list[str] | None = None
+
+
+class FeishuUserAuthCompleteBody(BaseModel):
+    app_id: str
+    app_secret: str
+    device_code: str
+    cli_config_key: str | None = None
 
 
 class CustomMcpPutBody(BaseModel):
@@ -190,6 +211,20 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
             preview["api_key_configured"] = True
         if kind == "tencent-ima" and creds.get("client_id"):
             preview["client_id"] = str(creds["client_id"])
+        if kind == "feishu-cli" and creds.get("app_id"):
+            preview["app_id"] = str(creds["app_id"])
+            if str(creds.get("app_secret") or "").strip():
+                preview["app_secret_configured"] = True
+            default_as = str(creds.get("default_as") or "bot").strip().lower()
+            preview["default_as"] = "user" if default_as == "user" else "bot"
+            if default_as == "user":
+                preview["user_auth_configured"] = True
+            if creds.get("cli_config_key"):
+                preview["cli_config_key"] = str(creds["cli_config_key"])
+        if kind == "wecom-cli" and creds.get("bot_id"):
+            preview["bot_id"] = str(creds["bot_id"])
+            if str(creds.get("bot_secret") or "").strip():
+                preview["bot_secret_configured"] = True
         if kind == "tencent-lexiang":
             company_from = creds.get("company_from") or creds.get("client_id")
             if company_from:
@@ -367,6 +402,9 @@ async def get_instance(
         svc = _connector_service(server)
         creds = svc.decrypt(instance_id)
         data["credentials_preview"] = _credentials_preview(inst.kind, creds)
+        if inst.kind == "feishu-cli" and data["credentials_preview"].get("user_auth_configured"):
+            live = await asyncio.to_thread(live_user_auth_preview, creds)
+            data["credentials_preview"].update(live)
     else:
         data["credentials_preview"] = {}
     return data
@@ -393,10 +431,12 @@ async def create_instance(
     repo = server.services.repos.connector_repo
     svc = _connector_service(server)
     cred_input = dict(body.credentials)
+    old_cli_creds: dict[str, Any] | None = None
     for old in repo.list_by_user(user.id):
         if old.kind == body.kind:
             if old.has_credentials:
-                cred_input = _merge_credentials(svc.decrypt(old.instance_id), cred_input)
+                old_cli_creds = svc.decrypt(old.instance_id)
+                cred_input = _merge_credentials(old_cli_creds, cred_input)
             repo.delete(old.instance_id)
             break
 
@@ -405,9 +445,16 @@ async def create_instance(
             body.kind, cred_input, server.services.settings_repo
         )
     except ValueError as exc:
-        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
 
     instance_id = new_ulid()
+    if body.kind in ("feishu-cli", "wecom-cli") and old_cli_creds:
+        keep = cleanup_keys_for_creds(body.kind, {**cred_payload, "instance_id": instance_id})
+        cleanup_creds_cli_dirs(body.kind, old_cli_creds, keep=keep)
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
@@ -521,7 +568,17 @@ async def delete_instance(
     if inst.user_id != user.id:
         raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
     user_id = inst.user_id
+    cli_creds: dict[str, Any] | None = None
+    if inst.kind in ("feishu-cli", "wecom-cli") and inst.has_credentials:
+        try:
+            cli_creds = _connector_service(server).decrypt(instance_id)
+        except Exception:
+            cli_creds = {"instance_id": instance_id}
+        else:
+            cli_creds = {**cli_creds, "instance_id": instance_id}
     repo.delete(instance_id)
+    if cli_creds is not None:
+        cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(server, user_id)
     server.services.audit_repo.write(
         actor=user.username,
@@ -594,7 +651,11 @@ async def test_credentials(
             full_prepare=lambda k, c: _prepare_credentials(k, c, server.services.settings_repo),
         )
     except ValueError as exc:
-        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
     try:
         return await probe_connector(
             entry,
@@ -605,6 +666,156 @@ async def test_credentials(
     except Exception as exc:
         logger.exception("connector credential test failed for %s", body.kind)
         return {"ok": False, "error": str(exc)}
+
+
+@router.get(
+    "/connectors/{kind}/cli-status",
+    summary="Host CLI install status for Feishu/WeCom connectors",
+)
+async def connector_cli_status(
+    kind: str,
+    user: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Report whether the host binary is on PATH (no side effects)."""
+    del user
+    if get_cli_install_spec(kind) is None:
+        raise OctopError(
+            ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
+            f"kind {kind!r} does not support CLI install",
+        )
+    try:
+        return await asyncio.to_thread(cli_install_status, kind)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, str(exc)) from exc
+
+
+@router.post(
+    "/connectors/{kind}/install-cli",
+    summary="Install host CLI for Feishu/WeCom connectors (admin)",
+)
+async def connector_install_cli(
+    kind: str,
+    _: Any = Depends(current_admin),
+) -> dict[str, Any]:
+    """Run ``npm install -g`` for the connector CLI on the Octop host (admin only).
+
+    Always returns a structured body (even on failure) including ``install_command``
+    and documentation URLs so the UI can guide manual install.
+    """
+    if get_cli_install_spec(kind) is None:
+        raise OctopError(
+            ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
+            f"kind {kind!r} does not support CLI install",
+        )
+    return await asyncio.to_thread(install_connector_cli, kind)
+
+
+@router.post(
+    "/connectors/feishu-cli/user-auth/start",
+    summary="Start Feishu CLI user device-code login",
+)
+async def feishu_cli_user_auth_start(
+    body: FeishuUserAuthStartBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Begin OAuth device-code login (no local HTTPS callback required)."""
+    del user
+    svc = _connector_service(server)
+    try:
+        return await svc.start_feishu_user_auth(
+            app_id=body.app_id,
+            app_secret=body.app_secret,
+            cli_config_key=body.cli_config_key,
+            domains=body.domains,
+        )
+    except ValueError as exc:
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
+
+
+@router.post(
+    "/connectors/feishu-cli/user-auth/complete",
+    summary="Complete Feishu CLI user device-code login",
+)
+async def feishu_cli_user_auth_complete(
+    body: FeishuUserAuthCompleteBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Finish device-code login and switch default identity to user."""
+    del user
+    svc = _connector_service(server)
+    try:
+        return await svc.complete_feishu_user_auth(
+            app_id=body.app_id,
+            app_secret=body.app_secret,
+            device_code=body.device_code,
+            cli_config_key=body.cli_config_key or "",
+        )
+    except ValueError as exc:
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
+
+
+class FeishuUserAuthInstanceCompleteBody(BaseModel):
+    device_code: str
+    cli_config_key: str | None = None
+
+
+@router.post(
+    "/connector-instances/{instance_id}/feishu-user-auth/start",
+    summary="Start Feishu user login for an existing connector instance",
+)
+async def feishu_cli_user_auth_start_instance(
+    instance_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Same as start, but App Secret is read from the stored instance."""
+    svc = _connector_service(server)
+    try:
+        return await svc.start_feishu_user_auth_for_instance(instance_id, user.id)
+    except ValueError as exc:
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
+
+
+@router.post(
+    "/connector-instances/{instance_id}/feishu-user-auth/complete",
+    summary="Complete Feishu user login for an existing connector instance",
+)
+async def feishu_cli_user_auth_complete_instance(
+    instance_id: str,
+    body: FeishuUserAuthInstanceCompleteBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    svc = _connector_service(server)
+    try:
+        result = await svc.complete_feishu_user_auth_for_instance(
+            instance_id,
+            user.id,
+            device_code=body.device_code,
+            cli_config_key=body.cli_config_key,
+        )
+    except ValueError as exc:
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
+    _schedule_connector_reload(server, user.id)
+    return result
 
 
 @router.post("/connector-instances/{instance_id}/refresh", summary="Refresh OAuth tokens")

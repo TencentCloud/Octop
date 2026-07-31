@@ -10,6 +10,7 @@ from urllib.parse import quote
 from octop.config import OctopConfig
 from octop.infra.connectors.catalog import ConnectorCatalogEntry, get_catalog_entry
 from octop.infra.connectors.mail_servers import resolve_mail_servers
+from octop.infra.utils.ulid import new_ulid
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
@@ -226,6 +227,42 @@ def validate_create_credentials(
         raise ValueError("authorization code exchange failed or credentials missing")
 
     if entry.auth_kind == "api_key":
+        if entry.kind == "feishu-cli":
+            app_id = str(credentials.get("app_id") or credentials.get("client_id") or "").strip()
+            app_secret = str(
+                credentials.get("app_secret") or credentials.get("api_key") or ""
+            ).strip()
+            if not app_id:
+                raise ValueError("app_id is required for Feishu CLI")
+            if not app_secret:
+                raise ValueError("app_secret is required for Feishu CLI")
+            out = {
+                "app_id": app_id,
+                "app_secret": app_secret,
+                "internal_token": new_internal_token(),
+                "cli_config_key": str(credentials.get("cli_config_key") or "").strip()
+                or new_ulid(),
+            }
+            default_as = str(credentials.get("default_as") or "bot").strip().lower()
+            if default_as == "user":
+                out["default_as"] = "user"
+            return out
+        if entry.kind == "wecom-cli":
+            bot_id = str(credentials.get("bot_id") or credentials.get("client_id") or "").strip()
+            bot_secret = str(
+                credentials.get("bot_secret") or credentials.get("api_key") or ""
+            ).strip()
+            if not bot_id:
+                raise ValueError("bot_id is required for WeCom CLI")
+            if not bot_secret:
+                raise ValueError("bot_secret is required for WeCom CLI")
+            return {
+                "bot_id": bot_id,
+                "bot_secret": bot_secret,
+                "internal_token": new_internal_token(),
+                "cli_config_key": str(credentials.get("cli_config_key") or "").strip()
+                or new_ulid(),
+            }
         api_key = str(credentials.get("api_key") or "").strip()
         if not api_key:
             raise ValueError("api_key is required")

@@ -7,6 +7,7 @@ import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
 import SetupPage from "./pages/Setup";
 import AuthGuard from "./components/AuthGuard";
+import { AntdAppProvider } from "./components/AntdAppProvider";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AgentProvider } from "./context/AgentContext";
@@ -103,22 +104,24 @@ function ThemedApp() {
 
   return (
     <ConfigProvider theme={themeConfig} prefixCls="octop">
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/setup" element={<SetupPage />} />
-        <Route
-          path="/*"
-          element={
-            <AuthGuard>
-              <AgentProvider>
-                <VoiceOutputProvider>
-                  <MainLayout />
-                </VoiceOutputProvider>
-              </AgentProvider>
-            </AuthGuard>
-          }
-        />
-      </Routes>
+      <AntdAppProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/setup" element={<SetupPage />} />
+          <Route
+            path="/*"
+            element={
+              <AuthGuard>
+                <AgentProvider>
+                  <VoiceOutputProvider>
+                    <MainLayout />
+                  </VoiceOutputProvider>
+                </AgentProvider>
+              </AuthGuard>
+            }
+          />
+        </Routes>
+      </AntdAppProvider>
     </ConfigProvider>
   );
 }

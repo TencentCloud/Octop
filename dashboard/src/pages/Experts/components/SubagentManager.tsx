@@ -3,7 +3,9 @@
  * Used inside SubagentCatalogDrawer (Drawer) and Subagents page.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Empty, Input, Modal, Spin, Tabs, message } from "antd";
+import { Alert, Empty, Input, Modal, Spin, Tabs } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { CircleCheck, Download, RefreshCw, Search } from "lucide-react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";

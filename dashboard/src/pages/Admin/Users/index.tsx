@@ -25,7 +25,6 @@ import {
   Select,
   Space,
   Popconfirm,
-  message,
   Switch,
   Typography,
   Tooltip,
@@ -35,6 +34,8 @@ import {
   Tag,
   Segmented,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   Bot,
   ChevronRight,

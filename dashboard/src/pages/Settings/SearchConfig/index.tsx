@@ -8,10 +8,11 @@ import {
   Typography,
   Spin,
   Alert,
-  message,
   Divider,
   Modal,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   AlertCircle,
   CheckCircle,

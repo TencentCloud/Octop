@@ -1,6 +1,8 @@
 // dashboard/src/pages/Agent/Skills/components/SkillHubTab.tsx
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Button, Input, message, Spin, Tag, Segmented } from "antd";
+import { Button, Input, Spin, Tag, Segmented } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { CircleCheck, Download, Link, RefreshCw, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../api/request";

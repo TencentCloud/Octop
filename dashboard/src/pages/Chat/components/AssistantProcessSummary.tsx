@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
@@ -24,16 +24,12 @@ function AssistantProcessSummary({
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(isStreaming);
+  // Always collapsed by default — tools/thinking stay merged until the user opens them.
+  const [expanded, setExpanded] = useState(false);
   const { toolCount, thinkingCount } = useMemo(
     () => countProcessStats(split),
     [split],
   );
-
-  // Expand while the turn is in progress; collapse when the answer completes.
-  useEffect(() => {
-    setExpanded(isStreaming);
-  }, [isStreaming]);
 
   if (toolCount === 0 && thinkingCount === 0) return null;
 
@@ -45,14 +41,14 @@ function AssistantProcessSummary({
           defaultValue: "已调用 {{tools}} 次工具，{{thinking}} 次深度思考",
         })
       : toolCount > 0
-      ? t("chat.processSummaryToolsOnly", {
-          tools: toolCount,
-          defaultValue: "已调用 {{tools}} 次工具",
-        })
-      : t("chat.processSummaryThinkingOnly", {
-          thinking: thinkingCount,
-          defaultValue: "{{thinking}} 次深度思考",
-        });
+        ? t("chat.processSummaryToolsOnly", {
+            tools: toolCount,
+            defaultValue: "已调用 {{tools}} 次工具",
+          })
+        : t("chat.processSummaryThinkingOnly", {
+            thinking: thinkingCount,
+            defaultValue: "{{thinking}} 次深度思考",
+          });
 
   return (
     <div className={styles.processSummary}>

@@ -10,12 +10,13 @@
  * sending the message to the agent.
  */
 import { useCallback, useRef, useState } from "react";
-import { message as antMessage } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { browserApi } from "../../../api/modules/browser";
 import { request } from "../../../api/request";
 import * as chatStore from "../hooks/chatStore";
+
+import { message as antMessage } from "@/utils/antdMessage";
 
 interface UseSkillRecordingWorkflowParams {
   agentId: string | null;

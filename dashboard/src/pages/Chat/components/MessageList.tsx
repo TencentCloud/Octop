@@ -6,46 +6,80 @@ import {
   useMemo,
   useState,
   useLayoutEffect,
+  type HTMLAttributes,
+  type ReactNode,
 } from "react";
 import { Spin, Button } from "antd";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import {
+  Virtuoso,
+  type Components,
+  type VirtuosoHandle,
+} from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
 import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
-import ThinkingBubble from "./ThinkingBubble";
 import ScrollToBottomButton from "./ScrollToBottomButton";
-import ContinuingIndicator from "./ContinuingIndicator";
+import GeneratingIndicator from "./GeneratingIndicator";
+import { isLiveAssistantTurn } from "./liveAssistantTurn";
+import { chatGeneratingPhase } from "./generatingGate";
 import { useAutoScroll } from "../hooks/useAutoScroll";
 import { findLastBrowserTurnGroupIndex } from "../utils/messageContent";
 import {
   groupConsecutiveAssistantMessages,
   type MessageGroup,
 } from "../utils/messageGrouping";
-import { nextCanLoadOlder, shouldReleaseLoadMoreLatch } from "./loadOlderGate";
+import {
+  nextCanLoadOlder,
+  shouldAutoFillOlderHistory,
+  shouldReleaseLoadMoreLatch,
+} from "./loadOlderGate";
 import styles from "../index.module.less";
 
 /** Virtualize long threads; short chats keep the simpler DOM path. */
 const VIRTUALIZE_THRESHOLD = 30;
 
-const VirtuosoList = forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(function VirtuosoList({ style, children, className, ...props }, ref) {
-  return (
-    <div
-      ref={ref}
-      {...props}
-      style={style}
-      className={[styles.messageListInner, className].filter(Boolean).join(" ")}
-    >
-      {children}
-    </div>
-  );
-});
+/** Virtuoso prepend anchor — count down when older pages are prepended. */
+const VIRTUOSO_START_INDEX = 1_000_000;
 
-const virtuosoComponents = { List: VirtuosoList };
+interface VirtuosoListContext {
+  historyHeader: ReactNode;
+  footer: ReactNode;
+}
+
+type VirtuosoListProps = HTMLAttributes<HTMLDivElement> & {
+  context?: VirtuosoListContext;
+};
+
+const VirtuosoList = forwardRef<HTMLDivElement, VirtuosoListProps>(
+  function VirtuosoList(
+    { style, children, className, context: _context, ...props },
+    ref,
+  ) {
+    return (
+      <div
+        ref={ref}
+        {...props}
+        style={style}
+        className={[styles.messageListInner, className]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {children}
+      </div>
+    );
+  },
+);
+
+/** Stable identity — avoid remounting Header/Footer on every parent render. */
+const virtuosoComponents: Components<MessageGroup, VirtuosoListContext> = {
+  List: VirtuosoList as Components<MessageGroup, VirtuosoListContext>["List"],
+  Header: ({ context }) =>
+    context?.historyHeader ? <div>{context.historyHeader}</div> : null,
+  Footer: ({ context }) =>
+    context?.footer ? <div>{context.footer}</div> : null,
+};
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -82,6 +116,7 @@ interface GroupRenderContext {
   isStreaming?: boolean;
   lastBrowserGroupIndex: number;
   lastAssistantGroupIndex: number;
+  lastUserGroupIndex: number;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onAcpPermissionSelect?: (message: string) => void;
@@ -106,8 +141,12 @@ function renderMessageGroup(
     ctx.onOpenBrowser && groupIndex === ctx.lastBrowserGroupIndex
       ? ctx.onOpenBrowser
       : undefined;
-  const isTurnInProgress =
-    ctx.isStreaming && groupIndex === ctx.lastAssistantGroupIndex;
+  const isTurnInProgress = isLiveAssistantTurn({
+    isStreaming: Boolean(ctx.isStreaming),
+    groupIndex,
+    lastAssistantGroupIndex: ctx.lastAssistantGroupIndex,
+    lastUserGroupIndex: ctx.lastUserGroupIndex,
+  });
 
   if (!group.isGroup || group.messages.length === 1) {
     const msg = group.messages[0];
@@ -121,7 +160,6 @@ function renderMessageGroup(
           <AssistantTurnView
             messages={[msg]}
             agentId={ctx.agentId}
-            isStreaming={ctx.isStreaming}
             isTurnInProgress={isTurnInProgress}
             onRegenerate={ctx.onRegenerate}
             onEditUserMessage={ctx.onEditUserMessage}
@@ -167,7 +205,6 @@ function renderMessageGroup(
       <AssistantTurnView
         messages={group.messages}
         agentId={ctx.agentId}
-        isStreaming={ctx.isStreaming}
         isTurnInProgress={isTurnInProgress}
         onRegenerate={ctx.onRegenerate}
         onEditUserMessage={ctx.onEditUserMessage}
@@ -221,10 +258,14 @@ export default function MessageList(props: MessageListProps) {
   const scrollHeightBeforePrependRef = useRef<number | null>(null);
   const loadMoreRequestedRef = useRef(false);
   const canLoadOlderRef = useRef(false);
+  /** Virtuoso reports at-top separately — scrollTop is not near 0 with firstItemIndex. */
+  const atTopRef = useRef(false);
   const lastSmoothScrolledUserIdRef = useRef<string | null>(null);
   const skipNextDepsScrollRef = useRef(false);
   const [scrollerMountKey, setScrollerMountKey] = useState(0);
   const [useVirtualLocked, setUseVirtualLocked] = useState(false);
+  const [firstItemIndex, setFirstItemIndex] = useState(VIRTUOSO_START_INDEX);
+  const prevGroupCountRef = useRef(0);
 
   const messageGroups = useMemo(
     () => groupConsecutiveAssistantMessages(messages),
@@ -235,36 +276,52 @@ export default function MessageList(props: MessageListProps) {
     useVirtualLocked || messageGroups.length >= VIRTUALIZE_THRESHOLD;
 
   const lastMsg = messages[messages.length - 1];
-  const isAwaitingAssistantReply = Boolean(
-    isStreaming && (!lastMsg || lastMsg.role === "user"),
-  );
-  const showThinking = Boolean(!loading && isAwaitingAssistantReply);
-  const showContinuing =
-    isStreaming &&
-    !showThinking &&
-    lastMsg?.role === "assistant" &&
-    lastMsg.status === "done";
+  const { showFooter: showGenerating, showElapsed: isAwaitingAssistantReply } =
+    chatGeneratingPhase({
+      isStreaming: Boolean(isStreaming),
+      loading: Boolean(loading),
+      lastMessageRole: lastMsg?.role,
+    });
 
   const stableSessionKey = sessionKey || "__default__";
 
+  // Keep this callback identity stable. An inline parent `onLoadMoreHistory`
+  // (or flag churn) used to recreate it every render → useAutoScroll re-bound
+  // scroll listeners and Virtuoso Header/Footer remounted, which broke the
+  // "scroll up → load earlier" gesture in practice.
+  const loadOlderGateRef = useRef({
+    historyHasMore,
+    historyLoadingMore,
+    loading,
+    onLoadMoreHistory,
+    useVirtual,
+  });
+  loadOlderGateRef.current = {
+    historyHasMore,
+    historyLoadingMore,
+    loading,
+    onLoadMoreHistory,
+    useVirtual,
+  };
+
   const requestOlderMessages = useCallback(() => {
+    const g = loadOlderGateRef.current;
     if (
       !canLoadOlderRef.current ||
-      !historyHasMore ||
-      historyLoadingMore ||
-      loading ||
-      isStreaming ||
-      !onLoadMoreHistory ||
+      !g.historyHasMore ||
+      g.historyLoadingMore ||
+      g.loading ||
+      !g.onLoadMoreHistory ||
       loadMoreRequestedRef.current
     ) {
       return;
     }
-    const scroller = useVirtual ? scrollerRef.current : containerRef.current;
+    const scroller = g.useVirtual ? scrollerRef.current : containerRef.current;
     if (scroller instanceof HTMLElement) {
       scrollHeightBeforePrependRef.current = scroller.scrollHeight;
     }
     loadMoreRequestedRef.current = true;
-    void Promise.resolve(onLoadMoreHistory()).then(
+    void Promise.resolve(g.onLoadMoreHistory()).then(
       (started) => {
         // Early-return in loadMoreHistory leaves historyLoadingMore false, so the
         // effect below never clears this latch — release it explicitly.
@@ -278,14 +335,7 @@ export default function MessageList(props: MessageListProps) {
         scrollHeightBeforePrependRef.current = null;
       },
     );
-  }, [
-    historyHasMore,
-    historyLoadingMore,
-    loading,
-    isStreaming,
-    onLoadMoreHistory,
-    useVirtual,
-  ]);
+  }, []);
 
   // Keep the refresh trigger's identity stable so the scroll-listener effect
   // in useAutoScroll never re-mounts (which would reset its overscroll guard
@@ -323,25 +373,30 @@ export default function MessageList(props: MessageListProps) {
     s.onRefreshHistory();
   }, []);
 
+  const virtualItemCountRef = useRef(messageGroups.length);
+  virtualItemCountRef.current = messageGroups.length;
+  const firstItemIndexRef = useRef(firstItemIndex);
+  firstItemIndexRef.current = firstItemIndex;
+
   const virtualScrollConfig = useMemo(
     () =>
       useVirtual
         ? {
             virtuosoRef,
             scrollerRef,
-            itemCount: messageGroups.length,
+            itemCountRef: virtualItemCountRef,
+            firstItemIndexRef,
           }
         : null,
-    [useVirtual, messageGroups.length],
+    [useVirtual],
   );
 
   // Fingerprint the in-progress assistant turn (not only the last message).
   // Thinking often lives on an earlier bubble while tools stream on later ones;
   // tool results grow in toolData without changing `content`.
+  // Generating footer height is stable for the whole stream — omit from token.
   const scrollFollowToken = useMemo(() => {
-    let token = `${messages.length}|${showThinking ? 1 : 0}|${
-      showContinuing ? 1 : 0
-    }`;
+    let token = `${messages.length}|${showGenerating ? 1 : 0}`;
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (m.role === "user") break;
@@ -352,7 +407,7 @@ export default function MessageList(props: MessageListProps) {
       token += `|${m.id}:${m.status}:${m.content.length}:${blocksLen}:${toolArgs}:${toolResult}`;
     }
     return token;
-  }, [messages, showThinking, showContinuing]);
+  }, [messages, showGenerating]);
 
   const {
     showScrollBtn,
@@ -365,19 +420,50 @@ export default function MessageList(props: MessageListProps) {
     virtual: virtualScrollConfig,
     scrollerMountKey,
     onNearTop: requestOlderMessages,
+    // Virtuoso + firstItemIndex: at-top is not scrollTop≈0. Non-virtual omits
+    // this so scrollTop near 0 still counts.
+    ...(useVirtual ? { isAtTop: () => atTopRef.current } : {}),
     onOverscrollBottom: requestRefreshMessages,
     deps: [scrollFollowToken],
     skipNextDepsScrollRef,
   });
 
+  const handleAtTopStateChange = useCallback(
+    (atTop: boolean) => {
+      atTopRef.current = atTop;
+      if (atTop) requestOlderMessages();
+    },
+    [requestOlderMessages],
+  );
   useEffect(() => {
     if (!historyLoadingMore) {
       loadMoreRequestedRef.current = false;
+      // Still parked at the top after a page lands — keep loading without a click.
+      if (atTopRef.current) {
+        requestOlderMessages();
+      }
     }
-  }, [historyLoadingMore]);
+  }, [historyLoadingMore, requestOlderMessages]);
 
   useLayoutEffect(() => {
+    const prevCount = prevGroupCountRef.current;
+    const nextCount = messageGroups.length;
+    const prependedGroups = nextCount - prevCount;
+    prevGroupCountRef.current = nextCount;
+
     if (scrollHeightBeforePrependRef.current === null) return;
+
+    // Virtuoso items are groups — shift firstItemIndex by the number of new
+    // groups, not messages. Message-count deltas misalign absolute indices and
+    // break startReached / scroll-up load-earlier.
+    if (useVirtual && prependedGroups > 0) {
+      setFirstItemIndex((idx) => idx - prependedGroups);
+      scrollHeightBeforePrependRef.current = null;
+      return;
+    }
+
+    // Non-virtual, or virtual with 0 new groups (older msgs merged into the
+    // first assistant group): restore scroll by height delta.
     const scroller = useVirtual ? scrollerRef.current : containerRef.current;
     if (scroller instanceof HTMLElement) {
       armProgrammaticGuard();
@@ -386,7 +472,7 @@ export default function MessageList(props: MessageListProps) {
       scroller.scrollTop += delta;
     }
     scrollHeightBeforePrependRef.current = null;
-  }, [messages, useVirtual, armProgrammaticGuard]);
+  }, [messages, messageGroups.length, useVirtual, armProgrammaticGuard]);
 
   const historyHeader = useMemo(() => {
     if (!historyHasMore && !historyLoadingMore) return null;
@@ -398,14 +484,19 @@ export default function MessageList(props: MessageListProps) {
             <span>{t("chat.loadingEarlierMessages")}</span>
           </>
         ) : (
-          <Button
-            type="link"
-            size="small"
-            className={styles.historyLoadMoreBtn}
-            onClick={requestOlderMessages}
-          >
-            {t("chat.loadEarlierMessages")}
-          </Button>
+          <>
+            <span className={styles.historyLoadMoreHint}>
+              {t("chat.scrollForEarlierMessages")}
+            </span>
+            <Button
+              type="link"
+              size="small"
+              className={styles.historyLoadMoreBtn}
+              onClick={requestOlderMessages}
+            >
+              {t("chat.loadEarlierMessages")}
+            </Button>
+          </>
         )}
       </div>
     );
@@ -434,6 +525,13 @@ export default function MessageList(props: MessageListProps) {
     return -1;
   }, [messageGroups]);
 
+  const lastUserGroupIndex = useMemo(() => {
+    for (let i = messageGroups.length - 1; i >= 0; i--) {
+      if (messageGroups[i].messages.some((m) => m.role === "user")) return i;
+    }
+    return -1;
+  }, [messageGroups]);
+
   const registerBubbleRef = useCallback(
     (messageId: string, el: HTMLDivElement | null) => {
       if (el) bubbleRefsMap.current.set(messageId, el);
@@ -455,8 +553,11 @@ export default function MessageList(props: MessageListProps) {
       loading: !!loading,
       messageCount: messages.length,
     });
+    atTopRef.current = false;
     lastSmoothScrolledUserIdRef.current = null;
     scrollHeightBeforePrependRef.current = null;
+    prevGroupCountRef.current = 0;
+    setFirstItemIndex(VIRTUOSO_START_INDEX);
     scrollToBottomRef.current(true);
     // Intentionally only sessionKey — see scrollToBottomRef above.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session switch only
@@ -477,13 +578,15 @@ export default function MessageList(props: MessageListProps) {
 
   // When the list does not overflow, scroll-to-top never fires — keep loading
   // older pages until content can scroll or the server says there is no more.
+  // Do not gate on isStreaming: load-earlier must work during an in-flight reply.
   useEffect(() => {
     if (
-      !historyHasMore ||
-      historyLoadingMore ||
-      loading ||
-      isStreaming ||
-      !canLoadOlderRef.current
+      !shouldAutoFillOlderHistory({
+        historyHasMore: Boolean(historyHasMore),
+        historyLoadingMore: Boolean(historyLoadingMore),
+        loading: Boolean(loading),
+        canLoadOlder: canLoadOlderRef.current,
+      })
     ) {
       return;
     }
@@ -496,7 +599,6 @@ export default function MessageList(props: MessageListProps) {
     historyHasMore,
     historyLoadingMore,
     loading,
-    isStreaming,
     messages.length,
     useVirtual,
     scrollerMountKey,
@@ -528,6 +630,9 @@ export default function MessageList(props: MessageListProps) {
     prevInitialLoadingRef.current = !!loading;
   }, [loading]);
 
+  // On send: pin instantly in layout so the new user bubble is visible before
+  // paint. A deferred smooth scroll left a frame where the message was below
+  // the fold, then animated the list upward.
   useLayoutEffect(() => {
     if (!isStreaming) {
       lastSmoothScrolledUserIdRef.current = null;
@@ -540,7 +645,7 @@ export default function MessageList(props: MessageListProps) {
     lastSmoothScrolledUserIdRef.current = lastUserMsg.id;
 
     skipNextDepsScrollRef.current = true;
-    scrollToBottom(false);
+    scrollToBottom(true, true);
   }, [isStreaming, messages, scrollToBottom]);
 
   const groupContext = useMemo<GroupRenderContext>(
@@ -550,6 +655,7 @@ export default function MessageList(props: MessageListProps) {
       isStreaming,
       lastBrowserGroupIndex,
       lastAssistantGroupIndex,
+      lastUserGroupIndex,
       onRegenerate,
       onEditUserMessage,
       onAcpPermissionSelect,
@@ -568,6 +674,7 @@ export default function MessageList(props: MessageListProps) {
       isStreaming,
       lastBrowserGroupIndex,
       lastAssistantGroupIndex,
+      lastUserGroupIndex,
       onRegenerate,
       onEditUserMessage,
       onAcpPermissionSelect,
@@ -582,6 +689,40 @@ export default function MessageList(props: MessageListProps) {
     ],
   );
 
+  const footer = useMemo(
+    () => (
+      <>
+        {showGenerating && (
+          <div className={styles.generatingSlot}>
+            <GeneratingIndicator
+              startedAt={thinkingStartedAt}
+              showElapsed={isAwaitingAssistantReply}
+              onCancel={onCancel}
+            />
+          </div>
+        )}
+        {refreshFooter}
+      </>
+    ),
+    [
+      showGenerating,
+      thinkingStartedAt,
+      isAwaitingAssistantReply,
+      onCancel,
+      refreshFooter,
+    ],
+  );
+
+  const hasFooter = showGenerating || Boolean(refreshFooter);
+
+  const virtuosoContext = useMemo<VirtuosoListContext>(
+    () => ({
+      historyHeader,
+      footer: hasFooter ? footer : null,
+    }),
+    [historyHeader, hasFooter, footer],
+  );
+
   if (loading && messages.length === 0) {
     return (
       <div className={styles.messageListLoading}>
@@ -589,16 +730,6 @@ export default function MessageList(props: MessageListProps) {
       </div>
     );
   }
-
-  const footer = (
-    <>
-      {showThinking && thinkingStartedAt != null && (
-        <ThinkingBubble startedAt={thinkingStartedAt} onCancel={onCancel} />
-      )}
-      {showContinuing && <ContinuingIndicator onCancel={onCancel} />}
-      {refreshFooter}
-    </>
-  );
 
   return (
     <div className={styles.messageListWrapper}>
@@ -609,10 +740,17 @@ export default function MessageList(props: MessageListProps) {
           className={styles.messageList}
           style={{ height: "100%" }}
           data={messageGroups}
-          initialTopMostItemIndex={Math.max(0, messageGroups.length - 1)}
+          context={virtuosoContext}
+          firstItemIndex={firstItemIndex}
+          initialTopMostItemIndex={
+            messageGroups.length === 0
+              ? firstItemIndex
+              : firstItemIndex + messageGroups.length - 1
+          }
           increaseViewportBy={{ top: 600, bottom: 800 }}
           followOutput={false}
           atBottomStateChange={handleAtBottomChange}
+          atTopStateChange={handleAtTopStateChange}
           atTopThreshold={200}
           startReached={requestOlderMessages}
           scrollerRef={(el) => {
@@ -622,16 +760,9 @@ export default function MessageList(props: MessageListProps) {
               if (next) setScrollerMountKey((k) => k + 1);
             }
           }}
-          components={{
-            ...virtuosoComponents,
-            Header: () => (historyHeader ? <div>{historyHeader}</div> : null),
-            Footer: () =>
-              showThinking || showContinuing || refreshFooter ? (
-                <div>{footer}</div>
-              ) : null,
-          }}
+          components={virtuosoComponents}
           itemContent={(index, group) =>
-            renderMessageGroup(group, index, groupContext)
+            renderMessageGroup(group, index - firstItemIndex, groupContext)
           }
         />
       ) : (

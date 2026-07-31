@@ -2,7 +2,9 @@
  * CustomProviderModal — create a new custom provider.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Form, Input, Modal, Select, message } from "antd";
+import { Button, Divider, Form, Input, Modal, Select } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";

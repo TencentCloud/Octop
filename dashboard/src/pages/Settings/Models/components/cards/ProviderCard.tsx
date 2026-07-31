@@ -4,7 +4,9 @@
  * All providers are admin-managed. Delete and edit are always available.
  */
 import { useState } from "react";
-import { Button, Card, Modal, Switch, Tooltip, message } from "antd";
+import { Button, Card, Modal, Switch, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";

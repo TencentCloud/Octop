@@ -8,8 +8,9 @@ import {
   Spin,
   Table,
   Upload,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { ColumnsType } from "antd/es/table";
 import {
   Archive,

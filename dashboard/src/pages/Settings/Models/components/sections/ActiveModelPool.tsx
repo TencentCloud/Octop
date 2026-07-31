@@ -6,7 +6,9 @@
  */
 import { useMemo, useState } from "react";
 import { Check, Info, Star, X, Zap } from "lucide-react";
-import { Button, Empty, Tag, Tooltip, message } from "antd";
+import { Button, Empty, Tag, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderRow, ResolvedModel } from "../../useProviders";

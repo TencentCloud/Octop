@@ -9,8 +9,9 @@ import {
   InputNumber,
   Switch,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CardSkeleton } from "../../../components/Skeleton";

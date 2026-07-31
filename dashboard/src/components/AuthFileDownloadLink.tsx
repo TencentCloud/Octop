@@ -10,10 +10,11 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { message as antMessage } from "antd";
 import { useTranslation } from "react-i18next";
 import { requestBlob } from "../api/request";
 import { isDataUrl, needsAuthBlobFetch } from "../utils/toolMediaBlocks";
+
+import { message as antMessage } from "@/utils/antdMessage";
 
 function apiPathForBlobFetch(fetchUrl: string): string {
   if (fetchUrl.startsWith("http")) {

@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "../index.module.less";
 
@@ -11,6 +12,7 @@ export default function ScrollToBottomButton({
   onClick,
 }: ScrollToBottomButtonProps) {
   const { t } = useTranslation();
+  const label = t("chat.scrollToBottom");
   return (
     <button
       className={`${styles.scrollToBottomBtn} ${
@@ -20,10 +22,13 @@ export default function ScrollToBottomButton({
       }`}
       onClick={onClick}
       type="button"
-      title={t("chat.scrollToBottom")}
+      title={label}
+      aria-label={label}
       aria-hidden={!visible}
+      tabIndex={visible ? 0 : -1}
     >
-      ↓
+      <ChevronDown size={16} strokeWidth={2.5} aria-hidden />
+      <span>{label}</span>
     </button>
   );
 }

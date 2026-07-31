@@ -12,7 +12,6 @@ import {
   Button,
   Space,
   Upload,
-  message,
   Tooltip,
   Drawer,
   Modal,
@@ -22,6 +21,8 @@ import {
   Popconfirm,
   Input,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { TreeDataNode, TreeProps } from "antd";
 import {
   Folder,

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Input, Button, message } from "antd";
+import { Input, Button } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { setAuthToken } from "../../api";

@@ -10,7 +10,9 @@
  * Collapsible advanced section: raw JSON config
  */
 import { useEffect, useState } from "react";
-import { Button, Collapse, Drawer, Form, Input, Select, message } from "antd";
+import { Button, Collapse, Drawer, Form, Input, Select } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Activity } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";

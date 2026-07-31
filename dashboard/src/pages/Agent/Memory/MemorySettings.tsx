@@ -10,8 +10,9 @@ import {
   Space,
   Switch,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Brain, Cpu, Database, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

@@ -68,7 +68,22 @@ export function apiErrorMessage(
   if (parsed?.code && t) {
     const key = `apiErrors.${parsed.code}`;
     const translated = t(key, parsed.details ?? {});
-    if (translated !== key) return translated;
+    if (translated !== key) {
+      const reason = parsed.details?.reason;
+      if (typeof reason === "string" && reason.trim()) {
+        const base = translated.replace(/[。.]\s*$/, "");
+        return `${base}：${reason.trim()}`;
+      }
+      // Prefer server detail when it carries more than the generic code message.
+      if (
+        parsed.message &&
+        parsed.message.trim() &&
+        parsed.message.trim() !== translated.trim()
+      ) {
+        return parsed.message.trim();
+      }
+      return translated;
+    }
   }
   if (parsed?.message) return parsed.message;
   if (error instanceof Error && error.message.trim()) {

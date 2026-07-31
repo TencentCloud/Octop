@@ -9,8 +9,9 @@ import {
   Input,
   Select,
   Spin,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { request } from "../../../api/request";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";

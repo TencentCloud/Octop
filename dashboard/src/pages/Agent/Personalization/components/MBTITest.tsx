@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { Modal, message } from "antd";
+import { Modal } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";

@@ -1,5 +1,7 @@
 import { memo, useCallback, useState } from "react";
-import { Popconfirm, Tag, Tooltip, message } from "antd";
+import { Popconfirm, Tag, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import {
   AlertCircle,

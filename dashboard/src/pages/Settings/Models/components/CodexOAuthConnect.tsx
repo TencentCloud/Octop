@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Space, Spin, Typography, message } from "antd";
+import { Alert, Button, Space, Spin, Typography } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pollCodexOAuth, startCodexOAuth } from "../providerApi";

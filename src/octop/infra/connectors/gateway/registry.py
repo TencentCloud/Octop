@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from octop.infra.connectors.gateway.adapters import (
     baidu_map,
     ctrip_wendao,
+    feishu_cli,
     fliggy,
     meituan_travel,
     qq_mail,
@@ -14,6 +15,7 @@ from octop.infra.connectors.gateway.adapters import (
     tencent_ima,
     tencent_news,
     wechat_reading,
+    wecom_cli,
     yuandian,
 )
 
@@ -37,6 +39,8 @@ _ADAPTERS: dict[str, GatewayAdapter] = {
     "tencent-ima": tencent_ima,
     "tencent-news": tencent_news,
     "wechat-reading": wechat_reading,
+    "feishu-cli": feishu_cli,
+    "wecom-cli": wecom_cli,
 }
 
 

@@ -9,8 +9,9 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Package, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";

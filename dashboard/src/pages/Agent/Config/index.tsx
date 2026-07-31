@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { Form, InputNumber, Button, Card, message } from "antd";
+import { Form, InputNumber, Button, Card } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import api from "../../../api";
 import styles from "./index.module.less";

@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { Button, message, Switch, Input } from "antd";
+import { Button, Switch, Input } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Copy } from "lucide-react";
 import Markdown from "../Markdown/LazyMarkdown";
 import { useTranslation } from "react-i18next";

@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
-import { Button, Modal, message } from "antd";
+import { Button, Modal } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 
 import api from "../../../api";

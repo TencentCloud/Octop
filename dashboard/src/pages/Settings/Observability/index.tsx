@@ -7,8 +7,9 @@ import {
   Space,
   Switch,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Activity, CheckCircle2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { observabilityApi } from "../../../api/modules/observability";

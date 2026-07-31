@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { Radio, Space, message } from "antd";
+import { Radio, Space } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { preferencesApi } from "../../../api/modules/preferences";
 import { applyUserLocale } from "../../../utils/locale";
 

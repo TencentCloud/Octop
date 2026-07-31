@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tests.support.app import octop_client, write_octop_config
-from tests.support.auth import auth_header, bootstrap_admin
+from tests.support.auth import auth_header, bootstrap_admin, create_user
 from tests.support.http import ws_chat_turn
 
 
@@ -209,3 +209,69 @@ async def test_patch_instance_status(env):
     )
     assert r2.status_code == 200
     assert r2.json()["status"] == "disabled"
+
+
+async def test_catalog_cli_connectors_last(env):
+    c, _, auth, _ = env
+    r = await c.get("/api/connectors/catalog", headers=auth)
+    assert r.status_code == 200
+    kinds = [e["kind"] for e in r.json()]
+    assert "feishu-cli" in kinds
+    assert "wecom-cli" in kinds
+    assert kinds[-2:] == ["feishu-cli", "wecom-cli"]
+
+
+async def test_install_cli_forbidden_for_non_admin(env):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(c, admin_auth, username="cli_user")
+    r = await c.post("/api/connectors/feishu-cli/install-cli", headers=user_auth)
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+
+
+async def test_install_cli_admin_ok_mocked(env, monkeypatch: pytest.MonkeyPatch):
+    c, _, auth, _ = env
+
+    def _fake_install(kind: str) -> dict:
+        return {
+            "ok": True,
+            "kind": kind,
+            "installed": True,
+            "already_installed": True,
+            "binary": "lark-cli",
+            "version": "0.0.0-test",
+            "install_command": "npm install -g @larksuite/cli",
+            "doc_url": "https://example.com",
+            "guide_url": "https://example.com",
+        }
+
+    monkeypatch.setattr(
+        "octop.api.routers.connectors.install_connector_cli",
+        _fake_install,
+    )
+    r = await c.post("/api/connectors/feishu-cli/install-cli", headers=auth)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["already_installed"] is True
+
+
+async def test_cli_status_available_to_non_admin(env, monkeypatch: pytest.MonkeyPatch):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(c, admin_auth, username="cli_status_user")
+    monkeypatch.setattr(
+        "octop.api.routers.connectors.cli_install_status",
+        lambda kind: {
+            "ok": True,
+            "kind": kind,
+            "installed": False,
+            "binary": None,
+            "version": None,
+            "install_command": "npm install -g @larksuite/cli",
+            "doc_url": "https://example.com",
+            "guide_url": "https://example.com",
+        },
+    )
+    r = await c.get("/api/connectors/feishu-cli/cli-status", headers=user_auth)
+    assert r.status_code == 200
+    assert r.json()["installed"] is False

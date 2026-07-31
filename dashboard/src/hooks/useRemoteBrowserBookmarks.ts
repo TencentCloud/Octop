@@ -1,4 +1,3 @@
-import { message } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +7,8 @@ import {
 } from "../api/modules/preferences";
 import { normalizeUrl } from "../utils/normalizeUrl";
 import { showApiError } from "../utils/showApiToast";
+
+import { message } from "@/utils/antdMessage";
 
 const MAX_BOOKMARKS = 12;
 

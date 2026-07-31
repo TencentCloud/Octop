@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
-import { message } from "antd";
 import { useTranslation } from "react-i18next";
+
+import { message } from "@/utils/antdMessage";
 
 export interface FileEditorState {
   content: string;

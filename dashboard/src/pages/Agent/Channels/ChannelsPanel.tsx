@@ -3,7 +3,9 @@
  * Lives under Agent/Channels — shared by Personalization tab and Experts drawer.
  */
 import { useCallback, useMemo, useState } from "react";
-import { Form, Button, Empty, message } from "antd";
+import { Form, Button, Empty } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

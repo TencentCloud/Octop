@@ -10,7 +10,6 @@ import {
   Button,
   Tag,
   Space,
-  message,
   Popconfirm,
   Tooltip,
   Typography,
@@ -19,6 +18,8 @@ import {
   Empty,
   Spin,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { ColumnsType } from "antd/es/table";
 import {
   RefreshCw,

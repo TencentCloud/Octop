@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { message, Spin, TreeSelect } from "antd";
+import { Spin, TreeSelect } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { TreeSelectProps } from "antd";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";

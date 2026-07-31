@@ -4,12 +4,13 @@ import {
   Select,
   Input,
   Button,
-  message,
   Spin,
   Progress,
   Alert,
   Modal,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Download, CheckCircle, AlertCircle } from "lucide-react";
 import api from "../../../api";
 import type { EmbeddingConfig } from "../../../api/types/embedding";

@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { Tooltip, message } from "antd";
+import { Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { preferencesApi } from "../api/modules/preferences";
 import { applyUserLocale } from "../utils/locale";
 

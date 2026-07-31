@@ -9,8 +9,9 @@ import {
   Switch,
   Table,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Lock, Power, RefreshCw, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {

@@ -9,8 +9,9 @@ import {
   Space,
   Tag,
   Tooltip,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   CheckCircle2,
   Copy,

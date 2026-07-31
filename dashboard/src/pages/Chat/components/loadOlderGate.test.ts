@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { nextCanLoadOlder, shouldReleaseLoadMoreLatch } from "./loadOlderGate";
+import {
+  nextCanLoadOlder,
+  shouldAutoFillOlderHistory,
+  shouldReleaseLoadMoreLatch,
+} from "./loadOlderGate";
 
 describe("nextCanLoadOlder", () => {
   it("disarms on session reset", () => {
@@ -62,5 +66,56 @@ describe("shouldReleaseLoadMoreLatch", () => {
   it("keeps latch for void/undefined return (legacy callers)", () => {
     expect(shouldReleaseLoadMoreLatch(undefined)).toBe(false);
     expect(shouldReleaseLoadMoreLatch()).toBe(false);
+  });
+});
+
+describe("shouldAutoFillOlderHistory", () => {
+  it("allows auto-fill while streaming (isStreaming is not a gate)", () => {
+    expect(
+      shouldAutoFillOlderHistory({
+        historyHasMore: true,
+        historyLoadingMore: false,
+        loading: false,
+        canLoadOlder: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks while initial history is loading or already loading more", () => {
+    expect(
+      shouldAutoFillOlderHistory({
+        historyHasMore: true,
+        historyLoadingMore: false,
+        loading: true,
+        canLoadOlder: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoFillOlderHistory({
+        historyHasMore: true,
+        historyLoadingMore: true,
+        loading: false,
+        canLoadOlder: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks when disarmed or server has no more", () => {
+    expect(
+      shouldAutoFillOlderHistory({
+        historyHasMore: false,
+        historyLoadingMore: false,
+        loading: false,
+        canLoadOlder: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoFillOlderHistory({
+        historyHasMore: true,
+        historyLoadingMore: false,
+        loading: false,
+        canLoadOlder: false,
+      }),
+    ).toBe(false);
   });
 });

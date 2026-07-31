@@ -9,11 +9,12 @@
  * ``ChannelKind → SingleChannelConfig`` map).
  */
 import { useCallback } from "react";
-import { message } from "antd";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
 import { useAsyncResource } from "../../../hooks/useAsyncResource";
 import { showApiError } from "../../../utils/showApiToast";
+
+import { message } from "@/utils/antdMessage";
 
 export interface ChannelRow {
   id: string;

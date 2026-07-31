@@ -35,8 +35,9 @@ import {
   Space,
   Tag,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 
 import {

@@ -13,8 +13,9 @@ import {
   Modal,
   Select,
   Switch,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   Check,
   ChevronDown,

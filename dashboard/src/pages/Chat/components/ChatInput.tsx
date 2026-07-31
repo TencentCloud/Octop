@@ -7,7 +7,9 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { message as antMessage, Modal } from "antd";
+import { Modal } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
+
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";

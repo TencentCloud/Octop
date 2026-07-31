@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Input, Segmented, Spin, message } from "antd";
+import { Button, Input, Segmented, Spin } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Globe, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

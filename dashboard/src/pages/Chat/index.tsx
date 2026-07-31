@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { PanelLeftOpen, GraduationCap } from "lucide-react";
-import { Tooltip, message as antMessage } from "antd";
+import { Tooltip } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
+
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useChat } from "./hooks/useChat";
 import { useSessions } from "./hooks/useSessions";
@@ -634,8 +636,8 @@ function ChatPageInner() {
                 historyHasMore={historyHasMore}
                 historyLoadingMore={historyLoadingMore}
                 historyRefreshing={historyRefreshing}
-                onLoadMoreHistory={() => loadMoreHistory()}
-                onRefreshHistory={() => void refreshHistory()}
+                onLoadMoreHistory={loadMoreHistory}
+                onRefreshHistory={refreshHistory}
                 isStreaming={isStreaming}
                 thinkingStartedAt={thinkingStartedAt}
                 sessionKey={activeThreadId ?? undefined}

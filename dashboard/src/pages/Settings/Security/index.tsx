@@ -11,8 +11,9 @@ import {
   Switch,
   Tabs,
   Typography,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import {
@@ -196,7 +197,7 @@ export default function SecuritySettingsPage() {
           <Tabs
             activeKey={activeTab}
             onChange={selectTab}
-            destroyInactiveTabPane={false}
+            destroyOnHidden={false}
             items={[
               {
                 key: "hitl",

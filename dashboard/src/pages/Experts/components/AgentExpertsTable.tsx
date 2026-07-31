@@ -8,7 +8,9 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Popconfirm, Switch, Table, Tag, Tooltip, message } from "antd";
+import { Popconfirm, Switch, Table, Tag, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import type { ColumnsType } from "antd/es/table";
 import {
   Copy,

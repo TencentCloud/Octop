@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { message } from "antd";
 import type { TFunction } from "i18next";
 import { apiErrorMessage } from "../utils/apiError";
+
+import { message } from "@/utils/antdMessage";
 
 export interface UseAsyncResourceOptions {
   /** When false, skips fetch and resets to initialValue. */

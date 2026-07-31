@@ -65,7 +65,7 @@ let _sessions: Session[] = [];
 let _loading = true;
 let _hasMore = false;
 let _loadingMore = false;
-export const SESSION_PAGE_SIZE = 5;
+export const SESSION_PAGE_SIZE = 10;
 let _storeAgentId: string | null = null;
 const _loadedLimitByAgent = new Map<string, number>();
 const _listeners = new Set<() => void>();

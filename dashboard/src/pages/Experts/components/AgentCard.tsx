@@ -2,7 +2,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Popconfirm, Switch, Tooltip, message } from "antd";
+import { Popconfirm, Switch, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import {
   Copy,
   Pencil,

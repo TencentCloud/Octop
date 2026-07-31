@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from "react";
-import { message as antMessage } from "antd";
 import { useTranslation } from "react-i18next";
 import { voiceApi, type ActiveVoice } from "../api/modules/voice";
 import { cachedActiveVoice, fetchActiveVoice } from "./useVoiceConfig";
+
+import { message as antMessage } from "@/utils/antdMessage";
 
 interface BrowserSpeechRecognitionResultEvent {
   results: ArrayLike<{ [index: number]: { transcript?: string } }>;

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Drawer, Form, Input, Button, Segmented, message } from "antd";
+import { Drawer, Form, Input, Button, Segmented } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { MinusCircle, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";

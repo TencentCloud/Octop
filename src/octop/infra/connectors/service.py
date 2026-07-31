@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
+from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig
@@ -20,9 +22,16 @@ from octop.infra.connectors.custom_mcp import (
     validate_servers_map,
     wrap_servers,
 )
+from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
+from octop.infra.connectors.gateway.feishu_user_auth import (
+    complete_user_device_login,
+    start_user_device_login,
+)
 from octop.infra.connectors.oauth import refresh_oauth_credentials
 from octop.infra.db.repos.connectors import ConnectorRepo, ConnectorRow
 from octop.infra.db.repos.secrets import SecretRepo
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.ulid import new_ulid
 
 
@@ -82,9 +91,11 @@ class ConnectorService:
         instance_id: str,
         payload: dict[str, Any],
     ) -> None:
-        expires_at = payload.get("expires_at")
+        stored = dict(payload)
+        stored["instance_id"] = instance_id
+        expires_at = stored.get("expires_at")
         exp = int(expires_at) if expires_at is not None else None
-        blob = encrypt_credentials(self._secret_repo, payload)
+        blob = encrypt_credentials(self._secret_repo, stored)
         self._repo.upsert_credentials(instance_id=instance_id, blob=blob, expires_at=exp)
 
     async def ensure_fresh_credentials(
@@ -249,3 +260,139 @@ class ConnectorService:
         if not expected or expected != token:
             return None
         return creds
+
+    # --- Feishu CLI device-code user auth (domain orchestration) ---
+
+    @staticmethod
+    def feishu_cli_config_dir(cli_config_key: str) -> Path:
+        return PathLayout.from_env().ensure_connector_cli_instance_dir("feishu-cli", cli_config_key)
+
+    async def start_feishu_user_auth(
+        self,
+        *,
+        app_id: str,
+        app_secret: str,
+        cli_config_key: str | None = None,
+        domains: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Begin OAuth device-code login (anonymous / pre-save credentials)."""
+        app_id = str(app_id or "").strip()
+        app_secret = str(app_secret or "").strip()
+        if not app_id or not app_secret:
+            raise ValueError("app_id and app_secret are required")
+        cli_key = str(cli_config_key or "").strip() or new_ulid()
+        config_dir = self.feishu_cli_config_dir(cli_key)
+        started = await asyncio.to_thread(
+            start_user_device_login,
+            config_dir=config_dir,
+            app_id=app_id,
+            app_secret=app_secret,
+            domains=domains,
+        )
+        return {**started, "cli_config_key": cli_key}
+
+    async def complete_feishu_user_auth(
+        self,
+        *,
+        app_id: str,
+        app_secret: str,
+        device_code: str,
+        cli_config_key: str,
+    ) -> dict[str, Any]:
+        """Finish device-code login for pre-save credentials (no instance write)."""
+        app_id = str(app_id or "").strip()
+        app_secret = str(app_secret or "").strip()
+        device_code = str(device_code or "").strip()
+        cli_key = str(cli_config_key or "").strip()
+        if not app_id or not app_secret or not device_code or not cli_key:
+            raise ValueError("app_id, app_secret, device_code and cli_config_key are required")
+        config_dir = self.feishu_cli_config_dir(cli_key)
+        result = await asyncio.to_thread(
+            complete_user_device_login,
+            config_dir=config_dir,
+            app_id=app_id,
+            app_secret=app_secret,
+            device_code=device_code,
+        )
+        return {**result, "cli_config_key": cli_key, "default_as": "user"}
+
+    def _require_feishu_cli_instance(
+        self, instance_id: str, user_id: int
+    ) -> tuple[ConnectorRow, dict[str, Any]]:
+        inst = self._repo.get(instance_id)
+        if inst is None:
+            raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
+        if inst.user_id != user_id:
+            raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+        if inst.kind != "feishu-cli":
+            raise OctopError(
+                ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
+                "only feishu-cli supports user device login",
+            )
+        if not inst.has_credentials:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
+        return inst, dict(self.decrypt(instance_id))
+
+    async def start_feishu_user_auth_for_instance(
+        self, instance_id: str, user_id: int
+    ) -> dict[str, Any]:
+        """Start device login using App Secret stored on the instance."""
+        _inst, creds = self._require_feishu_cli_instance(instance_id, user_id)
+        app_id = str(creds.get("app_id") or "").strip()
+        app_secret = str(creds.get("app_secret") or "").strip()
+        if not app_id or not app_secret:
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                "stored Feishu app credentials incomplete",
+                details={"reason": "stored Feishu app credentials incomplete"},
+            )
+        if not str(creds.get("cli_config_key") or "").strip():
+            creds["cli_config_key"] = instance_id
+        cli_key = resolve_cli_config_key(creds)
+        config_dir = self.feishu_cli_config_dir(cli_key)
+        started = await asyncio.to_thread(
+            start_user_device_login,
+            config_dir=config_dir,
+            app_id=app_id,
+            app_secret=app_secret,
+            domains=None,
+        )
+        return {**started, "cli_config_key": cli_key}
+
+    async def complete_feishu_user_auth_for_instance(
+        self,
+        instance_id: str,
+        user_id: int,
+        *,
+        device_code: str,
+        cli_config_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Finish device login and persist ``default_as=user`` on the instance."""
+        _inst, creds = self._require_feishu_cli_instance(instance_id, user_id)
+        app_id = str(creds.get("app_id") or "").strip()
+        app_secret = str(creds.get("app_secret") or "").strip()
+        device_code = str(device_code or "").strip()
+        if not str(creds.get("cli_config_key") or "").strip():
+            creds["cli_config_key"] = instance_id
+        override = str(cli_config_key or "").strip()
+        if override:
+            creds["cli_config_key"] = override
+        cli_key = resolve_cli_config_key(creds)
+        if not app_id or not app_secret or not device_code:
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                "incomplete Feishu user auth payload",
+                details={"reason": "incomplete Feishu user auth payload"},
+            )
+        config_dir = self.feishu_cli_config_dir(cli_key)
+        result = await asyncio.to_thread(
+            complete_user_device_login,
+            config_dir=config_dir,
+            app_id=app_id,
+            app_secret=app_secret,
+            device_code=device_code,
+        )
+        creds["default_as"] = "user"
+        creds["cli_config_key"] = cli_key
+        self.encrypt_and_store(instance_id=instance_id, payload=creds)
+        return {**result, "cli_config_key": cli_key, "default_as": "user"}

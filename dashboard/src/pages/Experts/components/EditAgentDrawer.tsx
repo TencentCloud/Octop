@@ -12,8 +12,9 @@ import {
   Modal,
   Select,
   Spin,
-  message,
 } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { workspaceApi } from "../../../api/modules/workspace";

@@ -1,11 +1,12 @@
 import { useCallback, useEffect } from "react";
-import { message } from "antd";
 import type { TFunction } from "i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
 import type { Session } from "./useSessions";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
+import { message } from "@/utils/antdMessage";
+
 import {
   buildComposerContext,
   buildUserMessage,

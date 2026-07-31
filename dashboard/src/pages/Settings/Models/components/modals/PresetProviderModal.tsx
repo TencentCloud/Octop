@@ -2,7 +2,9 @@
  * PresetProviderModal — create a provider from preset using unified layout.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Form, Input, Modal, message } from "antd";
+import { Button, Divider, Form, Input, Modal } from "antd";
+import { message } from "@/utils/antdMessage";
+
 import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
