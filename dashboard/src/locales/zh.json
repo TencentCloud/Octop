@@ -419,6 +419,8 @@
     "marketLoadFailed": "加载专家市场失败",
     "marketBackendMissing": "后端还没有加载专家市场接口，请重启 Octop 后端或确认当前运行的是这份新代码。",
     "marketSearchPlaceholder": "搜索专家市场",
+    "marketCreateModalTitle": "从市场创建专家",
+    "marketCreateModalHint": "可选指定新专家的 ID。留空将自动生成随机 ID。",
     "sceneAll": "全部",
     "scenes": {
       "academic": "学术",

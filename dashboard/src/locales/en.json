@@ -419,6 +419,8 @@
     "marketLoadFailed": "Failed to load the expert market",
     "marketBackendMissing": "The backend has not loaded the Expert Market API yet. Restart Octop or confirm it is running this updated code.",
     "marketSearchPlaceholder": "Search expert market",
+    "marketCreateModalTitle": "Create Expert from Market",
+    "marketCreateModalHint": "Specify an optional Expert ID for the new agent. If left empty, a random ID will be generated automatically.",
     "sceneAll": "All",
     "scenes": {
       "academic": "Academic",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, Drawer, Input, Segmented, Spin, Tag } from "antd";
+import { Button, Drawer, Form, Input, Modal, Segmented, Spin, Tag } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -15,6 +15,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
   expertMarketApi,
+  type CreateMarketExpertBody,
   type ExpertMarketQuickPrompt,
   type MarketExpert,
 } from "../../../api/modules/expertMarket";
@@ -82,6 +83,9 @@ export default function ExpertMarketTab({
   const [selected, setSelected] = useState<MarketExpert | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [creatingSlug, setCreatingSlug] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [pendingExpert, setPendingExpert] = useState<MarketExpert | null>(null);
+  const [configForm] = Form.useForm<{ agent_id?: string }>();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchMarket = useCallback(
@@ -137,11 +141,11 @@ export default function ExpertMarketTab({
   );
 
   const createMarketExpert = useCallback(
-    async (expert: MarketExpert) => {
+    async (expert: MarketExpert, body: CreateMarketExpertBody = {}) => {
       if (creatingSlug) return;
       setCreatingSlug(expert.slug);
       try {
-        const result = await expertMarketApi.install(expert.slug);
+        const result = await expertMarketApi.install(expert.slug, body);
         const enrichment = result.market?.welcome_enrichment;
         if (enrichment === "pending") {
           message.success(
@@ -162,6 +166,27 @@ export default function ExpertMarketTab({
     },
     [creatingSlug, onCreated, t],
   );
+
+  const handleOpenCreateModal = useCallback((expert: MarketExpert) => {
+    setPendingExpert(expert);
+    setCreateModalOpen(true);
+    configForm.resetFields();
+  }, [configForm]);
+
+  const handleConfirmCreate = useCallback(async () => {
+    if (!pendingExpert) return;
+    const values = await configForm.validateFields();
+    setCreateModalOpen(false);
+    const body: CreateMarketExpertBody = {};
+    if (values.agent_id) body.agent_id = values.agent_id;
+    await createMarketExpert(pendingExpert, body);
+  }, [pendingExpert, configForm, createMarketExpert]);
+
+  const handleCreateModalClose = useCallback(() => {
+    if (creatingSlug) return;
+    setCreateModalOpen(false);
+    setPendingExpert(null);
+  }, [creatingSlug]);
 
   const totalText = useMemo(
     () => t("experts.totalMarket", { count: items.length }),
@@ -340,7 +365,7 @@ export default function ExpertMarketTab({
                     disabled={Boolean(creatingSlug)}
                     onClick={(e) => {
                       e.stopPropagation();
-                      void createMarketExpert(expert);
+                      handleOpenCreateModal(expert);
                     }}
                   >
                     {installed
@@ -369,7 +394,7 @@ export default function ExpertMarketTab({
               icon={<Download size={14} />}
               loading={creatingSlug === selected.slug}
               disabled={Boolean(creatingSlug)}
-              onClick={() => void createMarketExpert(selected)}
+              onClick={() => handleOpenCreateModal(selected)}
             >
               {installedExpertIds.has(selected.id)
                 ? t("experts.createAgainFromMarket")
@@ -501,6 +526,37 @@ export default function ExpertMarketTab({
           </div>
         )}
       </Drawer>
+
+      <Modal
+        title={t("experts.marketCreateModalTitle")}
+        open={createModalOpen}
+        onCancel={handleCreateModalClose}
+        destroyOnClose
+        confirmLoading={Boolean(creatingSlug)}
+        onOk={() => void handleConfirmCreate()}
+        okText={t("common.create")}
+        cancelText={t("common.cancel")}
+      >
+        {pendingExpert && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: "var(--fn-text-secondary)", marginBottom: 4 }}>
+              {t("experts.marketCreateModalHint")}
+            </div>
+            <Tag style={{ marginTop: 4 }}>
+              {labelOf(pendingExpert, lang)}
+            </Tag>
+          </div>
+        )}
+        <Form form={configForm} layout="vertical" size="middle">
+          <Form.Item
+            name="agent_id"
+            label={t("experts.agentId")}
+            help={t("experts.agentIdHelp")}
+          >
+            <Input placeholder={t("experts.agentIdPlaceholder")} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
