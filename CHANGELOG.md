@@ -14,6 +14,9 @@
 - 技能相关域逻辑迁至 `infra/skills/`；数据库迁移合并为 schema v2（cron MCP + skill_packages 含图标）
 - 备份/恢复纳入 `skill-packages/` 目录，恢复前清空避免残留
 
+### 修复
+- Memory 原始事件列表的时间戳按服务器时区展示，与其余 Memory 页保持一致 (#110)
+
 ## [0.9.16] - 2026-07-29
 
 ### 新增
