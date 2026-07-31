@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.gateway import feishu_user_auth
 
@@ -17,7 +20,10 @@ def test_live_preview_maps_auth_status(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         feishu_user_auth,
         "prepare_feishu_cli_env",
-        lambda *_a, **_k: ("/bin/lark-cli", {"LARKSUITE_CLI_CONFIG_DIR": "/x"}),
+        lambda *_a, **_k: (
+            fake_bin_path("lark-cli"),
+            {"LARKSUITE_CLI_CONFIG_DIR": str(Path("fake-config"))},
+        ),
     )
     monkeypatch.setattr(
         feishu_user_auth,
@@ -56,7 +62,7 @@ def test_live_preview_expired_needs_reauth(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(
         feishu_user_auth,
         "prepare_feishu_cli_env",
-        lambda *_a, **_k: ("/bin/lark-cli", {}),
+        lambda *_a, **_k: (fake_bin_path("lark-cli"), {}),
     )
     monkeypatch.setattr(
         feishu_user_auth,

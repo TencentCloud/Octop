@@ -182,6 +182,7 @@ Frontend talks to Octop **only** via `/api` HTTP — never import or assume Pyth
 ## 6. Run commands
 
 ```bash
+make install-hooks                      # once per clone: enable .githooks pre-commit
 uv run pytest -m "not live"            # full test suite (no LLM calls)
 uv run pytest tests/unit -x -q        # unit tests only, stop on first fail
 uv run pytest tests/integration -x -q # integration tests only
@@ -192,6 +193,8 @@ make all                                # lint + typecheck + test (ship bar)
 cd dashboard && npx tsc --noEmit       # frontend typecheck (after UI changes)
 make build-frontend                     # dashboard/ → src/octop/dashboard/
 ```
+
+**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so every `git commit` runs `make all` plus `dashboard` `npm run build` before the commit is created. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first (CI runs on Linux **and** Windows).
 
 ## 7. Key patterns
 
@@ -290,10 +293,12 @@ User-facing datetime display and cron/scheduling defaults MUST use the server ti
 
 **Cross-platform tests:** Octop CI runs on both Linux and Windows, so tests must not assume a single platform:
 
-- Guard POSIX-only behavior with the repo convention `@pytest.mark.skipif(os.name != "posix", reason="…")`; prefer a module-level `posix_only = pytest.mark.skipif(os.name != "posix", reason="…")` alias.
-- Do not hard-code POSIX paths (`/`, `/proc`, `/etc`, `/root`, `~` → HOME) in assertions that run on every platform — they resolve differently on Windows (e.g. `/` → `D:\`).
-- Prefer `tmp_path` / `tmp_path_factory` and `pathlib` over OS-specific literals; use `Path.as_posix()` / `os.sep` when path string formatting matters.
+- Guard POSIX-only behavior with the repo convention `@pytest.mark.skipif(os.name != "posix", reason="…")`; prefer a module-level `posix_only = pytest.mark.skipif(os.name != "posix", reason="…")` alias. Use `pytest.mark.skipif(os.name == "nt", reason="…")` when a case is Linux/macOS-only for a different reason (e.g. forbidden path characters).
+- Do not hard-code POSIX paths (`/`, `/proc`, `/etc`, `/root`, `/usr/bin/…`, `~` → HOME) in assertions that run on every platform — they resolve differently on Windows (e.g. `/` → `D:\`). Prefer opaque mock tokens via `tests.support.fakes.fake_bin_path("tool")` (uses `pathlib` / `os.sep`) when stubbing `shutil.which` / `resolve_binary`.
+- Prefer `tmp_path` / `tmp_path_factory` and `pathlib.Path` over OS-specific literals; compare paths with `Path` equality (`tmp_path / "a" / "b"`), not string prefixes with `/`. Use `Path.as_posix()` / `os.sep` only when a serialized path string is part of the contract under test.
+- Do not assert `chmod` mode bits, symlink semantics, or Unix-only subprocess shells unless the test is marked `posix_only` (and production code short-circuits on non-POSIX the same way).
 - When a feature's semantics are inherently POSIX-only (e.g. the host root_dir denied prefixes in `infra/utils/host_dirs.py`), keep the source guards (`os.name != "posix"` short-circuit) and mirror them in the tests.
+- New connector/CLI/gateway tests that materialize files under `OCTOP_HOME` must set `monkeypatch.setenv("OCTOP_HOME", str(tmp_path))` and assert dirs with `Path` joins — never assume `~/.octop/...` string shape.
 
 ## 8. Do not
 
@@ -331,6 +336,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Internationalization (dashboard) | `dashboard/src/locales/`, `dashboard/src/i18n.ts`, `dashboard/src/utils/apiError.ts` |
 | Server timezone (config.json) | `default_timezone` in `config.py`; `GET /api/settings/timezone`; `dashboard/src/hooks/useServerTimezone.ts`; `dashboard/src/utils/formatMessageTime.ts` |
 | Test layout & shared helpers | `tests/support/` (`fakes`, `auth`, `http`, `scenarios`, `app`), `tests/integration/conftest.py`, `tests/unit/{db,cron,gateway,agents,api,cli}/` |
+| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` + dashboard build) |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |
 | Connectors & OAuth | `infra/connectors/`, `api/routers/connectors.py` |
@@ -342,9 +348,10 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 ## 10. Change workflow
 
 1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)).
-2. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
-3. **Verify** — backend: `make all` (`lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`.
-4. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
+2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
+3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
+4. **Verify** — backend: `make all` (`lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
+5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
 ### Branching & release
 

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.gateway import feishu_creds, feishu_user_auth
 
@@ -42,7 +43,7 @@ def test_start_user_login_parses_device_flow(
 
     monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
     monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
-    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: "/usr/bin/lark-cli")
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
 
     out = feishu_user_auth.start_user_device_login(
         config_dir=tmp_path,
@@ -102,7 +103,7 @@ def test_complete_user_login_sets_default_as_user(
 
     monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
     monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
-    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: "/usr/bin/lark-cli")
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
 
     out = feishu_user_auth.complete_user_device_login(
         config_dir=tmp_path,
@@ -144,7 +145,7 @@ def test_ensure_feishu_respects_default_as_user(
 
     feishu_creds.ensure_feishu_cli_config(
         tmp_path,
-        binary="/usr/bin/lark-cli",
+        binary=fake_bin_path("lark-cli"),
         app_id="cli_x",
         app_secret="sec",
         env={},

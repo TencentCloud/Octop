@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.builder import validate_create_credentials
 from octop.infra.connectors.catalog import get_catalog_entry
@@ -94,11 +95,11 @@ def test_feishu_prepare_avoids_external_env(
     monkeypatch.setenv("LARKSUITE_CLI_APP_SECRET", "should-be-cleared")
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     calls: list[dict[str, Any]] = []
 
@@ -130,7 +131,7 @@ def test_feishu_prepare_avoids_external_env(
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
 
     env = feishu_cli._prepare_env(  # noqa: SLF001
@@ -138,7 +139,7 @@ def test_feishu_prepare_avoids_external_env(
     )
     assert "LARKSUITE_CLI_APP_ID" not in env
     assert "LARKSUITE_CLI_APP_SECRET" not in env
-    assert "LARKSUITE_CLI_CONFIG_DIR" in env
+    assert Path(env["LARKSUITE_CLI_CONFIG_DIR"]).is_relative_to(tmp_path)
     assert len(calls) == 1
     assert calls[0]["app_id"] == "cli_x"
     assert calls[0]["default_as"] == "bot"
@@ -150,7 +151,7 @@ def test_wecom_doc_invokes_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
-        lambda _name: "/usr/bin/wecom-cli",
+        lambda _name: fake_bin_path("wecom-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.wecom_creds._fetch_mcp_config",
@@ -186,10 +187,11 @@ def test_wecom_doc_invokes_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
         {"method": "create_doc", "args": {"doc_type": 3}},
     )
     assert out == '{"ok":true}'
-    assert captured["argv"][:3] == ["/usr/bin/wecom-cli", "doc", "create_doc"]
+    assert captured["argv"][:3] == [fake_bin_path("wecom-cli"), "doc", "create_doc"]
     assert json.loads(captured["argv"][3]) == {"doc_type": 3}
     assert "WECOM_CLI_CONFIG_DIR" in (captured["env"] or {})
     cfg = Path(str((captured["env"] or {})["WECOM_CLI_CONFIG_DIR"]))
+    assert cfg.is_relative_to(tmp_path)
     assert (cfg / "bot.enc").is_file()
     assert (cfg / "mcp_config.enc").is_file()
 
@@ -199,11 +201,11 @@ def test_feishu_calendar_shortcut_flags(monkeypatch: pytest.MonkeyPatch, tmp_pat
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.ensure_feishu_cli_config",
@@ -233,7 +235,7 @@ def test_feishu_calendar_shortcut_flags(monkeypatch: pytest.MonkeyPatch, tmp_pat
         {"method": "+agenda", "args": {"days": 3}},
     )
     assert captured["argv"][:4] == [
-        "/usr/bin/lark-cli",
+        fake_bin_path("lark-cli"),
         "calendar",
         "+agenda",
         "--format",
@@ -244,7 +246,7 @@ def test_feishu_calendar_shortcut_flags(monkeypatch: pytest.MonkeyPatch, tmp_pat
     env = captured["env"] or {}
     assert "LARKSUITE_CLI_APP_ID" not in env
     assert "LARKSUITE_CLI_APP_SECRET" not in env
-    assert env["LARKSUITE_CLI_CONFIG_DIR"]
+    assert Path(env["LARKSUITE_CLI_CONFIG_DIR"]).is_relative_to(tmp_path)
 
 
 def test_probe_requires_bot_even_when_default_as_user(
@@ -253,11 +255,11 @@ def test_probe_requires_bot_even_when_default_as_user(
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.ensure_feishu_cli_config",
@@ -321,11 +323,11 @@ def test_docs_search_requires_user_auth_without_shell_hint(
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.ensure_feishu_cli_config",
@@ -358,11 +360,11 @@ def test_docs_search_uses_as_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.ensure_feishu_cli_config",
@@ -398,7 +400,7 @@ def test_docs_search_uses_as_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
         "doc",
         {"method": "+search", "args": {"query": "计划"}},
     )
-    assert captured["argv"][:3] == ["/usr/bin/lark-cli", "docs", "+search"]
+    assert captured["argv"][:3] == [fake_bin_path("lark-cli"), "docs", "+search"]
     assert "--as" in captured["argv"]
     assert captured["argv"][captured["argv"].index("--as") + 1] == "user"
     assert "bot" not in captured["argv"]
@@ -408,11 +410,11 @@ def test_docs_search_missing_scope_message(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.resolve_binary",
-        lambda _name: "/usr/bin/lark-cli",
+        lambda _name: fake_bin_path("lark-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.feishu_creds.ensure_feishu_cli_config",

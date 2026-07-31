@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.gateway import cli_install
 
@@ -22,7 +23,7 @@ def test_cli_install_specs_registered() -> None:
 
 
 def test_install_when_already_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli_install.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(cli_install.shutil, "which", lambda name: fake_bin_path(name))
     monkeypatch.setattr(cli_install, "_read_version", lambda _path: "1.2.3")
     out = cli_install.install_connector_cli("feishu-cli")
     assert out["ok"] is True
@@ -49,9 +50,9 @@ def test_install_runs_npm(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _which(name: str) -> str | None:
         if name == "npm":
-            return "/usr/bin/npm"
+            return fake_bin_path("npm")
         if name in ("lark-cli", "wecom-cli"):
-            return f"/usr/bin/{name}" if state["installed"] else None
+            return fake_bin_path(name) if state["installed"] else None
         return None
 
     def _run(argv: list[str], **kwargs: Any) -> Any:
@@ -73,4 +74,4 @@ def test_install_runs_npm(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out["ok"] is True
     assert out["already_installed"] is False
     assert out["version"] == "9.9.9"
-    assert calls and calls[0][:3] == ["/usr/bin/npm", "install", "-g"]
+    assert calls and calls[0][:3] == [fake_bin_path("npm"), "install", "-g"]

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.gateway.adapters import wecom_cli
 
@@ -41,7 +42,7 @@ def test_call_tool_humanizes_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
-        lambda _n: "/usr/bin/wecom-cli",
+        lambda _n: fake_bin_path("wecom-cli"),
     )
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.materialize_wecom_bot_config",
@@ -70,7 +71,7 @@ def test_probe_requires_non_empty_mcp_cache(
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
-        lambda _n: "/usr/bin/wecom-cli",
+        lambda _n: fake_bin_path("wecom-cli"),
     )
 
     def _materialize(config_dir: Path, *, bot_id: str, bot_secret: str) -> None:
@@ -95,7 +96,7 @@ def test_probe_ok_with_mcp_items(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
-        lambda _n: "/usr/bin/wecom-cli",
+        lambda _n: fake_bin_path("wecom-cli"),
     )
 
     def _materialize(config_dir: Path, *, bot_id: str, bot_secret: str) -> None:

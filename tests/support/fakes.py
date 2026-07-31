@@ -22,6 +22,15 @@ from harness_gateway.channel import BaseChannel
 from harness_gateway.models import InboundMessage, MessageEvent
 
 
+def fake_bin_path(name: str) -> str:
+    """Host-agnostic fake binary path for mocks (never opened as a real file).
+
+    Prefer this over hard-coded ``/usr/bin/...`` strings so argv assertions stay
+    valid on Windows CI (uses ``pathlib`` / ``os.sep``).
+    """
+    return str(Path("fake-bin") / name)
+
+
 class FakeHarnessAgent:
     """Minimal stand-in for ``harness_agent.HarnessAgent``.
 
