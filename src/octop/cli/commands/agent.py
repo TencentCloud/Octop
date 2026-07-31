@@ -19,12 +19,14 @@ def agent() -> None:
 
 @agent.command("create")
 @click.argument("name")
+@click.option("--agent-id", "agent_id", default=None, help="Custom agent ID (short string, optional).")
 @click.option("--persona-mbti", "persona_mbti", default=None)
 @click.option("--default-model", "default_model", default=None)
 @click.option("--template", "template_name", default=None, help="Agent template name.")
 @click.option("--user", "as_user", default=None, help="Create for another user (admin)")
 def create(
     name: str,
+    agent_id: str | None,
     persona_mbti: str | None,
     default_model: str | None,
     template_name: str | None,
@@ -47,6 +49,7 @@ def create(
             assert server.app_runtime is not None
             spec = AgentCreateSpec(
                 name=name,
+                agent_id=agent_id,
                 user_id=uid,
                 persona_mbti=persona_mbti,
                 default_model=default_model,
@@ -64,8 +67,9 @@ def create(
 @agent.command("from-expert")
 @click.argument("expert_id")
 @click.option("--name", default=None)
+@click.option("--agent-id", "agent_id", default=None, help="Custom agent ID (short string, optional).")
 @click.option("--user", "as_user", default=None)
-def from_expert(expert_id: str, name: str | None, as_user: str | None) -> None:
+def from_expert(expert_id: str, name: str | None, agent_id: str | None, as_user: str | None) -> None:
     """Create an agent from a bundled expert template (embedded server)."""
     import asyncio
 
@@ -93,6 +97,7 @@ def from_expert(expert_id: str, name: str | None, as_user: str | None) -> None:
                 expert=expert,
                 user_id=uid,
                 name=name,
+                agent_id=agent_id,
                 locale=locale,
             )
             return await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)

@@ -64,6 +64,7 @@ export default function CreateFromExpertDrawer({
   const skillSlugDisplayName = useSkillSlugDisplayName();
   const [form] = Form.useForm<{
     name: string;
+    agent_id?: string;
     description: string;
     default_model: string;
     backend_choice: string;
@@ -93,6 +94,7 @@ export default function CreateFromExpertDrawer({
     setPathMappings([]);
     form.setFieldsValue({
       name: pickLocale(expert.label, lang) || expert.id,
+      agent_id: undefined,
       description: pickLocale(expert.description, lang),
       default_model: MODEL_AUTO_VALUE,
       backend_choice: DEFAULT_BACKEND,
@@ -173,6 +175,7 @@ export default function CreateFromExpertDrawer({
           method: "POST",
           body: JSON.stringify({
             name: values.name,
+            agent_id: values.agent_id || undefined,
             description: values.description || undefined,
             default_model:
               defaultModelFromForm(values.default_model) ?? undefined,
@@ -263,6 +266,14 @@ export default function CreateFromExpertDrawer({
           rules={[{ required: true, message: t("experts.pleaseEnterName") }]}
         >
           <Input />
+        </Form.Item>
+
+        <Form.Item
+          name="agent_id"
+          label={t("experts.agentId")}
+          help={t("experts.agentIdHelp")}
+        >
+          <Input placeholder={t("experts.agentIdPlaceholder")} />
         </Form.Item>
 
         <Form.Item name="description" label={t("experts.agentDescription")}>

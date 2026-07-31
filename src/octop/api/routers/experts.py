@@ -53,6 +53,7 @@ _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
 
 class FromExpertBody(BaseModel):
     name: str | None = None
+    agent_id: str | None = None
     description: str | None = None
     providers: list[str] | None = None
     default_model: str | None = None
@@ -262,6 +263,7 @@ async def install_expert_hub_item(
             slug=slug,
             options=SkillHubMarketAgentCreateOptions(
                 name=body.name,
+                agent_id=body.agent_id,
                 description=body.description,
                 providers=body.providers,
                 default_model=body.default_model,
@@ -344,6 +346,7 @@ async def create_agent_from_expert(
         expert=expert,
         user_id=user.id,
         name=body.name,
+        agent_id=body.agent_id,
         description=body.description,
         locale=locale,
         default_model=body.default_model,

@@ -39,6 +39,7 @@ WelcomeEnrichment = Literal["pending", "skipped", "succeeded", "failed"]
 @dataclass(frozen=True)
 class SkillHubMarketAgentCreateOptions:
     name: str | None = None
+    agent_id: str | None = None
     description: str | None = None
     providers: list[str] | None = None
     default_model: str | None = None
@@ -284,6 +285,7 @@ async def create_agent_from_skillhub_skillset(
         expert=expert,
         user_id=user.id,
         name=options.name,
+        agent_id=options.agent_id,
         description=options.description,
         locale=locale,
         default_model=options.default_model,

@@ -20,6 +20,7 @@ router = APIRouter()
 
 class AgentCreateBody(BaseModel):
     name: str
+    agent_id: str | None = None
     description: str | None = None
     persona_mbti: str | None = None
     default_model: str | None = None
@@ -148,6 +149,7 @@ async def create_agent(
     assert server.app_runtime is not None
     spec = AgentCreateSpec(
         name=body.name,
+        agent_id=body.agent_id,
         user_id=user.id,
         description=body.description,
         persona_mbti=body.persona_mbti,

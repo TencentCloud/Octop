@@ -395,6 +395,8 @@
     "mbtiDefault": "Default",
     "mbtiViewDetail": "Click to view personality details",
     "agentId": "Expert ID",
+    "agentIdHelp": "Optional. If left empty, a random ID will be auto-generated.",
+    "agentIdPlaceholder": "e.g. my-expert-id",
     "copyAgentId": "Click to copy expert ID",
     "table": {
       "name": "Name",

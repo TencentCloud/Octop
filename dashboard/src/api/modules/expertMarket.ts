@@ -57,6 +57,7 @@ export interface CreateMarketExpertResponse {
 
 export interface CreateMarketExpertBody {
   name?: string;
+  agent_id?: string;
   description?: string;
   providers?: string[];
   default_model?: string;

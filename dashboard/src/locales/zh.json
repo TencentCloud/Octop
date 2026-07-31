@@ -395,6 +395,8 @@
     "mbtiDefault": "默认",
     "mbtiViewDetail": "点击查看人格说明",
     "agentId": "专家 ID",
+    "agentIdHelp": "可选。留空将自动生成随机 ID。",
+    "agentIdPlaceholder": "例如 my-expert-id",
     "copyAgentId": "点击复制专家 ID",
     "table": {
       "name": "名称",
