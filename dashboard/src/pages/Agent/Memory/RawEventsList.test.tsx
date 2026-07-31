@@ -19,6 +19,12 @@ vi.mock("../../../api/modules/memoryDashboard", () => ({
   },
 }));
 
+vi.mock("../../../api/modules/settings", () => ({
+  octopSettingsApi: {
+    timezone: vi.fn().mockResolvedValue({ timezone: "Asia/Shanghai" }),
+  },
+}));
+
 import { memoryDashboardApi } from "../../../api/modules/memoryDashboard";
 import RawEventsList from "./RawEventsList";
 
@@ -112,5 +118,33 @@ describe("<RawEventsList />", () => {
     await waitFor(() => expect(api.listRawEvents).toHaveBeenCalled());
     // MemoryPipelineEmpty consults statsCounts to decide its copy.
     await waitFor(() => expect(api.statsCounts).toHaveBeenCalledWith("ZYWZTD"));
+  });
+
+  it("renders timestamps in the server timezone (Asia/Shanghai)", async () => {
+    api.listRawEvents.mockResolvedValue(
+      rawResp([makeRaw({ timestamp: "2026-07-15T02:00:00Z" })]),
+    );
+
+    render(<RawEventsList agentId="ZYWZTD" />);
+    await waitFor(() => {
+      expect(screen.getByText("项目截止日期是周五")).toBeInTheDocument();
+    });
+    // 2026-07-15T02:00:00Z == 10:00 in Asia/Shanghai (UTC+8).
+    await waitFor(() => {
+      expect(screen.getByText(/2026/)).toBeInTheDocument();
+    });
+    const timeText = screen.getByText(/2026/).textContent ?? "";
+    expect(timeText).toContain("10:");
+  });
+
+  it("falls back to the raw ISO string for an invalid timestamp", async () => {
+    api.listRawEvents.mockResolvedValue(
+      rawResp([makeRaw({ timestamp: "not-a-date" })]),
+    );
+
+    render(<RawEventsList agentId="ZYWZTD" />);
+    await waitFor(() => {
+      expect(screen.getByText("not-a-date")).toBeInTheDocument();
+    });
   });
 });

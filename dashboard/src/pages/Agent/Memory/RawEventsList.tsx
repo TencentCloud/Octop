@@ -20,6 +20,8 @@ import {
 } from "../../../api/modules/memoryDashboard";
 import MemoryLayerView from "./shared/MemoryLayerView";
 import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 
 const PAGE_SIZE = 20;
 
@@ -66,14 +68,9 @@ function eventTypeColor(type: string): string | undefined {
   return undefined;
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}
-
 export default function RawEventsList({ agentId }: Props) {
   const { t } = useTranslation();
+  const timeZone = useServerTimezone();
   const [items, setItems] = useState<RawEventItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -174,7 +171,7 @@ export default function RawEventsList({ agentId }: Props) {
             {e.content}
           </div>
           <div style={{ marginTop: 2, fontSize: 12, color: "#8c8c8c" }}>
-            {formatTime(e.timestamp)}
+            {formatServerIsoDateTime(e.timestamp, timeZone)}
           </div>
         </div>
       )}
@@ -197,7 +194,8 @@ export default function RawEventsList({ agentId }: Props) {
             type="secondary"
             style={{ fontSize: 12, marginTop: 16 }}
           >
-            {t("memory.raw.capturedAt", "捕获于")} {formatTime(e.timestamp)}
+            {t("memory.raw.capturedAt", "捕获于")}{" "}
+            {formatServerIsoDateTime(e.timestamp, timeZone)}
           </Typography.Paragraph>
         </div>
       )}
