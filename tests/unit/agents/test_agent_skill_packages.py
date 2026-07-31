@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -31,9 +32,13 @@ def test_skill_package_ids_list_keeps_only_non_empty_list_items() -> None:
 
 
 @pytest.mark.asyncio
-async def test_persist_skill_package_ids_writes_config_and_schedules_reload(
+async def test_persist_skill_package_ids_hot_syncs_without_reload(
     manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Mounting packages must hot-sync skills_dir — not tear down the agent."""
+    from unittest.mock import MagicMock
+
     agent_id = "AGENT01"
     package_id = "PACK01"
     manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="agent")
@@ -42,10 +47,24 @@ async def test_persist_skill_package_ids_writes_config_and_schedules_reload(
         name="Package",
         created_by="1",
     )
+
+    fake_agent = MagicMock()
+    fake_agent.config = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    manager._harness_manager = fake_hm
+
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
     await manager.persist_skill_package_ids(agent_id, [package_id])
 
     assert manager.get_config(agent_id)["skill_package_ids"] == [package_id]
-    assert agent_id in manager._reload_dirty
+    expected = str((manager.paths.skill_packages_dir / package_id / "skills").resolve())
+    assert fake_agent.config.skills_dir == [expected]
+    fake_agent.reload_subagents.assert_called_once_with()
+    assert scheduled == []
+    assert agent_id not in manager._reload_dirty
 
 
 @pytest.mark.asyncio
@@ -86,6 +105,90 @@ def test_assert_backend_supports_skill_packages_accepts_host_root(
     )
 
 
+def test_assert_backend_supports_skill_packages_accepts_workspace_scoped_default(
+    manager: AgentManager,
+    tmp_path: Path,
+) -> None:
+    """Windows default scopes root_dir to the agent workspace — still local host."""
+    workspace = tmp_path / "agent-ws"
+    workspace.mkdir()
+    manager.assert_backend_supports_skill_packages(
+        {
+            "type": "local_shell",
+            "root_dir": str(workspace.resolve()),
+            "virtual_mode": True,
+        },
+        workspace_dir=workspace,
+    )
+
+
+def test_backend_supports_host_skill_packages_accepts_workspace_root(
+    manager: AgentManager,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    assert (
+        manager._backend_supports_host_skill_packages(
+            {
+                "type": "local_shell",
+                "root_dir": str(workspace.resolve()),
+                "virtual_mode": True,
+            },
+            workspace_dir=workspace,
+        )
+        is True
+    )
+    assert (
+        manager._backend_supports_host_skill_packages(
+            {
+                "type": "local_shell",
+                "root_dir": str(workspace.resolve()),
+                "virtual_mode": True,
+            },
+            workspace_dir=tmp_path / "other",
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_persist_skill_package_ids_accepts_workspace_scoped_backend(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default Windows agents use workspace root_dir, not '/'."""
+    from unittest.mock import MagicMock
+
+    agent_id = "AGENT01"
+    package_id = "PACK01"
+    workspace = manager.paths.ensure_agent_workspace(agent_id)
+    manager._repos.agent_repo.create(
+        agent_id=agent_id,
+        user_id=None,
+        name="agent",
+        config_json=(
+            '{"backend":{"type":"local_shell","root_dir":'
+            + json.dumps(str(workspace.resolve()))
+            + ',"virtual_mode":true}}'
+        ),
+    )
+    manager._repos.skill_package_repo.create(id=package_id, name="Package", created_by="1")
+
+    fake_agent = MagicMock()
+    fake_agent.config = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    manager._harness_manager = fake_hm
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+
+    await manager.persist_skill_package_ids(agent_id, [package_id])
+
+    assert manager.get_config(agent_id)["skill_package_ids"] == [package_id]
+    expected = str((manager.paths.skill_packages_dir / package_id / "skills").resolve())
+    assert fake_agent.config.skills_dir == [expected]
+
+
 @pytest.mark.asyncio
 async def test_persist_skill_package_ids_rejects_unknown_package(
     manager: AgentManager,
@@ -124,8 +227,9 @@ def test_build_harness_config_includes_existing_skill_package_dirs(manager: Agen
 
 
 @pytest.mark.asyncio
-async def test_strip_skill_package_id_removes_it_and_schedules_reload(
+async def test_strip_skill_package_id_removes_it_and_hot_syncs(
     manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manager._repos.agent_repo.create(
         agent_id="AGENT01",
@@ -134,15 +238,22 @@ async def test_strip_skill_package_id_removes_it_and_schedules_reload(
         config_json='{"skill_package_ids":["PACK01", "PACK02"]}',
     )
     manager._repos.skill_package_repo.create(id="PACK02", name="Package", created_by="1")
+    synced: list[str] = []
+    monkeypatch.setattr(manager, "sync_skill_package_dirs", synced.append)
+    monkeypatch.setattr(
+        manager, "_schedule_reload", lambda aid: (_ for _ in ()).throw(AssertionError(aid))
+    )
+
     await manager.strip_skill_package_id("PACK01")
 
     assert manager.get_config("AGENT01")["skill_package_ids"] == ["PACK02"]
-    assert "AGENT01" in manager._reload_dirty
+    assert synced == ["AGENT01"]
 
 
 @pytest.mark.asyncio
-async def test_refresh_agents_for_package_schedules_only_mounted_agents(
+async def test_refresh_agents_for_package_hot_syncs_only_mounted_agents(
     manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manager._repos.skill_package_repo.create(id="PACK01", name="Package", created_by="1")
     manager._repos.agent_repo.create(
@@ -157,7 +268,12 @@ async def test_refresh_agents_for_package_schedules_only_mounted_agents(
         name="other",
         config_json='{"skill_package_ids":["PACK02"]}',
     )
+    synced: list[str] = []
+    monkeypatch.setattr(manager, "sync_skill_package_dirs", synced.append)
+    monkeypatch.setattr(
+        manager, "_schedule_reload", lambda aid: (_ for _ in ()).throw(AssertionError(aid))
+    )
+
     await manager.refresh_agents_for_package("PACK01")
 
-    assert "MOUNTED" in manager._reload_dirty
-    assert "OTHER" not in manager._reload_dirty
+    assert synced == ["MOUNTED"]

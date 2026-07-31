@@ -1124,33 +1124,108 @@ class AgentManager:
         return []
 
     @staticmethod
-    def _backend_supports_host_skill_packages(spec: Any) -> bool:
-        """Only host-root local backends can directly mount global package paths."""
+    def _backend_supports_host_skill_packages(
+        spec: Any,
+        *,
+        workspace_dir: Path | None = None,
+    ) -> bool:
+        """Local backends that can mount global package host paths via skills_dir.
+
+        POSIX defaults use ``root_dir='/'``. Windows defaults scope the backend to
+        the agent workspace (``root_dir='/'`` is unsafe across drives) — both are
+        local host backends and may attach absolute ``skills_dir`` package roots.
+        """
         if not isinstance(spec, dict):
             return False
         kind = str(spec.get("type") or "").lower()
         if kind not in {"local_shell", "filesystem"}:
             return False
         root_dir = str(spec.get("root_dir") or "").strip()
-        return root_dir == "/"
+        if not root_dir:
+            return False
+        if root_dir == "/":
+            return True
+        if workspace_dir is None:
+            return False
+        try:
+            return Path(root_dir).resolve() == Path(workspace_dir).resolve()
+        except OSError:
+            return False
 
     async def persist_skill_package_ids(self, agent_id: str, package_ids: list[str]) -> None:
-        """Persist package ids after validation and hot-sync a running agent."""
+        """Persist package ids after validation and hot-sync a running agent.
+
+        Unlike :meth:`update_config_json`, this does not schedule a harness rebuild.
+        Mounting packages only needs ``skills_dir`` updated so list/enable keep working.
+        """
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         normalized_ids = self.validate_skill_package_ids(package_ids)
+        workspace_dir = self._paths.ensure_agent_workspace(agent_id)
         if normalized_ids and not self._backend_supports_host_skill_packages(
-            self._backend_spec_for_row(row)
+            self._backend_spec_for_row(row),
+            workspace_dir=workspace_dir,
         ):
             raise OctopError(
                 ErrorCode.SKILL_PACKAGE_BACKEND_UNSUPPORTED,
-                "skill packages currently support only local_shell/filesystem backends with root_dir='/'",
+                "skill packages currently support only local_shell/filesystem backends "
+                "with host root '/' or the agent workspace root",
             )
         cfg = self.get_config(agent_id)
         cfg["skill_package_ids"] = normalized_ids
         self._repos.agent_repo.update_config(agent_id, config_json=json.dumps(cfg))
-        self._schedule_reload(agent_id)
+        self.sync_skill_package_dirs(agent_id)
+
+    def sync_skill_package_dirs(self, agent_id: str) -> None:
+        """Hot-update ``skills_dir`` on the running harness agent (no rebuild)."""
+        try:
+            agent = self.get_agent(agent_id)
+        except OctopError:
+            return
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return
+        cfg = self.get_config(agent_id)
+        backend = self._backend_spec_for_row(row)
+        workspace_dir = self._paths.ensure_agent_workspace(agent_id)
+        supports_packages = self._backend_supports_host_skill_packages(
+            backend,
+            workspace_dir=workspace_dir,
+        )
+        configured = self._normalize_skills_dir_config(cfg.get("skills"))
+        package_dirs = self._resolve_skill_package_dirs(agent_id) if supports_packages else []
+        skill_dirs = configured + package_dirs
+        config = getattr(agent, "config", None)
+        if config is None:
+            config = getattr(agent, "_config", None)
+        if config is not None and hasattr(config, "skills_dir"):
+            config.skills_dir = skill_dirs or None
+        set_roots = getattr(agent, "set_skill_package_roots", None)
+        if callable(set_roots):
+            store = SkillPackageStore(
+                repo=self._repos.skill_package_repo,
+                root=self._paths.skill_packages_dir,
+            )
+            roots: list[dict[str, str]] = []
+            if supports_packages:
+                for package_id in skill_package_ids_list(cfg):
+                    if self._repos.skill_package_repo.get(package_id) is None:
+                        continue
+                    roots.append(
+                        {
+                            "id": package_id,
+                            "path": str(store.package_skills_dir(package_id).resolve()),
+                        }
+                    )
+            set_roots(roots or None)
+        reload = getattr(agent, "reload_subagents", None)
+        if callable(reload):
+            reload()
+        else:
+            init_graph = getattr(agent, "_init_graph", None)
+            if callable(init_graph):
+                init_graph()
 
     def validate_skill_package_ids(self, package_ids: list[str]) -> list[str]:
         """Normalize package ids and ensure each package still exists."""
@@ -1170,31 +1245,34 @@ class AgentManager:
         workspace_dir: Path | None = None,
     ) -> None:
         """Raise when *backend_spec* cannot mount host skill-package paths."""
+        resolved_workspace = workspace_dir or self._paths.agent_workspace("_probe")
         if backend_spec is None:
-            resolved = default_agent_backend_spec(
-                workspace_dir or self._paths.agent_workspace("_probe")
-            )
+            resolved = default_agent_backend_spec(resolved_workspace)
         else:
             resolved = resolve_agent_backend_spec(
                 backend_spec,
                 repo=self._repos.storage_backend_repo,
             )
-        if self._backend_supports_host_skill_packages(resolved):
+        if self._backend_supports_host_skill_packages(
+            resolved,
+            workspace_dir=resolved_workspace,
+        ):
             return
         raise OctopError(
             ErrorCode.SKILL_PACKAGE_BACKEND_UNSUPPORTED,
-            "skill packages currently support only local_shell/filesystem backends with root_dir='/'",
+            "skill packages currently support only local_shell/filesystem backends "
+            "with host root '/' or the agent workspace root",
         )
 
     async def refresh_agents_for_package(self, package_id: str) -> None:
-        """Reload running agents that mount a changed package."""
+        """Hot-sync running agents that mount a changed package."""
         for row in self._repos.agent_repo.list_all(include_disabled=False):
             if package_id not in skill_package_ids_list(self.get_config(row.agent_id)):
                 continue
-            self._schedule_reload(row.agent_id)
+            self.sync_skill_package_dirs(row.agent_id)
 
     async def strip_skill_package_id(self, package_id: str) -> None:
-        """Remove a deleted package id from every agent and reload running agents."""
+        """Remove a deleted package id from every agent and hot-sync running agents."""
         for row in self._repos.agent_repo.list_all():
             cfg = self.get_config(row.agent_id)
             package_ids = skill_package_ids_list(cfg)
@@ -1202,7 +1280,7 @@ class AgentManager:
                 continue
             cfg["skill_package_ids"] = [item for item in package_ids if item != package_id]
             self._repos.agent_repo.update_config(row.agent_id, config_json=json.dumps(cfg))
-            self._schedule_reload(row.agent_id)
+            self.sync_skill_package_dirs(row.agent_id)
 
     async def list_skill_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed skills for *agent_id* (delegates to harness-agent catalog)."""
@@ -1635,7 +1713,10 @@ class AgentManager:
         configured_skill_dirs = self._normalize_skills_dir_config(cfg.get("skills"))
         package_skill_dirs = (
             self._resolve_skill_package_dirs(row.agent_id)
-            if self._backend_supports_host_skill_packages(backend)
+            if self._backend_supports_host_skill_packages(
+                backend,
+                workspace_dir=workspace_dir,
+            )
             else []
         )
         skill_dirs = configured_skill_dirs + package_skill_dirs

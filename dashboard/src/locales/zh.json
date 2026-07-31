@@ -98,7 +98,7 @@
     "SKILL_ALREADY_EXISTS": "技能 {{name}} 已存在，如需覆盖请启用 overwrite。",
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
     "SKILL_PACKAGE_NAME_TAKEN": "技能包 {{name}} 已存在。",
-    "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录必须为 \/。",
+    "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录须为 /（POSIX）或 Agent 工作区根目录（Windows 默认）。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {{limit}} 路），请关闭其他连接后重试。",
