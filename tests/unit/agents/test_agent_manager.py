@@ -466,6 +466,47 @@ def test_build_harness_config_auto_expert_falls_back_to_first_model(
     assert cfg.providers == []
 
 
+def test_build_harness_config_uses_active_model_before_first(
+    manager: AgentManager,
+) -> None:
+    """AUTO expert default_model follows the global active model when usable."""
+    _seed_test_provider(manager)
+    manager._repos.provider_repo.create(
+        name="second-openai",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [{"id": "gpt-5", "name": "gpt-5", "enabled": True}],
+        ),
+    )
+    manager._repos.settings_repo.set_active_model("second-openai", "gpt-5")
+    cfg = manager._build_harness_config(_row(default_model=None))
+    assert cfg.default_model == "second-openai/gpt-5"
+
+
+def test_build_harness_config_active_model_ignored_when_unusable(
+    manager: AgentManager,
+) -> None:
+    """Active model pointing at a disabled/removed provider falls back to first."""
+    _seed_test_provider(manager)
+    manager._repos.settings_repo.set_active_model("deleted-provider", "gone")
+    cfg = manager._build_harness_config(_row(default_model=None))
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
+
+
+def test_build_harness_config_explicit_default_wins_over_active(
+    manager: AgentManager,
+) -> None:
+    """Pinned expert default takes precedence over the global active model."""
+    _seed_test_provider(manager)
+    manager._repos.settings_repo.set_active_model("test-openai", "gpt-4o-mini")
+    cfg = manager._build_harness_config(
+        _row(config_json=json.dumps({"default_model": "test-openai/gpt-4o-mini"})),
+    )
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
+
+
 def test_build_harness_config_no_providers_leaves_default_model_unset(
     manager: AgentManager,
 ) -> None:

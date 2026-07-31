@@ -1725,13 +1725,13 @@ class AgentManager:
             name=_memory_namespace(row.agent_id),
             workspace_dir=workspace_dir,
             # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
-            # back to the first usable model — the same one AUTO chat routing
-            # resolves to — so promotion works whenever chat does. Per-turn AUTO
-            # routing is unaffected: the gateway resolves models via
+            # back to the same resolution AUTO chat routing uses (active model
+            # first, else first usable) — so promotion works whenever chat does.
+            # Per-turn AUTO routing is unaffected: the gateway resolves models via
             # ``resolve_explicit_default_model`` directly.
             default_model=(
                 self._providers.resolve_explicit_default_model(row, cfg)
-                or self._providers.resolve_first_model_ref()
+                or self.resolve_fallback_model_ref()
             ),
             system_prompt=system_prompt,
             memory=memory,
