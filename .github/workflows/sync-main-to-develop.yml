@@ -2,10 +2,11 @@ name: Sync Main Into Develop
 
 # After Release succeeds, sync main → develop.
 #
-# Do NOT rely only on `release: published`: when the Release workflow creates a
-# GitHub Release with GITHUB_TOKEN, GitHub does not start other `release`
-# workflows. `workflow_run` does fire for GITHUB_TOKEN-triggered workflows.
-# `workflow_dispatch` allows a manual catch-up from the Actions tab.
+# Primary trigger: Release.yml explicitly dispatches this workflow (see
+# sync-develop job). Do not rely only on `release: published` or
+# `workflow_run` — when Auto Tag starts Release with GITHUB_TOKEN, those
+# events often never create a Sync run. workflow_dispatch remains for
+# manual catch-up; workflow_run / release are kept as best-effort backups.
 on:
   workflow_run:
     workflows:
