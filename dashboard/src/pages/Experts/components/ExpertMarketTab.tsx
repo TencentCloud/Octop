@@ -176,10 +176,11 @@ export default function ExpertMarketTab({
   const handleConfirmCreate = useCallback(async () => {
     if (!pendingExpert) return;
     const values = await configForm.validateFields();
-    setCreateModalOpen(false);
     const body: CreateMarketExpertBody = {};
     if (values.agent_id) body.agent_id = values.agent_id;
     await createMarketExpert(pendingExpert, body);
+    setCreateModalOpen(false);
+    setPendingExpert(null);
   }, [pendingExpert, configForm, createMarketExpert]);
 
   const handleCreateModalClose = useCallback(() => {
