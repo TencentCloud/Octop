@@ -1,7 +1,8 @@
 name: "Octop CodeQL"
 
-# Upstream protocol request-signing digests use SHA-256 (not password storage).
-# Fliggy is fully excluded; WeCom uses an inline # codeql[py/weak-sensitive-data-hashing]
-# on _wecom_mcp_signature instead (file also has PBKDF2 credential fingerprints).
+# Upstream connectors that must SHA-256 secrets for protocol request signing
+# (not password storage). GHAS does not reliably honor inline # codeql[...]
+# suppressions, so exclude these modules like the Fliggy adapter.
 paths-ignore:
   - src/octop/infra/connectors/gateway/adapters/fliggy.py
+  - src/octop/infra/connectors/gateway/wecom_creds.py
