@@ -16,6 +16,8 @@ from urllib.request import Request, urlopen
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from octop.infra.connectors.gateway.cli_fingerprint import credential_fingerprint
+
 _MCP_CONFIG_URL = "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
 _FINGERPRINT_NAME = ".octop_wecom_fingerprint"
 _BIND_SOURCE_INTERACTIVE = 1
@@ -30,7 +32,7 @@ def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: s
     is not enough (``wecom-cli`` errors with “未找到 MCP 配置缓存”).
     """
     config_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint = hashlib.sha256(f"{bot_id}\0{bot_secret}".encode()).hexdigest()
+    fingerprint = credential_fingerprint(bot_id, bot_secret)
     marker = config_dir / _FINGERPRINT_NAME
     mcp_path = config_dir / "mcp_config.enc"
     bot_path = config_dir / "bot.enc"
@@ -103,11 +105,21 @@ def read_mcp_items_count(config_dir: Path) -> int:
     return 0
 
 
+def _wecom_mcp_signature(*, bot_id: str, bot_secret: str, now: int, nonce: str) -> str:
+    """Request-signing digest required by WeCom ``get_mcp_config`` (wecom-cli).
+
+    Algorithm is fixed upstream as ``sha256(secret+bot_id+time+nonce)`` — this is
+    protocol authentication material, not password storage or key derivation.
+    """
+    # codeql[py/weak-sensitive-data-hashing]
+    return hashlib.sha256(f"{bot_secret}{bot_id}{now}{nonce}".encode()).hexdigest()
+
+
 def _fetch_mcp_config(*, bot_id: str, bot_secret: str) -> list[dict[str, Any]]:
     """Signed ``get_mcp_config`` — algorithm from wecom-cli: sha256(secret+bot_id+time+nonce)."""
     now = int(time.time())
     nonce = f"mcp_{int(now * 1000)}_{uuid.uuid4().hex[:8]}"
-    signature = hashlib.sha256(f"{bot_secret}{bot_id}{now}{nonce}".encode()).hexdigest()
+    signature = _wecom_mcp_signature(bot_id=bot_id, bot_secret=bot_secret, now=now, nonce=nonce)
     body = {
         "bot_id": bot_id,
         "time": now,
