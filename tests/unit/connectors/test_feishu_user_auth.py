@@ -138,9 +138,9 @@ def test_ensure_feishu_respects_default_as_user(
     monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
     (tmp_path / "config.json").write_text("{}", encoding="utf-8")
     # Pretend already initialized with matching fingerprint
-    import hashlib
+    from octop.infra.connectors.gateway.cli_fingerprint import credential_fingerprint
 
-    fp = hashlib.sha256(b"cli_x\0sec").hexdigest()
+    fp = credential_fingerprint("cli_x", "sec")
     (tmp_path / ".octop_feishu_fingerprint").write_text(fp + "\n", encoding="utf-8")
 
     feishu_creds.ensure_feishu_cli_config(

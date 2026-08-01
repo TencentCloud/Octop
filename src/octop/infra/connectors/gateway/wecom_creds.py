@@ -16,6 +16,8 @@ from urllib.request import Request, urlopen
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from octop.infra.connectors.gateway.cli_fingerprint import credential_fingerprint
+
 _MCP_CONFIG_URL = "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
 _FINGERPRINT_NAME = ".octop_wecom_fingerprint"
 _BIND_SOURCE_INTERACTIVE = 1
@@ -30,7 +32,7 @@ def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: s
     is not enough (``wecom-cli`` errors with “未找到 MCP 配置缓存”).
     """
     config_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint = hashlib.sha256(f"{bot_id}\0{bot_secret}".encode()).hexdigest()
+    fingerprint = credential_fingerprint(bot_id, bot_secret)
     marker = config_dir / _FINGERPRINT_NAME
     mcp_path = config_dir / "mcp_config.enc"
     bot_path = config_dir / "bot.enc"
@@ -104,7 +106,10 @@ def read_mcp_items_count(config_dir: Path) -> int:
 
 
 def _fetch_mcp_config(*, bot_id: str, bot_secret: str) -> list[dict[str, Any]]:
-    """Signed ``get_mcp_config`` — algorithm from wecom-cli: sha256(secret+bot_id+time+nonce)."""
+    """Signed ``get_mcp_config`` — algorithm from wecom-cli: sha256(secret+bot_id+time+nonce).
+
+    SHA-256 here is upstream protocol request signing, not password storage.
+    """
     now = int(time.time())
     nonce = f"mcp_{int(now * 1000)}_{uuid.uuid4().hex[:8]}"
     signature = hashlib.sha256(f"{bot_secret}{bot_id}{now}{nonce}".encode()).hexdigest()

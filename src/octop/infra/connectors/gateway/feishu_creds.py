@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 from contextlib import suppress
 from pathlib import Path
 
+from octop.infra.connectors.gateway.cli_fingerprint import credential_fingerprint
 from octop.infra.connectors.gateway.cli_runner import resolve_binary, run_cli
 
 _FINGERPRINT_NAME = ".octop_feishu_fingerprint"
@@ -61,7 +61,7 @@ def ensure_feishu_cli_config(
     """
     config_dir.mkdir(parents=True, exist_ok=True)
     identity = _normalize_default_as(default_as)
-    fingerprint = hashlib.sha256(f"{app_id}\0{app_secret}".encode()).hexdigest()
+    fingerprint = credential_fingerprint(app_id, app_secret)
     marker = config_dir / _FINGERPRINT_NAME
     config_path = config_dir / "config.json"
     if (
