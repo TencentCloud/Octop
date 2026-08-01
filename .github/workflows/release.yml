@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -120,3 +121,15 @@ jobs:
           body_path: .release-notes.md
           files: dist/*
           generate_release_notes: true
+
+  # workflow_run / release:published are unreliable when Release itself was
+  # started via GITHUB_TOKEN workflow_dispatch (Auto Tag). Explicitly cascade.
+  sync-develop:
+    name: Trigger sync main into develop
+    needs: github-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Sync Main Into Develop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run sync-main-to-develop.yml --ref main
