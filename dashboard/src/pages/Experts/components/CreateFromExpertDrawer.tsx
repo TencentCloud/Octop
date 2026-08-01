@@ -272,6 +272,22 @@ export default function CreateFromExpertDrawer({
           name="agent_id"
           label={t("experts.agentId")}
           help={t("experts.agentIdHelp")}
+          rules={[
+            {
+              validator: (_, value: string | undefined) => {
+                if (!value || !value.trim()) return Promise.resolve();
+                const trimmed = value.trim();
+                if (trimmed.length > 64) {
+                  return Promise.reject(new Error(t("experts.agentIdTooLong")));
+                }
+                if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(trimmed)) {
+                  return Promise.reject(new Error(t("experts.agentIdInvalid")));
+                }
+                return Promise.resolve();
+              },
+            },
+          ]}
+          getValueFromEvent={(e) => e.target.value?.trimStart() ?? ""}
         >
           <Input placeholder={t("experts.agentIdPlaceholder")} />
         </Form.Item>

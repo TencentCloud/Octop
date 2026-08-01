@@ -12,10 +12,11 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import (
@@ -59,6 +60,23 @@ class FromExpertBody(BaseModel):
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+
+    @field_validator("agent_id")
+    @classmethod
+    def _validate_agent_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Agent ID cannot be empty or whitespace only")
+        if len(stripped) > 64:
+            raise ValueError("Agent ID must be 1-64 characters")
+        if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$", stripped):
+            raise ValueError(
+                "Agent ID can only contain letters, numbers, hyphens, and underscores, "
+                "and must start with a letter or number"
+            )
+        return stripped
 
 
 class LocalizedTextResponse(BaseModel):

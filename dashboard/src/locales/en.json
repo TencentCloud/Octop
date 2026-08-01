@@ -397,6 +397,8 @@
     "agentId": "Expert ID",
     "agentIdHelp": "Optional. If left empty, a random ID will be auto-generated.",
     "agentIdPlaceholder": "e.g. my-expert-id",
+    "agentIdInvalid": "Only letters, numbers, hyphens, and underscores allowed. Must start with a letter or number.",
+    "agentIdTooLong": "Agent ID must be 1-64 characters.",
     "copyAgentId": "Click to copy expert ID",
     "table": {
       "name": "Name",

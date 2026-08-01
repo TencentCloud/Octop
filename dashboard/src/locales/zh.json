@@ -397,6 +397,8 @@
     "agentId": "专家 ID",
     "agentIdHelp": "可选。留空将自动生成随机 ID。",
     "agentIdPlaceholder": "例如 my-expert-id",
+    "agentIdInvalid": "仅允许字母、数字、连字符和下划线，且必须以字母或数字开头。",
+    "agentIdTooLong": "专家 ID 长度为 1-64 个字符。",
     "copyAgentId": "点击复制专家 ID",
     "table": {
       "name": "名称",

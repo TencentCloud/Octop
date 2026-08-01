@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from octop.api.common.agent import assert_agent_owner
 from octop.api.deps import current_user, get_server
@@ -16,6 +17,9 @@ from octop.infra.errors import ErrorCode, OctopError
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Agent ID validation pattern: starts with letter/number, then letters/numbers/hyphens/underscores
+_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 
 class AgentCreateBody(BaseModel):
@@ -28,6 +32,23 @@ class AgentCreateBody(BaseModel):
     config: dict[str, Any] = {}
     icon: str | None = None
     template_name: str | None = None
+
+    @field_validator("agent_id")
+    @classmethod
+    def _validate_agent_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Agent ID cannot be empty or whitespace only")
+        if len(stripped) > 64:
+            raise ValueError("Agent ID must be 1-64 characters")
+        if not _AGENT_ID_RE.match(stripped):
+            raise ValueError(
+                "Agent ID can only contain letters, numbers, hyphens, and underscores, "
+                "and must start with a letter or number"
+            )
+        return stripped
 
 
 class AgentPatchBody(BaseModel):
