@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
-import {
-  canonicalizeDockFilePath,
-  dockFileTabId,
-} from "../utils/dockFilePath";
+import { canonicalizeDockFilePath, dockFileTabId } from "../utils/dockFilePath";
 import { usePanelResize, type PanelSizes } from "./usePanelResize";
 
 const PANEL_MODE_KEY = "octop:chat-dock:mode";
@@ -86,10 +83,7 @@ function fallbackActiveId(
 /**
  * Shared chat dock with tabbed file list / file viewers / browser.
  */
-export function useChatDockPanel(
-  isMobile: boolean,
-  agentId?: string | null,
-) {
+export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   const [dockOpen, setDockOpen] = useState(false);
   const [dockMode, setDockMode] = useState<PanelMode>(loadPanelMode);
   const [openTabs, setOpenTabs] = useState<DockTab[]>([]);
@@ -118,9 +112,7 @@ export function useChatDockPanel(
 
   const openFileAt = useCallback(
     (path?: string | null) => {
-      const normalized = path
-        ? canonicalizeDockFilePath(path, agentId)
-        : "";
+      const normalized = path ? canonicalizeDockFilePath(path, agentId) : "";
       if (!normalized) {
         openFileList();
         return;

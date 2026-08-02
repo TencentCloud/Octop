@@ -73,8 +73,8 @@ const toSpec = (row: ServerSummary): SkillSpec => ({
     row.kind === "builtin"
       ? "builtin"
       : row.kind === "package"
-        ? "package"
-        : "workspace",
+      ? "package"
+      : "workspace",
   emoji: row.emoji,
   iconUrl: row.icon_url,
 });

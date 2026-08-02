@@ -81,9 +81,7 @@ function pathFromArgs(raw: unknown): string {
 function pathFromText(text: string): string {
   if (!text) return "";
   // Prefer full absolute path ending at ``/.octop/agents/…`` (keep ``/home/…``).
-  const absMatch = text.match(
-    /(?:\/[\w.-]+)*\/\.octop\/agents\/[^\s"'<>]+/i,
-  );
+  const absMatch = text.match(/(?:\/[\w.-]+)*\/\.octop\/agents\/[^\s"'<>]+/i);
   if (absMatch) return absMatch[0];
   const outbound = text.match(
     /(?:^|[\s"'`])((?:outbound|inbound)\/[^\s"'<>]+)/i,
@@ -166,18 +164,10 @@ export function useChatFileDetection(
           m.attachments,
         );
         for (const file of media.files) {
-          addPath(
-            paths,
-            workspacePathFromAccessUrl(file.url) ?? null,
-            agentId,
-          );
+          addPath(paths, workspacePathFromAccessUrl(file.url) ?? null, agentId);
         }
         for (const img of media.images) {
-          addPath(
-            paths,
-            workspacePathFromAccessUrl(img.url) ?? null,
-            agentId,
-          );
+          addPath(paths, workspacePathFromAccessUrl(img.url) ?? null, agentId);
         }
         for (const video of media.videos) {
           addPath(

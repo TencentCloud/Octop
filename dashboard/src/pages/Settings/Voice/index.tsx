@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Button,
-  Divider,
-  Modal,
-  Space,
-  Typography,
-  Input,
-  Select,
-} from "antd";
+import { Button, Divider, Modal, Space, Typography, Input, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Mic2, RefreshCw, Check, Settings2 } from "lucide-react";
@@ -17,10 +9,7 @@ import {
   type VoicePreset,
   type VoiceProviderRow,
 } from "../../../api/modules/voice";
-import {
-  customProviderLogo,
-  getProviderLogo,
-} from "../../../assets/providers";
+import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { invalidateVoiceConfigCache } from "../../../hooks/useVoiceConfig";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
@@ -121,8 +110,8 @@ export function VoiceSettingsPanel() {
               region: "ap-guangzhou",
             }
           : preset.kind === "edge"
-            ? { voice_id: "zh-CN-XiaoxiaoNeural" }
-            : { model: preset.kind === "openai" ? "whisper-1" : undefined };
+          ? { voice_id: "zh-CN-XiaoxiaoNeural" }
+          : { model: preset.kind === "openai" ? "whisper-1" : undefined };
       const payload = {
         name: preset.id,
         kind: preset.kind,

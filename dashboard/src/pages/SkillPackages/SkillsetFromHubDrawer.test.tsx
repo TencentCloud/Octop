@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -80,7 +88,9 @@ describe("<SkillsetFromHubDrawer />", () => {
     await user.click(importButton);
 
     await waitFor(() => {
-      expect(packagesApi.fromSkillHub).toHaveBeenCalledWith({ slug: "writing" });
+      expect(packagesApi.fromSkillHub).toHaveBeenCalledWith({
+        slug: "writing",
+      });
       expect(onCreated).toHaveBeenCalledWith(createdPackage);
     });
   });

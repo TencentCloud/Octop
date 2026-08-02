@@ -514,8 +514,13 @@
 
 .cliInstallHintError {
   color: var(--fn-text-secondary);
-  background: color-mix(in srgb, var(--fn-danger, #c0392b) 8%, var(--fn-surface-sunken));
-  border: 1px solid color-mix(in srgb, var(--fn-danger, #c0392b) 25%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-danger, #c0392b) 8%,
+    var(--fn-surface-sunken)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--fn-danger, #c0392b) 25%, transparent);
 }
 
 .cliInstallCommand {

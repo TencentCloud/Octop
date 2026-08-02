@@ -86,13 +86,10 @@ export const skillPackagesApi = {
     packageId: string,
     body: { bundle_url: string; version?: string; overwrite?: boolean },
   ) =>
-    request<SkillPackageSkill>(
-      `/skill-packages/${packageId}/skills/import`,
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      },
-    ),
+    request<SkillPackageSkill>(`/skill-packages/${packageId}/skills/import`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   hubSearch: (q: string, limit = 50) =>
     request<Record<string, unknown>[]>(

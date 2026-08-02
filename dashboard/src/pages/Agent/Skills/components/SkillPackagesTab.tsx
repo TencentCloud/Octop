@@ -41,11 +41,7 @@ function PackageSkillIcon({
 }) {
   if (iconUrl) {
     return (
-      <img
-        src={iconUrl}
-        alt=""
-        className={styles.packageSkillRowIconImg}
-      />
+      <img src={iconUrl} alt="" className={styles.packageSkillRowIconImg} />
     );
   }
   if (emoji) {
@@ -66,8 +62,9 @@ export default function SkillPackagesTab({
   const [loading, setLoading] = useState(true);
   const [mountingId, setMountingId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailPackage, setDetailPackage] =
-    useState<SkillPackageDetail | null>(null);
+  const [detailPackage, setDetailPackage] = useState<SkillPackageDetail | null>(
+    null,
+  );
   const [detailLoading, setDetailLoading] = useState(false);
 
   const hubSkillsBySlug = useMemo(() => hubInfoBySlugFromCache(), []);
@@ -75,7 +72,10 @@ export default function SkillPackagesTab({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([skillPackagesApi.list(), skillPackagesApi.listMounted(agentId)])
+    Promise.all([
+      skillPackagesApi.list(),
+      skillPackagesApi.listMounted(agentId),
+    ])
       .then(([packages, mounted]) => {
         if (cancelled) return;
         setCatalog(packages);
@@ -292,8 +292,7 @@ export default function SkillPackagesTab({
                     packageSkill.description ||
                     t("skills.noDescription");
                   const shadows = workspaceSlugs.has(packageSkill.slug);
-                  const canToggle =
-                    detailMounted && !!installed && !shadows;
+                  const canToggle = detailMounted && !!installed && !shadows;
 
                   return (
                     <div key={packageSkill.slug}>
@@ -306,10 +305,7 @@ export default function SkillPackagesTab({
                               background: iconUrl ? "transparent" : "#0596691a",
                             }}
                           >
-                            <PackageSkillIcon
-                              iconUrl={iconUrl}
-                              emoji={emoji}
-                            />
+                            <PackageSkillIcon iconUrl={iconUrl} emoji={emoji} />
                           </div>
                           <div className={styles.packageSkillRowMeta}>
                             <div className={styles.packageSkillRowLabel}>

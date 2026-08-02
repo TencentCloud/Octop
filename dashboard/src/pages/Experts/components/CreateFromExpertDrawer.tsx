@@ -1,15 +1,7 @@
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Collapse,
-  Drawer,
-  Form,
-  Input,
-  Select,
-  Spin,
-} from "antd";
+import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";

@@ -44,10 +44,7 @@ export function canonicalizeDockFilePath(
   if (agentId) {
     const id = agentId.replace(/\\/g, "/");
     const idLower = id.toLowerCase();
-    const markers = [
-      `/.octop/agents/${idLower}/`,
-      `.octop/agents/${idLower}/`,
-    ];
+    const markers = [`/.octop/agents/${idLower}/`, `.octop/agents/${idLower}/`];
     for (const marker of markers) {
       const idx = lower.lastIndexOf(marker);
       if (idx >= 0) {
@@ -99,10 +96,7 @@ export function dockFileBasename(path: string): string {
 }
 
 /** Stable tab id for an open file path. */
-export function dockFileTabId(
-  path: string,
-  agentId?: string | null,
-): string {
+export function dockFileTabId(path: string, agentId?: string | null): string {
   return `file:${canonicalizeDockFilePath(path, agentId)}`;
 }
 
@@ -213,7 +207,8 @@ export function buildDockPathTree(
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const isLast = i === parts.length - 1;
-      acc = acc === "" && abs ? `/${part}` : acc === "" ? part : `${acc}/${part}`;
+      acc =
+        acc === "" && abs ? `/${part}` : acc === "" ? part : `${acc}/${part}`;
       let child = node.children.get(part);
       if (!child) {
         child = {
@@ -241,12 +236,10 @@ export function buildDockPathTree(
       cur = [...cur.children.values()][0];
       names.push(cur.name);
     }
-    const children = [...cur.children.values()]
-      .map(collapse)
-      .sort((a, b) => {
-        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
+    const children = [...cur.children.values()].map(collapse).sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
     return {
       name: names.filter(Boolean).join(" / "),
       path: cur.path,
@@ -255,18 +248,14 @@ export function buildDockPathTree(
     };
   }
 
-  return [...root.children.values()]
-    .map(collapse)
-    .sort((a, b) => {
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+  return [...root.children.values()].map(collapse).sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 /** Collect every directory node path from a dock tree. */
-export function collectDockFolderPaths(
-  nodes: DockPathTreeNode[],
-): Set<string> {
+export function collectDockFolderPaths(nodes: DockPathTreeNode[]): Set<string> {
   const out = new Set<string>();
   const walk = (list: DockPathTreeNode[]) => {
     for (const n of list) {

@@ -38,9 +38,9 @@ describe("dockFilePath", () => {
         "main",
       ),
     ).toBe("generated/iron-man.pptx");
-    expect(
-      canonicalizeDockFilePath("generated/iron-man.pptx", "main"),
-    ).toBe("generated/iron-man.pptx");
+    expect(canonicalizeDockFilePath("generated/iron-man.pptx", "main")).toBe(
+      "generated/iron-man.pptx",
+    );
   });
 
   it("canonicalizes Windows agent-home paths", () => {
@@ -105,10 +105,10 @@ describe("dockFilePath", () => {
       "main",
     );
     expect(tree).toHaveLength(1);
-    expect(tree[0].name).toBe("home / wally / .octop / agents / main / generated");
-    expect(tree[0].path).toBe(
-      "/home/wally/.octop/agents/main/generated",
+    expect(tree[0].name).toBe(
+      "home / wally / .octop / agents / main / generated",
     );
+    expect(tree[0].path).toBe("/home/wally/.octop/agents/main/generated");
     expect(tree[0].children.map((c) => c.name)).toEqual(["iron-man.pptx"]);
   });
 
@@ -195,11 +195,7 @@ describe("dockFilePath", () => {
     const collapsed = new Set<string>(); // user collapsed a/b
     const second = buildDockPathTree(["a/b/one.txt", "c/d/two.txt"]);
     const folders2 = collectDockFolderPaths(second);
-    const merged = mergeDockExpandedFolders(
-      collapsed,
-      folders2,
-      initial.seen,
-    );
+    const merged = mergeDockExpandedFolders(collapsed, folders2, initial.seen);
     expect(merged.expanded.has("a/b")).toBe(false);
     expect(merged.expanded.has("c/d")).toBe(true);
   });

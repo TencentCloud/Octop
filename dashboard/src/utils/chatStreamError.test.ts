@@ -20,9 +20,9 @@ describe("classifyChatStreamError", () => {
   });
 
   it("classifies rate limit and auth errors", () => {
-    expect(classifyChatStreamError("Error code: 429 - rate_limit_exceeded")).toBe(
-      "stream_errors.rate_limit",
-    );
+    expect(
+      classifyChatStreamError("Error code: 429 - rate_limit_exceeded"),
+    ).toBe("stream_errors.rate_limit");
     expect(
       classifyChatStreamError("Error code: 401 - Incorrect API key provided"),
     ).toBe("stream_errors.auth");
@@ -34,7 +34,8 @@ describe("classifyChatStreamError", () => {
   });
 
   it("formats known failures through i18n", () => {
-    const msg = "No streaming chunk received for 30.0s (model=x, chunks_received=1)";
+    const msg =
+      "No streaming chunk received for 30.0s (model=x, chunks_received=1)";
     expect(formatChatStreamError(msg, t)).toBe(
       "translated:stream_errors.stream_stall",
     );

@@ -10,11 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Spin, Button } from "antd";
-import {
-  Virtuoso,
-  type Components,
-  type VirtuosoHandle,
-} from "react-virtuoso";
+import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";

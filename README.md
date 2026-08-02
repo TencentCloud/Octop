@@ -415,7 +415,7 @@ tests/         unit/ + integration/
 ```bash
 # Backend
 make install          # pip install -e ".[dev]"
-make all              # lint + typecheck + test (ship bar)
+make all              # format-all + lint + typecheck + test (ship bar)
 
 # Frontend (separate terminal)
 make dev-frontend     # Vite dev server on :5173 (override with VITE_DEV_PORT)

@@ -41,14 +41,14 @@ function AssistantProcessSummary({
           defaultValue: "已调用 {{tools}} 次工具，{{thinking}} 次深度思考",
         })
       : toolCount > 0
-        ? t("chat.processSummaryToolsOnly", {
-            tools: toolCount,
-            defaultValue: "已调用 {{tools}} 次工具",
-          })
-        : t("chat.processSummaryThinkingOnly", {
-            thinking: thinkingCount,
-            defaultValue: "{{thinking}} 次深度思考",
-          });
+      ? t("chat.processSummaryToolsOnly", {
+          tools: toolCount,
+          defaultValue: "已调用 {{tools}} 次工具",
+        })
+      : t("chat.processSummaryThinkingOnly", {
+          thinking: thinkingCount,
+          defaultValue: "{{thinking}} 次深度思考",
+        });
 
   return (
     <div className={styles.processSummary}>

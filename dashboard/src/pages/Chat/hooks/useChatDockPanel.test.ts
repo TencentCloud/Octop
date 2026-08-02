@@ -25,9 +25,9 @@ describe("useChatDockPanel tabs", () => {
       result.current.openFileAt("/.octop/agents/main/outbound/a.txt");
     });
     const fileId = dockFileTabId("outbound/a.txt", "main");
-    expect(result.current.openTabs.filter((t) => t.kind === "file")).toHaveLength(
-      1,
-    );
+    expect(
+      result.current.openTabs.filter((t) => t.kind === "file"),
+    ).toHaveLength(1);
     expect(result.current.activeTabId).toBe(fileId);
     expect(result.current.openTabs.map((t) => t.id)).toEqual([fileId]);
   });

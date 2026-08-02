@@ -25,8 +25,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 function isSkippedPath(path: string): boolean {
   const lower = path.toLowerCase().replace(/\\/g, "/");
   return (
-    SKIP_MARKERS.some((marker) => lower.includes(marker)) ||
-    lower.endsWith("/")
+    SKIP_MARKERS.some((marker) => lower.includes(marker)) || lower.endsWith("/")
   );
 }
 
@@ -61,9 +60,7 @@ function stripOuterWrapper(
   entries: Array<{ zipPath: string; relPath: string }>,
 ): Array<{ zipPath: string; relPath: string }> {
   const tops = new Set(
-    entries
-      .map((entry) => entry.relPath.split("/")[0] || "")
-      .filter(Boolean),
+    entries.map((entry) => entry.relPath.split("/")[0] || "").filter(Boolean),
   );
   if (tops.size !== 1) return entries;
   const wrapper = [...tops][0];

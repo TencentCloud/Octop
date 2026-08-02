@@ -1664,6 +1664,17 @@
   "tls": {
     "title": "HTTPS (Let's Encrypt)",
     "subtitle": "Issue a free TLS certificate when this server listens on 0.0.0.0:80. After issuance, Octop runs HTTPS on 443 and keeps HTTP on 80 for ACME renewals.",
+    "setupTitle": "Certificate setup",
+    "setupDesc": "Enter a domain that points to this host's public IP. Run checks first, then issue or renew the certificate.",
+    "progressTitle": "Issuance progress",
+    "progressDesc": "Tracks preflight and Let's Encrypt progress. Check results appear below when available.",
+    "checksTitle": "Preflight results",
+    "statusDomain": "Domain",
+    "statusExpires": "Expires",
+    "statusTask": "Status",
+    "statusNone": "Not configured",
+    "stateIdle": "Idle",
+    "stateFailed": "Failed",
     "loadError": "Failed to load TLS status",
     "domainRequired": "Enter a domain name",
     "domainLabel": "Domain",
@@ -1954,7 +1965,9 @@
     },
     "update": {
       "title": "Version & Updates",
-      "description": "Check for the latest release and upgrade Octop with one click.",
+      "description": "Check for the latest release and upgrade in place; use the guide on the right for other install methods.",
+      "panelTitle": "Version upgrade",
+      "panelDesc": "Check for a new release and install it when supported. Restart the service after a successful upgrade.",
       "currentVersion": "Current Version",
       "latestVersion": "Latest Version",
       "checkButton": "Check for Updates",
@@ -1985,7 +1998,40 @@
       "restartTimeout": "Restart timed out. Run manually: octop service restart",
       "restartFailed": "Restart request failed. Check the service and try again.",
       "releaseNotes": "Release Notes",
-      "updateModalTitle": "New Version Available"
+      "updateModalTitle": "New Version Available",
+      "guideTitle": "Update by install method",
+      "guideIntro": "If the one-click upgrade on the left is unavailable, pick the commands for your install method. Restart after upgrading; data stays in ~/.octop (or OCTOP_HOME).",
+      "guideDataNote": "Upgrades do not wipe local data: accounts, agents, chats and memory, skills, channels, and model settings live in the working directory. Reinstalling or updating the package keeps using that data.",
+      "guide": {
+        "ui": {
+          "title": "In-console upgrade",
+          "body": "Prefer Check for Updates and Upgrade Now on the left (package installs, not editable/source). In service mode you can Restart Service when done."
+        },
+        "installer": {
+          "title": "One-line installer",
+          "body": "If you used the official install script, re-run the same install command to upgrade in place (it reuses the environment and data under ~/.octop)."
+        },
+        "cli": {
+          "title": "CLI: octop update",
+          "body": "If the octop command is on your PATH (installer or managed venv), run:"
+        },
+        "pip": {
+          "title": "pip install",
+          "body": "If you installed into your own Python environment with pip:"
+        },
+        "source": {
+          "title": "From source",
+          "body": "For git / editable installs, in-page upgrade is disabled. Pull the latest code, build the dashboard, then reinstall:"
+        },
+        "docker": {
+          "title": "Docker",
+          "body": "Rebuild and restart the image, and keep the same data volume (~/.octop or octop-data) so nothing is lost:"
+        },
+        "restart": {
+          "title": "Restart after upgrade",
+          "body": "The new package only takes effect after the process restarts. Use the command that matches how you launched Octop:"
+        }
+      }
     }
   },
   "agentConfig": {

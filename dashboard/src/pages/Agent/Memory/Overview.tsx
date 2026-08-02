@@ -215,10 +215,7 @@ export default function Overview({
         ) : !state.growth || state.growth.series.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t(
-              "memory.overview.turnsEmpty",
-              "近 7 天暂无对话轮次",
-            )}
+            description={t("memory.overview.turnsEmpty", "近 7 天暂无对话轮次")}
           />
         ) : (
           <div className={styles.turnsChart}>

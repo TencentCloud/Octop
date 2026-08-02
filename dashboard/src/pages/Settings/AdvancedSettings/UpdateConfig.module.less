@@ -1,7 +1,58 @@
 .container {
   width: 100%;
   min-width: 0;
-  max-width: 720px;
+}
+
+/* ── Page layout: upgrade left, guide right ── */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 20px;
+  align-items: start;
+
+  @media (max-width: 960px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  min-width: 0;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 12px;
+  background: var(
+    --fn-bg-elevated,
+    var(--fn-bg-secondary, rgba(0, 0, 0, 0.02))
+  );
+  padding: 18px 20px;
+}
+
+.panelTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.35;
+}
+
+.panelTitleIcon {
+  display: flex;
+  color: var(--fn-text-secondary);
+  flex-shrink: 0;
+}
+
+.panelDesc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
 }
 
 /* ── Version cards ── */
@@ -10,9 +61,9 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 
-  @media (max-width: 600px) {
+  @media (max-width: 520px) {
     grid-template-columns: 1fr;
   }
 }
@@ -21,25 +72,26 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 16px;
+  padding: 14px 16px;
   border: 1px solid var(--fn-border-primary);
-  border-radius: 8px;
-  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.03));
+  border-radius: 10px;
+  background: var(--fn-bg-primary, var(--fn-bg-base, #fff));
 }
 
 .versionLabel {
   font-size: 12px;
   color: var(--fn-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
   font-weight: 500;
 }
 
 .versionValue {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  color: var(--fn-text-primary);
+  line-height: 1.25;
 }
 
 .notChecked {
@@ -74,6 +126,10 @@
   > svg {
     flex-shrink: 0;
     margin-top: 2px;
+  }
+
+  p {
+    margin: 0;
   }
 }
 
@@ -119,17 +175,17 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
 .btnSecondary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: 8px 14px;
   border: 1px solid var(--fn-border-primary);
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--fn-bg-primary, transparent);
   color: var(--fn-text-primary);
   font-size: 13px;
   font-weight: 500;
@@ -151,9 +207,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 16px;
+  padding: 8px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--fn-color-brand);
   color: #fff;
   font-size: 13px;
@@ -174,7 +230,7 @@
 /* ── Progress bar ── */
 
 .progressSection {
-  margin-top: 4px;
+  margin-top: 14px;
 }
 
 .progressLabel {
@@ -213,8 +269,6 @@
     margin: 0;
   }
 
-  /* Keep the restart button at content width so it does not stretch
-     and leave empty space on the right side of the label. */
   button {
     align-self: flex-start;
   }
@@ -251,6 +305,84 @@ code {
   margin-top: 4px;
   font-size: 12px;
   opacity: 0.75;
+}
+
+.releaseNotes {
+  margin-top: 14px;
+
+  :global(.ant-collapse-header) {
+    align-items: center !important;
+  }
+}
+
+/* ── Upgrade guide (right column) ── */
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.guideMethods {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guideNote {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 20%, transparent);
+}
+
+.guideMethod {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--fn-border-primary);
+  background: var(--fn-bg-primary, var(--fn-bg-base, #fff));
+}
+
+.guideMethodTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.guideMethodBody {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+}
+
+.guideCode {
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+  border: 1px solid var(--fn-border-secondary, var(--fn-border-primary));
+  font-family: var(
+    --fn-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fn-text-primary);
+  white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 /* ── Spinner animation ── */

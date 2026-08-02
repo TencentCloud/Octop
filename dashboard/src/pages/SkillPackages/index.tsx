@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   Button,
   Drawer,
@@ -128,7 +134,9 @@ export default function SkillPackagesPage() {
         const rows = await skillPackagesApi.list();
         setPackages(rows);
         setSelected((current) =>
-          current && !rows.some((row) => row.id === current.id) ? null : current,
+          current && !rows.some((row) => row.id === current.id)
+            ? null
+            : current,
         );
         setSelectedId((currentId) =>
           currentId && !rows.some((row) => row.id === currentId)
@@ -179,7 +187,13 @@ export default function SkillPackagesPage() {
   }, [loadPackages]);
 
   useEffect(() => {
-    if (isMobile || loading || detailLoading || selectedId || packages.length === 0) {
+    if (
+      isMobile ||
+      loading ||
+      detailLoading ||
+      selectedId ||
+      packages.length === 0
+    ) {
       return;
     }
     void loadDetail(packages[0].id);
@@ -463,9 +477,9 @@ export default function SkillPackagesPage() {
       fill
     >
       <div
-        className={`${styles.layout}${isResizing ? ` ${styles.layoutResizing}` : ""}${
-          isMobile ? ` ${styles.layoutMobile}` : ""
-        }`}
+        className={`${styles.layout}${
+          isResizing ? ` ${styles.layoutResizing}` : ""
+        }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
         style={
           {
             "--skill-packages-sidebar-width": `${sidebarWidth}px`,
@@ -559,150 +573,157 @@ export default function SkillPackagesPage() {
         ) : null}
 
         {showDetailPane ? (
-        <section className={styles.detail}>
-          {detailLoading ? (
-            <div className={styles.detailLoadingOverlay}>
-              <Spin />
-            </div>
-          ) : null}
-          {!selected && !detailLoading ? (
-            <Empty
-              className={styles.emptyDetail}
-              image={<OctopEmptyMascot />}
-              description={t("skillPackages.selectPackage")}
-            />
-          ) : !selected ? null : (
-            <>
-              <div className={styles.detailHeader}>
-                <div className={styles.detailTitleRow}>
-                  <div className={styles.detailTitleGroup}>
-                    {isMobile ? (
-                      <button
-                        type="button"
-                        className={styles.mobileBackBtn}
-                        onClick={() => setMobilePane("list")}
-                        aria-label={t("skillPackages.backToList")}
+          <section className={styles.detail}>
+            {detailLoading ? (
+              <div className={styles.detailLoadingOverlay}>
+                <Spin />
+              </div>
+            ) : null}
+            {!selected && !detailLoading ? (
+              <Empty
+                className={styles.emptyDetail}
+                image={<OctopEmptyMascot />}
+                description={t("skillPackages.selectPackage")}
+              />
+            ) : !selected ? null : (
+              <>
+                <div className={styles.detailHeader}>
+                  <div className={styles.detailTitleRow}>
+                    <div className={styles.detailTitleGroup}>
+                      {isMobile ? (
+                        <button
+                          type="button"
+                          className={styles.mobileBackBtn}
+                          onClick={() => setMobilePane("list")}
+                          aria-label={t("skillPackages.backToList")}
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+                      ) : null}
+                      <Typography.Title
+                        level={4}
+                        className={styles.detailTitle}
                       >
-                        <ChevronLeft size={18} />
-                      </button>
-                    ) : null}
-                    <Typography.Title level={4} className={styles.detailTitle}>
-                      {selected.name}
-                    </Typography.Title>
-                  </div>
-                  {canMutate ? (
-                    <div className={styles.actions}>
-                      <Button
-                        icon={<Pencil size={14} />}
-                        onClick={openEditPackage}
-                      >
-                        {t("common.edit")}
-                      </Button>
-                      <Popconfirm
-                        title={t("skillPackages.deletePackageConfirm")}
-                        description={t("skillPackages.deletePackageMountedHint")}
-                        okText={t("common.delete")}
-                        cancelText={t("common.cancel")}
-                        onConfirm={() => void deletePackage()}
-                      >
-                        <Button danger icon={<Trash2 size={14} />}>
-                          {t("common.delete")}
-                        </Button>
-                      </Popconfirm>
+                        {selected.name}
+                      </Typography.Title>
                     </div>
-                  ) : null}
-                </div>
-                <Typography.Paragraph
-                  type="secondary"
-                  className={styles.detailDescription}
-                >
-                  {selected.description || t("skillPackages.noDescription")}
-                </Typography.Paragraph>
-              </div>
-
-              <div className={styles.detailBody}>
-                <div className={skillStyles.gridToolbar}>
-                  <span className={skillStyles.gridCount}>
-                    {t("skills.totalCount", { count: skills.length })}
-                  </span>
-                  <div className={skillStyles.gridToolbarRight}>
-                    <Segmented
-                      size="small"
-                      value={viewMode}
-                      onChange={(value) =>
-                        setViewMode(value === "table" ? "table" : "card")
-                      }
-                      options={[
-                        {
-                          value: "card",
-                          label: (
-                            <span className={skillStyles.viewModeLabel}>
-                              <LayoutGrid size={14} />
-                              {t("experts.viewCard")}
-                            </span>
-                          ),
-                        },
-                        {
-                          value: "table",
-                          label: (
-                            <span className={skillStyles.viewModeLabel}>
-                              <ListIcon size={14} />
-                              {t("experts.viewTable")}
-                            </span>
-                          ),
-                        },
-                      ]}
-                    />
-                    <Tooltip title={t("common.refresh")}>
-                      <button
-                        type="button"
-                        className={skillStyles.toolbarIconBtn}
-                        onClick={() => void handleRefresh()}
-                        disabled={refreshing || detailLoading}
-                      >
-                        <RefreshCw
-                          size={14}
-                          className={
-                            refreshing ? skillStyles.spinning : undefined
-                          }
-                        />
-                      </button>
-                    </Tooltip>
                     {canMutate ? (
-                      <>
-                        <button
-                          type="button"
-                          className={skillStyles.toolbarBtn}
-                          onClick={() => setHubOpen(true)}
+                      <div className={styles.actions}>
+                        <Button
+                          icon={<Pencil size={14} />}
+                          onClick={openEditPackage}
                         >
-                          <Store size={14} />
-                          {t("skills.tencentSkillHub")}
-                        </button>
-                        <button
-                          type="button"
-                          className={skillStyles.toolbarBtn}
-                          onClick={() => setImportModalOpen(true)}
+                          {t("common.edit")}
+                        </Button>
+                        <Popconfirm
+                          title={t("skillPackages.deletePackageConfirm")}
+                          description={t(
+                            "skillPackages.deletePackageMountedHint",
+                          )}
+                          okText={t("common.delete")}
+                          cancelText={t("common.cancel")}
+                          onConfirm={() => void deletePackage()}
                         >
-                          <Download size={14} />
-                          {t("skills.importSkills")}
-                        </button>
-                        <button
-                          type="button"
-                          className={skillStyles.toolbarBtnPrimary}
-                          onClick={openCreateSkill}
-                        >
-                          <Plus size={14} />
-                          {t("skillPackages.createSkill")}
-                        </button>
-                      </>
+                          <Button danger icon={<Trash2 size={14} />}>
+                            {t("common.delete")}
+                          </Button>
+                        </Popconfirm>
+                      </div>
                     ) : null}
                   </div>
+                  <Typography.Paragraph
+                    type="secondary"
+                    className={styles.detailDescription}
+                  >
+                    {selected.description || t("skillPackages.noDescription")}
+                  </Typography.Paragraph>
                 </div>
-                <div className={skillStyles.skillsListArea}>{skillsContent}</div>
-              </div>
-            </>
-          )}
-        </section>
+
+                <div className={styles.detailBody}>
+                  <div className={skillStyles.gridToolbar}>
+                    <span className={skillStyles.gridCount}>
+                      {t("skills.totalCount", { count: skills.length })}
+                    </span>
+                    <div className={skillStyles.gridToolbarRight}>
+                      <Segmented
+                        size="small"
+                        value={viewMode}
+                        onChange={(value) =>
+                          setViewMode(value === "table" ? "table" : "card")
+                        }
+                        options={[
+                          {
+                            value: "card",
+                            label: (
+                              <span className={skillStyles.viewModeLabel}>
+                                <LayoutGrid size={14} />
+                                {t("experts.viewCard")}
+                              </span>
+                            ),
+                          },
+                          {
+                            value: "table",
+                            label: (
+                              <span className={skillStyles.viewModeLabel}>
+                                <ListIcon size={14} />
+                                {t("experts.viewTable")}
+                              </span>
+                            ),
+                          },
+                        ]}
+                      />
+                      <Tooltip title={t("common.refresh")}>
+                        <button
+                          type="button"
+                          className={skillStyles.toolbarIconBtn}
+                          onClick={() => void handleRefresh()}
+                          disabled={refreshing || detailLoading}
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={
+                              refreshing ? skillStyles.spinning : undefined
+                            }
+                          />
+                        </button>
+                      </Tooltip>
+                      {canMutate ? (
+                        <>
+                          <button
+                            type="button"
+                            className={skillStyles.toolbarBtn}
+                            onClick={() => setHubOpen(true)}
+                          >
+                            <Store size={14} />
+                            {t("skills.tencentSkillHub")}
+                          </button>
+                          <button
+                            type="button"
+                            className={skillStyles.toolbarBtn}
+                            onClick={() => setImportModalOpen(true)}
+                          >
+                            <Download size={14} />
+                            {t("skills.importSkills")}
+                          </button>
+                          <button
+                            type="button"
+                            className={skillStyles.toolbarBtnPrimary}
+                            onClick={openCreateSkill}
+                          >
+                            <Plus size={14} />
+                            {t("skillPackages.createSkill")}
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className={skillStyles.skillsListArea}>
+                    {skillsContent}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
         ) : null}
       </div>
 
@@ -770,7 +791,9 @@ export default function SkillPackagesPage() {
                 label: (
                   <span className={styles.iconOption}>
                     {iconForName(name, 18)}
-                    <span>{t(`experts.iconLabels.${name}`, { defaultValue: name })}</span>
+                    <span>
+                      {t(`experts.iconLabels.${name}`, { defaultValue: name })}
+                    </span>
                   </span>
                 ),
               }))}

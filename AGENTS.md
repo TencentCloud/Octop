@@ -183,18 +183,20 @@ Frontend talks to Octop **only** via `/api` HTTP — never import or assume Pyth
 
 ```bash
 make install-hooks                      # once per clone: enable .githooks pre-commit
+make all                                # format-all + lint + typecheck + test (ship bar)
+make format-all                         # backend Ruff + dashboard Prettier write
+make lint                               # ruff check + format check
+make typecheck                          # mypy --strict src/octop
+make format                             # ruff auto-fix + format (backend only)
+make format-frontend                    # prettier write (dashboard only)
 uv run pytest -m "not live"            # full test suite (no LLM calls)
 uv run pytest tests/unit -x -q        # unit tests only, stop on first fail
 uv run pytest tests/integration -x -q # integration tests only
-make lint                               # ruff check + format check
-make typecheck                          # mypy --strict src/octop
-make format                             # auto-fix lint issues
-make all                                # lint + typecheck + test (ship bar)
 cd dashboard && npx tsc --noEmit       # frontend typecheck (after UI changes)
 make build-frontend                     # dashboard/ → src/octop/dashboard/
 ```
 
-**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so every `git commit` runs `make all` plus `dashboard` `npm run build` before the commit is created. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first (CI runs on Linux **and** Windows).
+**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so every `git commit` runs **`make all`** (which first runs **`format-all`**: backend Ruff + dashboard Prettier write, then lint / typecheck / test) and dashboard **`npm run build`**. Formatted files that were already staged are re-added so the commit includes the formatted content. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first (CI runs on Linux **and** Windows).
 
 ## 7. Key patterns
 
@@ -336,7 +338,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Internationalization (dashboard) | `dashboard/src/locales/`, `dashboard/src/i18n.ts`, `dashboard/src/utils/apiError.ts` |
 | Server timezone (config.json) | `default_timezone` in `config.py`; `GET /api/settings/timezone`; `dashboard/src/hooks/useServerTimezone.ts`; `dashboard/src/utils/formatMessageTime.ts` |
 | Test layout & shared helpers | `tests/support/` (`fakes`, `auth`, `http`, `scenarios`, `app`), `tests/integration/conftest.py`, `tests/unit/{db,cron,gateway,agents,api,cli}/` |
-| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` + dashboard build) |
+| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` incl. `format-all` + dashboard build) |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |
 | Connectors & OAuth | `infra/connectors/`, `api/routers/connectors.py` |
@@ -350,7 +352,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)).
 2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
 3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
-4. **Verify** — backend: `make all` (`lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
+4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
 ### Branching & release

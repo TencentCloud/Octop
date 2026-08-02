@@ -226,10 +226,13 @@ export const connectorsApi = {
     cli_config_key?: string;
     domains?: string[];
   }) =>
-    request<FeishuUserAuthStartResult>("/connectors/feishu-cli/user-auth/start", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    request<FeishuUserAuthStartResult>(
+      "/connectors/feishu-cli/user-auth/start",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   feishuUserAuthComplete: (body: {
     app_id: string;
@@ -247,7 +250,9 @@ export const connectorsApi = {
 
   feishuUserAuthStartInstance: (instanceId: string) =>
     request<FeishuUserAuthStartResult>(
-      `/connector-instances/${encodeURIComponent(instanceId)}/feishu-user-auth/start`,
+      `/connector-instances/${encodeURIComponent(
+        instanceId,
+      )}/feishu-user-auth/start`,
       { method: "POST" },
     ),
 
@@ -256,7 +261,9 @@ export const connectorsApi = {
     body: { device_code: string; cli_config_key?: string },
   ) =>
     request<FeishuUserAuthCompleteResult>(
-      `/connector-instances/${encodeURIComponent(instanceId)}/feishu-user-auth/complete`,
+      `/connector-instances/${encodeURIComponent(
+        instanceId,
+      )}/feishu-user-auth/complete`,
       {
         method: "POST",
         body: JSON.stringify(body),

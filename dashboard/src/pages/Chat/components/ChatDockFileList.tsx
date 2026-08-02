@@ -237,9 +237,7 @@ export default function ChatDockFileList({
         URL.revokeObjectURL(a.href);
       } catch (err: unknown) {
         if (isNotFoundApiError(err)) {
-          message.warning(
-            t("workspace.fileMaybeDeleted", "文件可能已被删除"),
-          );
+          message.warning(t("workspace.fileMaybeDeleted", "文件可能已被删除"));
           return;
         }
         message.error(
@@ -258,10 +256,7 @@ export default function ChatDockFileList({
       <div className={styles.dockFileListEmpty}>
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t(
-            "chat.dockFileListEmpty",
-            "暂无工具生成或发送的文件",
-          )}
+          description={t("chat.dockFileListEmpty", "暂无工具生成或发送的文件")}
         />
       </div>
     );

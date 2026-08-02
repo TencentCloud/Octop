@@ -38,8 +38,8 @@ describe("parseSkillZip", () => {
     ]);
     expect(
       decodeBase64(
-        writer?.files.find((item) => item.path === "notes.txt")?.contentBase64 ??
-          "",
+        writer?.files.find((item) => item.path === "notes.txt")
+          ?.contentBase64 ?? "",
       ),
     ).toBe("hi");
   });
@@ -110,7 +110,9 @@ describe("parseSkillZip", () => {
       "archive.zip",
     );
 
-    const skills = await parseSkillZip(file, { rootSlugFallback: "custom-slug" });
+    const skills = await parseSkillZip(file, {
+      rootSlugFallback: "custom-slug",
+    });
     expect(skills).toHaveLength(1);
     expect(skills[0].slug).toBe("custom-slug");
   });

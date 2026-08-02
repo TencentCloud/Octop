@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  Button,
-  Input,
-  Space,
-  Spin,
-  Steps,
-  Switch,
-  Table,
-  Typography,
-} from "antd";
+import { Alert, Button, Input, Spin, Steps, Switch, Table } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Lock, Power, RefreshCw, ShieldCheck } from "lucide-react";
@@ -22,10 +12,7 @@ import {
 import { updateApi } from "../../../api/modules/update";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
-import updateStyles from "../AdvancedSettings/UpdateConfig.module.less";
-import tabStyles from "../AdvancedSettings/tabContent.module.less";
-
-const { Text } = Typography;
+import styles from "./index.module.less";
 
 const TASK_STEP_ORDER = [
   "idle",
@@ -37,11 +24,23 @@ const TASK_STEP_ORDER = [
   "active",
 ] as const;
 
-function taskStepIndex(state: string): number {
+/** Map task state → Steps `current` index (items omit idle). */
+function stepsCurrent(state: string): number {
   const idx = TASK_STEP_ORDER.indexOf(
     state as (typeof TASK_STEP_ORDER)[number],
   );
-  return idx >= 0 ? idx : 0;
+  if (idx <= 0) return 0;
+  // active (last in order) should highlight final step
+  return Math.min(idx - 1, 5);
+}
+
+function stepsStatus(state: string): "wait" | "process" | "finish" | "error" {
+  if (state === "failed") return "error";
+  if (state === "active") return "finish";
+  if (["preflight", "challenging", "issuing", "installing"].includes(state)) {
+    return "process";
+  }
+  return "wait";
 }
 
 export function HttpsSettingsPanel() {
@@ -185,7 +184,11 @@ export function HttpsSettingsPanel() {
       key: "ok",
       width: 100,
       render: (_: unknown, row: PreflightCheck) =>
-        row.ok ? t("tls.pass") : t("tls.fail"),
+        row.ok ? (
+          <span className={styles.pass}>{t("tls.pass")}</span>
+        ) : (
+          <span className={styles.fail}>{t("tls.fail")}</span>
+        ),
     },
     {
       title: t("tls.checkMessage"),
@@ -195,7 +198,7 @@ export function HttpsSettingsPanel() {
   ];
 
   return (
-    <>
+    <div className={styles.container}>
       <TabPanelHeader
         icon={<Lock size={22} />}
         title={t("tls.title")}
@@ -203,150 +206,143 @@ export function HttpsSettingsPanel() {
       />
 
       {loading && !status ? (
-        <Spin />
+        <div className={styles.loading}>
+          <Spin />
+        </div>
       ) : (
         <>
-          {tlsEnabled && status?.tls.expires_at && (
-            <Alert
-              type="success"
-              showIcon
-              icon={<ShieldCheck size={16} />}
-              message={t("tls.activeCert", {
-                expires: status.tls.expires_at,
-                httpPort: status.tls.http_port,
-              })}
-              style={{ marginBottom: 16 }}
-            />
-          )}
+          <div className={styles.statusStack}>
+            {tlsEnabled && status?.tls.expires_at && (
+              <Alert
+                type="success"
+                showIcon
+                icon={<ShieldCheck size={16} />}
+                message={t("tls.activeCert", {
+                  expires: status.tls.expires_at,
+                  httpPort: status.tls.http_port,
+                })}
+              />
+            )}
 
-          {taskState === "restart_required" && (
-            <Alert
-              type="warning"
-              showIcon
-              message={t("tls.restartRequired")}
-              description={
-                serviceMode ? (
-                  <div
-                    className={updateStyles.restartRow}
-                    style={{ marginTop: 8 }}
-                  >
-                    <p>{t("tls.restartRequiredHint")}</p>
-                    <Button
-                      type="primary"
-                      icon={<Power size={14} />}
-                      onClick={requestRestart}
-                      disabled={
-                        restartPhase !== "idle" && restartPhase !== "timeout"
-                      }
-                    >
-                      {t("advancedSettings.update.restartServiceBtn")}
-                    </Button>
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 8 }}>
-                    <p style={{ margin: "0 0 8px" }}>
-                      {t("tls.restartRequiredHint")}
-                    </p>
-                    <div className={updateStyles.commandBlock}>
-                      <code>octop restart</code>
-                      <span className={updateStyles.commandSep}>/</span>
-                      <code>octop run</code>
+            {taskState === "restart_required" && (
+              <Alert
+                type="warning"
+                showIcon
+                message={t("tls.restartRequired")}
+                description={
+                  serviceMode ? (
+                    <div className={styles.restartBlock}>
+                      <p>{t("tls.restartRequiredHint")}</p>
+                      <span>
+                        <Button
+                          type="primary"
+                          icon={<Power size={14} />}
+                          onClick={requestRestart}
+                          disabled={
+                            restartPhase !== "idle" &&
+                            restartPhase !== "timeout"
+                          }
+                        >
+                          {t("advancedSettings.update.restartServiceBtn")}
+                        </Button>
+                      </span>
                     </div>
-                  </div>
-                )
-              }
-              style={{ marginBottom: 16 }}
+                  ) : (
+                    <div className={styles.restartBlock}>
+                      <p>{t("tls.restartRequiredHint")}</p>
+                      <div className={styles.commandBlock}>
+                        <code>octop service restart</code>
+                        <span className={styles.commandSep}>/</span>
+                        <code>octop run</code>
+                      </div>
+                    </div>
+                  )
+                }
+              />
+            )}
+
+            {taskState === "failed" && status?.task.error && (
+              <Alert type="error" showIcon message={status.task.error} />
+            )}
+
+            {!eligible && !tlsEnabled && (
+              <Alert type="info" showIcon message={t("tls.notEligible")} />
+            )}
+
+            {status?.tls.dual_listeners && (
+              <Alert
+                type="info"
+                showIcon
+                message={t("tls.dualPortActive", {
+                  httpPort: status.tls.http_port,
+                  httpsPort: status.tls.https_port ?? 443,
+                })}
+              />
+            )}
+          </div>
+
+          <div className={styles.panel}>
+            <Steps
+              className={styles.steps}
+              current={stepsCurrent(taskState)}
+              status={stepsStatus(taskState)}
+              size="small"
+              items={[
+                { title: t("tls.stepPreflight") },
+                { title: t("tls.stepChallenge") },
+                { title: t("tls.stepIssue") },
+                { title: t("tls.stepInstall") },
+                { title: t("tls.stepRestart") },
+                { title: t("tls.stepActive") },
+              ]}
             />
-          )}
 
-          {taskState === "failed" && status?.task.error && (
-            <Alert
-              type="error"
-              message={status.task.error}
-              style={{ marginBottom: 16 }}
-            />
-          )}
+            <div className={styles.field}>
+              <p className={styles.fieldLabel}>{t("tls.domainLabel")}</p>
+              <Input
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+                placeholder={t("tls.domainPlaceholder")}
+                disabled={formLocked}
+              />
+            </div>
 
-          {!eligible && !tlsEnabled && (
-            <Alert
-              type="info"
-              message={t("tls.notEligible")}
-              style={{ marginBottom: 16 }}
-            />
-          )}
+            <div className={styles.stagingRow}>
+              <Switch
+                checked={staging}
+                onChange={setStaging}
+                disabled={formLocked}
+              />
+              <p className={styles.stagingText}>{t("tls.stagingHint")}</p>
+            </div>
 
-          {status?.tls.dual_listeners && (
-            <Alert
-              type="info"
-              message={t("tls.dualPortActive", {
-                httpPort: status.tls.http_port,
-                httpsPort: status.tls.https_port ?? 443,
-              })}
-              style={{ marginBottom: 16 }}
-            />
-          )}
+            <div className={styles.actions}>
+              <Button
+                onClick={() => void handlePreflight()}
+                loading={checking}
+                disabled={formLocked}
+              >
+                {t("tls.runPreflight")}
+              </Button>
+              <Button
+                type="primary"
+                onClick={() => void handleIssue()}
+                loading={issuing || busy}
+                disabled={!eligible || (!preflightOk && checks.length > 0)}
+              >
+                {renewal ? t("tls.renewCert") : t("tls.startIssue")}
+              </Button>
+              <Button
+                icon={<RefreshCw size={14} />}
+                onClick={() => void fetchStatus()}
+              >
+                {t("tls.refresh")}
+              </Button>
+            </div>
 
-          <Steps
-            current={taskStepIndex(taskState)}
-            size="small"
-            style={{ marginBottom: 24 }}
-            items={[
-              { title: t("tls.stepPreflight") },
-              { title: t("tls.stepChallenge") },
-              { title: t("tls.stepIssue") },
-              { title: t("tls.stepInstall") },
-              { title: t("tls.stepRestart") },
-              { title: t("tls.stepActive") },
-            ]}
-          />
-
-          <div className={tabStyles.formFieldsWide}>
-            <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-              <div>
-                <Text strong>{t("tls.domainLabel")}</Text>
-                <Input
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  placeholder={t("tls.domainPlaceholder")}
-                  disabled={formLocked}
-                  style={{ marginTop: 8 }}
-                />
-              </div>
-
-              <Space wrap>
-                <Switch
-                  checked={staging}
-                  onChange={setStaging}
-                  disabled={formLocked}
-                />
-                <Text type="secondary">{t("tls.stagingHint")}</Text>
-              </Space>
-
-              <Space wrap>
-                <Button
-                  onClick={() => void handlePreflight()}
-                  loading={checking}
-                  disabled={formLocked}
-                >
-                  {t("tls.runPreflight")}
-                </Button>
-                <Button
-                  type="primary"
-                  onClick={() => void handleIssue()}
-                  loading={issuing || busy}
-                  disabled={!eligible || (!preflightOk && checks.length > 0)}
-                >
-                  {renewal ? t("tls.renewCert") : t("tls.startIssue")}
-                </Button>
-                <Button
-                  icon={<RefreshCw size={14} />}
-                  onClick={() => void fetchStatus()}
-                >
-                  {t("tls.refresh")}
-                </Button>
-              </Space>
-
-              {checks.length > 0 && (
+            {checks.length > 0 && (
+              <div className={styles.checks}>
+                <p className={styles.checksTitle}>{t("tls.checksTitle")}</p>
                 <Table
                   size="small"
                   rowKey="id"
@@ -354,11 +350,11 @@ export function HttpsSettingsPanel() {
                   columns={checkColumns}
                   dataSource={checks}
                 />
-              )}
-            </Space>
+              </div>
+            )}
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }

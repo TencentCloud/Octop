@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  chatGeneratingPhase,
-  shouldShowGenerating,
-} from "./generatingGate";
+import { chatGeneratingPhase, shouldShowGenerating } from "./generatingGate";
 
 describe("shouldShowGenerating", () => {
   it("is true while streaming and not loading history", () => {

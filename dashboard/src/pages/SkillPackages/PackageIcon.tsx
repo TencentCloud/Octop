@@ -14,9 +14,7 @@ export function PackageIcon({
   imageClassName?: string;
 }) {
   if (iconUrl) {
-    return (
-      <img src={iconUrl} alt="" className={imageClassName ?? className} />
-    );
+    return <img src={iconUrl} alt="" className={imageClassName ?? className} />;
   }
   return iconForName(iconName, size);
 }

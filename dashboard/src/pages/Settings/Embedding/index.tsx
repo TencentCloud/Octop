@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Select,
-  Input,
-  Button,
-  Spin,
-  Progress,
-  Alert,
-  Modal,
-} from "antd";
+import { Select, Input, Button, Spin, Progress, Alert, Modal } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, CheckCircle, AlertCircle } from "lucide-react";

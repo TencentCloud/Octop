@@ -207,11 +207,7 @@ type PageShellTabbedProps = TabbedShellProps & {
 };
 
 /** Custom tab bar + scrollable body (desktop pins the bar). */
-function PageShellTabbed({
-  tabBar,
-  children,
-  ...shell
-}: PageShellTabbedProps) {
+function PageShellTabbed({ tabBar, children, ...shell }: PageShellTabbedProps) {
   const isMobile = useIsMobile();
   return (
     <PageShell {...shell} fill={!isMobile}>

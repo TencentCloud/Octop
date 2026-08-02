@@ -62,10 +62,7 @@ function normalizeHubSkill(raw: Record<string, unknown>): SkillHubSkill {
   };
 }
 
-export default function SkillHubTab({
-  target,
-  onInstalled,
-}: SkillHubTabProps) {
+export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
   const { t } = useTranslation();
   const [hubSkills, setHubSkills] = useState<SkillHubSkill[]>([]);
   const [rankings, setRankings] = useState<Record<string, SkillHubSkill[]>>(
@@ -107,7 +104,6 @@ export default function SkillHubTab({
     }
     return null;
   }, [target?.type, agentId, packageId]);
-
 
   const fetchRankings = useCallback(
     async (force = false) => {

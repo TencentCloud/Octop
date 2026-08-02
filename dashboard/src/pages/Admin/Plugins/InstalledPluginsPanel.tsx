@@ -231,11 +231,7 @@ export function InstalledPluginsPanel() {
         okText={t("plugins.install")}
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          <Alert
-            type="info"
-            showIcon
-            message={t("plugins.installUrlHint")}
-          />
+          <Alert type="info" showIcon message={t("plugins.installUrlHint")} />
           <Input
             prefix={<Package size={16} />}
             placeholder={t("plugins.installUrlPlaceholder")}

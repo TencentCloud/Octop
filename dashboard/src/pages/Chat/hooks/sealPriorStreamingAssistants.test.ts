@@ -33,7 +33,12 @@ describe("sealPriorStreamingAssistants", () => {
   it("seals the previous text tail even when it is the last message", () => {
     const input = [
       msg({ id: "a1", role: "assistant", content: "hi", status: "done" }),
-      msg({ id: "a2", role: "assistant", content: "more", status: "streaming" }),
+      msg({
+        id: "a2",
+        role: "assistant",
+        content: "more",
+        status: "streaming",
+      }),
     ];
     const out = sealPriorStreamingAssistants(input);
     expect(out[1].status).toBe("done");

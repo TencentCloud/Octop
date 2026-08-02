@@ -31,7 +31,11 @@ type TabKey =
   | "updates";
 
 const TABS: { key: TabKey; labelKey: string; icon: ReactNode }[] = [
-  { key: "env-vars", labelKey: "nav.environments", icon: <Variable size={15} /> },
+  {
+    key: "env-vars",
+    labelKey: "nav.environments",
+    icon: <Variable size={15} />,
+  },
   { key: "search", labelKey: "nav.search", icon: <Search size={15} /> },
   { key: "voice", labelKey: "nav.voice", icon: <Mic2 size={15} /> },
   {
@@ -41,7 +45,11 @@ const TABS: { key: TabKey; labelKey: string; icon: ReactNode }[] = [
   },
   { key: "backup", labelKey: "nav.backupRestore", icon: <Archive size={15} /> },
   { key: "https", labelKey: "nav.https", icon: <Lock size={15} /> },
-  { key: "updates", labelKey: "nav.checkUpdates", icon: <RefreshCw size={15} /> },
+  {
+    key: "updates",
+    labelKey: "nav.checkUpdates",
+    icon: <RefreshCw size={15} />,
+  },
 ];
 
 function parseTab(raw: string | null): TabKey {

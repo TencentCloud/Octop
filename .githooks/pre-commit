@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-commit gate: backend ship bar + dashboard production build.
+# Pre-commit gate: make all (format BE+FE + lint + typecheck + test) + dashboard build.
 # Enable once per clone:  make install-hooks
 # Bypass (emergency only): SKIP_PRECOMMIT=1 git commit ...
 # Or: git commit --no-verify
@@ -13,8 +13,29 @@ fi
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-echo "[pre-commit] make all  (lint + typecheck + test)"
+# Remember staged paths so we can re-add them after auto-format rewrites the worktree.
+# Portable (bash 3.2+): avoid `mapfile` (bash 4+ only).
+STAGED_FILES=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && STAGED_FILES+=("$line")
+done < <(git diff --cached --name-only --diff-filter=ACMR || true)
+
+echo "[pre-commit] make all  (format-all + lint + typecheck + test)"
 make all
+
+# If format rewrote files that were already staged, refresh the index so the
+# commit includes the formatted content (worktree vs index drift).
+if ((${#STAGED_FILES[@]} > 0)); then
+  existing=()
+  for f in "${STAGED_FILES[@]}"; do
+    if [[ -e "$f" || -L "$f" ]]; then
+      existing+=("$f")
+    fi
+  done
+  if ((${#existing[@]} > 0)); then
+    git add -- "${existing[@]}"
+  fi
+fi
 
 echo "[pre-commit] dashboard npm run build"
 (

@@ -67,8 +67,8 @@ export default function ChatDockPanels({
         slot === "bottom"
           ? "bottom"
           : dockMode === "right" && isMobile
-            ? "popup"
-            : dockMode
+          ? "popup"
+          : dockMode
       }
       onModeChange={onModeChange}
       onClose={onClose}
@@ -76,8 +76,8 @@ export default function ChatDockPanels({
         slot === "bottom"
           ? { height: panelSizes.bottomHeight }
           : dockMode === "right" && !isMobile
-            ? { width: panelSizes.rightWidth }
-            : undefined
+          ? { width: panelSizes.rightWidth }
+          : undefined
       }
       agentId={agentId}
       filePaths={filePaths}

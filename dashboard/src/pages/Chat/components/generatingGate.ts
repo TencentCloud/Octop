@@ -20,8 +20,7 @@ export function chatGeneratingPhase(opts: {
 }): { showFooter: boolean; showElapsed: boolean } {
   const showFooter = shouldShowGenerating(opts);
   const showElapsed = Boolean(
-    showFooter &&
-      (!opts.lastMessageRole || opts.lastMessageRole === "user"),
+    showFooter && (!opts.lastMessageRole || opts.lastMessageRole === "user"),
   );
   return { showFooter, showElapsed };
 }

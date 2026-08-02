@@ -145,11 +145,7 @@ export function SkillImportModal({
       keyboard={!busy}
       footer={
         <div style={{ textAlign: "right" }}>
-          <Button
-            onClick={onClose}
-            disabled={busy}
-            style={{ marginRight: 8 }}
-          >
+          <Button onClick={onClose} disabled={busy} style={{ marginRight: 8 }}>
             {t("common.cancel")}
           </Button>
           <Button
@@ -218,12 +214,8 @@ export function SkillImportModal({
           <div className={styles.importHintBlock}>
             <p className={styles.importHintTitle}>{t("skills.zipHintTitle")}</p>
             <div className={styles.importHintExamples}>
-              <code className={styles.importHintCode}>
-                skill-a/SKILL.md
-              </code>
-              <code className={styles.importHintCode}>
-                skill-b/SKILL.md
-              </code>
+              <code className={styles.importHintCode}>skill-a/SKILL.md</code>
+              <code className={styles.importHintCode}>skill-b/SKILL.md</code>
             </div>
             <p className={styles.importHintTitle} style={{ marginTop: 10 }}>
               {t("skills.zipHintDetail")}

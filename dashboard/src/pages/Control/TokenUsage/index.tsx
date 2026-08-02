@@ -93,7 +93,12 @@ const AXIS_TICK = { fontSize: 11, fill: "var(--fn-text-tertiary)" } as const;
 const AXIS_LINE = { stroke: "var(--fn-border-primary)" } as const;
 /** Plot insets: leave room for X ticks (bottom) and optional top legend. */
 const BAR_MARGIN = { top: 12, right: 16, bottom: 8, left: 4 } as const;
-const BAR_MARGIN_WITH_LEGEND = { top: 32, right: 16, bottom: 8, left: 4 } as const;
+const BAR_MARGIN_WITH_LEGEND = {
+  top: 32,
+  right: 16,
+  bottom: 8,
+  left: 4,
+} as const;
 
 const CHART_HEIGHT = {
   bar: 280,

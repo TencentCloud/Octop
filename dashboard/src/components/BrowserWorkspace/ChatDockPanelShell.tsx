@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Dropdown, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
@@ -48,13 +54,7 @@ const POPUP_Z = {
  */
 function clearPopupPlacementStyles(panel: HTMLElement | null) {
   if (!panel) return;
-  for (const prop of [
-    "left",
-    "top",
-    "right",
-    "bottom",
-    "transform",
-  ] as const) {
+  for (const prop of ["left", "top", "right", "bottom", "transform"] as const) {
     panel.style.removeProperty(prop);
   }
 }
@@ -378,15 +378,15 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     mode === "popup" && popupFullscreen
       ? { ...style }
       : mode === "popup" && popupPos
-        ? {
-            ...style,
-            left: popupPos.x,
-            top: popupPos.y,
-            right: "auto",
-            bottom: "auto",
-            transform: "none",
-          }
-        : style;
+      ? {
+          ...style,
+          left: popupPos.x,
+          top: popupPos.y,
+          right: "auto",
+          bottom: "auto",
+          transform: "none",
+        }
+      : style;
 
   const layoutMenuItems: MenuProps["items"] = useMemo(
     () => [

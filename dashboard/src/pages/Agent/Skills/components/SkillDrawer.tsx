@@ -280,8 +280,8 @@ export function SkillDrawer({
   const drawerTitle = isCreate
     ? t("skills.createSkill")
     : localEditMode
-      ? t("skills.editSkill")
-      : t("skills.viewSkill");
+    ? t("skills.editSkill")
+    : t("skills.viewSkill");
 
   const nameField = (
     <Form.Item
@@ -493,9 +493,7 @@ export function SkillDrawer({
         <Form
           form={form}
           layout="vertical"
-          className={
-            isCreate || isEdit ? styles.createForm : styles.viewForm
-          }
+          className={isCreate || isEdit ? styles.createForm : styles.viewForm}
           onFinish={handleSubmit}
         >
           {isCreate || isEdit ? (

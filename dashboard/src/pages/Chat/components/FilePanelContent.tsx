@@ -218,9 +218,7 @@ export default function FilePanelContent({
         {showPreviewToggle && (
           <Tooltip
             title={
-              previewMode
-                ? t("workspace.source", "源码")
-                : t("common.preview")
+              previewMode ? t("workspace.source", "源码") : t("common.preview")
             }
           >
             <button

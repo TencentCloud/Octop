@@ -133,14 +133,14 @@ export default function MemoryPanel({
                   "按人、项目、工具等主题，分组浏览相关记忆",
                 )
               : libraryView === "atoms"
-                ? t(
-                    "memory.library.hintAtoms",
-                    "扁平展示全部记忆，可按重要程度筛选",
-                  )
-                : t(
-                    "memory.library.hintRaw",
-                    "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
-                  )}
+              ? t(
+                  "memory.library.hintAtoms",
+                  "扁平展示全部记忆，可按重要程度筛选",
+                )
+              : t(
+                  "memory.library.hintRaw",
+                  "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
+                )}
           </span>
         </div>
         {libraryView === "tree" ? (

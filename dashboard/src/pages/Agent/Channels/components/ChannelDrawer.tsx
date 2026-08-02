@@ -199,8 +199,8 @@ export function ChannelDrawer({
   const draftScope = editing
     ? `channel:${editing.id}`
     : selectedKind
-      ? `channel:new:${selectedKind}`
-      : "";
+    ? `channel:new:${selectedKind}`
+    : "";
   const restoringDraftRef = useRef(false);
 
   const stopPolling = useCallback(() => {
@@ -1155,7 +1155,10 @@ export function ChannelDrawer({
           onValuesChange={(changed, all) => {
             if (changed.kind) setSelectedKind(changed.kind as ChannelKey);
             if (!restoringDraftRef.current && draftScope) {
-              saveFormDraft(draftScope, all as unknown as Record<string, unknown>);
+              saveFormDraft(
+                draftScope,
+                all as unknown as Record<string, unknown>,
+              );
             }
           }}
         >

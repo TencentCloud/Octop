@@ -66,8 +66,7 @@ export function usePathTabs<T extends string>({
     location.pathname === basePath ||
     location.pathname.startsWith(`${basePath}/`);
   const isBare = location.pathname === basePath;
-  const hasInvalidSegment =
-    underBase && !isBare && pathTab === null;
+  const hasInvalidSegment = underBase && !isBare && pathTab === null;
   const activeTab: T = pathTab ?? readSaved();
 
   const [mounted, setMounted] = useState<Partial<Record<T, boolean>>>(
@@ -118,10 +117,7 @@ export function usePathTabs<T extends string>({
     [activeTab, basePath, isTab, location.search, location.hash, navigate],
   );
 
-  const isMounted = useCallback(
-    (tab: T) => Boolean(mounted[tab]),
-    [mounted],
-  );
+  const isMounted = useCallback((tab: T) => Boolean(mounted[tab]), [mounted]);
 
   return {
     activeTab,

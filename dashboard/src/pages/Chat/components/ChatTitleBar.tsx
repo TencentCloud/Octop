@@ -2,13 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
-import {
-  MoreVertical,
-  Pin,
-  PinOff,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { MoreVertical, Pin, PinOff, Pencil, Trash2 } from "lucide-react";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";

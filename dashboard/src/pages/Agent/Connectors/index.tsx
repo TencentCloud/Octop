@@ -365,7 +365,7 @@ function ConnectorConfigDrawer({
       try {
         popup.document.title = "Feishu Auth";
         popup.document.body.innerHTML =
-          "<p style=\"font:14px/1.5 system-ui;padding:24px;color:#666\">Loading…</p>";
+          '<p style="font:14px/1.5 system-ui;padding:24px;color:#666">Loading…</p>';
       } catch {
         // Cross-origin / closed — ignore.
       }
@@ -458,8 +458,7 @@ function ConnectorConfigDrawer({
         );
       } else {
         message.error(
-          result.error ??
-            t("connectors.cliInstallFailed", "主机 CLI 安装失败"),
+          result.error ?? t("connectors.cliInstallFailed", "主机 CLI 安装失败"),
         );
       }
     } catch (e) {
@@ -515,7 +514,8 @@ function ConnectorConfigDrawer({
         started = await connectorsApi.feishuUserAuthStart({
           app_id,
           app_secret,
-          cli_config_key: String(values.cli_config_key ?? "").trim() || undefined,
+          cli_config_key:
+            String(values.cli_config_key ?? "").trim() || undefined,
         });
       }
       form.setFieldsValue({ cli_config_key: started.cli_config_key });
@@ -532,11 +532,7 @@ function ConnectorConfigDrawer({
       popup?.close();
       console.error(e);
       message.error(
-        apiErrorMessage(
-          e,
-          t("connectors.feishuUserAuthFailed", "授权失败"),
-          t,
-        ),
+        apiErrorMessage(e, t("connectors.feishuUserAuthFailed", "授权失败"), t),
       );
     } finally {
       setFeishuUserAuthBusy(false);
@@ -586,12 +582,11 @@ function ConnectorConfigDrawer({
       setFeishuUserReady(true);
       setFeishuAuthNeedsReauth(false);
       setFeishuUserAuth(null);
-      const persisted =
-        Boolean(instance?.instance_id) && hasStoredCredentials;
+      const persisted = Boolean(instance?.instance_id) && hasStoredCredentials;
       if (done.warning || done.search_docs_scope === false) {
         message.warning(
-          done.warning
-            || t(
+          done.warning ||
+            t(
               "connectors.feishuUserAuthWarning",
               "已登录，但文档搜索权限可能未开通，请检查开放平台权限后重新授权",
             ),
@@ -600,20 +595,13 @@ function ConnectorConfigDrawer({
         message.success(
           persisted
             ? t("connectors.feishuUserAuthSuccessSaved", "授权完成")
-            : t(
-                "connectors.feishuUserAuthSuccess",
-                "授权完成，请保存连接器",
-              ),
+            : t("connectors.feishuUserAuthSuccess", "授权完成，请保存连接器"),
         );
       }
     } catch (e) {
       console.error(e);
       message.error(
-        apiErrorMessage(
-          e,
-          t("connectors.feishuUserAuthFailed", "授权失败"),
-          t,
-        ),
+        apiErrorMessage(e, t("connectors.feishuUserAuthFailed", "授权失败"), t),
       );
     } finally {
       setFeishuUserAuthBusy(false);
@@ -732,11 +720,13 @@ function ConnectorConfigDrawer({
     const feishuAppIdChanged =
       entry.kind === "feishu-cli" &&
       Boolean(preview.app_id) &&
-      String(values.app_id ?? "").trim() !== String(preview.app_id ?? "").trim();
+      String(values.app_id ?? "").trim() !==
+        String(preview.app_id ?? "").trim();
     const wecomBotIdChanged =
       entry.kind === "wecom-cli" &&
       Boolean(preview.bot_id) &&
-      String(values.bot_id ?? "").trim() !== String(preview.bot_id ?? "").trim();
+      String(values.bot_id ?? "").trim() !==
+        String(preview.bot_id ?? "").trim();
     const identityChanged = feishuAppIdChanged || wecomBotIdChanged;
     if (identityChanged && !freshSecret) {
       message.warning(
@@ -941,7 +931,11 @@ function ConnectorConfigDrawer({
                 </Button>
               )}
               {!isAdmin && cliInfo?.installed && (
-                <Button type="default" icon={<CheckCircle2 size={14} />} disabled>
+                <Button
+                  type="default"
+                  icon={<CheckCircle2 size={14} />}
+                  disabled
+                >
                   {t("connectors.cliReady", "CLI 已就绪")}
                 </Button>
               )}
@@ -1104,7 +1098,10 @@ function ConnectorConfigDrawer({
           layout="vertical"
           onValuesChange={(_, all) => {
             if (!restoringDraftRef.current && draftScope) {
-              saveFormDraft(draftScope, all as unknown as Record<string, unknown>);
+              saveFormDraft(
+                draftScope,
+                all as unknown as Record<string, unknown>,
+              );
             }
           }}
         >
@@ -1237,19 +1234,19 @@ function ConnectorConfigDrawer({
                         "用户授权已失效，请重新登录授权。",
                       )
                     : feishuUserReady
-                      ? t(
-                          "connectors.feishuUserAuthReady",
-                          "已授权，可搜索文档。",
-                        )
-                      : feishuUserAuth
-                        ? t(
-                            "connectors.feishuUserAuthPendingHint",
-                            "请在弹出的页面完成授权，然后点「我已授权」。",
-                          )
-                        : t(
-                            "connectors.feishuUserAuthHint",
-                            "点击登录授权，完成后点「我已授权」。",
-                          )}
+                    ? t(
+                        "connectors.feishuUserAuthReady",
+                        "已授权，可搜索文档。",
+                      )
+                    : feishuUserAuth
+                    ? t(
+                        "connectors.feishuUserAuthPendingHint",
+                        "请在弹出的页面完成授权，然后点「我已授权」。",
+                      )
+                    : t(
+                        "connectors.feishuUserAuthHint",
+                        "点击登录授权，完成后点「我已授权」。",
+                      )}
                 </div>
                 {feishuUserReady && feishuRefreshExpiresAt && (
                   <div className={styles.feishuUserAuthHint}>
@@ -1262,7 +1259,11 @@ function ConnectorConfigDrawer({
                 )}
                 <div className={styles.quickAuthBar}>
                   <Button
-                    type={feishuUserReady && !feishuAuthNeedsReauth ? "default" : "primary"}
+                    type={
+                      feishuUserReady && !feishuAuthNeedsReauth
+                        ? "default"
+                        : "primary"
+                    }
                     loading={feishuUserAuthBusy}
                     onClick={() => void handleFeishuUserAuthStart()}
                   >
@@ -1286,10 +1287,7 @@ function ConnectorConfigDrawer({
                     className={styles.feishuUserAuthReopen}
                     onClick={() => openUrl(feishuUserAuth.verification_url)}
                   >
-                    {t(
-                      "connectors.feishuUserAuthReopen",
-                      "未弹出？再打开一次",
-                    )}
+                    {t("connectors.feishuUserAuthReopen", "未弹出？再打开一次")}
                   </button>
                 )}
               </div>
@@ -1343,66 +1341,66 @@ function ConnectorConfigDrawer({
           {entry.auth_kind === "api_key" &&
             entry.kind !== "feishu-cli" &&
             entry.kind !== "wecom-cli" && (
-            <>
-              <Form.Item
-                name="api_key"
-                label={t("connectors.apiKey", "API Key")}
-                rules={secretFieldRules(secretRequired)}
-                extra={
-                  configuredExtra(preview, "api_key_configured", t) ??
-                  (!hideFieldGuide && manualUrl ? (
-                    <a href={manualUrl} target="_blank" rel="noreferrer">
-                      {t("connectors.apiKeyDoc", "查看如何获取 API Key")}
-                    </a>
-                  ) : undefined)
-                }
-              >
-                <Input.Password
-                  placeholder={
-                    hasStoredCredentials
-                      ? t("connectors.secretPlaceholder", "留空表示不修改")
-                      : entry.kind === "tencent-ima"
-                      ? t(
-                          "connectors.imaApiKeyPlaceholder",
-                          "从 IMA 配置页复制（仅展示一次）",
-                        )
-                      : t("connectors.apiKeyPlaceholder", "粘贴 API Key")
+              <>
+                <Form.Item
+                  name="api_key"
+                  label={t("connectors.apiKey", "API Key")}
+                  rules={secretFieldRules(secretRequired)}
+                  extra={
+                    configuredExtra(preview, "api_key_configured", t) ??
+                    (!hideFieldGuide && manualUrl ? (
+                      <a href={manualUrl} target="_blank" rel="noreferrer">
+                        {t("connectors.apiKeyDoc", "查看如何获取 API Key")}
+                      </a>
+                    ) : undefined)
                   }
-                />
-              </Form.Item>
-              {entry.kind === "tencent-ima" && (
-                <Form.Item
-                  name="client_id"
-                  label="Client ID"
-                  rules={[{ required: true }]}
                 >
-                  <Input
-                    placeholder={t(
-                      "connectors.imaClientIdPlaceholder",
-                      "从 IMA 配置页复制",
-                    )}
+                  <Input.Password
+                    placeholder={
+                      hasStoredCredentials
+                        ? t("connectors.secretPlaceholder", "留空表示不修改")
+                        : entry.kind === "tencent-ima"
+                        ? t(
+                            "connectors.imaApiKeyPlaceholder",
+                            "从 IMA 配置页复制（仅展示一次）",
+                          )
+                        : t("connectors.apiKeyPlaceholder", "粘贴 API Key")
+                    }
                   />
                 </Form.Item>
-              )}
-              {entry.kind === "tencent-lexiang" && (
-                <Form.Item
-                  name="client_id"
-                  label={t(
-                    "connectors.lexiangCompanyFrom",
-                    "企业标识 (company_from)",
-                  )}
-                  rules={[{ required: true }]}
-                >
-                  <Input
-                    placeholder={t(
-                      "connectors.lexiangCompanyFromPlaceholder",
-                      "从乐享凭证页复制",
+                {entry.kind === "tencent-ima" && (
+                  <Form.Item
+                    name="client_id"
+                    label="Client ID"
+                    rules={[{ required: true }]}
+                  >
+                    <Input
+                      placeholder={t(
+                        "connectors.imaClientIdPlaceholder",
+                        "从 IMA 配置页复制",
+                      )}
+                    />
+                  </Form.Item>
+                )}
+                {entry.kind === "tencent-lexiang" && (
+                  <Form.Item
+                    name="client_id"
+                    label={t(
+                      "connectors.lexiangCompanyFrom",
+                      "企业标识 (company_from)",
                     )}
-                  />
-                </Form.Item>
-              )}
-            </>
-          )}
+                    rules={[{ required: true }]}
+                  >
+                    <Input
+                      placeholder={t(
+                        "connectors.lexiangCompanyFromPlaceholder",
+                        "从乐享凭证页复制",
+                      )}
+                    />
+                  </Form.Item>
+                )}
+              </>
+            )}
 
           {entry.auth_kind === "oauth2" && (
             <>

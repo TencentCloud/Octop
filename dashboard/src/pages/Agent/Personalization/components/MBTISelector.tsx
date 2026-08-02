@@ -408,8 +408,7 @@ export default function MBTISelector({
           {t("personalization.mbti.listSummary", {
             total: types.length,
             selected: currentLabel,
-            defaultValue:
-              "当前有（{{total}}）个人格，已选中「{{selected}}」",
+            defaultValue: "当前有（{{total}}）个人格，已选中「{{selected}}」",
           })}
         </span>
         {!showHeader && showTestAction && (

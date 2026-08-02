@@ -12,11 +12,7 @@ export function sealPriorStreamingAssistants(
   if (messages.length === 0) return messages;
   let changed = false;
   const next = messages.map((m) => {
-    if (
-      m.role === "assistant" &&
-      m.status === "streaming" &&
-      !m.toolData
-    ) {
+    if (m.role === "assistant" && m.status === "streaming" && !m.toolData) {
       changed = true;
       return { ...m, status: "done" as const };
     }

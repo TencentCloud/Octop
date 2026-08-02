@@ -13,10 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { envsApi } from "../../../api/modules/env";
 import api from "../../../api";
-import {
-  customProviderLogo,
-  getProviderLogo,
-} from "../../../assets/providers";
+import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
@@ -430,9 +427,7 @@ export default function SearchConfigPage() {
                 </div>
               </div>
 
-              <p className={styles.description}>
-                {t(provider.descriptionKey)}
-              </p>
+              <p className={styles.description}>{t(provider.descriptionKey)}</p>
 
               <div className={styles.actions}>
                 <Button

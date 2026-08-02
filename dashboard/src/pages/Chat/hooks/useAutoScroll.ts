@@ -12,7 +12,13 @@
  *  programmatic via isProgrammaticScrollRef so handleScroll ignores them.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
 import { shouldEnterFreeModeOnScrollUp } from "./scrollFreeMode";
 
@@ -416,10 +422,7 @@ export function useAutoScroll({
       }
       // Bottom overscroll refresh must work even under programmatic pin.
       if (e.deltaY > 0 && isAtBottom()) {
-        if (
-          !isProgrammaticRef.current &&
-          isAtBottom(FOLLOW_RESUME_THRESHOLD)
-        ) {
+        if (!isProgrammaticRef.current && isAtBottom(FOLLOW_RESUME_THRESHOLD)) {
           enterFollowMode();
         }
         accumulateOverscroll(e.deltaY);

@@ -1,7 +1,7 @@
 # Makefile for Octop
 # Usage:
 #   make              - Show this help
-#   make all          - Backend lint + typecheck + test (CI ship bar)
+#   make all          - format (BE+FE) + backend lint + typecheck + test (ship bar)
 #   make build        - Build frontend + Python wheel
 #   make publish      - Build + upload to PyPI
 #
@@ -56,8 +56,8 @@ help:
 	@echo "  test-online      pytest against .venv-online (not live)"
 	@echo "  run-online       Start octop run from .venv-online"
 	@echo ""
-	@echo "Quality targets (backend — CI ship bar):"
-	@echo "  all              lint + typecheck + test (backend)"
+	@echo "Quality targets (ship bar):"
+	@echo "  all              format-all + lint + typecheck + test (backend lint/typecheck/test)"
 	@echo "  lint             Ruff check + format check (src, tests)"
 	@echo "  format           Ruff auto-fix + format (src, tests)"
 	@echo "  typecheck        mypy --strict src/octop"
@@ -71,12 +71,12 @@ help:
 	@echo ""
 	@echo "Quality targets (full stack):"
 	@echo "  lint-all         lint + lint-frontend"
-	@echo "  format-all       format + format-frontend"
+	@echo "  format-all       format + format-frontend (also first step of make all)"
 	@echo "  typecheck-all    typecheck + typecheck-frontend"
 	@echo "  check-all        lint-all + typecheck-all + test"
 	@echo ""
 	@echo "Utility targets:"
-	@echo "  install-hooks    Point git to .githooks (pre-commit runs make all + npm run build)"
+	@echo "  install-hooks    Point git to .githooks (pre-commit: make all + dashboard build)"
 	@echo "  install          Install Python dev dependencies (alias: install-dev)"
 	@echo "  install-dev      uv sync / pip install -e \".[dev]\""
 	@echo "  install-tools    Install build + twine for publishing"
@@ -196,7 +196,7 @@ run-online:
 # ─── Quality (backend) ───────────────────────────────────────────────────────
 
 .PHONY: all
-all: lint typecheck test
+all: format-all lint typecheck test
 
 .PHONY: lint
 lint:
@@ -266,7 +266,7 @@ install-hooks:
 	@echo "[install-hooks] Setting core.hooksPath=.githooks"
 	git config core.hooksPath .githooks
 	@chmod +x "$(REPO_ROOT)/.githooks/"* 2>/dev/null || true
-	@echo "[install-hooks] Done. Pre-commit will run: make all && (cd dashboard && npm run build)"
+	@echo "[install-hooks] Done. Pre-commit will run: make all (incl. format-all), dashboard build"
 	@echo "[install-hooks] Bypass: SKIP_PRECOMMIT=1 git commit …   or   git commit --no-verify"
 
 .PHONY: install install-dev

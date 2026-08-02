@@ -116,7 +116,10 @@ export function SkillsetFromHubDrawer({
                     </div>
                   </div>
                 </div>
-                <div className={styles.description} title={description || undefined}>
+                <div
+                  className={styles.description}
+                  title={description || undefined}
+                >
                   {description || t("skillPackages.noDescription")}
                 </div>
                 <div className={styles.footer}>

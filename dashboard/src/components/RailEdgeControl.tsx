@@ -31,7 +31,11 @@ function WideChevron({ dir }: { dir: "left" | "right" }) {
       aria-hidden
     >
       <path
-        d={dir === "left" ? "M7.5 2.5 L2.5 11 L7.5 19.5" : "M2.5 2.5 L7.5 11 L2.5 19.5"}
+        d={
+          dir === "left"
+            ? "M7.5 2.5 L2.5 11 L7.5 19.5"
+            : "M2.5 2.5 L7.5 11 L2.5 19.5"
+        }
         fill="none"
         stroke="currentColor"
         strokeWidth="1.75"

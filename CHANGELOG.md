@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### 新增
+- 高级设置「更新」页提供按安装方式升级说明与一键检查升级双栏布局
+- 高级设置 HTTPS 页优化签发状态与预检结果展示
+
+### 变更
+- `make all` 先执行前后端 `format-all`（Ruff + Prettier）；pre-commit 在 format 后回写已暂存文件并构建 dashboard
+
 ## [0.9.18] - 2026-08-02
 
 ### 新增

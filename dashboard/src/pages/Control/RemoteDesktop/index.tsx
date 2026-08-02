@@ -959,7 +959,9 @@ export default function RemoteDesktopPage() {
     "pageShell.desktop.subtitle",
     "查看并操控 Octop 主机操作系统桌面",
   );
-  const setupMascot = <OctopEmptyMascot size={120} className={styles.setupMascot} />;
+  const setupMascot = (
+    <OctopEmptyMascot size={120} className={styles.setupMascot} />
+  );
 
   if (role === null) {
     return (

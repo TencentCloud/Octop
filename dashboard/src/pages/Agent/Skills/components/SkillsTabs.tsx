@@ -29,7 +29,9 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SkillsTab>("custom");
   const onInstalledTab =
-    activeTab === "custom" || activeTab === "builtin" || activeTab === "packages";
+    activeTab === "custom" ||
+    activeTab === "builtin" ||
+    activeTab === "packages";
   const installedSkills = useSkills(agentId, { enabled: onInstalledTab });
 
   const noAgent = (
@@ -88,10 +90,7 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
             noAgent
           )
         ) : activeTab === "skillhub" && agentId ? (
-          <SkillHubTab
-            key={agentId}
-            target={{ type: "agent", agentId }}
-          />
+          <SkillHubTab key={agentId} target={{ type: "agent", agentId }} />
         ) : activeTab === "packages" && agentId ? (
           <SkillPackagesTab
             key={agentId}

@@ -73,14 +73,22 @@
     background 0.15s ease;
 
   &:hover {
-    border-color: color-mix(in srgb, var(--fn-color-brand) 45%, var(--fn-border-secondary)) !important;
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 45%,
+      var(--fn-border-secondary)
+    ) !important;
     box-shadow: var(--fn-shadow-sm);
     transform: translateY(-1px);
   }
 }
 
 .active {
-  border-color: color-mix(in srgb, var(--fn-color-brand) 65%, var(--fn-border-secondary)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--fn-color-brand) 65%,
+    var(--fn-border-secondary)
+  ) !important;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--fn-color-brand) 30%, transparent),
     0 8px 20px color-mix(in srgb, var(--fn-color-brand) 10%, transparent);

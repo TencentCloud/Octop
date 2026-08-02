@@ -424,7 +424,7 @@ tests/         unit/ + integration/
 ```bash
 # 后端
 make install          # pip install -e ".[dev]"
-make all              # lint + typecheck + test（发布门槛）
+make all              # format-all + lint + typecheck + test（发布门槛）
 
 # 前端（另开终端）
 make dev-frontend     # Vite 开发服务器 :5173

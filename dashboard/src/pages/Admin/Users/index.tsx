@@ -1054,9 +1054,7 @@ export default function AdminUsersPage() {
           <Form.Item
             label={t("adminUsers.formPassword")}
             name="password"
-            rules={[
-              { required: true, message: t("adminUsers.formPassword") },
-            ]}
+            rules={[{ required: true, message: t("adminUsers.formPassword") }]}
           >
             <Input.Password
               prefix={<Lock {...FIELD_ICON_PROPS} />}

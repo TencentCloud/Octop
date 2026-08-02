@@ -52,7 +52,12 @@ export default function SessionChannelIcon({
       src={iconSrc}
       alt=""
       className={className}
-      style={{ width: size, height: size, objectFit: "contain", display: "block" }}
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        display: "block",
+      }}
       aria-label={label}
     />
   );

@@ -22,7 +22,11 @@ export default function GeneratingIndicator({
   const showTimer = Boolean(showElapsed && startedAt != null && startedAt > 0);
 
   return (
-    <div className={styles.generatingIndicator} role="status" aria-live="polite">
+    <div
+      className={styles.generatingIndicator}
+      role="status"
+      aria-live="polite"
+    >
       <span className={styles.thinkingDot} />
       <span className={styles.thinkingDot} />
       <span className={styles.thinkingDot} />

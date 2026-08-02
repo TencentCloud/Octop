@@ -292,7 +292,10 @@ export function StorageBackendDrawer({
         layout="vertical"
         onValuesChange={(_, all) => {
           if (!restoringDraftRef.current) {
-            saveFormDraft(draftScope, all as unknown as Record<string, unknown>);
+            saveFormDraft(
+              draftScope,
+              all as unknown as Record<string, unknown>,
+            );
           }
         }}
       >

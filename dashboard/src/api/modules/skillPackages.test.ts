@@ -54,13 +54,17 @@ describe("skillPackagesApi", () => {
       method: "PATCH",
       body: JSON.stringify({ name: "renamed" }),
     });
-    expect(request).toHaveBeenNthCalledWith(3, "/skill-packages/from-skillhub", {
-      method: "POST",
-      body: JSON.stringify({
-        slug: "starter",
-        icon_name: "sparkles",
-      }),
-    });
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      "/skill-packages/from-skillhub",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          slug: "starter",
+          icon_name: "sparkles",
+        }),
+      },
+    );
     expect(request).toHaveBeenNthCalledWith(4, "/skill-packages/pkg-1/skills", {
       method: "POST",
       body: JSON.stringify({
