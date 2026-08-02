@@ -1271,11 +1271,11 @@ wheels = [
 
 [[package]]
 name = "harness-memory"
-version = "0.9.4"
+version = "0.9.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d0/ad/decd50f77d824cc5d34e76e3e2a6c702ca6d1abe9e7fae34e97474a6bcbb/harness_memory-0.9.4.tar.gz", hash = "sha256:67a07bec97587fbf10897a73051bad1401c460ddc0f54e141f68f00958deeaa0", size = 932800, upload-time = "2026-07-29T09:36:43.646Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/f1/338ceac50178d2ff6e690050fde2dc83de332012ab4a721a19e9647371bf/harness_memory-0.9.5.tar.gz", hash = "sha256:7950697b4209320195d03bcda39a640f09f7b97fc95f08acc74d5ee6756e75da", size = 912009, upload-time = "2026-08-02T06:00:31.638Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/d6/2dfd7203a0ecbdd1e55f4f281db335107e5dda6477c17189a079eb54b7b7/harness_memory-0.9.4-py3-none-any.whl", hash = "sha256:74b72db5ae3a09bbca4ff729a17cb6fecd79e04928e32c0b9b60e67a4dbde3ee", size = 316117, upload-time = "2026-07-29T09:36:39.573Z" },
+    { url = "https://files.pythonhosted.org/packages/59/31/cbaf29ff9b9c0ac28aa85d9999d2f32dd6895c586c8510d22b7c96a94d8c/harness_memory-0.9.5-py3-none-any.whl", hash = "sha256:e1aff4ca3a7405ee5a53fcf75c5cb4b80e3ea56193a09a969fc3423c03156994", size = 316204, upload-time = "2026-08-02T06:00:27.688Z" },
 ]
 
 [[package]]
@@ -2257,7 +2257,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "harness-browser", specifier = ">=0.7.4" },
     { name = "harness-gateway", specifier = ">=0.8.7" },
-    { name = "harness-memory", specifier = ">=0.9.2" },
+    { name = "harness-memory", specifier = ">=0.9.5" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "josepy", specifier = ">=2.2.0" },
     { name = "langchain-core", specifier = ">=1.4.8" },

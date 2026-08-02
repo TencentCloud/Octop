@@ -12,7 +12,8 @@ CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_META_KEYS = frozenset({"enabled"})
+_META_KEYS = frozenset({"enabled", "display_name"})
+_DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
 
 Transport = Literal["streamable_http", "stdio"]
@@ -135,6 +136,14 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
     enabled = raw.get("enabled", True) is not False
     spec: dict[str, Any] = {"transport": transport, "enabled": enabled}
 
+    display_name = str(raw.get("display_name") or "").strip()
+    if display_name:
+        if len(display_name) > _DISPLAY_NAME_MAX:
+            raise ValueError(
+                f"server {name!r}: display_name must be at most {_DISPLAY_NAME_MAX} characters"
+            )
+        spec["display_name"] = display_name
+
     if transport == "streamable_http":
         url = _validate_http_url(str(raw.get("url") or ""))
         spec["url"] = url
@@ -154,6 +163,15 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
             spec["env"] = env
 
     return spec
+
+
+def server_display_name(name: str, spec: dict[str, Any] | None) -> str:
+    """Friendly label for UI; falls back to the technical server key."""
+    if isinstance(spec, dict):
+        label = str(spec.get("display_name") or "").strip()
+        if label:
+            return label
+    return name
 
 
 def validate_servers_map(
@@ -219,7 +237,7 @@ def expand_custom_instances(
             {
                 "instance_id": synthetic_instance_id(name),
                 "kind": CUSTOM_MCP_KIND,
-                "display_name": name,
+                "display_name": server_display_name(name, spec),
                 "status": "active" if enabled else "disabled",
                 "mcp_server_name": name,
                 "has_credentials": True,
@@ -227,5 +245,5 @@ def expand_custom_instances(
                 "updated_at": parent.updated_at,
             }
         )
-    items.sort(key=lambda row: str(row["display_name"]))
+    items.sort(key=lambda row: str(row["display_name"]).casefold())
     return items

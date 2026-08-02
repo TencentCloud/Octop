@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from octop.infra.agents.plugins.manager import PluginManager
+from octop.infra.errors import OctopError
 from octop.infra.utils.paths import PathLayout
 
 
@@ -48,12 +49,15 @@ def install_plugin(source: str, force: bool) -> None:
     """Install from a local directory or ZIP URL."""
     mgr = _manager()
     path = Path(source).expanduser()
-    if path.is_dir():
-        loaded = mgr.install_path(path, force=force)
-    elif source.startswith("http://") or source.startswith("https://"):
-        loaded = mgr.install_url(source, force=force)
-    else:
-        raise click.ClickException(f"not a directory or URL: {source}")
+    try:
+        if path.is_dir():
+            loaded = mgr.install_path(path, force=force)
+        elif source.startswith("http://") or source.startswith("https://"):
+            loaded = mgr.install_url(source, force=force)
+        else:
+            raise click.ClickException(f"not a directory or URL: {source}")
+    except OctopError as exc:
+        raise click.ClickException(exc.message) from exc
     click.echo(f"Installed plugin {loaded.manifest.id} v{loaded.manifest.version}")
 
 

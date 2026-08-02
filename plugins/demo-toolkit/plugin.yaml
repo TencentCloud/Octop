@@ -1,0 +1,6 @@
+id: demo-toolkit
+version: 0.1.0
+name: Demo Toolkit
+description: Sample tool plugin (kind=tool) — current time, text stats, configurable echo prefix
+kind: tool
+entry: main.py

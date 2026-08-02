@@ -61,7 +61,16 @@ async def install_plugin(
 ) -> dict[str, Any]:
     _require_admin(user)
     mgr = _plugin_manager(server)
-    loaded = mgr.install_url(body.url)
+    try:
+        loaded = mgr.install_url(body.url)
+    except OctopError:
+        raise
+    except Exception as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INSTALL_FAILED,
+            f"plugin install failed: {exc}",
+            details={"reason": str(exc)},
+        ) from exc
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
         await server.app_runtime.agent_registry.reload_all()

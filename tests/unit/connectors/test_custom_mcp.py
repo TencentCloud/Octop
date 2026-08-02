@@ -124,6 +124,7 @@ def test_enabled_harness_configs_filters_disabled():
             "on": {
                 "transport": "streamable_http",
                 "url": "https://mcp.example.com/mcp",
+                "display_name": "示例搜索",
             },
             "off": {
                 "transport": "stdio",
@@ -135,7 +136,27 @@ def test_enabled_harness_configs_filters_disabled():
     configs = enabled_harness_configs(servers)
     assert set(configs) == {"on"}
     assert "enabled" not in configs["on"]
+    assert "display_name" not in configs["on"]
     assert configs["on"]["transport"] == "streamable_http"
+
+
+def test_display_name_normalized_and_used_in_list_api(svc: ConnectorService, db: SqlitePool):
+    uid = _ensure_user(db)
+    servers = svc.put_custom_servers(
+        uid,
+        {
+            "http-server-1": {
+                "transport": "streamable_http",
+                "url": "https://mcp.example.com/mcp",
+                "display_name": "  我的知识库  ",
+            },
+        },
+    )
+    assert servers["http-server-1"]["display_name"] == "我的知识库"
+    listed = svc.list_instances_for_api(uid)
+    assert len(listed) == 1
+    assert listed[0]["mcp_server_name"] == "http-server-1"
+    assert listed[0]["display_name"] == "我的知识库"
 
 
 def test_harness_spec_stdio_default_args():

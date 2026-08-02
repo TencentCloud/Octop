@@ -16,6 +16,7 @@ from harness_gateway.models import (
     TextContent,
 )
 
+from octop.i18n.domains.stream import format_stream_error
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlSlashOutcome,
@@ -372,7 +373,7 @@ class GlobalProcessor:
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
-            yield MessageEvent.error_event(f"Agent error: {exc}")
+            yield MessageEvent.error_event(format_stream_error(exc, locale))
         else:
             if stream_ok and not hitl_paused:
                 self._touch_thread_after_turn(thread_id, msg.text)
@@ -492,7 +493,7 @@ class GlobalProcessor:
             stream_ok = True
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
-            yield {"type": "error", "message": str(exc)}
+            yield {"type": "error", "message": format_stream_error(exc, locale)}
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(

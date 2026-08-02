@@ -19,8 +19,10 @@ from harness_gateway.models import (
     VideoContent,
 )
 
+from octop.i18n.domains.stream import format_stream_error
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws.ws_hub import WebSocketHub
+from octop.infra.utils.locale import resolve_locale
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +114,15 @@ class CliChannel(BaseChannel):
                 await self._hub.push(conn_id, chunk)
         except Exception as exc:
             logger.exception("cli turn failed")
-            await self._hub.push(conn_id, {"type": "error", "message": str(exc)})
+            meta = message.metadata if isinstance(message.metadata, dict) else None
+            locale = resolve_locale(
+                channel_type=str(getattr(message, "channel_type", "") or ""),
+                metadata=meta,
+            )
+            await self._hub.push(
+                conn_id,
+                {"type": "error", "message": format_stream_error(exc, locale)},
+            )
             await self._hub.push(conn_id, {"type": "done"})
 
     async def _send_text(self, subject: ChannelSubject, text: str) -> None:

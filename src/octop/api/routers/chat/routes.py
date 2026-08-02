@@ -13,6 +13,7 @@ from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import HitlResumeBody, PolishBody
 from octop.api.routers.chat.sse import format_sse
+from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
     read_workspace_manifest_welcome,
@@ -21,6 +22,7 @@ from octop.infra.agents.experts.catalog import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.llm_text import ainvoke_text
+from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -89,6 +91,7 @@ async def resume_hitl(
     agent_registry = server.app_runtime.agent_registry
 
     async def gen() -> AsyncIterator[str]:
+        locale = resolve_request_locale(request)
         try:
             async for chunk in agent_registry.resume_hitl(agent_id, body.thread_id, body.decisions):
                 if await request.is_disconnected():
@@ -96,7 +99,10 @@ async def resume_hitl(
                 yield format_sse("chunk", chunk)
             yield format_sse("chunk", {"type": "done"})
         except Exception as exc:
-            yield format_sse("chunk", {"type": "error", "message": str(exc)})
+            yield format_sse(
+                "chunk",
+                {"type": "error", "message": format_stream_error(exc, locale)},
+            )
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

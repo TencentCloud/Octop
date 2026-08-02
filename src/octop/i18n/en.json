@@ -330,7 +330,10 @@
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
-    "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect."
+    "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect.",
+    "PLUGIN_INVALID_ARCHIVE": "The download is not a valid plugin ZIP. Use a direct .zip download URL (on GitHub use raw.githubusercontent.com or the “Download” / “raw” link, not the /blob/ page).",
+    "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
+    "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -492,6 +495,15 @@
   "agent_errors": {
     "no_models_configured": "No models are configured. Go to Settings \u2192 Models to add a Provider, then enable this expert again.",
     "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings \u2192 Models or update this expert's default model, then try again."
+  },
+  "stream_errors": {
+    "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
+    "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
+    "auth": "Model authentication failed. Check that the API key under Settings \u2192 Models is correct and still valid.",
+    "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
+    "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
+    "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
+    "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models."
   },
   "attachment": {
     "header": "[Attachment] {filename}",
