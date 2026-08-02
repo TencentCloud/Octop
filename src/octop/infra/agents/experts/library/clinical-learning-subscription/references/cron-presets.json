@@ -1,0 +1,64 @@
+{
+  "timezone": "Asia/Shanghai",
+  "channel": "weixin",
+  "display_channel": "微信",
+  "required_session_key_contains": ":weixin:",
+  "allow_dashboard_session": false,
+  "activation_mode": "user_select",
+  "selection_policy": "用户选择开启；可以全部开启，也可以只开启其中一个。未被用户明确选择的任务不得创建、启用或写成已启用。",
+  "delivery_policy": {
+    "run_immediately_after_activation": false,
+    "manual_preview_triggers_cron": false,
+    "preview_advances_progress": false,
+    "guideline_selection_starts_day_one": false,
+    "formal_start_requires": "scheduled_run_or_explicit_formal_start",
+    "daily_receipt": "只有真实通道回执后才可写“今日学习内容已由通道受理，订阅仍持续启用”。",
+    "protocol": "learning_delivery_v2",
+    "ledger_required": true,
+    "advance_only_after_delivery_ack": true,
+    "retry_reuses_delivery_id": true,
+    "preview_creates_no_ledger": true,
+    "unknown_transport_outcome": "block_and_reconcile",
+    "generic_agent_cron_without_receipt": "blocked"
+  },
+  "tasks": [
+    {
+      "task_type": "guideline_learning",
+      "name": "每日指南连续学习",
+      "channel": "weixin",
+      "schedule": "30 7 * * *",
+      "subscription_key": "daily_guideline_learning",
+      "delivery_protocol": "learning_delivery_v2",
+      "fresh_thread": true,
+      "phase": "blocked_until_platform_delivery_adapter",
+      "enabled_by_default": false,
+      "selectable": false,
+      "requires_platform_delivery_adapter": true
+    },
+    {
+      "task_type": "guideline_update_reminder",
+      "name": "专业指南更新提醒",
+      "channel": "weixin",
+      "schedule": "0 9 */3 * *",
+      "phase": "phase_1",
+      "enabled_by_default": false,
+      "selectable": true
+    },
+    {
+      "task_type": "insurance_policy_learning",
+      "name": "地区医保政策变化学习",
+      "channel": "weixin",
+      "schedule": "0 9 * * 2,5",
+      "phase": "phase_1",
+      "enabled_by_default": false,
+      "selectable": true
+    }
+  ],
+  "disabled_modules": [
+    "disease_sop",
+    "emergency_action_card",
+    "patient_case_advice",
+    "medication_dosage_generation",
+    "his_decision_support"
+  ]
+}

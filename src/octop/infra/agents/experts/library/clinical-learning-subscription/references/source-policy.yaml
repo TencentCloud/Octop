@@ -1,0 +1,105 @@
+product_mode: general_assistant_with_clinical_learning_safety_domain
+
+# 普通任务可按通用助手规则处理；以下规则只约束医学学习、医保政策和
+# “基于指南”的主张。学习诊断与诊断标准学习均是教育用途，不得转化为
+# 对具体患者的疾病诊断或治疗决策。
+allowed_learning_modes:
+  - guideline_reading_and_learning_map
+  - guideline_diagnostic_criteria_learning
+  - guideline_section_expansion
+  - guideline_learning_pathway
+  - learning_baseline_assessment
+  - study_plan_and_review
+  - exam_oriented_material_recommendation
+  - insurance_policy_retrospective_learning
+
+# 医学安全域模块清单。只有这些模块才应用信源白名单与医学禁用词。
+# 未列出的模块（通用写作、翻译、编程、数据整理、其它 skill 输出等）
+# 一律按通用助手校验，不因为身处本专家包而被降级或截断。
+clinical_safety_modules:
+  - guideline_learning
+  - daily_guideline_learning
+  - guideline_section_expansion
+  - guideline_learning_pathway
+  - guideline_learning_diagnosis
+  - guideline_update_reminder
+  - professional_update_summary
+  - insurance_policy_summary
+  - insurance_policy_learning
+  - insurance_policy_retrospective
+  - exam_material_recommendation
+  - high_risk_refusal
+
+# 只在医学安全域模块内要求权威信源；通用模块允许任意合法链接。
+source_restricted_modules:
+  - guideline_learning
+  - daily_guideline_learning
+  - guideline_section_expansion
+  - guideline_learning_pathway
+  - guideline_learning_diagnosis
+  - guideline_update_reminder
+  - professional_update_summary
+  - insurance_policy_summary
+  - insurance_policy_learning
+  - insurance_policy_retrospective
+  - exam_material_recommendation
+
+allowed_final_evidence_domain_suffixes:
+  - ".gov.cn"
+  - ".nhc.gov.cn"
+  - ".nhsa.gov.cn"
+  - ".nmpa.gov.cn"
+  - ".cmde.org.cn"
+  - ".medjournals.cn"
+  - ".cma.org.cn"
+  - ".chinacdc.cn"
+
+allowed_final_evidence_exact_domains:
+  - "www.nhc.gov.cn"
+  - "www.nhsa.gov.cn"
+  - "www.nmpa.gov.cn"
+  - "www.cac.gov.cn"
+  - "www.gov.cn"
+  - "medjournals.cn"
+  - "www.cmde.org.cn"
+
+blocked_final_evidence_domains:
+  - "mp.weixin.qq.com"
+  - "guide.medlive.cn"
+  - "www.medlive.cn"
+  - "medlive.cn"
+  - "www.dxy.cn"
+  - "dxy.cn"
+  - "www.medsci.cn"
+  - "medsci.cn"
+  - "www.baidu.com"
+  - "baike.baidu.com"
+  - "www.zhihu.com"
+  - "zhuanlan.zhihu.com"
+
+blocked_capabilities:
+  - disease_sop
+  - emergency_action_card
+  - patient_case_advice
+  - medication_dosage_generation
+  - prescription_generation
+  - his_decision_support
+  - insurance_reimbursement_decision
+
+# 仅在 clinical_safety_modules 内生效。
+# 模式必须加词边界，避免误伤 delivery / import / point / 5 g 数据 等普通文本；
+# 医学语境靠“药名/剂量/给药”组合词而非裸词片段来识别。
+blocked_output_patterns:
+  - "\\d+(\\.\\d+)?\\s*(mg|g|ug|μg|ml|mL|IU|U)\\s*(/\\s*(kg|m2|㎡|次|日|天|d))"
+  - "(?<![A-Za-z])(每次|单次|首剂|负荷剂量)\\s*\\d+(\\.\\d+)?\\s*(mg|g|ug|μg|ml|mL|IU|U)"
+  - "(?<![A-Za-z])(bid|tid|qid|qd|qn|qod|q\\d+h|ivgtt|iv\\s*drip)(?![A-Za-z])"
+  - "(?<![A-Za-z])(po|im|iv|sc|ih)(?![A-Za-z])\\s*(给药|用药|注射|输注|\\d)"
+  - "(口服|静滴|静注|肌注|皮下注射|雾化吸入|舌下含服)\\s*\\d+(\\.\\d+)?\\s*(mg|g|ug|μg|ml|mL|IU|U)?"
+  - "首剂\\s*(加倍|\\d+)"
+  - "急诊行动卡"
+  - "疾病\\s*SOP"
+  - "【具体用药】"
+  - "【立即处理】"
+  - "【处方】"
+  - "HIS.*(提示|校验|配置)"
+  - "(该|这位|此)患者\\s*(应|需|建议|可以)\\s*(诊断为|给予|使用|服用|立即)"
