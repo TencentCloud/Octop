@@ -20,7 +20,7 @@ import secrets
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -186,7 +186,7 @@ def _deep_default_state() -> dict[str, Any]:
 
 
 def _now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _shanghai_date() -> str:
@@ -1196,14 +1196,14 @@ def mark_lesson_learning(
 
 def _delivery_is_expired(delivery: dict[str, Any]) -> bool:
     expiration = _parse_timestamp(str(delivery.get("lease_expires_at") or ""))
-    return expiration is not None and expiration <= datetime.now(UTC)
+    return expiration is not None and expiration <= datetime.now(timezone.utc)
 
 
 def _lease_expiration(seconds: int) -> str:
     if not 60 <= seconds <= 3600:
         raise ValueError("投递领取租约必须在 60-3600 秒之间")
-    timestamp = datetime.now(UTC).timestamp() + seconds
-    return datetime.fromtimestamp(timestamp, UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    timestamp = datetime.now(timezone.utc).timestamp() + seconds
+    return datetime.fromtimestamp(timestamp, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _delivery_details(
