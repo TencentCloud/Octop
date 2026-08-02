@@ -7,6 +7,7 @@ import {
   Result,
   Select,
   Space,
+  Spin,
   Tag,
   Tooltip,
 } from "antd";
@@ -27,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 import StreamConnectingIndicator from "../../../components/StreamConnectingIndicator";
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
@@ -54,6 +56,7 @@ import {
 import { useDesktopCanvasInteraction } from "../../../hooks/useDesktopCanvasInteraction";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useLandscapeFullscreen } from "../../../hooks/useLandscapeFullscreen";
+import { useUserRole } from "../../../hooks/useUserRole";
 import { copyText } from "../../../utils/copyText";
 import { showApiError } from "../../../utils/showApiToast";
 import { wsStreamErrorMessage } from "../../../utils/apiError";
@@ -66,6 +69,7 @@ import {
   type DesktopResolution,
 } from "../../../utils/desktopViewport";
 import { sendDesktopAction } from "./desktopShortcuts";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
 import styles from "./index.module.less";
 
 const RESOLUTION_STORAGE_KEY = "octop:remote-desktop:resolution";
@@ -75,6 +79,8 @@ const DEFAULT_MAX_FPS = 10;
 
 export default function RemoteDesktopPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const role = useUserRole();
   const isMobile = useIsMobile();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -182,8 +188,10 @@ export default function RemoteDesktopPage() {
   }, [t]);
 
   useEffect(() => {
-    void refreshEnv();
-  }, [refreshEnv]);
+    if (role === "admin") {
+      void refreshEnv();
+    }
+  }, [role, refreshEnv]);
 
   useEffect(() => {
     if (installLogRef.current) {
@@ -946,6 +954,47 @@ export default function RemoteDesktopPage() {
     );
   };
 
+  const pageTitle = t("nav.remoteDesktop", "远程桌面");
+  const pageSubtitle = t(
+    "pageShell.desktop.subtitle",
+    "查看并操控 Octop 主机操作系统桌面",
+  );
+  const setupMascot = <OctopEmptyMascot size={120} className={styles.setupMascot} />;
+
+  if (role === null) {
+    return (
+      <PageShell title={pageTitle} subtitle={pageSubtitle} fill>
+        <div className={styles.roleGate}>
+          <Spin size="large" />
+        </div>
+      </PageShell>
+    );
+  }
+
+  if (role !== "admin") {
+    return (
+      <PageShell title={pageTitle} subtitle={pageSubtitle} fill>
+        <div className={styles.adminOnly}>
+          <div className={styles.adminOnlyInner}>
+            <OctopEmptyMascot className={styles.adminOnlyMascot} />
+            <h2 className={styles.adminOnlyTitle}>
+              {t("remoteDesktop.adminOnlyTitle", "需要管理员权限")}
+            </h2>
+            <p className={styles.adminOnlyDesc}>
+              {t(
+                "remoteDesktop.adminOnlyDesc",
+                "远程桌面可操控主机操作系统，仅管理员可用。如需使用，请联系管理员。",
+              )}
+            </p>
+            <Button type="primary" onClick={() => navigate("/chat")}>
+              {t("remoteDesktop.adminOnlyBack", "返回对话")}
+            </Button>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
+
   const headerActions = (
     <Space size={8} wrap>
       <Tooltip title={t("remoteDesktop.checkInstallTip")}>
@@ -1009,11 +1058,8 @@ export default function RemoteDesktopPage() {
 
   return (
     <PageShell
-      title={t("nav.remoteDesktop", "远程桌面")}
-      subtitle={t(
-        "pageShell.desktop.subtitle",
-        "查看并操控 Octop 主机操作系统桌面",
-      )}
+      title={pageTitle}
+      subtitle={pageSubtitle}
       fill
       actions={headerActions}
     >
@@ -1080,7 +1126,7 @@ export default function RemoteDesktopPage() {
               renderViewportUninstallProgress()
             ) : (
               <StreamSetupGuide
-                icon={<Monitor size={48} strokeWidth={1.5} />}
+                icon={setupMascot}
                 title={
                   envReady
                     ? t("remoteDesktop.connectTitle", "连接远程桌面")

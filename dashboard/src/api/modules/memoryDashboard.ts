@@ -258,6 +258,8 @@ export interface StatsGrowthBucket {
   atoms: number;
   entities: number;
   episodes: number;
+  /** Daily count of user_message raw events (one user utterance per turn). */
+  turns: number;
 }
 
 export interface StatsGrowthResponse {

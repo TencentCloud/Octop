@@ -6,6 +6,71 @@
   gap: 12px;
 }
 
+.setupMascot {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.roleGate {
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.adminOnly {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background: radial-gradient(
+      ellipse 70% 45% at 50% 0%,
+      color-mix(in srgb, var(--fn-color-brand, #e85d75) 10%, transparent),
+      transparent 70%
+    ),
+    var(--fn-bg-elevated, #fff);
+}
+
+.adminOnlyInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 420px;
+  gap: 12px;
+}
+
+.adminOnlyMascot {
+  display: block;
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.adminOnlyTitle {
+  margin: 8px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.4;
+}
+
+.adminOnlyDesc {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fn-text-secondary);
+}
+
 .installProgress {
   display: flex;
   flex-direction: column;

@@ -185,13 +185,13 @@ export function statsAtomKindsFixture(): StatsAtomKindsResponse {
 export function statsGrowthFixture(): StatsGrowthResponse {
   return {
     series: [
-      { date: "2026-06-23", atoms: 0, entities: 0, episodes: 0 },
-      { date: "2026-06-24", atoms: 1, entities: 0, episodes: 0 },
-      { date: "2026-06-25", atoms: 1, entities: 1, episodes: 0 },
-      { date: "2026-06-26", atoms: 1, entities: 0, episodes: 1 },
-      { date: "2026-06-27", atoms: 0, entities: 0, episodes: 0 },
-      { date: "2026-06-28", atoms: 0, entities: 0, episodes: 1 },
-      { date: "2026-06-29", atoms: 2, entities: 1, episodes: 0 },
+      { date: "2026-06-23", atoms: 0, entities: 0, episodes: 0, turns: 1 },
+      { date: "2026-06-24", atoms: 1, entities: 0, episodes: 0, turns: 2 },
+      { date: "2026-06-25", atoms: 1, entities: 1, episodes: 0, turns: 3 },
+      { date: "2026-06-26", atoms: 1, entities: 0, episodes: 1, turns: 1 },
+      { date: "2026-06-27", atoms: 0, entities: 0, episodes: 0, turns: 0 },
+      { date: "2026-06-28", atoms: 0, entities: 0, episodes: 1, turns: 4 },
+      { date: "2026-06-29", atoms: 2, entities: 1, episodes: 0, turns: 2 },
     ],
   };
 }

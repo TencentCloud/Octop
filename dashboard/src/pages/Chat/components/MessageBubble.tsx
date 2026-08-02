@@ -37,6 +37,10 @@ import {
 } from "../../../utils/parseAcpPermission";
 import { useVoiceOutputContext } from "../../../context/VoiceOutputContext";
 import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
+import {
+  formatChatStreamError,
+  isChatStreamError,
+} from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import styles from "../index.module.less";
 
@@ -605,9 +609,14 @@ function MessageBubble({
   }
 
   const isUser = message.role === "user";
-  const isError = message.status === "error";
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
+  const looksLikeStreamError =
+    !isUser && !hasToolData && !isStreaming && isChatStreamError(textContent);
+  const isError = message.status === "error" || looksLikeStreamError;
+  const errorBodyText = isError
+    ? formatChatStreamError(textContent, t)
+    : textContent;
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) => attachment.kind === "image",
@@ -733,8 +742,8 @@ function MessageBubble({
                     {t("chat.errorOccurred", "出现错误")}
                   </span>
                 </div>
-                {textContent && (
-                  <div className={styles.errorMessageBody}>{textContent}</div>
+                {errorBodyText && (
+                  <div className={styles.errorMessageBody}>{errorBodyText}</div>
                 )}
                 {errorDebugTags.length > 0 && (
                   <div className={styles.errorDebugRow}>

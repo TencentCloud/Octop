@@ -1170,13 +1170,23 @@
   background: var(--fn-border-primary);
 }
 
+.overviewTurnsCard {
+  flex: 0 0 auto;
+}
+
+.turnsChart {
+  width: 100%;
+  height: 180px;
+  overflow: visible;
+}
+
 .overviewCharts {
   display: grid;
   grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
   gap: 16px;
   align-items: stretch;
   flex: 1 1 auto;
-  min-height: 160px;
+  min-height: 280px;
 }
 
 .overviewChartCard {
@@ -1185,6 +1195,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: visible;
 
   :global(.ant-card-head),
   :global(.octop-card-head) {
@@ -1200,7 +1211,6 @@
     font-size: 14px;
   }
 
-  /* Override global `.ant-card-body { height: 100% }` so flex layout works. */
   :global(.ant-card-body),
   :global(.octop-card-body) {
     flex: 1 1 auto;
@@ -1208,7 +1218,8 @@
     height: auto !important;
     display: flex;
     flex-direction: column;
-    padding: 10px 14px 8px;
+    padding: 10px 14px 12px;
+    overflow: visible;
   }
 }
 
@@ -1216,7 +1227,8 @@
 .kindChart {
   flex: 1 1 auto;
   width: 100%;
-  min-height: 140px;
+  min-height: 240px;
+  overflow: visible;
 }
 
 @media (max-width: 980px) {
@@ -1237,6 +1249,10 @@
   .growthChart,
   .kindChart {
     flex: none;
+    height: 240px;
+  }
+
+  .turnsChart {
     height: 180px;
   }
 }

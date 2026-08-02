@@ -323,20 +323,16 @@
 }
 
 .noAgentsEmptyIcon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--fn-color-brand, #e85d75);
-  background: color-mix(
-    in srgb,
-    var(--fn-color-brand, #e85d75) 12%,
-    var(--fn-bg-elevated, #fff)
-  );
-  box-shadow: 0 8px 24px
-    color-mix(in srgb, var(--fn-color-brand, #e85d75) 18%, transparent);
+  line-height: 1;
+}
+
+.noAgentsEmptyMascot {
+  display: block;
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .noAgentsEmptyTitle {

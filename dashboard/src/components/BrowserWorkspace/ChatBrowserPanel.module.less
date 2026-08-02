@@ -45,6 +45,23 @@
     transform: none;
   }
 
+  /* Nearly full-viewport popup; no drag/resize chrome. */
+  &.popupFullscreen {
+    inset: 0;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    transform: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
   /* Disable interaction while dragging so the canvas doesn't swallow moves. */
   &.popupDragging {
     user-select: none;
@@ -94,8 +111,18 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
+/* Fullscreen popup covers the viewport; mask stays behind the panel. */
+.popupMaskFullscreen {
+  background: rgba(0, 0, 0, 0.85);
+}
+
 :global(html[data-theme="dark"]) .popupMask {
   background: rgba(0, 0, 0, 0.65);
+}
+
+/* Layout menu must sit above popup mask + panel (see POPUP_Z.menu in shell). */
+.popupLayoutDropdown {
+  z-index: 2100 !important;
 }
 
 /* Unified dock chrome: title | actions | layout menu + close. Match chat title bar. */

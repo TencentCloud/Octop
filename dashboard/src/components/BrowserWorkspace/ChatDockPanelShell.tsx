@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dropdown } from "antd";
+import { Dropdown, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   Check,
+  Maximize2,
+  Minimize2,
   MoreVertical,
   PanelBottom,
   PanelRight,
@@ -30,8 +32,71 @@ const POPUP_MIN_W = 360;
 const POPUP_MIN_H = 280;
 
 /**
+ * Stacking for floating dock. Keep CSS (ChatBrowserPanel.module.less) in sync:
+ *   .popupMask  / .popup  use the same numbers.
+ * Antd Dropdown defaults (~1050) sit *under* the panel without POPUP_Z.menu.
+ */
+const POPUP_Z = {
+  mask: 1100,
+  panel: 1101,
+  menu: 2100,
+} as const;
+
+/**
+ * Clear drag/placement offsets written outside React.
+ * Never touch width/height here — right dock owns width via React ``style``.
+ */
+function clearPopupPlacementStyles(panel: HTMLElement | null) {
+  if (!panel) return;
+  for (const prop of [
+    "left",
+    "top",
+    "right",
+    "bottom",
+    "transform",
+  ] as const) {
+    panel.style.removeProperty(prop);
+  }
+}
+
+/**
+ * Drop size written by corner-resize only when React is not driving that axis.
+ * Clearing React-owned ``width`` (right dock) collapses the panel to empty.
+ */
+function clearPopupSizeIfUnowned(
+  panel: HTMLElement | null,
+  reactStyle?: React.CSSProperties,
+) {
+  if (!panel) return;
+  if (reactStyle?.width === undefined) {
+    panel.style.removeProperty("width");
+  }
+  if (reactStyle?.height === undefined) {
+    panel.style.removeProperty("height");
+  }
+}
+
+/** Leave popup → right/bottom: placement always; size only if unowned. */
+function clearWhenLeavingPopup(
+  panel: HTMLElement | null,
+  reactStyle?: React.CSSProperties,
+) {
+  clearPopupPlacementStyles(panel);
+  clearPopupSizeIfUnowned(panel, reactStyle);
+}
+
+/** Enter/exit fullscreen or reset centered popup: CSS owns geometry. */
+function clearAllPopupCommandStyles(panel: HTMLElement | null) {
+  clearPopupPlacementStyles(panel);
+  if (!panel) return;
+  panel.style.removeProperty("width");
+  panel.style.removeProperty("height");
+}
+
+/**
  * Shared chat dock chrome for file / browser panels: layout mode switch
- * (bottom / right / popup), centered-draggable popup, corner resize, and close.
+ * (bottom / right / popup), centered-draggable popup, corner resize, fullscreen
+ * (popup only), and close.
  *
  * Popup move/resize mutate the panel DOM directly (rAF) so heavy children
  * (Monaco / markdown) are not React-re-rendered on every pointermove.
@@ -48,11 +113,15 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
 }) => {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const prevModeRef = useRef<PanelMode>(mode);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
     null,
   );
   const [isPopupDragging, setIsPopupDragging] = useState(false);
   const [isPopupResizing, setIsPopupResizing] = useState(false);
+  /** Popup-only: expand to full viewport (not a separate PanelMode). */
+  const [popupFullscreen, setPopupFullscreen] = useState(false);
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const popupDragRef = useRef<{
     startX: number;
     startY: number;
@@ -72,15 +141,6 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   // none while dragging) and would otherwise fire a spurious close.
   const suppressMaskCloseRef = useRef(false);
 
-  // Leaving popup clears the drag offset so the next open recenters.
-  useEffect(() => {
-    if (mode !== "popup") {
-      setPopupPos(null);
-      setIsPopupDragging(false);
-      setIsPopupResizing(false);
-    }
-  }, [mode]);
-
   const setResizingFlag = useCallback((on: boolean) => {
     const panel = panelRef.current;
     if (!panel) return;
@@ -88,9 +148,57 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     else panel.removeAttribute("data-dock-resizing");
   }, []);
 
+  // Only when leaving popup: drop drag state + rogue inline geometry.
+  // Do not run clear on ordinary right/bottom mounts (wipes React width).
+  useEffect(() => {
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (mode === "popup") return;
+
+    setPopupPos(null);
+    setIsPopupDragging(false);
+    setIsPopupResizing(false);
+    setPopupFullscreen(false);
+    setLayoutMenuOpen(false);
+    if (prev === "popup") {
+      clearWhenLeavingPopup(panelRef.current, style);
+    }
+  }, [mode, style]);
+
+  // Esc exits fullscreen only (keeps popup open).
+  useEffect(() => {
+    if (mode !== "popup" || !popupFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPopupFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [mode, popupFullscreen]);
+
+  // Enter/exit fullscreen: CSS owns size; drop command styles + nudge editors.
+  useEffect(() => {
+    if (mode !== "popup") return;
+    clearAllPopupCommandStyles(panelRef.current);
+    setPopupPos(null);
+    setIsPopupDragging(false);
+    setIsPopupResizing(false);
+    setResizingFlag(true);
+    const t = window.setTimeout(() => {
+      setResizingFlag(false);
+      window.dispatchEvent(new Event("resize"));
+    }, 50);
+    return () => {
+      window.clearTimeout(t);
+      setResizingFlag(false);
+    };
+  }, [popupFullscreen, mode, setResizingFlag]);
+
   const handlePopupDragStart = useCallback(
     (e: React.PointerEvent) => {
-      if (mode !== "popup" || e.button !== 0) return;
+      if (mode !== "popup" || popupFullscreen || e.button !== 0) return;
       const target = e.target as HTMLElement;
       if (
         target.closest("button") ||
@@ -99,7 +207,8 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         target.closest('[role="button"]') ||
         target.closest('[role="tab"]') ||
         target.closest(".octop-select, .ant-select") ||
-        target.closest(".ant-segmented") ||
+        target.closest(".octop-segmented, .ant-segmented") ||
+        target.closest(".octop-dropdown, .ant-dropdown") ||
         target.closest(`.${styles.popupResizeHandle}`)
       ) {
         return;
@@ -164,12 +273,12 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         },
       });
     },
-    [mode, popupPos],
+    [mode, popupFullscreen, popupPos],
   );
 
   const handlePopupResizeStart = useCallback(
     (e: React.PointerEvent) => {
-      if (mode !== "popup" || e.button !== 0) return;
+      if (mode !== "popup" || popupFullscreen || e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const panel = panelRef.current;
@@ -225,27 +334,59 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         },
       });
     },
-    [mode, popupPos, setResizingFlag],
+    [mode, popupFullscreen, popupPos, setResizingFlag],
   );
 
   const handleMaskClick = useCallback(() => {
-    if (suppressMaskCloseRef.current || isPopupDragging || isPopupResizing) {
+    if (
+      suppressMaskCloseRef.current ||
+      isPopupDragging ||
+      isPopupResizing ||
+      layoutMenuOpen ||
+      popupFullscreen
+    ) {
+      // Fullscreen covers the mask visually; don't close on stray clicks.
       return;
     }
     onClose();
-  }, [isPopupDragging, isPopupResizing, onClose]);
+  }, [
+    isPopupDragging,
+    isPopupResizing,
+    layoutMenuOpen,
+    onClose,
+    popupFullscreen,
+  ]);
+
+  const applyLayoutMode = useCallback(
+    (next: PanelMode) => {
+      if (next === mode) return;
+      if (mode === "popup") {
+        setPopupFullscreen(false);
+        // Clear before mode switch; right/bottom `style` still intact on next paint.
+        clearWhenLeavingPopup(panelRef.current, style);
+      }
+      onModeChange(next);
+    },
+    [mode, onModeChange, style],
+  );
+
+  const togglePopupFullscreen = useCallback(() => {
+    setPopupFullscreen((v) => !v);
+  }, []);
 
   const popupStyle: React.CSSProperties | undefined =
-    mode === "popup" && popupPos
-      ? {
-          ...style,
-          left: popupPos.x,
-          top: popupPos.y,
-          right: "auto",
-          bottom: "auto",
-          transform: "none",
-        }
-      : style;
+    mode === "popup" && popupFullscreen
+      ? { ...style }
+      : mode === "popup" && popupPos
+        ? {
+            ...style,
+            left: popupPos.x,
+            top: popupPos.y,
+            right: "auto",
+            bottom: "auto",
+            transform: "none",
+          }
+        : style;
 
   const layoutMenuItems: MenuProps["items"] = useMemo(
     () => [
@@ -254,24 +395,21 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         label: t("browserWorkspace.panelBottom"),
         icon: <PanelBottom size={14} />,
         extra: mode === "bottom" ? <Check size={14} /> : undefined,
-        onClick: () => onModeChange("bottom"),
       },
       {
         key: "right",
         label: t("browserWorkspace.panelRight"),
         icon: <PanelRight size={14} />,
         extra: mode === "right" ? <Check size={14} /> : undefined,
-        onClick: () => onModeChange("right"),
       },
       {
         key: "popup",
         label: t("browserWorkspace.panelPopup"),
         icon: <PictureInPicture2 size={14} />,
         extra: mode === "popup" ? <Check size={14} /> : undefined,
-        onClick: () => onModeChange("popup"),
       },
     ],
-    [mode, onModeChange, t],
+    [mode, t],
   );
 
   const panel = (
@@ -279,28 +417,74 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
       ref={panelRef}
       data-dock-panel=""
       className={`${styles.chatBrowserPanel} ${styles[mode]} ${
-        popupPos ? styles.popupPlaced : ""
+        popupPos && !popupFullscreen ? styles.popupPlaced : ""
       } ${isPopupDragging ? styles.popupDragging : ""} ${
         isPopupResizing ? styles.popupResizing : ""
-      }`}
+      } ${popupFullscreen ? styles.popupFullscreen : ""}`}
       style={popupStyle}
     >
-      <div className={styles.toolbar} onPointerDown={handlePopupDragStart}>
+      <div
+        className={styles.toolbar}
+        onPointerDown={handlePopupDragStart}
+        style={popupFullscreen ? { cursor: "default" } : undefined}
+      >
         <div className={styles.toolbarTitle}>{title}</div>
         <div className={styles.toolbarSpacer} />
         {toolbarActions ? (
           <div className={styles.toolbarActions}>{toolbarActions}</div>
         ) : null}
         <div className={styles.toolbarModes}>
+          {mode === "popup" && (
+            <Tooltip
+              title={
+                popupFullscreen
+                  ? t("browserWorkspace.exitFullscreen", "退出全屏")
+                  : t("browserWorkspace.enterFullscreen", "全屏")
+              }
+            >
+              <button
+                type="button"
+                className={styles.toolbarIconBtn}
+                onClick={togglePopupFullscreen}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label={
+                  popupFullscreen
+                    ? t("browserWorkspace.exitFullscreen", "退出全屏")
+                    : t("browserWorkspace.enterFullscreen", "全屏")
+                }
+                aria-pressed={popupFullscreen}
+              >
+                {popupFullscreen ? (
+                  <Minimize2 size={16} strokeWidth={1.8} />
+                ) : (
+                  <Maximize2 size={16} strokeWidth={1.8} />
+                )}
+              </button>
+            </Tooltip>
+          )}
           <Dropdown
-            menu={{ items: layoutMenuItems, selectedKeys: [mode] }}
+            menu={{
+              items: layoutMenuItems,
+              selectedKeys: [mode],
+              onClick: ({ key }) => applyLayoutMode(key as PanelMode),
+            }}
             trigger={["click"]}
             placement="bottomRight"
+            getPopupContainer={() => document.body}
+            open={layoutMenuOpen}
+            onOpenChange={setLayoutMenuOpen}
+            overlayStyle={
+              mode === "popup" ? { zIndex: POPUP_Z.menu } : undefined
+            }
+            overlayClassName={
+              mode === "popup" ? styles.popupLayoutDropdown : undefined
+            }
           >
             <button
               type="button"
               className={styles.toolbarIconBtn}
               aria-label={t("browserWorkspace.panelLayout", "面板布局")}
+              onPointerDown={(e) => e.stopPropagation()}
             >
               <MoreVertical size={16} strokeWidth={1.8} />
             </button>
@@ -309,6 +493,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
             type="button"
             className={styles.toolbarIconBtn}
             onClick={onClose}
+            onPointerDown={(e) => e.stopPropagation()}
             aria-label={t("common.close", "关闭")}
           >
             <X size={14} strokeWidth={1.8} />
@@ -316,7 +501,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         </div>
       </div>
       {children}
-      {mode === "popup" && (
+      {mode === "popup" && !popupFullscreen && (
         <div
           className={styles.popupResizeHandle}
           onPointerDown={handlePopupResizeStart}
@@ -334,7 +519,18 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
 
   return (
     <>
-      <div className={styles.popupMask} onClick={handleMaskClick} aria-hidden />
+      <div
+        className={`${styles.popupMask} ${
+          popupFullscreen ? styles.popupMaskFullscreen : ""
+        }`}
+        onClick={handleMaskClick}
+        aria-hidden
+        style={
+          layoutMenuOpen || popupFullscreen
+            ? { pointerEvents: "none" }
+            : undefined
+        }
+      />
       {panel}
     </>
   );

@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 
 describe("<Overview />", () => {
-  it("renders a compact status, metrics, pipeline, and two charts", async () => {
+  it("renders a compact status, metrics, pipeline, and charts", async () => {
     stubOverview();
     render(<Overview agentId="ZYWZTD" />);
 
@@ -60,6 +60,7 @@ describe("<Overview />", () => {
     expect(screen.getAllByText("长期记忆").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("关键主题")).toBeInTheDocument();
     expect(screen.getByText("记忆处理进度")).toBeInTheDocument();
+    expect(screen.getByText("近 7 天对话轮次")).toBeInTheDocument();
     expect(screen.getByText("近 7 天记忆增长")).toBeInTheDocument();
     expect(screen.getByText("记忆类型")).toBeInTheDocument();
 
@@ -118,6 +119,7 @@ describe("<Overview />", () => {
 
     await screen.findByText("记忆概览");
     expect(screen.getByText("暂无记忆类型数据")).toBeInTheDocument();
+    expect(screen.getByText("近 7 天暂无对话轮次")).toBeInTheDocument();
     expect(screen.getByText("近 7 天暂无新增")).toBeInTheDocument();
   });
 

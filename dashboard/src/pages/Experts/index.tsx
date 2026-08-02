@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { GraduationCap, LayoutGrid, List, RefreshCw } from "lucide-react";
+import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import PageShell from "../../layouts/PageShell";
 import { request } from "../../api/request";
 import { useAgent } from "../../context/AgentContext";
@@ -35,6 +35,7 @@ import EditAgentDrawer from "./components/EditAgentDrawer";
 import CreateFromExpertDrawer from "./components/CreateFromExpertDrawer";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
+import { OctopEmptyMascot } from "../../components/EmptyState";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "library" | "market";
@@ -229,10 +230,7 @@ export default function ExpertsPage() {
     if (localAgents.length === 0) {
       return (
         <div className={styles.emptyState}>
-          <GraduationCap
-            size={48}
-            style={{ color: "var(--fn-text-tertiary)" }}
-          />
+          <OctopEmptyMascot />
           <div className={styles.emptyTitle}>{t("experts.emptyMyExperts")}</div>
           <div className={styles.emptyHint}>
             {t("experts.emptyMyExpertsHint")}
@@ -344,10 +342,7 @@ export default function ExpertsPage() {
     if (experts.length === 0) {
       return (
         <div className={styles.emptyState}>
-          <GraduationCap
-            size={48}
-            style={{ color: "var(--fn-text-tertiary)" }}
-          />
+          <OctopEmptyMascot />
           <div className={styles.emptyTitle}>{t("experts.emptyLibrary")}</div>
           <div className={styles.emptyHint}>
             {t("experts.emptyLibraryHint")}

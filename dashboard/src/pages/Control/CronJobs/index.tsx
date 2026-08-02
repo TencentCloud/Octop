@@ -17,56 +17,12 @@ import type { CronJobFormValues } from "./useCronJobs";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { TableSkeleton } from "../../../components/Skeleton";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
 import styles from "./index.module.less";
 
 type CronJob = CronJobSpecOutput;
-
-// Flat clock SVG icon
-function ClockIcon() {
-  return (
-    <svg
-      width="56"
-      height="56"
-      viewBox="0 0 56 56"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle
-        cx="28"
-        cy="28"
-        r="26"
-        fill="var(--fn-color-brand-light, #fff0f3)"
-        stroke="var(--fn-color-brand, #e85d75)"
-        strokeWidth="2.5"
-      />
-      <circle cx="28" cy="28" r="3" fill="var(--fn-color-brand, #e85d75)" />
-      <line
-        x1="28"
-        y1="28"
-        x2="28"
-        y2="14"
-        stroke="var(--fn-color-brand, #e85d75)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-      <line
-        x1="28"
-        y1="28"
-        x2="38"
-        y2="34"
-        stroke="var(--fn-text-tertiary, #9ca3af)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-      <circle cx="28" cy="10" r="1.5" fill="var(--fn-color-brand, #e85d75)" />
-      <circle cx="28" cy="46" r="1.5" fill="var(--fn-color-brand, #e85d75)" />
-      <circle cx="10" cy="28" r="1.5" fill="var(--fn-color-brand, #e85d75)" />
-      <circle cx="46" cy="28" r="1.5" fill="var(--fn-color-brand, #e85d75)" />
-    </svg>
-  );
-}
 
 interface CronJobsEmptyStateProps {
   onCreate: () => void;
@@ -87,7 +43,7 @@ function CronJobsEmptyState({
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyStateIcon}>
-        <ClockIcon />
+        <OctopEmptyMascot />
       </div>
       <h2 className={styles.emptyStateTitle}>{t("cronJobs.noJobs")}</h2>
       <p className={styles.emptyStateDesc}>{t("cronJobs.noJobsDesc")}</p>

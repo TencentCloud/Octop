@@ -38,7 +38,7 @@ import type {
   SkillPackageSkillDetail,
 } from "../../api/types/skillPackage";
 import { CardSkeleton } from "../../components/Skeleton";
-import { EmptyState } from "../../components/EmptyState";
+import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -422,6 +422,7 @@ export default function SkillPackagesPage() {
       <CardSkeleton count={6} />
     ) : skills.length === 0 ? (
       <EmptyState
+        variant="mascot"
         title={t("skillPackages.emptySkills")}
         description={t("skillPackages.subtitle")}
         actionLabel={canMutate ? t("skillPackages.createSkill") : undefined}
@@ -499,7 +500,12 @@ export default function SkillPackagesPage() {
                 split={false}
                 dataSource={packages}
                 locale={{
-                  emptyText: <Empty description={t("skillPackages.empty")} />,
+                  emptyText: (
+                    <Empty
+                      image={<OctopEmptyMascot />}
+                      description={t("skillPackages.empty")}
+                    />
+                  ),
                 }}
                 renderItem={(item) => (
                   <List.Item
@@ -562,6 +568,7 @@ export default function SkillPackagesPage() {
           {!selected && !detailLoading ? (
             <Empty
               className={styles.emptyDetail}
+              image={<OctopEmptyMascot />}
               description={t("skillPackages.selectPackage")}
             />
           ) : !selected ? null : (

@@ -1,8 +1,8 @@
 import { Button, Result, Spin } from "antd";
 import { Settings } from "lucide-react";
-import { GraduationCap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
 import type { OctopAgent } from "../../../context/AgentContext";
 import {
   formatAgentError,
@@ -37,7 +37,7 @@ export default function AgentNotReadyScreen({
       <div className={styles.noAgentsEmpty}>
         <div className={styles.noAgentsEmptyInner}>
           <div className={styles.noAgentsEmptyIcon}>
-            <GraduationCap size={40} strokeWidth={1.5} />
+            <OctopEmptyMascot className={styles.noAgentsEmptyMascot} />
           </div>
           <h1 className={styles.noAgentsEmptyTitle}>
             {t("chat.noAgentsTitle")}

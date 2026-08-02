@@ -68,8 +68,6 @@
   }
 }
 
-/* Body below the toolbar: fills leftover height; scrolls only if needed
-   (e.g. dimension tables with many rows). */
 .content {
   flex: 1 1 auto;
   min-height: 0;
@@ -118,25 +116,117 @@
 .dimChartRow {
   display: grid;
   gap: 12px;
+  /* Keep cards in the row equal height (donut aligns with bar on the right). */
   align-items: stretch;
   flex-shrink: 0;
 }
 
-/* Summary donuts stay a stable size; only the daily trend fills leftover space. */
-.pieGrid .chartArea {
-  flex: none;
-  height: 200px;
+/* Summary pies — fixed frame height; never stretch bar charts over them. */
+.pieGrid {
+  flex: 0 0 auto;
+}
+
+/*
+ * Donut: fill grid cell (match sibling bar). Plot flex-grows; legend fixed.
+ * Body/class rules live after .chartCard so they win the cascade.
+ */
+.donutBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+
+.donutPlot {
+  flex: 1 1 auto;
   min-height: 200px;
+  width: 100%;
+  min-width: 0;
+}
+
+.donutLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0 2px;
+  list-style: none;
+  width: 100%;
+  flex: 0 0 auto;
+  max-height: 44px;
+  overflow: hidden;
+}
+
+.donutLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.donutLegendSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.donutLegendLabel {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--fn-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 10em;
+}
+
+/* Fixed-size chart host: height set inline, or flex-fill for summary trend. */
+.chartFrame {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.chartFrameFill {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 220px;
+  height: 100%;
+}
+
+.summaryTrendCard {
+  flex: 1 1 auto;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+.summaryTrendCard :global(.ant-card-body),
+.summaryTrendCard :global(.octop-card-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .dimChartRow {
-  flex: 1 1 auto;
-  min-height: 180px;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
-.trendCard {
-  flex: 1 1 auto;
-  min-height: 200px;
+.trendCard,
+.dimBarCard {
+  flex: 0 0 auto;
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -153,12 +243,25 @@
   overflow: auto;
 }
 
+.trendGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+
+.trendGrid .trendCard {
+  min-width: 0;
+}
+
 .chartCard {
   border-color: var(--fn-border-secondary);
   height: 100%;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: visible;
 }
 
 .chartCard :global(.ant-card-head),
@@ -168,7 +271,6 @@
   flex-shrink: 0;
 }
 
-/* Override global `.ant-card-body { height: 100% }` for flex fill. */
 .chartCard :global(.ant-card-body),
 .chartCard :global(.octop-card-body) {
   flex: 1 1 auto;
@@ -176,14 +278,26 @@
   height: auto !important;
   display: flex;
   flex-direction: column;
-  padding: 8px 12px 10px;
+  /* breathing room under X-axis ticks */
+  padding: 10px 12px 14px;
+  overflow: visible;
 }
 
-.chartArea {
+/* After .chartCard so stretch + tight padding win. */
+.chartCard.donutCard {
+  height: 100%;
+  min-height: 0;
+}
+
+.chartCard.donutCard :global(.ant-card-body),
+.chartCard.donutCard :global(.octop-card-body) {
   flex: 1 1 auto;
-  width: 100%;
-  min-width: 0;
-  min-height: 140px;
+  min-height: 0;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 10px;
+  overflow: hidden;
 }
 
 .loadingWrap {
@@ -222,12 +336,19 @@
   color: var(--fn-text-tertiary);
 }
 
+@media (max-width: 980px) {
+  .trendGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .summaryBody {
     min-height: 0;
   }
 
   .dimChartRow,
+  .trendGrid,
   .trendCard,
   .dimTableCard {
     flex: 0 0 auto;
@@ -236,12 +357,5 @@
 
   .chartCard {
     height: auto;
-  }
-
-  .pieGrid .chartArea,
-  .chartArea {
-    flex: none;
-    height: 220px;
-    min-height: 220px;
   }
 }

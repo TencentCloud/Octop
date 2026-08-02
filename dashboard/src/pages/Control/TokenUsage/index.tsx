@@ -79,8 +79,131 @@ const IO_COLORS = {
   output: "#a06ef7",
 };
 
+const TURNS_COLOR = "#e85d75";
+
+const CHART_TOOLTIP_STYLE = {
+  background: "var(--fn-bg-elevated)",
+  border: "1px solid var(--fn-border-secondary)",
+  borderRadius: 6,
+  fontSize: 12,
+};
+
+/** Shared axis / legend styling so ticks + legend never collide or clip. */
+const AXIS_TICK = { fontSize: 11, fill: "var(--fn-text-tertiary)" } as const;
+const AXIS_LINE = { stroke: "var(--fn-border-primary)" } as const;
+/** Plot insets: leave room for X ticks (bottom) and optional top legend. */
+const BAR_MARGIN = { top: 12, right: 16, bottom: 8, left: 4 } as const;
+const BAR_MARGIN_WITH_LEGEND = { top: 32, right: 16, bottom: 8, left: 4 } as const;
+
+const CHART_HEIGHT = {
+  bar: 280,
+} as const;
+
 function formatNumber(n: number): string {
   return n.toLocaleString();
+}
+
+function formatDayTick(label: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(label)) return label.slice(5);
+  return label;
+}
+
+interface UsageBarSeries {
+  dataKey: "input_tokens" | "output_tokens" | "turns" | "total_tokens";
+  name: string;
+  fill: string;
+  stackId?: string;
+  radius?: [number, number, number, number];
+  maxBarSize?: number;
+}
+
+/**
+ * Cartesian bar chart with safe margins: axes + legend always fully visible.
+ * Parent must give a definite height via CSS class on the frame.
+ */
+function UsageBarChart({
+  data,
+  series,
+  height,
+  fillParent = false,
+  showLegend = false,
+  tickFormatter,
+}: {
+  data: UsageBucket[];
+  series: UsageBarSeries[];
+  height?: number;
+  /** Stretch to fill flex card body (summary daily trend). */
+  fillParent?: boolean;
+  showLegend?: boolean;
+  tickFormatter?: (label: string) => string;
+}) {
+  return (
+    <div
+      className={
+        fillParent
+          ? `${styles.chartFrame} ${styles.chartFrameFill}`
+          : styles.chartFrame
+      }
+      style={fillParent ? undefined : { height }}
+    >
+      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+        <BarChart
+          data={data}
+          margin={showLegend ? BAR_MARGIN_WITH_LEGEND : BAR_MARGIN}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--fn-border-secondary)"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="label"
+            tickFormatter={tickFormatter}
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={AXIS_LINE}
+            height={30}
+            interval="preserveStartEnd"
+            minTickGap={14}
+            dy={4}
+          />
+          <YAxis
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={AXIS_LINE}
+            width={44}
+            allowDecimals={false}
+          />
+          <RechartsTooltip contentStyle={CHART_TOOLTIP_STYLE} />
+          {showLegend ? (
+            <Legend
+              verticalAlign="top"
+              align="right"
+              height={24}
+              iconSize={10}
+              wrapperStyle={{
+                fontSize: 12,
+                top: 0,
+                right: 0,
+                lineHeight: "20px",
+              }}
+            />
+          ) : null}
+          {series.map((s) => (
+            <Bar
+              key={s.dataKey}
+              dataKey={s.dataKey}
+              name={s.name}
+              fill={s.fill}
+              stackId={s.stackId}
+              radius={s.radius}
+              maxBarSize={s.maxBarSize}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 function StatBlock({
@@ -117,6 +240,96 @@ function resolveAgentLabels(
   }));
 }
 
+/** By-day view: token stacked bars + turns bars side-by-side. */
+function DailyTrendCharts({
+  data,
+  emptyText,
+  tokensTitle,
+  turnsTitle,
+  inputLabel,
+  outputLabel,
+  turnsLabel,
+}: {
+  data: UsageBucket[];
+  emptyText: string;
+  tokensTitle: string;
+  turnsTitle: string;
+  inputLabel: string;
+  outputLabel: string;
+  turnsLabel: string;
+}) {
+  const empty = data.length === 0;
+
+  return (
+    <div className={styles.trendGrid}>
+      <Card
+        size="small"
+        title={tokensTitle}
+        className={`${styles.chartCard} ${styles.trendCard}`}
+      >
+        {empty ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={emptyText}
+            style={{ padding: "24px 0" }}
+          />
+        ) : (
+          <UsageBarChart
+            data={data}
+            height={CHART_HEIGHT.bar}
+            showLegend
+            tickFormatter={formatDayTick}
+            series={[
+              {
+                dataKey: "input_tokens",
+                name: inputLabel,
+                fill: IO_COLORS.input,
+                stackId: "a",
+              },
+              {
+                dataKey: "output_tokens",
+                name: outputLabel,
+                fill: IO_COLORS.output,
+                stackId: "a",
+                radius: [3, 3, 0, 0],
+              },
+            ]}
+          />
+        )}
+      </Card>
+
+      <Card
+        size="small"
+        title={turnsTitle}
+        className={`${styles.chartCard} ${styles.trendCard}`}
+      >
+        {empty ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={emptyText}
+            style={{ padding: "24px 0" }}
+          />
+        ) : (
+          <UsageBarChart
+            data={data}
+            height={CHART_HEIGHT.bar}
+            tickFormatter={formatDayTick}
+            series={[
+              {
+                dataKey: "turns",
+                name: turnsLabel,
+                fill: TURNS_COLOR,
+                radius: [3, 3, 0, 0],
+                maxBarSize: 36,
+              },
+            ]}
+          />
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function toPieData(buckets: UsageBucket[], limit = 8) {
   const sorted = [...buckets].sort((a, b) => b.total_tokens - a.total_tokens);
   if (sorted.length <= limit) {
@@ -150,8 +363,6 @@ function fetchSummary(
   if (agentFilter !== "all") {
     params.set("agent_id", agentFilter);
   }
-  // Admin scope: null means role still loading (fall back to self endpoint);
-  // "all" → global roll-up; number → that user's roll-up.
   if (userFilter === "all") {
     return request<UsageSummary>(`/admin/usage/summary?${params}`);
   }
@@ -178,46 +389,56 @@ function DonutCard({
     return colors[name] ?? CHART_COLORS[index % CHART_COLORS.length];
   };
 
+  const empty = data.length === 0 || data.every((d) => d.value === 0);
+
   return (
-    <Card size="small" title={title} className={styles.chartCard}>
-      {data.length === 0 || data.every((d) => d.value === 0) ? (
+    <Card
+      size="small"
+      title={title}
+      className={`${styles.chartCard} ${styles.donutCard}`}
+    >
+      {empty ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
       ) : (
-        <div className={styles.chartArea}>
-          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="name"
-                innerRadius="42%"
-                outerRadius="68%"
-                paddingAngle={2}
-                stroke="none"
-              >
-                {data.map((entry, i) => (
-                  <Cell key={entry.name} fill={colorFor(entry.name, i)} />
-                ))}
-              </Pie>
-              <RechartsTooltip
-                formatter={(value) => formatNumber(Number(value ?? 0))}
-                contentStyle={{
-                  background: "var(--fn-bg-elevated)",
-                  border: "1px solid var(--fn-border-secondary)",
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-              />
-              <Legend
-                wrapperStyle={{ fontSize: 12 }}
-                formatter={(value) => (
-                  <span style={{ color: "var(--fn-text-secondary)" }}>
-                    {value}
-                  </span>
-                )}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className={styles.donutBody}>
+          {/* Plot flex-fills the card (same height as sibling charts); legend is fixed below. */}
+          <div className={styles.donutPlot}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="50%"
+                  outerRadius="90%"
+                  paddingAngle={2}
+                  stroke="none"
+                >
+                  {data.map((entry, i) => (
+                    <Cell key={entry.name} fill={colorFor(entry.name, i)} />
+                  ))}
+                </Pie>
+                <RechartsTooltip
+                  formatter={(value) => formatNumber(Number(value ?? 0))}
+                  contentStyle={CHART_TOOLTIP_STYLE}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <ul className={styles.donutLegend}>
+            {data.map((entry, i) => (
+              <li key={entry.name} className={styles.donutLegendItem}>
+                <span
+                  className={styles.donutLegendSwatch}
+                  style={{ background: colorFor(entry.name, i) }}
+                  aria-hidden
+                />
+                <span className={styles.donutLegendLabel}>{entry.name}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </Card>
@@ -310,7 +531,7 @@ function SummaryView({
       <Card
         size="small"
         title={t("tokenUsage.dailyTrend")}
-        className={`${styles.chartCard} ${styles.trendCard}`}
+        className={`${styles.chartCard} ${styles.summaryTrendCard}`}
       >
         {dayBars.length === 0 ? (
           <Empty
@@ -319,48 +540,26 @@ function SummaryView({
             style={{ padding: "24px 0" }}
           />
         ) : (
-          <div className={styles.chartArea}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <BarChart
-                data={dayBars}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--fn-border-secondary)"
-                />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  interval="preserveStartEnd"
-                  tickLine={false}
-                  axisLine={false}
-                  height={24}
-                />
-                <YAxis tick={{ fontSize: 11 }} width={48} />
-                <RechartsTooltip
-                  contentStyle={{
-                    background: "var(--fn-bg-elevated)",
-                    border: "1px solid var(--fn-border-secondary)",
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
-                />
-                <Bar
-                  dataKey="input_tokens"
-                  stackId="a"
-                  fill={IO_COLORS.input}
-                  name={t("tokenUsage.input")}
-                />
-                <Bar
-                  dataKey="output_tokens"
-                  stackId="a"
-                  fill={IO_COLORS.output}
-                  name={t("tokenUsage.output")}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <UsageBarChart
+            data={dayBars}
+            fillParent
+            showLegend
+            series={[
+              {
+                dataKey: "input_tokens",
+                name: t("tokenUsage.input"),
+                fill: IO_COLORS.input,
+                stackId: "a",
+              },
+              {
+                dataKey: "output_tokens",
+                name: t("tokenUsage.output"),
+                fill: IO_COLORS.output,
+                stackId: "a",
+                radius: [3, 3, 0, 0],
+              },
+            ]}
+          />
         )}
       </Card>
     </div>
@@ -439,102 +638,42 @@ function DimensionView({
           <Card
             size="small"
             title={t("tokenUsage.ioBarChart")}
-            className={styles.chartCard}
+            className={`${styles.chartCard} ${styles.dimBarCard}`}
           >
-            <div className={styles.chartArea}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <BarChart
-                  data={chartBuckets}
-                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="var(--fn-border-secondary)"
-                  />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 11 }}
-                    interval="preserveStartEnd"
-                    tickLine={false}
-                    axisLine={false}
-                    height={24}
-                  />
-                  <YAxis tick={{ fontSize: 11 }} width={48} />
-                  <RechartsTooltip
-                    contentStyle={{
-                      background: "var(--fn-bg-elevated)",
-                      border: "1px solid var(--fn-border-secondary)",
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar
-                    dataKey="input_tokens"
-                    stackId="a"
-                    fill={IO_COLORS.input}
-                    name={t("tokenUsage.input")}
-                  />
-                  <Bar
-                    dataKey="output_tokens"
-                    stackId="a"
-                    fill={IO_COLORS.output}
-                    name={t("tokenUsage.output")}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <UsageBarChart
+              data={chartBuckets}
+              height={CHART_HEIGHT.bar}
+              showLegend
+              series={[
+                {
+                  dataKey: "input_tokens",
+                  name: t("tokenUsage.input"),
+                  fill: IO_COLORS.input,
+                  stackId: "a",
+                },
+                {
+                  dataKey: "output_tokens",
+                  name: t("tokenUsage.output"),
+                  fill: IO_COLORS.output,
+                  stackId: "a",
+                  radius: [3, 3, 0, 0],
+                },
+              ]}
+            />
           </Card>
         </div>
       )}
 
-      {granularity === "by_day" && buckets.length > 0 && (
-        <Card
-          size="small"
-          className={`${styles.chartCard} ${styles.trendCard}`}
-        >
-          <div className={styles.chartArea}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <BarChart
-                data={chartBuckets}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--fn-border-secondary)"
-                />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  interval="preserveStartEnd"
-                  tickLine={false}
-                  axisLine={false}
-                  height={24}
-                />
-                <YAxis tick={{ fontSize: 11 }} width={48} />
-                <RechartsTooltip
-                  contentStyle={{
-                    background: "var(--fn-bg-elevated)",
-                    border: "1px solid var(--fn-border-secondary)",
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
-                />
-                <Bar
-                  dataKey="input_tokens"
-                  stackId="a"
-                  fill={IO_COLORS.input}
-                  name={t("tokenUsage.input")}
-                />
-                <Bar
-                  dataKey="output_tokens"
-                  stackId="a"
-                  fill={IO_COLORS.output}
-                  name={t("tokenUsage.output")}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      {granularity === "by_day" && (
+        <DailyTrendCharts
+          data={chartBuckets}
+          emptyText={t("tokenUsage.noRecordsInRange")}
+          tokensTitle={t("tokenUsage.dailyTrend")}
+          turnsTitle={t("tokenUsage.turnsDailyTrend")}
+          inputLabel={t("tokenUsage.input")}
+          outputLabel={t("tokenUsage.output")}
+          turnsLabel={t("tokenUsage.turns")}
+        />
       )}
 
       <Card

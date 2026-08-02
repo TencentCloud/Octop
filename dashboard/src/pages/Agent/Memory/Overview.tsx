@@ -16,6 +16,8 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -204,6 +206,64 @@ export default function Overview({
         t={t}
       />
 
+      <Card
+        className={`${styles.overviewChartCard} ${styles.overviewTurnsCard}`}
+        title={t("memory.overview.turnsTitle", "近 7 天对话轮次")}
+      >
+        {state.firstLoading && !state.growth ? (
+          <Skeleton active paragraph={{ rows: 4 }} />
+        ) : !state.growth || state.growth.series.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t(
+              "memory.overview.turnsEmpty",
+              "近 7 天暂无对话轮次",
+            )}
+          />
+        ) : (
+          <div className={styles.turnsChart}>
+            <ResponsiveContainer width="100%" height={180} minWidth={0}>
+              <LineChart
+                data={state.growth.series}
+                margin={{ top: 12, right: 16, bottom: 8, left: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(date: string) => date.slice(5)}
+                  tick={{ fontSize: 11, fill: "var(--fn-text-tertiary)" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--fn-border-primary, #d9d9d9)" }}
+                  height={30}
+                  dy={4}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  width={36}
+                  tick={{ fontSize: 11, fill: "var(--fn-text-tertiary)" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--fn-border-primary, #d9d9d9)" }}
+                />
+                <ChartTooltip
+                  formatter={(value) => [
+                    value,
+                    t("memory.overview.turns", "对话轮次"),
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="turns"
+                  stroke="#e85d75"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: "#e85d75", strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+
       <div className={styles.overviewCharts}>
         <Card
           className={styles.overviewChartCard}
@@ -218,25 +278,27 @@ export default function Overview({
             />
           ) : (
             <div className={styles.growthChart}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              <ResponsiveContainer width="100%" height={240} minWidth={0}>
                 <BarChart
                   data={state.growth.series}
-                  margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
+                  margin={{ top: 12, right: 16, bottom: 8, left: 4 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="date"
                     tickFormatter={(date: string) => date.slice(5)}
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 11, fill: "var(--fn-text-tertiary)" }}
                     tickLine={false}
-                    axisLine={false}
-                    height={24}
+                    axisLine={{ stroke: "var(--fn-border-primary, #d9d9d9)" }}
+                    height={30}
                     dy={4}
                   />
                   <YAxis
                     allowDecimals={false}
                     width={36}
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 11, fill: "var(--fn-text-tertiary)" }}
+                    tickLine={false}
+                    axisLine={{ stroke: "var(--fn-border-primary, #d9d9d9)" }}
                   />
                   <ChartTooltip
                     formatter={(value) => [
@@ -264,8 +326,8 @@ export default function Overview({
             />
           ) : (
             <div className={styles.kindChart}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <PieChart>
+              <ResponsiveContainer width="100%" height={240} minWidth={0}>
+                <PieChart margin={{ top: 4, right: 4, bottom: 24, left: 4 }}>
                   <Pie
                     data={state.kinds.series}
                     dataKey="count"
@@ -288,7 +350,11 @@ export default function Overview({
                       kindLabel(String(name), t),
                     ]}
                   />
-                  <Legend formatter={(value) => kindLabel(String(value), t)} />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={28}
+                    formatter={(value) => kindLabel(String(value), t)}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>

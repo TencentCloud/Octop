@@ -22,6 +22,7 @@ import {
   type HarnessChunk,
   type ToolCallChunk,
 } from "../../../utils/parseHarnessChunk";
+import { isChatStreamError } from "../../../utils/chatStreamError";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 
@@ -1016,9 +1017,24 @@ function closeToolCall(
 
 /** Mark every still-streaming assistant bubble as done. */
 function finalizeStreamingMessages(state: SessionStreamState): void {
-  state.messages = state.messages.map((m) =>
-    m.status === "streaming" ? { ...m, status: "done" as const } : m,
-  );
+  state.messages = state.messages.map((m) => {
+    if (m.status !== "streaming") return m;
+    // ModelRetryMiddleware may surface failures as assistant text instead of
+    // type=error — promote those to an error bubble so users get guidance + retry.
+    if (
+      m.role === "assistant" &&
+      !m.toolData &&
+      typeof m.content === "string" &&
+      isChatStreamError(m.content)
+    ) {
+      return {
+        ...m,
+        status: "error" as const,
+        errorInfo: { code: "stream_error", source: "model_retry" },
+      };
+    }
+    return { ...m, status: "done" as const };
+  });
   state.streamMsg = "";
   state.streamId = "";
   state.streamBlockType = "";
