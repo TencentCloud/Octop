@@ -205,6 +205,18 @@ function RolePicker({ value, onChange, options }: RolePickerProps) {
   );
 }
 
+function RoleLegend() {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.roleLegend} role="note">
+      <span className={styles.roleLegendLabel}>
+        {t("adminUsers.roleLegendTitle")}
+      </span>
+      <p className={styles.roleLegendText}>{t("adminUsers.roleLegend")}</p>
+    </div>
+  );
+}
+
 function UserCardGrid({
   rows,
   loading,
@@ -751,50 +763,53 @@ export default function AdminUsersPage() {
       title={t("pageShell.adminUsers.title")}
       subtitle={t("pageShell.adminUsers.subtitle")}
     >
-      <div className={expertStyles.gridToolbar} style={{ marginBottom: 16 }}>
-        <span className={expertStyles.gridCount}>
-          {t("adminUsers.totalUsers", { count: rows.length })}
-        </span>
-        <div className={expertStyles.gridToolbarRight}>
-          <Segmented
-            size="small"
-            value={viewMode}
-            onChange={(v) => setViewMode(v as "table" | "card")}
-            options={[
-              {
-                value: "card",
-                label: (
-                  <span className={expertStyles.viewModeLabel}>
-                    <LayoutGrid size={14} />
-                    {t("adminUsers.viewCard", "卡片")}
-                  </span>
-                ),
-              },
-              {
-                value: "table",
-                label: (
-                  <span className={expertStyles.viewModeLabel}>
-                    <List size={14} />
-                    {t("adminUsers.viewTable", "表格")}
-                  </span>
-                ),
-              },
-            ]}
-          />
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={() => void refreshAll()}
-          >
-            {t("common.refresh")}
-          </Button>
-          <Button
-            type="primary"
-            icon={<Plus size={14} />}
-            onClick={() => setCreateOpen(true)}
-          >
-            {t("adminUsers.newUser")}
-          </Button>
+      <div className={styles.pageTop}>
+        <div className={expertStyles.gridToolbar}>
+          <span className={expertStyles.gridCount}>
+            {t("adminUsers.totalUsers", { count: rows.length })}
+          </span>
+          <div className={expertStyles.gridToolbarRight}>
+            <Segmented
+              size="small"
+              value={viewMode}
+              onChange={(v) => setViewMode(v as "table" | "card")}
+              options={[
+                {
+                  value: "card",
+                  label: (
+                    <span className={expertStyles.viewModeLabel}>
+                      <LayoutGrid size={14} />
+                      {t("adminUsers.viewCard", "卡片")}
+                    </span>
+                  ),
+                },
+                {
+                  value: "table",
+                  label: (
+                    <span className={expertStyles.viewModeLabel}>
+                      <List size={14} />
+                      {t("adminUsers.viewTable", "表格")}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+            <Button
+              icon={<RefreshCw size={14} />}
+              onClick={() => void refreshAll()}
+            >
+              {t("common.refresh")}
+            </Button>
+            <Button
+              type="primary"
+              icon={<Plus size={14} />}
+              onClick={() => setCreateOpen(true)}
+            >
+              {t("adminUsers.newUser")}
+            </Button>
+          </div>
         </div>
+        <RoleLegend />
       </div>
 
       {showCardView ? (

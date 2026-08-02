@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  Alert,
   Button,
+  Collapse,
   Empty,
   Input,
   Modal,
@@ -12,9 +14,12 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Package, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Package, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
+import { apiErrorMessage } from "../../../utils/apiError";
+import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
+import styles from "./index.module.less";
 
 const { Text, Paragraph } = Typography;
 
@@ -55,9 +60,7 @@ export function InstalledPluginsPanel() {
       setInstallUrl("");
       await fetchPlugins();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("plugins.installFailed"),
-      );
+      message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
     } finally {
       setInstalling(false);
     }
@@ -69,9 +72,7 @@ export function InstalledPluginsPanel() {
       message.success(t("plugins.uninstallSuccess"));
       await fetchPlugins();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("plugins.uninstallFailed"),
-      );
+      message.error(apiErrorMessage(err, t("plugins.uninstallFailed"), t));
     }
   };
 
@@ -146,27 +147,65 @@ export function InstalledPluginsPanel() {
   ];
 
   return (
-    <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 16,
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <Paragraph type="secondary" style={{ margin: 0, maxWidth: 560 }}>
-          {t("plugins.adminHint")}
-        </Paragraph>
-        <Button
-          type="primary"
-          icon={<Plus size={16} />}
-          onClick={() => setInstallOpen(true)}
-        >
-          {t("plugins.install")}
-        </Button>
-      </div>
+    <div className={styles.panel}>
+      <TabPanelHeader
+        icon={<Package size={22} />}
+        title={t("plugins.tabInstalled")}
+        description={t("plugins.adminHint")}
+        actions={
+          <Button
+            type="primary"
+            icon={<Plus size={16} />}
+            onClick={() => setInstallOpen(true)}
+          >
+            {t("plugins.install")}
+          </Button>
+        }
+      />
+
+      <Collapse
+        className={styles.guide}
+        items={[
+          {
+            key: "guide",
+            label: (
+              <span className={styles.guideLabel}>
+                <BookOpen size={15} />
+                {t("plugins.guideTitle")}
+              </span>
+            ),
+            children: (
+              <div className={styles.guideBody}>
+                <div className={styles.guideSection}>
+                  <Text strong>{t("plugins.guideDevelopTitle")}</Text>
+                  <Paragraph className={styles.guideText}>
+                    {t("plugins.guideDevelopBody")}
+                  </Paragraph>
+                </div>
+                <div className={styles.guideSection}>
+                  <Text strong>{t("plugins.guidePackageTitle")}</Text>
+                  <Paragraph className={styles.guideText}>
+                    {t("plugins.guidePackageBody")}
+                  </Paragraph>
+                </div>
+                <div className={styles.guideSection}>
+                  <Text strong>{t("plugins.guideImportTitle")}</Text>
+                  <Paragraph className={styles.guideText}>
+                    {t("plugins.guideImportBody")}
+                  </Paragraph>
+                </div>
+                <div className={styles.guideSection}>
+                  <Text strong>{t("plugins.guideExampleTitle")}</Text>
+                  <pre className={styles.codeBlock}>
+                    {t("plugins.guideExampleYaml")}
+                  </pre>
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
+
       <Table
         rowKey="id"
         loading={loading}
@@ -192,16 +231,20 @@ export function InstalledPluginsPanel() {
         okText={t("plugins.install")}
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          <Text type="secondary">{t("plugins.installUrlHint")}</Text>
+          <Alert
+            type="info"
+            showIcon
+            message={t("plugins.installUrlHint")}
+          />
           <Input
             prefix={<Package size={16} />}
-            placeholder="https://example.com/my-plugin.zip"
+            placeholder={t("plugins.installUrlPlaceholder")}
             value={installUrl}
             onChange={(e) => setInstallUrl(e.target.value)}
             onPressEnter={() => void handleInstall()}
           />
         </Space>
       </Modal>
-    </>
+    </div>
   );
 }

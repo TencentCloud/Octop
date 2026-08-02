@@ -1,5 +1,34 @@
+.panel {
+  width: 100%;
+  min-width: 0;
+}
+
 .toolbar {
   margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--fn-bg-layout, var(--fn-bg-page, transparent));
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+}
+
+.filterForm {
+  margin-bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: flex-end;
+}
+
+.filterSelect {
+  min-width: 140px;
+}
+
+.filterSelectWide {
+  min-width: 200px;
+}
+
+.filterLimit {
+  width: 80px;
 }
 
 /* Mobile item list for the audit log tab.

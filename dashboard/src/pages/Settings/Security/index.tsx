@@ -1,43 +1,43 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Button,
-  Card,
   Form,
   Input,
   Modal,
   Select,
-  Space,
   Switch,
-  Tabs,
   Typography,
 } from "antd";
 import { message } from "@/utils/antdMessage";
-
+import {
+  EyeOff,
+  FileSearch,
+  FolderLock,
+  ScrollText,
+  ShieldAlert,
+  UserCheck,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
+import { apiErrorMessage } from "../../../utils/apiError";
 import {
   securityApi,
   type FilesystemRule,
   type SecurityPolicy,
 } from "../../../api/modules/security";
+import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
+import tabStyles from "../AdvancedSettings/tabContent.module.less";
+import SettingsTabBar from "../shared/SettingsTabBar";
 import AuditLogPanel from "./AuditLogPanel";
 import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
 import styles from "./index.module.less";
 
-const { Title, Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { confirm } = Modal;
 const { TextArea } = Input;
 
 const DEFAULT_HITL_TOOLS = ["bash", "execute", "write_file", "edit_file"];
-
-const POLICY_TABS = new Set([
-  "hitl",
-  "filesystem",
-  "pii",
-  "tool_guard",
-  "skill_scan",
-]);
 
 type SecurityTabKey =
   | "hitl"
@@ -46,6 +46,43 @@ type SecurityTabKey =
   | "tool_guard"
   | "skill_scan"
   | "audit";
+
+const TABS: {
+  key: SecurityTabKey;
+  labelKey: string;
+  icon: ReactNode;
+}[] = [
+  {
+    key: "hitl",
+    labelKey: "security.tabHitl",
+    icon: <UserCheck size={15} />,
+  },
+  {
+    key: "filesystem",
+    labelKey: "security.tabFilesystem",
+    icon: <FolderLock size={15} />,
+  },
+  {
+    key: "pii",
+    labelKey: "security.tabPii",
+    icon: <EyeOff size={15} />,
+  },
+  {
+    key: "tool_guard",
+    labelKey: "security.tabToolGuard",
+    icon: <ShieldAlert size={15} />,
+  },
+  {
+    key: "skill_scan",
+    labelKey: "security.tabSkillScan",
+    icon: <FileSearch size={15} />,
+  },
+  {
+    key: "audit",
+    labelKey: "security.tabAudit",
+    icon: <ScrollText size={15} />,
+  },
+];
 
 function parseTab(raw: string | null): SecurityTabKey {
   if (
@@ -74,6 +111,26 @@ function textToRules(text: string | undefined): FilesystemRule[] {
   return [{ operations: ["read", "write"], paths, mode: "deny" }];
 }
 
+function PolicyFooter({
+  saving,
+  onSave,
+}: {
+  saving: boolean;
+  onSave: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.footer}>
+      <Button type="primary" loading={saving} onClick={onSave}>
+        {t("security.saveAll")}
+      </Button>
+      <Text type="secondary" className={styles.runtimeHint}>
+        {t("security.saveAllHint")}
+      </Text>
+    </div>
+  );
+}
+
 export default function SecuritySettingsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -89,14 +146,13 @@ export default function SecuritySettingsPage() {
     setActiveTab(parseTab(searchParams.get("tab")));
   }, [searchParams]);
 
-  const selectTab = (key: string) => {
-    const tab = parseTab(key);
-    setActiveTab(tab);
-    if (tab === "hitl") {
+  const selectTab = (key: SecurityTabKey) => {
+    setActiveTab(key);
+    if (key === "hitl") {
       searchParams.delete("tab");
       setSearchParams(searchParams, { replace: true });
     } else {
-      setSearchParams({ tab }, { replace: true });
+      setSearchParams({ tab: key }, { replace: true });
     }
   };
 
@@ -119,7 +175,7 @@ export default function SecuritySettingsPage() {
         tool_guard_mode: cfg.tool_guard?.mode ?? "warn",
       });
     } catch (err) {
-      message.error(t("security.loadError"));
+      message.error(apiErrorMessage(err, t("security.loadError"), t));
       console.error(err);
     } finally {
       setLoading(false);
@@ -167,224 +223,237 @@ export default function SecuritySettingsPage() {
       message.success(t("security.saved"));
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
-      const detail = err instanceof Error ? err.message : null;
-      message.error(detail || t("security.saveFailed"));
+      message.error(apiErrorMessage(err, t("security.saveFailed"), t));
       console.error(err);
     } finally {
       setSaving(false);
     }
   };
 
-  const isPolicyTab = POLICY_TABS.has(activeTab);
+  const saveFooter = (
+    <PolicyFooter saving={saving} onSave={() => void handleSave()} />
+  );
+
+  const renderPolicyTab = () => {
+    switch (activeTab) {
+      case "hitl":
+        return (
+          <>
+            <TabPanelHeader
+              icon={<UserCheck size={22} />}
+              title={t("security.tabHitl")}
+              description={t("security.hitlDesc")}
+            />
+            <div className={tabStyles.formFields}>
+              <Form.Item
+                name="hitl_enabled"
+                label={t("security.hitlEnable")}
+                valuePropName="checked"
+                extra={t("security.hitlHint")}
+              >
+                <Switch
+                  onChange={(checked) => {
+                    if (checked) {
+                      confirm({
+                        title: t("security.hitlEnable"),
+                        content: t("security.hitlEnableWarning"),
+                        okText: t("common.confirm"),
+                        cancelText: t("common.cancel"),
+                        onCancel: () => {
+                          form.setFieldValue("hitl_enabled", false);
+                        },
+                      });
+                    }
+                  }}
+                />
+              </Form.Item>
+              <Form.Item name="hitl_tools" label={t("security.hitlTools")}>
+                <Select
+                  mode="tags"
+                  tokenSeparators={[","]}
+                  options={DEFAULT_HITL_TOOLS.map((v) => ({
+                    value: v,
+                    label: v,
+                  }))}
+                />
+              </Form.Item>
+            </div>
+            {saveFooter}
+          </>
+        );
+      case "filesystem":
+        return (
+          <>
+            <TabPanelHeader
+              icon={<FolderLock size={22} />}
+              title={t("security.tabFilesystem")}
+              description={t("security.fsDesc")}
+            />
+            <div className={tabStyles.formFieldsWide}>
+              <Form.Item
+                name="fs_enabled"
+                label={t("security.fsEnable")}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item
+                name="fs_paths"
+                label={t("security.fsPaths")}
+                extra={t("security.fsHint")}
+              >
+                <TextArea
+                  rows={10}
+                  className={styles.pathTextArea}
+                  placeholder={"/etc/**\n/root/**"}
+                />
+              </Form.Item>
+            </div>
+            {saveFooter}
+          </>
+        );
+      case "pii":
+        return (
+          <>
+            <TabPanelHeader
+              icon={<EyeOff size={22} />}
+              title={t("security.tabPii")}
+              description={t("security.piiDesc")}
+            />
+            <div className={tabStyles.formFields}>
+              <Form.Item
+                name="pii_enabled"
+                label={t("security.piiEnable")}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item name="pii_strategy" label={t("security.piiStrategy")}>
+                <Select
+                  options={[
+                    { value: "mask", label: t("security.piiMask") },
+                    { value: "redact", label: t("security.piiRedact") },
+                    { value: "block", label: t("security.piiBlock") },
+                    { value: "hash", label: t("security.piiHash") },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+            {saveFooter}
+          </>
+        );
+      case "tool_guard":
+        return (
+          <>
+            <TabPanelHeader
+              icon={<ShieldAlert size={22} />}
+              title={t("security.tabToolGuard")}
+              description={t("security.toolGuardDesc")}
+            />
+            <div className={tabStyles.formFields}>
+              <Form.Item
+                name="tool_guard_enabled"
+                label={t("security.toolGuardEnable")}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item
+                name="tool_guard_mode"
+                label={t("security.toolGuardMode")}
+                extra={t("security.toolGuardHint")}
+              >
+                <Select
+                  options={[
+                    {
+                      value: "block",
+                      label: t("security.toolGuardBlock"),
+                    },
+                    {
+                      value: "require_approval",
+                      label: t("security.toolGuardRequireApproval"),
+                    },
+                    { value: "warn", label: t("security.toolGuardWarn") },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+            <div className={styles.rulesSection}>
+              <h4 className={styles.rulesSectionTitle}>
+                {t("security.rulesSection")}
+              </h4>
+              <ToolGuardRulesPanel />
+            </div>
+            {saveFooter}
+          </>
+        );
+      case "skill_scan":
+        return (
+          <>
+            <TabPanelHeader
+              icon={<FileSearch size={22} />}
+              title={t("security.tabSkillScan")}
+              description={t("security.skillScanDesc")}
+            />
+            <div className={tabStyles.formFields}>
+              <Form.Item
+                name="skill_scan_mode"
+                label={t("security.skillScanMode")}
+                extra={t("security.skillScanHint")}
+              >
+                <Select
+                  options={[
+                    { value: "off", label: t("security.skillScanOff") },
+                    { value: "warn", label: t("security.skillScanWarn") },
+                    {
+                      value: "block",
+                      label: t("security.skillScanBlock"),
+                    },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+            {saveFooter}
+          </>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
-    <PageShell.FillTabs
+    <PageShell.Tabbed
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
+      tabBar={
+        <SettingsTabBar
+          tabs={TABS}
+          activeKey={activeTab}
+          onChange={selectTab}
+        />
+      }
     >
-      <div className={styles.wrap}>
-        {isPolicyTab && (
-          <Paragraph type="secondary" style={{ flexShrink: 0 }}>
-            {t("security.intro")}
-          </Paragraph>
-        )}
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={loading}
-          component={false}
-        >
-          <Tabs
-            activeKey={activeTab}
-            onChange={selectTab}
-            destroyOnHidden={false}
-            items={[
-              {
-                key: "hitl",
-                forceRender: true,
-                label: t("security.tabHitl"),
-                children: (
-                  <Card size="small">
-                    <Form.Item
-                      name="hitl_enabled"
-                      label={t("security.hitlEnable")}
-                      valuePropName="checked"
-                    >
-                      <Switch
-                        onChange={(checked) => {
-                          if (checked) {
-                            confirm({
-                              title: t("security.hitlEnable"),
-                              content: t("security.hitlEnableWarning"),
-                              okText: t("common.confirm"),
-                              cancelText: t("common.cancel"),
-                              onCancel: () => {
-                                form.setFieldValue("hitl_enabled", false);
-                              },
-                            });
-                          }
-                        }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      name="hitl_tools"
-                      label={t("security.hitlTools")}
-                    >
-                      <Select
-                        mode="tags"
-                        tokenSeparators={[","]}
-                        options={DEFAULT_HITL_TOOLS.map((v) => ({
-                          value: v,
-                          label: v,
-                        }))}
-                      />
-                    </Form.Item>
-                    <Text type="secondary">{t("security.hitlHint")}</Text>
-                  </Card>
-                ),
-              },
-              {
-                key: "filesystem",
-                forceRender: true,
-                label: t("security.tabFilesystem"),
-                children: (
-                  <Card size="small">
-                    <Form.Item
-                      name="fs_enabled"
-                      label={t("security.fsEnable")}
-                      valuePropName="checked"
-                    >
-                      <Switch />
-                    </Form.Item>
-                    <Form.Item name="fs_paths" label={t("security.fsPaths")}>
-                      <TextArea
-                        rows={8}
-                        placeholder="/etc/**&#10;/root/**"
-                      />
-                    </Form.Item>
-                    <Text type="secondary">{t("security.fsHint")}</Text>
-                  </Card>
-                ),
-              },
-              {
-                key: "pii",
-                forceRender: true,
-                label: t("security.tabPii"),
-                children: (
-                  <Card size="small">
-                    <Form.Item
-                      name="pii_enabled"
-                      label={t("security.piiEnable")}
-                      valuePropName="checked"
-                    >
-                      <Switch />
-                    </Form.Item>
-                    <Form.Item
-                      name="pii_strategy"
-                      label={t("security.piiStrategy")}
-                    >
-                      <Select
-                        options={[
-                          { value: "mask", label: t("security.piiMask") },
-                          { value: "redact", label: t("security.piiRedact") },
-                          { value: "block", label: t("security.piiBlock") },
-                          { value: "hash", label: t("security.piiHash") },
-                        ]}
-                      />
-                    </Form.Item>
-                  </Card>
-                ),
-              },
-              {
-                key: "tool_guard",
-                forceRender: true,
-                label: t("security.tabToolGuard"),
-                children: (
-                  <Card size="small">
-                    <Form.Item
-                      name="tool_guard_enabled"
-                      label={t("security.toolGuardEnable")}
-                      valuePropName="checked"
-                    >
-                      <Switch />
-                    </Form.Item>
-                    <Form.Item
-                      name="tool_guard_mode"
-                      label={t("security.toolGuardMode")}
-                    >
-                      <Select
-                        options={[
-                          {
-                            value: "block",
-                            label: t("security.toolGuardBlock"),
-                          },
-                          {
-                            value: "require_approval",
-                            label: t("security.toolGuardRequireApproval"),
-                          },
-                          { value: "warn", label: t("security.toolGuardWarn") },
-                        ]}
-                      />
-                    </Form.Item>
-                    <Text type="secondary">{t("security.toolGuardHint")}</Text>
-                    <div style={{ marginTop: 16 }}>
-                      <ToolGuardRulesPanel />
-                    </div>
-                  </Card>
-                ),
-              },
-              {
-                key: "skill_scan",
-                forceRender: true,
-                label: t("security.tabSkillScan"),
-                children: (
-                  <Card size="small">
-                    <Form.Item
-                      name="skill_scan_mode"
-                      label={t("security.skillScanMode")}
-                    >
-                      <Select
-                        options={[
-                          { value: "off", label: t("security.skillScanOff") },
-                          { value: "warn", label: t("security.skillScanWarn") },
-                          {
-                            value: "block",
-                            label: t("security.skillScanBlock"),
-                          },
-                        ]}
-                      />
-                    </Form.Item>
-                    <Text type="secondary">{t("security.skillScanHint")}</Text>
-                  </Card>
-                ),
-              },
-              {
-                key: "audit",
-                forceRender: false,
-                label: t("security.tabAudit"),
-                children: <AuditLogPanel />,
-              },
-            ]}
+      {activeTab === "audit" ? (
+        <div className={styles.panel}>
+          <TabPanelHeader
+            icon={<ScrollText size={22} />}
+            title={t("security.tabAudit")}
+            description={t("security.auditDesc")}
           />
-          {isPolicyTab && (
-            <>
-              <Space style={{ marginTop: 16 }}>
-                <Button
-                  type="primary"
-                  loading={saving}
-                  onClick={() => void handleSave()}
-                >
-                  {t("common.save")}
-                </Button>
-              </Space>
-              <Title level={5} style={{ marginTop: 24 }}>
-                {t("security.runtimeTitle")}
-              </Title>
-              <Text type="secondary">{t("security.runtimeHint")}</Text>
-            </>
-          )}
-        </Form>
-      </div>
-    </PageShell.FillTabs>
+          <AuditLogPanel />
+        </div>
+      ) : null}
+      {/* Keep Form mounted (visually hidden on audit) so policy values persist. */}
+      <Form
+        form={form}
+        layout="vertical"
+        disabled={loading}
+        className={styles.panel}
+        hidden={activeTab === "audit"}
+        preserve
+      >
+        {activeTab !== "audit" ? renderPolicyTab() : null}
+      </Form>
+    </PageShell.Tabbed>
   );
 }

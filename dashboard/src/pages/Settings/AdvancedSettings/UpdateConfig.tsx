@@ -19,6 +19,7 @@ import {
   clearStoredUpdateStatus,
   storeUpdateStatus,
 } from "../../../utils/updateStatusCache";
+import { TabPanelHeader } from "./TabPanelHeader";
 import styles from "./UpdateConfig.module.less";
 
 export default function UpdateConfig() {
@@ -133,9 +134,11 @@ export default function UpdateConfig() {
 
   return (
     <div className={styles.container}>
-      <p className={styles.description}>
-        {t("advancedSettings.update.description")}
-      </p>
+      <TabPanelHeader
+        icon={<RefreshCw size={22} />}
+        title={t("advancedSettings.update.title")}
+        description={t("advancedSettings.update.description")}
+      />
 
       {/* Version info cards */}
       <div className={styles.versionGrid}>

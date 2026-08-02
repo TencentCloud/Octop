@@ -1,9 +1,6 @@
 .page {
-  padding: 24px;
-
-  @media (max-width: 767px) {
-    padding: 16px 12px;
-  }
+  width: 100%;
+  min-width: 0;
 }
 
 /* ---- Section ---- */
@@ -51,15 +48,8 @@
 .tableCard {
   background: var(--fn-bg-primary);
   border: 1px solid var(--fn-border-primary);
-  border-radius: var(--fn-radius-lg);
-  box-shadow: var(--fn-shadow-sm);
+  border-radius: var(--fn-radius-md, 8px);
   overflow: hidden;
-  transition: all var(--fn-transition);
-
-  &:hover {
-    box-shadow: var(--fn-shadow-md);
-    border-color: var(--fn-border-input);
-  }
 }
 
 /* ---- Toolbar ---- */

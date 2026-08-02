@@ -1,20 +1,60 @@
-.wrap {
-  max-width: 960px;
+.panel {
   width: 100%;
-  flex: 1;
-  min-height: 0;
+  min-width: 0;
+
+  &[hidden] {
+    display: none !important;
+  }
+}
+
+.pathTextArea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.footer {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--fn-border-primary);
+  max-width: 720px;
+}
+
+.runtimeHint {
+  flex: 1;
+  min-width: 200px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rulesSection {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--fn-border-primary);
+}
+
+.rulesSectionTitle {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fn-text-primary);
 }
 
 .rulesPanel {
-  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .rulesLoading {
   display: flex;
   justify-content: center;
-  padding: 24px 0;
+  padding: 40px 0;
 }
 
 .rulesMaintain {
@@ -37,15 +77,38 @@
 }
 
 .ruleDetail {
-  max-width: 720px;
+  max-width: 960px;
 }
 
 .yamlEditor {
-  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 16px;
+  background: var(--fn-bg-layout, var(--fn-bg-page, transparent));
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+}
+
+.yamlEditorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .yamlTextArea {
-  margin-top: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
+  line-height: 1.55;
+}
+
+.yamlActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rulesTable {
+  width: 100%;
 }

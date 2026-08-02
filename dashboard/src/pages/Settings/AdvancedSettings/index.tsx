@@ -1,6 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import {
+  Archive,
+  Lock,
+  Mic2,
+  RefreshCw,
+  Search,
+  Variable,
+  Activity,
+} from "lucide-react";
 import EnvironmentsPage from "../Environments";
 import SearchConfigPage from "../SearchConfig";
 import { VoiceSettingsPanel } from "../Voice";
@@ -9,7 +18,7 @@ import BackupRestorePanel from "../BackupRestore";
 import { HttpsSettingsPanel } from "../HttpsSettings";
 import UpdateConfig from "./UpdateConfig";
 import PageShell from "../../../layouts/PageShell";
-import styles from "./index.module.less";
+import SettingsTabBar from "../shared/SettingsTabBar";
 import tabStyles from "./tabContent.module.less";
 
 type TabKey =
@@ -21,14 +30,18 @@ type TabKey =
   | "https"
   | "updates";
 
-const TABS: { key: TabKey; labelKey: string }[] = [
-  { key: "env-vars", labelKey: "nav.environments" },
-  { key: "search", labelKey: "nav.search" },
-  { key: "voice", labelKey: "nav.voice" },
-  { key: "observability", labelKey: "nav.observability" },
-  { key: "backup", labelKey: "nav.backupRestore" },
-  { key: "https", labelKey: "nav.https" },
-  { key: "updates", labelKey: "nav.checkUpdates" },
+const TABS: { key: TabKey; labelKey: string; icon: ReactNode }[] = [
+  { key: "env-vars", labelKey: "nav.environments", icon: <Variable size={15} /> },
+  { key: "search", labelKey: "nav.search", icon: <Search size={15} /> },
+  { key: "voice", labelKey: "nav.voice", icon: <Mic2 size={15} /> },
+  {
+    key: "observability",
+    labelKey: "nav.observability",
+    icon: <Activity size={15} />,
+  },
+  { key: "backup", labelKey: "nav.backupRestore", icon: <Archive size={15} /> },
+  { key: "https", labelKey: "nav.https", icon: <Lock size={15} /> },
+  { key: "updates", labelKey: "nav.checkUpdates", icon: <RefreshCw size={15} /> },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -90,26 +103,14 @@ export default function AdvancedSettingsPage() {
       title={t("pageShell.adminAdvanced.title")}
       subtitle={t("pageShell.adminAdvanced.subtitle")}
       tabBar={
-        <div className={styles.tabBar} role="tablist">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              role="tab"
-              aria-selected={activeTab === tab.key}
-              className={`${styles.tab} ${
-                activeTab === tab.key ? styles.active : ""
-              }`}
-              onClick={() => selectTab(tab.key)}
-            >
-              {t(tab.labelKey)}
-            </button>
-          ))}
-        </div>
+        <SettingsTabBar
+          tabs={TABS}
+          activeKey={activeTab}
+          onChange={selectTab}
+        />
       }
     >
-      <div className={styles.tabInner}>
-        <div className={tabStyles.panel}>{renderTab()}</div>
-      </div>
+      <div className={tabStyles.panel}>{renderTab()}</div>
     </PageShell.Tabbed>
   );
 }

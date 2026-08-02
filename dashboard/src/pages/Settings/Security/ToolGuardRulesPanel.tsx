@@ -5,7 +5,6 @@ import {
   Collapse,
   Input,
   Popconfirm,
-  Space,
   Spin,
   Table,
   Tag,
@@ -179,14 +178,33 @@ export default function ToolGuardRulesPanel() {
             {t("security.toolGuardRulesMaintain", { path: rulesPath })}
           </Paragraph>
         }
-        style={{ marginBottom: 12 }}
       />
 
       <div className={styles.yamlEditor}>
-        <Text strong>{t("security.toolGuardYamlEditor")}</Text>
+        <div className={styles.yamlEditorHeader}>
+          <Text strong>{t("security.toolGuardYamlEditor")}</Text>
+          <div className={styles.yamlActions}>
+            <Button
+              type="primary"
+              loading={saving}
+              disabled={!yamlDirty}
+              onClick={() => void handleSaveYaml()}
+            >
+              {t("security.toolGuardSaveRules")}
+            </Button>
+            <Popconfirm
+              title={t("security.toolGuardResetConfirm")}
+              onConfirm={() => void handleReset()}
+            >
+              <Button loading={resetting}>
+                {t("security.toolGuardResetRules")}
+              </Button>
+            </Popconfirm>
+          </div>
+        </div>
         <TextArea
           className={styles.yamlTextArea}
-          rows={14}
+          rows={16}
           value={yamlDraft}
           onChange={(e) => {
             setYamlDraft(e.target.value);
@@ -194,33 +212,16 @@ export default function ToolGuardRulesPanel() {
           }}
           spellCheck={false}
         />
-        <Space style={{ marginTop: 8 }}>
-          <Button
-            type="primary"
-            loading={saving}
-            disabled={!yamlDirty}
-            onClick={() => void handleSaveYaml()}
-          >
-            {t("security.toolGuardSaveRules")}
-          </Button>
-          <Popconfirm
-            title={t("security.toolGuardResetConfirm")}
-            onConfirm={() => void handleReset()}
-          >
-            <Button loading={resetting}>
-              {t("security.toolGuardResetRules")}
-            </Button>
-          </Popconfirm>
-        </Space>
       </div>
 
       <Table
         size="small"
         rowKey="id"
-        style={{ marginTop: 16 }}
+        className={styles.rulesTable}
         pagination={{ pageSize: 10, hideOnSinglePage: true }}
         columns={columns}
         dataSource={rules}
+        scroll={{ x: "max-content" }}
         expandable={{
           expandedRowRender: (row) => (
             <div className={styles.ruleDetail}>

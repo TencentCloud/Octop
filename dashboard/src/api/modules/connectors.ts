@@ -93,6 +93,8 @@ export interface CustomMcpServerSpec {
   args?: string[];
   env?: Record<string, string>;
   enabled?: boolean;
+  /** Friendly label shown in chat / connector lists (optional). */
+  display_name?: string;
 }
 
 export type CustomMcpServers = Record<string, CustomMcpServerSpec>;

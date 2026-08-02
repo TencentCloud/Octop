@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  Card,
   Drawer,
   Empty,
   Form,
@@ -12,7 +11,7 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Settings2 } from "lucide-react";
+import { Settings2, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CardSkeleton } from "../../../components/Skeleton";
 import {
@@ -22,9 +21,11 @@ import {
   type PluginConfigField,
 } from "../../../api/modules/plugins";
 import { useAgent } from "../../../context/AgentContext";
+import { apiErrorMessage } from "../../../utils/apiError";
+import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 function buildPluginsConfig(tools: AgentPluginTool[]): AgentPluginsConfig {
   const out: AgentPluginsConfig = {};
@@ -100,7 +101,7 @@ export function AgentToolsPanel() {
         setTools(data.tools || []);
       }
     } catch (err) {
-      message.error(t("plugins.loadError"));
+      message.error(apiErrorMessage(err, t("plugins.loadError"), t));
       console.error(err);
     } finally {
       if (agentRef.current === agentId) setLoading(false);
@@ -131,8 +132,8 @@ export function AgentToolsPanel() {
     try {
       await persist(next);
       message.success(t("plugins.saved"));
-    } catch {
-      message.error(t("plugins.saveFailed"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("plugins.saveFailed"), t));
     } finally {
       setSavingKey(null);
     }
@@ -156,8 +157,8 @@ export function AgentToolsPanel() {
       await persist(next);
       message.success(t("plugins.saved"));
       setConfigTool(null);
-    } catch {
-      message.error(t("plugins.saveFailed"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("plugins.saveFailed"), t));
     } finally {
       setSavingKey(null);
     }
@@ -174,8 +175,12 @@ export function AgentToolsPanel() {
   }, [tools]);
 
   return (
-    <>
-      <Paragraph className={styles.hint}>{t("plugins.agentHint")}</Paragraph>
+    <div className={styles.panel}>
+      <TabPanelHeader
+        icon={<Wrench size={22} />}
+        title={t("plugins.tabAgentTools")}
+        description={t("plugins.agentHint")}
+      />
 
       {loading ? (
         <CardSkeleton count={3} />
@@ -186,12 +191,8 @@ export function AgentToolsPanel() {
       ) : (
         <div className={styles.list}>
           {grouped.map(([pluginId, pluginTools]) => (
-            <Card
-              key={pluginId}
-              title={pluginId}
-              size="small"
-              className={styles.card}
-            >
+            <section key={pluginId} className={styles.group}>
+              <h4 className={styles.groupTitle}>{pluginId}</h4>
               {pluginTools.map((tool) => {
                 const key = toolKey(tool);
                 const busy = savingKey === key;
@@ -224,7 +225,7 @@ export function AgentToolsPanel() {
                   </div>
                 );
               })}
-            </Card>
+            </section>
           ))}
         </div>
       )}
@@ -249,6 +250,6 @@ export function AgentToolsPanel() {
           {configTool?.config_fields?.map(renderConfigField)}
         </Form>
       </Drawer>
-    </>
+    </div>
   );
 }

@@ -149,16 +149,12 @@ export default function AuditLogPanel() {
   );
 
   return (
-    <div>
+    <div className={styles.panel}>
       <div className={styles.toolbar}>
         <Form<FilterValues>
           form={form}
           layout={isMobile ? "vertical" : "inline"}
-          style={{
-            marginBottom: 0,
-            gap: isMobile ? 8 : 12,
-            flex: 1,
-          }}
+          className={styles.filterForm}
           onFinish={fetchAudit}
           initialValues={{ limit: 100 }}
         >
@@ -170,6 +166,7 @@ export default function AuditLogPanel() {
                 { value: "_system", label: t("adminAudit.actorSystem") },
                 { value: "_admin", label: t("adminAudit.actorAdmin") },
               ]}
+              className={styles.filterSelect}
             />
           </Form.Item>
           <Form.Item label={t("adminAudit.action")} name="action">
@@ -182,6 +179,7 @@ export default function AuditLogPanel() {
                 label: formatAction(a),
               }))}
               optionFilterProp="label"
+              className={styles.filterSelectWide}
             />
           </Form.Item>
           <Form.Item
@@ -199,7 +197,7 @@ export default function AuditLogPanel() {
                 { value: 200, label: "200" },
                 { value: 500, label: "500" },
               ]}
-              style={{ width: 80 }}
+              className={styles.filterLimit}
             />
           </Form.Item>
           <Form.Item>

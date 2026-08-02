@@ -1,8 +1,75 @@
+.panel {
+  width: 100%;
+  min-width: 0;
+}
+
 .hint {
   margin-bottom: 20px;
   color: var(--fn-text-tertiary);
   font-size: 14px;
   line-height: 1.55;
+}
+
+.group {
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-primary);
+  padding: 4px 16px 8px;
+}
+
+.groupTitle {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.guide {
+  margin-bottom: 16px;
+  background: var(--fn-bg-layout, var(--fn-bg-secondary));
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+}
+
+.guideLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.guideBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.guideSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.guideText {
+  margin: 0 !important;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.codeBlock {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-code, var(--fn-bg-secondary));
+  border: 1px solid var(--fn-border-secondary, var(--fn-card-border-normal));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fn-text-primary);
+  white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 .list {
@@ -11,22 +78,17 @@
   gap: 12px;
 }
 
-.card :global(.ant-card-head-title) {
-  font-size: 14px;
-}
-
 .row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--fn-border-subtle);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--fn-border-secondary, var(--fn-border-subtle));
 }
 
 .row:last-child {
   border-bottom: none;
-  padding-bottom: 0;
 }
 
 .meta {

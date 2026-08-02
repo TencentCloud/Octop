@@ -1,17 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Card } from "antd";
+import { Package, Wrench } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
-import advStyles from "../../Settings/AdvancedSettings/index.module.less";
+import SettingsTabBar from "../../Settings/shared/SettingsTabBar";
 import { AgentToolsPanel } from "./AgentToolsPanel";
 import { InstalledPluginsPanel } from "./InstalledPluginsPanel";
 
 type TabKey = "installed" | "agent-tools";
 
-const TABS: { key: TabKey; labelKey: string }[] = [
-  { key: "installed", labelKey: "plugins.tabInstalled" },
-  { key: "agent-tools", labelKey: "plugins.tabAgentTools" },
+const TABS: { key: TabKey; labelKey: string; icon: ReactNode }[] = [
+  {
+    key: "installed",
+    labelKey: "plugins.tabInstalled",
+    icon: <Package size={15} />,
+  },
+  {
+    key: "agent-tools",
+    labelKey: "plugins.tabAgentTools",
+    icon: <Wrench size={15} />,
+  },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -45,31 +53,18 @@ export default function AdminPluginsPage() {
       title={t("pageShell.adminPlugins.title")}
       subtitle={t("pageShell.adminPlugins.subtitle")}
       tabBar={
-        <div className={advStyles.tabBar} role="tablist">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.key}
-              className={`${advStyles.tab} ${
-                activeTab === tab.key ? advStyles.active : ""
-              }`}
-              onClick={() => selectTab(tab.key)}
-            >
-              {t(tab.labelKey)}
-            </button>
-          ))}
-        </div>
+        <SettingsTabBar
+          tabs={TABS}
+          activeKey={activeTab}
+          onChange={selectTab}
+        />
       }
     >
-      <Card>
-        {activeTab === "installed" ? (
-          <InstalledPluginsPanel />
-        ) : (
-          <AgentToolsPanel />
-        )}
-      </Card>
+      {activeTab === "installed" ? (
+        <InstalledPluginsPanel />
+      ) : (
+        <AgentToolsPanel />
+      )}
     </PageShell.Tabbed>
   );
 }

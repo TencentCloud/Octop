@@ -1,30 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
-  Card,
   Divider,
   Modal,
   Space,
-  Tag,
   Typography,
   Input,
   Select,
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Mic2, Mic, Volume2, RefreshCw, Check } from "lucide-react";
+import { Mic2, RefreshCw, Check, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   voiceApi,
   type VoicePreset,
   type VoiceProviderRow,
 } from "../../../api/modules/voice";
+import {
+  customProviderLogo,
+  getProviderLogo,
+} from "../../../assets/providers";
 import { invalidateVoiceConfigCache } from "../../../hooks/useVoiceConfig";
-import modelStyles from "../Models/index.module.less";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
-import tabStyles from "../AdvancedSettings/tabContent.module.less";
+import styles from "./index.module.less";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
+
+function voiceLogoForKind(kind: string): string {
+  return getProviderLogo(kind) ?? customProviderLogo;
+}
 
 interface ConfigureState {
   preset: VoicePreset;
@@ -116,8 +121,8 @@ export function VoiceSettingsPanel() {
               region: "ap-guangzhou",
             }
           : preset.kind === "edge"
-          ? { voice_id: "zh-CN-XiaoxiaoNeural" }
-          : { model: preset.kind === "openai" ? "whisper-1" : undefined };
+            ? { voice_id: "zh-CN-XiaoxiaoNeural" }
+            : { model: preset.kind === "openai" ? "whisper-1" : undefined };
       const payload = {
         name: preset.id,
         kind: preset.kind,
@@ -159,35 +164,86 @@ export function VoiceSettingsPanel() {
     const isActive = active[kind] === preset.id;
     const needsSetup =
       preset.requires_key && !configured && preset.kind !== "browser";
+    const logo = voiceLogoForKind(preset.kind);
+
+    const cardClass = [
+      styles.card,
+      isActive ? styles.cardActive : "",
+      needsSetup ? styles.cardSetup : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     return (
-      <Card
+      <div
         key={`${kind}-${preset.id}`}
-        hoverable={needsSetup}
-        className={modelStyles.providerCard}
+        className={cardClass}
+        role={needsSetup ? "button" : undefined}
+        tabIndex={needsSetup ? 0 : undefined}
         onClick={needsSetup ? () => openConfigure(preset) : undefined}
+        onKeyDown={
+          needsSetup
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openConfigure(preset);
+                }
+              }
+            : undefined
+        }
       >
-        <div className={modelStyles.cardContent}>
-          <div className={modelStyles.cardHeader}>
-            <span className={modelStyles.cardName}>
-              {kind === "stt" ? <Mic size={18} /> : <Volume2 size={18} />}
-              <span style={{ marginLeft: 8 }}>{preset.name}</span>
-            </span>
-            <Space size={4}>
-              {preset.free && <Tag color="green">{t("voice.free")}</Tag>}
-              {isActive && (
-                <Tag color="blue" icon={<Check size={12} />}>
-                  {t("voice.active")}
-                </Tag>
-              )}
-              {needsSetup && <Tag>{t("voice.notConfigured")}</Tag>}
-            </Space>
+        <div className={styles.cardHeader}>
+          <div className={styles.logoTile}>
+            <img
+              src={logo}
+              alt={preset.name}
+              className={styles.logo}
+              draggable={false}
+            />
           </div>
-          <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
-            {preset.description}
-          </Paragraph>
-          <Space>
-            {!needsSetup && (
+          <div className={styles.titleBlock}>
+            <div className={styles.nameRow}>
+              <span className={styles.name}>{preset.name}</span>
+            </div>
+            <div className={styles.kind}>{preset.kind}</div>
+          </div>
+          <div className={styles.badges}>
+            {isActive && (
+              <span className={`${styles.badge} ${styles.badgeActive}`}>
+                <Check size={11} />
+                {t("voice.active")}
+              </span>
+            )}
+            {preset.free && (
+              <span className={`${styles.badge} ${styles.badgeFree}`}>
+                {t("voice.free")}
+              </span>
+            )}
+            {needsSetup && (
+              <span className={`${styles.badge} ${styles.badgeSetup}`}>
+                {t("voice.notConfigured")}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className={styles.description}>{preset.description}</p>
+
+        <div className={styles.actions}>
+          {needsSetup ? (
+            <Button
+              size="small"
+              type="primary"
+              icon={<Settings2 size={14} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                openConfigure(preset);
+              }}
+            >
+              {t("voice.configure")}
+            </Button>
+          ) : (
+            <>
               <Button
                 size="small"
                 type={isActive ? "default" : "primary"}
@@ -199,21 +255,22 @@ export function VoiceSettingsPanel() {
               >
                 {isActive ? t("voice.current") : t("voice.setActive")}
               </Button>
-            )}
-            {preset.requires_key && configured && (
-              <Button
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openConfigure(preset);
-                }}
-              >
-                {t("common.edit")}
-              </Button>
-            )}
-          </Space>
+              {preset.requires_key && configured ? (
+                <Button
+                  size="small"
+                  icon={<Settings2 size={14} />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openConfigure(preset);
+                  }}
+                >
+                  {t("common.edit")}
+                </Button>
+              ) : null}
+            </>
+          )}
         </div>
-      </Card>
+      </div>
     );
   };
 
@@ -222,6 +279,7 @@ export function VoiceSettingsPanel() {
       <TabPanelHeader
         icon={<Mic2 size={22} />}
         title={t("nav.voice")}
+        description={t("pageShell.voice.subtitle")}
         actions={
           <Button
             icon={<RefreshCw size={14} />}
@@ -236,17 +294,21 @@ export function VoiceSettingsPanel() {
         <Text type="secondary">{t("voice.loading")}</Text>
       ) : (
         <>
-          <h3 className={tabStyles.sectionTitle}>{t("voice.sttSection")}</h3>
-          <div className={modelStyles.providerCards}>
-            {sttPresets.map((p) => renderPresetCard(p, "stt"))}
-          </div>
+          <section className={styles.section}>
+            <h3 className={styles.sectionTitle}>{t("voice.sttSection")}</h3>
+            <div className={styles.grid}>
+              {sttPresets.map((p) => renderPresetCard(p, "stt"))}
+            </div>
+          </section>
 
-          <Divider />
+          <Divider className={styles.divider} />
 
-          <h3 className={tabStyles.sectionTitle}>{t("voice.ttsSection")}</h3>
-          <div className={modelStyles.providerCards}>
-            {ttsPresets.map((p) => renderPresetCard(p, "tts"))}
-          </div>
+          <section className={styles.section}>
+            <h3 className={styles.sectionTitle}>{t("voice.ttsSection")}</h3>
+            <div className={styles.grid}>
+              {ttsPresets.map((p) => renderPresetCard(p, "tts"))}
+            </div>
+          </section>
         </>
       )}
 

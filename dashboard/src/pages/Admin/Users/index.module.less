@@ -138,6 +138,52 @@
   color: var(--fn-text-tertiary);
 }
 
+/* ── Page header strip: toolbar + role note share left edge ─────── */
+
+.pageTop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+/* Role legend: label + body, same type scale / line-height for alignment */
+.roleLegend {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 9px 12px 9px 11px;
+  border: 1px solid var(--fn-border-secondary);
+  border-left: 3px solid color-mix(in srgb, var(--fn-color-brand, #e85d75) 55%, var(--fn-border-primary));
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+  box-sizing: border-box;
+}
+
+.roleLegendLabel {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+}
+
+.roleLegendText {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--fn-text-tertiary);
+}
+
+@media (max-width: 560px) {
+  .roleLegend {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Card shell ─────────────────────────────────────────────────── */
 
 .userCard {

@@ -9,6 +9,7 @@ export type EditorMode = "visual" | "json";
 export interface ServerCardState {
   key: string;
   name: string;
+  displayName: string;
   transport: CustomMcpTransport;
   url: string;
   headersText: string;
@@ -21,10 +22,20 @@ export interface ServerCardState {
 
 export const EXAMPLE_JSON = `{
   "deepwiki": {
+    "display_name": "DeepWiki",
     "url": "https://mcp.deepwiki.com/mcp",
     "transport": "streamable_http"
   }
 }`;
+
+/** Prefer friendly display name; fall back to technical server id. */
+export function friendlyServerLabel(card: {
+  name: string;
+  displayName?: string;
+}): string {
+  const label = (card.displayName ?? "").trim();
+  return label || card.name.trim() || "mcp-server";
+}
 
 /** Stable accent colors for custom MCP cards (avoid all looking the same). */
 const MCP_ACCENT_PALETTE = [
@@ -100,6 +111,7 @@ export function serversToCards(servers: CustomMcpServers): ServerCardState[] {
   return Object.entries(servers).map(([name, spec], index) => ({
     key: `${name}-${index}`,
     name,
+    displayName: (spec.display_name ?? "").trim(),
     transport: spec.transport === "stdio" ? "stdio" : "streamable_http",
     url: spec.url ?? "",
     headersText: headersToText(spec.headers),
@@ -125,6 +137,10 @@ export function cardsToServers(cards: ServerCardState[]): CustomMcpServers {
       transport: card.transport,
       enabled: card.enabled,
     };
+    const displayName = card.displayName.trim();
+    if (displayName) {
+      spec.display_name = displayName;
+    }
     if (card.transport === "streamable_http") {
       spec.url = card.url.trim();
       const headers = parseHeadersText(card.headersText);
@@ -155,9 +171,11 @@ export function newCard(
   index: number,
 ): ServerCardState {
   const base = transport === "stdio" ? "stdio-server" : "http-server";
+  const name = `${base}-${index + 1}`;
   return {
     key: `${base}-${Date.now()}-${index}`,
-    name: `${base}-${index + 1}`,
+    name,
+    displayName: "",
     transport,
     url: "",
     headersText: "",

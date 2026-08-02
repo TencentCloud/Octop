@@ -11,7 +11,11 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type { CustomMcpTransport } from "../../../api/modules/connectors";
-import { accentForServerName, type ServerCardState } from "./customMcpUtils";
+import {
+  accentForServerName,
+  friendlyServerLabel,
+  type ServerCardState,
+} from "./customMcpUtils";
 import styles from "./index.module.less";
 
 interface CustomMcpServerCardProps {
@@ -37,9 +41,8 @@ export function CustomMcpServerCard({
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
   const isHttp = card.transport === "streamable_http";
-  const displayName =
-    card.name.trim() || (isHttp ? "http-server" : "stdio-server");
-  const accent = accentForServerName(displayName);
+  const label = friendlyServerLabel(card);
+  const accent = accentForServerName(card.name.trim() || label);
   const summary = isHttp
     ? card.url.trim() || "https://…"
     : [
@@ -55,8 +58,8 @@ export function CustomMcpServerCard({
   const handleRemove = () => {
     Modal.confirm({
       title: t("connectors.customMcp.deleteConfirm", {
-        name: displayName,
-        defaultValue: `确定删除 MCP 服务器「${displayName}」？`,
+        name: label,
+        defaultValue: `确定删除 MCP 服务器「${label}」？`,
       }),
       content: t(
         "connectors.customMcp.deleteConfirmHint",
@@ -86,8 +89,8 @@ export function CustomMcpServerCard({
             <Cable size={22} aria-hidden />
           </span>
           <div className={styles.customMcpServerMeta}>
-            <span className={styles.customMcpServerName} title={displayName}>
-              {displayName}
+            <span className={styles.customMcpServerName} title={label}>
+              {label}
             </span>
             <span
               className={`${styles.customMcpTransportBadge} ${
@@ -101,7 +104,9 @@ export function CustomMcpServerCard({
                 : t("connectors.customMcp.transportStdio", "Stdio")}
             </span>
             <div className={styles.customMcpServerSummary} title={summary}>
-              {summary}
+              {card.displayName.trim() && card.name.trim()
+                ? `${card.name.trim()} · ${summary}`
+                : summary}
             </div>
           </div>
         </div>
@@ -136,12 +141,41 @@ export function CustomMcpServerCard({
       {!card.collapsed ? (
         <div className={styles.customMcpCardBody}>
           <div className={styles.customMcpField}>
-            <label>{t("connectors.displayName", "显示名称")}</label>
+            <label>{t("connectors.customMcp.displayName", "显示名称")}</label>
+            <Input
+              value={card.displayName}
+              onChange={(e) =>
+                onUpdate(card.key, { displayName: e.target.value })
+              }
+              placeholder={t(
+                "connectors.customMcp.displayNamePlaceholder",
+                "例如：我的知识库",
+              )}
+              maxLength={64}
+            />
+            <div className={styles.customMcpFieldHint}>
+              {t(
+                "connectors.customMcp.displayNameHint",
+                "在对话连接器选择中显示的名称，可使用中文。",
+              )}
+            </div>
+          </div>
+          <div className={styles.customMcpField}>
+            <label>
+              {t("connectors.customMcp.serverId", "服务器 ID")}{" "}
+              <span className={styles.requiredMark}>*</span>
+            </label>
             <Input
               value={card.name}
               onChange={(e) => onUpdate(card.key, { name: e.target.value })}
               placeholder={isHttp ? "http-server" : "stdio-server"}
             />
+            <div className={styles.customMcpFieldHint}>
+              {t(
+                "connectors.customMcp.serverIdHint",
+                "技术标识，仅支持字母、数字、下划线与连字符。",
+              )}
+            </div>
           </div>
           <div className={styles.customMcpField}>
             <label>Transport</label>
