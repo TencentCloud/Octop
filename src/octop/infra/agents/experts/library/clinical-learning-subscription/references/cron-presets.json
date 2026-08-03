@@ -19,7 +19,8 @@
     "retry_reuses_delivery_id": true,
     "preview_creates_no_ledger": true,
     "unknown_transport_outcome": "block_and_reconcile",
-    "generic_agent_cron_without_receipt": "blocked"
+    "generic_agent_cron_without_receipt": "allowed_with_weak_dedup_protocol",
+    "weak_delivery_protocol": "通用 cron 每日投递必须遵守：先 delivery-check 查重（按逻辑日期），已记录则停发；生成后先 validate_output 校验；通过后 delivery-record 记账再输出正文。该账本只防重复，不代表送达回执；不得对用户宣称\"已确认送达\"。"
   },
   "tasks": [
     {
@@ -28,12 +29,14 @@
       "channel": "weixin",
       "schedule": "30 7 * * *",
       "subscription_key": "daily_guideline_learning",
-      "delivery_protocol": "learning_delivery_v2",
+      "delivery_protocol": "learning_delivery_weak_cron",
       "fresh_thread": true,
-      "phase": "blocked_until_platform_delivery_adapter",
+      "phase": "enabled_weak_delivery",
       "enabled_by_default": false,
-      "selectable": false,
-      "requires_platform_delivery_adapter": true
+      "selectable": true,
+      "requires_platform_delivery_adapter": false,
+      "delivery_caveat": "以 cron 执行为准，无通道回执；按逻辑日期去重，宁可漏发不重复。",
+      "prompt": "执行每日指南学习投递（严格按顺序，任何一步失败即停止且不输出正文）：\n1. 先取今天日期（Asia/Shanghai，YYYY-MM-DD），运行：python3 scripts/clinical_profile.py delivery-check --logical-date <今天>。若 already_sent 为 true，回复\"今日学习内容已推送\"并停止，不得重复生成。\n2. 运行：python3 scripts/clinical_profile.py learning-next-lesson 读取下一固定单元。无已启用轨道或无下一单元时，如实说明并停止，不得编造内容。\n3. 按 references/daily-learning-template.md 生成该单元：恰好 3 个编号要点、下一单元预告、来源行（来源：名称：[链接](URL)）。然后用 python3 scripts/validate_output.py --module daily_guideline_learning 校验；不通过先修正再校验一次，仍不通过则停止并说明原因，不输出正文。\n4. 校验通过后运行：python3 scripts/clinical_profile.py delivery-record --logical-date <今天> --confirm true，然后输出单元正文。正文首行格式：【每日指南学习｜{主题}】（第 {ordinal}/{total} 单元）。"
     },
     {
       "task_type": "guideline_update_reminder",

@@ -235,7 +235,38 @@ def test_learning_track_preview_is_read_only_and_delivery_lifecycle_is_not_expos
 
     parser = profile.build_parser()
     command_names = parser._subparsers._group_actions[0].choices
-    assert not any("delivery" in name for name in command_names)
+    # The platform-owned delivery lifecycle (claim/confirm with tokens) must stay
+    # unexposed; only the weak cron dedup ledger commands are allowed.
+    assert not any("claim" in name or "confirm-delivery" in name for name in command_names)
+    assert "delivery-check" in command_names
+    assert "delivery-record" in command_names
+
+
+def test_weak_delivery_ledger_dedups_and_advances(tmp_path: Path) -> None:
+    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_weak_delivery_test")
+    track_id, lesson_ids = _create_active_track(profile, tmp_path)
+
+    first_check = profile.check_daily_delivery(track_id=track_id, logical_date="2026-08-03", root=tmp_path)
+    assert first_check["already_sent"] is False
+
+    recorded = profile.record_daily_delivery(
+        track_id=track_id, lesson_id="", logical_date="2026-08-03", confirm=True, root=tmp_path
+    )
+    state, details = recorded
+    assert details["recorded"] is True
+    assert details["lesson_id"] == lesson_ids[0]
+
+    second_check = profile.check_daily_delivery(track_id=track_id, logical_date="2026-08-03", root=tmp_path)
+    assert second_check["already_sent"] is True
+
+    _state2, dup = profile.record_daily_delivery(
+        track_id=track_id, lesson_id="", logical_date="2026-08-03", confirm=True, root=tmp_path
+    )
+    assert dup["recorded"] is False
+    assert dup["already_sent"] is True
+
+    next_preview = profile.get_next_lesson(track_id=track_id, root=tmp_path)
+    assert next_preview["lesson"]["id"] == lesson_ids[1]
 
 
 def test_public_state_hides_delivery_ledger_and_route_metadata(tmp_path: Path) -> None:

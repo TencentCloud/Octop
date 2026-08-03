@@ -20,7 +20,7 @@ import secrets
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -185,8 +185,13 @@ def _deep_default_state() -> dict[str, Any]:
     return copy.deepcopy(DEFAULT_STATE)
 
 
+# datetime.UTC only exists on Python 3.11+; resolve at runtime so the script
+# keeps working on the 3.9 system interpreter while preferring the modern alias.
+_UTC = getattr(datetime, "UTC", None) or timezone(timedelta(hours=0))
+
+
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(_UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _shanghai_date() -> str:
@@ -1144,17 +1149,20 @@ def get_track_status(*, track_id: str, root: Path = PACKAGE_ROOT) -> dict[str, A
     }
 
 
+def _resolve_active_track(state: dict[str, Any], track_id: str) -> dict[str, Any]:
+    if track_id:
+        return _find_track(state, track_id)
+    active_tracks = [track for track in state["learning"]["tracks"] if track.get("status") == "active"]
+    if not active_tracks:
+        raise ValueError("没有已启用的学习轨道")
+    if len(active_tracks) > 1:
+        raise ValueError("存在多个已启用的学习轨道；请明确选择 track_id")
+    return active_tracks[0]
+
+
 def get_next_lesson(*, track_id: str, root: Path = PACKAGE_ROOT) -> dict[str, Any]:
     state = load_state(root)
-    if track_id:
-        track = _find_track(state, track_id)
-    else:
-        active_tracks = [track for track in state["learning"]["tracks"] if track.get("status") == "active"]
-        if not active_tracks:
-            raise ValueError("没有已启用的学习轨道")
-        if len(active_tracks) > 1:
-            raise ValueError("存在多个已启用的学习轨道；请明确选择 track_id")
-        track = active_tracks[0]
+    track = _resolve_active_track(state, track_id)
     if track.get("status") != "active":
         raise ValueError("学习轨道未启用；预览可以查看计划，正式学习前请先启用")
     if track.get("plan_status") != "ready":
@@ -1166,6 +1174,112 @@ def get_next_lesson(*, track_id: str, root: Path = PACKAGE_ROOT) -> dict[str, An
         "preview_only": True,
         "note": "读取下一单元不会创建投递账本，也不会推进学习进度。",
     }
+
+
+def check_daily_delivery(
+    *,
+    track_id: str,
+    logical_date: str,
+    root: Path = PACKAGE_ROOT,
+) -> dict[str, Any]:
+    """Read-only dedup check for the generic-cron daily lesson.
+
+    The ledger written here is a *weak* delivery log: it records that the cron
+    run produced the unit, not that the channel accepted it.
+    """
+    cleaned_date = _require_clean("逻辑日期", logical_date, max_length=32)
+    state = load_state(root)
+    track = _resolve_active_track(state, track_id)
+    for record in reversed(state["learning"]["delivery_ledger"]):
+        if (
+            record.get("track_id") == track["id"]
+            and record.get("scheduled_local_date") == cleaned_date
+        ):
+            return {
+                "track_id": track["id"],
+                "logical_date": cleaned_date,
+                "already_sent": True,
+                "lesson_id": record.get("lesson_id") or "",
+                "recorded_at": record.get("created_at") or "",
+                "note": "该日期已有投递记录；不要重复生成或发送同一单元。",
+            }
+    return {
+        "track_id": track["id"],
+        "logical_date": cleaned_date,
+        "already_sent": False,
+        "lesson_id": "",
+        "recorded_at": "",
+        "note": "该日期尚无投递记录，可以继续生成并发送本日单元。",
+    }
+
+
+def record_daily_delivery(
+    *,
+    track_id: str,
+    lesson_id: str,
+    logical_date: str,
+    confirm: bool,
+    root: Path = PACKAGE_ROOT,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Record a weak cron delivery and advance the track to the next unit.
+
+    Idempotent on (track_id, logical_date): a second call for the same day
+    returns the existing entry without duplicating.  This is NOT a trusted
+    receipt ledger — it only prevents the generic cron from re-sending the
+    same unit on the same logical date.
+    """
+    if not confirm:
+        raise ValueError("记录每日投递必须显式确认")
+    cleaned_date = _require_clean("逻辑日期", logical_date, max_length=32)
+
+    def mutate(state: dict[str, Any]) -> dict[str, Any]:
+        track = _resolve_active_track(state, track_id)
+        ledger = state["learning"]["delivery_ledger"]
+        for record in reversed(ledger):
+            if (
+                record.get("track_id") == track["id"]
+                and record.get("scheduled_local_date") == cleaned_date
+            ):
+                return {
+                    "recorded": False,
+                    "already_sent": True,
+                    "delivery_id": record.get("id") or "",
+                    "lesson_id": record.get("lesson_id") or "",
+                    "note": "该日期已记录过投递；未重复写入。",
+                }
+        lessons = track.get("lessons", [])
+        lesson = _find_by_id(lessons, lesson_id) if lesson_id else _first_open_lesson(track)
+        if lesson is None:
+            raise ValueError("没有可投递的单元")
+        now = _now()
+        entry = {
+            "id": _new_id("delivery", f"{track['id']}:{cleaned_date}:{lesson['id']}"),
+            "kind": "cron_weak_delivery",
+            "track_id": track["id"],
+            "lesson_id": lesson["id"],
+            "scheduled_local_date": cleaned_date,
+            "state": "sent_unconfirmed",
+            "attempt": 1,
+            "note": "通用 cron 弱投递记录：仅表示已生成并交给通道，未含通道回执。",
+            "created_at": now,
+            "updated_at": now,
+        }
+        ledger.append(entry)
+        lesson["delivery_status"] = "accepted"
+        lesson["updated_at"] = now
+        track["updated_at"] = now
+        return {
+            "recorded": True,
+            "already_sent": False,
+            "delivery_id": entry["id"],
+            "lesson_id": lesson["id"],
+            "lesson_ordinal": lesson.get("ordinal"),
+            "track_id": track["id"],
+            "logical_date": cleaned_date,
+            "note": "已记录本日投递并推进到下一单元；此记录不是送达回执。",
+        }
+
+    return _mutate_state(root, mutate)
 
 
 def mark_lesson_learning(
@@ -1196,14 +1310,14 @@ def mark_lesson_learning(
 
 def _delivery_is_expired(delivery: dict[str, Any]) -> bool:
     expiration = _parse_timestamp(str(delivery.get("lease_expires_at") or ""))
-    return expiration is not None and expiration <= datetime.now(timezone.utc)
+    return expiration is not None and expiration <= datetime.now(_UTC)
 
 
 def _lease_expiration(seconds: int) -> str:
     if not 60 <= seconds <= 3600:
         raise ValueError("投递领取租约必须在 60-3600 秒之间")
-    timestamp = datetime.now(timezone.utc).timestamp() + seconds
-    return datetime.fromtimestamp(timestamp, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    timestamp = datetime.now(_UTC).timestamp() + seconds
+    return datetime.fromtimestamp(timestamp, _UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _delivery_details(
@@ -2191,6 +2305,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     next_lesson.add_argument("--track-id", default="")
 
+    delivery_check = sub.add_parser(
+        "delivery-check",
+        help="Check whether the cron daily lesson was already recorded for a logical date.",
+    )
+    delivery_check.add_argument("--track-id", default="")
+    delivery_check.add_argument("--logical-date", required=True)
+
+    delivery_record = sub.add_parser(
+        "delivery-record",
+        help="Record a weak cron delivery for a logical date and advance the track.",
+    )
+    delivery_record.add_argument("--track-id", default="")
+    delivery_record.add_argument("--lesson-id", default="")
+    delivery_record.add_argument("--logical-date", required=True)
+    delivery_record.add_argument("--confirm", required=True, type=_parse_bool)
+
     lesson_mark = sub.add_parser(
         "learning-lesson-mark",
         aliases=["lesson-mark"],
@@ -2340,6 +2470,21 @@ def main(argv: list[str] | None = None) -> int:
         if args.command in {"learning-next-lesson", "next-lesson"}:
             state = load_state()
             return _ok(state, "learning-next-lesson", get_next_lesson(track_id=args.track_id))
+        if args.command == "delivery-check":
+            state = load_state()
+            return _ok(
+                state,
+                "delivery-check",
+                check_daily_delivery(track_id=args.track_id, logical_date=args.logical_date),
+            )
+        if args.command == "delivery-record":
+            state, details = record_daily_delivery(
+                track_id=args.track_id,
+                lesson_id=args.lesson_id,
+                logical_date=args.logical_date,
+                confirm=args.confirm,
+            )
+            return _ok(state, "delivery-record", details)
         if args.command in {"learning-lesson-mark", "lesson-mark"}:
             state, details = mark_lesson_learning(
                 track_id=args.track_id,
