@@ -19,7 +19,9 @@ def agent() -> None:
 
 @agent.command("create")
 @click.argument("name")
-@click.option("--agent-id", "agent_id", default=None, help="Custom agent ID (short string, optional).")
+@click.option(
+    "--agent-id", "agent_id", default=None, help="Custom agent ID (short string, optional)."
+)
 @click.option("--persona-mbti", "persona_mbti", default=None)
 @click.option("--default-model", "default_model", default=None)
 @click.option("--template", "template_name", default=None, help="Agent template name.")
@@ -67,9 +69,13 @@ def create(
 @agent.command("from-expert")
 @click.argument("expert_id")
 @click.option("--name", default=None)
-@click.option("--agent-id", "agent_id", default=None, help="Custom agent ID (short string, optional).")
+@click.option(
+    "--agent-id", "agent_id", default=None, help="Custom agent ID (short string, optional)."
+)
 @click.option("--user", "as_user", default=None)
-def from_expert(expert_id: str, name: str | None, agent_id: str | None, as_user: str | None) -> None:
+def from_expert(
+    expert_id: str, name: str | None, agent_id: str | None, as_user: str | None
+) -> None:
     """Create an agent from a bundled expert template (embedded server)."""
     import asyncio
 
