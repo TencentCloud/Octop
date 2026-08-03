@@ -151,11 +151,11 @@ DEFAULT_STATE: dict[str, Any] = {
         },
     },
     "subscriptions": {
-        "daily_guideline_learning": "待绑定微信通道",
-        "guideline_update_reminder": "待绑定微信通道",
-        "insurance_policy_learning": "待绑定微信通道",
-        "default_channel": "微信（内部 channel type: weixin）",
-        "weixin_session_key": "待绑定",
+        "daily_guideline_learning": "未创建",
+        "guideline_update_reminder": "未创建",
+        "insurance_policy_learning": "未创建",
+        "default_channel": "当前会话通道（平台自动路由）",
+        "weixin_session_key": "",
     },
     "privacy": {
         "purpose": "仅用于用户明确启用的个性化指南学习、学习诊断摘要、专业指南更新提醒和地区医保政策变化学习。",
@@ -2116,11 +2116,11 @@ read_when:
 
 ## 订阅任务状态
 
-- 每日指南连续学习：{subscriptions.get("daily_guideline_learning") or "待绑定微信通道"}
-- 专业指南更新提醒：{subscriptions.get("guideline_update_reminder") or "待绑定微信通道"}
-- 地区医保政策变化学习：{subscriptions.get("insurance_policy_learning") or "待绑定微信通道"}
-- 默认推送通道：{subscriptions.get("default_channel") or "微信（内部 channel type: weixin）"}
-- 微信绑定状态：{"已保存（绑定标识未显示）" if subscriptions.get("weixin_session_key") not in {"", "待绑定"} else "待绑定"}
+- 每日指南连续学习：{subscriptions.get("daily_guideline_learning") if subscriptions.get("daily_guideline_learning") not in (None, "", "待绑定微信通道") else "未创建"}
+- 专业指南更新提醒：{subscriptions.get("guideline_update_reminder") if subscriptions.get("guideline_update_reminder") not in (None, "", "待绑定微信通道") else "未创建"}
+- 地区医保政策变化学习：{subscriptions.get("insurance_policy_learning") if subscriptions.get("insurance_policy_learning") not in (None, "", "待绑定微信通道") else "未创建"}
+- 推送通道：{subscriptions.get("default_channel") or "当前会话通道（平台自动路由）"}
+- 通道路由：平台 cronjob_create 自动绑定创建时的会话通道（微信/QQ/dashboard/CLI 等），无需手动绑定；任务是否已创建以 cronjob_list 为准。
 
 ## 隐私与停用
 

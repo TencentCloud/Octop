@@ -1,11 +1,12 @@
 {
   "timezone": "Asia/Shanghai",
-  "channel": "weixin",
-  "display_channel": "微信",
-  "required_session_key_contains": ":weixin:",
-  "allow_dashboard_session": false,
+  "channel": "auto",
+  "display_channel": "当前会话通道（平台自动路由）",
+  "session_routing": "auto",
+  "allow_any_session": true,
   "activation_mode": "user_select",
   "selection_policy": "用户选择开启；可以全部开启，也可以只开启其中一个。未被用户明确选择的任务不得创建、启用或写成已启用。",
+  "routing_note": "cronjob_create 自动绑定当前会话 session_key，并按该会话通道（微信/QQ/dashboard/CLI 等）投递，无需手动绑定，也不要求 :weixin: 会话标识；不得以“未绑定微信”或“非微信会话”为由拒绝创建。",
   "delivery_policy": {
     "run_immediately_after_activation": false,
     "manual_preview_triggers_cron": false,
@@ -26,7 +27,7 @@
     {
       "task_type": "guideline_learning",
       "name": "每日指南连续学习",
-      "channel": "weixin",
+      "channel": "auto",
       "schedule": "30 7 * * *",
       "subscription_key": "daily_guideline_learning",
       "delivery_protocol": "learning_delivery_weak_cron",
@@ -35,13 +36,13 @@
       "enabled_by_default": false,
       "selectable": true,
       "requires_platform_delivery_adapter": false,
-      "delivery_caveat": "以 cron 执行为准，无通道回执；按逻辑日期去重，宁可漏发不重复。",
+      "delivery_caveat": "以 cron 执行为准，无通道回执；按逻辑日期去重，宁可漏发不重复。用户选定权威指南轨道前，cron 运行会如实报告“暂无已启用轨道”并停止，不随机推送。",
       "prompt": "执行每日指南学习投递（严格按顺序，任何一步失败即停止且不输出正文）：\n1. 先取今天日期（Asia/Shanghai，YYYY-MM-DD），运行：python3 scripts/clinical_profile.py delivery-check --logical-date <今天>。若 already_sent 为 true，回复\"今日学习内容已推送\"并停止，不得重复生成。\n2. 运行：python3 scripts/clinical_profile.py learning-next-lesson 读取下一固定单元。无已启用轨道或无下一单元时，如实说明并停止，不得编造内容。\n3. 按 references/daily-learning-template.md 生成该单元：恰好 3 个编号要点、下一单元预告、来源行（来源：名称：[链接](URL)）。然后用 python3 scripts/validate_output.py --module daily_guideline_learning 校验；不通过先修正再校验一次，仍不通过则停止并说明原因，不输出正文。\n4. 校验通过后运行：python3 scripts/clinical_profile.py delivery-record --logical-date <今天> --confirm true，然后输出单元正文。正文首行格式：【每日指南学习｜{主题}】（第 {ordinal}/{total} 单元）。"
     },
     {
       "task_type": "guideline_update_reminder",
       "name": "专业指南更新提醒",
-      "channel": "weixin",
+      "channel": "auto",
       "schedule": "0 9 */3 * *",
       "phase": "phase_1",
       "enabled_by_default": false,
@@ -50,7 +51,7 @@
     {
       "task_type": "insurance_policy_learning",
       "name": "地区医保政策变化学习",
-      "channel": "weixin",
+      "channel": "auto",
       "schedule": "0 9 * * 2,5",
       "phase": "phase_1",
       "enabled_by_default": false,

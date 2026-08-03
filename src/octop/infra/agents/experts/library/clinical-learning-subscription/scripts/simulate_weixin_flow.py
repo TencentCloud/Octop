@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Simulate safe WeChat subscription and learning-delivery decisions."""
+"""Simulate subscription creation and learning-delivery decisions.
+
+Routing model (v2): the platform ``cronjob_create`` tool binds the cron job to
+the *current* conversation session and delivers to whatever channel that session
+uses (WeChat / QQ / dashboard / CLI / …). There is no longer a WeChat-only gate:
+any session may create tasks, and the platform auto-routes delivery. This file
+keeps a decision simulator so the package's intent stays testable.
+"""
 
 from __future__ import annotations
 
@@ -15,11 +22,9 @@ TASKS = (
 
 
 @dataclass(frozen=True)
-class WeixinContext:
+class SessionContext:
     current_session_key: str = ""
     existing_task_session_keys: tuple[str, ...] = ()
-    weixin_channel_bound: bool = False
-    qr_binding_confirmed: bool = False
 
 
 def _normalize_selection(selection: Iterable[str] | str) -> list[str]:
@@ -30,65 +35,46 @@ def _normalize_selection(selection: Iterable[str] | str) -> list[str]:
     return [task for task in selection if task in TASKS]
 
 
-def has_weixin_binding(context: WeixinContext) -> bool:
-    if ":weixin:" in context.current_session_key:
-        return True
-    if any(":weixin:" in key for key in context.existing_task_session_keys):
-        return True
-    return context.weixin_channel_bound or context.qr_binding_confirmed
-
-
-def can_create_weixin_task_from_current_session(context: WeixinContext) -> bool:
-    """Current cron tools bind the current session and cannot target another one."""
-    return ":weixin:" in context.current_session_key
+def can_create_task_from_current_session(context: SessionContext) -> bool:
+    """The platform cron tool binds the current session; any session qualifies."""
+    return bool(context.current_session_key)
 
 
 def decide(
     selection: Iterable[str] | str,
-    context: WeixinContext,
-    *,
-    receipt_capable_delivery_adapter: bool = False,
+    context: SessionContext,
 ) -> dict[str, object]:
+    """All selected tasks are created on the current session (auto-routed).
+
+    Daily guideline learning is created via generic cron with the weak-dedup
+    protocol; it does not require a receipt-capable adapter to be *created* —
+    it simply reports "no enabled track" until the user selects a guideline.
+    """
     selected = _normalize_selection(selection)
-    bound = has_weixin_binding(context)
-    can_create = can_create_weixin_task_from_current_session(context)
-    blocked_daily = (
-        ["daily_guideline_learning"]
-        if "daily_guideline_learning" in selected and not receipt_capable_delivery_adapter
-        else []
-    )
-    creatable = [task for task in selected if task not in blocked_daily]
+    can_create = can_create_task_from_current_session(context)
     if not selected:
         return {
             "status": "registered_only",
             "selected_tasks": [],
             "create_tasks": [],
-            "prompt_binding": False,
+            "note": "未选择任何任务，仅保留登记档案。",
         }
     if not can_create:
         return {
-            "status": "pending_weixin_session",
+            "status": "no_session",
             "selected_tasks": selected,
             "create_tasks": [],
-            "pending_platform_adapter_tasks": blocked_daily,
-            "prompt_binding": not bound,
-            "note": "当前 cron 工具不能从 Dashboard 或 CLI 选择另一个已绑定微信会话。",
-        }
-    if not creatable:
-        return {
-            "status": "pending_delivery_adapter",
-            "selected_tasks": selected,
-            "create_tasks": [],
-            "pending_platform_adapter_tasks": blocked_daily,
-            "prompt_binding": False,
-            "note": "每日指南学习不能使用 generic agent cron，需平台回执型投递适配器。",
+            "note": "缺少当前会话标识，无法绑定 cron；请在一个有效会话中创建。",
         }
     return {
-        "status": "enabled_partial" if blocked_daily else "enabled",
+        "status": "enabled",
         "selected_tasks": selected,
-        "create_tasks": creatable,
-        "pending_platform_adapter_tasks": blocked_daily,
-        "prompt_binding": False,
+        "create_tasks": list(selected),
+        "delivery_channel": "auto (当前会话通道)",
+        "note": (
+            "平台自动绑定当前会话通道投递；每日指南学习用通用 cron + 弱投递防重规程，"
+            "选定指南轨道前不随机推送。"
+        ),
     }
 
 
@@ -130,15 +116,18 @@ def decide_learning_delivery(
             "manual_trigger_cron": False,
             "stop_after_guideline_selection": False,
         }
+    # Generic cron (no receipt-capable adapter): weak-dedup protocol allows
+    # sending formal content with per-logical-date dedup, but cannot confirm
+    # delivery or advance learning state on its own.
     if not receipt_capable_adapter:
         return {
-            "mode": "blocked",
-            "send_formal_content": False,
+            "mode": "weak_delivery",
+            "send_formal_content": True,
             "advance_progress": False,
-            "create_delivery_ledger": False,
+            "create_delivery_ledger": True,
             "manual_trigger_cron": False,
             "stop_after_guideline_selection": False,
-            "note": "普通 agent cron 没有通道回执且会直接外发，不能创建每日指南学习任务。",
+            "note": "通用 cron 弱投递：按逻辑日期去重后发送，不代表送达回执，不推进学习状态。",
         }
     if not claimed:
         return {
@@ -162,31 +151,28 @@ def decide_learning_delivery(
 def _run_scenarios() -> list[dict[str, object]]:
     scenarios = [
         (
-            "all_tasks_from_weixin_session",
+            "all_tasks_from_any_session_auto_route",
             "all",
-            WeixinContext(current_session_key="user:weixin:alice"),
-            {"status": "enabled_partial", "create_count": 2, "prompt_binding": False},
+            SessionContext(current_session_key="user:dashboard:alice"),
+            {"status": "enabled", "create_count": 3},
         ),
         (
-            "dashboard_with_old_weixin_task_cannot_retarget",
+            "single_task_from_weixin_session",
             ["insurance_policy_learning"],
-            WeixinContext(
-                current_session_key="user:dashboard:alice",
-                existing_task_session_keys=("user:weixin:alice",),
-            ),
-            {"status": "pending_weixin_session", "create_count": 0, "prompt_binding": False},
+            SessionContext(current_session_key="user:weixin:alice"),
+            {"status": "enabled", "create_count": 1},
         ),
         (
-            "dashboard_without_weixin_proof",
+            "daily_learning_from_cli_session",
             ["daily_guideline_learning"],
-            WeixinContext(current_session_key="user:dashboard:alice"),
-            {"status": "pending_weixin_session", "create_count": 0, "prompt_binding": True},
+            SessionContext(current_session_key="user:cli:bob"),
+            {"status": "enabled", "create_count": 1},
         ),
         (
             "no_task_selected",
             "none",
-            WeixinContext(current_session_key="user:weixin:alice"),
-            {"status": "registered_only", "create_count": 0, "prompt_binding": False},
+            SessionContext(current_session_key="user:weixin:alice"),
+            {"status": "registered_only", "create_count": 0},
         ),
     ]
     results = []
@@ -196,7 +182,6 @@ def _run_scenarios() -> list[dict[str, object]]:
         result["ok"] = (
             result["status"] == expected["status"]
             and len(result["create_tasks"]) == expected["create_count"]
-            and result["prompt_binding"] is expected["prompt_binding"]
         )
         results.append(result)
     delivery_scenarios = [
@@ -211,9 +196,9 @@ def _run_scenarios() -> list[dict[str, object]]:
             {"mode": "configuration", "advance_progress": False, "stop_after_guideline_selection": True},
         ),
         (
-            "generic_scheduled_run_is_blocked",
+            "generic_scheduled_run_uses_weak_dedup",
             {"scheduled_run": True},
-            {"mode": "blocked", "advance_progress": False, "create_delivery_ledger": False},
+            {"mode": "weak_delivery", "advance_progress": False, "create_delivery_ledger": True, "send_formal_content": True},
         ),
         (
             "receipt_adapter_advances_only_after_ack",
