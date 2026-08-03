@@ -2134,10 +2134,15 @@
     "healthError": "异常",
     "healthChecking": "检测中",
     "themeSystem": "跟随系统",
-    "themeLight": "玫瑰·白天",
-    "themeDark": "玫瑰·夜间",
-    "themeBluLight": "碧海·白天",
-    "themeBluDark": "碧海·夜间",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "palette": {
+      "rose": "玫瑰",
+      "tech": "科技",
+      "emerald": "翠绿",
+      "amber": "琥珀",
+      "slate": "石墨"
+    },
     "currentVersion": "当前版本 v{{version}}",
     "currentVersionAdmin": "当前版本 v{{version}}，点击查看更新",
     "versionUpdateAvailable": "当前 v{{current}}，新版本 v{{latest}} 可用，点击前往更新",
@@ -2155,10 +2160,10 @@
     "description": "选择您喜欢的界面风格，切换将立即生效。",
     "system": "跟随系统",
     "systemDesc": "自动匹配系统深色/浅色模式",
-    "light": "玫瑰·白天",
-    "lightDesc": "玫瑰优雅，明亮清爽",
-    "dark": "玫瑰·夜间",
-    "darkDesc": "玫瑰优雅，深邃沉稳"
+    "light": "浅色",
+    "lightDesc": "明亮清爽",
+    "dark": "深色",
+    "darkDesc": "深邃沉稳"
   },
   "auth": {
     "loginTitle": "欢迎回来",
@@ -2183,6 +2188,7 @@
     "myAccount": "我的账户",
     "settings": "个人设置",
     "appearance": "外观",
+    "palette": "配色",
     "language": "语言",
     "languageHint": "选择界面显示语言。",
     "themeLight": "浅色",

@@ -253,14 +253,14 @@
   flex-shrink: 0;
   border-radius: 10px;
   border: none;
-  background: linear-gradient(135deg, var(--fn-color-brand), #f5738a);
+  background: linear-gradient(135deg, var(--fn-color-brand), var(--fn-color-brand-soft));
   color: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover:not(:disabled) {
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(232, 93, 117, 0.35);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
   }
 
   &:disabled {

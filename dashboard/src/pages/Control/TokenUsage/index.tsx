@@ -28,6 +28,8 @@ import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useUserRole } from "../../../hooks/useUserRole";
 import { request } from "../../../api/request";
 import { useAgent } from "../../../context/AgentContext";
+import { useTheme } from "../../../context/ThemeContext";
+import { brandPrimary } from "../../../styles/themePalettes";
 import styles from "./index.module.less";
 
 interface UsageUserOption {
@@ -78,8 +80,6 @@ const IO_COLORS = {
   input: "#4f6ef7",
   output: "#a06ef7",
 };
-
-const TURNS_COLOR = "#e85d75";
 
 const CHART_TOOLTIP_STYLE = {
   background: "var(--fn-bg-elevated)",
@@ -258,6 +258,8 @@ function DailyTrendCharts({
   outputLabel: string;
   turnsLabel: string;
 }) {
+  const { palette, isDark } = useTheme();
+  const turnsColor = brandPrimary(palette, isDark);
   const empty = data.length === 0;
 
   return (
@@ -318,7 +320,7 @@ function DailyTrendCharts({
               {
                 dataKey: "turns",
                 name: turnsLabel,
-                fill: TURNS_COLOR,
+                fill: turnsColor,
                 radius: [3, 3, 0, 0],
                 maxBarSize: 36,
               },

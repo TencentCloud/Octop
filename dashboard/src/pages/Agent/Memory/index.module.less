@@ -208,10 +208,11 @@
   overflow: hidden;
 
   &:hover {
-    box-shadow: 0 0 0 2px var(--fn-primary-color, #e85d75) 33;
+    box-shadow: 0 0 0 2px
+      color-mix(in srgb, var(--fn-color-brand) 20%, transparent);
 
     .editHintBanner {
-      background: var(--fn-primary-color, #e85d75);
+      background: var(--fn-color-brand);
       color: #fff;
     }
   }

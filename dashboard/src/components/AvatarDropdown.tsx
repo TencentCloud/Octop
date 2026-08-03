@@ -31,6 +31,7 @@ import { clearAuthToken } from "../api/request";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { useUserRole } from "../hooks/useUserRole";
 import ThemeSwitcher from "./ThemeSwitcher";
+import PaletteSwitcher from "./PaletteSwitcher";
 import type { OctopUser } from "../api/modules/auth";
 import styles from "./AvatarDropdown.module.less";
 
@@ -144,7 +145,7 @@ export default function AvatarDropdown({
     <Avatar
       size={32}
       style={{
-        background: "var(--fn-color-brand, #4f6ef7)",
+        background: "var(--fn-color-brand)",
         fontSize: 14,
         userSelect: "none",
         flexShrink: 0,
@@ -179,6 +180,14 @@ export default function AvatarDropdown({
           <span>{t("account.appearance")}</span>
         </div>
         <ThemeSwitcher compact />
+      </div>
+
+      <div className={styles.menuItemRow}>
+        <div className={styles.menuItemLabel}>
+          <span className={styles.menuItemSpacer} aria-hidden />
+          <span>{t("account.palette")}</span>
+        </div>
+        <PaletteSwitcher compact />
       </div>
 
       <button
@@ -305,7 +314,7 @@ export default function AvatarDropdown({
             <Avatar
               size={44}
               style={{
-                background: "var(--fn-color-brand, #4f6ef7)",
+                background: "var(--fn-color-brand)",
                 fontSize: 18,
                 flexShrink: 0,
               }}

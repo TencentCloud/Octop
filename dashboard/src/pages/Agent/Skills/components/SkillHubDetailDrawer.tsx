@@ -165,7 +165,7 @@ export function SkillHubDetailDrawer({
                 alignItems: "center",
                 justifyContent: "center",
                 background: "var(--fn-color-brand-bg, rgba(79,110,247,0.12))",
-                color: "var(--fn-color-brand, #4f6ef7)",
+                color: "var(--fn-color-brand)",
                 fontSize: 18,
               }}
             >

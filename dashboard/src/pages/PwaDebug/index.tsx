@@ -581,7 +581,9 @@ export default function PwaDebugPage() {
             padding: "8px 16px",
             borderRadius: 999,
             border: "none",
-            background: forceInstalling ? "#94a3b8" : "#E85D75",
+            background: forceInstalling
+              ? "#94a3b8"
+              : "var(--fn-color-brand)",
             color: "#fff",
             fontSize: 13,
             fontWeight: 600,
@@ -653,9 +655,9 @@ export default function PwaDebugPage() {
             style={{
               padding: "8px 16px",
               borderRadius: 999,
-              border: "1px solid #E85D75",
+              border: "1px solid var(--fn-color-brand)",
               background: "transparent",
-              color: "#E85D75",
+              color: "var(--fn-color-brand)",
               fontSize: 13,
               fontWeight: 600,
               cursor: "pointer",

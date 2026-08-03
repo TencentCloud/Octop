@@ -13,6 +13,7 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AgentProvider } from "./context/AgentContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
+import { ANTD_BRAND_TOKENS } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
 import "./styles/form-override.css";
@@ -25,9 +26,10 @@ const GlobalStyle = createGlobalStyle`
 `;
 
 function ThemedApp() {
-  const { isDark } = useTheme();
+  const { isDark, palette } = useTheme();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const brandTokens = ANTD_BRAND_TOKENS[palette][isDark ? "dark" : "light"];
 
   // Set document title based on current language
   useEffect(() => {
@@ -67,26 +69,13 @@ function ThemedApp() {
             colorFillTertiary: "rgba(255, 255, 255, 0.03)",
             colorFillQuaternary: "rgba(255, 255, 255, 0.02)",
             colorBgTextHover: "rgba(255, 255, 255, 0.06)",
-            colorPrimary: "#F08B9A",
-            colorPrimaryBg: "rgba(232, 93, 117, 0.12)",
-            colorPrimaryBgHover: "rgba(232, 93, 117, 0.16)",
-            colorPrimaryBorder: "rgba(232, 93, 117, 0.25)",
-            colorPrimaryBorderHover: "rgba(232, 93, 117, 0.35)",
-            colorPrimaryHover: "#F5A8B4",
-            colorPrimaryActive: "#E85D75",
-            colorPrimaryText: "#F08B9A",
-            colorPrimaryTextHover: "#F5A8B4",
-            colorPrimaryTextActive: "#E85D75",
-            colorLink: "#F08B9A",
+            ...brandTokens,
             boxShadow: "0px 4px 6px 0px rgba(0, 0, 0, 0.3)",
             boxShadowSecondary:
               "0px 12px 24px -16px rgba(0, 0, 0, 0.2), 0px 8px 40px 0px rgba(0, 0, 0, 0.3)",
           }
         : {
-            colorPrimary: "#E85D75",
-            colorPrimaryHover: "#D14A62",
-            colorPrimaryActive: "#B83A50",
-            colorLink: "#E85D75",
+            ...brandTokens,
           }),
     },
     components: isDark

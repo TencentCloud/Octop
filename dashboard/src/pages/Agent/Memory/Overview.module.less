@@ -86,7 +86,7 @@
   border-radius: 12px;
   background: linear-gradient(
     135deg,
-    rgba(232, 93, 117, 0.06),
+    color-mix(in srgb, var(--fn-color-brand) 6%, transparent),
     transparent 46%
   );
 }
@@ -111,8 +111,8 @@
   justify-content: center;
   font-size: 22px;
   color: #fff;
-  background: linear-gradient(135deg, #e85d75, #f0889a);
-  box-shadow: 0 4px 12px rgba(232, 93, 117, 0.28);
+  background: linear-gradient(135deg, var(--fn-color-brand), var(--fn-color-brand-soft));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--fn-color-brand) 28%, transparent);
 }
 
 .dossierHeadText {
@@ -236,7 +236,7 @@
   justify-content: center;
   font-size: 14px;
   color: var(--fn-color-brand);
-  background: rgba(232, 93, 117, 0.1);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
 }
 
 .groupTitle {
@@ -405,12 +405,12 @@
    =================================================================== */
 
 .tone_rose {
-  --tone-color: #e85d75;
-  --tone-bg: rgba(232, 93, 117, 0.1);
-  --tone-shadow: rgba(232, 93, 117, 0.18);
+  --tone-color: var(--fn-color-brand);
+  --tone-bg: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
+  --tone-shadow: color-mix(in srgb, var(--fn-color-brand) 18%, transparent);
 
   &:hover {
-    border-color: rgba(232, 93, 117, 0.28);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 28%, transparent);
     box-shadow: 0 8px 20px var(--tone-shadow);
   }
 }
@@ -881,7 +881,7 @@
   cursor: pointer;
 
   &:hover {
-    border-color: var(--fn-primary, #e85d75);
+    border-color: var(--fn-color-brand);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 }
@@ -928,7 +928,7 @@
   flex-shrink: 0;
   background: radial-gradient(
       circle at 0 0,
-      rgba(232, 93, 117, 0.11),
+      color-mix(in srgb, var(--fn-color-brand) 11%, transparent),
       transparent 38%
     ),
     var(--fn-bg-elevated);
@@ -967,8 +967,8 @@
   height: 46px;
   border-radius: 14px;
   color: #fff;
-  background: linear-gradient(135deg, #e85d75, #f08ca0);
-  box-shadow: 0 8px 18px rgba(232, 93, 117, 0.24);
+  background: linear-gradient(135deg, var(--fn-color-brand), var(--fn-color-brand-soft));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--fn-color-brand) 24%, transparent);
 }
 
 .overviewTitleRow {
@@ -1083,8 +1083,8 @@
 }
 
 .summary_rose {
-  --summary-color: #e85d75;
-  --summary-bg: rgba(232, 93, 117, 0.1);
+  --summary-color: var(--fn-color-brand);
+  --summary-bg: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
 }
 
 .summary_violet {
@@ -1159,8 +1159,8 @@
 }
 
 .pipelineCard .pipelineStageClickable:hover {
-  border-color: rgba(232, 93, 117, 0.45);
-  background: rgba(232, 93, 117, 0.04);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 45%, transparent);
+  background: color-mix(in srgb, var(--fn-color-brand) 4%, transparent);
 }
 
 .pipelineConnector {

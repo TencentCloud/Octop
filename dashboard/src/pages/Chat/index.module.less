@@ -178,8 +178,8 @@
   outline: none;
 
   &:focus {
-    border-color: var(--fn-color-brand, #4f6ef7);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--fn-color-brand, #4f6ef7) 18%, transparent);
+    border-color: var(--fn-color-brand);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--fn-color-brand) 18%, transparent);
   }
 }
 
@@ -306,7 +306,7 @@
   padding: 32px 20px;
   background: radial-gradient(
       ellipse 70% 45% at 50% 0%,
-      color-mix(in srgb, var(--fn-color-brand, #e85d75) 10%, transparent),
+      color-mix(in srgb, var(--fn-color-brand) 10%, transparent),
       transparent 70%
     ),
     var(--fn-bg-elevated, #fff);

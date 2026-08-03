@@ -36,8 +36,8 @@
 }
 
 .modelMenuItemActive {
-  background: rgba(232, 93, 117, 0.08);
-  color: var(--fn-color-brand, #e85d75);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+  color: var(--fn-color-brand);
 }
 
 .modelMenuLabel {
@@ -49,7 +49,7 @@
 }
 
 .modelMenuItemActive .modelMenuLabel {
-  color: var(--fn-color-brand, #e85d75);
+  color: var(--fn-color-brand);
 }
 
 .modelMenuHint {

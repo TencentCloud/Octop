@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Empty, Skeleton, Tooltip } from "antd";
 import {
   BrainCircuit,
@@ -36,6 +36,8 @@ import {
   type StatsCounts,
   type StatsGrowthResponse,
 } from "../../../api/modules/memoryDashboard";
+import { useTheme } from "../../../context/ThemeContext";
+import { brandPrimary } from "../../../styles/themePalettes";
 import styles from "./Overview.module.less";
 
 interface Props {
@@ -63,8 +65,7 @@ const INITIAL_STATE: PageState = {
   refreshing: false,
 };
 
-const KIND_COLOR: Record<string, string> = {
-  Preference: "#e85d75",
+const KIND_COLOR_BASE: Record<string, string> = {
   Task: "#f59e0b",
   Fact: "#3b82f6",
   Decision: "#8b5cf6",
@@ -78,6 +79,12 @@ export default function Overview({
   onOpenSettings,
 }: Props) {
   const { t } = useTranslation();
+  const { palette, isDark } = useTheme();
+  const brand = brandPrimary(palette, isDark);
+  const kindColor = useMemo(
+    () => ({ ...KIND_COLOR_BASE, Preference: brand }),
+    [brand],
+  );
   const [state, setState] = useState<PageState>(INITIAL_STATE);
   // Older running API processes do not return this newly-added field.  Match
   // the backend default and only show the disabled state for an explicit false.
@@ -253,9 +260,9 @@ export default function Overview({
                 <Line
                   type="monotone"
                   dataKey="turns"
-                  stroke="#e85d75"
+                  stroke={brand}
                   strokeWidth={2}
-                  dot={{ r: 3, fill: "#e85d75", strokeWidth: 0 }}
+                  dot={{ r: 3, fill: brand, strokeWidth: 0 }}
                   activeDot={{ r: 5 }}
                 />
               </LineChart>
@@ -306,7 +313,7 @@ export default function Overview({
                       t("memory.overview.atoms", "长期记忆"),
                     ]}
                   />
-                  <Bar dataKey="atoms" fill="#e85d75" radius={[5, 5, 0, 0]} />
+                  <Bar dataKey="atoms" fill={brand} radius={[5, 5, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -340,7 +347,7 @@ export default function Overview({
                     {state.kinds.series.map((entry) => (
                       <Cell
                         key={entry.kind}
-                        fill={KIND_COLOR[entry.kind] ?? "#94a3b8"}
+                        fill={kindColor[entry.kind] ?? "#94a3b8"}
                       />
                     ))}
                   </Pie>
