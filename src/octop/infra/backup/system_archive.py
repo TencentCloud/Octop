@@ -22,7 +22,7 @@ from octop.infra.backup.snapshot import (
     restore_users_into_pool,
     snapshot_sqlite_file,
 )
-from octop.infra.db.migrate import _current_version
+from octop.infra.db.migrate import _current_version, run_migrations
 from octop.infra.db.pool import DatabasePool, SqlitePool
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
@@ -294,8 +294,14 @@ def restore_system_backup(
             dest.write_bytes(blob)
             restored_skill_package_files += 1
 
+        # LightClaw migration exports (and older Octop backups) may ship schema v1
+        # without columns added in later migrations (e.g. cron_jobs.mcp_servers).
+        # API restore keeps the process alive, so re-apply migrations on the live pool.
+        run_migrations(pool)
+        schema_version = _current_version(pool)
+
     return {
-        "schema_version": manifest.schema_version,
+        "schema_version": schema_version,
         "octop_version": manifest.octop_version,
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
