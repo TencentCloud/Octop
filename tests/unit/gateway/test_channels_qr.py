@@ -97,6 +97,47 @@ def test_wecom_qrcode_poll_returns_status(mock_server_and_user):
     assert data["status"] == "pending"
 
 
+def test_qq_qrcode_generate_returns_task(mock_server_and_user):
+    """qq/qrcode/generate should return the task token and render URL."""
+    server, user = mock_server_and_user
+    with patch(
+        "octop.api.routers.channels.qr_bind.qq_qr_generate",
+        new=AsyncMock(
+            return_value={"qrcode_token": "qq-task", "qrcode_url": "https://q.qq.com/qr"}
+        ),
+    ):
+        app = _make_app(server, user)
+        client = TestClient(app)
+        resp = client.post("/agents/agent1/channels/qq/qrcode/generate")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"qrcode_token": "qq-task", "qrcode_url": "https://q.qq.com/qr"}
+
+
+def test_qq_qrcode_poll_returns_credentials(mock_server_and_user):
+    """qq/qrcode/poll should return credentials after mobile confirmation."""
+    server, user = mock_server_and_user
+    result = {
+        "status": "success",
+        "app_id": "qq-app",
+        "secret": "qq-secret",
+        "user_openid": "operator-openid",
+    }
+    with patch(
+        "octop.api.routers.channels.qr_bind.qq_qr_poll",
+        new=AsyncMock(return_value=result),
+    ):
+        app = _make_app(server, user)
+        client = TestClient(app)
+        resp = client.post(
+            "/agents/agent1/channels/qq/qrcode/poll",
+            json={"qrcode_token": "qq-task"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == result
+
+
 def test_pkill_chrome_profile_accepts_resolved_path(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """pkill pattern must not fail validation on the '=' separator."""
     from octop.api.routers.channels import _pkill_chrome_profile, _safe_profile_directory
@@ -249,6 +290,10 @@ def test_yuanbao_bot_creator_stop_not_running(mock_server_and_user):
         ),
         (
             "/agents/agent1/channels/weixin/qrcode/poll",
+            {"qrcode_token": "tok|id"},
+        ),
+        (
+            "/agents/agent1/channels/qq/qrcode/poll",
             {"qrcode_token": "tok|id"},
         ),
     ],

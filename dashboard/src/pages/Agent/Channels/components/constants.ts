@@ -140,7 +140,7 @@ export interface ChannelField {
   /** Visible label (Chinese; falls back when no i18n key). */
   label: string;
   /** Antd input type. */
-  type?: "text" | "password" | "textarea";
+  type?: "text" | "password" | "textarea" | "json";
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
@@ -194,6 +194,13 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   qq: [
     { name: "app_id", label: "App ID", required: true },
     { name: "secret", label: "App Secret", type: "password", required: true },
+    {
+      name: "group_context",
+      label: "群聊上下文策略 (JSON)",
+      type: "json",
+      placeholder:
+        '{"enabled":true,"visibility":"auto","activation":"mention","history":"recent","history_limit":10}',
+    },
   ],
   discord: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
@@ -282,6 +289,19 @@ export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
   show_thinking: false,
   show_tool_hints: false,
 } as const;
+
+/** Parse structured values from schema-driven channel form fields. */
+export function normalizeChannelFieldValue(
+  fieldName: string,
+  value: unknown,
+): unknown {
+  if (fieldName !== "group_context" || typeof value !== "string") return value;
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("group_context must be a JSON object");
+  }
+  return parsed;
+}
 
 /** Required field names per kind — used for "missing creds" UX. */
 export const REQUIRED_CREDENTIALS: Partial<Record<ChannelKey, string[]>> =

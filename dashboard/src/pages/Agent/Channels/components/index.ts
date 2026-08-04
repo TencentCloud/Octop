@@ -20,6 +20,7 @@ export {
   REQUIRED_CREDENTIALS,
   CHANNEL_BOOLEAN_CONFIG_KEYS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  normalizeChannelFieldValue,
   hasRequiredCredentials,
   type ChannelKey,
   type ChannelField,

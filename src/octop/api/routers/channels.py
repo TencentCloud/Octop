@@ -447,6 +447,53 @@ async def wecom_qrcode_poll(
         raise HTTPException(status_code=502, detail=f"Failed to poll QR result: {exc}") from exc
 
 
+# ─── QQ Bot QR code ─────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/agents/{agent_id}/channels/qq/qrcode/generate",
+    summary="Generate a QQ Bot binding QR code",
+)
+async def qq_qrcode_generate(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Create an in-memory QQ Bot binding session and return its QR target URL."""
+    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    try:
+        return await qr_bind.qq_qr_generate(f"api:{agent_id}")
+    except Exception as exc:
+        logger.exception("Failed to fetch QQ Bot QR code")
+        raise HTTPException(
+            status_code=502, detail=f"Failed to fetch QQ Bot QR code: {exc}"
+        ) from exc
+
+
+@router.post(
+    "/agents/{agent_id}/channels/qq/qrcode/poll",
+    summary="Poll a QQ Bot binding QR code",
+)
+async def qq_qrcode_poll(
+    agent_id: str,
+    as_user: int | None = None,
+    qrcode_token: str = Body(..., embed=True),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Poll the active QQ Bot binding task and return credentials after confirmation."""
+    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    qrcode_token = _sanitize_token(qrcode_token, "qrcode_token")
+    try:
+        return await qr_bind.qq_qr_poll(f"api:{agent_id}", qrcode_token)
+    except Exception as exc:
+        logger.exception("Failed to poll QQ Bot QR result")
+        raise HTTPException(
+            status_code=502, detail=f"Failed to poll QQ Bot QR result: {exc}"
+        ) from exc
+
+
 # ─── WeChat (Weixin) QR code ─────────────────────────────────────────────────
 
 

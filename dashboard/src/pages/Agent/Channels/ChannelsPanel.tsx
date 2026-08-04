@@ -18,6 +18,7 @@ import {
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
   CHANNEL_BOOLEAN_CONFIG_KEYS,
   CHANNEL_FIELDS,
+  normalizeChannelFieldValue,
   type ChannelKey,
 } from "./components";
 import type { ChannelRow } from "./useChannels";
@@ -49,7 +50,7 @@ function configFromFormValues(
         continue;
       }
       if (v === undefined || v === null || v === "") continue;
-      config[k] = v;
+      config[k] = normalizeChannelFieldValue(k, v);
     }
   } else if (__raw_config !== undefined) {
     const trimmed = __raw_config.trim();

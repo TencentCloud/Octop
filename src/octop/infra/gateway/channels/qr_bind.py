@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 
+_qq_qr_sessions: dict[str, tuple[Any, str]] = {}
+
 
 def wecom_plat_code() -> int:
     system = platform.system().lower()
@@ -52,6 +54,49 @@ async def wecom_qr_poll(scode: str) -> dict[str, Any]:
             return {"status": "error", "reason": "QR scan succeeded but bot info is missing"}
         return {"status": "success", "bot_id": bot_id, "secret": secret}
     return {"status": status}
+
+
+async def qq_qr_generate(session_id: str) -> dict[str, str]:
+    """Create a QQ Bot QR task, replacing any pending task for this session."""
+    try:
+        from harness_gateway.channels.qq import QQBotQRLogin
+    except ImportError as exc:
+        raise RuntimeError("QQ QR login requires a recent harness-gateway installation.") from exc
+
+    previous = _qq_qr_sessions.pop(session_id, None)
+    if previous is not None:
+        previous[0].cancel(previous[1])
+
+    login = QQBotQRLogin(source="octop")
+    result = await login.fetch_qr_code()
+    _qq_qr_sessions[session_id] = (login, result.task_id)
+    return {"qrcode_token": result.task_id, "qrcode_url": result.qrcode_url}
+
+
+async def qq_qr_poll(session_id: str, qrcode_token: str) -> dict[str, Any]:
+    """Poll the active QQ Bot QR task for an Octop API or CLI session."""
+    session = _qq_qr_sessions.get(session_id)
+    if session is None or session[1] != qrcode_token:
+        return {"status": "error", "message": "QQ QR session is missing or expired"}
+
+    login, task_id = session
+    result = await login.poll(task_id)
+    if result.status == "pending":
+        return {"status": "pending"}
+
+    _qq_qr_sessions.pop(session_id, None)
+    if result.status == "expired":
+        return {"status": "expired", "message": "QQ QR code expired"}
+    if not result.credentials:
+        return {"status": "error", "message": "QQ QR binding returned no credentials"}
+
+    credentials = result.credentials[0]
+    return {
+        "status": "success",
+        "app_id": credentials.app_id,
+        "secret": credentials.app_secret,
+        "user_openid": credentials.user_openid,
+    }
 
 
 async def weixin_qr_generate() -> dict[str, str]:

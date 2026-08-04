@@ -14,6 +14,7 @@ import { Activity } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
+import type { Rule } from "antd/es/form";
 import { QRCodeSVG } from "qrcode.react";
 import {
   CHANNEL_FIELDS,
@@ -23,6 +24,7 @@ import {
   CHANNEL_LABEL_KEYS,
   CHANNEL_URLS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  normalizeChannelFieldValue,
   type ChannelField,
   type ChannelKey,
 } from "./constants";
@@ -74,6 +76,7 @@ export interface ChannelFormValues {
 
 // Channels that support QR quick-config
 const QUICK_CONFIG_CHANNELS: ChannelKey[] = [
+  "qq",
   "wecom",
   "weixin",
   "feishu",
@@ -88,6 +91,12 @@ const YUANBAO_DEFAULT_WS_URL =
 type QrPhase =
   | { phase: "idle" }
   | { phase: "loading" }
+  | { phase: "qq_ready"; qrcodeUrl: string; qrcodeToken: string }
+  | {
+      phase: "qq_success";
+      appId: string;
+      secret: string;
+    }
   | { phase: "wecom_ready"; authUrl: string; scode: string }
   | { phase: "wecom_success"; botId: string; secret: string }
   | { phase: "weixin_ready"; qrcodeUrl: string; qrcodeToken: string }
@@ -138,22 +147,31 @@ function FormItemForField({ field }: { field: ChannelField }) {
   const Input1 =
     field.type === "password"
       ? Input.Password
-      : field.type === "textarea"
+      : field.type === "textarea" || field.type === "json"
       ? Input.TextArea
       : Input;
+  const rules: Rule[] = field.required
+    ? [{ required: true, message: `${field.label} 必填` }]
+    : [];
+  if (field.type === "json") {
+    rules.push({
+      validator: async (_: unknown, value: unknown) => {
+        if (!value) return;
+        try {
+          normalizeChannelFieldValue(field.name, value);
+        } catch {
+          throw new Error(`${field.label} 必须是 JSON 对象`);
+        }
+      },
+    });
+  }
   return (
-    <Form.Item
-      name={field.name}
-      label={field.label}
-      rules={
-        field.required
-          ? [{ required: true, message: `${field.label} 必填` }]
-          : undefined
-      }
-    >
+    <Form.Item name={field.name} label={field.label} rules={rules}>
       <Input1
         placeholder={field.placeholder}
-        {...(field.type === "textarea" ? { rows: 3 } : {})}
+        {...(field.type === "textarea" || field.type === "json"
+          ? { rows: 5 }
+          : {})}
       />
     </Form.Item>
   );
@@ -271,6 +289,46 @@ export function ChannelDrawer({
     if (draft.kind) setSelectedKind(draft.kind);
     restoringDraftRef.current = false;
   }, [open, loadingConfig, draftScope, form]);
+
+  // ── QQ Bot Flow ────────────────────────────────────────────────────────
+  const startQqQr = useCallback(async () => {
+    setQrState({ phase: "loading" });
+    try {
+      const res = await channelApi.qqQrcodeGenerate(agentId);
+      setQrState({
+        phase: "qq_ready",
+        qrcodeUrl: res.qrcode_url,
+        qrcodeToken: res.qrcode_token,
+      });
+      const timer = setInterval(async () => {
+        try {
+          const poll = await channelApi.qqQrcodePoll(agentId, res.qrcode_token);
+          if (poll.status === "success" && poll.app_id && poll.secret) {
+            stopPolling();
+            setQrState({
+              phase: "qq_success",
+              appId: poll.app_id,
+              secret: poll.secret,
+            });
+          } else if (poll.status === "error" || poll.status === "expired") {
+            stopPolling();
+            setQrState({
+              phase: "error",
+              reason: poll.message ?? t("channels.qqQrFailed"),
+            });
+          }
+        } catch {
+          // network error — keep polling
+        }
+      }, 2000);
+      pollTimerRef.current = timer;
+    } catch (e: unknown) {
+      setQrState({
+        phase: "error",
+        reason: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [agentId, stopPolling, t]);
 
   // ── WeCom Flow ─────────────────────────────────────────────────────────
   const startWecomQr = useCallback(async () => {
@@ -555,6 +613,15 @@ export function ChannelDrawer({
         name: "wecom",
         config: mergeDisplayConfig({ bot_id: s.botId, secret: s.secret }),
       };
+    } else if (s.phase === "qq_success") {
+      payload = {
+        kind: "qq",
+        name: "qq",
+        config: mergeDisplayConfig({
+          app_id: s.appId,
+          secret: s.secret,
+        }),
+      };
     } else if (s.phase === "weixin_success") {
       dedupeKey = `weixin:${s.accountId}:${s.token}`;
       payload = {
@@ -684,7 +751,7 @@ export function ChannelDrawer({
     if (hasSchema) {
       for (const [k, v] of Object.entries(rest)) {
         if (k === "name" || v === undefined || v === null || v === "") continue;
-        config[k] = v;
+        config[k] = normalizeChannelFieldValue(k, v);
       }
     } else if (__raw_config !== undefined) {
       const trimmed = __raw_config.trim();
@@ -706,6 +773,107 @@ export function ChannelDrawer({
   };
 
   // ── QR Panels ───────────────────────────────────────────────────────────
+  function renderQqPanel() {
+    const s = qrState;
+    if (s.phase === "loading")
+      return (
+        <div className={styles.qrPanel}>
+          <Spin />
+        </div>
+      );
+    if (s.phase === "qq_success") {
+      const retrySave = () =>
+        submitChannel(
+          "qq",
+          "qq",
+          mergeDisplayConfig({ app_id: s.appId, secret: s.secret }),
+          true,
+        );
+      return (
+        <div className={styles.qrPanel}>
+          <Alert
+            type="success"
+            message={t("channels.qqQrSuccess")}
+            description={`App ID: ${s.appId}`}
+            style={{ width: "100%", marginBottom: 12 }}
+          />
+          {renderQrAutoSaveStatus(retrySave)}
+        </div>
+      );
+    }
+    if (s.phase === "qq_ready") {
+      return (
+        <div className={styles.qrPanel}>
+          <div className={styles.qrSteps}>
+            <span className={styles.qrStep}>
+              <span className={styles.qrDot}>1</span>
+              {t("channels.qqQrStep1")}
+            </span>
+            <span className={styles.qrStepDivider} />
+            <span className={styles.qrStep}>
+              <span className={styles.qrDot}>2</span>
+              {t("channels.qqQrStep2")}
+            </span>
+            <span className={styles.qrStepDivider} />
+            <span className={styles.qrStep}>
+              <span className={styles.qrDot}>3</span>
+              {t("channels.qqQrStep3")}
+            </span>
+          </div>
+          <div className={styles.qrCardWrap}>
+            <div className={styles.qrFrame}>
+              <QRCodeSVG value={s.qrcodeUrl} size={200} />
+            </div>
+          </div>
+          <p className={styles.qrScanHint}>{t("channels.qqQrScanHint")}</p>
+          <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
+            {t("channels.qrRetry")}
+          </Button>
+        </div>
+      );
+    }
+    if (s.phase === "error") {
+      return (
+        <div className={styles.qrPanel}>
+          <Alert
+            type="error"
+            message={s.reason}
+            style={{ width: "100%", marginBottom: 12 }}
+          />
+          <Button onClick={() => void startQqQr()}>
+            {t("channels.qrRetry")}
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <div className={styles.quickConfigPanel}>
+        <div className={styles.quickConfigSteps}>
+          <div className={styles.quickConfigStep}>
+            <span className={styles.stepNumber}>1</span>
+            {t("channels.qqQrIntro1")}
+          </div>
+          <div className={styles.quickConfigStep}>
+            <span className={styles.stepNumber}>2</span>
+            {t("channels.qqQrIntro2")}
+          </div>
+          <div className={styles.quickConfigStep}>
+            <span className={styles.stepNumber}>3</span>
+            {t("channels.qqQrIntro3")}
+          </div>
+        </div>
+        <Button
+          type="primary"
+          className={styles.quickConfigBtn}
+          block
+          onClick={() => void startQqQr()}
+        >
+          {t("channels.qqQrGenerate")}
+        </Button>
+      </div>
+    );
+  }
+
   function renderWecomPanel() {
     const s = qrState;
     if (s.phase === "loading")
@@ -1226,6 +1394,7 @@ export function ChannelDrawer({
             supportsQuickConfig &&
             !isEdit && (
               <>
+                {selectedKind === "qq" && renderQqPanel()}
                 {selectedKind === "wecom" && renderWecomPanel()}
                 {selectedKind === "weixin" && renderWeixinPanel()}
                 {selectedKind === "feishu" && renderFeishuPanel()}

@@ -128,6 +128,7 @@ _PERSISTED_META_KEYS = (
     "chat_type",
     "chat_id",
     "chatid",
+    "conversation_id",
     "user_openid",
     "group_openid",
     "to_handle",

@@ -25,6 +25,16 @@ export interface FeishuConfig extends BaseChannelConfig {
 export interface QQConfig extends BaseChannelConfig {
   app_id: string;
   client_secret: string;
+  group_context?: {
+    enabled?: boolean;
+    visibility?: "auto" | "all" | "mention_recent" | "mention_only";
+    activation?: "mention" | "always";
+    history?: "recent" | "none";
+    history_limit?: number;
+    history_ttl_seconds?: number;
+    clear_after_reply?: boolean;
+    groups?: Record<string, Record<string, unknown>>;
+  };
 }
 
 export type DashboardConfig = BaseChannelConfig;

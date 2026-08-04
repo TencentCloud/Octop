@@ -206,7 +206,80 @@ def test(agent_id: str | None, channel_id: str, as_user: str | None) -> None:
 
 @channel.group("bind")
 def bind_group() -> None:
-    """QR-based channel binding (WeCom / WeChat)."""
+    """QR-based channel binding (QQ / WeCom / WeChat)."""
+
+
+@bind_group.command("qq")
+@click.option("--agent", "agent_id", default=None)
+@click.option("--channel-id", default=None, help="Existing channel to update (optional).")
+@click.option("--user", "as_user", default=None)
+def bind_qq(agent_id: str | None, channel_id: str | None, as_user: str | None) -> None:
+    """Scan with mobile QQ and save QQ Bot application credentials."""
+    import asyncio
+
+    from octop.cli.support.offline_ops import (
+        create_channel_offline,
+        get_channel_offline,
+        patch_channel_offline,
+    )
+    from octop.cli.support.qr import render_qrcode_terminal
+    from octop.infra.gateway.channels import qr_bind
+
+    aid = require_agent(agent_id)
+    user_id = _resolve_user(aid, as_user)
+    session_id = f"cli:{aid}"
+    try:
+        data = asyncio.run(qr_bind.qq_qr_generate(session_id))
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    token = data.get("qrcode_token")
+    qr_url = data.get("qrcode_url")
+    if not token or not qr_url:
+        raise click.ClickException("unexpected QQ QR response")
+
+    click.echo("Scan with mobile QQ:")
+    render_qrcode_terminal(qr_url)
+    click.echo("Waiting for scan confirmation…")
+    deadline = time.time() + 180
+    credentials: dict[str, Any] | None = None
+    while time.time() < deadline:
+        try:
+            result = asyncio.run(qr_bind.qq_qr_poll(session_id, token))
+        except Exception:
+            time.sleep(2)
+            continue
+        status = result.get("status")
+        if status == "success" and result.get("app_id") and result.get("secret"):
+            credentials = result
+            break
+        if status in {"error", "expired"}:
+            raise click.ClickException(result.get("message") or "QQ QR binding failed")
+        time.sleep(2)
+
+    if credentials is None:
+        raise click.ClickException("QQ QR scan timed out")
+    click.echo(click.style("QQ Bot binding successful.", fg="green"))
+    cfg = {
+        "app_id": credentials["app_id"],
+        "secret": credentials["secret"],
+        "enabled": True,
+    }
+    try:
+        if channel_id:
+            existing = get_channel_offline(aid, channel_id)
+            cfg = {**existing.get("config", {}), **cfg}
+            row = patch_channel_offline(aid, channel_id, config=cfg, enabled=True)
+        else:
+            row = create_channel_offline(
+                agent_id=aid,
+                user_id=user_id,
+                kind="qq",
+                name="qq",
+                config=cfg,
+            )
+    except OctopError as exc:
+        raise click.ClickException(exc.message) from exc
+    click.echo(_json.dumps(row, indent=2))
 
 
 @bind_group.command("wecom")
@@ -363,10 +436,12 @@ def config_channels(agent_id: str | None, as_user: str | None) -> None:
     cid = row.get("id") or row.get("channel_id")
     click.echo(f"Created channel {cid} ({kind})")
 
-    if kind in ("wecom", "weixin"):
+    if kind in ("qq", "wecom", "weixin"):
         if _prompts.confirm(f"Run QR bind for {kind} now?", default=True):
             ctx = click.get_current_context()
-            if kind == "wecom":
+            if kind == "qq":
+                ctx.invoke(bind_qq, agent_id=aid, channel_id=cid, as_user=as_user)
+            elif kind == "wecom":
                 ctx.invoke(bind_wecom, agent_id=aid, channel_id=cid, as_user=as_user)
             else:
                 ctx.invoke(bind_weixin, agent_id=aid, channel_id=cid, as_user=as_user)
@@ -389,7 +464,29 @@ def config_channels(agent_id: str | None, as_user: str | None) -> None:
     elif kind == "qq":
         app_id = _prompts.text("QQ App ID:")
         secret = _prompts.password("QQ Client Secret:")
-        cfg = {"app_id": app_id, "client_secret": secret, "enabled": True}
+        visibility = _prompts.select(
+            "QQ group message visibility granted by group owners:",
+            choices=["auto", "all", "mention_recent", "mention_only"],
+        )
+        activation = "mention"
+        if visibility == "all":
+            activation = _prompts.select(
+                "When should the agent reply in groups?",
+                choices=["mention", "always"],
+            )
+        history = "none" if visibility == "mention_only" else "recent"
+        cfg = {
+            "app_id": app_id,
+            "client_secret": secret,
+            "enabled": True,
+            "group_context": {
+                "enabled": True,
+                "visibility": visibility,
+                "activation": activation,
+                "history": history,
+                "history_limit": 10,
+            },
+        }
     else:
         cfg = {"enabled": _prompts.confirm("Enable channel?", default=True)}
 

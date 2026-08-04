@@ -7,6 +7,7 @@ from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
+    session_key_from_message,
     user_id_from_message,
 )
 
@@ -34,6 +35,25 @@ def test_resolve_user_id_falls_back_to_agent_owner_for_openid() -> None:
 def test_resolve_user_id_zero_without_owner() -> None:
     msg = _msg(subject_id="openid_abc123")
     assert resolve_user_id_for_message(msg, agent_owner_id=None) == 0
+
+
+def test_group_session_is_owned_by_conversation_not_sender() -> None:
+    msg = InboundMessage(
+        channel_type="qq",
+        channel_id="ch1",
+        channel_subject=ChannelSubject(subject_id="group-openid", chat_type="group"),
+        content=[TextContent(text="hi")],
+        metadata={
+            "chat_type": "group",
+            "conversation_id": "group-openid",
+            "sender_id": "member-openid",
+        },
+    )
+
+    key = session_key_from_message(msg, agent_id="agent-1")
+
+    assert "group-openid" in key
+    assert "member-openid" not in key
 
 
 def test_sanitize_im_metadata_persists_xiaoyi_routing() -> None:

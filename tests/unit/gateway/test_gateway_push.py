@@ -147,6 +147,52 @@ async def test_push_text_from_session_cron_text_pushes_prompt(gateway: Gateway) 
 
 
 @pytest.mark.asyncio
+async def test_push_text_from_qq_group_session_preserves_proactive_routing(
+    gateway: Gateway,
+) -> None:
+    sk = ThreadRegistry.make_key(
+        agent_id="a1",
+        channel_type="qq",
+        channel_subject_id="group-openid-1",
+        channel_chat_type="group",
+    )
+    gateway.thread_registry._threads.insert(
+        thread_id="thr_qq_group",
+        agent_id="a1",
+        user_id=1,
+        channel_type="qq",
+        session_key=sk,
+    )
+    gateway.thread_registry._sessions.upsert(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type="qq",
+        chat_type="group",
+        thread_id="thr_qq_group",
+        channel_subject_id="group-openid-1",
+        channel_chat_type="group",
+        channel_metadata={
+            "channel_type": "qq",
+            "msg_type": "group",
+            "group_openid": "group-openid-1",
+        },
+        channel_id="ch-1",
+    )
+
+    await gateway.push_text_from_session("a1", sk, "proactive group message", task_type="text")
+
+    args = gateway._channel_manager.push_text.await_args
+    assert args.args[0] == "ch-1"
+    subject = args.args[1]
+    assert subject.subject_id == "group-openid-1"
+    assert subject.chat_type == "group"
+    assert subject.metadata["msg_type"] == "group"
+    assert subject.metadata["group_openid"] == "group-openid-1"
+    assert args.args[2] == "proactive group message"
+
+
+@pytest.mark.asyncio
 async def test_push_text_from_session_cron_agent_im_pushes_reply(gateway: Gateway) -> None:
     sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")
     gateway.thread_registry._threads.insert(

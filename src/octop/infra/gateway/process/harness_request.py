@@ -17,13 +17,80 @@ from octop.infra.gateway.media.attachment_hints import (
 )
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.message_keys import images_from_message
-from octop.infra.utils.locale import Locale
+from octop.infra.utils.locale import Locale, normalize_locale
 
 
 def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
     if isinstance(media_backend, AgentBackedMediaBackend):
         return media_backend._workspace
     return None
+
+
+def _group_turn_text(
+    msg: InboundMessage,
+    current_text: str,
+    *,
+    workspace: Any = None,
+    locale: str | Locale = "en",
+) -> str:
+    """Render short-lived group context without creating durable fake turns."""
+    context = msg.group_context
+    if context is None:
+        return current_text
+
+    language = normalize_locale(str(locale))
+    anonymous_labels: dict[str, str] = {}
+
+    def sender_label(sender_id: str, sender_name: str) -> str:
+        safe_id = " ".join(sender_id.split()) or "unknown"
+        safe_name = " ".join(sender_name.split())
+        if safe_name and safe_name != safe_id:
+            return safe_name
+        if safe_id not in anonymous_labels:
+            index = len(anonymous_labels) + 1
+            anonymous_labels[safe_id] = (
+                f"群成员{index}" if language == "zh" else f"Group member {index}"
+            )
+        return anonymous_labels[safe_id]
+
+    context_header = (
+        "【群聊背景｜仅供参考】" if language == "zh" else "[Group context | reference only]"
+    )
+    current_header = (
+        "【当前群消息｜请回复这条消息】"
+        if language == "zh"
+        else "[Current group message | reply to this]"
+    )
+
+    lines: list[str] = []
+    if context.messages:
+        lines.append(context_header)
+        for item in context.messages:
+            label = sender_label(item.sender_id, item.sender_name)
+            segments = [item.text] if item.text else []
+            segments.extend(
+                hints_from_content_parts(
+                    item.content,
+                    workspace=workspace,
+                    locale=locale,
+                    skip_vision_images=False,
+                )
+            )
+            for segment in segments:
+                segment_lines = segment.splitlines() or [""]
+                lines.append(f"[{label}] {segment_lines[0]}")
+                lines.extend(f"  {line}" for line in segment_lines[1:])
+        lines.append("")
+
+    sender_id = str(msg.metadata.get("sender_id") or "unknown")
+    sender_name = str(msg.metadata.get("sender_name") or "")
+    lines.extend(
+        [
+            current_header,
+            f"[{sender_label(sender_id, sender_name)}] {current_text}",
+        ]
+    )
+    return "\n".join(lines)
 
 
 async def build_content_from_message(
@@ -84,8 +151,8 @@ async def build_content_from_message(
             continue
         image_blocks.append(block)
 
-    text_parts = [part for part in [msg.text or "", *file_hints] if part]
-    combined_text = "\n\n".join(text_parts)
+    current_text = "\n\n".join(part for part in [msg.text or "", *file_hints] if part)
+    combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
 
     if not image_blocks:
         return combined_text or attachment_empty_message(locale)

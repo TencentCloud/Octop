@@ -91,6 +91,26 @@ export const channelApi = {
       body: JSON.stringify({ show_thinking: value }),
     }),
 
+  /** Generate a QQ Bot application-binding QR code. */
+  qqQrcodeGenerate: (agentId: string) =>
+    request<{ qrcode_token: string; qrcode_url: string }>(
+      `/agents/${agentId}/channels/qq/qrcode/generate`,
+      { method: "POST" },
+    ),
+
+  /** Poll QQ Bot QR-code binding result. */
+  qqQrcodePoll: (agentId: string, qrcode_token: string) =>
+    request<{
+      status: string;
+      app_id?: string;
+      secret?: string;
+      user_openid?: string;
+      message?: string;
+    }>(`/agents/${agentId}/channels/qq/qrcode/poll`, {
+      method: "POST",
+      body: JSON.stringify({ qrcode_token }),
+    }),
+
   /** Get a WeCom QR code for scan-based registration. */
   wecomQrcodeGenerate: (agentId: string) =>
     request<{ scode: string; auth_url: string }>(
