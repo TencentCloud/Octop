@@ -44,35 +44,42 @@ source_restricted_modules:
   - insurance_policy_retrospective
   - exam_material_recommendation
 
-# 白名单分级（对齐《基层临床医师Agent总配置与运行规则_V2.0》9.2 信源等级）：
-#   S级 官方：卫健委/医保局/药监局及直属中心、质控中心、政府网站
-#   A级 官方/半官方：中华医学会、中国医师协会、中华预防医学会、中华医学期刊网
-#   半官方行业组织/出版社：医院协会、CSCO、营养学会、人民卫生出版社
-# B级聚合平台（医脉通/丁香园/梅斯等）仅作线索，仍在 blocked 列表。
+# 信源分级（A 正式采集 / B 可增加 / C 仅发现辅助核验 / D 不入证据链）：
+#   A 正式纳入临床及公共卫生指南采集：卫健委/疾控/中医药/医保/药监局及直属中心、
+#     中华医学会/医师协会/预防医学会/医学期刊网、CSCO/营养学会/医院协会/人卫社、政府网/网信办。
+#   B 可增加的信源：国家疾病预防控制局、国家中医药管理局、全国标准信息公共服务平台。
+#   C 仅用于发现或辅助核验（聚合平台/指南注册），不作最终证据。
+#   D 不进入最终证据链（百科/问答/公众号等）。
 allowed_final_evidence_domain_suffixes:
-  # S级 官方
+  # A 正式采集 — S级 官方
   - ".gov.cn"
   - ".nhc.gov.cn"
+  - ".ndcpa.gov.cn"
+  - ".natcm.gov.cn"
   - ".nhsa.gov.cn"
   - ".nmpa.gov.cn"
   - ".cmde.org.cn"
   - ".cde.org.cn"
   - ".cdr-adr.org.cn"
   - ".chinacdc.cn"
-  # A级 官方/半官方学会与期刊
+  # A 正式采集 — A级 官方/半官方学会与期刊
   - ".cma.org.cn"
   - ".cmda.net"
   - ".medjournals.cn"
   - ".cpma.org.cn"
-  # 半官方行业组织与出版社
+  # A 正式采集 — 半官方行业组织与出版社
   - ".cha.org.cn"
   - ".csco.org.cn"
   - ".cnsoc.org"
   - ".pmph.com"
+  # B 可增加 — 官方标准平台
+  - ".std.samr.gov.cn"
 
 allowed_final_evidence_exact_domains:
-  # S级 官方
+  # A 正式采集 — S级 官方
   - "www.nhc.gov.cn"
+  - "www.ndcpa.gov.cn"
+  - "www.natcm.gov.cn"
   - "www.nhsa.gov.cn"
   - "www.nmpa.gov.cn"
   - "www.cac.gov.cn"
@@ -80,21 +87,24 @@ allowed_final_evidence_exact_domains:
   - "www.cmde.org.cn"
   - "www.cde.org.cn"
   - "www.cdr-adr.org.cn"
-  # A级 官方/半官方学会与期刊
+  # A 正式采集 — A级 官方/半官方学会与期刊
   - "medjournals.cn"
   - "www.cma.org.cn"
   - "www.cmda.net"
   - "cmda.net"
   - "www.cpma.org.cn"
-  # 半官方行业组织与出版社
+  # A 正式采集 — 半官方行业组织与出版社
   - "www.cha.org.cn"
   - "www.csco.org.cn"
   - "www.cnsoc.org"
   - "cnsoc.org"
   - "www.pmph.com"
+  # B 可增加 — 官方标准平台
+  - "std.samr.gov.cn"
 
+# C 仅用于发现或辅助核验（聚合平台/指南注册，不作最终证据）+ D 不进入最终证据链
 blocked_final_evidence_domains:
-  - "mp.weixin.qq.com"
+  # C 仅发现/辅助核验
   - "guide.medlive.cn"
   - "www.medlive.cn"
   - "medlive.cn"
@@ -102,9 +112,15 @@ blocked_final_evidence_domains:
   - "dxy.cn"
   - "www.medsci.cn"
   - "medsci.cn"
+  - "guidelines-registry.cn"
+  - "www.guidelines-registry.cn"
+  # D 不进入最终证据链
+  - "mp.weixin.qq.com"
   - "www.baidu.com"
+  - "baidu.com"
   - "baike.baidu.com"
   - "www.zhihu.com"
+  - "zhihu.com"
   - "zhuanlan.zhihu.com"
 
 blocked_capabilities:

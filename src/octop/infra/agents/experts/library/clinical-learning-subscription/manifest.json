@@ -1,16 +1,13 @@
 {
   "id": "clinical-learning-subscription",
   "label": {
-    "zh": "基层医生学习小助手",
-    "en": "Primary Care Doctor Learning Assistant"
+    "zh": "基层医生学习小助手"
   },
   "description": {
-    "zh": "以基层医生指南学习诊断、章节展开、学习路径图、备考选材、连续学习、医保政策学习和信源核验为专业模块，同时完整保留写作、总结、翻译、编程、计划等日常通用能力。",
-    "en": "A general-purpose assistant with specialist support for primary-care guideline learning diagnostics, section expansion, study pathways, exam-oriented material selection, continuous learning, insurance-policy study, and source verification."
+    "zh": "以基层医生指南学习诊断、章节展开、学习路径图、备考选材、连续学习、医保政策学习和信源核验为专业模块，同时完整保留写作、总结、翻译、编程、计划等日常通用能力。"
   },
   "welcome_message": {
-    "zh": "我是基层医生学习与通用助手。可以做指南学习诊断、章节展开、学习路径图、按考试目标选教材、医保政策回顾与来源核验，也可以直接处理写作、总结、翻译、编程、计划等日常任务——通用能力不会因为医学模块而受限。涉及个体患者诊疗、处方或急诊处置时，我只提供学习资料与权威来源，不作临床决策。需要个性化医学学习或微信订阅时，再征得同意登记最小化的医生信息。",
-    "en": "I am a general-purpose assistant with specialist support for primary-care learning. I can help with guideline learning diagnostics, section expansion, study pathways, exam-oriented material selection, insurance-policy review, and source verification, and I also handle everyday work such as writing, translation, coding, and planning without restriction. For patient-specific care, prescriptions, or emergencies, I provide learning materials and authoritative sources rather than clinical decisions."
+    "zh": "我是基层医生学习与通用助手。基于权威指南做医学指南学习、政策摘要，也可回答症状/疾病等医学问答（附来源链接），并处理写作、总结、翻译、编程、计划等日常任务——通用能力不会因为医学模块而受限。不提供个体诊疗、处方剂量；急诊处置与医保报销只提供指南/政策层面的学习性建议，不作为执行或报销依据。需要个性化医学学习或订阅时，再征得同意登记最小化的医生信息。"
   },
   "icon_name": "book-open-check",
   "color": "#0f766e",
@@ -22,272 +19,247 @@
   "quick_prompts": [
     {
       "title": {
-        "zh": "登记学习订阅",
-        "en": "Register Subscription"
+        "zh": "登记学习订阅"
       },
       "description": {
-        "zh": "填写5项信息，生成学习订阅配置",
-        "en": "Register 5 fields and create learning subscription settings"
+        "zh": "填写5项信息，生成学习订阅配置"
       },
       "prompt": {
-        "zh": "我同意处理以下信息用于指南学习订阅。请登记：\n称谓（可用姓氏/昵称）：\n所在地区：省 / 市 / 区县\n所在医院：\n所在科室：\n当前职称：",
-        "en": "I consent to using the following information for learning subscriptions. Please register:\nPreferred name or title:\nRegion: province / city / district\nHospital:\nDepartment:\nTitle:"
+        "zh": "我同意处理以下信息用于指南学习订阅。请登记：\n称谓（可用姓氏/昵称）：\n所在地区：省 / 市 / 区县\n所在医院：\n所在科室：\n当前职称："
       },
       "color": "#ccfbf1",
       "icon_name": "user-check"
     },
     {
       "title": {
-        "zh": "预览下一学习单元",
-        "en": "Preview Next Lesson"
+        "zh": "预览下一学习单元"
       },
       "description": {
-        "zh": "查看固定版本轨道的下一单元，不计入进度",
-        "en": "Preview the next fixed-version lesson without advancing progress"
+        "zh": "查看固定版本轨道的下一单元，不计入进度"
       },
       "prompt": {
-        "zh": "请读取我的学习轨道并预览下一学习单元。不要创建投递账本、不要推进进度；如有多条轨道，先让我选择。",
-        "en": "Please read my learning tracks and preview the next lesson. Do not create a delivery ledger or advance progress; ask me to choose if multiple tracks are active."
+        "zh": "请读取我的学习轨道并预览下一学习单元。不要创建投递账本、不要推进进度；如有多条轨道，先让我选择。"
       },
       "color": "#dbeafe",
       "icon_name": "book-open"
     },
     {
       "title": {
-        "zh": "指南学习诊断",
-        "en": "Guideline Learning Diagnostic"
+        "zh": "今日指南学习"
       },
       "description": {
-        "zh": "根据学习目标、指南版本和掌握情况定位优先学习内容",
-        "en": "Identify learning priorities from a goal, guideline version, and current knowledge."
+        "zh": "生成今日正式指南学习单元（走弱投递防重）"
       },
       "prompt": {
-        "zh": "我想做一次指南学习诊断。学习目标：；准备学习的指南/主题：；当前掌握情况：；每天可投入时间：。请先核验指南来源，再给出学习诊断、优先章节和下一步计划。",
-        "en": "I want a guideline learning diagnostic. Learning goal:; guideline/topic:; current familiarity:; minutes available per day:. Please verify the source first, then provide the learning diagnostic, priority sections, and next-step plan."
+        "zh": "请按当前边界生成今日指南学习内容：先 delivery-check 查重，再读取下一固定单元，校验后输出正文。"
       },
-      "color": "#e0f2fe",
-      "icon_name": "clipboard-check"
+      "color": "#dbeafe",
+      "icon_name": "book-open"
     },
     {
       "title": {
-        "zh": "指南学习地图",
-        "en": "Guideline Learning Map"
+        "zh": "继续当前指南"
       },
       "description": {
-        "zh": "将指南按章节、概念关系和学习顺序整理成可展开的学习路径",
-        "en": "Turn a guideline into an expandable path by chapter, concept relationship, and study order."
+        "zh": "按当前进度继续同一份指南的下一天学习"
       },
       "prompt": {
-        "zh": "请把以下指南或主题整理成学习地图：先核验版本和权威来源，再给出章节结构、概念流程关系、优先学习顺序和可继续展开的部分。只用于学习，不针对具体患者作诊断或处置：\n\n",
-        "en": "Please turn the following guideline or topic into a learning map: verify its version and authoritative source first, then provide chapter structure, concept-flow relationships, priority order, and expandable sections. This is for learning only, not patient-specific diagnosis or care:\n\n"
-      },
-      "color": "#dcfce7",
-      "icon_name": "map"
-    },
-    {
-      "title": {
-        "zh": "展开指南章节",
-        "en": "Expand Guideline Section"
-      },
-      "description": {
-        "zh": "按原文结构逐节讲解并给出原文定位，帮你读懂原文",
-        "en": "Walk through a section following the original structure with precise locators."
-      },
-      "prompt": {
-        "zh": "请展开以下指南的指定章节：先核验完整名称、版本和权威来源，再按原文结构讲解本节要点、关键定义、证据等级、与上下游章节的关系和易混淆点，并给出原文定位（章/节/条目号）。只做学习性解读，不替代原文，也不针对具体患者：\n\n",
-        "en": "Please expand the specified section of this guideline: verify its full title, version, and authoritative source first, then explain the section's key points, definitions, evidence grades, relationships to adjacent chapters, and common confusions, with precise locators. Educational reading support only, not a replacement for the original text and not patient-specific:\n\n"
-      },
-      "color": "#e0f2fe",
-      "icon_name": "book-open-text"
-    },
-    {
-      "title": {
-        "zh": "指南学习路径图",
-        "en": "Guideline Study Pathway"
-      },
-      "description": {
-        "zh": "把指南整理成学习顺序：每步对应原文、用时和掌握标志",
-        "en": "Turn a guideline into a study order with locators, time, and mastery checks."
-      },
-      "prompt": {
-        "zh": "请把以下指南整理成学习路径图：先核验版本和权威来源，再给出前置知识、分步学习顺序（每步写明对应原文章节、预计用时、掌握标志）和可选深入方向。我要的是学习顺序，不是床旁处置步骤：\n\n",
-        "en": "Please turn this guideline into a study pathway: verify version and authoritative source first, then give prerequisites, step-by-step study order (each with the matching section, estimated time, and mastery check), and optional deep-dive directions. I want a study order, not bedside management steps:\n\n"
-      },
-      "color": "#dcfce7",
-      "icon_name": "route"
-    },
-    {
-      "title": {
-        "zh": "按考试目标推荐教材",
-        "en": "Exam-Oriented Materials"
-      },
-      "description": {
-        "zh": "说明备考目标，动态推荐教材、指南与学习顺序",
-        "en": "Recommend materials and study order based on your exam or role goal."
-      },
-      "prompt": {
-        "zh": "我正在准备以下考试／岗位目标，请据此推荐学习材料和顺序：区分官方大纲要求与你的补充建议，标注每份材料的版本、发布机构和用途，并说明以当年官方考试大纲为准。\n\n考试／岗位目标：\n目标时间：\n每日可投入时间：\n专业方向：",
-        "en": "I am preparing for the following exam or role goal. Please recommend study materials and an order: separate official syllabus requirements from your own suggestions, note each item's version, publisher, and purpose, and state that the current official syllabus prevails.\n\nExam or role goal:\nTarget date:\nDaily study time:\nSpecialty:"
-      },
-      "color": "#fef9c3",
-      "icon_name": "graduation-cap"
-    },
-    {
-      "title": {
-        "zh": "医保政策回顾学习",
-        "en": "Insurance Policy Review"
-      },
-      "description": {
-        "zh": "回顾近一年或指定区间的重点医保政策，标注现行状态",
-        "en": "Review key insurance policies over the past year or a chosen window."
-      },
-      "prompt": {
-        "zh": "请回顾我所在地区近一年的重点医保政策：写明回顾区间和检索层级，按发布时间排序，标注每份文件的发布机构、生效时间和现行状态（现行有效／已废止／已被替代），并按主题归纳学习提示。只做原文摘要，不要给报销结论或支付比例。",
-        "en": "Please review the key insurance policies for my region over the past year: state the review window and search levels, sort by publication date, note each document's publisher, effective date, and current status (in force / repealed / superseded), and group study notes by theme. Summarize official text only, without reimbursement conclusions or payment ratios."
-      },
-      "color": "#ede9fe",
-      "icon_name": "history"
-    },
-    {
-      "title": {
-        "zh": "专业指南更新提醒",
-        "en": "Guideline Update"
-      },
-      "description": {
-        "zh": "提醒本科室相关指南/共识/规范更新",
-        "en": "Summarize department-relevant professional updates"
-      },
-      "prompt": {
-        "zh": "请按当前边界生成专业指南更新提醒：",
-        "en": "Please prepare a professional guideline update reminder within the current boundaries:"
-      },
-      "color": "#ede9fe",
-      "icon_name": "bell-ring"
-    },
-    {
-      "title": {
-        "zh": "医保政策变化学习",
-        "en": "Insurance Summary"
-      },
-      "description": {
-        "zh": "学习地区医保正式文件变化，不给报销结论",
-        "en": "Summarize regional insurance policy text"
-      },
-      "prompt": {
-        "zh": "请按当前边界生成地区医保政策变化学习内容：",
-        "en": "Please prepare regional insurance policy learning content within the current boundaries:"
-      },
-      "color": "#fef3c7",
-      "icon_name": "file-text"
-    },
-    {
-      "title": {
-        "zh": "创建学习轨道",
-        "en": "Create Learning Track"
-      },
-      "description": {
-        "zh": "核验版本后规划固定章节单元，确认后再保存和启用",
-        "en": "Verify a version, plan fixed lesson units, then save and activate only after confirmation"
-      },
-      "prompt": {
-        "zh": "请为我设计一个候选学习轨道：先核验指南版本和权威来源，再给出固定章节单元、每次时长和关联学习目标。先不要保存、启用或推送，等我确认。",
-        "en": "Design a candidate learning track: verify the guideline version and authoritative source, then propose fixed lessons, pacing, and learning goals. Do not save, activate, or send anything until I confirm."
-      },
-      "color": "#dcfce7",
-      "icon_name": "list-checks"
-    },
-    {
-      "title": {
-        "zh": "查看学习轨道进度",
-        "en": "View Learning Track Progress"
-      },
-      "description": {
-        "zh": "查看固定版本、已确认送达单元和下一单元",
-        "en": "View fixed version, accepted lessons, and the next lesson"
-      },
-      "prompt": {
-        "zh": "请读取我的学习轨道，展示每条轨道的固定版本、已确认送达单元、我标记的学习状态和下一单元。不要把已送达说成已掌握，也不要自动推送。",
-        "en": "Read my learning tracks and show each fixed version, accepted lessons, my marked learning status, and the next lesson. Do not equate delivery with mastery or send automatically."
+        "zh": "请读取学习档案中的当前连续学习指南和进度，继续生成下一天的指南学习内容。若尚未选择指南，请先推荐一份适合我科室的权威指南，并在我确认后记录进度。"
       },
       "color": "#e0f2fe",
       "icon_name": "book-marked"
     },
     {
       "title": {
-        "zh": "检查指南新版迁移",
-        "en": "Review Guideline Migration"
+        "zh": "指南学习诊断"
       },
       "description": {
-        "zh": "比较旧轨道与候选新版，确认前不改写任何进度",
-        "en": "Compare an existing track with a candidate version without changing progress before confirmation"
+        "zh": "根据学习目标、指南版本和掌握情况定位优先学习内容"
       },
       "prompt": {
-        "zh": "请检查我的学习轨道是否有可核验的新版本指南；若有，先给出旧/新版本、受影响章节和迁移方案。未经我确认，不要替换轨道、改写进度或发送内容。",
-        "en": "Check whether any learning track has a verifiable newer guideline version. If so, show old/new versions, affected lessons, and a migration plan. Do not replace tracks, alter progress, or send content without my confirmation."
+        "zh": "我想做一次指南学习诊断。学习目标：；准备学习的指南/主题：；当前掌握情况：；每天可投入时间：。请先核验指南来源，再给出学习诊断、优先章节和下一步计划。"
+      },
+      "color": "#e0f2fe",
+      "icon_name": "clipboard-check"
+    },
+    {
+      "title": {
+        "zh": "指南学习地图"
+      },
+      "description": {
+        "zh": "将指南按章节、概念关系和学习顺序整理成可展开的学习路径"
+      },
+      "prompt": {
+        "zh": "请把以下指南或主题整理成学习地图：先核验版本和权威来源，再给出章节结构、概念流程关系、优先学习顺序和可继续展开的部分。只用于学习，不针对具体患者作诊断或处置：\n\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "map"
+    },
+    {
+      "title": {
+        "zh": "展开指南章节"
+      },
+      "description": {
+        "zh": "按原文结构逐节讲解并给出原文定位，帮你读懂原文"
+      },
+      "prompt": {
+        "zh": "请展开以下指南的指定章节：先核验完整名称、版本和权威来源，再按原文结构讲解本节要点、关键定义、证据等级、与上下游章节的关系和易混淆点，并给出原文定位（章/节/条目号）。只做学习性解读，不替代原文，也不针对具体患者：\n\n"
+      },
+      "color": "#e0f2fe",
+      "icon_name": "book-open-text"
+    },
+    {
+      "title": {
+        "zh": "指南学习路径图"
+      },
+      "description": {
+        "zh": "把指南整理成学习顺序：每步对应原文、用时和掌握标志"
+      },
+      "prompt": {
+        "zh": "请把以下指南整理成学习路径图：先核验版本和权威来源，再给出前置知识、分步学习顺序（每步写明对应原文章节、预计用时、掌握标志）和可选深入方向。我要的是学习顺序，不是床旁处置步骤：\n\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "route"
+    },
+    {
+      "title": {
+        "zh": "按考试目标推荐教材"
+      },
+      "description": {
+        "zh": "说明备考目标，动态推荐教材、指南与学习顺序"
+      },
+      "prompt": {
+        "zh": "我正在准备以下考试／岗位目标，请据此推荐学习材料和顺序：区分官方大纲要求与你的补充建议，标注每份材料的版本、发布机构和用途，并说明以当年官方考试大纲为准。\n\n考试／岗位目标：\n目标时间：\n每日可投入时间：\n专业方向："
+      },
+      "color": "#fef9c3",
+      "icon_name": "graduation-cap"
+    },
+    {
+      "title": {
+        "zh": "医保政策回顾学习"
+      },
+      "description": {
+        "zh": "回顾近一年或指定区间的重点医保政策，标注现行状态"
+      },
+      "prompt": {
+        "zh": "请回顾我所在地区近一年的重点医保政策：写明回顾区间和检索层级，按发布时间排序，标注每份文件的发布机构、生效时间和现行状态（现行有效／已废止／已被替代），并按主题归纳学习提示。只做原文摘要，不要给报销结论或支付比例。"
+      },
+      "color": "#ede9fe",
+      "icon_name": "history"
+    },
+    {
+      "title": {
+        "zh": "专业指南更新提醒"
+      },
+      "description": {
+        "zh": "提醒本科室相关指南/共识/规范更新"
+      },
+      "prompt": {
+        "zh": "请按当前边界生成专业指南更新提醒："
+      },
+      "color": "#ede9fe",
+      "icon_name": "bell-ring"
+    },
+    {
+      "title": {
+        "zh": "医保政策变化学习"
+      },
+      "description": {
+        "zh": "学习地区医保正式文件变化，不给报销结论"
+      },
+      "prompt": {
+        "zh": "请按当前边界生成地区医保政策变化学习内容："
+      },
+      "color": "#fef3c7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "创建学习轨道"
+      },
+      "description": {
+        "zh": "核验版本后规划固定章节单元，确认后再保存和启用"
+      },
+      "prompt": {
+        "zh": "请为我设计一个候选学习轨道：先核验指南版本和权威来源，再给出固定章节单元、每次时长和关联学习目标。先不要保存、启用或推送，等我确认。"
+      },
+      "color": "#dcfce7",
+      "icon_name": "list-checks"
+    },
+    {
+      "title": {
+        "zh": "查看学习轨道进度"
+      },
+      "description": {
+        "zh": "查看固定版本、已确认送达单元和下一单元"
+      },
+      "prompt": {
+        "zh": "请读取我的学习轨道，展示每条轨道的固定版本、已确认送达单元、我标记的学习状态和下一单元。不要把已送达说成已掌握，也不要自动推送。"
+      },
+      "color": "#e0f2fe",
+      "icon_name": "book-marked"
+    },
+    {
+      "title": {
+        "zh": "检查指南新版迁移"
+      },
+      "description": {
+        "zh": "比较旧轨道与候选新版，确认前不改写任何进度"
+      },
+      "prompt": {
+        "zh": "请检查我的学习轨道是否有可核验的新版本指南；若有，先给出旧/新版本、受影响章节和迁移方案。未经我确认，不要替换轨道、改写进度或发送内容。"
       },
       "color": "#fef3c7",
       "icon_name": "git-compare"
     },
     {
       "title": {
-        "zh": "核验来源链接",
-        "en": "Verify Source"
+        "zh": "核验来源链接"
       },
       "description": {
-        "zh": "判断指南、政策或通告来源能否作为依据",
-        "en": "Check whether a guideline or policy source is reliable"
+        "zh": "判断指南、政策或通告来源能否作为依据"
       },
       "prompt": {
-        "zh": "请按信源核验规则检查以下来源是否可作为最终依据，并说明适用层级、发布时间、发布机构和不能确认的地方：\n\n",
-        "en": "Please verify whether the following source can be used as final evidence, and explain its applicable level, publication date, issuing body, and any uncertainties:\n\n"
+        "zh": "请按信源核验规则检查以下来源是否可作为最终依据，并说明适用层级、发布时间、发布机构和不能确认的地方：\n\n"
       },
       "color": "#f0fdf4",
       "icon_name": "shield-check"
     },
     {
       "title": {
-        "zh": "更新登记信息",
-        "en": "Update Profile"
+        "zh": "更新登记信息"
       },
       "description": {
-        "zh": "变更地区、医院、科室或职称",
-        "en": "Update region, hospital, department, or title"
+        "zh": "变更地区、医院、科室或职称"
       },
       "prompt": {
-        "zh": "我需要更新学习订阅登记信息。请一次只问一个需要变更的字段，并继续遵守最小化隐私原则。",
-        "en": "I need to update my learning subscription profile. Please ask for one field at a time and keep following the data minimization principle."
+        "zh": "我需要更新学习订阅登记信息。请一次只问一个需要变更的字段，并继续遵守最小化隐私原则。"
       },
       "color": "#f5f3ff",
       "icon_name": "settings"
     },
     {
       "title": {
-        "zh": "停用学习订阅",
-        "en": "Pause Subscription"
+        "zh": "停用学习订阅"
       },
       "description": {
-        "zh": "停用推送任务或清除订阅档案",
-        "en": "Pause scheduled pushes or clear the subscription profile"
+        "zh": "停用推送任务或清除订阅档案"
       },
       "prompt": {
-        "zh": "请帮我停用学习订阅。先列出当前可停用的订阅任务和学习档案中会保留/清除的信息，等我确认后再执行。",
-        "en": "Please help me pause the learning subscription. First list the scheduled tasks that can be disabled and what information in my learning profile will be kept or cleared, then wait for my confirmation before taking action."
+        "zh": "请帮我停用学习订阅。先列出当前可停用的订阅任务和学习档案中会保留/清除的信息，等我确认后再执行。"
       },
       "color": "#fee2e2",
       "icon_name": "pause-circle"
     },
     {
       "title": {
-        "zh": "处理其他任务",
-        "en": "Handle Another Task"
+        "zh": "处理其他任务"
       },
       "description": {
-        "zh": "直接处理写作、总结、翻译、计划、数据整理等日常事务",
-        "en": "Handle everyday work such as writing, summaries, translation, planning, or data organization."
+        "zh": "直接处理写作、总结、翻译、计划、数据整理等日常事务"
       },
       "prompt": {
-        "zh": "请作为通用助手帮我处理这件事：",
-        "en": "Please help me with this as a general assistant:"
+        "zh": "请作为通用助手帮我处理这件事："
       },
       "color": "#f3e8ff",
       "icon_name": "sparkles"

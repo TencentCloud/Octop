@@ -7,6 +7,7 @@
   "activation_mode": "user_select",
   "selection_policy": "用户选择开启；可以全部开启，也可以只开启其中一个。未被用户明确选择的任务不得创建、启用或写成已启用。",
   "routing_note": "cronjob_create 自动绑定当前会话 session_key，并按该会话通道（微信/QQ/dashboard/CLI 等）投递，无需手动绑定，也不要求 :weixin: 会话标识；不得以“未绑定微信”或“非微信会话”为由拒绝创建。",
+  "output_contract": "所有定时任务的输出必须是简体中文；只输出最终要推送给用户的正文，不输出思考、推理、检索、执行过程（禁止出现 I'll / Let me / Now running / 步骤说明 / 脚本执行日志等过程语句）；执行脚本和检索时静默，只在最终正文生成后输出。",
   "delivery_policy": {
     "run_immediately_after_activation": false,
     "manual_preview_triggers_cron": false,
@@ -37,7 +38,7 @@
       "selectable": true,
       "requires_platform_delivery_adapter": false,
       "delivery_caveat": "以 cron 执行为准，无通道回执；按逻辑日期去重，宁可漏发不重复。用户选定权威指南轨道前，cron 运行会如实报告“暂无已启用轨道”并停止，不随机推送。",
-      "prompt": "执行每日指南学习投递（严格按顺序，任何一步失败即停止且不输出正文）：\n1. 先取今天日期（Asia/Shanghai，YYYY-MM-DD），运行：python3 scripts/clinical_profile.py delivery-check --logical-date <今天>。若 already_sent 为 true，回复\"今日学习内容已推送\"并停止，不得重复生成。\n2. 运行：python3 scripts/clinical_profile.py learning-next-lesson 读取下一固定单元。无已启用轨道或无下一单元时，如实说明并停止，不得编造内容。\n3. 按 references/daily-learning-template.md 生成该单元：恰好 3 个编号要点、下一单元预告、来源行（来源：名称：[链接](URL)）。然后用 python3 scripts/validate_output.py --module daily_guideline_learning 校验；不通过先修正再校验一次，仍不通过则停止并说明原因，不输出正文。\n4. 校验通过后运行：python3 scripts/clinical_profile.py delivery-record --logical-date <今天> --confirm true，然后输出单元正文。正文首行格式：【每日指南学习｜{主题}】（第 {ordinal}/{total} 单元）。"
+      "prompt": "【输出要求】全程使用简体中文；步骤 1-4 静默执行，不输出任何思考/推理/执行过程（禁止出现 I'll、Let me、Now running、步骤说明、脚本输出等过程语句），只在第 4 步校验通过后输出正文单元；如需停止也只用简体中文一句话说明原因（如“今日学习内容已推送”“暂无已启用轨道”），不附思考过程。\n执行每日指南学习投递（严格按顺序，任何一步失败即停止且不输出正文）：\n1. 先取今天日期（Asia/Shanghai，YYYY-MM-DD），运行：python3 scripts/clinical_profile.py delivery-check --logical-date <今天>。若 already_sent 为 true，回复\"今日学习内容已推送\"并停止，不得重复生成。\n2. 运行：python3 scripts/clinical_profile.py learning-next-lesson 读取下一固定单元。无已启用轨道或无下一单元时，如实说明并停止，不得编造内容。\n3. 按 references/daily-learning-template.md 生成该单元：恰好 3 个编号要点、下一单元预告、来源行（来源：名称：[链接](URL)）。然后用 python3 scripts/validate_output.py --module daily_guideline_learning 校验；不通过先修正再校验一次，仍不通过则停止并说明原因，不输出正文。\n4. 校验通过后运行：python3 scripts/clinical_profile.py delivery-record --logical-date <今天> --confirm true，然后输出单元正文。正文首行格式：【每日指南学习｜{主题}】（第 {ordinal}/{total} 单元）。"
     },
     {
       "task_type": "guideline_update_reminder",
@@ -46,7 +47,8 @@
       "schedule": "0 9 */3 * *",
       "phase": "phase_1",
       "enabled_by_default": false,
-      "selectable": true
+      "selectable": true,
+      "prompt": "【输出要求】全程使用简体中文；只输出最终提醒正文，不输出思考/检索/推理过程（禁止出现 I'll、Let me、搜索过程、检索日志等过程语句）；执行检索和核验时静默；正文首行【专业指南更新提醒｜{科室}】。\n执行专业指南更新提醒：先运行 python3 scripts/clinical_profile.py get 获取科室/亚专业/职称深度/地区；检索 references/source-policy.yaml 白名单信源近期的指南/共识/规范/临床路径/质控标准更新；按 references/output-templates.md 模板输出，含来源行（来源：名称：[链接](URL)）；无可靠更新时输出无更新模板（可用 --allow-no-source）；发送前运行 python3 scripts/validate_output.py --module guideline_update_reminder 校验。不输出 SOP/处方/个体诊疗/报销结论。"
     },
     {
       "task_type": "insurance_policy_learning",
@@ -55,7 +57,8 @@
       "schedule": "0 9 * * 2,5",
       "phase": "phase_1",
       "enabled_by_default": false,
-      "selectable": true
+      "selectable": true,
+      "prompt": "【输出要求】全程使用简体中文；只输出最终正文，不输出思考/检索/推理过程（禁止出现 I'll、Let me、搜索过程、检索日志等过程语句）；执行检索时静默；正文首行【医保政策变化学习｜{地区}】。\n执行地区医保政策变化学习：先运行 python3 scripts/clinical_profile.py get 获取地区；检索该地区医保局/医保办正式文件近期变化；按 references/output-templates.md 模板输出原文摘要+来源行（来源：名称：[链接](URL)）+本地确认提示；不输出报销结论；发送前运行 python3 scripts/validate_output.py --module insurance_policy_learning 校验。"
     }
   ],
   "disabled_modules": [

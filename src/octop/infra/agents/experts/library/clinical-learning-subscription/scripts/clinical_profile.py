@@ -2060,73 +2060,56 @@ def render_user_text(state: dict[str, Any]) -> str:
         track_text = "- 暂无已启用的学习轨道；预览、诊断和普通通用任务均不需要创建轨道。"
 
     return f"""---
-summary: "基层医生学习与通用助手学习档案（v2）"
+summary: "基层医生学习档案"
 read_when:
   - 医生登记
   - 学习目标与学习轨道
   - 指南学习诊断
-  - 专业指南更新提醒
-  - 地区医保政策变化学习
+  - 订阅任务状态
 ---
 
-# 基层医生学习与通用助手学习档案
+# 基层医生学习档案
 
-本文件由 scripts/clinical_profile.py 根据结构化档案自动生成。不得手动编辑；登记、学习目标、轨道、学习单元和学习诊断摘要变更必须调用脚本。正式投递状态与通道回执由平台服务保存，不写入本文件。
+由 clinical_profile.py 自动生成，只读；规则见 SOUL.md。
 
-本文件只保存用户明确同意或明确要求保存的个性化医学学习最小信息。普通通用任务不应读取或写入本文件。不得写入患者姓名、手机号、身份证号、病历号、影像号、处方、检查报告或其他患者个人信息。
+## 登记
 
-## 个性化医学学习登记
-
-- 登记同意：{consent}
+- 同意：{consent}
 - 称谓：{profile.get("display_name") or "待确认"}
 - 地区：{profile.get("region") or "待确认"}
 - 医院：{profile.get("hospital") or "待确认"}
 - 科室：{profile.get("department") or "待确认"}
 - 职称：{profile.get("title") or "待确认"}
 
-## 学习订阅识别
+## 识别
 
 - 科室系统：{derived.get("department_system") or "待识别"}
-- 亚专业：{derived.get("specialty") or "待识别"}
 - 职称学习深度：{derived.get("learning_depth") or "待识别"}
-- 地区医保关注范围：{derived.get("insurance_scope") or "待识别"}
-- 医院能力边界：{derived.get("hospital_boundary") or DEFAULT_STATE["derived"]["hospital_boundary"]}
+- 医保关注范围：{derived.get("insurance_scope") or "待识别"}
 
-## 已保存学习目标
+## 学习目标
 
 {goal_lines}
 
-## 已启用学习轨道
+## 学习轨道
 
 {track_text}
 
-轨道只记录已核验的指南版本和固定学习单元。预览、学习地图、学习诊断和小测不创建正式投递账本、不推进进度。正式送达事实只由平台通道回执确认，且不等于已掌握或临床胜任；学习掌握状态只能由用户明确更新。
-
-## 最近一次指南学习诊断
+## 学习诊断
 
 - 状态：{learning_diagnosis.get("status") or "not_started"}
-- 学习目标：{learning_diagnosis.get("goal") or "待设定"}
 - 关联指南：{learning_diagnosis.get("guideline_title") or "待选择"}
-- 权威来源：{learning_diagnosis.get("source_url") or "待核验"}
-- 学习自评：{learning_diagnosis.get("self_assessed_level") or "not_assessed"}
-- 每日可投入时间：{learning_diagnosis.get("available_minutes_per_day") or "待设定"} 分钟
-- 优先学习主题：{'；'.join(learning_diagnosis.get("priority_topics") or []) or "待诊断"}
-- 建议起点：{learning_diagnosis.get("recommended_start") or "待诊断"}
-- 隐私规则：只保存用户明确要求保存的摘要；不保存原始答题过程、课程正文、真实病例或患者信息。
+- 自评：{learning_diagnosis.get("self_assessed_level") or "not_assessed"}
+- 优先主题：{'；'.join(learning_diagnosis.get("priority_topics") or []) or "待诊断"}
 
-## 订阅任务状态
+## 订阅任务
 
-- 每日指南连续学习：{subscriptions.get("daily_guideline_learning") if subscriptions.get("daily_guideline_learning") not in (None, "", "待绑定微信通道") else "未创建"}
-- 专业指南更新提醒：{subscriptions.get("guideline_update_reminder") if subscriptions.get("guideline_update_reminder") not in (None, "", "待绑定微信通道") else "未创建"}
-- 地区医保政策变化学习：{subscriptions.get("insurance_policy_learning") if subscriptions.get("insurance_policy_learning") not in (None, "", "待绑定微信通道") else "未创建"}
-- 推送通道：{subscriptions.get("default_channel") or "当前会话通道（平台自动路由）"}
-- 通道路由：平台 cronjob_create 自动绑定创建时的会话通道（微信/QQ/dashboard/CLI 等），无需手动绑定；任务是否已创建以 cronjob_list 为准。
+- 每日指南学习：{subscriptions.get("daily_guideline_learning") if subscriptions.get("daily_guideline_learning") not in (None, "", "待绑定微信通道") else "未创建"}
+- 指南更新提醒：{subscriptions.get("guideline_update_reminder") if subscriptions.get("guideline_update_reminder") not in (None, "", "待绑定微信通道") else "未创建"}
+- 医保政策学习：{subscriptions.get("insurance_policy_learning") if subscriptions.get("insurance_policy_learning") not in (None, "", "待绑定微信通道") else "未创建"}
+- 推送通道：{subscriptions.get("default_channel") or "当前会话通道（自动路由）"}
 
-## 隐私与停用
-
-- 信息用途：{privacy.get("purpose") or DEFAULT_STATE["privacy"]["purpose"]}
-- 最小化原则：{privacy.get("minimization") or DEFAULT_STATE["privacy"]["minimization"]}
-- 删除状态：{privacy.get("deletion_status") or "未申请删除"}
+删除状态：{privacy.get("deletion_status") or "未申请删除"}
 """
 
 
