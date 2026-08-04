@@ -292,7 +292,13 @@ function CopyButton({ text }: { text: string }) {
   }, [text, t]);
 
   return (
-    <button className={styles.msgCopyBtn} onClick={handleCopy} title="Copy">
+    <button
+      className={styles.msgCopyBtn}
+      onClick={handleCopy}
+      title={t("common.copy", "复制")}
+      type="button"
+      aria-label={t("common.copy", "复制")}
+    >
       {copied ? <Check size={14} /> : <Copy size={14} />}
     </button>
   );
@@ -661,22 +667,6 @@ function MessageBubble({
       <div className={styles.bubbleContent}>
         {isUser ? (
           <div className={styles.userMsgRow}>
-            {!isEditing && message.content && (
-              <CopyButton text={message.content} />
-            )}
-            {!isEditing && onEditUserMessage && (
-              <button
-                className={styles.msgActionBtn}
-                onClick={() => {
-                  setEditText(message.content);
-                  setIsEditing(true);
-                }}
-                title={t("common.edit")}
-                type="button"
-              >
-                <Pencil size={13} />
-              </button>
-            )}
             {isEditing ? (
               <div className={styles.editArea}>
                 <textarea
@@ -729,6 +719,27 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
+                {(message.content || onEditUserMessage) && (
+                  <div className={styles.userMsgActions} role="group">
+                    {message.content ? (
+                      <CopyButton text={message.content} />
+                    ) : null}
+                    {onEditUserMessage ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => {
+                          setEditText(message.content);
+                          setIsEditing(true);
+                        }}
+                        title={t("common.edit")}
+                        type="button"
+                        aria-label={t("common.edit")}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               </div>
             )}
           </div>

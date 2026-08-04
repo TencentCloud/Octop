@@ -67,8 +67,6 @@ async def dashboard_chat_ws(
 
     connection_id = uuid.uuid4().hex
     await websocket.accept()
-    active_thread_id: str | None = None
-    turn_finished = False
 
     # The harness/gateway workers run on the server event loop, but this
     # handler may run on a different loop (e.g. starlette's TestClient portal).
@@ -84,10 +82,7 @@ async def dashboard_chat_ws(
         )
 
     async def send_frame(frame: dict[str, Any]) -> None:
-        nonlocal turn_finished
         await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(_emit_frame(frame), ws_loop))
-        if frame.get("type") in ("done", "error", "hitl_required"):
-            turn_finished = True
 
     hub.register(connection_id, send_frame)
 
@@ -106,6 +101,42 @@ async def dashboard_chat_ws(
             if msg_type == "ping":
                 await send_frame({"type": "pong"})
                 continue
+
+            if msg_type == "subscribe":
+                thread_id = str(payload.get("thread_id") or "").strip()
+                if not thread_id:
+                    await send_frame({"type": "error", "message": "subscribe requires thread_id"})
+                    continue
+                row = gateway.thread_registry.get_thread(thread_id)
+                if row is None or row.agent_id != agent_id:
+                    await send_frame(
+                        {"type": "error", "message": f"thread {thread_id!r} not found"},
+                    )
+                    continue
+                hub.subscribe(thread_id, connection_id)
+                await send_frame(
+                    {
+                        "type": "turn_status",
+                        "thread_id": thread_id,
+                        "active": hub.is_turn_active(thread_id),
+                    },
+                )
+                continue
+
+            if msg_type == "cancel":
+                thread_id = str(payload.get("thread_id") or "").strip()
+                if not thread_id:
+                    await send_frame({"type": "error", "message": "cancel requires thread_id"})
+                    continue
+                row = gateway.thread_registry.get_thread(thread_id)
+                if row is None or row.agent_id != agent_id:
+                    await send_frame(
+                        {"type": "error", "message": f"thread {thread_id!r} not found"},
+                    )
+                    continue
+                server.app_runtime.agent_registry.cancel_stream(agent_id, thread_id)
+                continue
+
             if msg_type != "user_turn":
                 await send_frame({"type": "error", "message": f"unknown message type: {msg_type}"})
                 continue
@@ -143,8 +174,7 @@ async def dashboard_chat_ws(
                 ws_connection_id=connection_id,
                 user_is_admin=bool(getattr(user, "is_admin", False)),
             )
-            active_thread_id = prepared.thread_id
-            turn_finished = False
+            hub.subscribe(prepared.thread_id, connection_id)
             channel_manager.enqueue(WS_CHANNEL_ID, inbound)
 
     except WebSocketDisconnect:
@@ -155,9 +185,9 @@ async def dashboard_chat_ws(
             with contextlib.suppress(Exception):
                 await send_frame({"type": "error", "message": "internal error"})
     finally:
+        # Disconnect must not cancel an in-flight turn — clients may reconnect and
+        # subscribe to continue receiving subsequent chunks (weak stream resume).
         hub.unregister(connection_id)
-        if active_thread_id is not None and not turn_finished:
-            server.app_runtime.agent_registry.cancel_stream(agent_id, active_thread_id)
         if websocket.application_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close()

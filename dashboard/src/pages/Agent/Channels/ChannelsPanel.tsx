@@ -240,10 +240,26 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         }
         const created = await createChannel({ kind, name: kind, config });
         if (created) {
-          if (!enabled) {
-            await updateChannel(created.id, { enabled: false });
+          // Align enablement with the requested state (QR bind → true).
+          // Server create currently defaults to enabled=1, so this is a no-op
+          // when we ask for enabled=true.
+          if (created.enabled !== enabled) {
+            await updateChannel(created.id, { enabled });
           }
-          message.success(t("channels.configSaved"));
+          // One toast only — createChannel no longer toasts on its own.
+          // Prefer bind-success copy when the channel was just QR-auto-enabled.
+          const toastKey = !enabled
+            ? "channels.configSaved"
+            : kind === "wecom"
+            ? "channels.qrBindSuccess"
+            : kind === "weixin"
+            ? "channels.weixinQrBindSuccess"
+            : kind === "feishu"
+            ? "channels.feishuBindSuccess"
+            : kind === "yuanbao"
+            ? "channels.yuanbaoBindSuccess"
+            : "channels.channelEnabled";
+          message.success(t(toastKey));
           setDrawerOpen(false);
           void fetchChannels();
           return true;

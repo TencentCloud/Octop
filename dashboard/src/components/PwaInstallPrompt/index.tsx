@@ -135,6 +135,11 @@ export function DesktopInstallGuide({ onClose }: { onClose: () => void }) {
 
 interface PwaInstallPromptProps {
   compact?: boolean;
+  /**
+   * `chatFloat` matches the chat page right-side circular float buttons
+   * (browser / expert / files).
+   */
+  appearance?: "default" | "chatFloat";
 }
 
 /**
@@ -144,7 +149,10 @@ interface PwaInstallPromptProps {
  *
  * iOS: shows an install button that opens the step-by-step guide sheet.
  */
-export default function PwaInstallPrompt({ compact }: PwaInstallPromptProps) {
+export default function PwaInstallPrompt({
+  compact,
+  appearance = "default",
+}: PwaInstallPromptProps) {
   const installState = useSyncExternalStore(
     subscribePwaPrompt,
     getPwaInstallSnapshot,
@@ -157,10 +165,16 @@ export default function PwaInstallPrompt({ compact }: PwaInstallPromptProps) {
     () => !!localStorage.getItem(DISMISSED_KEY),
   );
 
-  if (isStandalone() || dismissed || installState.installed) return null;
+  if (isStandalone() || installState.installed) return null;
 
-  const canInstall = ios || installState.prompt || installState.swReady;
-  if (!canInstall) return null;
+  // Chat right float: always expose the install entry until the app is
+  // installed (ignore Header dismiss + beforeinstallprompt lag). Dev has no
+  // SW, so the old swReady gate hid the button entirely on localhost Vite.
+  // Header compact still requires readiness (or iOS) and honors dismiss.
+  const chatFloat = appearance === "chatFloat";
+  const browserInstallReady =
+    ios || installState.prompt || installState.swReady;
+  if (!chatFloat && (dismissed || !browserInstallReady)) return null;
 
   const handleDismiss = () => {
     localStorage.setItem(DISMISSED_KEY, "1");
@@ -199,25 +213,35 @@ export default function PwaInstallPrompt({ compact }: PwaInstallPromptProps) {
     ? "安装为桌面应用"
     : "安装为桌面应用";
 
+  const btnClass = chatFloat
+    ? styles.installBtnChatFloat
+    : `${styles.installBtn} ${compact ? styles.installBtnCompact : ""}`;
+
+  const button = (
+    <button
+      type="button"
+      className={btnClass}
+      onClick={() => void handleAndroidInstall()}
+      disabled={installing}
+      aria-label="安装应用"
+    >
+      <Download
+        size={chatFloat ? 20 : compact ? 15 : 16}
+        strokeWidth={chatFloat ? 2.1 : 1.8}
+        className={styles.installIcon}
+      />
+      {!compact && !chatFloat && <span className={styles.label}>安装</span>}
+    </button>
+  );
+
   return (
     <>
-      <Tooltip title={tooltipTitle}>
-        <button
-          type="button"
-          className={`${styles.installBtn} ${
-            compact ? styles.installBtnCompact : ""
-          }`}
-          onClick={() => void handleAndroidInstall()}
-          disabled={installing}
-          aria-label="安装应用"
-        >
-          <Download
-            size={compact ? 15 : 16}
-            strokeWidth={1.8}
-            className={styles.installIcon}
-          />
-          {!compact && <span className={styles.label}>安装</span>}
-        </button>
+      <Tooltip title={tooltipTitle} placement={chatFloat ? "left" : "top"}>
+        {chatFloat ? (
+          <span className={styles.chatFloatBtnWrap}>{button}</span>
+        ) : (
+          button
+        )}
       </Tooltip>
 
       {ios && showIosGuide && <IosGuide onClose={handleDismiss} />}

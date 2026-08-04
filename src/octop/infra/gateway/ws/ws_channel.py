@@ -75,7 +75,7 @@ class WebSocketChannel(BaseChannel):
         return f"{message.tenant_id or ''}:{subject_id}"
 
     async def handle_inbound(self, raw_payload: Any) -> None:
-        """Stream harness chunks to the originating WebSocket (no delta batching)."""
+        """Stream harness chunks to the current thread subscriber (no delta batching)."""
         message = self.parse_inbound(raw_payload)
 
         if self._media_backend:
@@ -90,43 +90,77 @@ class WebSocketChannel(BaseChannel):
         )
         message.channel_subject = subject
 
-        conn_id = str((message.metadata or {}).get("ws_connection_id") or "")
+        msg_meta = message.metadata or {}
+        conn_id = str(msg_meta.get("ws_connection_id") or "")
         if not conn_id:
             logger.warning("websocket inbound missing ws_connection_id")
             return
 
-        meta = dict(subject.metadata or {})
-        meta["ws_connection_id"] = conn_id
-        subject.metadata = meta
-
-        processor = self._processor
-        if not hasattr(processor, "iter_turn_chunks"):
-            await self._hub.push(
-                conn_id,
-                {"type": "error", "message": "processor does not support turn chunk streaming"},
-            )
+        thread_id = str(msg_meta.get("thread_id") or "").strip()
+        if not thread_id:
+            logger.warning("websocket inbound missing thread_id")
+            await self._hub.push(conn_id, {"type": "error", "message": "missing thread_id"})
             await self._hub.push(conn_id, {"type": "done"})
             return
 
+        meta = dict(subject.metadata or {})
+        meta["ws_connection_id"] = conn_id
+        meta["thread_id"] = thread_id
+        subject.metadata = meta
+
+        # Bind the originating connection so early chunks are delivered; reconnect
+        # clients may replace this subscription via hub.subscribe.
+        self._hub.subscribe(thread_id, conn_id)
+
+        processor = self._processor
+        if not hasattr(processor, "iter_turn_chunks"):
+            await self._hub.push_to_thread(
+                thread_id,
+                {"type": "error", "message": "processor does not support turn chunk streaming"},
+            )
+            await self._hub.push_to_thread(thread_id, {"type": "done"})
+            return
+
+        self._hub.mark_turn_active(thread_id)
         try:
             async for chunk in processor.iter_turn_chunks(message):
-                await self._hub.push(conn_id, chunk)
+                # Never let delivery failures abort the harness turn — otherwise a
+                # flaky client disconnect can stop generation mid-node and leave
+                # an incomplete checkpoint.
+                try:
+                    await self._hub.push_to_thread(thread_id, chunk)
+                except Exception:
+                    logger.exception(
+                        "websocket push failed thread=%s (turn continues)",
+                        thread_id,
+                    )
         except Exception as exc:
             logger.exception("websocket turn failed")
-            meta = message.metadata if isinstance(message.metadata, dict) else None
+            err_meta = message.metadata if isinstance(message.metadata, dict) else None
             locale = resolve_locale(
                 channel_type=str(getattr(message, "channel_type", "") or ""),
-                metadata=meta,
+                metadata=err_meta,
             )
-            await self._hub.push(
-                conn_id,
-                {"type": "error", "message": format_stream_error(exc, locale)},
-            )
-            await self._hub.push(conn_id, {"type": "done"})
+            try:
+                await self._hub.push_to_thread(
+                    thread_id,
+                    {"type": "error", "message": format_stream_error(exc, locale)},
+                )
+                await self._hub.push_to_thread(thread_id, {"type": "done"})
+            except Exception:
+                logger.exception("websocket failed to deliver error frame thread=%s", thread_id)
+        finally:
+            self._hub.mark_turn_idle(thread_id)
 
     async def _send_text(self, subject: ChannelSubject, text: str) -> None:
+        if not text:
+            return
+        thread_id = str(subject.metadata.get("thread_id") or "").strip()
+        if thread_id:
+            await self._hub.push_to_thread(thread_id, {"type": "token", "content": text})
+            return
         conn_id = str(subject.metadata.get("ws_connection_id") or "")
-        if conn_id and text:
+        if conn_id:
             await self._hub.push(conn_id, {"type": "token", "content": text})
 
     async def _send_content(self, subject: ChannelSubject, parts: list[ContentPart]) -> None:
@@ -135,8 +169,9 @@ class WebSocketChannel(BaseChannel):
             await self._send_text(subject, text)
 
     async def _send_media(self, subject: ChannelSubject, media: ContentPart) -> None:
+        thread_id = str(subject.metadata.get("thread_id") or "").strip()
         conn_id = str(subject.metadata.get("ws_connection_id") or "")
-        if not conn_id:
+        if not thread_id and not conn_id:
             return
         try:
             raw_bytes, mime = await self.load_media_bytes(media)
@@ -156,7 +191,10 @@ class WebSocketChannel(BaseChannel):
         alt = getattr(media, "alt_text", None)
         if isinstance(alt, str) and alt.strip():
             frame["alt_text"] = alt.strip()
-        await self._hub.push(conn_id, frame)
+        if thread_id:
+            await self._hub.push_to_thread(thread_id, frame)
+        else:
+            await self._hub.push(conn_id, frame)
 
 
 def _media_kind(media: ContentPart) -> str:

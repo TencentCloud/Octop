@@ -98,7 +98,6 @@ export function useChannels(agentId: string | null) {
           },
         );
         setChannels((prev) => [...prev, created]);
-        message.success(t("channels.createdSuccess"));
         return created;
       } catch (error) {
         console.error("[Channels] Failed to create channel:", error);

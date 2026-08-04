@@ -60,10 +60,12 @@ bash docker/docker_build.sh
 | `OCTOP_PORT` | `8088` | HTTP 服务端口 |
 | `OCTOP_DEFAULT_PASSWORD` | `octop` | 首次管理员密码 |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次管理员用户名 |
+| `OCTOP_DATABASE_URL` | — | PostgreSQL DSN（或其他 `OCTOP_DATABASE_*`，见 [configuration.md](../docs/configuration.md)） |
+| `OCTOP_DATABASE_DRIVER` | — | 通过环境变量覆盖时：`sqlite` \| `postgresql` |
 | `OPENAI_API_KEY` | — | OpenAI 兼容 API Key |
 | `DASHSCOPE_API_KEY` | — | 阿里云通义千问 API Key |
 
-Compose 可在 `docker/.env` 中配置上述变量。
+Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
 
 ### 数据持久化
 

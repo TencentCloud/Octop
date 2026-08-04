@@ -32,6 +32,7 @@ import {
 } from "../../Agent/Workspace/components/FilePreview";
 import {
   dockFileBasename,
+  canonicalizeDockFilePath,
   normalizeDockFilePath,
   toWorkspaceApiPath,
 } from "../utils/dockFilePath";
@@ -317,6 +318,10 @@ export default function FilePanelContent({
     };
   }, [onActionsChange]);
 
+  // Prefer collapsed workspace-relative keys for the viewer (same as download).
+  const viewerPath =
+    canonicalizeDockFilePath(resolvedPath, agentId) || resolvedPath;
+
   return (
     <div className={styles.filePanelBody}>
       <div
@@ -337,10 +342,10 @@ export default function FilePanelContent({
             </p>
           </div>
         ) : (
-          resolvedPath && (
+          viewerPath && (
             <FileViewer
               agentId={agentId}
-              path={resolvedPath}
+              path={viewerPath}
               fromWorkspace={false}
               editMode={editMode}
               value={content}

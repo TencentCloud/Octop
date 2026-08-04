@@ -139,7 +139,7 @@
   padding: 0 12px 0 16px;
   border-bottom: none;
   background: var(--fn-bg-primary);
-  color: var(--fn-text-primary);
+  color: var(--chat-title-color, var(--fn-text-primary));
   overflow: hidden;
   z-index: 2;
   cursor: grab;
@@ -170,8 +170,16 @@
   max-width: none;
   overflow: hidden;
   font-size: 14px;
-  font-weight: 500;
-  color: var(--fn-text-primary);
+  font-weight: 400;
+  line-height: 1.3;
+  /* Same token as chat title + selected dock tab. */
+  color: var(--chat-title-color, var(--fn-text-primary));
+
+  :global(svg) {
+    color: inherit;
+    stroke: currentColor;
+    flex-shrink: 0;
+  }
 
   /* File switch Select; App prefixCls="octop", keep ant-* fallback. */
   :global(.octop-select .octop-select-selector),
@@ -185,6 +193,13 @@
     background: transparent !important;
     box-shadow: none !important;
     padding-inline: 0 22px !important;
+    color: inherit !important;
+  }
+
+  :global(.octop-select-selection-item),
+  :global(.ant-select-selection-item) {
+    color: inherit !important;
+    font-weight: 400 !important;
   }
 
   :global(.octop-select-sm),

@@ -31,6 +31,8 @@ import {
   shouldAutoFillOlderHistory,
   shouldReleaseLoadMoreLatch,
 } from "./loadOlderGate";
+import * as chatStore from "../hooks/chatStore";
+import { shouldBlockHistoryRefresh } from "../hooks/wsResumeGate";
 import styles from "../index.module.less";
 
 /** Virtualize long threads; short chats keep the simpler DOM path. */
@@ -245,10 +247,10 @@ export default function MessageList(props: MessageListProps) {
   } = props;
 
   const { t } = useTranslation();
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
   const bubbleRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevInitialLoadingRef = useRef(false);
   const scrollHeightBeforePrependRef = useRef<number | null>(null);
@@ -342,6 +344,7 @@ export default function MessageList(props: MessageListProps) {
     isStreaming,
     onRefreshHistory,
     hasMessages: messages.length > 0,
+    sessionKey: stableSessionKey,
   });
   refreshStateRef.current = {
     historyRefreshing,
@@ -349,6 +352,7 @@ export default function MessageList(props: MessageListProps) {
     isStreaming,
     onRefreshHistory,
     hasMessages: messages.length > 0,
+    sessionKey: stableSessionKey,
   };
   const refreshCooldownRef = useRef(0);
 
@@ -358,7 +362,10 @@ export default function MessageList(props: MessageListProps) {
     if (
       s.historyRefreshing ||
       s.loading ||
-      s.isStreaming ||
+      shouldBlockHistoryRefresh({
+        isStreaming: Boolean(s.isStreaming),
+        hasLiveSocket: chatStore.hasLiveSocket(s.sessionKey),
+      }) ||
       !s.onRefreshHistory ||
       !s.hasMessages ||
       now - refreshCooldownRef.current < 3000
@@ -719,6 +726,16 @@ export default function MessageList(props: MessageListProps) {
     [historyHeader, hasFooter, footer],
   );
 
+  // History first paint uses a loading spinner with no scroll node. When messages
+  // arrive the list mounts; bump scrollerMountKey so useAutoScroll re-binds
+  // wheel/scroll listeners (deps would otherwise stay stale after a null bind).
+  const bindNonVirtualScroller = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    if (el) {
+      setScrollerMountKey((k) => k + 1);
+    }
+  }, []);
+
   if (loading && messages.length === 0) {
     return (
       <div className={styles.messageListLoading}>
@@ -762,7 +779,7 @@ export default function MessageList(props: MessageListProps) {
           }
         />
       ) : (
-        <div className={styles.messageList} ref={containerRef}>
+        <div className={styles.messageList} ref={bindNonVirtualScroller}>
           <div className={styles.messageListInner}>
             {historyHeader}
             {messageGroups.map((group, groupIndex) => (

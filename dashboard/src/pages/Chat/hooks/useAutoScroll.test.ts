@@ -68,6 +68,38 @@ describe("useAutoScroll", () => {
     expect(result.current.showScrollBtn).toBe(true);
   });
 
+  it("re-binds listeners when scrollerMountKey bumps after late container attach", () => {
+    // Mirrors MessageList: first paint is a loading spinner (no scroller), then
+    // the list mounts and bumps scrollerMountKey so wheel/scroll work.
+    const containerRef: { current: HTMLElement | null } = { current: null };
+    const end = document.createElement("div");
+    end.scrollIntoView = vi.fn();
+    const endRef = { current: end };
+
+    const { result, rerender } = renderHook(
+      ({ mountKey }: { mountKey: number }) =>
+        useAutoScroll({
+          containerRef,
+          endRef,
+          deps: [],
+          scrollerMountKey: mountKey,
+        }),
+      { initialProps: { mountKey: 0 } },
+    );
+
+    const container = makeScroller();
+    containerRef.current = container;
+    rerender({ mountKey: 1 });
+
+    act(() => {
+      container.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -40, bubbles: true }),
+      );
+    });
+
+    expect(result.current.showScrollBtn).toBe(true);
+  });
+
   it("does not follow new deps while in free mode", () => {
     const container = makeScroller();
     const containerRef = { current: container };

@@ -600,7 +600,7 @@ class GlobalProcessor:
     def _touch_thread_after_turn(self, thread_id: str, title_source: str | None) -> None:
         self._thread_registry.touch_last_active(thread_id)
         if title_source:
-            self._thread_registry.set_title_if_null(thread_id, title_source[:40])
+            self._thread_registry.set_title_if_null(thread_id, title_source)
 
     def _record_turn_usage(
         self,

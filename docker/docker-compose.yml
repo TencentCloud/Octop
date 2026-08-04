@@ -10,6 +10,11 @@
 #   OCTOP_PORT=9090
 #   OCTOP_DEFAULT_PASSWORD=mypass
 #   OCTOP_ADMIN_USERNAME=admin
+#   OCTOP_DATABASE_DRIVER=postgresql
+#   OCTOP_DATABASE_URL=postgresql://octop:octop@host.docker.internal:5432/octop
+#
+# 注意: docker/.env 仅用于 Compose 插值；变量必须列在下方 environment
+# 才会进入容器。也可写入数据卷内的 ~/.octop/env（宿主机挂载目录下的 env）。
 # =============================================================================
 
 services:
@@ -32,6 +37,14 @@ services:
       - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-octop}
       - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
       - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
+      - OCTOP_DATABASE_URL=${OCTOP_DATABASE_URL:-}
+      - OCTOP_DATABASE_DRIVER=${OCTOP_DATABASE_DRIVER:-}
+      - OCTOP_DATABASE_SQLITE_PATH=${OCTOP_DATABASE_SQLITE_PATH:-}
+      - OCTOP_DATABASE_HOST=${OCTOP_DATABASE_HOST:-}
+      - OCTOP_DATABASE_PORT=${OCTOP_DATABASE_PORT:-}
+      - OCTOP_DATABASE_NAME=${OCTOP_DATABASE_NAME:-}
+      - OCTOP_DATABASE_USER=${OCTOP_DATABASE_USER:-}
+      - OCTOP_DATABASE_PASSWORD=${OCTOP_DATABASE_PASSWORD:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - OCTOP_LANGFUSE_ENABLED=${OCTOP_LANGFUSE_ENABLED:-false}

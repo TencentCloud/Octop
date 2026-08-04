@@ -5,6 +5,7 @@ import type { ChatAttachment, UserComposerContext } from "./useChat";
 import type { Session } from "./useSessions";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
+import { clipThreadTitle } from "../utils/threadTitle";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -43,11 +44,7 @@ interface UseChatSendParams {
 }
 
 function deriveThreadTitle(msg: string): string {
-  const normalized = msg
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return normalized.length > 40 ? `${normalized.slice(0, 39)}…` : normalized;
+  return clipThreadTitle(msg);
 }
 
 /** Optional composer snapshot used when flushing a queued message. */

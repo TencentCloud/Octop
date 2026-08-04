@@ -102,6 +102,24 @@ export function isWorkbenchPath(pathname: string): boolean {
   return pathname === "/workbench" || pathname.startsWith("/workbench/");
 }
 
+/**
+ * Control-group pages (Workbench / Remote Desktop / ACP) — admin only.
+ * Includes legacy aliases that redirect into Workbench.
+ * Shared by Sidebar visibility and RequireAdmin route guards.
+ */
+export function isControlAdminPath(pathname: string): boolean {
+  if (isWorkbenchPath(pathname)) return true;
+  if (pathname === "/terminal" || pathname === "/remote-browser") return true;
+  if (
+    pathname === "/remote-desktop" ||
+    pathname.startsWith("/remote-desktop/")
+  ) {
+    return true;
+  }
+  if (pathname === "/acp" || pathname.startsWith("/acp/")) return true;
+  return false;
+}
+
 export function isPersonalizationPath(pathname: string): boolean {
   return (
     pathname === "/personalization" || pathname.startsWith("/personalization/")
@@ -127,7 +145,6 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/tasks", element: <CronJobsPage /> },
   { path: "/connectors", element: <ConnectorsPage /> },
   { path: "/skill-packages", element: <SkillPackagesPage /> },
-  { path: "/acp", element: <ACPPage /> },
   { path: "/personalization/*", element: <PersonalizationPage /> },
   {
     path: "/skills",
@@ -135,7 +152,8 @@ export const routeConfigs: RouteConfig[] = [
   },
   { path: "/token-usage", element: <TokenUsagePage /> },
 
-  // Control
+  // Control (admin-only UI; RequireAdmin via isControlAdminPath in MainLayout)
+  { path: "/acp", element: <ACPPage /> },
   {
     path: "/channels",
     element: <RedirectPreserveSearch to="/personalization/channels" />,

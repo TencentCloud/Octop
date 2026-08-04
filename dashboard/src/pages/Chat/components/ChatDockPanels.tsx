@@ -24,14 +24,17 @@ interface ChatDockPanelsProps {
     e: React.PointerEvent,
     direction: "horizontal" | "vertical",
   ) => void;
-  /** When true, render only the bottom-dock slot (inside chatMain). */
-  slot: "bottom" | "side";
 }
 
 /**
- * Shared chat dock host: one tabbed shell for file list / files / browser.
- * ``slot="bottom"`` renders inside ``chatMain``; ``slot="side"`` covers
- * right + popup. Floating browser / file buttons live in ChatPage.
+ * Single chat dock host (file list / files / browser / terminal).
+ *
+ * One React tree for all layout modes so switching bottom ↔ right ↔ popup
+ * does not remount TerminalPage / BrowserWorkspace. Placement is CSS/flex on
+ * the chat page; popup geometry stays inside ChatDockPanelShell.
+ *
+ * Like Workbench keep-alive: once tabs exist, the panel stays mounted while
+ * the dock is closed (display:none) so sessions are reused.
  */
 export default function ChatDockPanels({
   isMobile,
@@ -50,32 +53,26 @@ export default function ChatDockPanels({
   onModeChange,
   onClose,
   onResizeStart,
-  slot,
 }: ChatDockPanelsProps) {
-  const showBottom = slot === "bottom" && dockOpen && dockMode === "bottom";
-  const showSide =
-    slot === "side" &&
-    dockOpen &&
-    !isMobile &&
-    (dockMode === "right" || dockMode === "popup");
-  const showMobilePopup =
-    slot === "side" && isMobile && dockOpen && dockMode === "popup";
+  const keepAlive = openTabs.length > 0;
+  const visible = dockOpen && keepAlive;
+
+  if (!keepAlive) {
+    return null;
+  }
+
+  const effectiveMode: PanelMode =
+    dockMode === "right" && isMobile ? "popup" : dockMode;
 
   const panel = (
     <ChatDockPanel
-      mode={
-        slot === "bottom"
-          ? "bottom"
-          : dockMode === "right" && isMobile
-          ? "popup"
-          : dockMode
-      }
+      mode={effectiveMode}
       onModeChange={onModeChange}
       onClose={onClose}
       style={
-        slot === "bottom"
+        effectiveMode === "bottom"
           ? { height: panelSizes.bottomHeight }
-          : dockMode === "right" && !isMobile
+          : effectiveMode === "right"
           ? { width: panelSizes.rightWidth }
           : undefined
       }
@@ -87,40 +84,45 @@ export default function ChatDockPanels({
       onCloseTab={onCloseTab}
       onOpenFile={onOpenFile}
       browserEnvironment={browserEnvironment}
+      surfaceVisible={visible}
     />
   );
 
+  const showBottomResizer = visible && effectiveMode === "bottom";
+  const showSideResizer = visible && effectiveMode === "right" && !isMobile;
+
   return (
     <>
-      {showBottom && (
-        <>
-          <div
-            className={`${styles.panelResizer} ${styles.vertical} ${
-              isResizing ? styles.resizerActive : ""
-            }`}
-            onPointerDown={(e) => onResizeStart(e, "vertical")}
-          >
-            <div className={styles.resizerHandle} />
-          </div>
-          {panel}
-        </>
+      {showBottomResizer && (
+        <div
+          className={`${styles.panelResizer} ${styles.vertical} ${
+            isResizing ? styles.resizerActive : ""
+          }`}
+          onPointerDown={(e) => onResizeStart(e, "vertical")}
+        >
+          <div className={styles.resizerHandle} />
+        </div>
       )}
 
-      {(showSide || showMobilePopup) && (
-        <>
-          {dockMode === "right" && !isMobile && (
-            <div
-              className={`${styles.panelResizer} ${styles.horizontal} ${
-                isResizing ? styles.resizerActive : ""
-              }`}
-              onPointerDown={(e) => onResizeStart(e, "horizontal")}
-            >
-              <div className={styles.resizerHandle} />
-            </div>
-          )}
-          {panel}
-        </>
+      {showSideResizer && (
+        <div
+          className={`${styles.panelResizer} ${styles.horizontal} ${
+            isResizing ? styles.resizerActive : ""
+          }`}
+          onPointerDown={(e) => onResizeStart(e, "horizontal")}
+        >
+          <div className={styles.resizerHandle} />
+        </div>
       )}
+
+      <div
+        // ``contents`` keeps flex/layout identical to a direct child when open;
+        // ``none`` hides without unmounting (Workbench-style keep-alive).
+        style={{ display: visible ? "contents" : "none" }}
+        aria-hidden={!visible}
+      >
+        {panel}
+      </div>
     </>
   );
 }

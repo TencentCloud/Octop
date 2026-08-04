@@ -1,5 +1,15 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+/**
+ * Terminal session manager — process-scoped singleton.
+ *
+ * Workbench keep-alive and the chat dock both mount <TerminalPage>.
+ * Sharing one Map of WebSocket sessions avoids dual PTYs and prevents
+ * unmount of one surface from closing shells the other still needs.
+ * Output is multi-cast to every registered UI listener.
+ */
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { getAuthToken } from "../../../api/request";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type TerminalConnState =
   | "connecting"
@@ -26,15 +36,19 @@ export interface TerminalSession {
   exited: boolean;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
-  /** Callbacks captured at connect() time, reused across reconnects. */
-  cbs?: TerminalCallbacks;
-  onOutput?: (data: string) => void;
-  onHistory?: (data: string) => void;
-  onExit?: (code: number) => void;
+  /** Live UI listeners (chat dock + workbench may both attach). */
+  listeners: Set<TerminalCallbacks>;
+  /**
+   * Client-side scrollback for late joiners (second surface mounts while WS
+   * is already up). Capped — not a full xterm buffer.
+   */
+  scrollback: string;
   /** Cached terminal dimensions, synced to the PTY on (re)connect. */
   pendingCols?: number;
   pendingRows?: number;
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "octop:terminal-sessions";
 const STORAGE_VERSION = 1;
@@ -42,6 +56,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 15000;
 const RESIZE_DEBOUNCE_MS = 150;
+const SCROLLBACK_MAX_CHARS = 200_000;
 
 interface StoredTab {
   id: string;
@@ -53,6 +68,8 @@ interface StoredState {
   tabs: StoredTab[];
   activeId: string | null;
 }
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
 
 function loadStored(): StoredState | null {
   try {
@@ -66,7 +83,7 @@ function loadStored(): StoredState | null {
   }
 }
 
-function persist(tabs: StoredTab[], activeId: string | null) {
+function writePersist(tabs: StoredTab[], activeId: string | null) {
   try {
     localStorage.setItem(
       STORAGE_KEY,
@@ -78,8 +95,6 @@ function persist(tabs: StoredTab[], activeId: string | null) {
 }
 
 function generateId(): string {
-  // Stable across reconnect/refresh — reused as the backend session_id so the
-  // same shell can be resumed.
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
@@ -94,12 +109,10 @@ function buildWsUrl(agentId: string, sessionId: string): string {
   }/api/agents/${encodeURIComponent(agentId)}/terminal/ws`;
   const params = new URLSearchParams();
   if (token) params.set("token", token);
-  // Opt into backend session persistence: same id re-attaches to the shell.
+  // Same id re-attaches to the backend shell.
   params.set("session_id", sessionId);
   return `${base}?${params.toString()}`;
 }
-
-type SessionMap = Map<string, TerminalSession>;
 
 function pickAgentId(
   session: TerminalSession,
@@ -117,459 +130,568 @@ function pickAgentId(
   return resolve(session.agentId) || resolve(currentAgentId);
 }
 
-/** Restore persisted tabs into the sessions map, returning their ids. */
-function restoreAndSeed(sessionsRef: { current: SessionMap }): string[] {
-  const stored = loadStored();
-  if (!stored?.tabs.length) return [];
-  for (const tab of stored.tabs) {
-    sessionsRef.current.set(tab.id, {
-      id: tab.id,
-      agentId: tab.agentId,
-      ws: null,
-      connState: "connecting",
-      exited: false,
-      reconnectAttempts: 0,
-      reconnectTimer: null,
-    });
-  }
-  return stored.tabs.map((t) => t.id);
+function emptySession(id: string, agentId = ""): TerminalSession {
+  return {
+    id,
+    agentId,
+    ws: null,
+    connState: "connecting",
+    exited: false,
+    reconnectAttempts: 0,
+    reconnectTimer: null,
+    listeners: new Set(),
+    scrollback: "",
+  };
 }
 
-/**
- * Manages multiple interactive terminal WebSocket sessions with persistence.
- *
- * Each tab maps to one session. The session id is sent to the backend
- * (``session_id=``) so the shell survives disconnects/refreshes; on re-attach
- * the server replays scrollback via a ``history`` message. Auto-reconnect with
- * capped backoff handles transient drops; a manual ``reconnect`` is exposed for
- * recovery / post-exit restart.
- */
-export function useTerminal() {
-  const sessionsRef = useRef<SessionMap>(new Map());
-  const validAgentIdsRef = useRef<Set<string>>(new Set());
-  const resizeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map(),
-  );
+// ─── Module store ─────────────────────────────────────────────────────────────
 
-  const [sessionIds, setSessionIds] = useState<string[]>(() =>
-    restoreAndSeed(sessionsRef),
-  );
-  const [activeId, setActiveIdState] = useState<string | null>(() => {
-    const stored = loadStored();
-    if (!stored?.activeId) return null;
-    const valid = stored.tabs.some((t) => t.id === stored.activeId);
-    return valid ? stored.activeId : stored.tabs[0]?.id ?? null;
-  });
+const sessions = new Map<string, TerminalSession>();
+const resizeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const storeListeners = new Set<() => void>();
+const validAgentIds = new Set<string>();
 
-  // Ref mirrors so stable callbacks always see the latest values.
-  const activeRef = useRef(activeId);
-  activeRef.current = activeId;
+type Snapshot = { sessionIds: string[]; activeId: string | null };
 
-  const forceRender = useCallback(() => setSessionIds((ids) => [...ids]), []);
+let sessionIds: string[] = [];
+let activeId: string | null = null;
+let snapshot: Snapshot = { sessionIds: [], activeId: null };
+let consumerCount = 0;
+let hydrated = false;
 
-  const setConnState = useCallback(
-    (session: TerminalSession, state: TerminalConnState) => {
-      session.connState = state;
-      session.cbs?.onStateChange?.(state);
-      forceRender();
-    },
-    [forceRender],
-  );
+function emitStore() {
+  snapshot = { sessionIds: [...sessionIds], activeId };
+  for (const l of storeListeners) l();
+}
 
-  const persistNow = useCallback(() => {
-    const tabs = [...sessionsRef.current.values()]
-      .filter((s) => s.agentId)
-      .map((s) => ({ id: s.id, agentId: s.agentId }));
-    persist(tabs, activeRef.current);
-  }, []);
+function subscribeStore(onChange: () => void): () => void {
+  storeListeners.add(onChange);
+  return () => {
+    storeListeners.delete(onChange);
+  };
+}
 
-  const clearReconnectTimer = useCallback((session: TerminalSession) => {
-    if (session.reconnectTimer) {
-      clearTimeout(session.reconnectTimer);
-      session.reconnectTimer = null;
+function getStoreSnapshot(): Snapshot {
+  return snapshot;
+}
+
+function persistNow() {
+  const tabs = [...sessions.values()]
+    .filter((s) => s.agentId)
+    .map((s) => ({ id: s.id, agentId: s.agentId }));
+  writePersist(tabs, activeId);
+}
+
+function clearReconnectTimer(session: TerminalSession) {
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
+  }
+}
+
+function fanOut(
+  session: TerminalSession,
+  fn: (cbs: TerminalCallbacks) => void,
+) {
+  for (const cbs of session.listeners) {
+    try {
+      fn(cbs);
+    } catch {
+      // ignore listener errors
     }
-  }, []);
+  }
+}
 
-  // Refs break the openWs <-> scheduleReconnect mutual reference so both can
-  // stay stable (empty-deps) without stale closures.
-  const openWsRef = useRef<(s: TerminalSession) => void>(() => {});
-  const scheduleReconnectRef = useRef<(s: TerminalSession) => void>(() => {});
+function setConnState(session: TerminalSession, state: TerminalConnState) {
+  session.connState = state;
+  fanOut(session, (cbs) => cbs.onStateChange?.(state));
+  emitStore();
+}
 
-  const scheduleReconnect = useCallback(
-    (session: TerminalSession) => {
+function appendScrollback(session: TerminalSession, data: string) {
+  if (!data) return;
+  const next = session.scrollback + data;
+  session.scrollback =
+    next.length > SCROLLBACK_MAX_CHARS
+      ? next.slice(-SCROLLBACK_MAX_CHARS)
+      : next;
+}
+
+function scheduleReconnect(session: TerminalSession) {
+  clearReconnectTimer(session);
+  if (session.exited) {
+    setConnState(session, "disconnected");
+    return;
+  }
+  if (session.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    setConnState(session, "disconnected");
+    return;
+  }
+  const attempt = session.reconnectAttempts;
+  session.reconnectAttempts += 1;
+  setConnState(session, "reconnecting");
+  const delay = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
+  session.reconnectTimer = setTimeout(() => {
+    session.reconnectTimer = null;
+    if (session.exited) return;
+    openWs(session);
+  }, delay);
+}
+
+function openWs(session: TerminalSession) {
+  if (!session.agentId) {
+    setConnState(session, "disconnected");
+    return;
+  }
+  if (session.ws && session.ws.readyState < WebSocket.CLOSING) {
+    try {
+      session.ws.close();
+    } catch {
+      // ignore
+    }
+  }
+  let ws: WebSocket;
+  try {
+    ws = new WebSocket(buildWsUrl(session.agentId, session.id));
+  } catch (err) {
+    console.error("[Terminal] Failed to create WebSocket:", err);
+    setConnState(session, "error");
+    scheduleReconnect(session);
+    return;
+  }
+  setConnState(session, "connecting");
+
+  const isStale = () => session.ws !== ws;
+
+  ws.onopen = () => {
+    if (isStale()) return;
+    session.reconnectAttempts = 0;
+    setConnState(session, "connected");
+    if (session.pendingCols && session.pendingRows) {
+      try {
+        ws.send(
+          JSON.stringify({
+            type: "resize",
+            cols: session.pendingCols,
+            rows: session.pendingRows,
+          }),
+        );
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  ws.onmessage = (ev) => {
+    if (isStale()) return;
+    try {
+      const msg = JSON.parse(ev.data as string) as {
+        type: string;
+        data?: string;
+        code?: number;
+        message?: string;
+      };
+      if (msg.type === "output" && msg.data !== undefined) {
+        appendScrollback(session, msg.data);
+        fanOut(session, (cbs) => cbs.onOutput(msg.data as string));
+      } else if (msg.type === "history" && msg.data !== undefined) {
+        // Authoritative server replay — replace buffer, still cap for late joiners.
+        session.scrollback = "";
+        appendScrollback(session, msg.data);
+        fanOut(session, (cbs) => cbs.onHistory?.(session.scrollback));
+      } else if (msg.type === "session") {
+        // Server confirms session_id — no-op.
+      } else if (msg.type === "exit") {
+        session.exited = true;
+        clearReconnectTimer(session);
+        setConnState(session, "disconnected");
+        fanOut(session, (cbs) => cbs.onExit?.(msg.code ?? 0));
+      } else if (msg.type === "error") {
+        console.error("[Terminal] Server error:", msg.message);
+        session.exited = true;
+        clearReconnectTimer(session);
+        setConnState(session, "error");
+        fanOut(session, (cbs) => cbs.onExit?.(-1));
+      }
+    } catch {
+      // Non-JSON — ignore.
+    }
+  };
+
+  ws.onerror = () => {
+    if (isStale()) return;
+    setConnState(session, "error");
+  };
+
+  ws.onclose = (ev) => {
+    if (isStale()) return;
+    session.ws = null;
+    if (session.exited) {
+      setConnState(session, "disconnected");
+      return;
+    }
+    if (ev.code === 1011 || (ev.code >= 4000 && ev.code < 5000)) {
+      session.exited = true;
       clearReconnectTimer(session);
-      if (session.exited) {
-        setConnState(session, "disconnected");
-        return;
-      }
-      if (session.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        // Give up auto-retry; the manual reconnect button takes over.
-        setConnState(session, "disconnected");
-        return;
-      }
-      const attempt = session.reconnectAttempts;
-      session.reconnectAttempts += 1;
-      // Distinguish an auto-retry after a drop from the initial connect so the
-      // tab badge can surface "reconnecting" instead of a plain "connecting".
-      setConnState(session, "reconnecting");
-      const delay = Math.min(
-        RECONNECT_BASE_MS * 2 ** attempt,
-        RECONNECT_MAX_MS,
-      );
-      session.reconnectTimer = setTimeout(() => {
-        session.reconnectTimer = null;
-        if (session.exited) return;
-        openWsRef.current(session);
-      }, delay);
-    },
-    [clearReconnectTimer, setConnState],
-  );
+      setConnState(session, "error");
+      fanOut(session, (cbs) => cbs.onExit?.(ev.code));
+      return;
+    }
+    scheduleReconnect(session);
+  };
 
-  const openWs = useCallback(
-    (session: TerminalSession) => {
-      if (!session.agentId) {
-        setConnState(session, "disconnected");
-        return;
-      }
-      if (session.ws && session.ws.readyState < WebSocket.CLOSING) {
+  session.ws = ws;
+  sessions.set(session.id, session);
+}
+
+function ensureHydrated() {
+  if (hydrated) return;
+  hydrated = true;
+  const stored = loadStored();
+  if (stored?.tabs.length) {
+    sessionIds = stored.tabs.map((t) => t.id);
+    for (const tab of stored.tabs) {
+      sessions.set(tab.id, emptySession(tab.id, tab.agentId));
+    }
+    const valid =
+      stored.activeId && sessionIds.includes(stored.activeId)
+        ? stored.activeId
+        : sessionIds[0] ?? null;
+    activeId = valid;
+  }
+  emitStore();
+}
+
+function softTeardownSockets() {
+  resizeTimers.forEach((timer) => clearTimeout(timer));
+  resizeTimers.clear();
+  for (const s of sessions.values()) {
+    clearReconnectTimer(s);
+    s.listeners.clear();
+    // Do not mark exited — allow re-attach when a surface remounts.
+    try {
+      s.ws?.close();
+    } catch {
+      // ignore
+    }
+    s.ws = null;
+    s.connState = "disconnected";
+    s.reconnectAttempts = 0;
+  }
+}
+
+function acquireConsumer() {
+  ensureHydrated();
+  consumerCount += 1;
+}
+
+function releaseConsumer() {
+  consumerCount = Math.max(0, consumerCount - 1);
+  if (consumerCount > 0) return;
+  // Last TerminalPage unmounted — close sockets, keep tab metadata for restore.
+  softTeardownSockets();
+  persistNow();
+  emitStore();
+}
+
+// ─── Public API (module) ──────────────────────────────────────────────────────
+
+function reconcileAgentIds(
+  validIds: Iterable<string>,
+  fallbackAgentId: string,
+) {
+  ensureHydrated();
+  validAgentIds.clear();
+  for (const id of validIds) validAgentIds.add(id);
+  let changed = false;
+  for (const session of sessions.values()) {
+    const next = pickAgentId(session, fallbackAgentId, validAgentIds);
+    if (session.agentId !== next) {
+      session.agentId = next;
+      session.exited = false;
+      session.reconnectAttempts = 0;
+      clearReconnectTimer(session);
+      if (session.ws) {
         try {
           session.ws.close();
         } catch {
           // ignore
         }
-      }
-      let ws: WebSocket;
-      try {
-        ws = new WebSocket(buildWsUrl(session.agentId, session.id));
-      } catch (err) {
-        console.error("[Terminal] Failed to create WebSocket:", err);
-        setConnState(session, "error");
-        scheduleReconnectRef.current(session);
-        return;
-      }
-      setConnState(session, "connecting");
-
-      // Guard against stale handlers. Closing the previous socket in a manual
-      // reconnect fires its async `onclose` *after* `session.ws` already points
-      // at this new socket; without this check that stale handler would null out
-      // the live `session.ws` (breaking input) and schedule a bogus reconnect.
-      const isStale = () => session.ws !== ws;
-
-      ws.onopen = () => {
-        if (isStale()) return;
-        session.reconnectAttempts = 0;
-        setConnState(session, "connected");
-        // Sync the cached terminal size so the resumed PTY matches the display.
-        if (session.pendingCols && session.pendingRows) {
-          try {
-            ws.send(
-              JSON.stringify({
-                type: "resize",
-                cols: session.pendingCols,
-                rows: session.pendingRows,
-              }),
-            );
-          } catch {
-            // ignore
-          }
-        }
-      };
-
-      ws.onmessage = (ev) => {
-        if (isStale()) return;
-        try {
-          const msg = JSON.parse(ev.data as string) as {
-            type: string;
-            data?: string;
-            code?: number;
-            message?: string;
-          };
-          if (msg.type === "output" && msg.data !== undefined) {
-            session.onOutput?.(msg.data);
-          } else if (msg.type === "history" && msg.data !== undefined) {
-            session.onHistory?.(msg.data);
-          } else if (msg.type === "session") {
-            // Server confirms the session_id (already matches) — no-op.
-          } else if (msg.type === "exit") {
-            session.exited = true;
-            clearReconnectTimer(session);
-            setConnState(session, "disconnected");
-            session.onExit?.(msg.code ?? 0);
-          } else if (msg.type === "error") {
-            console.error("[Terminal] Server error:", msg.message);
-            // Permanent server-side failure — stop the reconnect storm.
-            session.exited = true;
-            clearReconnectTimer(session);
-            setConnState(session, "error");
-            session.onExit?.(-1);
-          }
-        } catch {
-          // Non-JSON frames — unlikely but ignore.
-        }
-      };
-
-      ws.onerror = () => {
-        if (isStale()) return;
-        setConnState(session, "error");
-      };
-
-      ws.onclose = (ev) => {
-        if (isStale()) return;
         session.ws = null;
-        if (session.exited) {
-          setConnState(session, "disconnected");
-          return;
-        }
-        // Server permanent failures (auth / spawn / unsupported / capacity).
-        // Stop the reconnect storm even if the error frame was missed.
-        if (ev.code === 1011 || (ev.code >= 4000 && ev.code < 5000)) {
-          session.exited = true;
-          clearReconnectTimer(session);
-          setConnState(session, "error");
-          session.onExit?.(ev.code);
-          return;
-        }
-        // Transient drop — auto-reconnect (capped). Manual button covers the rest.
-        scheduleReconnectRef.current(session);
-      };
-
-      session.ws = ws;
-      sessionsRef.current.set(session.id, session);
-    },
-    [setConnState, clearReconnectTimer],
-  );
-
-  openWsRef.current = openWs;
-  scheduleReconnectRef.current = scheduleReconnect;
-
-  const reconcileAgentIds = useCallback(
-    (validIds: Iterable<string>, fallbackAgentId: string) => {
-      const valid = new Set(validIds);
-      validAgentIdsRef.current = valid;
-      let changed = false;
-      for (const session of sessionsRef.current.values()) {
-        const next = pickAgentId(session, fallbackAgentId, valid);
-        if (session.agentId !== next) {
-          session.agentId = next;
-          session.exited = false;
-          session.reconnectAttempts = 0;
-          clearReconnectTimer(session);
-          if (session.ws) {
-            try {
-              session.ws.close();
-            } catch {
-              // ignore
-            }
-            session.ws = null;
-          }
-          changed = true;
-        }
       }
-      if (changed) {
-        persistNow();
-        forceRender();
-        for (const session of sessionsRef.current.values()) {
-          if (session.cbs && session.agentId) {
-            openWsRef.current(session);
-          }
-        }
-      }
-    },
-    [clearReconnectTimer, persistNow, forceRender],
-  );
-
-  const connect = useCallback(
-    (id: string, agentId: string, cbs: TerminalCallbacks) => {
-      const session = sessionsRef.current.get(id);
-      if (!session) return;
-      session.cbs = cbs;
-      session.onOutput = cbs.onOutput;
-      session.onHistory = cbs.onHistory;
-      session.onExit = cbs.onExit;
-      const valid = validAgentIdsRef.current;
-      if (valid.size > 0) {
-        session.agentId = pickAgentId(session, agentId, valid);
-        if (!session.agentId) {
-          setConnState(session, "disconnected");
-          return;
-        }
-      } else {
-        // Agents not loaded yet — prefer the live selection over stale storage.
-        session.agentId = agentId || session.agentId;
-        if (!session.agentId) {
-          setConnState(session, "disconnected");
-          return;
-        }
-      }
-      session.exited = false;
-      session.reconnectAttempts = 0;
-      clearReconnectTimer(session);
-      persistNow();
-      openWs(session);
-    },
-    [clearReconnectTimer, persistNow, openWs, setConnState],
-  );
-
-  /** Manually (re)connect a session — immediate, resets the attempt counter. */
-  const reconnect = useCallback(
-    (id: string) => {
-      const session = sessionsRef.current.get(id);
-      if (!session || !session.agentId) return;
-      session.exited = false;
-      session.reconnectAttempts = 0;
-      clearReconnectTimer(session);
-      openWs(session);
-    },
-    [clearReconnectTimer, openWs],
-  );
-
-  const sendInput = useCallback((id: string, data: string) => {
-    const session = sessionsRef.current.get(id);
-    if (session?.ws?.readyState === WebSocket.OPEN) {
-      try {
-        session.ws.send(JSON.stringify({ type: "input", data }));
-      } catch (err) {
-        console.warn("[Terminal] Failed to send input:", err);
+      changed = true;
+    }
+  }
+  if (changed) {
+    persistNow();
+    emitStore();
+    for (const session of sessions.values()) {
+      if (session.listeners.size > 0 && session.agentId) {
+        openWs(session);
       }
     }
-  }, []);
+  }
+}
 
-  const sendResize = useCallback((id: string, cols: number, rows: number) => {
-    const session = sessionsRef.current.get(id);
-    if (!session) return;
-    // Always cache the latest dimensions — synced on (re)connect.
-    session.pendingCols = cols;
-    session.pendingRows = rows;
-    const flushResize = () => {
-      if (session.ws?.readyState === WebSocket.OPEN) {
-        try {
-          session.ws.send(
-            JSON.stringify({
-              type: "resize",
-              cols: session.pendingCols,
-              rows: session.pendingRows,
-            }),
-          );
-        } catch {
-          // ignore
-        }
-      }
-    };
-    if (session.ws?.readyState !== WebSocket.OPEN) {
+function connect(id: string, agentId: string, cbs: TerminalCallbacks) {
+  ensureHydrated();
+  const session = sessions.get(id);
+  if (!session) return;
+
+  session.listeners.add(cbs);
+
+  if (validAgentIds.size > 0) {
+    session.agentId = pickAgentId(session, agentId, validAgentIds);
+    if (!session.agentId) {
+      setConnState(session, "disconnected");
       return;
     }
-    const timers = resizeTimersRef.current;
-    const existing = timers.get(id);
-    if (existing) clearTimeout(existing);
-    timers.set(
-      id,
-      setTimeout(() => {
-        timers.delete(id);
-        flushResize();
-      }, RESIZE_DEBOUNCE_MS),
-    );
-  }, []);
+  } else {
+    session.agentId = agentId || session.agentId;
+    if (!session.agentId) {
+      setConnState(session, "disconnected");
+      return;
+    }
+  }
 
-  const createSession = useCallback(() => {
-    const id = generateId();
-    sessionsRef.current.set(id, {
-      id,
-      agentId: "",
-      ws: null,
-      connState: "connecting",
-      exited: false,
-      reconnectAttempts: 0,
-      reconnectTimer: null,
-    });
-    setSessionIds((prev) => [...prev, id]);
-    setActiveIdState(id);
-    activeRef.current = id;
-    return id;
-  }, []);
+  cbs.onStateChange?.(session.connState);
 
-  const closeSession = useCallback(
-    (id: string) => {
-      const session = sessionsRef.current.get(id);
-      if (session) {
-        // Mark exited so the close handler does not schedule a reconnect.
-        session.exited = true;
-        clearReconnectTimer(session);
-        if (session.ws) {
-          if (session.ws.readyState === WebSocket.OPEN) {
-            try {
-              // Ask the backend to reap the shell now (skip the grace window)
-              // so closing a tab frees its session slot immediately.
-              session.ws.send(JSON.stringify({ type: "close" }));
-            } catch {
-              // ignore
-            }
-          }
-          try {
-            session.ws.close();
-          } catch {
-            // ignore
-          }
-        }
-      }
-      sessionsRef.current.delete(id);
-      setSessionIds((prev) => {
-        const next = prev.filter((sid) => sid !== id);
-        setActiveIdState((cur) =>
-          cur === id ? (next.length > 0 ? next[next.length - 1] : null) : cur,
+  // Late joiner: replay client scrollback without tearing down the live WS.
+  if (
+    session.ws &&
+    session.ws.readyState < WebSocket.CLOSING &&
+    session.scrollback
+  ) {
+    try {
+      cbs.onHistory?.(session.scrollback);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  if (session.ws && session.ws.readyState < WebSocket.CLOSING) {
+    return;
+  }
+
+  session.exited = false;
+  session.reconnectAttempts = 0;
+  clearReconnectTimer(session);
+  persistNow();
+  openWs(session);
+}
+
+/** Remove one UI listener; does not close the shared socket. */
+function unbind(id: string, cbs: TerminalCallbacks) {
+  const session = sessions.get(id);
+  if (!session) return;
+  session.listeners.delete(cbs);
+}
+
+function reconnect(id: string) {
+  const session = sessions.get(id);
+  if (!session || !session.agentId) return;
+  session.exited = false;
+  session.reconnectAttempts = 0;
+  clearReconnectTimer(session);
+  openWs(session);
+}
+
+function sendInput(id: string, data: string) {
+  const session = sessions.get(id);
+  if (session?.ws?.readyState === WebSocket.OPEN) {
+    try {
+      session.ws.send(JSON.stringify({ type: "input", data }));
+    } catch (err) {
+      console.warn("[Terminal] Failed to send input:", err);
+    }
+  }
+}
+
+function sendResize(id: string, cols: number, rows: number) {
+  const session = sessions.get(id);
+  if (!session) return;
+  session.pendingCols = cols;
+  session.pendingRows = rows;
+  const flushResize = () => {
+    if (session.ws?.readyState === WebSocket.OPEN) {
+      try {
+        session.ws.send(
+          JSON.stringify({
+            type: "resize",
+            cols: session.pendingCols,
+            rows: session.pendingRows,
+          }),
         );
-        return next;
-      });
-      persistNow();
-    },
-    [clearReconnectTimer, persistNow],
+      } catch {
+        // ignore
+      }
+    }
+  };
+  if (session.ws?.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const existing = resizeTimers.get(id);
+  if (existing) clearTimeout(existing);
+  resizeTimers.set(
+    id,
+    setTimeout(() => {
+      resizeTimers.delete(id);
+      flushResize();
+    }, RESIZE_DEBOUNCE_MS),
   );
+}
 
-  const setActiveId = useCallback(
-    (id: string | null) => {
-      setActiveIdState(id);
-      activeRef.current = id;
-      persistNow();
-    },
-    [persistNow],
-  );
+function createSession(): string {
+  ensureHydrated();
+  const id = generateId();
+  sessions.set(id, emptySession(id));
+  sessionIds = [...sessionIds, id];
+  activeId = id;
+  emitStore();
+  return id;
+}
 
-  const getConnState = useCallback(
-    (id: string): TerminalConnState =>
-      sessionsRef.current.get(id)?.connState ?? "disconnected",
-    [],
-  );
+/**
+ * Seed the first tab on first visible visit. Reads the live module store
+ * (not a React closure) so chat-dock remounts / dual TerminalPage surfaces
+ * cannot race-create extra sessions.
+ */
+function ensureDefaultSession(): void {
+  ensureHydrated();
+  if (sessionIds.length > 0) return;
+  createSession();
+}
 
-  // Close every session on unmount.
-  useEffect(() => {
-    const sessions = sessionsRef.current;
-    const resizeTimers = resizeTimersRef.current;
-    return () => {
-      resizeTimers.forEach((timer) => clearTimeout(timer));
-      resizeTimers.clear();
-      sessions.forEach((s) => {
-        s.exited = true;
-        clearReconnectTimer(s);
+function closeSession(id: string) {
+  const session = sessions.get(id);
+  if (session) {
+    session.exited = true;
+    clearReconnectTimer(session);
+    session.listeners.clear();
+    if (session.ws) {
+      if (session.ws.readyState === WebSocket.OPEN) {
         try {
-          s.ws?.close();
+          session.ws.send(JSON.stringify({ type: "close" }));
         } catch {
           // ignore
         }
-      });
-      sessions.clear();
+      }
+      try {
+        session.ws.close();
+      } catch {
+        // ignore
+      }
+    }
+  }
+  sessions.delete(id);
+  const timer = resizeTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    resizeTimers.delete(id);
+  }
+  sessionIds = sessionIds.filter((sid) => sid !== id);
+  if (activeId === id) {
+    activeId =
+      sessionIds.length > 0 ? sessionIds[sessionIds.length - 1]! : null;
+  }
+  persistNow();
+  emitStore();
+}
+
+function setActiveId(id: string | null) {
+  activeId = id;
+  persistNow();
+  emitStore();
+}
+
+function getConnState(id: string): TerminalConnState {
+  return sessions.get(id)?.connState ?? "disconnected";
+}
+
+// ─── React hook ───────────────────────────────────────────────────────────────
+
+/**
+ * Manages multiple interactive terminal WebSocket sessions with persistence.
+ * All hook instances share one process-scoped session store.
+ */
+export function useTerminal() {
+  const snap = useSyncExternalStore(
+    subscribeStore,
+    getStoreSnapshot,
+    getStoreSnapshot,
+  );
+
+  useEffect(() => {
+    acquireConsumer();
+    return () => {
+      releaseConsumer();
     };
-  }, [clearReconnectTimer]);
+  }, []);
 
   return {
-    sessionIds,
-    activeId,
-    setActiveId,
-    createSession,
-    reconcileAgentIds,
-    connect,
-    reconnect,
-    sendInput,
-    sendResize,
-    closeSession,
-    getConnState,
+    sessionIds: snap.sessionIds,
+    activeId: snap.activeId,
+    setActiveId: useCallback((id: string | null) => setActiveId(id), []),
+    createSession: useCallback(() => createSession(), []),
+    ensureDefaultSession: useCallback(() => ensureDefaultSession(), []),
+    reconcileAgentIds: useCallback(
+      (validIds: Iterable<string>, fallbackAgentId: string) =>
+        reconcileAgentIds(validIds, fallbackAgentId),
+      [],
+    ),
+    connect: useCallback(
+      (id: string, agentId: string, cbs: TerminalCallbacks) =>
+        connect(id, agentId, cbs),
+      [],
+    ),
+    unbind: useCallback(
+      (id: string, cbs: TerminalCallbacks) => unbind(id, cbs),
+      [],
+    ),
+    reconnect: useCallback((id: string) => reconnect(id), []),
+    sendInput: useCallback(
+      (id: string, data: string) => sendInput(id, data),
+      [],
+    ),
+    sendResize: useCallback(
+      (id: string, cols: number, rows: number) => sendResize(id, cols, rows),
+      [],
+    ),
+    closeSession: useCallback((id: string) => closeSession(id), []),
+    getConnState: useCallback((id: string) => getConnState(id), []),
   };
 }
+
+/**
+ * Vitest-only store controls. Application code must use ``useTerminal()``.
+ * Prefer importing via ``./useTerminal.testUtils``.
+ */
+export const terminalStoreTestApi = {
+  reset(): void {
+    resizeTimers.forEach((timer) => clearTimeout(timer));
+    resizeTimers.clear();
+    for (const s of sessions.values()) {
+      clearReconnectTimer(s);
+      s.listeners.clear();
+      try {
+        s.ws?.close();
+      } catch {
+        // ignore
+      }
+    }
+    sessions.clear();
+    sessionIds = [];
+    activeId = null;
+    consumerCount = 0;
+    hydrated = false;
+    validAgentIds.clear();
+    emitStore();
+  },
+  createSession,
+  ensureDefaultSession,
+  getSessionIds(): string[] {
+    ensureHydrated();
+    return [...sessionIds];
+  },
+};

@@ -28,6 +28,63 @@
   border-color: transparent;
 }
 
+.chatFloatBtnWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+/* Match Chat float column (browser / expert / file circle buttons). */
+.installBtnChatFloat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-full);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  opacity: 0.72;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+
+  &:hover {
+    opacity: 1;
+    color: var(--fn-text-brand, #e85d75);
+    background: color-mix(
+      in srgb,
+      var(--fn-color-brand, #e85d75) 12%,
+      var(--fn-bg-hover, #f5f5f5)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand, #e85d75) 45%,
+      var(--fn-border-primary)
+    );
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    transform: scale(1.06);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: wait;
+  }
+}
+
 .installIcon {
   flex-shrink: 0;
   display: block;

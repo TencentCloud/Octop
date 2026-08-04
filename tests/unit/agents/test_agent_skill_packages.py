@@ -221,9 +221,8 @@ def test_build_harness_config_includes_existing_skill_package_dirs(manager: Agen
 
     cfg = manager._build_harness_config(row)
 
-    assert str(manager.paths.skill_packages_dir / package_id / "skills") in list(
-        cfg.skills_dir or []
-    )
+    expected = str((manager.paths.skill_packages_dir / package_id / "skills").resolve())
+    assert expected in list(cfg.skills_dir or [])
 
 
 @pytest.mark.asyncio
@@ -277,3 +276,100 @@ async def test_refresh_agents_for_package_hot_syncs_only_mounted_agents(
     await manager.refresh_agents_for_package("PACK01")
 
     assert synced == ["MOUNTED"]
+
+
+@pytest.mark.asyncio
+async def test_list_skill_summaries_relabels_mounted_package_skills(
+    manager: AgentManager,
+) -> None:
+    """Harness lists package dirs as workspace; Octop marks mounted package slugs."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.skills.skill_package_store import SkillPackageStore
+
+    agent_id = "AGENT01"
+    package_id = "PACK01"
+    manager._repos.agent_repo.create(
+        agent_id=agent_id,
+        user_id=None,
+        name="agent",
+        config_json=json.dumps(
+            {
+                "skill_package_ids": [package_id],
+                "skills_disabled": ["pdf-reader"],
+            }
+        ),
+    )
+    manager._repos.skill_package_repo.create(id=package_id, name="Office", created_by="1")
+    store = SkillPackageStore(
+        repo=manager._repos.skill_package_repo,
+        root=manager.paths.skill_packages_dir,
+    )
+    store.write_skill(
+        package_id,
+        "pdf-reader",
+        [
+            (
+                "SKILL.md",
+                b"---\nname: pdf-reader\ndescription: Read PDF documents\n---\n# PDF\n",
+            )
+        ],
+    )
+    store.write_skill(
+        package_id,
+        "sheet-helper",
+        [
+            (
+                "SKILL.md",
+                b"---\nname: sheet-helper\ndescription: package copy\n---\n# Sheets\n",
+            )
+        ],
+    )
+
+    async def _aread_text(path: str) -> str | None:
+        if path == "skills/sheet-helper/SKILL.md":
+            return "---\nname: sheet-helper\ndescription: workspace wins\n---\n# WS\n"
+        return None
+
+    fake_agent = MagicMock()
+    fake_agent.workspace = MagicMock()
+    fake_agent.workspace.aread_text = AsyncMock(side_effect=_aread_text)
+    # Harness sees both via skills_dir / workspace, all as kind=workspace.
+    fake_agent.list_skill_summaries = AsyncMock(
+        return_value=[
+            {
+                "slug": "local-note",
+                "name": "local-note",
+                "description": "workspace skill",
+                "enabled": True,
+                "kind": "workspace",
+            },
+            {
+                "slug": "pdf-reader",
+                "name": "pdf-reader",
+                "description": "Read PDF documents",
+                "enabled": True,
+                "kind": "workspace",
+            },
+            {
+                "slug": "sheet-helper",
+                "name": "sheet-helper",
+                "description": "workspace wins",
+                "enabled": True,
+                "kind": "workspace",
+            },
+        ]
+    )
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    manager._harness_manager = fake_hm
+
+    rows = await manager.list_skill_summaries(agent_id)
+    by_slug = {row["slug"]: row for row in rows}
+
+    assert set(by_slug) == {"local-note", "sheet-helper", "pdf-reader"}
+    assert by_slug["pdf-reader"]["kind"] == "package"
+    assert by_slug["pdf-reader"]["package_id"] == package_id
+    assert by_slug["pdf-reader"]["enabled"] is False
+    assert by_slug["sheet-helper"]["kind"] == "workspace"
+    assert by_slug["local-note"]["kind"] == "workspace"

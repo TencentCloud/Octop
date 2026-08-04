@@ -1,4 +1,6 @@
 import React, {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -6,8 +8,15 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
-import { Tooltip } from "antd";
-import { FilePen, FolderOpen, Globe, RefreshCw, X } from "lucide-react";
+import { Spin, Tooltip } from "antd";
+import {
+  FilePen,
+  FolderOpen,
+  Globe,
+  RefreshCw,
+  Terminal,
+  X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import BrowserWorkspace, {
   type PanelMode,
@@ -20,6 +29,8 @@ import { dockFileBasename } from "../utils/dockFilePath";
 import styles from "../index.module.less";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
+
+const TerminalPage = lazy(() => import("../../Control/Terminal"));
 
 interface ChatDockPanelProps {
   mode: PanelMode;
@@ -34,10 +45,16 @@ interface ChatDockPanelProps {
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string) => void;
   browserEnvironment?: DisplayEnvironment;
+  /**
+   * False while the chat dock shell is closed but keep-alive mounted.
+   * Mirrors Workbench ``isVisible`` so terminal does not treat hide as a
+   * fresh first visit.
+   */
+  surfaceVisible?: boolean;
 }
 
 /**
- * Tabbed dock shell: file list + per-file viewers + browser.
+ * Tabbed dock shell: file list + per-file viewers + browser + terminal.
  * Bodies stay mounted after first open so streams / editors survive tab switches.
  */
 const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
@@ -53,10 +70,14 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   onCloseTab,
   onOpenFile,
   browserEnvironment = "desktop",
+  surfaceVisible = true,
 }) => {
   const { t } = useTranslation();
   const [browserMounted, setBrowserMounted] = useState(
     openTabs.some((tab) => tab.kind === "browser"),
+  );
+  const [terminalMounted, setTerminalMounted] = useState(
+    openTabs.some((tab) => tab.kind === "terminal"),
   );
   const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
     openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
@@ -71,7 +92,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
 
   useEffect(() => {
     const hasBrowser = openTabs.some((tab) => tab.kind === "browser");
+    const hasTerminal = openTabs.some((tab) => tab.kind === "terminal");
     setBrowserMounted(hasBrowser);
+    setTerminalMounted(hasTerminal);
     const openFilePaths = new Set(
       openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
     );
@@ -127,6 +150,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const sessionId = resolveBrowserProfile();
   const activeTab =
     openTabs.find((tab) => tab.id === activeTabId) ?? openTabs[0] ?? null;
+  const terminalVisible = surfaceVisible && activeTab?.kind === "terminal";
 
   const tabBar = (
     <div className={styles.dockTabBar} role="tablist">
@@ -142,6 +166,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <>
               <Globe size={16} strokeWidth={2} aria-hidden />
               <span>{t("chat.remoteBrowserTitle", "远程浏览器")}</span>
+            </>
+          ) : tab.kind === "terminal" ? (
+            <>
+              <Terminal size={16} strokeWidth={2} aria-hidden />
+              <span>{t("chat.dockTerminalTitle", "终端")}</span>
             </>
           ) : (
             <>
@@ -263,6 +292,24 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               style={{ flex: 1, minHeight: 0 }}
               onRefreshReady={handleBrowserRefreshReady}
             />
+          </div>
+        )}
+
+        {terminalMounted && (
+          <div
+            className={styles.dockTabBody}
+            style={{ display: terminalVisible ? "flex" : "none" }}
+            aria-hidden={!terminalVisible}
+          >
+            <Suspense
+              fallback={
+                <div className={styles.dockTerminalLoading}>
+                  <Spin size="small" />
+                </div>
+              }
+            >
+              <TerminalPage embedded isVisible={terminalVisible} />
+            </Suspense>
           </div>
         )}
       </div>

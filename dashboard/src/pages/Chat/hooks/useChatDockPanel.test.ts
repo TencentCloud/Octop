@@ -45,6 +45,50 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current.dockOpen).toBe(false);
   });
 
+  it("toggleTerminalPanel opens terminal tab then closes dock when active", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.toggleTerminalPanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.activeTabId).toBe("terminal");
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["terminal"]);
+    act(() => {
+      result.current.toggleTerminalPanel();
+    });
+    expect(result.current.dockOpen).toBe(false);
+    // Closing the float button only hides the dock — tab stays for keep-alive.
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["terminal"]);
+  });
+
+  it("reopening terminal does not add another dock tab", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.toggleTerminalPanel();
+    });
+    act(() => {
+      result.current.toggleTerminalPanel();
+    });
+    act(() => {
+      result.current.toggleTerminalPanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["terminal"]);
+  });
+
+  it("openTerminalTab adds and focuses the terminal tab", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.openBrowserTab();
+      result.current.openTerminalTab();
+    });
+    expect(result.current.activeTabId).toBe("terminal");
+    expect(result.current.openTabs.map((t) => t.id)).toEqual([
+      "browser",
+      "terminal",
+    ]);
+  });
+
   it("closeTab can close the files list tab", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     act(() => {
@@ -78,5 +122,41 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current).not.toHaveProperty("openFilePanel");
     expect(result.current).not.toHaveProperty("openBrowserPanel");
     expect(result.current).not.toHaveProperty("resetDismissOnSessionGone");
+  });
+
+  it("closes the dock and clears tabs when agentId changes", () => {
+    const { result, rerender } = renderHook(
+      ({ agentId }: { agentId: string | null }) =>
+        useChatDockPanel(false, agentId),
+      { initialProps: { agentId: "agent-a" as string | null } },
+    );
+    act(() => {
+      result.current.openFileList();
+      result.current.openBrowserTab();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.openTabs.length).toBeGreaterThan(0);
+
+    rerender({ agentId: "agent-b" });
+
+    expect(result.current.dockOpen).toBe(false);
+    expect(result.current.openTabs).toEqual([]);
+    expect(result.current.activeTabId).toBeNull();
+  });
+
+  it("does not clear dock on null ↔ id first paint races", () => {
+    const { result, rerender } = renderHook(
+      ({ agentId }: { agentId: string | null }) =>
+        useChatDockPanel(false, agentId),
+      { initialProps: { agentId: null as string | null } },
+    );
+    rerender({ agentId: "agent-a" });
+    act(() => {
+      result.current.openFileList();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    // Same agent again after transient identity — keep open.
+    rerender({ agentId: "agent-a" });
+    expect(result.current.dockOpen).toBe(true);
   });
 });

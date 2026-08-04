@@ -1214,24 +1214,6 @@ class AgentManager:
             config = getattr(agent, "_config", None)
         if config is not None and hasattr(config, "skills_dir"):
             config.skills_dir = skill_dirs or None
-        set_roots = getattr(agent, "set_skill_package_roots", None)
-        if callable(set_roots):
-            store = SkillPackageStore(
-                repo=self._repos.skill_package_repo,
-                root=self._paths.skill_packages_dir,
-            )
-            roots: list[dict[str, str]] = []
-            if supports_packages:
-                for package_id in skill_package_ids_list(cfg):
-                    if self._repos.skill_package_repo.get(package_id) is None:
-                        continue
-                    roots.append(
-                        {
-                            "id": package_id,
-                            "path": str(store.package_skills_dir(package_id).resolve()),
-                        }
-                    )
-            set_roots(roots or None)
         reload = getattr(agent, "reload_subagents", None)
         if callable(reload):
             reload()
@@ -1296,9 +1278,72 @@ class AgentManager:
             self.sync_skill_package_dirs(row.agent_id)
 
     async def list_skill_summaries(self, agent_id: str) -> list[dict[str, Any]]:
-        """Installed skills for *agent_id* (delegates to harness-agent catalog)."""
+        """Installed skills for *agent_id* (harness catalog + package ``kind`` labels).
+
+        Harness lists builtin / workspace / ``skills_dir`` entries (all non-builtin as
+        ``kind="workspace"``). Octop relabels mounted skill-package slugs to
+        ``kind="package"`` unless the agent workspace has its own copy.
+        """
+        from octop.infra.utils.frontmatter import parse_frontmatter
+
         agent = self.get_agent(agent_id)
-        return await agent.list_skill_summaries()
+        harness_rows = list(await agent.list_skill_summaries())
+        cfg = self.get_config(agent_id)
+        package_ids = skill_package_ids_list(cfg)
+        if not package_ids:
+            return harness_rows
+
+        disabled = skills_disabled_set(cfg)
+        store = SkillPackageStore(
+            repo=self._repos.skill_package_repo,
+            root=self._paths.skill_packages_dir,
+        )
+        package_by_slug: dict[str, dict[str, Any]] = {}
+        for package_id in package_ids:
+            if self._repos.skill_package_repo.get(package_id) is None:
+                continue
+            for summary in store.list_skill_summaries(package_id):
+                slug = str(summary.get("slug") or "").strip()
+                if not slug:
+                    continue
+                name = str(summary.get("name") or slug)
+                package_by_slug[slug] = {
+                    **summary,
+                    "kind": "package",
+                    "package_id": package_id,
+                    "enabled": slug not in disabled and name not in disabled,
+                }
+
+        merged: dict[str, dict[str, Any]] = {}
+        for row in harness_rows:
+            slug = str(row.get("slug") or "").strip()
+            if slug:
+                merged[slug] = dict(row)
+
+        workspace = getattr(agent, "workspace", None)
+        for slug, package_row in package_by_slug.items():
+            has_workspace = False
+            if workspace is not None:
+                aread = getattr(workspace, "aread_text", None)
+                if callable(aread):
+                    manifest = await aread(f"skills/{slug}/SKILL.md")
+                    if manifest is not None:
+                        meta, _body = parse_frontmatter(manifest)
+                        has_workspace = not bool(meta.get("removed"))
+            if has_workspace:
+                if slug in merged:
+                    merged[slug]["kind"] = "workspace"
+                continue
+            merged[slug] = package_row
+
+        kind_order = {"builtin": 0, "package": 1, "workspace": 2}
+        return sorted(
+            merged.values(),
+            key=lambda row: (
+                kind_order.get(str(row.get("kind")), 99),
+                str(row.get("slug", "")),
+            ),
+        )
 
     def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""

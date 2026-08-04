@@ -152,7 +152,7 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
       ],
     },
     {
-      groupKey: "nav.control",
+      groupKey: "nav.settings",
       items: [
         {
           key: "personalization",
@@ -178,6 +178,14 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           icon: <Package size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.skillPackages",
         },
+      ],
+    },
+  ];
+
+  if (role === "admin") {
+    sections.push({
+      groupKey: "nav.control",
+      items: [
         {
           key: "workbench",
           path: "/workbench",
@@ -197,10 +205,7 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           labelKey: "nav.acp",
         },
       ],
-    },
-  ];
-
-  if (role === "admin") {
+    });
     sections.push({
       groupKey: "nav.admin",
       items: [

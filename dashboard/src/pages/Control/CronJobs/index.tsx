@@ -1,5 +1,14 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Empty, Form, Segmented, Table, Tooltip } from "antd";
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Segmented,
+  Spin,
+  Table,
+  Tooltip,
+} from "antd";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import type { CronJobSpecOutput } from "../../../api/types";
 import { useTranslation } from "react-i18next";
@@ -16,7 +25,6 @@ import {
 import type { CronJobFormValues } from "./useCronJobs";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import { showConfirmModal } from "../../../utils/confirmModal";
-import { TableSkeleton } from "../../../components/Skeleton";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
@@ -80,6 +88,8 @@ function CronJobsPage() {
   const {
     jobs,
     loading,
+    listRefreshing,
+    listStale,
     cronTimezone,
     createJob,
     updateJob,
@@ -101,6 +111,16 @@ function CronJobsPage() {
   // Execute-now confirmation
   const [executingJob, setExecutingJob] = useState<CronJob | null>(null);
   const [executing, setExecuting] = useState(false);
+
+  // Close transient UI when switching experts — avoid dangling drawers
+  // tied to the previous agent's jobs.
+  useEffect(() => {
+    setDrawerOpen(false);
+    setEditingJob(null);
+    setDetailDrawerOpen(false);
+    setDetailJob(null);
+    setExecutingJob(null);
+  }, [activeAgentId]);
 
   const handleDetail = (job: CronJob) => {
     setDetailJob(job);
@@ -177,8 +197,11 @@ function CronJobsPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refetchJobs();
-    setRefreshing(false);
+    try {
+      await refetchJobs(true);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleDrawerClose = () => {
@@ -225,70 +248,92 @@ function CronJobsPage() {
     );
   }
 
+  // Keep list shell stable across expert switches, but do NOT show the
+  // table/card toolbar when there's nothing to manage (empty already has CTAs).
+  const contentBusy = listRefreshing || refreshing || listStale;
+  const showList = jobs.length > 0;
+  const showEmpty = !loading && !listStale && jobs.length === 0;
+  const showBodySpinner = loading || (contentBusy && !showList && !showEmpty);
+  const showToolbar = showList;
+
   return (
     <PageShell
       title={t("pageShell.tasks.title")}
       subtitle={t("pageShell.tasks.subtitle")}
       agentScoped
     >
-      {/* When empty, show the full-page empty state without a table card */}
-      {!loading && jobs.length === 0 ? (
+      {showToolbar ? (
+        <div className={styles.gridToolbar}>
+          <span className={styles.gridCount}>
+            {t("cronJobs.totalItems", { count: jobs.length })}
+            {contentBusy ? (
+              <span className={styles.refreshHint}>
+                {" · "}
+                {listStale ? t("cronJobs.loadingJobs") : t("cronJobs.syncing")}
+              </span>
+            ) : null}
+          </span>
+          <div className={styles.gridToolbarRight}>
+            <Segmented
+              size="small"
+              value={viewMode}
+              onChange={(v) => setViewMode(v as "table" | "card")}
+              options={[
+                {
+                  value: "table",
+                  label: (
+                    <span className={styles.viewModeLabel}>
+                      <List size={14} />
+                      {t("cronJobs.viewTable")}
+                    </span>
+                  ),
+                },
+                {
+                  value: "card",
+                  label: (
+                    <span className={styles.viewModeLabel}>
+                      <LayoutGrid size={14} />
+                      {t("cronJobs.viewCard")}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+            <Tooltip title={t("common.refresh")}>
+              <Button
+                icon={<RefreshCw size={15} />}
+                loading={refreshing || listRefreshing || listStale}
+                onClick={() => void handleRefresh()}
+              />
+            </Tooltip>
+            <Button type="primary" onClick={handleCreate} disabled={listStale}>
+              + {t("cronJobs.createJob")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {showBodySpinner ? (
+        <div className={styles.firstLoad}>
+          <Spin />
+        </div>
+      ) : showEmpty ? (
         <CronJobsEmptyState
           onCreate={handleCreate}
           onSuggestionClick={handleSuggestionClick}
         />
       ) : (
-        <>
-          {/* Toolbar — outside the card, matching experts page layout */}
-          <div className={styles.gridToolbar}>
-            <span className={styles.gridCount}>
-              {t("cronJobs.totalItems", { count: jobs.length })}
-            </span>
-            <div className={styles.gridToolbarRight}>
-              <Segmented
-                size="small"
-                value={viewMode}
-                onChange={(v) => setViewMode(v as "table" | "card")}
-                options={[
-                  {
-                    value: "table",
-                    label: (
-                      <span className={styles.viewModeLabel}>
-                        <List size={14} />
-                        {t("cronJobs.viewTable")}
-                      </span>
-                    ),
-                  },
-                  {
-                    value: "card",
-                    label: (
-                      <span className={styles.viewModeLabel}>
-                        <LayoutGrid size={14} />
-                        {t("cronJobs.viewCard")}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
-              <Tooltip title={t("common.refresh")}>
-                <Button
-                  icon={<RefreshCw size={15} />}
-                  loading={refreshing}
-                  onClick={handleRefresh}
-                />
-              </Tooltip>
-              <Button type="primary" onClick={handleCreate}>
-                + {t("cronJobs.createJob")}
-              </Button>
+        <div
+          className={`${styles.listShell} ${
+            contentBusy ? styles.listShellBusy : ""
+          }`}
+        >
+          {contentBusy ? (
+            <div className={styles.listBusyBar} aria-hidden>
+              <Spin size="small" />
             </div>
-          </div>
-
-          {/* Card grid or table */}
-          {loading ? (
-            <div style={{ padding: "8px 0" }}>
-              <TableSkeleton rows={4} columns={isMobile ? 3 : 6} />
-            </div>
-          ) : showCardView ? (
+          ) : null}
+          {showCardView ? (
             <div className={styles.cardGrid}>
               {jobs.map((job) => (
                 <CronJobCard
@@ -318,7 +363,7 @@ function CronJobsPage() {
               />
             </Card>
           )}
-        </>
+        </div>
       )}
 
       <JobDrawer

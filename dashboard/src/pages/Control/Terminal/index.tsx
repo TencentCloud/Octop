@@ -1,10 +1,9 @@
 import { useEffect, useRef, useCallback, useState, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Dropdown, Tabs, Tooltip } from "antd";
+import { Button, Dropdown, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import {
   Plus,
-  X,
   SquareTerminal,
   SquareDashedBottom,
   Loader,
@@ -12,11 +11,16 @@ import {
   Bot,
   RefreshCw,
 } from "lucide-react";
+import { ChromeTabBar } from "../../../components/ChromeTabBar";
 import AiPanel, { type AiPanelLayout } from "./components/AiPanel";
 import TerminalView, {
   type TerminalViewHandle,
 } from "./components/TerminalView";
-import { useTerminal, type TerminalConnState } from "./useTerminal";
+import {
+  useTerminal,
+  type TerminalCallbacks,
+  type TerminalConnState,
+} from "./useTerminal";
 import { createTerminalOutputBuffer } from "./terminalOutputBuffer";
 import {
   TERMINAL_THEMES,
@@ -40,10 +44,17 @@ const AI_PANEL_MAX_HEIGHT = 600;
 
 function ConnBadge({ state }: { state: TerminalConnState }) {
   const { t } = useTranslation();
+  // Match BrowserViewer tab leading icon: fixed size, gray by default.
+  const iconProps = {
+    size: 11 as const,
+    strokeWidth: 2 as const,
+    className: styles.tabLeadIcon,
+    "aria-hidden": true as const,
+  };
   if (state === "connected") {
     return (
       <Tooltip title={t("terminal.connected")}>
-        <SquareTerminal size={12} color="var(--fn-color-success, #22c55e)" />
+        <SquareTerminal {...iconProps} />
       </Tooltip>
     );
   }
@@ -57,19 +68,15 @@ function ConnBadge({ state }: { state: TerminalConnState }) {
         )}
       >
         <Loader
-          size={12}
-          className={styles.spinning}
-          color="var(--fn-color-brand)"
+          {...iconProps}
+          className={`${styles.spinning} ${styles.tabLeadIcon}`}
         />
       </Tooltip>
     );
   }
   return (
     <Tooltip title={t("terminal.disconnected")}>
-      <SquareDashedBottom
-        size={12}
-        color="var(--fn-text-quaternary, #9ca3af)"
-      />
+      <SquareDashedBottom {...iconProps} />
     </Tooltip>
   );
 }
@@ -90,6 +97,7 @@ const TerminalTab = memo(function TerminalTab({
   sendInput,
   sendResize,
   connect,
+  unbind,
   onReconnect,
   themeDefinition,
   agentId,
@@ -104,16 +112,8 @@ const TerminalTab = memo(function TerminalTab({
   onConnStateChange: (id: string, state: TerminalConnState) => void;
   sendInput: (id: string, data: string) => void;
   sendResize: (id: string, cols: number, rows: number) => void;
-  connect: (
-    id: string,
-    agentId: string,
-    cbs: {
-      onOutput: (data: string) => void;
-      onHistory?: (data: string) => void;
-      onExit?: (code: number) => void;
-      onStateChange?: (state: TerminalConnState) => void;
-    },
-  ) => void;
+  connect: (id: string, agentId: string, cbs: TerminalCallbacks) => void;
+  unbind: (id: string, cbs: TerminalCallbacks) => void;
   onReconnect: (id: string) => void;
   themeDefinition: TerminalThemeDefinition;
   /** Active agent — terminal is rooted at this agent's workspace_dir. */
@@ -131,6 +131,7 @@ const TerminalTab = memo(function TerminalTab({
 
   // Track whether the WS has been connected already
   const connectedRef = useRef(false);
+  const callbacksRef = useRef<TerminalCallbacks | null>(null);
 
   const handleData = useCallback(
     (data: string) => {
@@ -152,7 +153,7 @@ const TerminalTab = memo(function TerminalTab({
     if (connectedRef.current) return;
     connectedRef.current = true;
 
-    connect(sessionId, agentId, {
+    const cbs: TerminalCallbacks = {
       onOutput: (data) => {
         onOutputCapture?.(sessionId, data);
         termRefStable.current.current?.write(data);
@@ -172,8 +173,18 @@ const TerminalTab = memo(function TerminalTab({
           `\r\n\x1b[90m[${t("terminal.processExited")} (${code})]\x1b[0m\r\n`,
         );
       },
-    });
+    };
+    callbacksRef.current = cbs;
+    connect(sessionId, agentId, cbs);
   }, [connect, sessionId, agentId, onConnStateChange, onOutputCapture, t]);
+
+  // Drop UI listener on unmount without closing the shared PTY socket.
+  useEffect(() => {
+    return () => {
+      const cbs = callbacksRef.current;
+      if (cbs) unbind(sessionId, cbs);
+    };
+  }, [unbind, sessionId]);
 
   // Auto-focus and re-fit when this tab becomes active or when the page
   // becomes visible after being hidden (display:none → display:flex).
@@ -262,16 +273,18 @@ export default function TerminalPage({
     activeId,
     setActiveId,
     createSession,
+    ensureDefaultSession,
     reconcileAgentIds,
     connect,
+    unbind,
     reconnect,
     sendInput,
     sendResize,
     closeSession,
   } = useTerminal();
 
-  // Track whether the page has been shown at least once so we only create the
-  // initial terminal session on first visit, not on app startup.
+  // Track whether this surface has been shown at least once so we only seed
+  // the default session on first visit (not on app startup / keep-alive hide).
   const hasBeenVisibleRef = useRef(false);
 
   const [connStates, setConnStates] = useState<
@@ -408,17 +421,14 @@ export default function TerminalPage({
     );
   }, [agents, agentsLoading, activeAgentId, reconcileAgentIds]);
 
-  // Create the first tab on first visit (not on app startup)
+  // Create the first tab on first visit (not on app startup). Uses the live
+  // store so a remounted chat-dock TerminalPage cannot race-create extras.
   useEffect(() => {
     if (!isVisible) return;
     if (hasBeenVisibleRef.current) return;
     hasBeenVisibleRef.current = true;
-    // Skip if tabs were restored from a previous session.
-    if (sessionIds.length === 0) {
-      createSession();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVisible]);
+    ensureDefaultSession();
+  }, [isVisible, ensureDefaultSession]);
 
   const handleAddTab = () => {
     createSession();
@@ -488,44 +498,15 @@ export default function TerminalPage({
     return items;
   }, [t, handleThemeChange]);
 
-  // ── Tab items ─────────────────────────────────────────────────────────────
+  // ── Chrome tabs + session panes ────────────────────────────────────────────
 
-  const tabItems = sessionIds.map((id, index) => {
+  const chromeTabs = sessionIds.map((id, index) => {
     const state = connStates[id] ?? "connecting";
     return {
       key: id,
-      label: (
-        <span className={styles.tabLabel}>
-          <ConnBadge state={state} />
-          <span>{`${t("terminal.session")} ${index + 1}`}</span>
-          {sessionIds.length > 1 && (
-            <button
-              className={styles.closeBtn}
-              onClick={(e) => handleCloseTab(id, e)}
-              title={t("common.close")}
-            >
-              <X size={11} />
-            </button>
-          )}
-        </span>
-      ),
-      children: (
-        <TerminalTab
-          key={id}
-          sessionId={id}
-          isActive={activeId === id}
-          isPageVisible={isVisible}
-          connState={state}
-          onConnStateChange={handleConnStateChange}
-          sendInput={sendInput}
-          sendResize={sendResize}
-          connect={connect}
-          onReconnect={reconnect}
-          themeDefinition={themeDefinition}
-          agentId={activeAgentId || ""}
-          onOutputCapture={handleOutputCapture}
-        />
-      ),
+      leading: <ConnBadge state={state} />,
+      label: `${t("terminal.session")} ${index + 1}`,
+      closable: sessionIds.length > 1,
     };
   });
 
@@ -555,14 +536,6 @@ export default function TerminalPage({
           <Button type="text" icon={<Palette size={14} />} size="small" />
         </Tooltip>
       </Dropdown>
-      <Tooltip title={t("terminal.newTab")}>
-        <Button
-          type="text"
-          icon={<Plus size={14} />}
-          size="small"
-          onClick={handleAddTab}
-        />
-      </Tooltip>
     </div>
   );
 
@@ -621,16 +594,47 @@ export default function TerminalPage({
               </Button>
             </div>
           ) : (
-            <Tabs
-              type="card"
-              activeKey={activeId ?? undefined}
-              onChange={setActiveId}
-              tabBarExtraContent={tabBarExtra}
-              items={tabItems}
-              className={styles.terminalTabs}
-              destroyOnHidden={false}
-              animated={false}
-            />
+            <>
+              <ChromeTabBar
+                tabs={chromeTabs}
+                activeKey={activeId ?? undefined}
+                onChange={setActiveId}
+                onClose={handleCloseTab}
+                onNewTab={handleAddTab}
+                newTabTitle={t("terminal.newTab")}
+                trailing={tabBarExtra}
+              />
+              <div className={styles.sessionPanes}>
+                {sessionIds.map((id) => (
+                  <div
+                    key={id}
+                    className={
+                      id === activeId
+                        ? styles.sessionPane
+                        : `${styles.sessionPane} ${styles.sessionPaneHidden}`
+                    }
+                    role="tabpanel"
+                    aria-hidden={id !== activeId}
+                  >
+                    <TerminalTab
+                      sessionId={id}
+                      isActive={activeId === id}
+                      isPageVisible={isVisible}
+                      connState={connStates[id] ?? "connecting"}
+                      onConnStateChange={handleConnStateChange}
+                      sendInput={sendInput}
+                      sendResize={sendResize}
+                      connect={connect}
+                      unbind={unbind}
+                      onReconnect={reconnect}
+                      themeDefinition={themeDefinition}
+                      agentId={activeAgentId || ""}
+                      onOutputCapture={handleOutputCapture}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

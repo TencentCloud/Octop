@@ -85,7 +85,7 @@ export default function ChatTitleBar({
       <div className={styles.chatTitleLeft}>
         <SessionChannelIcon
           channelType={session.channelType}
-          size={16}
+          size={13}
           className={styles.chatTitleLeadingIcon}
         />
         {isEditing ? (
@@ -107,15 +107,15 @@ export default function ChatTitleBar({
           <div className={styles.chatTitleHeading}>
             <h1 className={styles.chatTitleText} title={title}>
               {title}
-              {session.pinned ? (
-                <Pin
-                  size={13}
-                  strokeWidth={2}
-                  className={styles.chatTitlePinMark}
-                  aria-hidden
-                />
-              ) : null}
             </h1>
+            {session.pinned ? (
+              <Pin
+                size={13}
+                strokeWidth={2}
+                className={styles.chatTitlePinMark}
+                aria-hidden
+              />
+            ) : null}
             <button
               type="button"
               className={styles.chatTitleEditBtn}

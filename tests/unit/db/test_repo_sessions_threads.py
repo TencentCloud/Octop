@@ -225,3 +225,28 @@ def test_threads_pinned_sort_first(repos):
     rows = threads.list_by_agent(agent_id="a1", limit=10)
     assert rows[0].thread_id == "thr_old"
     assert rows[0].pinned is True
+
+
+def test_threads_empty_new_sorts_above_older_active(repos):
+    """Brand-new empty threads (last_active=0) must not sink below older chats."""
+    _sessions, threads = repos
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="dashboard", channel_subject_id="1")
+    threads.insert(
+        thread_id="thr_older_active",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="old chat",
+        last_active=50,
+    )
+    threads.insert(
+        thread_id="thr_empty_new",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        last_active=0,
+    )
+    rows = threads.list_by_agent(agent_id="a1", limit=10)
+    assert [r.thread_id for r in rows] == ["thr_empty_new", "thr_older_active"]

@@ -1,0 +1,111 @@
+/* Shared tokens for chrome-style session tabs (browser + terminal). */
+:global(:root) {
+  --browser-chrome-tab-font-size: 12px;
+  --browser-chrome-tab-line-height: 16px;
+  --browser-chrome-tab-pad: 4px 10px;
+  --browser-chrome-tab-radius: 4px 4px 0 0;
+  --browser-chrome-tab-gap: 2px;
+  --browser-chrome-tab-bar-pad: 4px 4px 0;
+  --browser-chrome-tab-accent: var(--fn-color-brand, #635bff);
+}
+
+.tabBar {
+  display: flex;
+  align-items: center;
+  gap: var(--browser-chrome-tab-gap);
+  background: var(--fn-bg-secondary);
+  border-bottom: 1px solid var(--fn-border-secondary);
+  padding: var(--browser-chrome-tab-bar-pad);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.tabsScroll {
+  display: flex;
+  align-items: center;
+  gap: var(--browser-chrome-tab-gap);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--browser-chrome-tab-pad);
+  border-radius: var(--browser-chrome-tab-radius);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  font-size: var(--browser-chrome-tab-font-size);
+  line-height: var(--browser-chrome-tab-line-height);
+  color: var(--fn-text-secondary);
+  border-top: 2px solid transparent;
+  user-select: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
+.tabActive {
+  background: var(--fn-bg-primary);
+  border-top: 2px solid var(--browser-chrome-tab-accent);
+  color: var(--fn-text-primary);
+}
+
+.tabLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tabClose {
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  border-radius: 3px;
+  padding: 1px 2px;
+  flex-shrink: 0;
+  line-height: 1;
+
+  &:hover {
+    opacity: 1;
+    background: var(--fn-border-secondary);
+  }
+}
+
+.tabNew {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--fn-text-tertiary);
+  padding: 4px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-primary);
+  }
+}
+
+.trailing {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 2px 2px 0;
+  gap: 4px;
+}

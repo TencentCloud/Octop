@@ -321,7 +321,7 @@ class Gateway:
     def _bump_dashboard_session(self, session: SessionRow, session_key: str, text: str) -> None:
         self._thread_registry.touch_last_active(session.thread_id)
         if text:
-            self._thread_registry.set_title_if_null(session.thread_id, text[:40])
+            self._thread_registry.set_title_if_null(session.thread_id, text)
         self._thread_registry.increment_unread(session_key)
 
     async def push_text_from_session(

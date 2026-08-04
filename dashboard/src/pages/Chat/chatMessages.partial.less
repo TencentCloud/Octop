@@ -125,10 +125,10 @@
 
 .messageListInner {
   overflow-anchor: none;
-  max-width: 960px;
+  max-width: var(--chat-column-max, 960px);
   min-width: 280px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--chat-column-pad-x, 24px);
 
   @media (max-width: 767px) {
     padding: 0 12px;
@@ -968,15 +968,13 @@
 
 /* ---------- Message copy button ---------- */
 
-/* User message: copy button on the left-top of the bubble */
+/* User message: actions under the bubble (easier hit targets than side icons). */
 .userMsgRow {
   display: flex;
   align-items: flex-start;
+  justify-content: flex-end;
   gap: 6px;
-
-  &:hover .msgCopyBtn {
-    opacity: 1;
-  }
+  width: 100%;
 }
 
 .userMsgColumn {
@@ -985,6 +983,52 @@
   align-items: flex-end;
   min-width: 0;
   flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.userMsgActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 2px;
+  /* Stable 32px hit row so copy/edit stay easy to aim at. */
+  min-height: 32px;
+  padding: 0;
+
+  .msgCopyBtn,
+  .msgActionBtn {
+    width: 32px;
+    height: 32px;
+    margin-left: 0;
+    /* Invisible until hover/focus, but still receive clicks if aimed. */
+    opacity: 0;
+    pointer-events: auto;
+  }
+
+  &:hover .msgCopyBtn,
+  &:hover .msgActionBtn,
+  &:focus-within .msgCopyBtn,
+  &:focus-within .msgActionBtn {
+    opacity: 1;
+  }
+
+  .msgCopyBtn:hover,
+  .msgActionBtn:hover {
+    opacity: 1;
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-hover);
+  }
+}
+
+/* Reveal when the user bubble is hovered/focused, not only the tiny buttons. */
+.userMsgColumn:hover .userMsgActions .msgCopyBtn,
+.userMsgColumn:hover .userMsgActions .msgActionBtn,
+.userMsgColumn:focus-within .userMsgActions .msgCopyBtn,
+.userMsgColumn:focus-within .userMsgActions .msgActionBtn,
+.messageBubble:hover .userMsgActions .msgCopyBtn,
+.messageBubble:hover .userMsgActions .msgActionBtn {
+  opacity: 1;
 }
 
 .msgCopyBtn {
@@ -1014,5 +1058,6 @@
   &:focus-visible {
     outline: 2px solid var(--fn-color-brand);
     outline-offset: 2px;
+    opacity: 1;
   }
 }

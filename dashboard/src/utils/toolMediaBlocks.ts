@@ -34,7 +34,9 @@ export function agentMediaPreviewUrl(
   source: string,
   mimeType?: string,
 ): string {
-  const params = new URLSearchParams({ source });
+  const params = new URLSearchParams({
+    source: toMediaPreviewSource(source, { agentId, fromWorkspace: false }),
+  });
   if (mimeType) params.set("mime_type", mimeType);
   return `/api/agents/${encodeURIComponent(
     agentId,
@@ -60,6 +62,79 @@ export function extractWorkspaceRel(path: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Build the ``source`` query for ``/media/preview``.
+ *
+ * Workspace tree entries use leading-slash keys (``/octop-logo.png``). Wrapping
+ * those as ``file:///octop-logo.png`` makes the backend look on the host root
+ * and returns NOT_FOUND. Prefer workspace-relative keys whenever we can.
+ */
+export function toMediaPreviewSource(
+  path: string,
+  options?: { agentId?: string | null; fromWorkspace?: boolean },
+): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+
+  let posix = trimmed.replace(/\\/g, "/");
+  if (posix.toLowerCase().startsWith("file://")) {
+    let host = posix.slice("file://".length);
+    if (host.startsWith("//")) host = host.slice(1);
+    if (!host.startsWith("/") && !/^[A-Za-z]:/.test(host)) {
+      host = `/${host}`;
+    }
+    posix = host;
+  }
+
+  if (/^[A-Za-z]:[^/]/.test(posix)) {
+    posix = `${posix.slice(0, 2)}/${posix.slice(2)}`;
+  }
+  const lower = posix.toLowerCase();
+  const agentId = options?.agentId?.replace(/\\/g, "/") ?? "";
+
+  if (agentId) {
+    const idLower = agentId.toLowerCase();
+    for (const marker of [
+      `/.octop/agents/${idLower}/`,
+      `.octop/agents/${idLower}/`,
+    ]) {
+      const idx = lower.lastIndexOf(marker);
+      if (idx >= 0) {
+        return posix.slice(idx + marker.length);
+      }
+    }
+  }
+
+  const anyAgent = posix.match(/(?:^|\/)\.octop\/agents\/[^/]+\/(.+)$/i);
+  if (anyAgent?.[1]) return anyAgent[1];
+
+  if (
+    posix.includes("/workspace/") ||
+    posix === "/workspace" ||
+    posix.startsWith("/workspace")
+  ) {
+    return toWorkspaceRel(posix);
+  }
+
+  const mediaRel = extractWorkspaceRel(posix);
+  if (mediaRel) return mediaRel;
+
+  // Workspace UI paths: leading ``/`` is workspace-relative, not host-absolute.
+  if (options?.fromWorkspace) {
+    return posix.replace(/^\/+/, "") || ".";
+  }
+
+  // True host absolute outside the agent home → file:// for backend allowlist.
+  if (isHostAbsoluteMediaPath(posix) || /^[A-Za-z]:/.test(posix)) {
+    if (/^[A-Za-z]:/.test(posix)) {
+      return `file:///${posix}`;
+    }
+    return `file://${posix}`;
+  }
+
+  return posix.replace(/^\/+/, "");
 }
 
 /** Extract path from dashboard media/download API URLs (preserve absolute). */

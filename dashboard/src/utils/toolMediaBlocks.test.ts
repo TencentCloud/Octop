@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
   isHostAbsoluteMediaPath,
+  toMediaPreviewSource,
   workspaceDownloadUrl,
 } from "./toolMediaBlocks";
 
@@ -37,5 +39,48 @@ describe("isHostAbsoluteMediaPath", () => {
   it("treats /outbound as workspace key, not host abs", () => {
     expect(isHostAbsoluteMediaPath("/outbound/a.png")).toBe(false);
     expect(isHostAbsoluteMediaPath("/Users/me/a.png")).toBe(true);
+  });
+});
+
+describe("toMediaPreviewSource", () => {
+  it("does not wrap workspace tree keys as host file:// paths", () => {
+    expect(
+      toMediaPreviewSource("/octop-logo.png", {
+        agentId: "ED7N8B",
+        fromWorkspace: true,
+      }),
+    ).toBe("octop-logo.png");
+    expect(
+      toMediaPreviewSource("/generated/slide.png", { fromWorkspace: true }),
+    ).toBe("generated/slide.png");
+  });
+
+  it("collapses agent-home and outbound shapes to workspace-relative keys", () => {
+    expect(
+      toMediaPreviewSource("/Users/me/.octop/agents/ED7N8B/octop-logo.png", {
+        agentId: "ED7N8B",
+      }),
+    ).toBe("octop-logo.png");
+    expect(
+      toMediaPreviewSource("file:///tmp/x/outbound/chart.png", {
+        agentId: "main",
+      }),
+    ).toBe("outbound/chart.png");
+  });
+
+  it("keeps real host temps as file:// when not inside agent home", () => {
+    expect(toMediaPreviewSource("/Users/me/Desktop/a.png")).toBe(
+      "file:///Users/me/Desktop/a.png",
+    );
+  });
+
+  it("feeds agentMediaPreviewUrl a relative source for agent-home pngs", () => {
+    const url = agentMediaPreviewUrl(
+      "ED7N8B",
+      "/Users/me/.octop/agents/ED7N8B/octop-logo.png",
+      "image/png",
+    );
+    expect(url).toContain("source=octop-logo.png");
+    expect(url).not.toContain("file%3A");
   });
 });

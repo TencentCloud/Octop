@@ -1,6 +1,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetSessionStoreForTests, useSessions } from "./useSessions";
+import {
+  resetSessionStoreForTests,
+  sortSessions,
+  toSession,
+  useSessions,
+  type Session,
+} from "./useSessions";
 
 const listMock = vi.fn();
 
@@ -20,12 +26,55 @@ function threadRow(threadId: string, agentExtra?: Partial<{ title: string }>) {
     thread_id: threadId,
     title: agentExtra?.title ?? null,
     last_active: 1,
+    created_at: 1,
     channel_type: "dashboard",
     is_active: false,
     has_messages: true,
     pinned: false,
   };
 }
+
+describe("toSession / sortSessions ordering", () => {
+  it("sorts empty new chats by created_at above older active ones", () => {
+    const olderActive = toSession({
+      thread_id: "thr_old",
+      title: "old",
+      last_active: 100,
+      created_at: 10,
+      has_messages: true,
+    });
+    const emptyNew = toSession({
+      thread_id: "thr_new",
+      title: null,
+      last_active: 0,
+      created_at: 200,
+      has_messages: false,
+    });
+    expect(
+      sortSessions([olderActive, emptyNew]).map((s: Session) => s.id),
+    ).toEqual(["thr_new", "thr_old"]);
+  });
+
+  it("keeps pinned sessions first", () => {
+    const pinned = toSession({
+      thread_id: "thr_pin",
+      title: "pin",
+      last_active: 1,
+      created_at: 1,
+      pinned: true,
+    });
+    const recent = toSession({
+      thread_id: "thr_recent",
+      title: "recent",
+      last_active: 999,
+      created_at: 999,
+    });
+    expect(sortSessions([recent, pinned]).map((s) => s.id)).toEqual([
+      "thr_pin",
+      "thr_recent",
+    ]);
+  });
+});
 
 describe("useSessions agent switch", () => {
   beforeEach(() => {

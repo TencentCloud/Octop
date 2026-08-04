@@ -15,6 +15,7 @@
 .terminalPageEmbedded {
   padding: 0;
   height: 100%;
+  box-sizing: border-box;
 
   @media (max-width: 767px) {
     padding: 0;
@@ -74,57 +75,36 @@
   flex-direction: column;
   background: var(--fn-bg-primary);
   border: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-  border-radius: var(--fn-radius-lg, 12px);
+  border-radius: 0;
   overflow: hidden;
 }
 
-.terminalTabs {
+.sessionPanes {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
 
-  :global(.octop-tabs-nav) {
-    margin: 0;
-    flex-shrink: 0;
-    background: var(--fn-bg-secondary);
-    border-bottom: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-    padding: 0;
-  }
+.sessionPane {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
-  :global(.octop-tabs-content-holder) {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  // Ant Design sets display:block on these elements with high specificity,
-  // so flex-based height distribution doesn't work. Use height:100% instead
-  // to ensure each layer fills its parent completely.
-  :global(.octop-tabs-content) {
-    height: 100% !important;
-  }
-
-  :global(.octop-tabs-tabpane) {
-    height: 100% !important;
-    overflow: hidden;
-  }
-
-  :global(.octop-tabs-tabpane-hidden) {
-    display: none !important;
-  }
-
-  :global(.octop-tabs-tab) {
-    border-radius: var(--fn-radius-sm, 6px) var(--fn-radius-sm, 6px) 0 0 !important;
-    font-size: 13px;
-  }
+.sessionPaneHidden {
+  display: none;
 }
 
 // ── Terminal wrapper ──────────────────────────────────────────────────────────
 
 .terminalWrapper {
-  // tabpane is display:block (forced by Ant Design), so flex:1 is
-  // ineffective. Use height:100% to fill the tabpane instead.
+  // Fill the session pane (flex column).
+  flex: 1;
+  min-height: 0;
   height: 100%;
   // background is set inline via themeDefinition.theme.background
   padding: 4px;
@@ -182,34 +162,11 @@
   opacity: 0.9;
 }
 
-// ── Tab label ─────────────────────────────────────────────────────────────────
+// ── Conn badge icon ───────────────────────────────────────────────────────────
 
-.tabLabel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.closeBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  margin-left: 2px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 3px;
-  color: var(--fn-text-tertiary);
-  transition: all 0.15s;
-
-  &:hover {
-    background: var(--fn-bg-hover);
-    color: var(--fn-text-primary);
-  }
+.tabLeadIcon {
+  flex-shrink: 0;
+  color: var(--fn-text-secondary);
 }
 
 // ── Spinner animation ─────────────────────────────────────────────────────────
@@ -232,33 +189,51 @@
 .tabBarActions {
   display: flex;
   align-items: center;
-  gap: 2px;
-  margin-right: 8px;
+  gap: 1px;
+  overflow: visible;
+
+  :global(.octop-btn) {
+    height: 22px;
+    width: 22px;
+    min-width: 22px;
+    padding: 0;
+  }
+
+  :global(.octop-btn-sm) {
+    height: 22px;
+    width: 22px;
+    min-width: 22px;
+    padding: 0;
+  }
 }
 
 // ── AI assistant button ───────────────────────────────────────────────────────
 
-// Wrapper needed to position the NEW badge
+// Wrapper needed to position the NEW badge (kept within tab bar bounds).
 .aiBtnWrap {
   position: relative;
   display: inline-flex;
+  // Reserve space so the absolute badge is not clipped by tabsCard overflow.
+  margin-top: 2px;
+  padding: 2px 4px 0 0;
 }
 
-// NEW badge — top-right corner of the button
+// NEW badge — tucked inside the button's top-right margin, not outside the card.
 .aiBtnBadge {
   position: absolute;
-  top: -7px;
-  right: -10px;
-  font-size: 9px;
+  top: 0;
+  right: 0;
+  font-size: 8px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.03em;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 1px 3px;
+  border-radius: 2px;
   background: var(--fn-color-brand, #6366f1);
   color: #fff;
   pointer-events: none;
   white-space: nowrap;
+  z-index: 2;
   animation: badge-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 

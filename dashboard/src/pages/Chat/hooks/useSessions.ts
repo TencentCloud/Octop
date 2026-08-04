@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { onSessionEvent } from "./chatStore";
+import { formatThreadTitle } from "../utils/threadTitle";
 
 export interface Session {
   id: string;
@@ -21,6 +22,7 @@ export function toSession(row: {
   thread_id: string;
   title: string | null;
   last_active: number;
+  created_at?: number;
   channel_type?: string;
   is_active?: boolean;
   has_messages?: boolean;
@@ -28,13 +30,18 @@ export function toSession(row: {
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
+  // Match backend list order: empty threads (last_active=0) sort by created_at.
+  const sortTs =
+    row.last_active > 0
+      ? row.last_active
+      : typeof row.created_at === "number" && row.created_at > 0
+      ? row.created_at
+      : 0;
   return {
     id: row.thread_id,
-    name: row.title || "New Chat",
+    name: formatThreadTitle(row.title) || "New Chat",
     threadId: row.thread_id,
-    updatedAt: row.last_active
-      ? new Date(row.last_active * 1000).toISOString()
-      : null,
+    updatedAt: sortTs > 0 ? new Date(sortTs * 1000).toISOString() : null,
     channelType: row.channel_type ?? "dashboard",
     isActive: row.is_active ?? false,
     hasActivity,
@@ -42,10 +49,14 @@ export function toSession(row: {
   };
 }
 
-function sortSessions(sessions: Session[]): Session[] {
+/** Mirror server order: pinned first, then recency (empty chats use created_at). */
+export function sortSessions(sessions: Session[]): Session[] {
   return [...sessions].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return 0;
+    const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+    const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+    if (tb !== ta) return tb - ta;
+    return b.id.localeCompare(a.id);
   });
 }
 
@@ -388,21 +399,26 @@ export function useSessions(agentId: string | null) {
       updatedAt: new Date().toISOString(),
       channelType: "dashboard",
     };
-    setModuleSessions((prev) => [placeholder, ...prev]);
+    setModuleSessions((prev) => sortSessions([placeholder, ...prev]));
     const resolvedId = octopThreadsApi
       .create(agentId)
       .then((created) => {
         markPendingThread(created.thread_id);
+        const now = Math.floor(Date.now() / 1000);
         const session = toSession({
           thread_id: created.thread_id,
           title: null,
-          last_active: Math.floor(Date.now() / 1000),
+          // last_active stays 0 server-side until first turn; use created_at for sort.
+          last_active: 0,
+          created_at: now,
           channel_type: "dashboard",
         });
-        setModuleSessions((prev) => [
-          session,
-          ...prev.filter((s) => s.id !== "__pending__"),
-        ]);
+        setModuleSessions((prev) =>
+          sortSessions([
+            session,
+            ...prev.filter((s) => s.id !== "__pending__"),
+          ]),
+        );
         return created.thread_id;
       })
       .catch(() => {
@@ -442,11 +458,13 @@ export function useSessions(agentId: string | null) {
 
   const renameSession = useCallback(
     (id: string, name: string) => {
+      const next = formatThreadTitle(name) || name.trim();
+      if (!next) return;
       setModuleSessions((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, name } : s)),
+        prev.map((s) => (s.id === id ? { ...s, name: next } : s)),
       );
       if (agentId) {
-        void octopThreadsApi.rename(agentId, id, name).catch(() => {});
+        void octopThreadsApi.rename(agentId, id, next).catch(() => {});
       }
     },
     [agentId],

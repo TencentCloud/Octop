@@ -29,6 +29,40 @@ async def test_ws_hub_push() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ws_hub_subscribe_push_to_thread_replaces_subscriber() -> None:
+    hub = WebSocketHub()
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+
+    async def capture_a(frame: dict[str, Any]) -> None:
+        a_frames.append(frame)
+
+    async def capture_b(frame: dict[str, Any]) -> None:
+        b_frames.append(frame)
+
+    hub.register("a", capture_a)
+    hub.register("b", capture_b)
+    hub.subscribe("thread-1", "a")
+    await hub.push_to_thread("thread-1", {"type": "token", "content": "one"})
+    hub.subscribe("thread-1", "b")
+    await hub.push_to_thread("thread-1", {"type": "token", "content": "two"})
+    hub.unregister("b")
+    await hub.push_to_thread("thread-1", {"type": "token", "content": "three"})
+
+    assert a_frames == [{"type": "token", "content": "one"}]
+    assert b_frames == [{"type": "token", "content": "two"}]
+
+
+def test_ws_hub_turn_active_flags() -> None:
+    hub = WebSocketHub()
+    assert hub.is_turn_active("t1") is False
+    hub.mark_turn_active("t1")
+    assert hub.is_turn_active("t1") is True
+    hub.mark_turn_idle("t1")
+    assert hub.is_turn_active("t1") is False
+
+
+@pytest.mark.asyncio
 async def test_ws_channel_streams_chunks() -> None:
     hub = WebSocketHub()
     frames: list[dict[str, Any]] = []
@@ -51,12 +85,76 @@ async def test_ws_channel_streams_chunks() -> None:
         tenant_id="agent-1",
         channel_subject=ChannelSubject(subject_id="7"),
         content=[TextContent(text="hi")],
-        metadata={"ws_connection_id": "conn-1", "session_key": "sk"},
+        metadata={
+            "ws_connection_id": "conn-1",
+            "session_key": "sk",
+            "thread_id": "thread-1",
+        },
     )
     await channel.handle_inbound(msg)
 
     assert {"type": "token", "content": "hello"} in frames
     assert frames[-1] == {"type": "done"}
+    assert hub.is_turn_active("thread-1") is False
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
+    import asyncio
+
+    hub = WebSocketHub()
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+    gate = asyncio.Event()
+
+    async def capture_a(frame: dict[str, Any]) -> None:
+        a_frames.append(frame)
+
+    async def capture_b(frame: dict[str, Any]) -> None:
+        b_frames.append(frame)
+
+    class _FakeProcessor:
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            yield {"type": "token", "content": "first"}
+            await gate.wait()
+            yield {"type": "token", "content": "second"}
+            yield {"type": "done"}
+
+    channel = WebSocketChannel(_FakeProcessor(), hub=hub)  # type: ignore[arg-type]
+    hub.register("a", capture_a)
+    hub.register("b", capture_b)
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="7"),
+        content=[TextContent(text="hi")],
+        metadata={
+            "ws_connection_id": "a",
+            "session_key": "sk",
+            "thread_id": "thread-1",
+        },
+    )
+    task = asyncio.create_task(channel.handle_inbound(msg))
+
+    for _ in range(50):
+        if a_frames:
+            break
+        await asyncio.sleep(0.01)
+    assert a_frames == [{"type": "token", "content": "first"}]
+    assert hub.is_turn_active("thread-1") is True
+
+    hub.unsubscribe_connection("a")
+    hub.subscribe("thread-1", "b")
+    gate.set()
+    await task
+
+    assert b_frames == [
+        {"type": "token", "content": "second"},
+        {"type": "done"},
+    ]
+    assert hub.is_turn_active("thread-1") is False
 
 
 @pytest.mark.asyncio

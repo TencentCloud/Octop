@@ -4,7 +4,7 @@ import { Button, Drawer, Input, Segmented, Spin, Tag } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
-  CircleCheck,
+  CheckCircle,
   Download,
   Layers,
   RefreshCw,
@@ -289,11 +289,6 @@ export default function ExpertMarketTab({
                   } as CSSProperties
                 }
               >
-                {installed && (
-                  <div className={styles.expertInstalledCheck}>
-                    <CircleCheck size={16} />
-                  </div>
-                )}
                 <div className={styles.marketCardHeader}>
                   <div
                     className={styles.agentCardIcon}
@@ -314,24 +309,27 @@ export default function ExpertMarketTab({
                   </div>
                   <div className={styles.agentCardTitleBlock}>
                     <div className={styles.agentCardName}>{label}</div>
-                    {installed && (
-                      <div className={styles.expertInstalledLabel}>
-                        {t("experts.installedBadge")}
-                      </div>
-                    )}
                   </div>
                 </div>
                 <div className={styles.agentCardDesc}>
                   {desc || t("experts.noMarketDescription")}
                 </div>
                 <div className={styles.marketCardFooter}>
-                  <span className={styles.marketMeta}>
-                    <Zap size={13} />
-                    {t("experts.marketSkillCount", {
-                      count:
-                        expert.skill_count ?? expert.skill_slugs?.length ?? 0,
-                    })}
-                  </span>
+                  <div className={styles.marketCardFooterStart}>
+                    <span className={styles.marketMeta}>
+                      <Zap size={13} />
+                      {t("experts.marketSkillCount", {
+                        count:
+                          expert.skill_count ?? expert.skill_slugs?.length ?? 0,
+                      })}
+                    </span>
+                    {installed && (
+                      <div className={styles.expertInstalledLabel}>
+                        <CheckCircle size={12} />
+                        {t("experts.installedBadge")}
+                      </div>
+                    )}
+                  </div>
                   <Button
                     size="small"
                     type="primary"

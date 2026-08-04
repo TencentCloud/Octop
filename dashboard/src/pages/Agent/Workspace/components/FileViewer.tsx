@@ -70,6 +70,7 @@ export default function FileViewer({
         path={path}
         kind={mediaKind}
         refreshToken={refreshToken}
+        fromWorkspace={fromWorkspace}
       />
     );
   }

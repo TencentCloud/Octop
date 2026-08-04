@@ -3,7 +3,10 @@ import { Image } from "antd";
 import { useTranslation } from "react-i18next";
 import { requestBlob } from "../../../../api/request";
 import { isNotFoundApiError } from "../../../../utils/apiError";
-import { asImageBlob } from "../../../../utils/toolMediaBlocks";
+import {
+  asImageBlob,
+  toMediaPreviewSource,
+} from "../../../../utils/toolMediaBlocks";
 import type { MediaKind } from "../utils/mediaKind";
 import styles from "../index.module.less";
 
@@ -35,22 +38,17 @@ function useWorkspaceBlob(
   filename: string,
   toBlob: (blob: Blob, filename: string) => Blob,
   refreshToken = 0,
+  fromWorkspace = true,
 ) {
   const [src, setSrc] = useState("");
   const objectUrlRef = useRef<string | undefined>(undefined);
 
   const apiPath = useMemo(() => {
-    // Pass the path shape through unchanged: absolute stays absolute (as file://
-    // for the query string), relative stays relative.
-    const source = path.startsWith("file://")
-      ? path
-      : path.startsWith("/")
-      ? `file://${path}`
-      : path.replace(/^\/+/, "");
+    const source = toMediaPreviewSource(path, { agentId, fromWorkspace });
     return `/agents/${encodeURIComponent(
       agentId,
     )}/media/preview?${new URLSearchParams({ source }).toString()}`;
-  }, [agentId, path]);
+  }, [agentId, path, fromWorkspace]);
 
   useLayoutEffect(() => {
     let cancelled = false;
@@ -100,11 +98,13 @@ function WorkspaceImage({
   path,
   filename,
   refreshToken = 0,
+  fromWorkspace = true,
 }: {
   agentId: string;
   path: string;
   filename: string;
   refreshToken?: number;
+  fromWorkspace?: boolean;
 }) {
   const { t } = useTranslation();
   const src = useWorkspaceBlob(
@@ -113,6 +113,7 @@ function WorkspaceImage({
     filename,
     asImageBlob,
     refreshToken,
+    fromWorkspace,
   );
 
   if (src === "missing") {
@@ -145,11 +146,13 @@ function WorkspaceVideo({
   path,
   filename,
   refreshToken = 0,
+  fromWorkspace = true,
 }: {
   agentId: string;
   path: string;
   filename: string;
   refreshToken?: number;
+  fromWorkspace?: boolean;
 }) {
   const { t } = useTranslation();
   const toBlob = useMemo(
@@ -159,7 +162,14 @@ function WorkspaceVideo({
         : new Blob([blob], { type: guessVideoMime(name) }),
     [],
   );
-  const src = useWorkspaceBlob(agentId, path, filename, toBlob, refreshToken);
+  const src = useWorkspaceBlob(
+    agentId,
+    path,
+    filename,
+    toBlob,
+    refreshToken,
+    fromWorkspace,
+  );
 
   if (src === "missing") {
     return (
@@ -197,11 +207,13 @@ function WorkspaceAudio({
   path,
   filename,
   refreshToken = 0,
+  fromWorkspace = true,
 }: {
   agentId: string;
   path: string;
   filename: string;
   refreshToken?: number;
+  fromWorkspace?: boolean;
 }) {
   const { t } = useTranslation();
   const toBlob = useMemo(
@@ -211,7 +223,14 @@ function WorkspaceAudio({
         : new Blob([blob], { type: guessAudioMime(name) }),
     [],
   );
-  const src = useWorkspaceBlob(agentId, path, filename, toBlob, refreshToken);
+  const src = useWorkspaceBlob(
+    agentId,
+    path,
+    filename,
+    toBlob,
+    refreshToken,
+    fromWorkspace,
+  );
 
   if (src === "missing") {
     return (
@@ -248,11 +267,14 @@ export default function MediaPreview({
   path,
   kind,
   refreshToken = 0,
+  fromWorkspace = true,
 }: {
   agentId: string;
   path: string;
   kind: MediaKind;
   refreshToken?: number;
+  /** Workspace tree paths use leading ``/`` as workspace-relative keys. */
+  fromWorkspace?: boolean;
 }) {
   const filename = path.split("/").filter(Boolean).pop() || path;
 
@@ -264,6 +286,7 @@ export default function MediaPreview({
           path={path}
           filename={filename}
           refreshToken={refreshToken}
+          fromWorkspace={fromWorkspace}
         />
       );
     case "video":
@@ -273,6 +296,7 @@ export default function MediaPreview({
           path={path}
           filename={filename}
           refreshToken={refreshToken}
+          fromWorkspace={fromWorkspace}
         />
       );
     case "audio":
@@ -282,6 +306,7 @@ export default function MediaPreview({
           path={path}
           filename={filename}
           refreshToken={refreshToken}
+          fromWorkspace={fromWorkspace}
         />
       );
     default:

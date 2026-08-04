@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
 import { canonicalizeDockFilePath, dockFileTabId } from "../utils/dockFilePath";
 import { usePanelResize, type PanelSizes } from "./usePanelResize";
@@ -14,6 +14,7 @@ const LEGACY_BROWSER_SIZE_KEY = "octop:browser-panel:size";
 export type DockTab =
   | { id: "files"; kind: "files" }
   | { id: "browser"; kind: "browser" }
+  | { id: "terminal"; kind: "terminal" }
   | { id: string; kind: "file"; path: string };
 
 export type DockTabId = DockTab["id"];
@@ -81,7 +82,7 @@ function fallbackActiveId(
 }
 
 /**
- * Shared chat dock with tabbed file list / file viewers / browser.
+ * Shared chat dock with tabbed file list / file viewers / browser / terminal.
  */
 export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   const [dockOpen, setDockOpen] = useState(false);
@@ -92,6 +93,18 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     loadPanelSizes(),
     persistPanelSizes,
   );
+
+  // File paths and browser sessions are agent-scoped. Only wipe tabs when
+  // switching between two real agents (ignore null ↔ id first-paint races).
+  const prevAgentIdRef = useRef(agentId);
+  useEffect(() => {
+    const prev = prevAgentIdRef.current;
+    prevAgentIdRef.current = agentId;
+    if (prev == null || agentId == null || prev === agentId) return;
+    setDockOpen(false);
+    setOpenTabs([]);
+    setActiveTabId(null);
+  }, [agentId]);
 
   const openDock = useCallback(() => {
     setDockOpen(true);
@@ -137,22 +150,43 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openDock();
   }, [openDock]);
 
-  const toggleBrowserPanel = useCallback(() => {
-    setDockOpen((prevOpen) => {
-      if (prevOpen && activeTabId === "browser") {
-        return false;
-      }
-      setOpenTabs((prev) => {
-        if (prev.some((t) => t.id === "browser")) return prev;
-        return [...prev, { id: "browser", kind: "browser" }];
-      });
-      setActiveTabId("browser");
-      return true;
+  const openTerminalTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === "terminal")) return prev;
+      return [...prev, { id: "terminal", kind: "terminal" }];
     });
-    if (isMobile) {
-      setDockMode("bottom");
-    }
-  }, [activeTabId, isMobile]);
+    setActiveTabId("terminal");
+    openDock();
+  }, [openDock]);
+
+  /** Toggle dock open/closed around a dedicated tab (browser / terminal). */
+  const toggleDockTab = useCallback(
+    (tab: Extract<DockTab, { kind: "browser" | "terminal" }>) => {
+      setDockOpen((prevOpen) => {
+        if (prevOpen && activeTabId === tab.id) {
+          return false;
+        }
+        setOpenTabs((prev) => {
+          if (prev.some((t) => t.id === tab.id)) return prev;
+          return [...prev, tab];
+        });
+        setActiveTabId(tab.id);
+        return true;
+      });
+      if (isMobile) {
+        setDockMode("bottom");
+      }
+    },
+    [activeTabId, isMobile],
+  );
+
+  const toggleBrowserPanel = useCallback(() => {
+    toggleDockTab({ id: "browser", kind: "browser" });
+  }, [toggleDockTab]);
+
+  const toggleTerminalPanel = useCallback(() => {
+    toggleDockTab({ id: "terminal", kind: "terminal" });
+  }, [toggleDockTab]);
 
   const closeTab = useCallback((id: DockTabId) => {
     setOpenTabs((prev) => {
@@ -212,6 +246,8 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openFileList,
     openBrowserTab,
     toggleBrowserPanel,
+    openTerminalTab,
+    toggleTerminalPanel,
     closeTab,
     setActiveTab,
   };

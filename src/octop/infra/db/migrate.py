@@ -154,6 +154,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
 
     Version 2 uses ``_ensure_column`` / table helpers so re-running after a
     partial upgrade does not fail.
+
+    Version 3 bumps schema then rewrites legacy hard-cut thread titles in Python.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -171,6 +173,14 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 3:
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        if _table_exists(db, "threads"):
+            from octop.infra.db.repos.threads import repair_all_legacy_thread_titles
+
+            repair_all_legacy_thread_titles(db)
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -186,5 +196,9 @@ def run_migrations(db: DatabasePool) -> None:
             sql = path.read_text(encoding="utf-8")
             with db.connect() as conn, conn.transaction():
                 _apply_postgresql_migration(conn, sql)
+            if version == 3:
+                from octop.infra.db.repos.threads import repair_all_legacy_thread_titles
+
+                repair_all_legacy_thread_titles(db)
         else:
             _apply_sqlite_migration(db, version, path)

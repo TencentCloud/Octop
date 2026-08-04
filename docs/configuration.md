@@ -8,6 +8,7 @@ on first server start (or by `octop init` / `octop run`).
 ```
 ~/.octop/
 ├── config.json              # process-level settings (host, port, CORS, DB, TLS, …)
+├── env                      # optional dotenv (OCTOP_DATABASE_*, API keys, …); loaded at server start
 ├── octop.db                 # SQLite — users, agents, providers, sessions, audit
 ├── cli_state.json           # CLI token + pinned defaults (`octop user login`)
 ├── repl_history             # readline-style history for `octop chats repl`
@@ -19,6 +20,11 @@ on first server start (or by `octop init` / `octop run`).
 ├── logs/                    # rotating log files (when `octop service start` writes a logfile)
 └── octop.log                # default foreground log path
 ```
+
+`env` is dotenv format, applied before `config.json` is loaded
+(`OctopServer.start` → `apply_env_file`). Useful when process env is hard
+to set (e.g. Docker volume) without editing Compose. Dashboard
+**Environments** and some tools also read/write this file.
 
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
@@ -119,6 +125,11 @@ Invalid integer values are logged and ignored — the on-disk default
 remains in effect. `database_env_configured()` returns `True` when any
 `OCTOP_DATABASE_*` is set, which lets `OctopServer.start()` pick the
 configured backend at boot.
+
+**Docker Compose:** put `OCTOP_DATABASE_*` in `docker/.env` *and* ensure
+they are listed under `environment:` in `docker/docker-compose.yml`
+(Compose uses `.env` for interpolation only; unset keys do not enter the
+container). Writing the same keys to the mounted `~/.octop/env` also works.
 
 ### Agent memory vs control plane
 

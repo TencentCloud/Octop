@@ -14,6 +14,7 @@ import {
   MOBILE_FULLSCREEN_PATHS,
   SELF_HEADER_PATHS,
   isWorkbenchPath,
+  isControlAdminPath,
 } from "../../routes";
 import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -158,7 +159,7 @@ export default function MainLayout() {
       <Routes>
         {routeConfigs.map((rc) => {
           let el = rc.useWrapper ? <ChatWithKey /> : rc.element;
-          if (rc.path.startsWith("/admin/")) {
+          if (rc.path.startsWith("/admin/") || isControlAdminPath(rc.path)) {
             el = <RequireAdmin>{el}</RequireAdmin>;
           }
           return <Route key={rc.path} path={rc.path} element={el} />;
@@ -294,22 +295,24 @@ export default function MainLayout() {
                     flexDirection: "column",
                   }}
                 >
-                  <Suspense
-                    fallback={
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          flex: 1,
-                        }}
-                      >
-                        <Spin size="large" />
-                      </div>
-                    }
-                  >
-                    <WorkbenchPage isVisible={onWorkbench} />
-                  </Suspense>
+                  <RequireAdmin>
+                    <Suspense
+                      fallback={
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            flex: 1,
+                          }}
+                        >
+                          <Spin size="large" />
+                        </div>
+                      }
+                    >
+                      <WorkbenchPage isVisible={onWorkbench} />
+                    </Suspense>
+                  </RequireAdmin>
                 </div>
               )}
 

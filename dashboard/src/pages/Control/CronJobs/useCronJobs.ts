@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { octopCronApi } from "../../../api/modules/cronjob";
 import { useAgent } from "../../../context/AgentContext";
@@ -168,8 +168,55 @@ export function useCronJobs() {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
   const [jobs, setJobs] = useState<CronJob[]>([]);
+  /** Which agent the currently painted `jobs` belong to (may lag activeAgent). */
+  const [jobsOwnerId, setJobsOwnerId] = useState<string | null>(null);
+  /**
+   * Only true on cold start with nothing to paint.
+   * Expert switches never flip this — they keep shell + previous list until new data.
+   */
   const [loading, setLoading] = useState(false);
+  /** Background revalidate / expert switch in flight. */
+  const [refreshing, setRefreshing] = useState(false);
   const [cronTimezone, setCronTimezone] = useState("UTC");
+  const fetchGenRef = useRef(0);
+  const timezoneRef = useRef(cronTimezone);
+  timezoneRef.current = cronTimezone;
+  const activeAgentRef = useRef(activeAgentId);
+  activeAgentRef.current = activeAgentId;
+  const jobsOwnerRef = useRef<string | null>(null);
+  jobsOwnerRef.current = jobsOwnerId;
+  /** Per-agent list cache — instant paint when hopping back to an expert. */
+  const jobsCacheRef = useRef(new Map<string, CronJob[]>());
+
+  const writeJobs = useCallback((agentId: string, next: CronJob[]) => {
+    jobsCacheRef.current.set(agentId, next);
+    if (activeAgentRef.current === agentId) {
+      setJobs(next);
+      setJobsOwnerId(agentId);
+      jobsOwnerRef.current = agentId;
+    }
+  }, []);
+
+  const patchJobs = useCallback(
+    (agentId: string, updater: (prev: CronJob[]) => CronJob[]) => {
+      const prev =
+        activeAgentRef.current === agentId
+          ? undefined
+          : jobsCacheRef.current.get(agentId) ?? [];
+      if (activeAgentRef.current === agentId) {
+        setJobs((live) => {
+          const next = updater(live);
+          jobsCacheRef.current.set(agentId, next);
+          return next;
+        });
+        setJobsOwnerId(agentId);
+        jobsOwnerRef.current = agentId;
+      } else {
+        jobsCacheRef.current.set(agentId, updater(prev ?? []));
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void octopCronApi
@@ -180,26 +227,94 @@ export function useCronJobs() {
       });
   }, []);
 
-  const fetchJobs = useCallback(async () => {
-    if (!activeAgentId) {
-      setJobs([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await octopCronApi.list(activeAgentId);
-      setJobs((data || []).map((row) => fromOctop(row, cronTimezone)));
-    } catch (error) {
-      console.error("Failed to load cron jobs", error);
-      message.error(t("cronJobs.loadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [activeAgentId, cronTimezone, t]);
-
+  // Timezone is display-only — remap without APIs or loading toggles.
   useEffect(() => {
-    void fetchJobs();
-  }, [fetchJobs]);
+    const agentId = activeAgentRef.current;
+    setJobs((prev) => {
+      if (prev.length === 0) return prev;
+      let changed = false;
+      const next = prev.map((job) => {
+        if (job.schedule.timezone === cronTimezone) return job;
+        changed = true;
+        return {
+          ...job,
+          schedule: { ...job.schedule, timezone: cronTimezone },
+        };
+      });
+      if (changed && agentId) {
+        jobsCacheRef.current.set(agentId, next);
+      }
+      return changed ? next : prev;
+    });
+  }, [cronTimezone]);
+
+  const fetchJobs = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const agentId = activeAgentRef.current;
+      if (!agentId) {
+        setJobs([]);
+        setJobsOwnerId(null);
+        jobsOwnerRef.current = null;
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      const soft = Boolean(opts?.soft);
+      const gen = ++fetchGenRef.current;
+      const cached = jobsCacheRef.current.get(agentId);
+      const hasCache = cached !== undefined;
+      // Keep previous expert's rows as a placeholder so the list chrome
+      // never unmounts on the first hop to an unseen expert.
+      const hasPlaceholder = jobsOwnerRef.current != null || hasCache;
+
+      if (soft) {
+        setLoading(false);
+        setRefreshing(true);
+      } else if (hasCache) {
+        setJobs(cached);
+        setJobsOwnerId(agentId);
+        jobsOwnerRef.current = agentId;
+        setLoading(false);
+        setRefreshing(true);
+      } else if (hasPlaceholder) {
+        setLoading(false);
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+        setRefreshing(false);
+      }
+
+      try {
+        const data = await octopCronApi.list(agentId);
+        if (gen !== fetchGenRef.current) return;
+        const mapped = (data || []).map((row) =>
+          fromOctop(row, timezoneRef.current),
+        );
+        writeJobs(agentId, mapped);
+      } catch (error) {
+        if (gen !== fetchGenRef.current) return;
+        console.error("Failed to load cron jobs", error);
+        message.error(t("cronJobs.loadFailed"));
+        if (!hasCache && jobsOwnerRef.current !== agentId) {
+          setJobs([]);
+          setJobsOwnerId(agentId);
+          jobsOwnerRef.current = agentId;
+        }
+      } finally {
+        if (gen === fetchGenRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [t, writeJobs],
+  );
+
+  // Expert switch: paint cache immediately, revalidate in background.
+  useEffect(() => {
+    void fetchJobs({ soft: false });
+  }, [activeAgentId, fetchJobs]);
 
   const createJob = async (values: CronJobFormValues) => {
     if (!activeAgentId) return false;
@@ -208,7 +323,8 @@ export function useCronJobs() {
         activeAgentId,
         toOctopCreateBody(values),
       );
-      setJobs((prev) => [fromOctop(created, cronTimezone), ...prev]);
+      const row = fromOctop(created, cronTimezone);
+      patchJobs(activeAgentId, (prev) => [row, ...prev]);
       message.success(t("cronJobs.createdSuccess"));
       return true;
     } catch (error) {
@@ -239,7 +355,9 @@ export function useCronJobs() {
         octop_model: values.model,
       },
     } as CronJob;
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? optimistic : j)));
+    patchJobs(activeAgentId, (prev) =>
+      prev.map((j) => (j.id === jobId ? optimistic : j)),
+    );
 
     try {
       const updated = await octopCronApi.patch(
@@ -247,17 +365,18 @@ export function useCronJobs() {
         jobId,
         toOctopPatchBody(values),
       );
-      setJobs((prev) =>
-        prev.map((j) =>
-          j.id === jobId ? fromOctop(updated, cronTimezone) : j,
-        ),
+      const row = fromOctop(updated, cronTimezone);
+      patchJobs(activeAgentId, (prev) =>
+        prev.map((j) => (j.id === jobId ? row : j)),
       );
       message.success(t("cronJobs.updatedSuccess"));
       return true;
     } catch (error) {
       console.error("Failed to update cron job", error);
       if (original) {
-        setJobs((prev) => prev.map((j) => (j.id === jobId ? original : j)));
+        patchJobs(activeAgentId, (prev) =>
+          prev.map((j) => (j.id === jobId ? original : j)),
+        );
       }
       message.error(t("common.saveFailed"));
       return false;
@@ -267,7 +386,7 @@ export function useCronJobs() {
   const deleteJob = async (jobId: string) => {
     if (!activeAgentId) return false;
     const original = jobs.find((j) => j.id === jobId);
-    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    patchJobs(activeAgentId, (prev) => prev.filter((j) => j.id !== jobId));
 
     try {
       await octopCronApi.delete(activeAgentId, jobId);
@@ -276,7 +395,7 @@ export function useCronJobs() {
     } catch (error) {
       console.error("Failed to delete cron job", error);
       if (original) {
-        setJobs((prev) => [...prev, original]);
+        patchJobs(activeAgentId, (prev) => [...prev, original]);
       }
       message.error(t("cronJobs.deleteFailed"));
       return false;
@@ -287,22 +406,25 @@ export function useCronJobs() {
     if (!activeAgentId) return false;
     const nextEnabled = !job.enabled;
     const optimistic = { ...job, enabled: nextEnabled };
-    setJobs((prev) => prev.map((j) => (j.id === job.id ? optimistic : j)));
+    patchJobs(activeAgentId, (prev) =>
+      prev.map((j) => (j.id === job.id ? optimistic : j)),
+    );
 
     try {
       const returned = await octopCronApi.patch(activeAgentId, job.id, {
         enabled: nextEnabled,
       });
-      setJobs((prev) =>
-        prev.map((j) =>
-          j.id === job.id ? fromOctop(returned, cronTimezone) : j,
-        ),
+      const row = fromOctop(returned, cronTimezone);
+      patchJobs(activeAgentId, (prev) =>
+        prev.map((j) => (j.id === job.id ? row : j)),
       );
       message.success(nextEnabled ? t("common.enabled") : t("common.disabled"));
       return true;
     } catch (error) {
       console.error("Failed to toggle cron job", error);
-      setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+      patchJobs(activeAgentId, (prev) =>
+        prev.map((j) => (j.id === job.id ? job : j)),
+      );
       message.error(t("cronJobs.operationFailed"));
       return false;
     }
@@ -312,7 +434,7 @@ export function useCronJobs() {
     if (!activeAgentId) return false;
     try {
       await octopCronApi.runNow(activeAgentId, jobId);
-      await fetchJobs();
+      await fetchJobs({ soft: true });
       message.success(t("cronJobs.triggeredSuccess"));
       return true;
     } catch (error) {
@@ -322,9 +444,16 @@ export function useCronJobs() {
     }
   };
 
+  const listStale =
+    Boolean(activeAgentId) &&
+    jobsOwnerId != null &&
+    jobsOwnerId !== activeAgentId;
+
   return {
     jobs,
     loading,
+    listRefreshing: refreshing,
+    listStale,
     cronTimezone,
     activeAgentId,
     createJob,
@@ -332,7 +461,7 @@ export function useCronJobs() {
     deleteJob,
     toggleEnabled,
     executeNow,
-    refetchJobs: fetchJobs,
+    refetchJobs: (soft = true) => fetchJobs({ soft }),
     jobToFormValues,
   };
 }

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from harness_agent.slash import SlashCommand, SlashSink
 
 from octop.i18n.domains.slash import tr
+from octop.infra.db.repos.threads import clip_thread_title
 from octop.infra.gateway.slash.ctx import (
     SlashCtx,
     chat_type,
@@ -31,7 +32,7 @@ async def cmd_new(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: Sl
         channel_chat_type=chat_type(ctx),
     )
     if cmd.args:
-        ctx.thread_registry.set_title_if_null(new_tid, cmd.args[:40])
+        ctx.thread_registry.set_title_if_null(new_tid, cmd.args)
     lang = lang_of(ctx)
     if hasattr(sink, "action"):
         await sink.action("new_chat", thread_id=new_tid)
@@ -116,7 +117,7 @@ async def cmd_title(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: 
         return
     tid = await ensure_thread_id(ctx)
     ctx.thread_registry.update_title(tid, title)
-    await sink.text(tr("title.done", lang, title=title[:40]))
+    await sink.text(tr("title.done", lang, title=clip_thread_title(title)))
 
 
 async def cmd_delete(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:

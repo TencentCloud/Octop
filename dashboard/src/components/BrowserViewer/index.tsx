@@ -13,10 +13,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Globe,
-  Plus,
   RotateCcw,
   Star,
-  X,
   AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -28,6 +26,7 @@ import type {
 import { useBrowserCanvasInteraction } from "../../hooks/useBrowserCanvasInteraction";
 import { paintBase64JpegToCanvas } from "../../utils/browserCanvas";
 import { normalizeUrl } from "../../utils/normalizeUrl";
+import { ChromeTabBar } from "../ChromeTabBar";
 import StreamConnectingIndicator from "../StreamConnectingIndicator";
 import styles from "./index.module.less";
 
@@ -182,45 +181,35 @@ export const BrowserViewer = forwardRef<
     [handleGo],
   );
 
+  const activeKey =
+    tabs.find((tab) => tab.active)?.id != null
+      ? String(tabs.find((tab) => tab.active)!.id)
+      : tabs[0]
+      ? String(tabs[0].id)
+      : undefined;
+
   return (
     <div className={styles.browserViewer}>
-      {/* Tab bar */}
-      <div className={styles.tabBar}>
-        {tabs.map((tab) => (
-          <Tooltip key={String(tab.id)} title={tab.url} mouseEnterDelay={0.8}>
-            <div
-              className={`${styles.tab} ${tab.active ? styles.tabActive : ""}`}
-              onClick={() => switchTab(tab.id)}
-            >
-              <Globe size={11} style={{ flexShrink: 0 }} />
-              <span className={styles.tabLabel}>
-                {tab.title || tab.url || tab.id}
-              </span>
-              {tabs.length > 1 && (
-                <span
-                  className={styles.tabClose}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                  title={t("browserViewer.closeTab")}
-                >
-                  <X size={10} />
-                </span>
-              )}
-            </div>
-          </Tooltip>
-        ))}
-        <Tooltip title={t("browserViewer.newTab")}>
-          <div
-            className={styles.tabNew}
-            onClick={() => newTab()}
-            title={t("browserViewer.newTab")}
-          >
-            <Plus size={12} />
-          </div>
-        </Tooltip>
-      </div>
+      <ChromeTabBar
+        tabs={tabs.map((tab) => ({
+          key: String(tab.id),
+          label: tab.title || tab.url || tab.id,
+          leading: <Globe size={11} style={{ flexShrink: 0 }} />,
+          tooltip: tab.url,
+          closable: tabs.length > 1,
+        }))}
+        activeKey={activeKey}
+        onChange={(key) => {
+          const match = tabs.find((tab) => String(tab.id) === key);
+          if (match) switchTab(match.id);
+        }}
+        onClose={(key) => {
+          const match = tabs.find((tab) => String(tab.id) === key);
+          if (match) closeTab(match.id);
+        }}
+        onNewTab={() => newTab()}
+        newTabTitle={t("browserViewer.newTab")}
+      />
 
       {/* Address bar */}
       <div className={styles.addressBar}>

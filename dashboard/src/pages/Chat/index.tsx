@@ -2,7 +2,13 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { PanelLeftOpen, GraduationCap, Globe, FilePen } from "lucide-react";
+import {
+  PanelLeftOpen,
+  GraduationCap,
+  Globe,
+  FilePen,
+  Terminal,
+} from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
@@ -48,6 +54,7 @@ import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
+import PwaInstallPrompt from "../../components/PwaInstallPrompt";
 import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
 import styles from "./index.module.less";
 
@@ -179,6 +186,27 @@ function ChatPageInner() {
     }
   }, [routeAgentId, activeAgentId, setActiveAgent]);
 
+  // Agent profile is agent-scoped — close when switching between two agents.
+  const prevProfileAgentRef = useRef(resolvedAgentId);
+  useEffect(() => {
+    const prev = prevProfileAgentRef.current;
+    prevProfileAgentRef.current = resolvedAgentId;
+    if (prev == null || resolvedAgentId == null || prev === resolvedAgentId) {
+      return;
+    }
+    setAgentProfileOpen(false);
+  }, [resolvedAgentId]);
+
+  // Weak stream resume may skip intermediate tokens — hint once after rebind.
+  useEffect(() => {
+    return chatStore.onStreamEvent((event) => {
+      if (event.kind !== "streamResume") return;
+      const key = activeThreadId || "__empty__";
+      if (event.sessionId !== key) return;
+      antMessage.info(t("chat.streamResumed"));
+    });
+  }, [activeThreadId, t]);
+
   const {
     messages,
     isStreaming,
@@ -236,6 +264,7 @@ function ChatPageInner() {
     openFileAt,
     openBrowserTab,
     toggleBrowserPanel,
+    toggleTerminalPanel,
     closeTab: closeDockTab,
     setActiveTab: setDockActiveTab,
   } = useChatDockPanel(isMobile, resolvedAgentId);
@@ -595,16 +624,12 @@ function ChatPageInner() {
       <div
         className={`${styles.chatPage} ${
           dockIsResizing ? styles.panelResizeActive : ""
+        } ${
+          dockOpen && dockMode === "bottom" ? styles.chatPageWithBottomDock : ""
         }`}
       >
         {/* Main chat area */}
-        <div
-          className={`${styles.chatMain} ${
-            dockOpen && dockMode === "bottom"
-              ? styles.chatMainWithBottomPanel
-              : ""
-          }`}
-        >
+        <div className={styles.chatMain}>
           {/* Mobile toolbar — session list + optional title + agent profile */}
           {isMobile && (
             <div className={styles.mobileToolbar}>
@@ -692,6 +717,8 @@ function ChatPageInner() {
 
           {!isMobile && !dockOpen && !agentProfileOpen && (
             <div className={styles.chatFloatActions}>
+              {/* PWA install first when available — same column as browser / experts. */}
+              <PwaInstallPrompt appearance="chatFloat" />
               {resolvedAgentId && (
                 <Tooltip
                   title={t("chat.agentProfile.open")}
@@ -742,6 +769,22 @@ function ChatPageInner() {
                 </Tooltip>
               )}
               <Tooltip
+                title={t("chat.openTerminal", "打开终端")}
+                mouseEnterDelay={0.35}
+                placement="left"
+              >
+                <span className={styles.chatFloatBtnWrap}>
+                  <button
+                    type="button"
+                    className={styles.terminalFloatBtn}
+                    onClick={toggleTerminalPanel}
+                    aria-label={t("chat.openTerminal", "打开终端")}
+                  >
+                    <Terminal size={20} strokeWidth={2.1} />
+                  </button>
+                </span>
+              </Tooltip>
+              <Tooltip
                 title={
                   browserSessionId
                     ? t("browserWorkspace.browserStatusActive", {
@@ -758,18 +801,20 @@ function ChatPageInner() {
                 <span className={styles.chatFloatBtnWrap}>
                   <button
                     type="button"
-                    className={`${styles.browserStatusBtn} ${
-                      styles.browserStatusActive
-                    } ${
-                      browserSessionState === "awaiting_user_auth" ||
-                      browserSessionState === "authenticating"
+                    className={[
+                      styles.browserStatusBtn,
+                      browserSessionId ? styles.browserStatusActive : "",
+                      browserSessionId &&
+                      (browserSessionState === "awaiting_user_auth" ||
+                        browserSessionState === "authenticating")
                         ? styles.browserStatusAuth
-                        : ""
-                    } ${
-                      browserControlOwner === "user"
+                        : "",
+                      browserSessionId && browserControlOwner === "user"
                         ? styles.browserStatusTakeover
-                        : ""
-                    }`}
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     onClick={toggleBrowserPanel}
                     aria-label={t("chat.openBrowser")}
                   >
@@ -821,31 +866,9 @@ function ChatPageInner() {
             contextUsedTokens={contextUsedTokens}
             contextMaxTokens={contextMaxTokens}
           />
-
-          {/* Shared dock — bottom slot (file / browser / preview) */}
-          <ChatDockPanels
-            slot="bottom"
-            isMobile={isMobile}
-            dockOpen={dockOpen}
-            dockMode={dockMode}
-            isResizing={dockIsResizing}
-            panelSizes={dockPanelSizes}
-            agentId={resolvedAgentId ?? ""}
-            filePaths={panelFilePaths}
-            openTabs={openTabs}
-            activeTabId={activeTabId}
-            onSelectTab={setDockActiveTab}
-            onCloseTab={closeDockTab}
-            onOpenFile={openFileAt}
-            browserEnvironment={browserEnvironment}
-            onModeChange={handleDockModeChange}
-            onClose={handleDockClose}
-            onResizeStart={dockHandleResizeStart}
-          />
         </div>
 
         <ChatDockPanels
-          slot="side"
           isMobile={isMobile}
           dockOpen={dockOpen}
           dockMode={dockMode}

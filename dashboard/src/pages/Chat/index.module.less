@@ -15,6 +15,13 @@
 
 /* ---------- Page shell ---------- */
 .chatPage {
+  /* Shared column metrics: title bar + composer alignment. */
+  --chat-column-max: 960px;
+  --chat-column-pad-x: 24px;
+  --chat-column-pad-x-narrow: 12px;
+  /* Chat title, leading icon, and right-dock selected chrome share this ink. */
+  --chat-title-color: var(--fn-text-primary);
+
   display: flex;
   height: 100%;
   width: 100%;
@@ -49,13 +56,24 @@
   height: var(--fn-chat-chrome-height, 57px);
   min-height: var(--fn-chat-chrome-height, 57px);
   max-height: var(--fn-chat-chrome-height, 57px);
-  padding: 0 12px 0 16px;
+  /* Match .chatInput horizontal padding so the title column lines up with
+     the message input box (max-width + outer gutters). */
+  padding: 0 var(--chat-column-pad-x);
   border-bottom: none;
   background: var(--fn-bg-primary);
   color: var(--fn-text-primary);
   /* Visible so the hover edit control can sit just past the title. */
   overflow: visible;
   z-index: 2;
+
+  @media (max-width: 767px) {
+    padding: 0 var(--chat-column-pad-x-narrow);
+  }
+
+  /* Match chatInput padding when a side dock narrows the column. */
+  @container chat-main (max-width: 560px) {
+    padding: 0 var(--chat-column-pad-x-narrow);
+  }
 
   /* Inset divider — slight gap from the vertical rails (match dock toolbar). */
   &::after {
@@ -79,43 +97,50 @@
 .chatTitleLeft {
   flex: 1;
   min-width: 0;
+  max-width: var(--chat-column-max);
+  width: 100%;
+  margin: 0 auto;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
-  /* Keep room for the trailing more button so the title stays visually centered. */
-  padding: 0 36px;
+  /* Room for trailing more menu (absolute right of the bar). */
+  padding-right: 40px;
+  box-sizing: border-box;
 }
 
 .chatTitleLeadingIcon {
   flex-shrink: 0;
-  color: var(--fn-text-tertiary);
-  opacity: 0.7;
+  color: var(--chat-title-color);
+  opacity: 1;
 }
 
 .chatTitleHeading {
-  position: relative;
-  display: inline-flex;
+  /* Content-sized row: [title…][pin?][edit] sits together; shrinks with ellipsis. */
+  display: flex;
   align-items: center;
+  gap: 4px;
   min-width: 0;
+  /* Do not grow — otherwise edit sits far right of a full-width title box. */
+  flex: 0 1 auto;
   max-width: 100%;
+  overflow: hidden;
 }
 
 .chatTitleText {
   margin: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  max-width: 100%;
+  /* Size to text when short; shrink when the row exceeds the column. */
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.3;
-  color: var(--fn-text-primary);
+  color: var(--chat-title-color);
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: center;
+  text-align: left;
 }
 
 .chatTitlePinMark {
@@ -124,15 +149,14 @@
 }
 
 .chatTitleEditBtn {
-  position: absolute;
-  left: calc(100% + 4px);
-  top: 50%;
-  transform: translateY(-50%);
+  position: static;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -174,7 +198,7 @@
   color: var(--fn-text-primary);
   font-size: 14px;
   font-weight: 500;
-  text-align: center;
+  text-align: left;
   outline: none;
 
   &:focus {

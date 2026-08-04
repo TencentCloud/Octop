@@ -1,10 +1,21 @@
-import { useState, useCallback, useRef, useSyncExternalStore } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useSyncExternalStore,
+  useEffect,
+} from "react";
 import type {
   MessageMetadata,
   TokenUsage,
   CallEntry,
 } from "../../../api/types";
 import * as chatStore from "./chatStore";
+import {
+  historySuggestsActiveTurn,
+  shouldProbeActiveTurn,
+  shouldBlockHistoryRefresh,
+} from "./wsResumeGate";
 import {
   generateId,
   extractToolData,
@@ -566,6 +577,18 @@ export function useChat(
 ) {
   const stableSessionId = sessionId || "__empty__";
 
+  // Resume reconnect only for the thread the user is looking at.
+  useEffect(() => {
+    chatStore.setFocusedChatSession(stableSessionId);
+    return () => {
+      // Clear only if we still own focus (avoids racing a remount that already
+      // focused another thread).
+      if (chatStore.getFocusedChatSession() === stableSessionId) {
+        chatStore.setFocusedChatSession(null);
+      }
+    };
+  }, [stableSessionId]);
+
   // Subscribe to the external store for this session
   const subscribeStore = useCallback(
     (cb: () => void) => chatStore.subscribe(stableSessionId, cb),
@@ -591,6 +614,17 @@ export function useChat(
   const loadGenRef = useRef(0);
   const loadMoreInFlightRef = useRef(false);
   const refreshInFlightRef = useRef(false);
+
+  const attachAfterHistory = useCallback(
+    (key: string, targetThreadId: string) => {
+      if (!agentId || !targetThreadId) return;
+      // No post-stream refreshHistory here: full replace can wipe prepended
+      // older pages and fight “load earlier / jump to bottom” UX. Seal via
+      // stream chunks / done; user overscroll refresh remains available.
+      void chatStore.attachThread(key, agentId, targetThreadId);
+    },
+    [agentId],
+  );
 
   const sendMessage = useCallback(
     (
@@ -647,15 +681,22 @@ export function useChat(
     async (targetThreadId: string) => {
       const key = targetThreadId || "__empty__";
       const snap = chatStore.getSnapshot(key);
-      if (snap.isStreaming) return;
 
       if (!targetThreadId || !agentId) {
         chatStore.clearMessages(key);
         return;
       }
 
-      // Reuse in-memory messages, or skip if we already hydrated an empty thread.
+      // Already have local history: only re-probe when we still expect a stream.
       if (snap.messages.length > 0 || snap.historyHydrated) {
+        if (
+          shouldProbeActiveTurn({
+            isStreaming: snap.isStreaming,
+            justHydrated: false,
+          })
+        ) {
+          attachAfterHistory(key, targetThreadId);
+        }
         return;
       }
 
@@ -675,13 +716,22 @@ export function useChat(
           hasMore,
           nextOffset,
         });
+        if (
+          shouldProbeActiveTurn({
+            isStreaming: false,
+            justHydrated: true,
+            historySuggestsActive: historySuggestsActiveTurn(converted),
+          })
+        ) {
+          attachAfterHistory(key, targetThreadId);
+        }
       } finally {
         if (loadGenRef.current === gen) {
           setHistoryLoading(false);
         }
       }
     },
-    [agentId],
+    [agentId, attachAfterHistory],
   );
 
   const loadMoreHistory = useCallback(async (): Promise<boolean> => {
@@ -728,7 +778,10 @@ export function useChat(
       refreshInFlightRef.current ||
       historyRefreshing ||
       historyLoading ||
-      snap.isStreaming ||
+      shouldBlockHistoryRefresh({
+        isStreaming: snap.isStreaming,
+        hasLiveSocket: chatStore.hasLiveSocket(key),
+      }) ||
       !agentId ||
       key === "__empty__"
     ) {
@@ -736,6 +789,8 @@ export function useChat(
     }
 
     refreshInFlightRef.current = true;
+    // Separate from loadGenRef: loadHistory may bump loadGen while we fetch.
+    // Always clear the refreshing flag in finally so the footer cannot stick.
     const gen = ++loadGenRef.current;
     setHistoryRefreshing(true);
 
@@ -745,6 +800,7 @@ export function useChat(
         hasMore,
         nextOffset,
       } = await loadThreadHistory(agentId, key, { offset: 0 });
+      // Stale after a concurrent loadHistory / newer refresh — drop apply only.
       if (loadGenRef.current !== gen) return;
 
       // Keep older pages the user already scrolled in; replace the overlapping
@@ -760,9 +816,7 @@ export function useChat(
       });
     } finally {
       refreshInFlightRef.current = false;
-      if (loadGenRef.current === gen) {
-        setHistoryRefreshing(false);
-      }
+      setHistoryRefreshing(false);
     }
   }, [agentId, stableSessionId, historyRefreshing, historyLoading]);
 

@@ -73,6 +73,44 @@
   color: var(--fn-text-tertiary);
 }
 
+.refreshHint {
+  color: var(--fn-text-quaternary, var(--fn-text-tertiary));
+  font-size: 12px;
+}
+
+.listShell {
+  position: relative;
+  transition: opacity 0.15s ease;
+}
+
+.listShellBusy {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.listBusyBar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--fn-bg-elevated, #fff);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+.firstLoad {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 32px 0;
+}
+
 /* ── Card grid ───────────────────────────────────────────────── */
 
 .cardGrid {

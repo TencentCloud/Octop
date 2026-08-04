@@ -35,6 +35,33 @@ import {
   saveFormDraft,
 } from "../../../../utils/formDraft";
 
+/** QR auto-save keys (module-wide) so Strict Mode remounts don't double-submit. */
+const QR_AUTOSAVE_TTL_MS = 10 * 60 * 1000;
+const qrAutoSavedAt = new Map<string, number>();
+
+function hasRecentQrAutoSave(key: string): boolean {
+  const at = qrAutoSavedAt.get(key);
+  if (at == null) return false;
+  if (Date.now() - at > QR_AUTOSAVE_TTL_MS) {
+    qrAutoSavedAt.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function markQrAutoSave(key: string) {
+  qrAutoSavedAt.set(key, Date.now());
+  if (qrAutoSavedAt.size <= 64) return;
+  const cutoff = Date.now() - QR_AUTOSAVE_TTL_MS;
+  for (const [k, t] of qrAutoSavedAt) {
+    if (t < cutoff) qrAutoSavedAt.delete(k);
+  }
+}
+
+function clearQrAutoSave(key: string) {
+  qrAutoSavedAt.delete(key);
+}
+
 export interface ChannelFormValues {
   kind: ChannelKey;
   name?: string;
@@ -495,8 +522,13 @@ export function ChannelDrawer({
       kind: ChannelKey,
       name: string,
       config: Record<string, unknown>,
+      /** When set, overrides the form enabled switch (QR bind always enables). */
+      enabledOverride?: boolean,
     ): Promise<boolean> => {
-      const enabled = form.getFieldValue("enabled") ?? false;
+      const enabled =
+        enabledOverride !== undefined
+          ? enabledOverride
+          : form.getFieldValue("enabled") ?? false;
       const ok = await onSubmit(kind, name, config, enabled);
       if (ok) clearFormDraft(draftScope);
       return ok;
@@ -504,7 +536,7 @@ export function ChannelDrawer({
     [form, onSubmit, draftScope],
   );
 
-  // Auto-save when QR quick-config completes
+  // Auto-save when QR quick-config completes — channel is usable immediately.
   useEffect(() => {
     if (isEdit || saving || autoSaveTriggeredRef.current) return;
 
@@ -514,14 +546,17 @@ export function ChannelDrawer({
       name: string;
       config: Record<string, unknown>;
     } | null = null;
+    let dedupeKey: string | null = null;
 
     if (s.phase === "wecom_success") {
+      dedupeKey = `wecom:${s.botId}:${s.secret}`;
       payload = {
         kind: "wecom",
         name: "wecom",
         config: mergeDisplayConfig({ bot_id: s.botId, secret: s.secret }),
       };
     } else if (s.phase === "weixin_success") {
+      dedupeKey = `weixin:${s.accountId}:${s.token}`;
       payload = {
         kind: "weixin",
         name: "weixin",
@@ -540,6 +575,7 @@ export function ChannelDrawer({
         }),
       };
     } else if (s.phase === "feishu_done") {
+      dedupeKey = `feishu:${s.appId}:${s.appSecret}`;
       payload = {
         kind: "feishu",
         name: "feishu",
@@ -549,6 +585,7 @@ export function ChannelDrawer({
         }),
       };
     } else if (s.phase === "yuanbao_done") {
+      dedupeKey = `yuanbao:${s.appKey}:${s.appSecret}`;
       payload = {
         kind: "yuanbao",
         name: "yuanbao",
@@ -561,19 +598,25 @@ export function ChannelDrawer({
       };
     }
 
-    if (!payload) return;
+    if (!payload || !dedupeKey) return;
+    if (hasRecentQrAutoSave(dedupeKey)) return;
 
+    markQrAutoSave(dedupeKey);
     autoSaveTriggeredRef.current = true;
     setAutoSaveFailed(false);
-    void submitChannel(payload.kind, payload.name, payload.config).then(
+    // QR bind success → enable channel so messages start flowing without a second toggle.
+    void submitChannel(payload.kind, payload.name, payload.config, true).then(
       (ok) => {
         if (!ok) {
           autoSaveTriggeredRef.current = false;
+          clearQrAutoSave(dedupeKey);
           setAutoSaveFailed(true);
+        } else {
+          form.setFieldValue("enabled", true);
         }
       },
     );
-  }, [qrState, isEdit, saving, submitChannel, mergeDisplayConfig]);
+  }, [qrState, isEdit, saving, submitChannel, mergeDisplayConfig, form]);
 
   const showFooterSave =
     configMode === "manual" || isEdit || !supportsQuickConfig;
@@ -677,6 +720,7 @@ export function ChannelDrawer({
           "wecom",
           "wecom",
           mergeDisplayConfig({ bot_id: s.botId, secret: s.secret }),
+          true,
         );
       return (
         <div className={styles.qrPanel}>
@@ -780,7 +824,8 @@ export function ChannelDrawer({
         token: s.token,
         base_url: s.baseUrl || "https://ilinkai.weixin.qq.com",
       });
-      const retrySave = () => submitChannel("weixin", "weixin", weixinConfig);
+      const retrySave = () =>
+        submitChannel("weixin", "weixin", weixinConfig, true);
       return (
         <div className={styles.qrPanel}>
           <Alert
@@ -914,6 +959,7 @@ export function ChannelDrawer({
             app_id: s.appId,
             app_secret: s.appSecret,
           }),
+          true,
         );
       return (
         <div className={styles.qrPanel}>
@@ -1030,6 +1076,7 @@ export function ChannelDrawer({
             api_domain: YUANBAO_DEFAULT_API_DOMAIN,
             ws_url: YUANBAO_DEFAULT_WS_URL,
           }),
+          true,
         );
       return (
         <div className={styles.qrPanel}>
