@@ -153,6 +153,7 @@ def _make_migration_backup(
     layout: PathLayout,
     *,
     username: str = "lc_user",
+    jwt_secret: bytes | None = b"foreign-jwt-from-migration-backup!!!!",
 ) -> tuple[bytes, SqlitePool]:
     """Build a fake LightClaw migration backup and return (data, source_pool)."""
     pool = SqlitePool(layout.db)
@@ -167,6 +168,11 @@ def _make_migration_backup(
             " VALUES (?, (SELECT id FROM users WHERE username=?), ?, 1, 1)",
             ("agent-lc", username, "LC Agent"),
         )
+        if jwt_secret is not None:
+            conn.execute(
+                "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+                ("jwt", jwt_secret, 1),
+            )
 
     class Row:
         agent_id = "agent-lc"
@@ -212,6 +218,7 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
     - agents from the backup (``agent-lc``) are present.
     - users table contains only the *current instance* users (``octop_admin``).
     - the LightClaw user (``lc_user``) is gone — replaced by the current users.
+    - JWT secret from the *current* instance is kept (session continuity).
     """
     # --- source: simulate a LightClaw migration export with one agent ---
     src_layout = PathLayout(tmp_path / "src")
@@ -219,15 +226,20 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
     migration_data, src_pool = _make_migration_backup(src_layout, username="lc_user")
     src_pool.close()
 
-    # --- target: a fresh Octop instance with its own admin user ---
+    # --- target: a fresh Octop instance with its own admin user + JWT ---
     tgt_layout = PathLayout(tmp_path / "tgt")
     tgt_layout.root.mkdir()
     tgt_pool = SqlitePool(tgt_layout.db)
     run_migrations(tgt_pool)
+    local_jwt = b"local-octop-jwt-secret-must-survive-restore!!"
     with tgt_pool.connect() as conn:
         conn.execute(
             "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
             ("octop_admin", "admin_hash", "admin", 2),
+        )
+        conn.execute(
+            "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+            ("jwt", local_jwt, 2),
         )
 
     result = restore_system_backup(
@@ -239,6 +251,7 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
     )
 
     assert result["users_preserved"] is True
+    assert result["jwt_preserved"] is True
 
     with tgt_pool.connect() as conn:
         # The target instance's admin must survive with original password hash.
@@ -247,6 +260,11 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
         ).fetchone()
         assert row is not None, "octop_admin was deleted — users not preserved"
         assert row[0] == "admin_hash"
+
+        # JWT secret from the current instance must survive (not the foreign backup's).
+        jwt_row = conn.execute("SELECT v FROM secrets WHERE k = ?", ("jwt",)).fetchone()
+        assert jwt_row is not None, "jwt secret missing after migration restore"
+        assert bytes(jwt_row[0]) == local_jwt, "jwt secret replaced by migration backup value"
 
         # The imported agent from the backup must still exist after users write-back.
         # With the old DELETE-then-INSERT, foreign_keys=ON would cascade-delete this row.

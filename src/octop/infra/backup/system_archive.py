@@ -17,7 +17,9 @@ from octop.config import DatabaseConfig
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
 from octop.infra.backup.pg_dump import dump_postgres, restore_postgres
 from octop.infra.backup.snapshot import (
+    capture_jwt_secret_from_pool,
     capture_users_from_pool,
+    restore_jwt_secret_into_pool,
     restore_sqlite_into_pool,
     restore_users_into_pool,
     snapshot_sqlite_file,
@@ -187,16 +189,17 @@ def restore_system_backup(
 ) -> dict[str, Any]:
     """Restore database, workspaces, and optional config from a tar.gz archive.
 
-    ``preserve_users`` controls whether the *current* Octop instance's ``users``
-    table is written back after the database is replaced:
+    ``preserve_users`` controls whether the *current* Octop instance's login
+    credentials (``users`` rows + ``secrets.jwt``) are written back after the
+    database is replaced:
 
-    * ``None`` (default) — auto-detect: preserves users when the backup was
-      produced by an external migration tool (``octop_version`` ends with
+    * ``None`` (default) — auto-detect: preserves credentials when the backup
+      was produced by an external migration tool (``octop_version`` ends with
       ``"-migrated-from-lightclaw"``).
-    * ``True`` — always preserve the current users (useful for any cross-system
-      import where passwords must remain valid).
-    * ``False`` — restore the users table as-is from the backup (normal
-      same-instance restore).
+    * ``True`` — always preserve current users + JWT secret (cross-system
+      import where passwords and outstanding sessions must remain valid).
+    * ``False`` — restore the users/secrets tables as-is from the backup
+      (normal same-instance restore).
     """
     members = _read_tar_members(data)
     manifest = _extract_manifest(members)
@@ -220,10 +223,12 @@ def restore_system_backup(
     if db_blob is None:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
 
-    # Capture current users before overwriting the DB (only when needed).
+    # Capture current login credentials before overwriting the DB (only when needed).
     saved_users: list[tuple[object, ...]] = []
+    saved_jwt: bytes | None = None
     if effective_preserve_users and pool is not None:
         saved_users = capture_users_from_pool(pool)
+        saved_jwt = capture_jwt_secret_from_pool(pool)
 
     with tempfile.TemporaryDirectory() as tmp:
         if pool.dialect == "postgresql":
@@ -253,12 +258,14 @@ def restore_system_backup(
         if saved_users and pool is not None:
             restore_users_into_pool(pool, saved_users)
 
-        # After a migration restore the secrets table arrives from a foreign
-        # system and will not contain a valid JWT secret for this instance.
-        # Ensure one exists (create if absent) so the server can start without
-        # a manual `_ensure_jwt_secret` call.
+        # Migration backups ship a foreign ``secrets`` table. Prefer the current
+        # instance's JWT secret so outstanding sessions stay valid; only seed a
+        # fresh key when this instance never had one.
         if effective_preserve_users and pool is not None:
-            SecretRepo(pool).get_or_create("jwt", lambda: os.urandom(32))
+            if saved_jwt is not None:
+                restore_jwt_secret_into_pool(pool, saved_jwt)
+            else:
+                SecretRepo(pool).get_or_create("jwt", lambda: os.urandom(32))
 
         restored_workspaces = 0
         prefix = f"{_WORKSPACES_DIR}/"
@@ -308,5 +315,6 @@ def restore_system_backup(
         "skill_package_files": restored_skill_package_files,
         "restore_config": restore_config,
         "users_preserved": effective_preserve_users,
+        "jwt_preserved": bool(saved_jwt is not None and effective_preserve_users),
         "database_driver": archive_driver,
     }

@@ -7,6 +7,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 from octop.infra.db.pool import DatabasePool, SqlitePool
+from octop.infra.db.repos._base import now_ts
+
+_JWT_SECRET_KEY = "jwt"
 
 
 def _readonly_sqlite_uri(path: Path) -> str:
@@ -121,3 +124,38 @@ def restore_users_into_pool(pool: DatabasePool, users: list[tuple[object, ...]])
         # Remove backup-origin rows whose id is not in the saved set.
         placeholders = ", ".join("?" for _ in saved_ids)
         conn.execute(f"DELETE FROM users WHERE id NOT IN ({placeholders})", saved_ids)
+
+
+def capture_jwt_secret_from_pool(pool: DatabasePool) -> bytes | None:
+    """Return the live instance JWT secret, or ``None`` if not yet seeded."""
+    with pool.connect() as conn:
+        row = conn.execute(
+            "SELECT v FROM secrets WHERE k = ?",
+            (_JWT_SECRET_KEY,),
+        ).fetchone()
+    if row is None:
+        return None
+    return bytes(row["v"])
+
+
+def restore_jwt_secret_into_pool(pool: DatabasePool, secret: bytes) -> None:
+    """Write *secret* into ``secrets.jwt`` (insert or overwrite).
+
+    Used after a migration restore so outstanding browser sessions remain valid.
+    Does not bump ``rotated_at`` — this is a preserve, not an admin rotation.
+    """
+    with pool.transaction() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM secrets WHERE k = ?",
+            (_JWT_SECRET_KEY,),
+        ).fetchone()
+        if row is not None:
+            conn.execute(
+                "UPDATE secrets SET v = ? WHERE k = ?",
+                (secret, _JWT_SECRET_KEY),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+                (_JWT_SECRET_KEY, secret, now_ts()),
+            )
