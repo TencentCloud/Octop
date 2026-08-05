@@ -222,6 +222,7 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
     assert cfg.workspace_dir.parent.name == "agents"
     assert cfg.bootstrap_enabled is True
     assert cfg.permissions is None
+    assert cfg.log_dir == str(manager.paths.logs_dir)
 
 
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:

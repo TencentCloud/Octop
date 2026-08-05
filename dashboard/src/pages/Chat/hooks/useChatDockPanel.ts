@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
-import { canonicalizeDockFilePath, dockFileTabId } from "../utils/dockFilePath";
+import {
+  canonicalizeDockFilePath,
+  dockFileTabId,
+  isHostAbsolutePath,
+  normalizeDockFilePath,
+} from "../utils/dockFilePath";
 import { usePanelResize, type PanelSizes } from "./usePanelResize";
 
 const PANEL_MODE_KEY = "octop:chat-dock:mode";
@@ -125,15 +130,25 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
 
   const openFileAt = useCallback(
     (path?: string | null) => {
-      const normalized = path ? canonicalizeDockFilePath(path, agentId) : "";
-      if (!normalized) {
+      if (!path?.trim()) {
         openFileList();
         return;
       }
-      const id = dockFileTabId(normalized, agentId);
+      const hostAbs = normalizeDockFilePath(path);
+      // Keep host-absolute tool paths. Collapsing ``~/.octop/agents/<id>/…`` to a
+      // relative key breaks virtual ``root_dir`` nests (bytes live under
+      // ``{root}/Users/…/.octop/agents/<id>/…``, not the real agent home).
+      const tabPath = isHostAbsolutePath(hostAbs)
+        ? hostAbs
+        : canonicalizeDockFilePath(path, agentId);
+      if (!tabPath) {
+        openFileList();
+        return;
+      }
+      const id = dockFileTabId(tabPath, agentId);
       setOpenTabs((prev) => {
         if (prev.some((t) => t.id === id)) return prev;
-        return [...prev, { id, kind: "file", path: normalized }];
+        return [...prev, { id, kind: "file", path: tabPath }];
       });
       setActiveTabId(id);
       openDock();

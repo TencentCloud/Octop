@@ -22,6 +22,9 @@ import { useSkillSlugDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
   buildBackendSpec,
   DEFAULT_BACKEND,
+  ensureBubblewrapAfterProbe,
+  ensureBwrapMessage,
+  ensureBwrapToastKind,
   probeRootDir,
   rootDirProbeMessage,
   shouldProbeRootDir,
@@ -151,7 +154,16 @@ export default function CreateFromExpertDrawer({
       }
     }
     setSubmitting(true);
+    let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
+      if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+        const bwrap = await ensureBubblewrapAfterProbe();
+        const kind = ensureBwrapToastKind(bwrap.status);
+        if (kind !== "none") {
+          bwrapToast = { kind, text: ensureBwrapMessage(bwrap, t) };
+        }
+      }
+
       const backendSpec = buildBackendSpec(
         values.backend_choice,
         values.composite_default ?? DEFAULT_BACKEND,
@@ -174,6 +186,11 @@ export default function CreateFromExpertDrawer({
         },
       );
       message.success(t("experts.agentCreated", { name: body.name }));
+      if (bwrapToast?.kind === "success") {
+        message.success(bwrapToast.text);
+      } else if (bwrapToast?.kind === "warning") {
+        message.warning(bwrapToast.text);
+      }
       form.resetFields();
       onCreated(body.agent_id, body.name);
     } catch (err) {

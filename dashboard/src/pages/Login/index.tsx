@@ -11,6 +11,7 @@ import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
 import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
 import { useTheme } from "../../context/ThemeContext";
+import SlideCaptcha from "./SlideCaptcha";
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -19,6 +20,8 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slideVerified, setSlideVerified] = useState(false);
+  const [slideResetKey, setSlideResetKey] = useState(0);
 
   // If no admin exists, redirect to /setup so the wizard can bootstrap one.
   useEffect(() => {
@@ -45,8 +48,13 @@ export default function LoginPage() {
     };
   }, [navigate]);
 
+  const resetSlide = () => {
+    setSlideVerified(false);
+    setSlideResetKey((k) => k + 1);
+  };
+
   const handleLogin = async () => {
-    if (!username || !password) return;
+    if (!username || !password || !slideVerified) return;
     setLoading(true);
     try {
       const res = await authApi.login(username, password);
@@ -56,6 +64,7 @@ export default function LoginPage() {
       navigate("/chat", { replace: true });
     } catch (err) {
       message.error(apiErrorMessage(err, t("login.failed"), t));
+      resetSlide();
     } finally {
       setLoading(false);
     }
@@ -136,13 +145,20 @@ export default function LoginPage() {
           style={{ borderRadius: 10 }}
         />
 
+        <SlideCaptcha
+          hint={t("login.slideHint")}
+          verifiedLabel={t("login.slideVerified")}
+          onVerified={() => setSlideVerified(true)}
+          resetKey={slideResetKey}
+        />
+
         <Button
           type="primary"
           size="large"
           block
           loading={loading}
           onClick={handleLogin}
-          disabled={!username || !password}
+          disabled={!username || !password || !slideVerified}
           style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
         >
           {t("login.submit")}

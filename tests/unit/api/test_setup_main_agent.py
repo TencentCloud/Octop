@@ -57,8 +57,8 @@ def test_bootstrap_main_spec_en_locale_uses_english_label() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="POSIX virtual_mode without root_dir behavior")
-async def test_workspace_scoped_virtual_backend_creates_nested_paths() -> None:
-    """Broken layout when backend is {local_shell, virtual_mode} without root_dir='/'."""
+async def test_virtual_mode_without_root_dir_defaults_to_workspace() -> None:
+    """``root_dir`` omitted → harness uses ``workspace_dir``; files land in workspace."""
     with tempfile.TemporaryDirectory() as ws_dir:
         backend = resolve_backend(
             {"type": "local_shell", "virtual_mode": True},
@@ -66,10 +66,4 @@ async def test_workspace_scoped_virtual_backend_creates_nested_paths() -> None:
         )
         ws = BackendWorkspace(backend, ws_dir)
         await ws.aupload_bytes("SOUL.md", b"# soul")
-        assert not os.path.isfile(os.path.join(ws_dir, "SOUL.md"))
-        # virtual_mode must not write to the workspace root; the file lands
-        # nested under a child directory instead.
-        nested = any(
-            os.path.isfile(os.path.join(root, "SOUL.md")) for root, _dirs, _files in os.walk(ws_dir)
-        )
-        assert nested
+        assert os.path.isfile(os.path.join(ws_dir, "SOUL.md"))

@@ -10,6 +10,7 @@ import {
   Monitor,
   MessageSquareText,
   Timer,
+  ArrowRightLeft,
   SlidersHorizontal,
   X,
   Waypoints,
@@ -33,6 +34,8 @@ import { useUpdateStatus } from "../hooks/useUpdateStatus";
 import { authApi } from "../api/modules/auth";
 import type { OctopUser } from "../api/modules/auth";
 import { prefetchRoute } from "../routes/prefetch";
+import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
+import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/components/ChatSidebarPanel";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
 
@@ -263,6 +266,8 @@ function NavItemButton({
   active,
   isMobile,
   onNavigate,
+  onExpandChatRail,
+  showChatRailExpand,
   role,
   hasUpdate,
   t,
@@ -271,110 +276,129 @@ function NavItemButton({
   active: boolean;
   isMobile?: boolean;
   onNavigate: (path: string) => void;
+  onExpandChatRail?: () => void;
+  showChatRailExpand?: boolean;
   role: "admin" | "user" | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
+  const showExpand = Boolean(
+    showChatRailExpand && item.key === "chat" && onExpandChatRail,
+  );
+
   return (
-    <button
-      type="button"
-      onClick={() => onNavigate(item.path)}
+    <div
+      className={styles.navItemRow}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        width: "100%",
-        padding: "0 12px",
-        height: 40,
-        border: "none",
-        borderRadius: "var(--fn-radius-md)",
         background: active ? "var(--fn-sidebar-item-active-bg)" : "transparent",
-        color: active
-          ? "var(--fn-sidebar-item-active-text)"
-          : "var(--fn-text-secondary)",
-        cursor: "pointer",
-        fontSize: typeSize(14, isMobile),
-        fontWeight: active ? 500 : 400,
-        textAlign: "left",
-        transition: "all var(--fn-transition-fast)",
-        marginBottom: 2,
       }}
       onMouseEnter={(e) => {
         prefetchRoute(item.path);
         if (!active) {
           e.currentTarget.style.background = "var(--fn-sidebar-item-hover)";
-          e.currentTarget.style.color = "var(--fn-text-primary)";
         }
       }}
       onMouseLeave={(e) => {
         if (!active) {
           e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = "var(--fn-text-secondary)";
         }
       }}
     >
-      <span
+      <button
+        type="button"
+        className={styles.navItemMain}
+        onClick={() => onNavigate(item.path)}
         style={{
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
           color: active
             ? "var(--fn-sidebar-item-active-text)"
-            : "var(--fn-text-tertiary)",
+            : "var(--fn-text-secondary)",
+          fontSize: typeSize(14, isMobile),
+          fontWeight: active ? 500 : 400,
+          paddingRight: showExpand ? 4 : 12,
         }}
       >
-        {item.icon}
-      </span>
-      <span
-        style={{
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {t(item.labelKey)}
-        {item.key === "admin-advanced" && role === "admin" && hasUpdate ? (
-          <span className={styles.navUpdateBadge}>
-            {t("nav.newVersionBadge", "有新版本")}
-          </span>
-        ) : null}
-        {item.badge && (
-          <span
-            className="nav-badge-new"
-            style={{
-              fontSize: typeSize(9, isMobile),
-              fontWeight: 600,
-              color: "#fff",
-              backgroundColor: "#ff4d4f",
-              padding: "1px 4px",
-              borderRadius: "2px",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-              textTransform: "uppercase",
-              lineHeight: 1.2,
-              letterSpacing: "0.5px",
-            }}
-          >
-            {item.badge}
-          </span>
-        )}
-      </span>
-    </button>
+        <span
+          style={{
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            color: active
+              ? "var(--fn-sidebar-item-active-text)"
+              : "var(--fn-text-tertiary)",
+          }}
+        >
+          {item.icon}
+        </span>
+        <span
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+          }}
+        >
+          {t(item.labelKey)}
+          {item.key === "admin-advanced" && role === "admin" && hasUpdate ? (
+            <span className={styles.navUpdateBadge}>
+              {t("nav.newVersionBadge", "有新版本")}
+            </span>
+          ) : null}
+          {item.badge && (
+            <span
+              className="nav-badge-new"
+              style={{
+                fontSize: typeSize(9, isMobile),
+                fontWeight: 600,
+                color: "#fff",
+                backgroundColor: "#ff4d4f",
+                padding: "1px 4px",
+                borderRadius: "2px",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                textTransform: "uppercase",
+                lineHeight: 1.2,
+                letterSpacing: "0.5px",
+              }}
+            >
+              {item.badge}
+            </span>
+          )}
+        </span>
+      </button>
+      {showExpand ? (
+        <button
+          type="button"
+          className={styles.chatRailExpandBtn}
+          onClick={(e) => {
+            e.stopPropagation();
+            onExpandChatRail?.();
+          }}
+          aria-label={t("chat.expandHistorySidebar", "展开对话历史")}
+          title={t("chat.expandHistorySidebar", "展开对话历史")}
+        >
+          <ArrowRightLeft size={14} strokeWidth={1.8} aria-hidden />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
 function NavList({
   selectedKey,
   onNavigate,
+  onExpandChatRail,
+  showChatRailExpand,
   isMobile,
   isGroupCollapsed,
   toggleGroup,
 }: {
   selectedKey: string;
   onNavigate: (path: string) => void;
+  onExpandChatRail?: () => void;
+  showChatRailExpand?: boolean;
   isMobile?: boolean;
   isGroupCollapsed: (groupKey: string) => boolean;
   toggleGroup: (groupKey: string) => void;
@@ -411,6 +435,8 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
+                    onExpandChatRail={onExpandChatRail}
+                    showChatRailExpand={showChatRailExpand}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -451,6 +477,8 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
+                    onExpandChatRail={onExpandChatRail}
+                    showChatRailExpand={showChatRailExpand}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -482,6 +510,8 @@ export default function Sidebar({
     selectedKey,
   );
   const [user, setUser] = useState<OctopUser | null>(null);
+  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
+  const showChatRailExpand = !chatSidebarOpen;
 
   useEffect(() => {
     authApi
@@ -504,6 +534,15 @@ export default function Sidebar({
     navigate(path);
     if (isMobile) onToggle();
   };
+
+  const handleExpandChatRail = useCallback(() => {
+    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
+    setChatSidebarOpen(true);
+    if (!window.location.pathname.startsWith("/chat")) {
+      navigate("/chat");
+    }
+    if (isMobile) onToggle();
+  }, [isMobile, navigate, onToggle, setChatSidebarOpen]);
 
   const brandInner = (
     <>
@@ -616,6 +655,8 @@ export default function Sidebar({
           <NavList
             selectedKey={selectedKey}
             onNavigate={handleNavigate}
+            onExpandChatRail={handleExpandChatRail}
+            showChatRailExpand={showChatRailExpand}
             isMobile={isMobile}
             isGroupCollapsed={isGroupCollapsed}
             toggleGroup={toggleGroup}
@@ -782,6 +823,8 @@ export default function Sidebar({
           <NavList
             selectedKey={selectedKey}
             onNavigate={handleNavigate}
+            onExpandChatRail={handleExpandChatRail}
+            showChatRailExpand={showChatRailExpand}
             isMobile={isMobile}
             isGroupCollapsed={isGroupCollapsed}
             toggleGroup={toggleGroup}

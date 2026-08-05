@@ -15,6 +15,7 @@ from octop.api.common.content_disposition import content_disposition
 from octop.api.common.workspace import (
     coerce_read_content,
     file_info_to_dict,
+    reanchor_entry_path,
     require_running_workspace,
     workspace_api_path,
 )
@@ -107,11 +108,16 @@ async def list_tree(
 ) -> list[dict[str, Any]]:
     """Single-level directory listing under ``path`` (agent must be running)."""
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    result = await ws.als(_workspace_io_path(path, from_workspace=from_workspace))
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    result = await ws.als(io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot list {path!r}")
     entries = getattr(result, "entries", None) or []
-    return [file_info_to_dict(f) for f in entries]
+    rows = [file_info_to_dict(f) for f in entries]
+    if not is_host_absolute_path(io_path):
+        for row in rows:
+            row["path"] = reanchor_entry_path(str(row.get("path") or ""), parent=io_path)
+    return rows
 
 
 class WriteFileBody(BaseModel):

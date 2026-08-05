@@ -522,16 +522,20 @@ async def test_get_agent_returns_harness_object(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_list_subagent_summaries_delegates_to_harness(tmp_path: Path) -> None:
     """list_subagent_summaries() returns harness catalog rows."""
+    from unittest.mock import AsyncMock
+
     services = _make_services(tmp_path)
     fake_agent = MagicMock(name="HarnessAgent")
-    fake_agent.list_subagent_summaries.return_value = [
-        {
-            "slug": "general-purpose",
-            "name": "General Purpose",
-            "description": "General-purpose agent",
-            "path": "agents/general-purpose.md",
-        }
-    ]
+    fake_agent.list_subagent_summaries = AsyncMock(
+        return_value=[
+            {
+                "slug": "general-purpose",
+                "name": "General Purpose",
+                "description": "General-purpose agent",
+                "path": "agents/general-purpose.md",
+            }
+        ]
+    )
     fake_hm = _make_fake_hm(fake_agent=fake_agent)
     registry = _make_registry(services, fake_hm=fake_hm)
 
@@ -539,7 +543,7 @@ async def test_list_subagent_summaries_delegates_to_harness(tmp_path: Path) -> N
     services.repos.agent_repo.create(agent_id=agent_id, user_id=None, name="live")
     fake_hm.create_agent(MagicMock(), agent_id=agent_id)
 
-    summaries = registry.list_subagent_summaries(agent_id)
+    summaries = await registry.list_subagent_summaries(agent_id)
 
     assert len(summaries) == 1
     assert summaries[0]["slug"] == "general-purpose"
@@ -1043,3 +1047,56 @@ async def test_create_with_unknown_template_does_not_crash(tmp_path: Path) -> No
     row = await registry.create(AgentCreateSpec(name="unknown-tmpl", template_name="ghost"))
 
     assert row.name == "unknown-tmpl"
+
+
+# ---------------------------------------------------------------------------
+# workspace_for_agent()
+# ---------------------------------------------------------------------------
+
+
+def _spy_resolve_backend(monkeypatch) -> list[Any]:
+    """Record every ``resolve_backend`` call made while resolving a workspace."""
+    import harness_agent.backends as harness_backends  # noqa: PLC0415
+
+    calls: list[Any] = []
+    original = harness_backends.resolve_backend
+
+    def _spy(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(harness_backends, "resolve_backend", _spy)
+    return calls
+
+
+def test_workspace_for_agent_reuses_running_agent(tmp_path: Path, monkeypatch) -> None:
+    """A live agent's workspace is reused instead of building a fresh backend."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    services = _make_services(tmp_path)
+    fake_hm = _make_fake_hm()
+    registry = _attach_registry(services, fake_hm)
+    services.repos.agent_repo.create(agent_id="live1", user_id=None, name="live")
+    entry = fake_hm.create_agent(
+        SimpleNamespace(workspace_dir=tmp_path / "ws-live1", backend=None, skills_dir=None),
+        agent_id="live1",
+    )
+
+    calls = _spy_resolve_backend(monkeypatch)
+    workspace = registry.workspace_for_agent("live1")
+
+    assert workspace is entry.agent.workspace
+    assert calls == []
+
+
+def test_workspace_for_agent_falls_back_when_not_running(tmp_path: Path, monkeypatch) -> None:
+    """With no live agent the workspace is still resolved from the row's backend spec."""
+    services = _make_services(tmp_path)
+    registry = _attach_registry(services, _make_fake_hm())
+    services.repos.agent_repo.create(agent_id="idle1", user_id=None, name="idle")
+
+    calls = _spy_resolve_backend(monkeypatch)
+    workspace = registry.workspace_for_agent("idle1")
+
+    assert workspace is not None
+    assert len(calls) == 1

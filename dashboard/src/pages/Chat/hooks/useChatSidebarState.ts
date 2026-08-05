@@ -6,6 +6,21 @@ export const CHAT_SIDEBAR_WIDTH_KEY = "octop:chat-sidebar:width";
 export const SIDEBAR_WIDTH_MIN = 200;
 export const SIDEBAR_WIDTH_MAX = 360;
 export const SIDEBAR_WIDTH_DEFAULT = 248;
+/** Viewport width at/above which the chat history rail defaults open. */
+export const CHAT_SIDEBAR_WIDE_BREAKPOINT = 1200;
+
+/**
+ * Resolve initial open state: explicit localStorage preference wins;
+ * otherwise default open on wide viewports only. Does not react to resize.
+ */
+export function resolveChatSidebarDefaultOpen(
+  stored: string | null,
+  viewportWidth: number,
+): boolean {
+  if (stored === "true") return true;
+  if (stored === "false") return false;
+  return viewportWidth >= CHAT_SIDEBAR_WIDE_BREAKPOINT;
+}
 
 function loadSidebarWidth(): number {
   try {
@@ -26,11 +41,17 @@ function loadSidebarWidth(): number {
 }
 
 let sidebarOpen = (() => {
+  let stored: string | null = null;
   try {
-    return localStorage.getItem(CHAT_SIDEBAR_KEY) === "true";
+    stored = localStorage.getItem(CHAT_SIDEBAR_KEY);
   } catch {
-    return false;
+    stored = null;
   }
+  const width =
+    typeof window !== "undefined" && typeof window.innerWidth === "number"
+      ? window.innerWidth
+      : 0;
+  return resolveChatSidebarDefaultOpen(stored, width);
 })();
 
 const sidebarListeners = new Set<() => void>();
