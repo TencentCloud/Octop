@@ -15,7 +15,10 @@ import pytest
 from deepagents.backends import LocalShellBackend
 from deepagents.backends.protocol import ExecuteResponse
 from harness_agent.backends import resolve_backend
-from harness_agent.backends.bwrap_shell import BubbledLocalShellBackend
+from harness_agent.backends.bwrap_shell import (
+    BubbledLocalShellBackend,
+    rewrite_virtual_paths_in_command,
+)
 
 from tests.support.bwrap_marks import linux_bwrap_only, posix_shell_only
 
@@ -86,8 +89,7 @@ def test_execute_rewrites_virtual_paths_when_jail_unavailable(
 
     assert result.exit_code == 0
     rewritten = super_exec.call_args.args[0]
-    mapped = scoped / "out" / "mapped.txt"
-    assert str(mapped) in rewritten or mapped.as_posix() in rewritten.replace("\\", "/")
+    assert rewritten == rewrite_virtual_paths_in_command("echo x > /out/mapped.txt", scoped)
 
 
 # ---------------------------------------------------------------------------
