@@ -9,6 +9,7 @@ attached as ``X-Octop-Access-Token`` on the response.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -25,6 +26,7 @@ from octop.api.deps import (
 from octop.infra.errors import OctopError
 
 _INSTALL_ATTR = "_octop_jwt_auth_installed"
+logger = logging.getLogger(__name__)
 
 
 def install(app: Any, server: Any) -> None:
@@ -48,6 +50,15 @@ def install(app: Any, server: Any) -> None:
         try:
             request.state.octop_user = authenticate_request(request, server)
         except OctopError as exc:
+            # Middleware returns directly (skips FastAPI exception handlers).
+            if exc.status >= 500:
+                logger.error(
+                    "OctopError %s in %s: %s",
+                    exc.code.value,
+                    request.url.path,
+                    exc.message,
+                    exc_info=exc,
+                )
             return JSONResponse(status_code=exc.status, content=exc.to_envelope())
 
         response = await call_next(request)

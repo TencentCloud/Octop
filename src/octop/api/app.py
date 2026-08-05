@@ -38,6 +38,16 @@ def _mount_routers(app: FastAPI, mounts: Sequence[_RouterMount]) -> None:
 def _install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(OctopError)
     async def _octop(request: Request, exc: OctopError) -> JSONResponse:
+        # Client responses are locale-localized; log the original English message
+        # so INTERNAL_ERROR (and other 5xx) remain diagnosable in ~/.octop/logs.
+        if exc.status >= 500:
+            logger.error(
+                "OctopError %s in %s: %s",
+                exc.code.value,
+                request.url.path,
+                exc.message,
+                exc_info=exc,
+            )
         locale = resolve_request_locale(request)
         return JSONResponse(status_code=exc.status, content=exc.to_envelope(locale=locale))
 
