@@ -400,6 +400,57 @@
   margin-bottom: 12px;
 }
 
+.qqGroupPolicy {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.02));
+
+  :global(.ant-form-item:last-child) {
+    margin-bottom: 0;
+  }
+}
+
+.qqGroupPolicyHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.qqGroupPolicyTitle {
+  color: var(--fn-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.qqGroupPolicyDescription {
+  margin-top: 3px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.qqGroupPolicySegmented {
+  :global(.ant-segmented-item-label) {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+}
+
+.qqGroupPolicyGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(120px, 0.7fr);
+  gap: 12px;
+
+  @media (max-width: 560px) {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
 .quickConfigPanel {
   padding: 20px 0;
 }

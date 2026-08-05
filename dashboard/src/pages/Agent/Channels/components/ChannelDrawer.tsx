@@ -4,6 +4,7 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
   Popconfirm,
   Segmented,
   Select,
@@ -24,9 +25,14 @@ import {
   CHANNEL_LABEL_KEYS,
   CHANNEL_URLS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
+  normalizeQqGroupContextConfig,
   type ChannelField,
   type ChannelKey,
+  type QqGroupActivation,
+  type QqGroupContextConfig,
+  type QqGroupVisibility,
 } from "./constants";
 import type { ChannelRow } from "../useChannels";
 import styles from "../index.module.less";
@@ -70,7 +76,8 @@ export interface ChannelFormValues {
   enabled?: boolean;
   show_thinking?: boolean;
   show_tool_hints?: boolean;
-  [k: string]: string | boolean | undefined;
+  group_context?: QqGroupContextConfig;
+  [k: string]: string | boolean | QqGroupContextConfig | undefined;
   __raw_config?: string;
 }
 
@@ -174,6 +181,161 @@ function FormItemForField({ field }: { field: ChannelField }) {
           : {})}
       />
     </Form.Item>
+  );
+}
+
+function QqGroupContextPolicyFields({
+  form,
+}: {
+  form: FormInstance<ChannelFormValues>;
+}) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    form.setFieldValue(
+      "group_context",
+      normalizeQqGroupContextConfig(form.getFieldValue("group_context")),
+    );
+  }, [form]);
+  const watchedEnabled = Form.useWatch(["group_context", "enabled"], form);
+  const watchedVisibility = Form.useWatch(
+    ["group_context", "visibility"],
+    form,
+  );
+  const watchedActivation = Form.useWatch(
+    ["group_context", "activation"],
+    form,
+  );
+  const policy = normalizeQqGroupContextConfig(
+    form.getFieldValue("group_context"),
+  );
+  const enabled =
+    typeof watchedEnabled === "boolean" ? watchedEnabled : policy.enabled;
+  const visibility = (watchedVisibility ??
+    policy.visibility) as QqGroupVisibility;
+  const activation = (watchedActivation ??
+    policy.activation) as QqGroupActivation;
+
+  const updatePolicy = (patch: Partial<QqGroupContextConfig>) => {
+    form.setFieldValue("group_context", {
+      ...normalizeQqGroupContextConfig(form.getFieldValue("group_context")),
+      ...patch,
+    });
+  };
+
+  const handleVisibilityChange = (value: string | number) => {
+    const nextVisibility = value as QqGroupVisibility;
+    updatePolicy({
+      visibility: nextVisibility,
+      activation: nextVisibility === "all" ? activation : "mention",
+      history: nextVisibility === "mention_only" ? "none" : "recent",
+    });
+  };
+
+  return (
+    <div className={styles.qqGroupPolicy}>
+      <div className={styles.qqGroupPolicyHeader}>
+        <div>
+          <div className={styles.qqGroupPolicyTitle}>
+            {t("channels.qqGroupPolicyTitle")}
+          </div>
+          <div className={styles.qqGroupPolicyDescription}>
+            {t("channels.qqGroupPolicyDescription")}
+          </div>
+        </div>
+        <Form.Item
+          name={["group_context", "enabled"]}
+          valuePropName="checked"
+          noStyle
+        >
+          <Switch />
+        </Form.Item>
+      </div>
+
+      {enabled && (
+        <>
+          <Form.Item
+            name={["group_context", "visibility"]}
+            label={t("channels.qqGroupVisibility")}
+          >
+            <Segmented
+              block
+              className={styles.qqGroupPolicySegmented}
+              onChange={handleVisibilityChange}
+              options={[
+                {
+                  label: t("channels.qqGroupVisibilityAuto"),
+                  value: "auto",
+                },
+                {
+                  label: t("channels.qqGroupVisibilityMentionOnly"),
+                  value: "mention_only",
+                },
+                {
+                  label: t("channels.qqGroupVisibilityMentionRecent"),
+                  value: "mention_recent",
+                },
+                {
+                  label: t("channels.qqGroupVisibilityAll"),
+                  value: "all",
+                },
+              ]}
+            />
+          </Form.Item>
+
+          <div className={styles.qqGroupPolicyGrid}>
+            <Form.Item
+              name={["group_context", "activation"]}
+              label={t("channels.qqGroupActivation")}
+            >
+              <Segmented
+                block
+                options={[
+                  {
+                    label: t("channels.qqGroupActivationMention"),
+                    value: "mention",
+                  },
+                  {
+                    label: t("channels.qqGroupActivationAlways"),
+                    value: "always",
+                    disabled: visibility !== "all",
+                  },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item
+              name={["group_context", "history_limit"]}
+              label={t("channels.qqGroupHistoryLimit")}
+              rules={[{ type: "number", min: 0, max: 50 }]}
+            >
+              <InputNumber
+                min={0}
+                max={50}
+                precision={0}
+                disabled={visibility === "mention_only"}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+          </div>
+
+          <Form.Item
+            name={["group_context", "clear_after_reply"]}
+            label={t("channels.qqGroupClearAfterReply")}
+            tooltip={t("channels.qqGroupClearAfterReplyDesc")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          {activation === "always" && (
+            <Alert
+              showIcon
+              type="warning"
+              message={t("channels.qqGroupAlwaysWarning")}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -575,6 +737,14 @@ export function ChannelDrawer({
     [getDisplayConfig],
   );
 
+  const getQqGroupContextConfig = useCallback(
+    () =>
+      normalizeQqGroupContextConfig(
+        form.getFieldValue("group_context") ?? DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
+      ),
+    [form],
+  );
+
   const submitChannel = useCallback(
     async (
       kind: ChannelKey,
@@ -614,12 +784,14 @@ export function ChannelDrawer({
         config: mergeDisplayConfig({ bot_id: s.botId, secret: s.secret }),
       };
     } else if (s.phase === "qq_success") {
+      dedupeKey = `qq:${s.appId}:${s.secret}`;
       payload = {
         kind: "qq",
         name: "qq",
         config: mergeDisplayConfig({
           app_id: s.appId,
           secret: s.secret,
+          group_context: getQqGroupContextConfig(),
         }),
       };
     } else if (s.phase === "weixin_success") {
@@ -683,7 +855,15 @@ export function ChannelDrawer({
         }
       },
     );
-  }, [qrState, isEdit, saving, submitChannel, mergeDisplayConfig, form]);
+  }, [
+    qrState,
+    isEdit,
+    saving,
+    submitChannel,
+    mergeDisplayConfig,
+    getQqGroupContextConfig,
+    form,
+  ]);
 
   const showFooterSave =
     configMode === "manual" || isEdit || !supportsQuickConfig;
@@ -786,7 +966,11 @@ export function ChannelDrawer({
         submitChannel(
           "qq",
           "qq",
-          mergeDisplayConfig({ app_id: s.appId, secret: s.secret }),
+          mergeDisplayConfig({
+            app_id: s.appId,
+            secret: s.secret,
+            group_context: getQqGroupContextConfig(),
+          }),
           true,
         );
       return (
@@ -1389,6 +1573,8 @@ export function ChannelDrawer({
               ]}
             />
           )}
+
+          {selectedKind === "qq" && <QqGroupContextPolicyFields form={form} />}
 
           {(configMode === "quick" || isQuickOnly) &&
             supportsQuickConfig &&

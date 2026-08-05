@@ -18,7 +18,9 @@ import {
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
   CHANNEL_BOOLEAN_CONFIG_KEYS,
   CHANNEL_FIELDS,
+  DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
+  normalizeQqGroupContextConfig,
   type ChannelKey,
 } from "./components";
 import type { ChannelRow } from "./useChannels";
@@ -126,6 +128,9 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         kind,
         enabled: false,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
+        ...(kind === "qq"
+          ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }
+          : {}),
       };
       setDrawerInitialValues(defaults);
       form.resetFields();
@@ -151,7 +156,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       const detail = await getChannel(row.id);
       if (detail) {
         const cfg = detail.config ?? {};
-        const stringCfg: Record<string, string | undefined> = {};
+        const formCfg: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(cfg)) {
           if (v === undefined || v === null) continue;
           if (
@@ -161,13 +166,22 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
           ) {
             continue;
           }
-          if (typeof v === "string") stringCfg[k] = v;
+          if (row.kind === "qq" && k === "group_context") {
+            formCfg[k] = normalizeQqGroupContextConfig(v);
+          } else if (typeof v === "string") formCfg[k] = v;
           else if (typeof v === "number" || typeof v === "boolean")
-            stringCfg[k] = String(v);
-          else stringCfg[k] = JSON.stringify(v);
+            formCfg[k] = String(v);
+          else formCfg[k] = JSON.stringify(v);
         }
-        if (row.kind === "qq" && stringCfg.client_secret && !stringCfg.secret) {
-          stringCfg.secret = stringCfg.client_secret;
+        if (
+          row.kind === "qq" &&
+          typeof formCfg.client_secret === "string" &&
+          !formCfg.secret
+        ) {
+          formCfg.secret = formCfg.client_secret;
+        }
+        if (row.kind === "qq" && !formCfg.group_context) {
+          formCfg.group_context = { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG };
         }
         const next: ChannelFormValues = {
           kind: row.kind as ChannelKey,
@@ -180,7 +194,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
             typeof cfg.show_tool_hints === "boolean"
               ? cfg.show_tool_hints
               : DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
-          ...stringCfg,
+          ...formCfg,
           __raw_config: JSON.stringify(cfg, null, 2),
         };
         setDrawerInitialValues(next);

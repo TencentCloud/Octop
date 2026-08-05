@@ -147,6 +147,97 @@ export interface ChannelField {
   required?: boolean;
 }
 
+export const QQ_GROUP_VISIBILITIES = [
+  "auto",
+  "mention_only",
+  "mention_recent",
+  "all",
+] as const;
+
+export type QqGroupVisibility = (typeof QQ_GROUP_VISIBILITIES)[number];
+export type QqGroupActivation = "mention" | "always";
+
+export interface QqGroupContextConfig {
+  enabled: boolean;
+  visibility: QqGroupVisibility;
+  activation: QqGroupActivation;
+  history: "recent" | "none";
+  history_limit: number;
+  history_ttl_seconds: number;
+  clear_after_reply: boolean;
+  groups?: Record<
+    string,
+    Record<string, string | number | boolean | null | undefined>
+  >;
+}
+
+export const DEFAULT_QQ_GROUP_CONTEXT_CONFIG: QqGroupContextConfig = {
+  enabled: true,
+  visibility: "auto",
+  activation: "mention",
+  history: "recent",
+  history_limit: 10,
+  history_ttl_seconds: 300,
+  clear_after_reply: true,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Normalize saved config and old JSON form drafts into the typed QQ policy. */
+export function normalizeQqGroupContextConfig(
+  value: unknown,
+): QqGroupContextConfig {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed) as unknown;
+    } catch {
+      return { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG };
+    }
+  }
+  if (!isRecord(parsed)) {
+    return { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG };
+  }
+
+  const visibility = QQ_GROUP_VISIBILITIES.includes(
+    parsed.visibility as QqGroupVisibility,
+  )
+    ? (parsed.visibility as QqGroupVisibility)
+    : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.visibility;
+  const activation =
+    parsed.activation === "always" ? "always" : ("mention" as const);
+  const rawLimit = Number(parsed.history_limit);
+  const rawTtl = Number(parsed.history_ttl_seconds);
+
+  return {
+    ...parsed,
+    enabled:
+      typeof parsed.enabled === "boolean"
+        ? parsed.enabled
+        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.enabled,
+    visibility,
+    activation: visibility === "all" ? activation : "mention",
+    history:
+      visibility === "mention_only"
+        ? "none"
+        : parsed.history === "none"
+        ? "none"
+        : "recent",
+    history_limit: Number.isFinite(rawLimit)
+      ? Math.max(0, Math.trunc(rawLimit))
+      : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.history_limit,
+    history_ttl_seconds: Number.isFinite(rawTtl)
+      ? Math.max(0, rawTtl)
+      : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.history_ttl_seconds,
+    clear_after_reply:
+      typeof parsed.clear_after_reply === "boolean"
+        ? parsed.clear_after_reply
+        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.clear_after_reply,
+  };
+}
+
 /**
  * Per-kind config field schema. Drives ``ChannelDrawer``'s manual config
  * form. Kinds not listed here fall back to a JSON textarea so any
@@ -194,13 +285,6 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   qq: [
     { name: "app_id", label: "App ID", required: true },
     { name: "secret", label: "App Secret", type: "password", required: true },
-    {
-      name: "group_context",
-      label: "群聊上下文策略 (JSON)",
-      type: "json",
-      placeholder:
-        '{"enabled":true,"visibility":"auto","activation":"mention","history":"recent","history_limit":10}',
-    },
   ],
   discord: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
@@ -295,12 +379,8 @@ export function normalizeChannelFieldValue(
   fieldName: string,
   value: unknown,
 ): unknown {
-  if (fieldName !== "group_context" || typeof value !== "string") return value;
-  const parsed = JSON.parse(value) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("group_context must be a JSON object");
-  }
-  return parsed;
+  if (fieldName !== "group_context") return value;
+  return normalizeQqGroupContextConfig(value);
 }
 
 /** Required field names per kind — used for "missing creds" UX. */
