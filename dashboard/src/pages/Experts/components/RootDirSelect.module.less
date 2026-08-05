@@ -1,0 +1,57 @@
+/* Dropdown is portaled — scope tree layout to popupClassName. */
+.rootDirDropdown :global(.ant-select-tree-node-content-wrapper) {
+  flex: 1 1 auto !important;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.rootDirDropdown :global(.ant-select-tree-title) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.rootDirTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.rootDirTitleLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rootDirActions {
+  align-items: center;
+  gap: 8px;
+}
+
+.rootDirActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: #8c8c8c;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.rootDirActionBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.rootDirActionBtn:hover:not(:disabled) {
+  color: #262626;
+}

@@ -88,6 +88,40 @@ describe("dockFilePath", () => {
     ).toEqual(["outbound/a.txt", "/tmp/a.txt", "outbound/b.txt"]);
   });
 
+  it("keeps host paths that contain a workspace directory segment", () => {
+    expect(
+      canonicalizeDockFilePath(
+        "/Users/jubaoliang/workspace/sapiens_intro/Sapiens_Introduction.pptx",
+        "ENG1XX",
+      ),
+    ).toBe(
+      "/Users/jubaoliang/workspace/sapiens_intro/Sapiens_Introduction.pptx",
+    );
+    expect(
+      toDockWorkspaceApiPath(
+        "/Users/jubaoliang/workspace/sapiens_intro/Sapiens_Introduction.pptx",
+        "ENG1XX",
+      ),
+    ).toBe(
+      "file:///Users/jubaoliang/workspace/sapiens_intro/Sapiens_Introduction.pptx",
+    );
+  });
+
+  it("still strips virtual /workspace/… roots", () => {
+    expect(canonicalizeDockFilePath("/workspace/x.py", "main")).toBe("x.py");
+    expect(canonicalizeDockFilePath("file:///workspace/x.py")).toBe("x.py");
+  });
+
+  it("toWorkspaceApiPath keeps agent-home absolute as file:// for failback", () => {
+    expect(
+      toWorkspaceApiPath(
+        "/Users/jubaoliang/.octop/agents/SBGM5Q/earth-presentation.html",
+      ),
+    ).toBe(
+      "file:///Users/jubaoliang/.octop/agents/SBGM5Q/earth-presentation.html",
+    );
+  });
+
   it("builds basename and tab id from normalized path", () => {
     expect(dockFileBasename("outbound/docs/note.md")).toBe("note.md");
     expect(dockFileTabId("file:///workspace/x.py")).toBe("file:x.py");
@@ -112,7 +146,7 @@ describe("dockFilePath", () => {
     expect(tree[0].children.map((c) => c.name)).toEqual(["iron-man.pptx"]);
   });
 
-  it("maps download APIs through canonical workspace-relative paths", () => {
+  it("maps download APIs; host abs stays file:// for virtual root failback", () => {
     expect(toWorkspaceApiPath("/outbound/a.txt")).toBe("outbound/a.txt");
     expect(toWorkspaceApiPath("/tmp/a.txt")).toBe("file:///tmp/a.txt");
     expect(toWorkspaceApiPath("outbound/a.txt")).toBe("outbound/a.txt");
@@ -121,10 +155,17 @@ describe("dockFilePath", () => {
         "/home/wally/.octop/agents/main/generated/a.pptx",
         "main",
       ),
-    ).toBe("generated/a.pptx");
+    ).toBe("file:///home/wally/.octop/agents/main/generated/a.pptx");
     expect(
       toDockWorkspaceApiPath(
         "C:\\Users\\wally\\.octop\\agents\\main\\generated\\a.pptx",
+        "main",
+      ),
+    ).toBe("file:///C:/Users/wally/.octop/agents/main/generated/a.pptx");
+    // Tab identity still collapses; API path does not.
+    expect(
+      canonicalizeDockFilePath(
+        "/home/wally/.octop/agents/main/generated/a.pptx",
         "main",
       ),
     ).toBe("generated/a.pptx");

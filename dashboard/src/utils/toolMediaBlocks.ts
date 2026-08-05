@@ -2,6 +2,12 @@
  * Resolve tool-result media URLs for dashboard display.
  */
 
+import {
+  isHostAbsolutePath,
+  stripVirtualWorkspaceRoot,
+  toWorkspaceApiPath,
+} from "./workspaceIoPath";
+
 export type ToolMediaItem = {
   url: string;
   filename?: string;
@@ -91,49 +97,39 @@ export function toMediaPreviewSource(
   if (/^[A-Za-z]:[^/]/.test(posix)) {
     posix = `${posix.slice(0, 2)}/${posix.slice(2)}`;
   }
-  const lower = posix.toLowerCase();
-  const agentId = options?.agentId?.replace(/\\/g, "/") ?? "";
-
-  if (agentId) {
-    const idLower = agentId.toLowerCase();
-    for (const marker of [
-      `/.octop/agents/${idLower}/`,
-      `.octop/agents/${idLower}/`,
-    ]) {
-      const idx = lower.lastIndexOf(marker);
-      if (idx >= 0) {
-        return posix.slice(idx + marker.length);
-      }
-    }
-  }
-
-  const anyAgent = posix.match(/(?:^|\/)\.octop\/agents\/[^/]+\/(.+)$/i);
-  if (anyAgent?.[1]) return anyAgent[1];
-
-  if (
-    posix.includes("/workspace/") ||
-    posix === "/workspace" ||
-    posix.startsWith("/workspace")
-  ) {
-    return toWorkspaceRel(posix);
-  }
 
   const mediaRel = extractWorkspaceRel(posix);
   if (mediaRel) return mediaRel;
 
-  // Workspace UI paths: leading ``/`` is workspace-relative, not host-absolute.
+  // Workspace UI: leading ``/`` is workspace-relative.
   if (options?.fromWorkspace) {
+    const agentId = options?.agentId?.replace(/\\/g, "/") ?? "";
+    const lower = posix.toLowerCase();
+    if (agentId) {
+      const idLower = agentId.toLowerCase();
+      for (const marker of [
+        `/.octop/agents/${idLower}/`,
+        `.octop/agents/${idLower}/`,
+      ]) {
+        const idx = lower.lastIndexOf(marker);
+        if (idx >= 0) {
+          return posix.slice(idx + marker.length);
+        }
+      }
+    }
+    const anyAgent = posix.match(/(?:^|\/)\.octop\/agents\/[^/]+\/(.+)$/i);
+    if (anyAgent?.[1]) return anyAgent[1];
+    const stripped = stripVirtualWorkspaceRoot(posix);
+    if (stripped !== posix) return stripped;
     return posix.replace(/^\/+/, "") || ".";
   }
 
-  // True host absolute outside the agent home → file:// for backend allowlist.
-  if (isHostAbsoluteMediaPath(posix) || /^[A-Za-z]:/.test(posix)) {
-    if (/^[A-Za-z]:/.test(posix)) {
-      return `file:///${posix}`;
-    }
-    return `file://${posix}`;
+  // Chat / tools: keep host abs so BackendWorkspace virtual failback works.
+  const virtualRel = stripVirtualWorkspaceRoot(posix);
+  if (virtualRel !== posix) return virtualRel;
+  if (isHostAbsolutePath(posix) || /^[A-Za-z]:/.test(posix)) {
+    return toWorkspaceApiPath(posix);
   }
-
   return posix.replace(/^\/+/, "");
 }
 
@@ -167,30 +163,17 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
 
 /**
  * Normalize an arbitrary harness-reported file path into a workspace-relative
- * fragment the backend ``download`` endpoint can resolve.
+ * fragment when it uses the virtual ``/workspace/…`` root.
  *
- * Harness tool output often reports an absolute path such as
- * ``/workspace/report.pdf`` (where ``/workspace`` *is* the workspace root) or a
- * ``file:///workspace/…`` URL. The workspace tree and the ``media/preview``
- * endpoint treat such paths as relative to the workspace dir, but the
- * ``download`` endpoint only strips a leading slash. Mirroring that
- * normalization here makes chat file cards open exactly like the workspace
- * viewer, which always passes a relative path such as ``report.pdf``.
+ * Only strips a leading ``/workspace/`` prefix — never a host path that merely
+ * contains a ``workspace`` directory segment.
  */
 export function toWorkspaceRel(rawPath: string): string {
   let p = rawPath.trim();
   if (!p) return "";
   if (p.startsWith("file://")) p = p.slice("file://".length);
-  const marker = "/workspace/";
-  const idx = p.lastIndexOf(marker);
-  if (idx >= 0) {
-    p = p.slice(idx + marker.length);
-  } else if (p === "/workspace") {
-    p = "";
-  } else if (p.startsWith("/workspace")) {
-    p = p.slice("/workspace".length);
-  }
-  return p.replace(/^\/+/, "");
+  p = p.replace(/\\/g, "/");
+  return stripVirtualWorkspaceRoot(p).replace(/^\/+/, "");
 }
 
 /** Read agent id embedded in ``…/agents/{id}/…`` workspace paths. */
@@ -234,22 +217,7 @@ export function workspaceDownloadUrl(
 }
 
 /** True when *path* looks like a host filesystem absolute (or ``file://``). */
-export function isHostAbsoluteMediaPath(path: string): boolean {
-  const raw = path.trim().replace(/\\/g, "/");
-  if (raw.toLowerCase().startsWith("file://")) return true;
-  if (/^[A-Za-z]:[\\/]/.test(raw) || raw.startsWith("\\\\")) return true;
-  if (!raw.startsWith("/")) return false;
-  // Legacy dashboard workspace keys — not host roots.
-  if (
-    raw.startsWith("/outbound/") ||
-    raw.startsWith("/inbound/") ||
-    raw === "/outbound" ||
-    raw === "/inbound"
-  ) {
-    return false;
-  }
-  return true;
-}
+export const isHostAbsoluteMediaPath = isHostAbsolutePath;
 
 /**
  * Dashboard access URL for an attachment: images/videos use media preview;

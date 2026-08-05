@@ -53,6 +53,20 @@ def workspace_api_path(raw: str) -> str:
     return text.lstrip("/")
 
 
+def reanchor_entry_path(entry_path: str, *, parent: str) -> str:
+    """Anchor a single-level listing entry under *parent* (the requested dir).
+
+    A directory listing only carries entry names, so the dashboard must get
+    ``{requested}/{name}`` back — otherwise a backend that presents longer
+    paths yields keys the workspace API cannot resolve on the next request.
+    """
+    name = entry_path.strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    base = parent.strip().replace("\\", "/").rstrip("/")
+    if base in ("", "."):
+        return name
+    return f"{base}/{name}" if name else base
+
+
 def file_info_to_dict(info: Any) -> dict[str, Any]:
     """Coerce a ``FileInfo`` TypedDict into a JSON-friendly dict."""
     if isinstance(info, dict):
