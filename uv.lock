@@ -1247,10 +1247,11 @@ wheels = [
 
 [[package]]
 name = "harness-gateway"
-version = "0.8.7"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
+    { name = "cryptography" },
     { name = "dingtalk-stream" },
     { name = "discord-py" },
     { name = "httpx" },
@@ -1264,9 +1265,9 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/dd/3995e00dc6dc8315f6f5e73256840c54b4e6bb3d43cf07dd0d5849c1d1c2/harness_gateway-0.8.7.tar.gz", hash = "sha256:1582ecacfba2a7f8c8974fc350e5b91c081826706846a637a14b0901e426567d", size = 461644, upload-time = "2026-07-23T08:01:00.695Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/44/a018c5e6aab7a66c132e1a8017f8e170392ffa76de50c1c0eaa87151d7c0/harness_gateway-0.9.1.tar.gz", hash = "sha256:0dc055307b69f1408c6fe15b9a68a8794b5a596e64b71a5cd07400e0fd2a1d28", size = 493449, upload-time = "2026-08-05T11:11:00.777Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/08/de6ebe9ad396d10eab60cc89d11423127704c94a62e4e104b65deebdd754/harness_gateway-0.8.7-py3-none-any.whl", hash = "sha256:dd18a4384e400956246d74812e7089c55acad34c471f873671cbe1588497c228", size = 125603, upload-time = "2026-07-23T08:00:58.785Z" },
+    { url = "https://files.pythonhosted.org/packages/12/d7/479bc4b891619b1c05584035d84fa5db381ad8863dc2f690792b013967ad/harness_gateway-0.9.1-py3-none-any.whl", hash = "sha256:3af6adbcddc3e279670420ff27af80a08214b3447b11bbb73e934abdfc7792ff", size = 136924, upload-time = "2026-08-05T11:10:57.857Z" },
 ]
 
 [[package]]
@@ -2256,7 +2257,7 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "harness-browser", specifier = ">=0.7.4" },
-    { name = "harness-gateway", specifier = ">=0.8.7" },
+    { name = "harness-gateway", specifier = ">=0.9.1" },
     { name = "harness-memory", specifier = ">=0.9.5" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "josepy", specifier = ">=2.2.0" },
