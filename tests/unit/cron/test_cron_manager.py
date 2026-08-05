@@ -81,6 +81,7 @@ def _make_manager(services, *, gateway: MagicMock | None = None) -> CronManager:
     fake_scheduler = MagicMock()
     fake_scheduler.running = False
     fake_scheduler.get_job = MagicMock(return_value=None)
+    fake_scheduler.get_jobs = MagicMock(return_value=[])
     mgr._scheduler = fake_scheduler
     return mgr
 
@@ -148,6 +149,47 @@ async def test_boot_skips_disabled_jobs(tmp_path: Path) -> None:
     await mgr.boot()
 
     mgr._scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reload_from_db_clears_user_jobs_then_reschedules(tmp_path: Path) -> None:
+    """reload_from_db removes stale user jobs and schedules current DB rows."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+
+    stale = MagicMock()
+    stale.id = "stale-cron"
+    system = MagicMock()
+    system.id = "octop_tls_auto_renew"
+    mgr._system_job_ids.add(system.id)
+    mgr._scheduler.get_jobs = MagicMock(return_value=[stale, system])
+
+    keep_id = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=keep_id,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:60",
+        prompt="keep me",
+        session_key=_cron_session_key(aid, keep_id),
+    )
+    disabled_id = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=disabled_id,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:60",
+        prompt="skip me",
+        session_key=_cron_session_key(aid, disabled_id),
+    )
+    services.repos.cron_repo.update(disabled_id, enabled=False)
+
+    await mgr.reload_from_db()
+
+    mgr._scheduler.remove_job.assert_called_once_with("stale-cron")
+    assert mgr._scheduler.add_job.call_count == 1
+    assert mgr._scheduler.add_job.call_args.kwargs["id"] == keep_id
 
 
 @pytest.mark.asyncio

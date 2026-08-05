@@ -11,12 +11,13 @@ from octop.api.routers import backup as backup_router
 
 
 @pytest.mark.asyncio
-async def test_restore_backup_file_rehydrates_providers_and_channels(
+async def test_restore_backup_file_rehydrates_providers_channels_and_cron(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After restore, sync providers/agents and reload IM channels without process restart."""
+    """After restore, sync providers/agents, channels, and cron without process restart."""
     on_provider_changed = AsyncMock()
     reload_channels = AsyncMock()
+    reload_cron = AsyncMock()
     restored: dict[str, Any] = {
         "schema_version": 1,
         "octop_version": "0.0.0",
@@ -42,6 +43,7 @@ async def test_restore_backup_file_rehydrates_providers_and_channels(
     server.app_runtime = MagicMock()
     server.app_runtime.agent_registry.on_provider_changed = on_provider_changed
     server.app_runtime.gateway.reload_channels_from_db = reload_channels
+    server.app_runtime.cron_manager.reload_from_db = reload_cron
 
     result = await backup_router.restore_backup_file(
         filename="octop-backup.tar.gz",
@@ -52,6 +54,7 @@ async def test_restore_backup_file_rehydrates_providers_and_channels(
 
     on_provider_changed.assert_awaited_once_with()
     reload_channels.assert_awaited_once_with()
+    reload_cron.assert_awaited_once_with()
     assert result["ok"] is True
     assert result["name"] == "octop-backup.tar.gz"
     assert result["agents"] == 1
@@ -95,17 +98,20 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
 
 
 @pytest.mark.asyncio
-async def test_rehydrate_reloads_channels_even_if_provider_rehydrate_fails() -> None:
-    """Channel reload must still run when agent rehydrate raises."""
+async def test_rehydrate_reloads_channels_and_cron_even_if_provider_rehydrate_fails() -> None:
+    """Channel and cron reload must still run when agent rehydrate raises."""
     on_provider_changed = AsyncMock(side_effect=RuntimeError("provider boom"))
     reload_channels = AsyncMock()
+    reload_cron = AsyncMock()
 
     server = MagicMock()
     server.app_runtime = MagicMock()
     server.app_runtime.agent_registry.on_provider_changed = on_provider_changed
     server.app_runtime.gateway.reload_channels_from_db = reload_channels
+    server.app_runtime.cron_manager.reload_from_db = reload_cron
 
     await backup_router._rehydrate_runtime_after_restore(server)
 
     on_provider_changed.assert_awaited_once_with()
     reload_channels.assert_awaited_once_with()
+    reload_cron.assert_awaited_once_with()

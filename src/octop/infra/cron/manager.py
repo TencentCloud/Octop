@@ -60,6 +60,8 @@ class CronManager:
         self._timezone = timezone
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone=timezone)
         self._lock = asyncio.Lock()
+        # Process-level jobs (e.g. TLS auto-renew) that must survive reload_from_db.
+        self._system_job_ids: set[str] = set()
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point cron persistence at a rebound control-plane pool."""
@@ -71,6 +73,24 @@ class CronManager:
         for row in rows:
             self._schedule(row)
         logger.info("CronManager booted; scheduled %d jobs", len(rows))
+
+    async def reload_from_db(self) -> None:
+        """Drop user cron schedules and re-register enabled jobs from the DB.
+
+        Used after backup/migration restore so APScheduler matches the replaced
+        ``cron_jobs`` table without a process restart. System jobs registered via
+        :meth:`schedule_system_job` are left in place.
+        """
+        async with self._lock:
+            for job in list(self._scheduler.get_jobs()):
+                job_id = getattr(job, "id", None)
+                if job_id is None or job_id in self._system_job_ids:
+                    continue
+                self._scheduler.remove_job(job_id)
+            rows = self._repos.cron_repo.list_all(include_disabled=False)
+            for row in rows:
+                self._schedule(row)
+            logger.info("CronManager reloaded from DB; scheduled %d jobs", len(rows))
 
     async def shutdown(self) -> None:
         if self._scheduler.running:
@@ -246,6 +266,7 @@ class CronManager:
     def schedule_system_job(self, job_id: str, *, trigger: str, func: Any) -> None:
         """Register a process-level job that is not stored in the cron DB."""
         built = build_trigger(trigger)
+        self._system_job_ids.add(job_id)
         self._scheduler.add_job(
             func,
             trigger=built,

@@ -34,7 +34,7 @@ def _agent_rows(server: Any) -> list[Any]:
 
 
 async def _rehydrate_runtime_after_restore(server: Any) -> None:
-    """Sync restored providers/agents and IM channels (no process restart)."""
+    """Sync restored providers/agents, IM channels, and cron (no process restart)."""
     runtime = getattr(server, "app_runtime", None)
     if runtime is None:
         return
@@ -50,6 +50,12 @@ async def _rehydrate_runtime_after_restore(server: Any) -> None:
             await gateway.reload_channels_from_db()
         except Exception:
             logger.exception("post-restore channel rehydrate failed")
+    cron_manager = getattr(runtime, "cron_manager", None)
+    if cron_manager is not None:
+        try:
+            await cron_manager.reload_from_db()
+        except Exception:
+            logger.exception("post-restore cron rehydrate failed")
 
 
 @router.get("/backup/list", summary="List stored backup archives")
@@ -111,8 +117,9 @@ async def restore_backup_file(
 ) -> dict[str, Any]:
     """Restore database and workspaces from a file in ``backups_dir``.
 
-    After the archive is applied, providers/agents and IM channels are reloaded
-    in-process so experts and messaging can run without a full service restart.
+    After the archive is applied, providers/agents, IM channels, and cron jobs
+    are reloaded in-process so experts, messaging, and schedules can run without
+    a full service restart.
     Restored ``config.json`` / ``env`` still require a process restart to take effect.
     """
     assert server.services is not None
