@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
   STREAM_STALE_WITHOUT_SOCKET_MS,
-  historySuggestsActiveTurn,
   shouldBlockHistoryRefresh,
   shouldEmitStreamResumeNotice,
   shouldForceSealStream,
@@ -90,68 +89,25 @@ describe("shouldResumeStreamAfterClose", () => {
   });
 });
 
-describe("historySuggestsActiveTurn", () => {
-  it("flags trailing user message (reply may still be in flight)", () => {
-    expect(historySuggestsActiveTurn([{ role: "user", status: "done" }])).toBe(
-      true,
-    );
-  });
-
-  it("flags streaming assistant bubbles", () => {
-    expect(
-      historySuggestsActiveTurn([
-        { role: "user", status: "done" },
-        { role: "assistant", status: "streaming" },
-      ]),
-    ).toBe(true);
-  });
-
-  it("skips finished assistant turns", () => {
-    expect(
-      historySuggestsActiveTurn([
-        { role: "user", status: "done" },
-        { role: "assistant", status: "done" },
-      ]),
-    ).toBe(false);
-  });
-
-  it("skips empty history", () => {
-    expect(historySuggestsActiveTurn([])).toBe(false);
-  });
-});
-
 describe("shouldProbeActiveTurn", () => {
   it("probes while already streaming", () => {
+    expect(shouldProbeActiveTurn({ isStreaming: true })).toBe(true);
+  });
+
+  it("probes when the server reports the turn is still running", () => {
     expect(
-      shouldProbeActiveTurn({ isStreaming: true, justHydrated: false }),
+      shouldProbeActiveTurn({ isStreaming: false, turnActive: true }),
     ).toBe(true);
   });
 
-  it("probes hydrate only when history suggests mid-turn", () => {
+  it("skips when the server reports no running turn", () => {
     expect(
-      shouldProbeActiveTurn({
-        isStreaming: false,
-        justHydrated: true,
-        historySuggestsActive: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldProbeActiveTurn({
-        isStreaming: false,
-        justHydrated: true,
-        historySuggestsActive: false,
-      }),
+      shouldProbeActiveTurn({ isStreaming: false, turnActive: false }),
     ).toBe(false);
   });
 
-  it("skips idle hydrated sessions", () => {
-    expect(
-      shouldProbeActiveTurn({
-        isStreaming: false,
-        justHydrated: false,
-        historySuggestsActive: true,
-      }),
-    ).toBe(false);
+  it("skips idle sessions with no server answer", () => {
+    expect(shouldProbeActiveTurn({ isStreaming: false })).toBe(false);
   });
 });
 

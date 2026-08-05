@@ -106,3 +106,57 @@ def probe_host_root_dir(path: str) -> dict[str, Any]:
             probe_file.unlink(missing_ok=True)
 
     return {"ok": True, "path": str(root)}
+
+
+def _validate_dir_basename(name: str) -> str:
+    """Reject empty names, path segments, and traversal tokens."""
+    cleaned = name.strip()
+    if not cleaned or cleaned in {".", ".."}:
+        raise ValueError("invalid name")
+    if "/" in cleaned or "\\" in cleaned or "\0" in cleaned:
+        raise ValueError("invalid name")
+    if cleaned != Path(cleaned).name:
+        raise ValueError("invalid name")
+    return cleaned
+
+
+def _unique_child_name(parent: Path, base_name: str) -> str:
+    candidate = base_name
+    index = 2
+    while (parent / candidate).exists():
+        candidate = f"{base_name} ({index})"
+        index += 1
+    return candidate
+
+
+def mkdir_host_subdir(parent: str, *, base_name: str = "New Folder") -> dict[str, Any]:
+    """Create a child directory under *parent* with an unused name from *base_name*."""
+    root = assert_safe_host_path(parent)
+    if not root.is_dir():
+        raise ValueError(f"not a directory: {parent}")
+    name = _unique_child_name(root, _validate_dir_basename(base_name))
+    target = root / name
+    # Re-check after composing path (deny creating into denied prefixes).
+    assert_safe_host_path(str(target))
+    try:
+        target.mkdir(exist_ok=False)
+    except OSError as exc:
+        raise ValueError(f"mkdir failed: {exc}") from exc
+    return {"path": str(target.resolve()), "name": name}
+
+
+def rename_host_dir(path: str, new_name: str) -> dict[str, Any]:
+    """Rename a host directory in place (basename only)."""
+    source = assert_safe_host_path(path)
+    if not source.is_dir():
+        raise ValueError(f"not a directory: {path}")
+    name = _validate_dir_basename(new_name)
+    target = source.parent / name
+    assert_safe_host_path(str(target))
+    if target.exists():
+        raise ValueError("already exists")
+    try:
+        source.rename(target)
+    except OSError as exc:
+        raise ValueError(f"rename failed: {exc}") from exc
+    return {"path": str(target.resolve()), "name": name}

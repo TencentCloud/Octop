@@ -166,6 +166,7 @@ install_packages() {
             adwaita-icon-theme hicolor-icon-theme librsvg2-common \
             fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
             fonts-wqy-zenhei locales xclip xsel autocutsel xdg-utils libglib2.0-bin wget curl \
+            bubblewrap \
             || fail "apt install failed"
         # Adwaita ships SVG icons; without the gdk-pixbuf SVG loader they render as tiny stubs.
         if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
@@ -187,7 +188,7 @@ install_packages() {
             xfce4-panel xfce4-terminal xfce4-settings xfdesktop thunar mousepad \
             adwaita-icon-theme hicolor-icon-theme librsvg2 \
             fcitx fcitx-pinyin fcitx-gtk3 \
-            google-noto-cjk-fonts ImageMagick xclip xsel xdg-utils \
+            google-noto-cjk-fonts ImageMagick xclip xsel xdg-utils bubblewrap \
             || fail "yum/dnf install failed"
         $pkg install -y chromium firefox 2>/dev/null || true
     else

@@ -73,6 +73,50 @@ export async function probeRootDir(path: string): Promise<RootDirProbeResult> {
   });
 }
 
+export type EnsureBwrapStatus = "ready" | "installed" | "skipped" | "degraded";
+
+export interface EnsureBwrapResult {
+  status: EnsureBwrapStatus;
+  reason?: string;
+  detail?: string;
+}
+
+export async function ensureBubblewrap(): Promise<EnsureBwrapResult> {
+  return request<EnsureBwrapResult>("/filesystem/ensure-bwrap", {
+    method: "POST",
+  });
+}
+
+/** After a successful root_dir probe: ensure bwrap without blocking save. */
+export async function ensureBubblewrapAfterProbe(): Promise<EnsureBwrapResult> {
+  try {
+    return await ensureBubblewrap();
+  } catch {
+    return {
+      status: "degraded",
+      reason: "install_failed",
+      detail: "",
+    };
+  }
+}
+
+export function ensureBwrapToastKind(
+  status: EnsureBwrapStatus,
+): "none" | "success" | "warning" {
+  if (status === "ready") return "none";
+  if (status === "installed") return "success";
+  return "warning";
+}
+
+export function ensureBwrapMessage(
+  result: EnsureBwrapResult,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  return t(`experts.ensureBwrap.${result.status}`, {
+    detail: result.detail ?? "",
+  });
+}
+
 export function rootDirProbeMessage(
   result: RootDirProbeResult,
   t: (key: string, opts?: Record<string, unknown>) => string,

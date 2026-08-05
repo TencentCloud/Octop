@@ -55,12 +55,12 @@ describe("toMediaPreviewSource", () => {
     ).toBe("generated/slide.png");
   });
 
-  it("collapses agent-home and outbound shapes to workspace-relative keys", () => {
+  it("keeps agent-home host abs as file:// for chat/tools (virtual failback)", () => {
     expect(
       toMediaPreviewSource("/Users/me/.octop/agents/ED7N8B/octop-logo.png", {
         agentId: "ED7N8B",
       }),
-    ).toBe("octop-logo.png");
+    ).toBe("file:///Users/me/.octop/agents/ED7N8B/octop-logo.png");
     expect(
       toMediaPreviewSource("file:///tmp/x/outbound/chart.png", {
         agentId: "main",
@@ -74,13 +74,13 @@ describe("toMediaPreviewSource", () => {
     );
   });
 
-  it("feeds agentMediaPreviewUrl a relative source for agent-home pngs", () => {
+  it("feeds agentMediaPreviewUrl file:// for agent-home pngs from chat", () => {
     const url = agentMediaPreviewUrl(
       "ED7N8B",
       "/Users/me/.octop/agents/ED7N8B/octop-logo.png",
       "image/png",
     );
-    expect(url).toContain("source=octop-logo.png");
-    expect(url).not.toContain("file%3A");
+    expect(url).toContain("source=file");
+    expect(url).toContain("octop-logo.png");
   });
 });
