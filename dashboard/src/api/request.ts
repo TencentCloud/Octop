@@ -1,7 +1,15 @@
 import { getApiUrl } from "./config";
 import i18n from "../i18n";
+import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
 const AUTH_TOKEN_KEY = "auth_token";
+
+/**
+ * Fired when the session is no longer valid. Cancelable: a listener inside the
+ * React tree calls ``preventDefault()`` to route to /login itself, which keeps
+ * the SPA alive instead of tearing the document down mid-render.
+ */
+export const UNAUTHORIZED_EVENT = "octop:unauthorized";
 
 /** Response header used by the server for JWT sliding renewal. */
 export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
@@ -180,6 +188,27 @@ function buildAuthHeaders(path: string): Record<string, string> {
   return headers;
 }
 
+let _redirectingToLogin = false;
+
+/**
+ * Send the user to the login screen exactly once, no matter how many parallel
+ * requests report an expired session.
+ */
+function handleUnauthorized(): void {
+  if (_redirectingToLogin) return;
+  const path = window.location.pathname;
+  if (path.startsWith("/setup") || path.startsWith("/login")) return;
+  _redirectingToLogin = true;
+
+  const takenOver = !window.dispatchEvent(
+    new CustomEvent(UNAUTHORIZED_EVENT, { cancelable: true }),
+  );
+  if (takenOver) return;
+
+  markNavigatingAway();
+  window.location.replace("/login");
+}
+
 /**
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().
@@ -192,12 +221,7 @@ async function throwIfUnauthorized(
     return;
   }
   clearAuthToken();
-  if (
-    !window.location.pathname.startsWith("/setup") &&
-    !window.location.pathname.startsWith("/login")
-  ) {
-    window.location.href = "/login";
-  }
+  handleUnauthorized();
   let message = "Unauthorized";
   if (path.startsWith("/setup/")) {
     try {

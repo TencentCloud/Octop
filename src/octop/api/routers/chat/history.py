@@ -139,7 +139,12 @@ async def get_thread_history(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return recent messages for a thread, including tool calls and thinking blocks."""
+    """Return recent messages for a thread, including tool calls and thinking blocks.
+
+    ``turn_active`` reports whether a turn is still streaming server-side, so a
+    client that reloaded (or navigated away) can re-subscribe over the chat
+    WebSocket instead of inferring liveness from the message list.
+    """
     _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
     page_offset = max(0, offset)
@@ -157,6 +162,7 @@ async def get_thread_history(
         "has_more": has_more,
         "limit": page_limit,
         "offset": page_offset,
+        "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
     }
 
 

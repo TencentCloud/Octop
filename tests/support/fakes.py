@@ -137,54 +137,42 @@ description: General-purpose agent
             content.encode("utf-8"),
         )
 
-    def list_subagent_summaries(self) -> list[dict[str, Any]]:
-        import asyncio
-        import concurrent.futures
+    async def list_subagent_summaries(self) -> list[dict[str, Any]]:
+        from octop.infra.utils.frontmatter import parse_frontmatter
 
-        async def _collect() -> list[dict[str, Any]]:
-            from octop.infra.utils.frontmatter import parse_frontmatter
+        paths: set[str] = set()
+        agents_dir = self._workspace_dir / "agents"
+        if agents_dir.is_dir():
+            for fpath in agents_dir.glob("*.md"):
+                paths.add(f"agents/{fpath.name}")
 
-            paths: set[str] = set()
-            agents_dir = self._workspace_dir / "agents"
-            if agents_dir.is_dir():
-                for fpath in agents_dir.glob("*.md"):
-                    paths.add(f"agents/{fpath.name}")
-
-            glob_result = await self._workspace.aglob("agents/*.md", ".")
-            matches = getattr(glob_result, "matches", None) or []
-            for m in matches:
-                p = str(getattr(m, "path", m.get("path") if isinstance(m, dict) else "") or "")
-                if p:
-                    paths.add(p)
-            out: list[dict[str, Any]] = []
-            for path in sorted(paths):
-                text = await self._workspace.aread_text(path)
-                if not text:
-                    fpath = self._workspace_dir / path
-                    if fpath.is_file():
-                        text = fpath.read_text(encoding="utf-8")
-                if not text:
-                    continue
-                meta, _ = parse_frontmatter(text)
-                slug = Path(path).stem
-                row: dict[str, Any] = {
-                    "slug": slug,
-                    "name": str(meta.get("name") or slug),
-                    "description": str(meta.get("description") or ""),
-                    "path": path if path.startswith("agents/") else f"agents/{Path(path).name}",
-                }
-                if meta.get("emoji"):
-                    row["emoji"] = meta["emoji"]
-                out.append(row)
-            return out
-
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(_collect())
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(lambda: asyncio.run(_collect())).result()
+        glob_result = await self._workspace.aglob("agents/*.md", ".")
+        matches = getattr(glob_result, "matches", None) or []
+        for m in matches:
+            p = str(getattr(m, "path", m.get("path") if isinstance(m, dict) else "") or "")
+            if p:
+                paths.add(p)
+        out: list[dict[str, Any]] = []
+        for path in sorted(paths):
+            text = await self._workspace.aread_text(path)
+            if not text:
+                fpath = self._workspace_dir / path
+                if fpath.is_file():
+                    text = fpath.read_text(encoding="utf-8")
+            if not text:
+                continue
+            meta, _ = parse_frontmatter(text)
+            slug = Path(path).stem
+            row: dict[str, Any] = {
+                "slug": slug,
+                "name": str(meta.get("name") or slug),
+                "description": str(meta.get("description") or ""),
+                "path": path if path.startswith("agents/") else f"agents/{Path(path).name}",
+            }
+            if meta.get("emoji"):
+                row["emoji"] = meta["emoji"]
+            out.append(row)
+        return out
 
     def set_skills_disabled(
         self,

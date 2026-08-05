@@ -35,6 +35,9 @@ import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
   buildBackendSpec,
   DEFAULT_BACKEND,
+  ensureBubblewrapAfterProbe,
+  ensureBwrapMessage,
+  ensureBwrapToastKind,
   parseBackendSpec,
   probeRootDir,
   rootDirProbeMessage,
@@ -262,7 +265,16 @@ function EditAgentDrawerBody({
       }
     }
     setSaving(true);
+    let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
+      if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+        const bwrap = await ensureBubblewrapAfterProbe();
+        const kind = ensureBwrapToastKind(bwrap.status);
+        if (kind !== "none") {
+          bwrapToast = { kind, text: ensureBwrapMessage(bwrap, t) };
+        }
+      }
+
       const backendSpec = buildBackendSpec(
         values.backend_choice,
         values.composite_default ?? DEFAULT_BACKEND,
@@ -301,6 +313,11 @@ function EditAgentDrawerBody({
         }),
       });
       message.success(t("common.save") + " ✓");
+      if (bwrapToast?.kind === "success") {
+        message.success(bwrapToast.text);
+      } else if (bwrapToast?.kind === "warning") {
+        message.warning(bwrapToast.text);
+      }
       const defaultModel = defaultModelFromForm(values.default_model);
       onSaved({
         agent_id: agent.agent_id,
@@ -536,85 +553,88 @@ function EditAgentDrawerBody({
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
-
-              <Collapse
-                ghost
-                items={[
-                  {
-                    key: "advanced",
-                    label: t("experts.advancedOptions"),
-                    children: (
-                      <>
-                        <Form.Item
-                          name="max_iters"
-                          label={t("agentConfig.maxIters")}
-                          tooltip={t("agentConfig.maxItersTooltip")}
-                        >
-                          <InputNumber
-                            min={1}
-                            style={{ width: "100%" }}
-                            placeholder={t("agentConfig.maxItersPlaceholder")}
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name="max_input_length"
-                          label={t("agentConfig.maxInputLength")}
-                          tooltip={t("agentConfig.maxInputLengthTooltip")}
-                        >
-                          <InputNumber
-                            min={1000}
-                            step={1024}
-                            style={{ width: "100%" }}
-                            placeholder={t(
-                              "agentConfig.maxInputLengthPlaceholder",
-                            )}
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name="temperature"
-                          label={t("experts.temperature")}
-                          tooltip={t("experts.temperatureTooltip")}
-                        >
-                          <InputNumber
-                            min={0}
-                            max={2}
-                            step={0.1}
-                            style={{ width: "100%" }}
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name="top_p"
-                          label={t("experts.topP")}
-                          tooltip={t("experts.topPTooltip")}
-                        >
-                          <InputNumber
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            style={{ width: "100%" }}
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name="max_tokens"
-                          label={t("experts.maxTokens")}
-                          tooltip={t("experts.maxTokensTooltip")}
-                        >
-                          <InputNumber min={1} style={{ width: "100%" }} />
-                        </Form.Item>
-                      </>
-                    ),
-                  },
-                ]}
-              />
             </Form>
+
+            <Collapse
+              ghost
+              className={styles.drawerCollapse}
+              style={{ margin: "8px 0 0", width: "100%" }}
+              items={[
+                {
+                  key: "advanced",
+                  label: t("experts.advancedOptions"),
+                  children: (
+                    <Form form={form} layout="vertical" size="middle">
+                      <Form.Item
+                        name="max_iters"
+                        label={t("agentConfig.maxIters")}
+                        tooltip={t("agentConfig.maxItersTooltip")}
+                      >
+                        <InputNumber
+                          min={1}
+                          style={{ width: "100%" }}
+                          placeholder={t("agentConfig.maxItersPlaceholder")}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="max_input_length"
+                        label={t("agentConfig.maxInputLength")}
+                        tooltip={t("agentConfig.maxInputLengthTooltip")}
+                      >
+                        <InputNumber
+                          min={1000}
+                          step={1024}
+                          style={{ width: "100%" }}
+                          placeholder={t(
+                            "agentConfig.maxInputLengthPlaceholder",
+                          )}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="temperature"
+                        label={t("experts.temperature")}
+                        tooltip={t("experts.temperatureTooltip")}
+                      >
+                        <InputNumber
+                          min={0}
+                          max={2}
+                          step={0.1}
+                          style={{ width: "100%" }}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="top_p"
+                        label={t("experts.topP")}
+                        tooltip={t("experts.topPTooltip")}
+                      >
+                        <InputNumber
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          style={{ width: "100%" }}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="max_tokens"
+                        label={t("experts.maxTokens")}
+                        tooltip={t("experts.maxTokensTooltip")}
+                      >
+                        <InputNumber min={1} style={{ width: "100%" }} />
+                      </Form.Item>
+                    </Form>
+                  ),
+                },
+              ]}
+            />
           </div>
 
           {isAgentChatReady(agent.state) && (
             <div className={styles.drawerSection}>
               <Collapse
                 ghost
+                className={styles.drawerCollapse}
                 defaultActiveKey={["configFiles"]}
-                style={{ margin: "-4px 0 0" }}
+                style={{ margin: "-4px 0 0", width: "100%" }}
                 items={[
                   {
                     key: "configFiles",
@@ -624,6 +644,7 @@ function EditAgentDrawerBody({
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
+                          width: "100%",
                         }}
                       >
                         <span>

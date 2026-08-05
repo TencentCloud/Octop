@@ -229,3 +229,15 @@ create(agent)
 - Harness 挂载：`harness_agent.backends.resolve_backend(spec, workspace_dir=...)`
 - 已合规示例：`api/routers/workspace.py`、`api/routers/skills.py`
 - 路径布局：`infra/utils/paths.py` → `agent_workspace` / `ensure_agent_workspace`
+
+---
+
+## 12. 局部 root_dir 与 execute jail（补充）
+
+当 agent backend 为本地 `local_shell` / `filesystem`，且同时满足 **Linux + `virtual_mode=True` + `root_dir` 非主机 `/` + 宿主机有 `bwrap`** 时，harness 的 `BubbledLocalShellBackend` 会将 `execute`（含 Skill 脚本）包进 bubblewrap：工作根绑到 `/`，与文件工具虚拟路径对齐。
+
+`scripts/install.sh`（及 desktop Linux 安装脚本）会在 **Linux** 上尽力安装 `bubblewrap`；保存局部 `root_dir` 时仪表盘也会调用 `POST /api/filesystem/ensure-bwrap` 做同样的尽力安装。macOS 无可用 bwrap，走降级路径。
+
+若无法 jail（非 Linux / 无 bwrap），但 `virtual_mode` + 局部 `root_dir` 仍成立，则对 `execute` 命令中的虚拟绝对路径做映射（`/a` → `{root_dir}/a`），系统路径前缀不改写。`BackendWorkspace` 读/物化路径 failback：绝对路径先 virtual 映到 `root_dir` 再原始宿主机路径；相对路径先 `{root_dir}/{rel}` 再 `{workspace_dir}/{rel}`。Dashboard path I/O: use ``dashboard/src/utils/workspaceIoPath.ts`` for download/file API paths
+(host absolute stays ``file://…``). Dock tab identity may still ``canonicalizeDockFilePath``;
+do not collapse host abs before calling BackendWorkspace.

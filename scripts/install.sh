@@ -692,6 +692,41 @@ if [ "$_CONSOLE_AVAILABLE" = 0 ]; then
     [ "$CONSOLE_CHECK" = "yes" ] && _CONSOLE_AVAILABLE=1
 fi
 
+# ── 步骤 3.4: Linux 安装 bubblewrap（局部 root_dir 下 execute jail）──────────
+_ensure_bubblewrap() {
+    # macOS 无可用 bwrap；仅 Linux 安装。缺失时 execute 仍可路径改写降级。
+    if [ "$(uname -s 2>/dev/null || echo unknown)" != "Linux" ]; then
+        return 0
+    fi
+    if command -v bwrap &>/dev/null; then
+        info "bubblewrap 已就绪: $(command -v bwrap)"
+        return 0
+    fi
+    info "正在安装 bubblewrap（局部目录 execute jail 需要）..."
+    if command -v apt-get &>/dev/null || command -v apt &>/dev/null; then
+        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>/dev/null || true
+        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bubblewrap 2>/dev/null || true
+    elif command -v dnf &>/dev/null; then
+        _run_as_root dnf install -y bubblewrap 2>/dev/null || true
+    elif command -v yum &>/dev/null; then
+        _run_as_root yum install -y bubblewrap 2>/dev/null || true
+    elif command -v pacman &>/dev/null; then
+        _run_as_root pacman -Sy --noconfirm bubblewrap 2>/dev/null || true
+    elif command -v zypper &>/dev/null; then
+        _run_as_root zypper install -y bubblewrap 2>/dev/null || true
+    else
+        warn "未识别的包管理器，请手动安装 bubblewrap（bwrap）"
+        return 0
+    fi
+    if command -v bwrap &>/dev/null; then
+        info "bubblewrap 安装成功: $(command -v bwrap)"
+    else
+        warn "bubblewrap 未安装成功：局部 root_dir 下 execute 将降级为路径改写（无真实 jail）"
+    fi
+}
+
+_ensure_bubblewrap
+
 # ── 步骤 3.5: 安装 Playwright Chromium 及系统依赖 ─────────────────────────────
 _install_playwright_system_deps() {
     # macOS 无需额外系统依赖

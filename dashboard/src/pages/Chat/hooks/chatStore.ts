@@ -366,8 +366,16 @@ type LiveSocket = {
   ws: WebSocket;
   agentId: string;
   threadId: string;
-  /** User stop / replace — do not auto-reconnect. */
+  /**
+   * Socket was closed on purpose (replace / done / user stop). Unexpected drop
+   * is false so auto-resume can re-subscribe.
+   */
   intentionalClose: boolean;
+  /**
+   * User hit stop (or cancelStream). Distinct from intentional socket *replace*
+   * while the server turn should keep running.
+   */
+  userCancelled: boolean;
 };
 
 const liveSockets = new Map<string, LiveSocket>();
@@ -576,9 +584,12 @@ export function appendPushMessage(text: string) {
   }
 }
 
-/** Clear all messages for a session. */
+/** Clear all messages for a session, unless a turn is still in flight. */
 export function clearMessages(sessionId: string) {
   const state = getOrCreate(sessionId);
+  // Leaving a thread (agent switch, page change) must not seal a live turn:
+  // the socket keeps streaming into this state and the UI needs it on return.
+  if (state.isStreaming || isLiveSocketOpen(sessionId)) return;
   const alreadyEmpty =
     state.messages.length === 0 &&
     !state.isStreaming &&
@@ -618,11 +629,14 @@ function sendCancelFrame(ws: WebSocket, threadId: string): void {
 
 function closeLiveSocket(
   sessionId: string,
-  opts: { intentional: boolean },
+  opts: { intentional: boolean; userCancelled?: boolean },
 ): void {
   const live = liveSockets.get(sessionId);
   if (!live) return;
   live.intentionalClose = opts.intentional;
+  if (opts.userCancelled) {
+    live.userCancelled = true;
+  }
   try {
     live.ws.close();
   } catch {
@@ -631,13 +645,14 @@ function closeLiveSocket(
   clearLiveSocket(sessionId);
 }
 
-/** Cancel any in-flight stream for a session. */
+/** Cancel any in-flight stream for a session (user stop). */
 export function cancelStream(sessionId: string) {
   const state = sessionStates.get(sessionId);
   if (!state) return;
   const live = liveSockets.get(sessionId);
   if (live) {
     live.intentionalClose = true;
+    live.userCancelled = true;
     sendCancelFrame(live.ws, live.threadId || sessionId);
   }
   const hadAbort = Boolean(state.abortController);
@@ -669,7 +684,7 @@ export function removeSession(sessionId: string) {
   pendingResumeBySession.delete(sessionId);
   clearStreamActivity(sessionId);
   clearStreamWatchdog(sessionId);
-  closeLiveSocket(sessionId, { intentional: true });
+  closeLiveSocket(sessionId, { intentional: true, userCancelled: true });
 }
 
 /** Rename a cached session's key (e.g. temp id → real UUID).
@@ -681,6 +696,31 @@ export function renameSessionKey(oldId: string, newId: string) {
     // Both keys point to the same state object, so subscribers on
     // either key see the same messages / streaming status.
     sessionStates.set(newId, state);
+    // Move live socket + resume bookkeeping to the canonical thread id so
+    // loadHistory / attachThread for *newId* still see the open stream.
+    const live = liveSockets.get(oldId);
+    if (live) {
+      liveSockets.delete(oldId);
+      liveSockets.set(newId, live);
+    }
+    const pending = pendingResumeBySession.get(oldId);
+    if (pending) {
+      pendingResumeBySession.delete(oldId);
+      pendingResumeBySession.set(newId, pending);
+    }
+    const activity = streamActivityAt.get(oldId);
+    if (activity != null) {
+      streamActivityAt.delete(oldId);
+      streamActivityAt.set(newId, activity);
+    }
+    const wd = streamWatchdogs.get(oldId);
+    if (wd != null) {
+      streamWatchdogs.delete(oldId);
+      streamWatchdogs.set(newId, wd);
+    }
+    if (focusedChatSessionId === oldId) {
+      focusedChatSessionId = newId;
+    }
     // Notify listeners so that components subscribed under the new key
     // (after a navigate) immediately see the existing messages.
     notify(state);
@@ -1361,6 +1401,7 @@ export async function attachThread(
   }
 
   if (existing) {
+    // Rebind only — do not send cancel / do not seal streaming bubbles.
     closeLiveSocket(sessionId, { intentional: true });
   }
 
@@ -1380,6 +1421,7 @@ export async function attachThread(
     agentId,
     threadId,
     intentionalClose: false,
+    userCancelled: false,
   };
   liveSockets.set(sessionId, live);
 
@@ -1418,6 +1460,7 @@ export async function attachThread(
 
     const onAbort = () => {
       live.intentionalClose = true;
+      live.userCancelled = true;
       sendCancelFrame(ws, threadId);
       try {
         ws.close();
@@ -1513,9 +1556,31 @@ export async function attachThread(
     ws.onclose = () => {
       controller.signal.removeEventListener("abort", onAbort);
       const wasIntentional = live.intentionalClose;
+      const userCancelled = live.userCancelled;
       const stillStreaming = state.isStreaming;
       clearLiveSocket(sessionId, ws);
       settleOpen();
+      // Socket replaced by a newer live for this session without user cancel —
+      // keep sticky isStreaming so thread switch / rebind does not seal bubbles.
+      if (wasIntentional && !userCancelled && stillStreaming) {
+        if (state.abortController === controller) {
+          state.abortController = previousController;
+        }
+        if (isLiveSocketOpen(sessionId)) {
+          return;
+        }
+        // No replacement yet (edge race) — leave streaming, allow focus rebind.
+        if (!pendingResumeBySession.has(sessionId)) {
+          pendingResumeBySession.set(sessionId, {
+            agentId,
+            threadId,
+            onStreamEnd,
+            resumeAttempt: resumeAttempt + 1,
+            opts: opts ?? { afterUnexpectedDrop: true },
+          });
+        }
+        return;
+      }
       if (stillStreaming && !wasIntentional) {
         // Keep grace window for sticky-seal watchdog while re-attaching.
         touchStreamActivity(sessionId);
@@ -1586,6 +1651,7 @@ async function sendTurnWebSocket(
   const resolvedThreadId = (threadId || sessionId).trim();
 
   if (liveSockets.has(sessionId)) {
+    // Replace prior socket for this session without cancelling the server turn.
     closeLiveSocket(sessionId, { intentional: true });
   }
 
@@ -1601,6 +1667,7 @@ async function sendTurnWebSocket(
       agentId,
       threadId: resolvedThreadId,
       intentionalClose: false,
+      userCancelled: false,
     };
     liveSockets.set(sessionId, live);
 
@@ -1611,8 +1678,10 @@ async function sendTurnWebSocket(
       resolve(ok);
     };
 
+    let openedForTurn = false;
     const onAbort = () => {
       live.intentionalClose = true;
+      live.userCancelled = true;
       sendCancelFrame(ws, resolvedThreadId);
       try {
         ws.close();
@@ -1625,6 +1694,7 @@ async function sendTurnWebSocket(
     controller.signal.addEventListener("abort", onAbort, { once: true });
 
     ws.onopen = () => {
+      openedForTurn = true;
       const payload: Record<string, unknown> = {
         type: "user_turn",
         text: typeof messageContent === "string" ? messageContent : text,
@@ -1679,16 +1749,27 @@ async function sendTurnWebSocket(
 
     ws.onclose = () => {
       const wasIntentional = live.intentionalClose;
+      const userCancelled = live.userCancelled;
       // Capture before any finish() clears streaming flags.
       const focused = isSessionFocused(sessionId);
+      clearLiveSocket(sessionId, ws);
+      controller.signal.removeEventListener("abort", onAbort);
+
+      // Failed to open (unit tests / offline) — seal without resume thrash.
+      if (!openedForTurn && !userCancelled) {
+        if (!settled) {
+          finish();
+          settle(true);
+        }
+        return;
+      }
+
       const shouldResume = shouldResumeStreamAfterClose({
         intentionalClose: wasIntentional,
         isStreaming: state.isStreaming,
         threadId: resolvedThreadId,
         sessionFocused: focused,
       });
-      clearLiveSocket(sessionId, ws);
-      controller.signal.removeEventListener("abort", onAbort);
 
       if (shouldResume) {
         // Keep isStreaming + partial assistant bubble; re-subscribe for later chunks.
@@ -1722,6 +1803,15 @@ async function sendTurnWebSocket(
         clearStreamWatchdog(sessionId);
         if (!settled) settle(true);
         return;
+      }
+
+      // Intentional socket *replace* (new live already bound) without user stop:
+      // keep sticky isStreaming so rebind continues receiving chunks.
+      if (wasIntentional && !userCancelled && state.isStreaming && !settled) {
+        if (isLiveSocketOpen(sessionId)) {
+          settle(true);
+          return;
+        }
       }
 
       if (!settled) {

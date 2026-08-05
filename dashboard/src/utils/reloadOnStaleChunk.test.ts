@@ -65,3 +65,47 @@ describe("tryReloadOnStaleChunk", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 });
+
+describe("navigation-aborted chunk errors", () => {
+  const reload = vi.fn();
+  let mod: typeof import("./reloadOnStaleChunk");
+
+  beforeEach(async () => {
+    vi.resetModules();
+    sessionStorage.clear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { reload },
+    });
+    reload.mockClear();
+    mod = await import("./reloadOnStaleChunk");
+  });
+
+  it("skips the reload once a navigation away has been announced", () => {
+    mod.markNavigatingAway();
+
+    const err = new Error("Failed to fetch dynamically imported module: /a.js");
+    expect(mod.tryReloadOnStaleChunk(err)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("octop:chunk-reload")).toBeNull();
+  });
+
+  it("skips the reload after the browser fires pagehide", () => {
+    mod.installChunkLoadRecovery();
+    window.dispatchEvent(new Event("pagehide"));
+
+    const err = new Error("Failed to fetch dynamically imported module: /a.js");
+    expect(mod.tryReloadOnStaleChunk(err)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("recovers again when the page is restored from bfcache", () => {
+    mod.installChunkLoadRecovery();
+    window.dispatchEvent(new Event("pagehide"));
+    window.dispatchEvent(new Event("pageshow"));
+
+    const err = new Error("Failed to fetch dynamically imported module: /a.js");
+    expect(mod.tryReloadOnStaleChunk(err)).toBe(true);
+    expect(reload).toHaveBeenCalledOnce();
+  });
+});

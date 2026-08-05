@@ -368,6 +368,21 @@ async def test_thread_history_after_stream(env: Any) -> None:
     assert "messages" in hist.json()
 
 
+async def test_thread_history_reports_active_turn(env: Any) -> None:
+    """History must expose whether a turn is still running, so a reloaded
+    dashboard can re-subscribe instead of guessing from the message list."""
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+
+    idle = await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=alice_auth)
+    assert idle.json()["turn_active"] is False
+
+    srv.app_runtime.gateway.ws_hub.mark_turn_active(tid)
+    active = await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=alice_auth)
+    assert active.json()["turn_active"] is True
+
+
 async def test_create_thread(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, aid = env
     r = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
