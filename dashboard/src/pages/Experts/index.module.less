@@ -1129,6 +1129,25 @@
   margin-bottom: 10px;
 }
 
+/* Match collapse header width with sibling sections (config / skills / …). */
+.drawerCollapse {
+  width: 100%;
+
+  :global(.ant-collapse-item) {
+    width: 100%;
+  }
+
+  :global(.ant-collapse-header) {
+    width: 100% !important;
+    align-items: center !important;
+  }
+
+  :global(.ant-collapse-header-text) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
 .drawerCancelBtn {
   padding: 7px 16px;
   font-size: 14px;

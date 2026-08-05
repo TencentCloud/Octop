@@ -469,10 +469,20 @@ class AgentManager:
         return self._repos.agent_repo.get(agent_id)
 
     def workspace_for_agent(self, agent_id: str) -> Any | None:
-        """Resolve :class:`BackendWorkspace` without a running harness agent."""
+        """Return the agent's :class:`BackendWorkspace`.
+
+        Reuses the live harness agent's workspace when the agent is running;
+        only falls back to building a fresh backend from the row's spec when
+        no live handle exists (agent stopped, failed, or harness not booted).
+        """
         row = self.get_row(agent_id)
         if row is None:
             return None
+        if self._harness_manager is not None:
+            try:
+                return self._harness_manager.get_agent(agent_id).agent.workspace
+            except KeyError:
+                pass
         return self._backend_workspace_for_row(row)
 
     def list_agents(self, user_id: int) -> list[AgentRow]:
@@ -1345,10 +1355,10 @@ class AgentManager:
             ),
         )
 
-    def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
+    async def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""
         agent = self.get_agent(agent_id)
-        return agent.list_subagent_summaries()
+        return await agent.list_subagent_summaries()
 
     def sync_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Push ``skills_disabled`` to the running harness agent (hot update)."""
@@ -1803,6 +1813,7 @@ class AgentManager:
             skills_disabled=frozenset(skills_disabled_set(cfg)),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
+            log_dir=str(self.paths.logs_dir),
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )

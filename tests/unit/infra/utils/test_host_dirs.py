@@ -10,8 +10,10 @@ import pytest
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
     list_host_subdirs,
+    mkdir_host_subdir,
     normalize_host_path,
     probe_host_root_dir,
+    rename_host_dir,
 )
 
 # These tests assert POSIX path semantics (/proc, /etc, /root, "/" root, "~" home).
@@ -90,3 +92,46 @@ def test_probe_host_root_dir_rejects_file(tmp_path: Path) -> None:
     result = probe_host_root_dir(str(file_path))
     assert result["ok"] is False
     assert result["code"] == "not_directory"
+
+
+def test_mkdir_host_subdir_creates_unique_default_name(tmp_path: Path) -> None:
+    created = mkdir_host_subdir(str(tmp_path), base_name="New Folder")
+    assert created["name"] == "New Folder"
+    assert (tmp_path / "New Folder").is_dir()
+    assert Path(created["path"]).resolve() == (tmp_path / "New Folder").resolve()
+
+
+def test_mkdir_host_subdir_increments_when_default_exists(tmp_path: Path) -> None:
+    (tmp_path / "New Folder").mkdir()
+    created = mkdir_host_subdir(str(tmp_path), base_name="New Folder")
+    assert created["name"] == "New Folder (2)"
+    assert (tmp_path / "New Folder (2)").is_dir()
+
+
+def test_mkdir_host_subdir_rejects_invalid_base_name(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="invalid name"):
+        mkdir_host_subdir(str(tmp_path), base_name="../escape")
+
+
+def test_rename_host_dir_renames_basename(tmp_path: Path) -> None:
+    target = tmp_path / "New Folder"
+    target.mkdir()
+    renamed = rename_host_dir(str(target), "workspace")
+    assert renamed["name"] == "workspace"
+    assert not target.exists()
+    assert (tmp_path / "workspace").is_dir()
+    assert Path(renamed["path"]).resolve() == (tmp_path / "workspace").resolve()
+
+
+def test_rename_host_dir_rejects_existing_name(tmp_path: Path) -> None:
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+    with pytest.raises(ValueError, match="already exists"):
+        rename_host_dir(str(tmp_path / "alpha"), "beta")
+
+
+def test_rename_host_dir_rejects_path_separators(tmp_path: Path) -> None:
+    target = tmp_path / "alpha"
+    target.mkdir()
+    with pytest.raises(ValueError, match="invalid name"):
+        rename_host_dir(str(target), "nested/child")

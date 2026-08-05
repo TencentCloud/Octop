@@ -68,6 +68,33 @@ async def test_probe_host_dir_requires_auth(
 
 
 @pytest.mark.asyncio
+async def test_ensure_bwrap_requires_auth(
+    env: tuple[httpx.AsyncClient, Any, dict[str, str]],
+) -> None:
+    client, _srv, _auth = env
+    r = await client.post("/api/filesystem/ensure-bwrap")
+    assert r.status_code == 401, r.text
+
+
+@pytest.mark.asyncio
+async def test_ensure_bwrap_returns_status_shape(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, auth = env_admin_client
+    monkeypatch.setattr(
+        "octop.api.routers.filesystem.ensure_bubblewrap",
+        lambda: {"status": "skipped", "reason": "not_linux", "detail": "test"},
+    )
+    r = await client.post("/api/filesystem/ensure-bwrap", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "skipped"
+    assert body["reason"] == "not_linux"
+    assert "detail" in body
+
+
+@pytest.mark.asyncio
 @posix_only
 async def test_probe_host_dir_ok_for_slash(
     env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
@@ -122,3 +149,62 @@ async def test_probe_host_dir_rejects_file(
     body = r.json()
     assert body["ok"] is False
     assert body["code"] == "not_directory"
+
+
+@pytest.mark.asyncio
+async def test_mkdir_host_dir_requires_auth(
+    env: tuple[httpx.AsyncClient, Any, dict[str, str]],
+) -> None:
+    client, _srv, _auth = env
+    r = await client.post("/api/filesystem/mkdir", json={"path": "/"})
+    assert r.status_code == 401, r.text
+
+
+@pytest.mark.asyncio
+async def test_mkdir_host_dir_creates_child(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, auth = env_admin_client
+    monkeypatch.setattr(
+        "octop.infra.utils.host_dirs.normalize_host_path",
+        lambda path: Path(path).resolve(),
+    )
+
+    r = await client.post(
+        "/api/filesystem/mkdir",
+        headers=auth,
+        json={"path": str(tmp_path), "base_name": "New Folder"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["name"] == "New Folder"
+    assert (tmp_path / "New Folder").is_dir()
+    assert Path(body["path"]).resolve() == (tmp_path / "New Folder").resolve()
+
+
+@pytest.mark.asyncio
+async def test_rename_host_dir_renames_child(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, auth = env_admin_client
+    target = tmp_path / "New Folder"
+    target.mkdir()
+    monkeypatch.setattr(
+        "octop.infra.utils.host_dirs.normalize_host_path",
+        lambda path: Path(path).resolve(),
+    )
+
+    r = await client.post(
+        "/api/filesystem/rename",
+        headers=auth,
+        json={"path": str(target), "new_name": "workspace"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["name"] == "workspace"
+    assert (tmp_path / "workspace").is_dir()
+    assert not target.exists()

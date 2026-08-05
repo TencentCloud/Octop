@@ -162,7 +162,7 @@ async def list_subagents(
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
-    return cast(list[dict[str, Any]], registry.list_subagent_summaries(agent_id))
+    return cast(list[dict[str, Any]], await registry.list_subagent_summaries(agent_id))
 
 
 @router.post(

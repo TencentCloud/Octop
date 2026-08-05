@@ -9,9 +9,13 @@
 ### 新增
 - 高级设置「更新」页提供按安装方式升级说明与一键检查升级双栏布局
 - 高级设置 HTTPS 页优化签发状态与预检结果展示
+- 局部 ``root_dir`` 下 Linux bubblewrap execute jail（``POST /api/filesystem/ensure-bwrap``、仪表盘 root 目录树 mkdir/rename）
+- 虚拟工作区路径 I/O：host 绝对路径经 ``file://`` 与 ``BackendWorkspace`` failback 对齐
 
 ### 变更
 - `make all` 先执行前后端 `format-all`（Ruff + Prettier）；pre-commit 在 format 后回写已暂存文件并构建 dashboard
+- harness runtime 诊断日志写入 ``~/.octop/logs``（与 ``octop.log`` 并排），不再落到各 agent workspace 的 ``logs/``；行内带 ``[agent=…]``
+- 依赖 ``orcakit-harness-agent>=0.9.19``、``harness-gateway>=0.9.1``（scoped root execute jail）
 
 ## [0.9.18] - 2026-08-02
 

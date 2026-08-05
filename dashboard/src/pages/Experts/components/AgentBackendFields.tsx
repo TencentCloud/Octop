@@ -143,6 +143,15 @@ export default function AgentBackendFields({
             >
               {t("experts.backendRootDirDesc")}
             </p>
+            <p
+              style={{
+                fontSize: 12,
+                color: "var(--fn-text-tertiary)",
+                margin: "4px 0 0",
+              }}
+            >
+              {t("experts.backendRootDirJailHint")}
+            </p>
           </div>
         </>
       )}

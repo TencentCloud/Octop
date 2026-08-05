@@ -531,13 +531,24 @@
     "backendRootDir": "Storage Root Dir",
     "backendRootDirPlaceholder": "Browse subdirectories from /",
     "backendRootDirDesc": "Browse from filesystem root `/` and pick a directory the agent may access. When you choose a path other than `/`, Octop checks read/write/execute access before saving.",
+    "backendRootDirJailHint": "When you save a non-root directory, Octop best-effort installs bubblewrap on Linux so shell/skill commands run in a directory jail. If install is unavailable (or on other platforms), virtual absolute paths in execute are rewritten onto that root to stay aligned with the virtual filesystem.",
     "rootDirListFailed": "Could not list subdirectories. Check permissions or choose another path.",
+    "rootDirMkdir": "New folder",
+    "rootDirRename": "Rename folder",
+    "rootDirNewFolder": "New Folder",
+    "rootDirMkdirFailed": "Could not create the folder. Check permissions or choose another path.",
+    "rootDirRenameFailed": "Could not rename the folder. Check the name and permissions.",
     "rootDirProbe": {
       "not_directory": "The selected path is not a valid directory.",
       "not_allowed": "This path cannot be used as a storage root.",
       "permission_denied": "The Octop service does not have full read, write, and execute access to this directory.",
       "write_failed": "Could not create a test file in this directory: {{detail}}",
       "guidance": "Choose a directory with sufficient permissions, or adjust ownership/permissions (e.g. chown, chmod) and try again."
+    },
+    "ensureBwrap": {
+      "installed": "bubblewrap installed. Shell/skill commands under a scoped root will use a directory jail.",
+      "skipped": "bubblewrap jail is not used in this environment; execute will rewrite virtual absolute paths onto the selected root.",
+      "degraded": "Could not install bubblewrap ({{detail}}). Config was saved; execute will fall back to path rewrite (no real jail)."
     },
     "backendPlaceholder": "Select a backend type",
     "backendPathMappings": "Path Mappings (optional)",
@@ -3229,7 +3240,9 @@
     "username": "Username",
     "password": "Password",
     "submit": "Sign in",
-    "failed": "Login failed"
+    "failed": "Login failed",
+    "slideHint": "Slide to the end to verify",
+    "slideVerified": "Verified"
   },
   "adminUsers": {
     "newUser": "New user",

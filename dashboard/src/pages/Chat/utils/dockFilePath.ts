@@ -1,19 +1,24 @@
 /**
  * Normalize and identify dock file paths so list / tabs / message open
  * share one stable key.
+ *
+ * I/O URL construction lives in ``utils/workspaceIoPath.ts`` — dock only
+ * canonicalizes for tab identity / dedupe.
  */
 
+import {
+  normalizeIoPath,
+  toDockWorkspaceApiPath as toDockWorkspaceApiPathIo,
+  toWorkspaceApiPath as toWorkspaceApiPathIo,
+} from "../../../utils/workspaceIoPath";
+
+export {
+  isHostAbsolutePath,
+  normalizeIoPath,
+} from "../../../utils/workspaceIoPath";
+
 /** Keep tool path shape: absolute stays absolute, relative stays relative. */
-export function normalizeDockFilePath(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  if (trimmed.toLowerCase().startsWith("file://")) {
-    let abs = trimmed.slice("file://".length);
-    if (abs.startsWith("//")) abs = abs.slice(1);
-    return abs.startsWith("/") || /^[A-Za-z]:/.test(abs) ? abs : `/${abs}`;
-  }
-  return trimmed.replace(/\\/g, "/");
-}
+export const normalizeDockFilePath = normalizeIoPath;
 
 /**
  * Collapse agent-home absolute paths (and truncated ``/.octop/agents/…``
@@ -24,9 +29,9 @@ export function normalizeDockFilePath(raw: string): string {
  * ``/.octop/agents/main/generated/a.pptx`` all become
  * ``generated/a.pptx``.
  *
- * Related: ``toWorkspaceRelativePath`` in ``utils/workspacePath.ts`` (leading
- * ``/`` form for the workspace viewer). Keep dock keys slash-free so download
- * / tab ids stay workspace-relative.
+ * Do **not** use this for download / file API paths — use
+ * ``toDockWorkspaceApiPath`` so virtual ``root_dir`` failback still sees
+ * the host-absolute form.
  */
 export function canonicalizeDockFilePath(
   raw: string,
@@ -66,27 +71,28 @@ export function canonicalizeDockFilePath(
   if (anyAgent?.[1]) return anyAgent[1];
 
   if (posix === "/workspace") return "";
-  if (posix.includes("/workspace/")) {
-    return posix.slice(posix.lastIndexOf("/workspace/") + "/workspace/".length);
-  }
-  if (posix.startsWith("/workspace")) {
-    return posix.slice("/workspace".length).replace(/^\/+/, "");
+  // Only strip the virtual root ``/workspace/…`` — not host paths that happen
+  // to contain a directory named ``workspace`` (e.g. ``/Users/me/workspace/a.pptx``).
+  if (posix.startsWith("/workspace/")) {
+    return posix.slice("/workspace/".length);
   }
 
   return posix;
 }
 
 /**
- * Workspace API path for dock open / download — always prefer the canonical
- * workspace-relative form when ``agentId`` is known.
+ * Workspace API path for dock download / open.
+ * Host-absolute paths stay ``file://…`` (no agent-home collapse).
  */
 export function toDockWorkspaceApiPath(
   raw: string,
-  agentId?: string | null,
+  _agentId?: string | null,
 ): string {
-  const canonical = canonicalizeDockFilePath(raw, agentId);
-  return toWorkspaceApiPath(canonical || raw);
+  return toDockWorkspaceApiPathIo(raw);
 }
+
+/** @deprecated Prefer importing from ``utils/workspaceIoPath``. */
+export const toWorkspaceApiPath = toWorkspaceApiPathIo;
 
 /** Display basename for dock tab titles / list rows. */
 export function dockFileBasename(path: string): string {
@@ -139,31 +145,6 @@ export function dedupeDockFilePaths(
     bestByKey.set(key, preferDisplayPath(prev, display));
   }
   return order.map((key) => bestByKey.get(key) || key);
-}
-
-/**
- * Path form for agent workspace download / tree APIs
- * (absolute → ``file://``, legacy ``/outbound`` → relative).
- */
-export function toWorkspaceApiPath(resolvedPath: string): string {
-  const raw = resolvedPath.trim();
-  if (!raw) return raw;
-  if (raw.toLowerCase().startsWith("file://")) {
-    return raw;
-  }
-  const posix = raw.replace(/\\/g, "/");
-  if (
-    posix.startsWith("/outbound/") ||
-    posix.startsWith("/inbound/") ||
-    posix === "/outbound" ||
-    posix === "/inbound"
-  ) {
-    return posix.replace(/^\//, "");
-  }
-  if (posix.startsWith("/") || /^[A-Za-z]:/.test(raw)) {
-    return posix.startsWith("/") ? `file://${posix}` : `file:///${posix}`;
-  }
-  return posix;
 }
 
 export type DockPathTreeNode = {
