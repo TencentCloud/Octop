@@ -3229,7 +3229,9 @@
     "username": "Username",
     "password": "Password",
     "submit": "Sign in",
-    "failed": "Login failed"
+    "failed": "Login failed",
+    "slideHint": "Slide to the end to verify",
+    "slideVerified": "Verified"
   },
   "adminUsers": {
     "newUser": "New user",

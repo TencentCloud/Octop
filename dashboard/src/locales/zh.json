@@ -3372,7 +3372,9 @@
     "username": "用户名",
     "password": "密码",
     "submit": "登录",
-    "failed": "登录失败"
+    "failed": "登录失败",
+    "slideHint": "拖动滑块到最右侧完成验证",
+    "slideVerified": "验证通过"
   },
   "adminUsers": {
     "newUser": "新建用户",

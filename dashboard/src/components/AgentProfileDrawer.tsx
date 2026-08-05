@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Drawer, Spin, Tag } from "antd";
+import { Collapse, Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
@@ -15,6 +15,7 @@ import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
 import SubagentCatalogDrawer from "../pages/Experts/components/SubagentCatalogDrawer";
 import SkillCatalogDrawer from "../pages/Experts/components/SkillCatalogDrawer";
+import WorkspaceDrawer from "../pages/Agent/Workspace/components/WorkspaceDrawer";
 import expertStyles from "../pages/Experts/index.module.less";
 import styles from "./AgentProfileDrawer.module.less";
 
@@ -61,6 +62,7 @@ export default function AgentProfileDrawer({
   const [fileLoading, setFileLoading] = useState(false);
   const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
 
   const installedSlugs = useMemo(
     () => new Set(subagents.map((s) => s.slug)),
@@ -139,6 +141,7 @@ export default function AgentProfileDrawer({
       setFileContent("");
       setSkillCatalogOpen(false);
       setSubagentCatalogOpen(false);
+      setWorkspaceDrawerOpen(false);
     }
   }, [open]);
 
@@ -244,190 +247,268 @@ export default function AgentProfileDrawer({
         </div>
 
         <div className={expertStyles.drawerSection}>
-          <div className={expertStyles.drawerSectionTitle}>
-            {t("experts.configFiles", { count: workspaceFiles.length })}
-          </div>
-          <div className={expertStyles.fileList}>
-            {filesLoading ? (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  padding: "16px 0",
-                }}
-              >
-                <Spin size="small" />
-              </div>
-            ) : workspaceFiles.length === 0 ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--fn-text-tertiary)",
-                  padding: "8px 0",
-                }}
-              >
-                {t("experts.noWorkspaceFiles")}
-              </div>
-            ) : (
-              workspaceFiles.map((file) => {
-                const basename = displayName(file);
-                const meta = metaForFile(basename, t);
-                return (
-                  <div key={file} className={expertStyles.fileItem}>
+          <Collapse
+            ghost
+            className={expertStyles.drawerCollapse}
+            defaultActiveKey={["config"]}
+            items={[
+              {
+                key: "config",
+                label: (
+                  <div className={styles.sectionTitleRow}>
+                    <div className={expertStyles.drawerSectionTitle}>
+                      {t("experts.configFiles", {
+                        count: workspaceFiles.length,
+                      })}
+                    </div>
                     <button
                       type="button"
-                      className={expertStyles.fileItemMain}
-                      onClick={() => void openFileView(file)}
+                      className={styles.viewMoreLink}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setWorkspaceDrawerOpen(true);
+                      }}
                     >
-                      <div
-                        className={expertStyles.fileIcon}
-                        style={{
-                          color: meta.color,
-                          background: `${meta.color}1a`,
-                        }}
-                      >
-                        {meta.icon}
-                      </div>
-                      <div className={expertStyles.fileMeta}>
-                        <div className={expertStyles.fileLabel}>
-                          {meta.label}
-                        </div>
-                        <div className={expertStyles.filePath}>{basename}</div>
-                      </div>
-                      <span className={expertStyles.fileHint}>
-                        {t("common.view")}
-                      </span>
+                      {t("common.viewMore")}
                     </button>
                   </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <div className={expertStyles.drawerSection}>
-          <div className={styles.sectionTitleRow}>
-            <div className={expertStyles.drawerSectionTitle}>
-              {t("experts.skillFilesTitle", { count: agentSkills.length })}
-            </div>
-            <button
-              type="button"
-              className={styles.viewMoreLink}
-              onClick={() => setSkillCatalogOpen(true)}
-            >
-              {t("common.viewMore")}
-            </button>
-          </div>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--fn-text-tertiary)",
-              margin: "0 0 8px",
-            }}
-          >
-            {t("experts.skillFilesHint")}
-          </p>
-          <div className={expertStyles.fileList}>
-            {agentSkills.length === 0 ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--fn-text-tertiary)",
-                  padding: "8px 0",
-                }}
-              >
-                {t("experts.noSkillFiles")}
-              </div>
-            ) : (
-              agentSkills.map((skill) => (
-                <div
-                  key={skill.slug ?? skill.name}
-                  className={expertStyles.fileItem}
-                >
-                  <div className={styles.skillItemRow}>
-                    <div className={expertStyles.fileMeta}>
-                      <div className={expertStyles.fileLabel}>
-                        {skillDisplayName(skill)}
+                ),
+                children: (
+                  <div className={expertStyles.fileList}>
+                    {filesLoading ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          padding: "16px 0",
+                        }}
+                      >
+                        <Spin size="small" />
                       </div>
-                      {skill.description ? (
-                        <div className={expertStyles.filePath}>
-                          {skill.description}
-                        </div>
-                      ) : null}
-                    </div>
-                    <span className={expertStyles.fileHint}>
-                      {skill.enabled === false
-                        ? t("common.disabled")
-                        : t("common.enabled")}
-                    </span>
+                    ) : workspaceFiles.length === 0 ? (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "var(--fn-text-tertiary)",
+                          padding: "8px 0",
+                        }}
+                      >
+                        {t("experts.noWorkspaceFiles")}
+                      </div>
+                    ) : (
+                      workspaceFiles.map((file) => {
+                        const basename = displayName(file);
+                        const meta = metaForFile(basename, t);
+                        return (
+                          <div key={file} className={expertStyles.fileItem}>
+                            <button
+                              type="button"
+                              className={expertStyles.fileItemMain}
+                              onClick={() => void openFileView(file)}
+                            >
+                              <div
+                                className={expertStyles.fileIcon}
+                                style={{
+                                  color: meta.color,
+                                  background: `${meta.color}1a`,
+                                }}
+                              >
+                                {meta.icon}
+                              </div>
+                              <div className={expertStyles.fileMeta}>
+                                <div className={expertStyles.fileLabel}>
+                                  {meta.label}
+                                </div>
+                                <div className={expertStyles.filePath}>
+                                  {basename}
+                                </div>
+                              </div>
+                              <span className={expertStyles.fileHint}>
+                                {t("common.view")}
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                ),
+              },
+            ]}
+          />
         </div>
 
         <div className={expertStyles.drawerSection}>
-          <div className={styles.sectionTitleRow}>
-            <div className={expertStyles.drawerSectionTitle}>
-              {t("experts.subagentFilesTitle", { count: subagents.length })}
-            </div>
-            <button
-              type="button"
-              className={styles.viewMoreLink}
-              onClick={() => setSubagentCatalogOpen(true)}
-            >
-              {t("common.viewMore")}
-            </button>
-          </div>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--fn-text-tertiary)",
-              margin: "0 0 8px",
-            }}
-          >
-            {t("experts.subagentFilesHint")}
-          </p>
-          <div className={expertStyles.fileList}>
-            {subagents.length === 0 ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--fn-text-tertiary)",
-                  padding: "8px 0",
-                }}
-              >
-                {t("experts.noSubagentFiles")}
-              </div>
-            ) : (
-              subagents.map((sub) => (
-                <div key={sub.slug} className={expertStyles.fileItem}>
-                  <div className={styles.skillItemRow}>
-                    <div className={expertStyles.fileMeta}>
-                      <div className={expertStyles.fileLabel}>
-                        {sub.emoji ? (
-                          <span style={{ marginRight: 6 }}>{sub.emoji}</span>
-                        ) : null}
-                        {sub.name}
-                      </div>
-                      {sub.description ? (
-                        <div className={expertStyles.filePath}>
-                          {sub.description}
-                        </div>
-                      ) : null}
+          <Collapse
+            ghost
+            className={expertStyles.drawerCollapse}
+            defaultActiveKey={["skills"]}
+            items={[
+              {
+                key: "skills",
+                label: (
+                  <div className={styles.sectionTitleRow}>
+                    <div className={expertStyles.drawerSectionTitle}>
+                      {t("experts.skillFilesTitle", {
+                        count: agentSkills.length,
+                      })}
                     </div>
-                    <Tag
-                      color="blue"
-                      style={{ margin: 0, fontSize: 11, lineHeight: "18px" }}
+                    <button
+                      type="button"
+                      className={styles.viewMoreLink}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSkillCatalogOpen(true);
+                      }}
                     >
-                      {sub.slug}
-                    </Tag>
+                      {t("common.viewMore")}
+                    </button>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                ),
+                children: (
+                  <>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fn-text-tertiary)",
+                        margin: "0 0 8px",
+                      }}
+                    >
+                      {t("experts.skillFilesHint")}
+                    </p>
+                    <div className={expertStyles.fileList}>
+                      {agentSkills.length === 0 ? (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--fn-text-tertiary)",
+                            padding: "8px 0",
+                          }}
+                        >
+                          {t("experts.noSkillFiles")}
+                        </div>
+                      ) : (
+                        agentSkills.map((skill) => (
+                          <div
+                            key={skill.slug ?? skill.name}
+                            className={expertStyles.fileItem}
+                          >
+                            <div className={styles.skillItemRow}>
+                              <div className={expertStyles.fileMeta}>
+                                <div className={expertStyles.fileLabel}>
+                                  {skillDisplayName(skill)}
+                                </div>
+                                {skill.description ? (
+                                  <div className={expertStyles.filePath}>
+                                    {skill.description}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <span className={expertStyles.fileHint}>
+                                {skill.enabled === false
+                                  ? t("common.disabled")
+                                  : t("common.enabled")}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                ),
+              },
+            ]}
+          />
+        </div>
+
+        <div className={expertStyles.drawerSection}>
+          <Collapse
+            ghost
+            className={expertStyles.drawerCollapse}
+            defaultActiveKey={["subagents"]}
+            items={[
+              {
+                key: "subagents",
+                label: (
+                  <div className={styles.sectionTitleRow}>
+                    <div className={expertStyles.drawerSectionTitle}>
+                      {t("experts.subagentFilesTitle", {
+                        count: subagents.length,
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.viewMoreLink}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSubagentCatalogOpen(true);
+                      }}
+                    >
+                      {t("common.viewMore")}
+                    </button>
+                  </div>
+                ),
+                children: (
+                  <>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fn-text-tertiary)",
+                        margin: "0 0 8px",
+                      }}
+                    >
+                      {t("experts.subagentFilesHint")}
+                    </p>
+                    <div className={expertStyles.fileList}>
+                      {subagents.length === 0 ? (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "var(--fn-text-tertiary)",
+                            padding: "8px 0",
+                          }}
+                        >
+                          {t("experts.noSubagentFiles")}
+                        </div>
+                      ) : (
+                        subagents.map((sub) => (
+                          <div key={sub.slug} className={expertStyles.fileItem}>
+                            <div className={styles.skillItemRow}>
+                              <div className={expertStyles.fileMeta}>
+                                <div className={expertStyles.fileLabel}>
+                                  {sub.emoji ? (
+                                    <span style={{ marginRight: 6 }}>
+                                      {sub.emoji}
+                                    </span>
+                                  ) : null}
+                                  {sub.name}
+                                </div>
+                                {sub.description ? (
+                                  <div className={expertStyles.filePath}>
+                                    {sub.description}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <Tag
+                                color="blue"
+                                style={{
+                                  margin: 0,
+                                  fontSize: 11,
+                                  lineHeight: "18px",
+                                }}
+                              >
+                                {sub.slug}
+                              </Tag>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
       </>
     );
@@ -477,6 +558,11 @@ export default function AgentProfileDrawer({
           onClose={() => setSubagentCatalogOpen(false)}
           onInstalled={() => void reloadSubagents()}
         />
+        <WorkspaceDrawer
+          agentId={agent?.agent_id ?? ""}
+          open={workspaceDrawerOpen}
+          onClose={() => setWorkspaceDrawerOpen(false)}
+        />
       </>
     );
   }
@@ -515,6 +601,11 @@ export default function AgentProfileDrawer({
         installedSlugs={installedSlugs}
         onClose={() => setSubagentCatalogOpen(false)}
         onInstalled={() => void reloadSubagents()}
+      />
+      <WorkspaceDrawer
+        agentId={agent?.agent_id ?? ""}
+        open={workspaceDrawerOpen}
+        onClose={() => setWorkspaceDrawerOpen(false)}
       />
     </>
   );

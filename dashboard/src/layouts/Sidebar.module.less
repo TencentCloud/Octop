@@ -58,6 +58,54 @@
   overflow: hidden;
 }
 
+.navItemRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  margin-bottom: 2px;
+  border-radius: var(--fn-radius-md);
+  transition: background var(--fn-transition-fast);
+}
+
+.navItemMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  height: 40px;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--fn-transition-fast);
+}
+
+.chatRailExpandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 6px 6px 6px 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+    color: var(--fn-text-primary);
+  }
+}
+
 .navUpdateBadge {
   font-size: 9px;
   font-weight: 600;
