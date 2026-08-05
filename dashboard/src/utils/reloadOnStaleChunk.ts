@@ -8,6 +8,17 @@ const RELOAD_FLAG_KEY = "octop:chunk-reload";
 const CHUNK_ERROR_RE =
   /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk [\w.-]+ failed|ChunkLoadError|error loading dynamically imported module/i;
 
+/**
+ * A pending full-page navigation aborts every in-flight dynamic import, which
+ * looks exactly like a post-deploy stale chunk. Reloading then would cancel
+ * the navigation and strand the user on a blank page.
+ */
+let navigatingAway = false;
+
+export function markNavigatingAway(): void {
+  navigatingAway = true;
+}
+
 export function isChunkLoadError(error: unknown): boolean {
   if (error == null) return false;
   if (typeof error === "string") return CHUNK_ERROR_RE.test(error);
@@ -23,6 +34,7 @@ export function isChunkLoadError(error: unknown): boolean {
 /** @returns true when a reload was triggered (caller should stop further handling). */
 export function tryReloadOnStaleChunk(error: unknown): boolean {
   if (typeof window === "undefined") return false;
+  if (navigatingAway) return false;
   if (!isChunkLoadError(error)) return false;
 
   try {
@@ -53,6 +65,13 @@ export function clearChunkReloadFlag(): void {
 /** Install window-level listeners for chunk failures before React mounts. */
 export function installChunkLoadRecovery(): void {
   if (typeof window === "undefined") return;
+
+  window.addEventListener("pagehide", markNavigatingAway);
+  // The tab may come back from bfcache instead of unloading (mobile app
+  // switching), so the guard must not stick.
+  window.addEventListener("pageshow", () => {
+    navigatingAway = false;
+  });
 
   window.addEventListener("unhandledrejection", (event) => {
     if (tryReloadOnStaleChunk(event.reason)) {

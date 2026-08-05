@@ -13,6 +13,8 @@ interface State {
   hasError: boolean;
   error: Error | null;
   retryCount: number;
+  /** ``null`` until componentDidCatch has decided whether a reload is coming. */
+  chunkReloading: boolean | null;
 }
 
 const MAX_RETRIES = 3;
@@ -22,14 +24,23 @@ const MAX_RETRIES = 3;
  * and displays a friendly fallback UI with retry / home actions.
  */
 export default class GlobalErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, error: null, retryCount: 0 };
+  state: State = {
+    hasError: false,
+    error: null,
+    retryCount: 0,
+    chunkReloading: null,
+  };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    return { hasError: true, error, chunkReloading: null };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    if (tryReloadOnStaleChunk(error)) return;
+    if (tryReloadOnStaleChunk(error)) {
+      this.setState({ chunkReloading: true });
+      return;
+    }
+    this.setState({ chunkReloading: false });
     console.error("[GlobalErrorBoundary]", error, info.componentStack);
   }
 
@@ -38,6 +49,7 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
     this.setState((prev) => ({
       hasError: false,
       error: null,
+      chunkReloading: null,
       retryCount: prev.retryCount + 1,
     }));
   };
@@ -46,13 +58,18 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
     window.location.href = "/chat";
   };
 
+  handleReload = () => {
+    window.location.reload();
+  };
+
   render() {
     if (this.state.hasError) {
+      const isChunkError = isChunkLoadError(this.state.error);
       // Stale chunk → silent soft reload; avoid flashing the error page.
-      if (isChunkLoadError(this.state.error)) {
+      if (isChunkError && this.state.chunkReloading !== false) {
         return null;
       }
-      const canRetry = this.state.retryCount < MAX_RETRIES;
+      const canRetry = !isChunkError && this.state.retryCount < MAX_RETRIES;
       return (
         <div
           style={{
@@ -64,12 +81,21 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
         >
           <Result
             status="error"
-            title="Something went wrong"
+            title={
+              isChunkError ? "This page is out of date" : "Something went wrong"
+            }
             subTitle={
-              this.state.error?.message || "An unexpected error occurred."
+              isChunkError
+                ? "The app was updated while this tab was open. Reload to continue."
+                : this.state.error?.message || "An unexpected error occurred."
             }
             extra={
               <Space>
+                {isChunkError && (
+                  <Button type="primary" onClick={this.handleReload}>
+                    Reload
+                  </Button>
+                )}
                 {canRetry && (
                   <Button type="primary" onClick={this.handleRetry}>
                     Retry

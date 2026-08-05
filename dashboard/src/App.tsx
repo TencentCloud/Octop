@@ -13,6 +13,7 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AgentProvider } from "./context/AgentContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
+import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
 import "./styles/form-override.css";
@@ -28,6 +29,8 @@ function ThemedApp() {
   const { isDark } = useTheme();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+
+  useUnauthorizedRedirect();
 
   // Set document title based on current language
   useEffect(() => {

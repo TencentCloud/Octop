@@ -9,6 +9,7 @@
 ### 新增
 - 高级设置「更新」页提供按安装方式升级说明与一键检查升级双栏布局
 - 高级设置 HTTPS 页优化签发状态与预检结果展示
+- 401 会话过期时通过 React Router 跳转登录，避免整页 reload 导致 lazy chunk 白屏
 
 ### 变更
 - `make all` 先执行前后端 `format-all`（Ruff + Prettier）；pre-commit 在 format 后回写已暂存文件并构建 dashboard
