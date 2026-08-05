@@ -6,19 +6,24 @@
 
 ## [Unreleased]
 
+## [0.9.19] - 2026-08-05
+
 ### 新增
-- 高级设置「更新」页提供按安装方式升级说明与一键检查升级双栏布局
-- 高级设置 HTTPS 页优化签发状态与预检结果展示
-- 登录页滑动验证控件；侧栏与 Agent 资料抽屉 UI 优化
-- 401 会话过期时通过 React Router 跳转登录，避免整页 reload 导致 lazy chunk 白屏
-- 聊天历史 API 返回 ``turn_active``，重连客户端可据此 re-subscribe WebSocket 恢复流式输出
-- 局部 ``root_dir`` 下 Linux bubblewrap execute jail（``POST /api/filesystem/ensure-bwrap``、仪表盘 root 目录树 mkdir/rename）
-- 虚拟工作区路径 I/O：host 绝对路径经 ``file://`` 与 ``BackendWorkspace`` failback 对齐
+- 登录页滑动验证控件；侧栏与 Agent 资料抽屉 UI 优化 (#170)
+- 聊天历史 API 返回 `turn_active`，重连客户端可 re-subscribe WebSocket 恢复流式输出 (#168, #157)
+- Workbench 与聊天 Dock 共用同一 terminal 会话；旧式硬切会话标题迁移为带省略号的裁剪标题 (#157)
+- 局部 `root_dir` 下 Linux bubblewrap execute jail（`POST /api/filesystem/ensure-bwrap`、仪表盘 root 目录树 mkdir/rename）(#167)
+- 虚拟工作区路径 I/O：host 绝对路径经 `file://` 与 `BackendWorkspace` failback 对齐 (#167)
+- 高级设置「更新」页提供按安装方式升级说明与一键检查升级双栏布局；HTTPS 页优化签发状态与预检展示 (#143)
+
+### 修复
+- 401 会话过期时通过 React Router 跳转登录，避免整页 reload 导致 lazy chunk 白屏 (#169)
 
 ### 变更
-- `make all` 先执行前后端 `format-all`（Ruff + Prettier）；pre-commit 在 format 后回写已暂存文件并构建 dashboard
-- harness runtime 诊断日志写入 ``~/.octop/logs``（与 ``octop.log`` 并排），不再落到各 agent workspace 的 ``logs/``；行内带 ``[agent=…]``
-- 依赖 ``orcakit-harness-agent>=0.9.19``、``harness-gateway>=0.9.1``（scoped root execute jail）
+- `make all` 先执行前后端 `format-all`（Ruff + Prettier）；pre-commit 在 format 后回写已暂存文件并构建 dashboard (#143)
+- harness runtime 诊断日志写入 `~/.octop/logs`（与 `octop.log` 并排），不再落到各 agent workspace 的 `logs/`；行内带 `[agent=…]`
+- 依赖 `orcakit-harness-agent>=0.9.19`、`harness-gateway>=0.9.1`（scoped root execute jail）
+- 企业微信客户群二维码与文档有效期更新至 2026-08-08 (#149)
 
 ## [0.9.18] - 2026-08-02
 
