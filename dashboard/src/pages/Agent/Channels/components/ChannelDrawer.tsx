@@ -184,6 +184,56 @@ function FormItemForField({ field }: { field: ChannelField }) {
   );
 }
 
+interface PolicyTagOption<T extends string> {
+  label: string;
+  value: T;
+  disabled?: boolean;
+}
+
+function PolicyTagGroup<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value?: T;
+  options: PolicyTagOption<T>[];
+  onChange?: (value: T) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div
+      className={styles.qqGroupPolicyTags}
+      role="radiogroup"
+      aria-label={ariaLabel}
+    >
+      {options.map((option) => {
+        const checked = value === option.value;
+        return (
+          <button
+            key={option.value}
+            className={`${styles.qqGroupPolicyTag} ${
+              checked ? styles.qqGroupPolicyTagChecked : ""
+            } ${option.disabled ? styles.qqGroupPolicyTagDisabled : ""}`}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            disabled={option.disabled}
+            tabIndex={option.disabled ? -1 : 0}
+            onClick={() => {
+              if (!checked && !option.disabled) {
+                onChange?.(option.value);
+              }
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function QqGroupContextPolicyFields({
   form,
 }: {
@@ -257,9 +307,8 @@ function QqGroupContextPolicyFields({
             name={["group_context", "visibility"]}
             label={t("channels.qqGroupVisibility")}
           >
-            <Segmented
-              block
-              className={styles.qqGroupPolicySegmented}
+            <PolicyTagGroup<QqGroupVisibility>
+              ariaLabel={t("channels.qqGroupVisibility")}
               onChange={handleVisibilityChange}
               options={[
                 {
@@ -287,8 +336,8 @@ function QqGroupContextPolicyFields({
               name={["group_context", "activation"]}
               label={t("channels.qqGroupActivation")}
             >
-              <Segmented
-                block
+              <PolicyTagGroup<QqGroupActivation>
+                ariaLabel={t("channels.qqGroupActivation")}
                 options={[
                   {
                     label: t("channels.qqGroupActivationMention"),
