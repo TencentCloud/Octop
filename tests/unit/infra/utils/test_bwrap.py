@@ -5,11 +5,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from tests.support.bwrap_marks import linux_bwrap_only
 
 from octop.infra.utils import bwrap as bwrap_mod
 from octop.infra.utils.bwrap import ensure_bubblewrap
-
-from tests.support.bwrap_marks import linux_bwrap_only
 
 
 def test_ensure_skips_on_non_linux(monkeypatch: pytest.MonkeyPatch) -> None:
