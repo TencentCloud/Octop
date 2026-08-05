@@ -11,11 +11,12 @@ from octop.api.routers import backup as backup_router
 
 
 @pytest.mark.asyncio
-async def test_restore_backup_file_rehydrates_providers(
+async def test_restore_backup_file_rehydrates_providers_and_channels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After restore, sync providers into harness so experts can start without process restart."""
+    """After restore, sync providers/agents and reload IM channels without process restart."""
     on_provider_changed = AsyncMock()
+    reload_channels = AsyncMock()
     restored: dict[str, Any] = {
         "schema_version": 1,
         "octop_version": "0.0.0",
@@ -40,6 +41,7 @@ async def test_restore_backup_file_rehydrates_providers(
     server.paths = MagicMock()
     server.app_runtime = MagicMock()
     server.app_runtime.agent_registry.on_provider_changed = on_provider_changed
+    server.app_runtime.gateway.reload_channels_from_db = reload_channels
 
     result = await backup_router.restore_backup_file(
         filename="octop-backup.tar.gz",
@@ -49,6 +51,7 @@ async def test_restore_backup_file_rehydrates_providers(
     )
 
     on_provider_changed.assert_awaited_once_with()
+    reload_channels.assert_awaited_once_with()
     assert result["ok"] is True
     assert result["name"] == "octop-backup.tar.gz"
     assert result["agents"] == 1
@@ -89,3 +92,20 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
     )
 
     assert result["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_rehydrate_reloads_channels_even_if_provider_rehydrate_fails() -> None:
+    """Channel reload must still run when agent rehydrate raises."""
+    on_provider_changed = AsyncMock(side_effect=RuntimeError("provider boom"))
+    reload_channels = AsyncMock()
+
+    server = MagicMock()
+    server.app_runtime = MagicMock()
+    server.app_runtime.agent_registry.on_provider_changed = on_provider_changed
+    server.app_runtime.gateway.reload_channels_from_db = reload_channels
+
+    await backup_router._rehydrate_runtime_after_restore(server)
+
+    on_provider_changed.assert_awaited_once_with()
+    reload_channels.assert_awaited_once_with()

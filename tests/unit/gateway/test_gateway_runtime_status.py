@@ -75,6 +75,42 @@ async def test_register_failure_sets_runtime_error(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_reload_channels_from_db_unregisters_old_and_registers_enabled(
+    tmp_path: Path,
+) -> None:
+    """Hot restore path: drop live IM channels, keep builtins, register DB rows."""
+    from octop.infra.gateway.cli import CLI_CHANNEL_ID
+    from octop.infra.gateway.ws import WS_CHANNEL_ID
+
+    gw = _make_gateway(tmp_path)
+    remove_channel = AsyncMock()
+    add_channel = AsyncMock()
+    gw._channel_manager = MagicMock()
+    gw._channel_manager.channel_ids = [WS_CHANNEL_ID, CLI_CHANNEL_ID, "old-ch"]
+    gw._channel_manager.remove_channel = remove_channel
+    gw._channel_manager.add_channel = add_channel
+    gw._channel_manager.get_channel = MagicMock(return_value=MagicMock())
+    gw._processor = MagicMock()
+    gw._set_runtime_status("old-ch", connected=True)
+    gw._set_runtime_status("stale-status", connected=False, reason="error")
+
+    row = _fake_row("new-ch")
+    gw._repos.channel_repo.list_all = MagicMock(return_value=[row])  # type: ignore[method-assign]
+
+    await gw.reload_channels_from_db()
+
+    remove_channel.assert_awaited_once_with("old-ch")
+    add_channel.assert_awaited_once()
+    assert add_channel.await_args is not None
+    assert add_channel.await_args.kwargs["channel_id"] == "new-ch"
+    assert gw.get_runtime_status("old-ch") is None
+    assert gw.get_runtime_status("stale-status") is None
+    status = gw.get_runtime_status("new-ch")
+    assert status is not None
+    assert status.connected is True
+
+
+@pytest.mark.asyncio
 async def test_probe_weixin_without_token_fails_before_start(tmp_path: Path) -> None:
     from harness_gateway.manager import ChannelManager
 

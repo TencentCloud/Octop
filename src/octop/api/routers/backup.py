@@ -34,17 +34,22 @@ def _agent_rows(server: Any) -> list[Any]:
 
 
 async def _rehydrate_runtime_after_restore(server: Any) -> None:
-    """Sync restored providers into harness and reload agents (no process restart)."""
+    """Sync restored providers/agents and IM channels (no process restart)."""
     runtime = getattr(server, "app_runtime", None)
     if runtime is None:
         return
     registry = getattr(runtime, "agent_registry", None)
-    if registry is None:
-        return
-    try:
-        await registry.on_provider_changed()
-    except Exception:
-        logger.exception("post-restore provider/agent rehydrate failed")
+    if registry is not None:
+        try:
+            await registry.on_provider_changed()
+        except Exception:
+            logger.exception("post-restore provider/agent rehydrate failed")
+    gateway = getattr(runtime, "gateway", None)
+    if gateway is not None:
+        try:
+            await gateway.reload_channels_from_db()
+        except Exception:
+            logger.exception("post-restore channel rehydrate failed")
 
 
 @router.get("/backup/list", summary="List stored backup archives")
@@ -106,8 +111,8 @@ async def restore_backup_file(
 ) -> dict[str, Any]:
     """Restore database and workspaces from a file in ``backups_dir``.
 
-    After the archive is applied, providers are synced into the harness and agents
-    are reloaded in-process so experts can run without a full service restart.
+    After the archive is applied, providers/agents and IM channels are reloaded
+    in-process so experts and messaging can run without a full service restart.
     Restored ``config.json`` / ``env`` still require a process restart to take effect.
     """
     assert server.services is not None

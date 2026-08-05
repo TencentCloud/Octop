@@ -231,6 +231,32 @@ class Gateway:
             if backend is not None:
                 channel.set_media_backend(backend)
 
+    async def reload_channels_from_db(self) -> None:
+        """Drop and re-register enabled IM channels from the DB.
+
+        Used after backup restore so Gateway matches the replaced ``channels``
+        table without a process restart. Built-in dashboard/cli channels stay
+        registered. Call after agents have been rehydrated so media backends
+        can resolve.
+        """
+        if not self._channel_manager or not self._processor:
+            return
+
+        builtin = {WS_CHANNEL_ID, CLI_CHANNEL_ID}
+        live_ids = [cid for cid in self._channel_manager.channel_ids if cid not in builtin]
+        for channel_id in live_ids:
+            await self._unregister(channel_id)
+
+        for channel_id in list(self._runtime_status):
+            if channel_id not in builtin:
+                self._runtime_status.pop(channel_id, None)
+
+        rows = self._repos.channel_repo.list_all(include_disabled=False)
+        if rows:
+            await asyncio.gather(*(self._safe_register_channel(row) for row in rows))
+        await self.refresh_media_backends()
+        logger.info("Gateway channels reloaded from DB (%d enabled)", len(rows))
+
     async def shutdown(self) -> None:
         if self._channel_manager:
             await self._channel_manager.stop()
