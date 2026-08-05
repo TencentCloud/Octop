@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
+import * as chatStore from "./chatStore";
+import { EMPTY_CHAT_SESSION_KEY } from "../constants";
 import { pickPreferredSession, toSession, type Session } from "./useSessions";
 
 interface UseChatSessionActionsParams {
@@ -68,7 +70,9 @@ export function useChatSessionActions({
       resetNavForAgentSwitch();
       navigate(`/chat/${agentId}`, { replace: true });
       setActiveAgent(agentId);
-      clearMessages();
+      // We land on the new-chat view, so only that session is stale here.
+      // Clearing the thread we are leaving would drop an in-flight turn.
+      chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
       if (isMobile) setSidebarOpen(false);
 
       void (async () => {
@@ -90,7 +94,6 @@ export function useChatSessionActions({
     [
       setActiveAgent,
       navigate,
-      clearMessages,
       isMobile,
       setSidebarOpen,
       resetNavForAgentSwitch,

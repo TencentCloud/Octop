@@ -42,39 +42,20 @@ export function shouldResumeStreamAfterClose(opts: {
   );
 }
 
-/** History page hints that a turn may still be running server-side. */
-export function historySuggestsActiveTurn(
-  messages: Array<{ role: string; status?: string }>,
-): boolean {
-  if (messages.length === 0) return false;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.status === "streaming") return true;
-    if (m.role === "user") return true;
-    if (m.role === "assistant" || m.role === "tool" || m.role === "system") {
-      // Finished assistant/tool streak — no need to open a probe socket.
-      if (m.role === "assistant") return false;
-      continue;
-    }
-  }
-  return false;
-}
-
 /**
- * When to open a subscribe probe after history is available.
+ * When to open a subscribe probe.
  *
  * - already streaming: rebind after SPA remount / drop
- * - first hydrate: only when messages suggest mid-turn (avoids idle WS thrash)
+ * - otherwise: only when the server said a turn is running (`turn_active` from
+ *   the history response). Message shape cannot tell a mid-turn checkpoint from
+ *   a finished one, so never guess — that leaves live turns unattached.
  */
 export function shouldProbeActiveTurn(opts: {
   isStreaming: boolean;
-  justHydrated: boolean;
-  /** From historySuggestsActiveTurn; only used on first hydrate. */
-  historySuggestsActive?: boolean;
+  /** Server truth from `GET …/history` → `turn_active`. */
+  turnActive?: boolean;
 }): boolean {
-  if (opts.isStreaming) return true;
-  if (!opts.justHydrated) return false;
-  return Boolean(opts.historySuggestsActive);
+  return opts.isStreaming || Boolean(opts.turnActive);
 }
 
 /**

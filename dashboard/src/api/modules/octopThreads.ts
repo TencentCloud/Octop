@@ -26,6 +26,8 @@ export interface OctopThreadHistory {
   has_more?: boolean;
   limit?: number;
   offset?: number;
+  /** True while a turn is still streaming server-side for this thread. */
+  turn_active?: boolean;
 }
 
 export interface OctopThreadPatch {

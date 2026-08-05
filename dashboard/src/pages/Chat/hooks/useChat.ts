@@ -12,7 +12,6 @@ import type {
 } from "../../../api/types";
 import * as chatStore from "./chatStore";
 import {
-  historySuggestsActiveTurn,
   shouldProbeActiveTurn,
   shouldBlockHistoryRefresh,
 } from "./wsResumeGate";
@@ -533,7 +532,12 @@ async function loadThreadHistory(
   agentId: string,
   threadId: string,
   params: { limit?: number; offset?: number } = {},
-): Promise<{ messages: ChatMessage[]; hasMore: boolean; nextOffset: number }> {
+): Promise<{
+  messages: ChatMessage[];
+  hasMore: boolean;
+  nextOffset: number;
+  turnActive: boolean;
+}> {
   try {
     const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
       "../../../api/modules/octopThreads"
@@ -557,10 +561,11 @@ async function loadThreadHistory(
       messages,
       hasMore: Boolean(history.has_more),
       nextOffset: offset + limit,
+      turnActive: Boolean(history.turn_active),
     };
   } catch (err) {
     console.error("loadThreadHistory failed", err);
-    return { messages: [], hasMore: false, nextOffset: 0 };
+    return { messages: [], hasMore: false, nextOffset: 0, turnActive: false };
   }
 }
 
@@ -689,18 +694,14 @@ export function useChat(
 
       // Already have local history: only re-probe when we still expect a stream.
       if (snap.messages.length > 0 || snap.historyHydrated) {
-        if (
-          shouldProbeActiveTurn({
-            isStreaming: snap.isStreaming,
-            justHydrated: false,
-          })
-        ) {
+        if (shouldProbeActiveTurn({ isStreaming: snap.isStreaming })) {
           attachAfterHistory(key, targetThreadId);
         }
         return;
       }
 
-      chatStore.cancelStream(key);
+      // Never cancelStream here — load/hydrate must not stop a live server turn.
+      // (Weak resume: only the Stop control / cancelStream may send `cancel`.)
 
       const gen = ++loadGenRef.current;
       setHistoryLoading(true);
@@ -710,19 +711,14 @@ export function useChat(
           messages: converted,
           hasMore,
           nextOffset,
+          turnActive,
         } = await loadThreadHistory(agentId, targetThreadId, { offset: 0 });
         if (loadGenRef.current !== gen) return;
         chatStore.setHistoryPage(key, converted, {
           hasMore,
           nextOffset,
         });
-        if (
-          shouldProbeActiveTurn({
-            isStreaming: false,
-            justHydrated: true,
-            historySuggestsActive: historySuggestsActiveTurn(converted),
-          })
-        ) {
+        if (shouldProbeActiveTurn({ isStreaming: false, turnActive })) {
           attachAfterHistory(key, targetThreadId);
         }
       } finally {
