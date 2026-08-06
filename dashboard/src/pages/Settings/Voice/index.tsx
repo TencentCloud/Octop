@@ -36,6 +36,8 @@ export function VoiceSettingsPanel() {
   const [apiKey, setApiKey] = useState("");
   const [secretId, setSecretId] = useState("");
   const [secretKey, setSecretKey] = useState("");
+  const [mimoEndpoint, setMimoEndpoint] = useState<"payg" | "tokenplan">("payg");
+  const [mimoVoiceId, setMimoVoiceId] = useState("mimo_default");
   const [saving, setSaving] = useState(false);
 
   const fetchAll = useCallback(async () => {
@@ -95,6 +97,10 @@ export function VoiceSettingsPanel() {
     const extra = existing?.extra ?? {};
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
+    setMimoEndpoint(
+      extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg",
+    );
+    setMimoVoiceId(String(extra.voice_id ?? "mimo_default"));
   };
 
   const handleSaveProvider = async () => {
@@ -102,20 +108,35 @@ export function VoiceSettingsPanel() {
     setSaving(true);
     try {
       const { preset, existing } = configure;
-      const extra =
-        preset.kind === "tencent"
-          ? {
-              secret_id: secretId,
-              secret_key: secretKey,
-              region: "ap-guangzhou",
-            }
-          : preset.kind === "edge"
-          ? { voice_id: "zh-CN-XiaoxiaoNeural" }
-          : { model: preset.kind === "openai" ? "whisper-1" : undefined };
+      let extra: Record<string, unknown>;
+      let baseUrl: string | null = null;
+      if (preset.kind === "tencent") {
+        extra = {
+          secret_id: secretId,
+          secret_key: secretKey,
+          region: "ap-guangzhou",
+        };
+      } else if (preset.kind === "edge") {
+        extra = { voice_id: "zh-CN-XiaoxiaoNeural" };
+      } else if (preset.kind === "mimo") {
+        const mimoBase =
+          mimoEndpoint === "tokenplan"
+            ? "https://token-plan-cn.xiaomimimo.com/v1"
+            : "https://api.xiaomimimo.com/v1";
+        baseUrl = mimoBase;
+        extra = {
+          endpoint_type: mimoEndpoint,
+          voice_id:
+            preset.capability === "tts" ? mimoVoiceId : undefined,
+        };
+      } else {
+        extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
+      }
       const payload = {
         name: preset.id,
         kind: preset.kind,
         capability: preset.capability,
+        base_url: baseUrl,
         api_key:
           preset.kind === "tencent"
             ? secretId && secretKey
@@ -206,6 +227,11 @@ export function VoiceSettingsPanel() {
             {preset.free && (
               <span className={`${styles.badge} ${styles.badgeFree}`}>
                 {t("voice.free")}
+              </span>
+            )}
+            {preset.limited_free && (
+              <span className={`${styles.badge} ${styles.badgeFree}`}>
+                {t("voice.limitedFree")}
               </span>
             )}
             {needsSetup && (
@@ -342,6 +368,59 @@ export function VoiceSettingsPanel() {
                 { value: "https://api.openai.com/v1", label: "OpenAI API" },
               ]}
             />
+          </Space>
+        )}
+        {configure?.preset.kind === "mimo" && (
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Text type="secondary">{t("voice.mimoHint")}</Text>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>
+                {t("voice.mimoEndpoint")}
+              </div>
+              <Select
+                style={{ width: "100%" }}
+                value={mimoEndpoint}
+                onChange={(v) => setMimoEndpoint(v)}
+                options={[
+                  {
+                    value: "payg",
+                    label: t("voice.mimoEndpointPayg"),
+                  },
+                  {
+                    value: "tokenplan",
+                    label: t("voice.mimoEndpointTokenplan"),
+                  },
+                ]}
+              />
+            </div>
+            <Input.Password
+              placeholder="API Key (sk-... / tp-...)"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {configure.preset.capability === "tts" && (
+              <div>
+                <div style={{ fontSize: 12, marginBottom: 4 }}>
+                  {t("voice.mimoVoice")}
+                </div>
+                <Select
+                  style={{ width: "100%" }}
+                  value={mimoVoiceId}
+                  onChange={(v) => setMimoVoiceId(v)}
+                  options={[
+                    { value: "mimo_default", label: "MiMo Default" },
+                    { value: "冰糖", label: "冰糖 (中文·女)" },
+                    { value: "茉莉", label: "茉莉 (中文·女)" },
+                    { value: "苏打", label: "苏打 (中文·男)" },
+                    { value: "白桦", label: "白桦 (中文·男)" },
+                    { value: "Mia", label: "Mia (EN·Female)" },
+                    { value: "Chloe", label: "Chloe (EN·Female)" },
+                    { value: "Milo", label: "Milo (EN·Male)" },
+                    { value: "Dean", label: "Dean (EN·Male)" },
+                  ]}
+                />
+              </div>
+            )}
           </Space>
         )}
       </Modal>

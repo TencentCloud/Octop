@@ -6,6 +6,7 @@ export interface VoicePreset {
   kind: string;
   capability: "stt" | "tts" | "both";
   free: boolean;
+  limited_free?: boolean;
   requires_key: boolean;
   description: string;
 }

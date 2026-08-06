@@ -109,6 +109,10 @@ class VoiceManager:
             if row is None:
                 raise OctopError(ErrorCode.NOT_FOUND, "Tencent voice provider is not configured")
             return await adapters.transcribe_tencent(row, audio, mime=mime, language=language)
+        if kind == "mimo":
+            if row is None:
+                raise OctopError(ErrorCode.NOT_FOUND, "Mimo voice provider is not configured")
+            return await adapters.transcribe_mimo(row, audio, mime=mime, language=language)
         raise OctopError(ErrorCode.VOICE_KIND_UNSUPPORTED, f"unsupported STT kind {kind!r}")
 
     async def synthesize(
@@ -162,6 +166,12 @@ class VoiceManager:
             async for chunk in adapters.synthesize_tencent(
                 row, text, voice_id=voice_id, speed=speed
             ):
+                yield chunk
+            return
+        if kind == "mimo":
+            if row is None:
+                raise OctopError(ErrorCode.NOT_FOUND, "Mimo voice provider is not configured")
+            async for chunk in adapters.synthesize_mimo(row, text, voice_id=voice_id, speed=speed):
                 yield chunk
             return
         raise OctopError(ErrorCode.VOICE_KIND_UNSUPPORTED, f"unsupported TTS kind {kind!r}")

@@ -238,12 +238,125 @@ async def synthesize_edge(
             yield chunk["data"]
 
 
+async def _guard_mimo_base_url(base_url: str) -> None:
+    """Reject SSRF: Mimo base_url must be a public https host."""
+    await validate_https_url_resolved(base_url)
+
+
+def _mimo_audio_mime(mime: str) -> str:
+    """Normalize incoming mime to a Mimo-supported format (wav or mp3)."""
+    lowered = mime.lower()
+    if "wav" in lowered:
+        return "audio/wav"
+    if "mp3" in lowered or "mpeg" in lowered:
+        return "audio/mpeg"
+    raise ValueError(f"Mimo STT only supports wav and mp3 audio formats (received {mime!r})")
+
+
+async def transcribe_mimo(
+    row: VoiceProviderRow, audio: bytes, *, mime: str, language: str
+) -> STTResult:
+    api_key = row.api_key or ""
+    if not api_key:
+        raise ValueError("Mimo API key is required")
+    base_url = (row.base_url or "https://api.xiaomimimo.com/v1").rstrip("/")
+    await _guard_mimo_base_url(base_url)
+    mimo_mime = _mimo_audio_mime(mime)
+    audio_b64 = base64.b64encode(audio).decode("ascii")
+    data_url = f"data:{mimo_mime};base64,{audio_b64}"
+    # Map browser locale (e.g. "zh-CN") to Mimo language code ("zh", "en", "auto")
+    lang = "auto"
+    if language:
+        lang = (
+            "zh"
+            if language.lower().startswith("zh")
+            else "en"
+            if language.lower().startswith("en")
+            else "auto"
+        )
+    payload: dict[str, Any] = {
+        "model": "mimo-v2.5-asr",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_audio",
+                        "input_audio": {"data": data_url},
+                    }
+                ],
+            }
+        ],
+        "asr_options": {"language": lang},
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    choices = body.get("choices") or []
+    if not choices:
+        raise RuntimeError("Mimo ASR returned no choices")
+    text = str(choices[0].get("message", {}).get("content") or "").strip()
+    return STTResult(text=text)
+
+
+async def synthesize_mimo(
+    row: VoiceProviderRow,
+    text: str,
+    *,
+    voice_id: str | None,
+    speed: float,
+) -> AsyncIterator[bytes]:
+    api_key = row.api_key or ""
+    if not api_key:
+        raise ValueError("Mimo API key is required")
+    base_url = (row.base_url or "https://api.xiaomimimo.com/v1").rstrip("/")
+    await _guard_mimo_base_url(base_url)
+    extra = row.get_extra()
+    voice = voice_id or str(extra.get("voice_id") or "mimo_default")
+    # Mimo TTS: text goes in assistant message, optional style in user message.
+    # Speed is not a direct API parameter; ignored for stability.
+    payload: dict[str, Any] = {
+        "model": "mimo-v2.5-tts",
+        "messages": [
+            {"role": "user", "content": "Speak naturally."},
+            {"role": "assistant", "content": text},
+        ],
+        "audio": {"format": "wav", "voice": voice},
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    choices = body.get("choices") or []
+    if not choices:
+        raise RuntimeError("Mimo TTS returned no choices")
+    audio_data = choices[0].get("message", {}).get("audio", {}).get("data")
+    if not audio_data:
+        raise RuntimeError("Mimo TTS returned no audio data")
+    yield base64.b64decode(audio_data)
+
+
 async def test_stt(row: VoiceProviderRow | None, kind: str) -> dict[str, Any]:
     if kind == "browser":
         return {"ok": True, "mode": "browser"}
     if row is None:
         return {"ok": False, "error": "provider not configured"}
-    if not row.api_key and kind in {"openai", "tencent"}:
+    if not row.api_key and kind in {"openai", "tencent", "mimo"}:
         return {"ok": False, "error": "API credentials missing"}
     return {"ok": True, "mode": kind}
 
@@ -276,10 +389,16 @@ async def test_tts(row: VoiceProviderRow | None, kind: str) -> dict[str, Any]:
         return {"ok": bool(chunks), "bytes": sum(len(c) for c in chunks)}
     if row is None:
         return {"ok": False, "error": "provider not configured"}
-    if not row.api_key and kind in {"openai", "tencent"}:
+    if not row.api_key and kind in {"openai", "tencent", "mimo"}:
         return {"ok": False, "error": "API credentials missing"}
     chunks = []
-    synth = synthesize_openai if kind == "openai" else synthesize_tencent
+    synth = (
+        synthesize_mimo
+        if kind == "mimo"
+        else synthesize_openai
+        if kind == "openai"
+        else synthesize_tencent
+    )
     async for part in synth(row, "ping", voice_id=None, speed=1.0):
         chunks.append(part)
     return {"ok": bool(chunks), "bytes": sum(len(c) for c in chunks)}
