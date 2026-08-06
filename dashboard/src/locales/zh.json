@@ -1776,7 +1776,7 @@
     "actions": "操作",
     "custom": "自定义",
     "builtin": "内置",
-    "presetProviders": "预制提供商",
+    "presetProviders": "预置提供商",
     "presetCloud": "云端",
     "presetLocal": "本地",
     "noPresetProvidersInTab": "暂无提供商",
