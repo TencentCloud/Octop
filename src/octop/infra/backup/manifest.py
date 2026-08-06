@@ -29,6 +29,7 @@ class BackupManifest:
     agents: list[AgentBackupEntry] = field(default_factory=list)
     includes_config: bool = True
     includes_env: bool = False
+    includes_custom_experts: bool = False
 
     def to_json(self) -> str:
         payload: dict[str, Any] = {
@@ -42,6 +43,7 @@ class BackupManifest:
             "database_dump_format": self.database_dump_format,
             "includes_config": self.includes_config,
             "includes_env": self.includes_env,
+            "includes_custom_experts": self.includes_custom_experts,
             "agents": [asdict(a) for a in self.agents],
         }
         return json.dumps(payload, indent=2, ensure_ascii=False)
@@ -70,6 +72,7 @@ class BackupManifest:
             agents=agents,
             includes_config=bool(data.get("includes_config", True)),
             includes_env=bool(data.get("includes_env", False)),
+            includes_custom_experts=bool(data.get("includes_custom_experts", False)),
         )
 
     @classmethod

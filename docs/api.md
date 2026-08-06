@@ -197,13 +197,17 @@ see [Personas](./personas.md).
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/experts` | user | bundled expert catalog (locale-aware) |
+| `GET`    | `/experts` | user | bundled, market-cache, and organization expert catalog |
 | `GET`    | `/experts/{expert_id}` | user | full expert template (SOUL.md, skills, files) |
 | `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, locale?, ...}` → `201` |
+| `GET`    | `/admin/agents/{aid}/expert-template/preview` | admin | preview reusable and excluded workspace files |
+| `POST`   | `/admin/agents/{aid}/expert-template` | admin | publish a safe snapshot as an organization template |
+| `DELETE` | `/admin/expert-templates/{expert_id}` | admin | delete an organization template; created agents remain |
 
 Bundled experts live in `src/octop/infra/agents/experts/library/`
-(en/zh divisions); the catalog is locale-aware via
-`Accept-Language` / user preference.
+(en/zh divisions). Admin-published templates live in
+`~/.octop/custom-experts/`; prompts, skills, and subagents are copied while
+memory, sessions, channels, credentials, and runtime state are excluded.
 
 ## Workspace, skills, subagents, memory, files
 

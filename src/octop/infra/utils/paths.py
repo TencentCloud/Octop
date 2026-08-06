@@ -60,6 +60,11 @@ class PathLayout:
         return self.root / "expert_market"
 
     @property
+    def custom_experts_dir(self) -> Path:
+        """Admin-published expert templates: ``~/.octop/custom-experts/``."""
+        return self.root / "custom-experts"
+
+    @property
     def skill_packages_dir(self) -> Path:
         """Global skill package content: ``~/.octop/skill-packages/``."""
         return self.root / "skill-packages"

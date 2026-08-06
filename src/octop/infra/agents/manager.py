@@ -37,6 +37,11 @@ from octop.infra.utils.ulid import new_short_id
 if TYPE_CHECKING:
     from octop.config import OctopConfig
     from octop.infra.agents.experts.catalog import ExpertCatalog
+    from octop.infra.agents.experts.custom_templates import (
+        CustomExpertPreview,
+        CustomExpertPublishResult,
+        CustomExpertPublishSpec,
+    )
     from octop.infra.agents.plugins.manager import PluginManager
     from octop.infra.cron.manager import CronManager
     from octop.infra.db.repos.agents import AgentRow
@@ -242,6 +247,7 @@ class AgentManager:
         self._team_processor: Any | None = None
         self._harness_manager: HarnessAgentManager | None = None
         self._lock = asyncio.Lock()
+        self._expert_template_lock = asyncio.Lock()
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
         self._bootstrap_graph_refresh_pending: set[str] = set()
@@ -484,6 +490,87 @@ class AgentManager:
             except KeyError:
                 pass
         return self._backend_workspace_for_row(row)
+
+    # ------------------------------------------------------------------
+    # Organization expert templates
+    # ------------------------------------------------------------------
+
+    async def preview_expert_template(self, agent_id: str) -> CustomExpertPreview:
+        """Inspect reusable files that can be published from an agent workspace."""
+        from octop.infra.agents.experts.custom_templates import (  # noqa: PLC0415
+            preview_custom_expert,
+        )
+
+        row = self.get_row(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        workspace = self.workspace_for_agent(agent_id)
+        if workspace is None:  # pragma: no cover - guarded by the row lookup
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        return await preview_custom_expert(workspace)
+
+    async def publish_expert_template(
+        self,
+        agent_id: str,
+        spec: CustomExpertPublishSpec,
+        *,
+        actor: str,
+    ) -> CustomExpertPublishResult:
+        """Publish a safe snapshot of an agent as an organization expert template."""
+        from octop.infra.agents.experts.custom_templates import (  # noqa: PLC0415
+            publish_custom_expert,
+        )
+
+        row = self.get_row(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        workspace = self.workspace_for_agent(agent_id)
+        if workspace is None:  # pragma: no cover - guarded by the row lookup
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        if self._expert_catalog is None:
+            raise OctopError(
+                ErrorCode.EXPERT_TEMPLATE_PUBLISH_FAILED,
+                "expert catalog is unavailable",
+            )
+        async with self._expert_template_lock:
+            result = await publish_custom_expert(
+                row=row,
+                workspace=workspace,
+                catalog=self._expert_catalog,
+                custom_root=self._paths.custom_experts_dir,
+                spec=spec,
+            )
+        self._repos.audit_repo.write(
+            actor=actor,
+            action="expert_template.publish",
+            target=spec.template_id,
+            payload=json.dumps({"agent_id": agent_id}),
+        )
+        return result
+
+    async def delete_expert_template(self, template_id: str, *, actor: str) -> None:
+        """Delete an admin-published expert template without touching created agents."""
+        from octop.infra.agents.experts.custom_templates import (  # noqa: PLC0415
+            delete_custom_expert,
+        )
+
+        if self._expert_catalog is None:
+            raise OctopError(ErrorCode.NOT_FOUND, f"expert template {template_id!r} not found")
+        async with self._expert_template_lock:
+            await delete_custom_expert(
+                template_id=template_id,
+                catalog=self._expert_catalog,
+                custom_root=self._paths.custom_experts_dir,
+            )
+        self._repos.audit_repo.write(
+            actor=actor,
+            action="expert_template.delete",
+            target=template_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Row & config reads (continued)
+    # ------------------------------------------------------------------
 
     def list_agents(self, user_id: int) -> list[AgentRow]:
         return self._repos.agent_repo.list_by_user(user_id, include_disabled=False)

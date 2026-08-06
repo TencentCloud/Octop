@@ -58,6 +58,8 @@ const ACTION_OPTIONS = [
   "auth.login",
   "auth.logout",
   "backup.restore",
+  "expert_template.publish",
+  "expert_template.delete",
   "connector.instance.create",
   "connector.instance.delete",
   "cron.create",

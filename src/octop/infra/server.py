@@ -133,7 +133,8 @@ class OctopServer:
 
         self.expert_catalog = ExpertCatalog(
             default_library_root(),
-            extra_roots=[self.paths.expert_market_dir],
+            extra_roots=[self.paths.expert_market_dir, self.paths.custom_experts_dir],
+            root_sources={self.paths.custom_experts_dir: "custom"},
         )
         self.expert_catalog.refresh()
         self.subagent_catalog = SubagentCatalog(default_package_root())

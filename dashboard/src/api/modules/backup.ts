@@ -31,6 +31,8 @@ export const backupApi = {
     name: string;
     agents: number;
     workspace_files: number;
+    skill_package_files: number;
+    custom_expert_files: number;
   }> => {
     const qs = restoreConfig ? "" : "?restore_config=false";
     return request(

@@ -318,3 +318,124 @@ async def test_create_from_expert_stores_backend(env: Any) -> None:
     rows = (await c.get("/api/agents", headers=auth)).json()
     agent = next(a for a in rows if a["id"] == agent_id)
     assert agent["config"].get("backend") == backend_spec
+
+
+async def test_admin_publishes_agent_as_organization_expert(
+    env_admin_alice: Any,
+) -> None:
+    c, server, admin_auth, alice_auth = env_admin_alice
+    source = (
+        await c.post(
+            "/api/agents",
+            headers=admin_auth,
+            json={
+                "name": "Source Writer",
+                "persona_mbti": "INFJ",
+                "system_prompt": "Write for the product team.",
+            },
+        )
+    ).json()
+    source_id = source["agent_id"]
+    workspace = server.app_runtime.agent_registry.workspace_for_agent(source_id)
+    assert workspace is not None
+    await workspace.aupload_bytes("SOUL.md", b"# Organization writer")
+    await workspace.aupload_bytes(
+        "skills/tone/SKILL.md",
+        b"---\nname: tone\ndescription: Keep the team voice\n---\n",
+    )
+    await workspace.aupload_bytes("agents/reviewer.md", b"# Reviewer")
+    await workspace.aupload_bytes("MEMORY.md", b"private memory")
+    await workspace.aupload_bytes("credentials.json", b'{"token":"secret"}')
+
+    forbidden_preview = await c.get(
+        f"/api/admin/agents/{source_id}/expert-template/preview",
+        headers=alice_auth,
+    )
+    assert forbidden_preview.status_code == 403
+
+    preview = await c.get(
+        f"/api/admin/agents/{source_id}/expert-template/preview",
+        headers=admin_auth,
+    )
+    assert preview.status_code == 200, preview.text
+    assert "SOUL.md" in preview.json()["included_files"]
+    assert "skills/tone/SKILL.md" in preview.json()["included_files"]
+    assert "agents/reviewer.md" in preview.json()["included_files"]
+    assert "MEMORY.md" in preview.json()["excluded_sensitive_files"]
+    assert "credentials.json" in preview.json()["excluded_sensitive_files"]
+
+    published = await c.post(
+        f"/api/admin/agents/{source_id}/expert-template",
+        headers=admin_auth,
+        json={
+            "template_id": "team-writer",
+            "label_zh": "团队写手",
+            "label_en": "Team Writer",
+            "description_zh": "团队内容模板",
+            "description_en": "Organization writing template",
+            "icon_name": "pen-tool",
+            "color": "#6366f1",
+        },
+    )
+    assert published.status_code == 201, published.text
+    assert "credentials.json" not in published.json()["copied_files"]
+
+    expert_rows = (await c.get("/api/experts", headers=alice_auth)).json()
+    expert = next(item for item in expert_rows if item["id"] == "team-writer")
+    assert expert["source"] == "custom"
+
+    created = await c.post(
+        "/api/agents/from-expert/team-writer",
+        headers=alice_auth,
+        json={"name": "Alice Writer"},
+    )
+    assert created.status_code == 201, created.text
+    created_id = created.json()["agent_id"]
+    created_detail = await c.get(f"/api/agents/{created_id}", headers=alice_auth)
+    assert created_detail.status_code == 200
+    assert created_detail.json()["persona_mbti"] == "INFJ"
+    assert created_detail.json()["system_prompt"] == "Write for the product team."
+    created_workspace = server.app_runtime.agent_registry.workspace_for_agent(created_id)
+    assert created_workspace is not None
+    assert await created_workspace.aread_text("SOUL.md") == "# Organization writer"
+    assert await created_workspace.aread_text("skills/tone/SKILL.md") is not None
+    assert await created_workspace.aread_text("agents/reviewer.md") == "# Reviewer"
+    assert await created_workspace.aread_text("MEMORY.md") in (None, "")
+    assert await created_workspace.aread_text("credentials.json") in (None, "")
+
+    deleted = await c.delete(
+        "/api/admin/expert-templates/team-writer",
+        headers=admin_auth,
+    )
+    assert deleted.status_code == 204, deleted.text
+    assert (await c.get("/api/experts/team-writer", headers=alice_auth)).status_code == 404
+    assert (await c.get(f"/api/agents/{created_id}", headers=alice_auth)).status_code == 200
+
+
+async def test_custom_expert_rejects_collisions_and_bundled_deletion(env: Any) -> None:
+    c, _server, auth = env
+    source_id = (await c.get("/api/agents", headers=auth)).json()[0]["agent_id"]
+    payload = {
+        "template_id": "shared-helper",
+        "label_zh": "共享助手",
+        "label_en": "Shared Helper",
+    }
+    first = await c.post(
+        f"/api/admin/agents/{source_id}/expert-template",
+        headers=auth,
+        json=payload,
+    )
+    assert first.status_code == 201, first.text
+    second = await c.post(
+        f"/api/admin/agents/{source_id}/expert-template",
+        headers=auth,
+        json=payload,
+    )
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "EXPERT_TEMPLATE_EXISTS"
+
+    bundled = await c.delete(
+        "/api/admin/expert-templates/general-assistant",
+        headers=auth,
+    )
+    assert bundled.status_code == 403

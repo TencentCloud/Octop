@@ -25,6 +25,8 @@ import { message } from "@/utils/antdMessage";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import PageShell from "../../layouts/PageShell";
 import { request } from "../../api/request";
+import { authApi } from "../../api/modules/auth";
+import { customExpertTemplatesApi } from "../../api/modules/customExpertTemplates";
 import { useAgent } from "../../context/AgentContext";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
@@ -32,6 +34,7 @@ import { AgentCard } from "./components/AgentCard";
 import { ExpertCard } from "./components/ExpertCard";
 import type { ExpertSummary } from "./components/ExpertCard";
 import EditAgentDrawer from "./components/EditAgentDrawer";
+import PublishExpertTemplateModal from "./components/PublishExpertTemplateModal";
 import CreateFromExpertDrawer from "./components/CreateFromExpertDrawer";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
@@ -62,6 +65,22 @@ export default function ExpertsPage() {
   const { t, i18n } = useTranslation();
   const lang: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
   const { agents, refresh: refreshAgents } = useAgent();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    authApi
+      .me()
+      .then((user) => {
+        if (!cancelled) setIsAdmin(user.role === "admin");
+      })
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ── Tab state ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>("my");
@@ -122,6 +141,25 @@ export default function ExpertsPage() {
     };
   }, [t]);
 
+  const handleDeleteTemplate = useCallback(
+    async (expert: ExpertSummary) => {
+      try {
+        await customExpertTemplatesApi.delete(expert.id);
+        setExperts((current) =>
+          current.filter((item) => item.id !== expert.id),
+        );
+        message.success(t("experts.deleteTemplateSuccess"));
+      } catch (err: unknown) {
+        message.error(
+          err instanceof Error
+            ? err.message
+            : t("experts.deleteTemplateFailed"),
+        );
+      }
+    },
+    [t],
+  );
+
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const [localAgents, setLocalAgents] = useState<OctopAgent[]>(agents);
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
@@ -143,6 +181,7 @@ export default function ExpertsPage() {
 
   // ── Edit Drawer ────────────────────────────────────────────────
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
+  const [publishAgent, setPublishAgent] = useState<OctopAgent | null>(null);
 
   const handleEditSaved = useCallback(
     (
@@ -305,6 +344,7 @@ export default function ExpertsPage() {
                   }
                   onDeleted={handleDeleted}
                   onStateChange={handleStateChange}
+                  onPublishTemplate={isAdmin ? setPublishAgent : undefined}
                 />
               </div>
             ))}
@@ -317,6 +357,7 @@ export default function ExpertsPage() {
             }
             onDeleted={handleDeleted}
             onStateChange={handleStateChange}
+            onPublishTemplate={isAdmin ? setPublishAgent : undefined}
           />
         )}
       </>
@@ -329,6 +370,7 @@ export default function ExpertsPage() {
     refreshButton,
     showCardView,
     t,
+    isAdmin,
   ]);
 
   const libraryContent = useMemo(() => {
@@ -367,12 +409,22 @@ export default function ExpertsPage() {
               lang={lang}
               isInstalled={agentExpertIds.has(expert.id)}
               onCreate={setCreateExpert}
+              onDelete={isAdmin ? handleDeleteTemplate : undefined}
             />
           ))}
         </div>
       </>
     );
-  }, [experts, expertLoading, lang, agentExpertIds, refreshButton, t]);
+  }, [
+    experts,
+    expertLoading,
+    lang,
+    agentExpertIds,
+    refreshButton,
+    t,
+    isAdmin,
+    handleDeleteTemplate,
+  ]);
 
   const marketContent = useMemo(
     () => (
@@ -417,6 +469,12 @@ export default function ExpertsPage() {
         agent={editAgent}
         onClose={() => setEditAgent(null)}
         onSaved={handleEditSaved}
+      />
+
+      <PublishExpertTemplateModal
+        agent={publishAgent}
+        onClose={() => setPublishAgent(null)}
+        onPublished={handleRefresh}
       />
 
       <CreateFromExpertDrawer

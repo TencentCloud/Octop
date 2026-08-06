@@ -33,6 +33,7 @@ _CONFIG_DIR = "config"
 _DB_DIR = "db"
 _WORKSPACES_DIR = "workspaces"
 _SKILL_PACKAGES_DIR = "skill-packages"
+_CUSTOM_EXPERTS_DIR = "custom-experts"
 _MANIFEST_NAME = "manifest.json"
 _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
@@ -100,6 +101,7 @@ def create_system_backup(
         agents=agents,
         includes_config=paths.config.is_file(),
         includes_env=env_path.is_file(),
+        includes_custom_experts=True,
     )
 
     buf = io.BytesIO()
@@ -137,6 +139,8 @@ def create_system_backup(
                     _add_dir(tf, ws, f"{_WORKSPACES_DIR}/{row.agent_id}")
             if paths.skill_packages_dir.is_dir():
                 _add_dir(tf, paths.skill_packages_dir, _SKILL_PACKAGES_DIR)
+            if paths.custom_experts_dir.is_dir():
+                _add_dir(tf, paths.custom_experts_dir, _CUSTOM_EXPERTS_DIR)
 
     filename = f"octop-backup-{_timestamp()}.tar.gz"
     return buf.getvalue(), filename
@@ -294,12 +298,32 @@ def restore_system_backup(
             dest.write_bytes(blob)
             restored_skill_package_files += 1
 
+        custom_experts_prefix = f"{_CUSTOM_EXPERTS_DIR}/"
+        custom_expert_members = {
+            name: blob for name, blob in members.items() if name.startswith(custom_experts_prefix)
+        }
+        restored_custom_expert_files = 0
+        if manifest.includes_custom_experts:
+            if paths.custom_experts_dir.exists():
+                shutil.rmtree(paths.custom_experts_dir)
+            paths.custom_experts_dir.mkdir(parents=True, exist_ok=True)
+            for name, blob in custom_expert_members.items():
+                rel = name[len(custom_experts_prefix) :]
+                rel_path = Path(rel)
+                if not rel or rel_path.is_absolute() or ".." in rel_path.parts:
+                    continue
+                dest = paths.custom_experts_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(blob)
+                restored_custom_expert_files += 1
+
     return {
         "schema_version": manifest.schema_version,
         "octop_version": manifest.octop_version,
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
         "skill_package_files": restored_skill_package_files,
+        "custom_expert_files": restored_custom_expert_files,
         "restore_config": restore_config,
         "users_preserved": effective_preserve_users,
         "database_driver": archive_driver,

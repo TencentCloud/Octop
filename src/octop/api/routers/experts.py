@@ -17,7 +17,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_admin, current_user, get_server
 from octop.infra.agents.experts.catalog import (
     build_create_spec_from_expert,
     preview_file_paths,
@@ -38,6 +38,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
 
 router = APIRouter()
+admin_router = APIRouter()
 
 _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
     SkillHubMarketErrorKind.NOT_FOUND: "expert not found",
@@ -117,6 +118,33 @@ class MarketCreateResponse(BaseModel):
     bootstrap_pending: bool
 
 
+class CustomExpertPreviewResponse(BaseModel):
+    included_files: list[str]
+    excluded_sensitive_files: list[str]
+    ignored_file_count: int
+
+
+class CustomExpertPublishBody(BaseModel):
+    template_id: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9-]{0,63}$",
+        description="Stable organization template id using lowercase letters, digits, and hyphens",
+    )
+    label_zh: str = Field(min_length=1, max_length=100)
+    label_en: str = Field(min_length=1, max_length=100)
+    description_zh: str = Field(default="", max_length=500)
+    description_en: str = Field(default="", max_length=500)
+    icon_name: str | None = Field(default=None, max_length=100)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class CustomExpertPublishResponse(BaseModel):
+    template_id: str
+    copied_files: list[str]
+    excluded_sensitive_files: list[str]
+
+
 def _quick_prompt_dict(p: Any) -> dict[str, Any]:
     return {
         "title": {"zh": p.title_zh, "en": p.title_en},
@@ -138,6 +166,7 @@ def _summary_dict(s: Any) -> dict[str, Any]:
         },
         "icon_name": s.icon_name,
         "color": s.color,
+        "source": getattr(s, "source", "bundled"),
         "quick_prompts": [_quick_prompt_dict(p) for p in getattr(s, "quick_prompts", ())],
     }
 
@@ -182,6 +211,74 @@ def _map_skillhub_error(exc: SkillHubMarketError) -> OctopError:
         ErrorCode.EXPERT_MARKET_FAILED,
         f"expert market failed: {reason}",
         details={"reason": reason, "kind": kind.value},
+    )
+
+
+@admin_router.get(
+    "/agents/{agent_id}/expert-template/preview",
+    response_model=CustomExpertPreviewResponse,
+    summary="Preview reusable files for an organization expert template",
+)
+async def preview_agent_expert_template(
+    agent_id: str,
+    _: Any = Depends(current_admin),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """List the reusable workspace files and sensitive files that will be excluded."""
+    assert server.app_runtime is not None
+    preview = await server.app_runtime.agent_registry.preview_expert_template(agent_id)
+    return {
+        "included_files": list(preview.included_files),
+        "excluded_sensitive_files": list(preview.excluded_sensitive_files),
+        "ignored_file_count": preview.ignored_file_count,
+    }
+
+
+@admin_router.post(
+    "/agents/{agent_id}/expert-template",
+    status_code=201,
+    response_model=CustomExpertPublishResponse,
+    summary="Publish an agent as an organization expert template",
+)
+async def publish_agent_expert_template(
+    agent_id: str,
+    body: CustomExpertPublishBody,
+    admin: Any = Depends(current_admin),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Snapshot prompts, skills, and subagents; runtime state and secrets are excluded."""
+    from octop.infra.agents.experts.custom_templates import (  # noqa: PLC0415
+        CustomExpertPublishSpec,
+    )
+
+    assert server.app_runtime is not None
+    result = await server.app_runtime.agent_registry.publish_expert_template(
+        agent_id,
+        CustomExpertPublishSpec(**body.model_dump()),
+        actor=admin.username,
+    )
+    return {
+        "template_id": result.template_id,
+        "copied_files": list(result.copied_files),
+        "excluded_sensitive_files": list(result.excluded_sensitive_files),
+    }
+
+
+@admin_router.delete(
+    "/expert-templates/{template_id}",
+    status_code=204,
+    summary="Delete an organization expert template",
+)
+async def delete_expert_template(
+    template_id: str,
+    admin: Any = Depends(current_admin),
+    server: Any = Depends(get_server),
+) -> None:
+    """Delete only the reusable template; agents previously created from it remain intact."""
+    assert server.app_runtime is not None
+    await server.app_runtime.agent_registry.delete_expert_template(
+        template_id,
+        actor=admin.username,
     )
 
 

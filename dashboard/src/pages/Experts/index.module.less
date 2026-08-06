@@ -583,6 +583,32 @@
   gap: 10px;
 }
 
+.organizationTemplateBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+}
+
+.templateDeleteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border: none;
+  border-radius: var(--fn-radius-sm);
+  color: var(--fn-text-tertiary);
+  background: transparent;
+  cursor: pointer;
+
+  &:hover {
+    color: #ff4d4f;
+    background: rgba(255, 77, 79, 0.08);
+  }
+}
+
 .expertTemplateCard {
   background: var(--fn-bg-primary);
   border: 2px solid var(--fn-card-border-normal);

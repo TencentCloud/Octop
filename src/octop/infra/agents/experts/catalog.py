@@ -54,6 +54,7 @@ class ExpertSummary:
     icon_name: str | None = None
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+    source: str = "bundled"
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ class Expert:
     prompt_files: list[str] = field(default_factory=list)
     """Persona markdown filenames declared in the manifest (dashboard hint)."""
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+    persona_mbti: str | None = None
+    system_prompt: str | None = None
 
 
 def discover_seed_paths(expert_dir: Path) -> list[str]:
@@ -284,9 +287,16 @@ class ExpertCatalog:
     point ``library_root`` at a fixture directory.
     """
 
-    def __init__(self, library_root: Path, extra_roots: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        library_root: Path,
+        extra_roots: list[Path] | None = None,
+        *,
+        root_sources: dict[Path, str] | None = None,
+    ) -> None:
         self._root = library_root
         self._extra_roots = list(extra_roots or [])
+        self._root_sources = dict(root_sources or {})
         self._experts: dict[str, Expert] = {}
         self._expert_dirs: dict[str, Path] = {}
 
@@ -333,6 +343,12 @@ class ExpertCatalog:
                 ex_id = str(data.get("id") or entry.name)
                 prompt_files = [str(f) for f in (data.get("prompt_files") or [])]
                 seed_paths = discover_seed_paths(entry)
+                source = self._root_sources.get(
+                    root,
+                    "bundled" if root == self._root else "market",
+                )
+                raw_defaults = data.get("agent_defaults")
+                defaults = raw_defaults if isinstance(raw_defaults, dict) else {}
                 summary = ExpertSummary(
                     id=ex_id,
                     label_zh=_coerce_label(data.get("label"), "zh"),
@@ -344,12 +360,19 @@ class ExpertCatalog:
                     icon_name=data.get("icon_name"),
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
+                    source=source,
                 )
                 out[ex_id] = Expert(
                     summary=summary,
                     files=seed_paths,
                     prompt_files=prompt_files,
                     quick_prompts=summary.quick_prompts,
+                    persona_mbti=(
+                        str(defaults["persona_mbti"]) if defaults.get("persona_mbti") else None
+                    ),
+                    system_prompt=(
+                        str(defaults["system_prompt"]) if defaults.get("system_prompt") else None
+                    ),
                 )
                 dirs[ex_id] = entry
         self._experts = out
@@ -430,7 +453,9 @@ def build_create_spec_from_expert(
         name=resolved_name,
         user_id=user_id,
         description=resolved_description,
+        persona_mbti=expert.persona_mbti,
         default_model=default_model,
+        system_prompt=expert.system_prompt,
         config=expert_agent_config(expert_id, expert, **(config_extra or {})),
         icon=icon,
         template_name=expert_id,

@@ -64,6 +64,38 @@ def test_expert_catalog_reads_extra_roots(tmp_path: Path) -> None:
     assert "SOUL.md" in market.files
 
 
+def test_expert_catalog_marks_custom_source_and_reads_agent_defaults(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+
+    bundled_root = tmp_path / "bundled"
+    custom_root = tmp_path / "custom"
+    custom_dir = custom_root / "team-writer"
+    custom_dir.mkdir(parents=True)
+    _write_manifest(
+        custom_dir,
+        extra={
+            "agent_defaults": {
+                "persona_mbti": "INFJ",
+                "system_prompt": "Write for the team.",
+            }
+        },
+    )
+    (custom_dir / "SOUL.md").write_text("# Team writer", encoding="utf-8")
+
+    catalog = ExpertCatalog(
+        bundled_root,
+        extra_roots=[custom_root],
+        root_sources={custom_root: "custom"},
+    )
+    catalog.refresh()
+
+    expert = catalog.get("team-writer")
+    assert expert is not None
+    assert expert.summary.source == "custom"
+    assert expert.persona_mbti == "INFJ"
+    assert expert.system_prompt == "Write for the team."
+
+
 def test_expert_lazy_read_file_contents(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 

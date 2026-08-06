@@ -1,7 +1,8 @@
 // dashboard/src/pages/Experts/components/ExpertCard.tsx
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import { CheckCircle } from "lucide-react";
+import { Popconfirm, Tooltip } from "antd";
+import { Building2, CheckCircle, Trash2 } from "lucide-react";
 import { pickLocale } from "../../../utils/localizedText";
 import { iconForName } from "./iconForName";
 import styles from "../index.module.less";
@@ -13,6 +14,7 @@ export interface ExpertSummary {
   icon_name?: string | null;
   color?: string | null;
   files?: string[];
+  source?: "bundled" | "market" | "custom" | string;
 }
 
 interface ExpertCardProps {
@@ -20,6 +22,7 @@ interface ExpertCardProps {
   lang: "zh" | "en";
   isInstalled: boolean;
   onCreate: (expert: ExpertSummary) => void;
+  onDelete?: (expert: ExpertSummary) => void | Promise<void>;
 }
 
 export const ExpertCard = memo(function ExpertCard({
@@ -27,6 +30,7 @@ export const ExpertCard = memo(function ExpertCard({
   lang,
   isInstalled,
   onCreate,
+  onDelete,
 }: ExpertCardProps) {
   const { t } = useTranslation();
   const label = pickLocale(expert.label, lang) || expert.id;
@@ -56,7 +60,35 @@ export const ExpertCard = memo(function ExpertCard({
         </div>
         <div className={styles.agentCardTitleBlock}>
           <div className={styles.agentCardName}>{label}</div>
+          {expert.source === "custom" && (
+            <div className={styles.organizationTemplateBadge}>
+              <Building2 size={11} />
+              {t("experts.organizationTemplate")}
+            </div>
+          )}
         </div>
+        {expert.source === "custom" && onDelete && (
+          <span onClick={(event) => event.stopPropagation()}>
+            <Popconfirm
+              title={t("experts.deleteTemplateConfirm", { name: label })}
+              description={t("experts.deleteTemplateHint")}
+              onConfirm={() => void onDelete(expert)}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title={t("experts.deleteTemplate")}>
+                <button
+                  type="button"
+                  className={styles.templateDeleteButton}
+                  aria-label={t("experts.deleteTemplate")}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </Tooltip>
+            </Popconfirm>
+          </span>
+        )}
       </div>
 
       {/* Description */}

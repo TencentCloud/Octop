@@ -35,11 +35,13 @@ def test_manifest_roundtrip_includes_driver_fields() -> None:
         db_file="db/octop.dump",
         database_driver="postgresql",
         database_dump_format="pg_custom",
+        includes_custom_experts=True,
     )
     loaded = BackupManifest.load_text(m.to_json())
     assert loaded.database_driver == "postgresql"
     assert loaded.database_dump_format == "pg_custom"
     assert loaded.db_file == "db/octop.dump"
+    assert loaded.includes_custom_experts is True
 
 
 def test_roundtrip_backup(layout: PathLayout) -> None:
@@ -57,6 +59,13 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     pkg_skill = layout.skill_packages_dir / "pkg01" / "skills" / "writer" / "SKILL.md"
     pkg_skill.parent.mkdir(parents=True, exist_ok=True)
     pkg_skill.write_text("---\nname: writer\ndescription: x\n---\n", encoding="utf-8")
+    custom_expert = layout.custom_experts_dir / "team-writer"
+    custom_expert.mkdir(parents=True, exist_ok=True)
+    (custom_expert / "manifest.json").write_text(
+        '{"id":"team-writer","label":{"zh":"团队写手","en":"Team Writer"}}',
+        encoding="utf-8",
+    )
+    (custom_expert / "SOUL.md").write_text("# team writer", encoding="utf-8")
     layout.config.write_text('{"port": 8088}', encoding="utf-8")
 
     class Row:
@@ -76,6 +85,9 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     restore_db = restore_layout.db
     restore_pool = SqlitePool(restore_db)
     run_migrations(restore_pool)
+    stale_template = restore_layout.custom_experts_dir / "stale" / "manifest.json"
+    stale_template.parent.mkdir(parents=True, exist_ok=True)
+    stale_template.write_text('{"id":"stale"}', encoding="utf-8")
 
     result = restore_system_backup(
         data,
@@ -88,6 +100,7 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
 
     assert result["agents"] == 1
     assert result["skill_package_files"] == 1
+    assert result["custom_expert_files"] == 2
     assert (restore_layout.agent_workspace("agent01") / "SOUL.md").read_text(
         encoding="utf-8"
     ) == "# soul"
@@ -97,6 +110,10 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
         .startswith("---")
     )
     assert json.loads(restore_layout.config.read_text(encoding="utf-8"))["port"] == 8088
+    assert (restore_layout.custom_experts_dir / "team-writer" / "SOUL.md").read_text(
+        encoding="utf-8"
+    ) == "# team writer"
+    assert not stale_template.exists()
 
     with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
         manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))

@@ -18,6 +18,7 @@ import {
   Sparkles,
   Notebook,
   Waypoints,
+  LibraryBig,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -65,6 +66,8 @@ export interface AgentCardProps {
   onStateChange: (agentId: string, newState: string) => void;
   /** Called when a start/stop poll settles (e.g. admin views another user's agents). */
   onPollSettled?: () => void;
+  /** Admin-only action for publishing this agent as an organization template. */
+  onPublishTemplate?: (agent: OctopAgent) => void;
 }
 
 export const AgentCard = memo(function AgentCard({
@@ -75,6 +78,7 @@ export const AgentCard = memo(function AgentCard({
   onDeleted,
   onStateChange,
   onPollSettled,
+  onPublishTemplate,
 }: AgentCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -243,6 +247,21 @@ export const AgentCard = memo(function AgentCard({
             <div className={styles.agentCard2NameRow}>
               <div className={styles.agentCard2Name}>{agent.name}</div>
               <div className={styles.agentCard2NameActions}>
+                {onPublishTemplate && (
+                  <Tooltip
+                    title={t("adminUsers.publishTemplate")}
+                    mouseEnterDelay={0.5}
+                  >
+                    <button
+                      type="button"
+                      className={styles.agentCard2NameActionBtn}
+                      onClick={() => onPublishTemplate(agent)}
+                      aria-label={t("adminUsers.publishTemplate")}
+                    >
+                      <LibraryBig size={12} />
+                    </button>
+                  </Tooltip>
+                )}
                 <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
                   <button
                     type="button"

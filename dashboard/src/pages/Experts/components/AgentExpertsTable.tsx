@@ -25,6 +25,7 @@ import {
   Sparkles,
   Notebook,
   Waypoints,
+  LibraryBig,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -61,6 +62,7 @@ interface AgentExpertsTableProps {
   onEdit: (agentId: string) => void;
   onDeleted: (agentId: string) => void;
   onStateChange: (agentId: string, newState: string) => void;
+  onPublishTemplate?: (agent: OctopAgent) => void;
 }
 
 export default function AgentExpertsTable({
@@ -68,6 +70,7 @@ export default function AgentExpertsTable({
   onEdit,
   onDeleted,
   onStateChange,
+  onPublishTemplate,
 }: AgentExpertsTableProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -355,7 +358,7 @@ export default function AgentExpertsTable({
     {
       title: t("experts.table.actions", "操作"),
       key: "actions",
-      width: 370,
+      width: 410,
       fixed: "right",
       render: (_v, row) => {
         const state = localStates[row.agent_id] ?? row.state;
@@ -443,6 +446,21 @@ export default function AgentExpertsTable({
                 <Pencil size={13} />
               </button>
             </Tooltip>
+            {onPublishTemplate && (
+              <Tooltip
+                title={t("adminUsers.publishTemplate")}
+                mouseEnterDelay={0.5}
+              >
+                <button
+                  type="button"
+                  className={styles.tableActionBtn}
+                  onClick={() => onPublishTemplate(row)}
+                  aria-label={t("adminUsers.publishTemplate")}
+                >
+                  <LibraryBig size={13} />
+                </button>
+              </Tooltip>
+            )}
             <Popconfirm
               title={t("experts.confirmDelete", { name: row.name })}
               description={t("experts.confirmDeleteHint")}
@@ -497,7 +515,7 @@ export default function AgentExpertsTable({
           rowKey="agent_id"
           dataSource={agents}
           columns={columns}
-          scroll={{ x: 1370, y: scrollY }}
+          scroll={{ x: 1410, y: scrollY }}
           pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,

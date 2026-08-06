@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, cast
 
@@ -35,6 +36,12 @@ def _agent_rows(server: Any) -> list[Any]:
 
 async def _rehydrate_runtime_after_restore(server: Any) -> None:
     """Sync restored providers into harness and reload agents (no process restart)."""
+    catalog = getattr(server, "expert_catalog", None)
+    if catalog is not None:
+        try:
+            await asyncio.to_thread(catalog.refresh)
+        except Exception:
+            logger.exception("post-restore expert catalog refresh failed")
     runtime = getattr(server, "app_runtime", None)
     if runtime is None:
         return

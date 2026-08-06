@@ -63,6 +63,7 @@ import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
+import PublishExpertTemplateModal from "../../Experts/components/PublishExpertTemplateModal";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
 
@@ -522,6 +523,7 @@ export default function AdminUsersPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [agentDrawerUser, setAgentDrawerUser] = useState<UserRow | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
+  const [publishAgent, setPublishAgent] = useState<OctopAgent | null>(null);
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
 
   const roleOptions = [
@@ -996,6 +998,7 @@ export default function AdminUsersPage() {
                   onDeleted={handleDrawerDeleted}
                   onStateChange={handleDrawerStateChange}
                   onPollSettled={() => void refreshAgents()}
+                  onPublishTemplate={setPublishAgent}
                 />
               ))}
             </div>
@@ -1008,6 +1011,11 @@ export default function AdminUsersPage() {
         agent={editAgent}
         onClose={() => setEditAgent(null)}
         onSaved={handleEditSaved}
+      />
+
+      <PublishExpertTemplateModal
+        agent={publishAgent}
+        onClose={() => setPublishAgent(null)}
       />
 
       <Modal
