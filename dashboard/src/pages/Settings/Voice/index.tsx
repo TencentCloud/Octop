@@ -36,7 +36,9 @@ export function VoiceSettingsPanel() {
   const [apiKey, setApiKey] = useState("");
   const [secretId, setSecretId] = useState("");
   const [secretKey, setSecretKey] = useState("");
-  const [mimoEndpoint, setMimoEndpoint] = useState<"payg" | "tokenplan">("payg");
+  const [mimoEndpoint, setMimoEndpoint] = useState<"payg" | "tokenplan">(
+    "payg",
+  );
   const [mimoVoiceId, setMimoVoiceId] = useState("mimo_default");
   const [saving, setSaving] = useState(false);
 
@@ -97,9 +99,7 @@ export function VoiceSettingsPanel() {
     const extra = existing?.extra ?? {};
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
-    setMimoEndpoint(
-      extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg",
-    );
+    setMimoEndpoint(extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg");
     setMimoVoiceId(String(extra.voice_id ?? "mimo_default"));
   };
 
@@ -126,8 +126,7 @@ export function VoiceSettingsPanel() {
         baseUrl = mimoBase;
         extra = {
           endpoint_type: mimoEndpoint,
-          voice_id:
-            preset.capability === "tts" ? mimoVoiceId : undefined,
+          voice_id: preset.capability === "tts" ? mimoVoiceId : undefined,
         };
       } else {
         extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
