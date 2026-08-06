@@ -173,8 +173,8 @@ export default function SlideCaptcha({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          paddingLeft: THUMB_SIZE,
-          paddingRight: 8,
+          paddingLeft: verified ? 8 : THUMB_SIZE,
+          paddingRight: verified ? THUMB_SIZE : 8,
           fontSize: 13,
           color: verified
             ? "var(--fn-success, #16a34a)"
