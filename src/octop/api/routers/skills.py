@@ -457,6 +457,27 @@ async def _enabled_skill_names(
     return names
 
 
+async def _skill_catalog_exists(
+    server: Any,
+    *,
+    agent_id: str,
+    name: str,
+) -> bool:
+    """Return True if *name* (slug or frontmatter name) exists for *agent_id*.
+
+    The catalog is rebuilt from disk on every call, so a skill whose files were
+    removed outside the API is reported missing. Covers workspace, builtin and
+    mounted package skills — the same set the installed-skills page lists.
+    """
+    assert server.app_runtime is not None
+    for summary in await server.app_runtime.agent_registry.list_skill_summaries(agent_id):
+        if str(summary.get("slug") or "").strip() == name:
+            return True
+        if str(summary.get("name") or "").strip() == name:
+            return True
+    return False
+
+
 async def validate_chat_skills(
     server: Any,
     *,
@@ -845,14 +866,17 @@ async def delete_skill(
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
     resolved = await _resolve_skill(ctx.workspace, slug)
     if resolved is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
+        # The skill files are already gone (removed outside the API, or already
+        # soft-deleted). Delete is idempotent so stale UI entries can be cleaned
+        # up even when the on-disk SKILL.md is missing.
+        return
     manifest_path, kind, _body = resolved
     if kind == "builtin":
         raise OctopError(ErrorCode.NOT_FOUND, f"builtin skill {name!r} cannot be deleted")
     target = manifest_path
     existing = await _aread_text(ctx.workspace, target)
     if existing is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")
+        return
     err = await _aoverwrite_text(ctx.workspace, target, "---\nremoved: true\n---\n")
     if err:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot remove {target!r}: {err}")
@@ -876,6 +900,8 @@ async def enable_skill(
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    if not await _skill_catalog_exists(server, agent_id=agent_id, name=name):
+        raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")
     disabled = _disabled_set(ctx.config)
     if name in disabled:
         disabled.discard(name)

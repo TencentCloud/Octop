@@ -232,6 +232,25 @@ async def test_disable_then_enable_toggles_listing(env: Any) -> None:
     assert fr["enabled"] is True
 
 
+async def test_enable_unknown_skill_404(env: Any) -> None:
+    c, _srv, auth, aid = env
+    r = await c.post(f"/api/agents/{aid}/skills/nope/enable", headers=auth)
+    assert r.status_code == 404
+
+
+async def test_enable_removed_skill_404(env: Any) -> None:
+    """Enabling a skill whose files are gone reports NOT_FOUND, not success."""
+    c, _srv, auth, aid = env
+    await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "tmp-skill", "content": SAMPLE_SKILL},
+    )
+    await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)
+    r = await c.post(f"/api/agents/{aid}/skills/tmp-skill/enable", headers=auth)
+    assert r.status_code == 404
+
+
 # --- soft delete -----------------------------------------------------------
 
 
@@ -254,10 +273,27 @@ async def test_delete_hides_skill_from_listing(env: Any) -> None:
     assert r.status_code == 404
 
 
-async def test_delete_unknown_skill_404(env: Any) -> None:
+async def test_delete_unknown_skill_is_idempotent(env: Any) -> None:
+    """Deleting a skill that is not installed is a no-op success (204)."""
     c, _srv, auth, aid = env
     r = await c.delete(f"/api/agents/{aid}/skills/nope", headers=auth)
-    assert r.status_code == 404
+    assert r.status_code == 204
+
+
+async def test_delete_removed_skill_is_idempotent(env: Any) -> None:
+    """Deleting a skill whose files are already gone still succeeds (204)."""
+    c, _srv, auth, aid = env
+    await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "tmp-skill", "content": SAMPLE_SKILL},
+    )
+    assert (
+        await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)
+    ).status_code == 204
+    # Second delete after the soft-delete marker is a no-op success.
+    r = await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)
+    assert r.status_code == 204
 
 
 # --- update (PUT) ----------------------------------------------------------
