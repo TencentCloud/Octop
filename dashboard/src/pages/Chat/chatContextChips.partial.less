@@ -158,25 +158,25 @@
 }
 
 .contextChipModel {
-  border-color: rgba(232, 93, 117, 0.28);
-  background: rgba(232, 93, 117, 0.1);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 28%, transparent);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
 
   .contextChipIcon {
     border-radius: 50%;
-    background: rgba(232, 93, 117, 0.14);
-    color: var(--fn-color-brand, #e85d75);
+    background: color-mix(in srgb, var(--fn-color-brand) 14%, transparent);
+    color: var(--fn-color-brand);
   }
 
   .contextChipLabel {
-    color: var(--fn-color-brand, #e85d75);
+    color: var(--fn-color-brand);
   }
 
   .contextChipRemove {
-    color: rgba(232, 93, 117, 0.55);
+    color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
 
     &:hover {
-      color: var(--fn-color-brand, #e85d75);
-      background: rgba(232, 93, 117, 0.12);
+      color: var(--fn-color-brand);
+      background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
     }
   }
 }

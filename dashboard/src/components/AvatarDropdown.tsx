@@ -31,6 +31,7 @@ import { clearAuthToken } from "../api/request";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { useUserRole } from "../hooks/useUserRole";
 import ThemeSwitcher from "./ThemeSwitcher";
+import PaletteSwitcher from "./PaletteSwitcher";
 import type { OctopUser } from "../api/modules/auth";
 import styles from "./AvatarDropdown.module.less";
 
@@ -144,7 +145,7 @@ export default function AvatarDropdown({
     <Avatar
       size={32}
       style={{
-        background: "var(--fn-color-brand, #4f6ef7)",
+        background: "var(--fn-color-brand)",
         fontSize: 14,
         userSelect: "none",
         flexShrink: 0,
@@ -305,7 +306,7 @@ export default function AvatarDropdown({
             <Avatar
               size={44}
               style={{
-                background: "var(--fn-color-brand, #4f6ef7)",
+                background: "var(--fn-color-brand)",
                 fontSize: 18,
                 flexShrink: 0,
               }}
@@ -388,6 +389,20 @@ export default function AvatarDropdown({
               ]}
               onChange={(val) => handleLocaleChange(val as string)}
             />
+          </section>
+
+          <Divider className={styles.settingsDivider} />
+
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionHead}>
+              <h3 className={styles.settingsSectionTitle}>
+                {t("account.palette")}
+              </h3>
+              <p className={styles.settingsSectionDesc}>
+                {t("account.paletteHint")}
+              </p>
+            </div>
+            <PaletteSwitcher />
           </section>
 
           <Divider className={styles.settingsDivider} />

@@ -6,10 +6,18 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import {
+  DEFAULT_PALETTE,
+  PALETTE_STORAGE_KEY,
+  VALID_PALETTES,
+  type ThemePalette,
+} from "../styles/themePalettes";
 
 export type ThemePreference = "system" | "light" | "dark";
 
 export type ThemeMode = "light" | "dark";
+
+export type { ThemePalette };
 
 interface ThemeContextValue {
   /** The resolved mode applied to the UI */
@@ -18,6 +26,10 @@ interface ThemeContextValue {
   preference: ThemePreference;
   /** Set preference */
   setPreference: (p: ThemePreference) => void;
+  /** Brand color palette (orthogonal to light/dark) */
+  palette: ThemePalette;
+  /** Set brand palette */
+  setPalette: (p: ThemePalette) => void;
   /** Legacy toggle kept for backward compat (cycles light/dark) */
   toggle: () => void;
   /** Whether the current mode is considered "dark" for Ant Design */
@@ -28,6 +40,8 @@ const ThemeContext = createContext<ThemeContextValue>({
   mode: "light",
   preference: "system",
   setPreference: () => {},
+  palette: DEFAULT_PALETTE,
+  setPalette: () => {},
   toggle: () => {},
   isDark: false,
 });
@@ -47,11 +61,25 @@ export function isDarkMode(mode: ThemeMode): boolean {
 
 const VALID_PREFERENCES: ThemePreference[] = ["system", "light", "dark"];
 
+function readStoredPalette(): ThemePalette {
+  const stored = localStorage.getItem(PALETTE_STORAGE_KEY);
+  if (stored && (VALID_PALETTES as string[]).includes(stored)) {
+    return stored as ThemePalette;
+  }
+  return DEFAULT_PALETTE;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
     const stored = localStorage.getItem("theme") as ThemePreference | null;
     if (stored && VALID_PREFERENCES.includes(stored)) return stored;
     return "system";
+  });
+
+  const [palette, setPaletteState] = useState<ThemePalette>(() => {
+    const stored = readStoredPalette();
+    document.documentElement.setAttribute("data-palette", stored);
+    return stored;
   });
 
   const [mode, setMode] = useState<ThemeMode>(() => resolveMode(preference));
@@ -87,8 +115,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       });
   }, [mode, preference]);
 
+  useEffect(() => {
+    localStorage.setItem(PALETTE_STORAGE_KEY, palette);
+    document.documentElement.setAttribute("data-palette", palette);
+  }, [palette]);
+
   const setPreference = useCallback((p: ThemePreference) => {
     setPreferenceState(p);
+  }, []);
+
+  const setPalette = useCallback((p: ThemePalette) => {
+    setPaletteState(p);
   }, []);
 
   const toggle = useCallback(() => {
@@ -105,6 +142,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         mode,
         preference,
         setPreference,
+        palette,
+        setPalette,
         toggle,
         isDark: isDarkMode(mode),
       }}

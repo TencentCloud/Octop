@@ -75,7 +75,7 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--fn-color-brand, #e85d75);
+  background: var(--fn-color-brand);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -289,7 +289,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--fn-color-brand, #4f6ef7);
+    outline: 2px solid var(--fn-color-brand);
     outline-offset: -2px;
   }
 
@@ -336,7 +336,7 @@
   text-align: left;
 
   &:focus-visible {
-    outline: 2px solid var(--fn-color-brand, #4f6ef7);
+    outline: 2px solid var(--fn-color-brand);
     outline-offset: 1px;
   }
 }
@@ -380,15 +380,11 @@
     color 0.12s ease;
 
   &:hover:not(:disabled) {
-    color: var(--fn-color-brand, #4f6ef7);
-    border-color: color-mix(
-      in srgb,
-      var(--fn-color-brand, #4f6ef7) 35%,
-      transparent
-    );
+    color: var(--fn-color-brand);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
     background: color-mix(
       in srgb,
-      var(--fn-color-brand, #4f6ef7) 8%,
+      var(--fn-color-brand) 8%,
       var(--fn-bg-primary)
     );
   }
@@ -399,7 +395,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--fn-color-brand, #4f6ef7);
+    outline: 2px solid var(--fn-color-brand);
     outline-offset: 1px;
     opacity: 1;
   }
@@ -498,15 +494,11 @@
 }
 
 .fileModalIconBtnPrimary {
-  color: var(--fn-color-brand, #4f6ef7);
+  color: var(--fn-color-brand);
 
   &:hover:not(:disabled) {
-    color: var(--fn-color-brand, #4f6ef7);
-    background: color-mix(
-      in srgb,
-      var(--fn-color-brand, #4f6ef7) 12%,
-      transparent
-    );
+    color: var(--fn-color-brand);
+    background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
   }
 }
 
@@ -619,7 +611,8 @@
   outline: none;
   box-sizing: border-box;
   overflow-y: auto;
-  box-shadow: 0 0 0 3px rgba(232, 93, 117, 0.1);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
 }
 
 .editActions {
@@ -632,7 +625,11 @@
   padding: 5px 14px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--fn-color-brand), #f5738a);
+  background: linear-gradient(
+    135deg,
+    var(--fn-color-brand),
+    var(--fn-color-brand-soft)
+  );
   color: #fff;
   font-size: 13px;
   cursor: pointer;
@@ -718,7 +715,7 @@
 .browserStatusActive {
   color: var(--fn-text-secondary);
   border-color: var(--fn-color-brand);
-  background: rgba(232, 93, 117, 0.06);
+  background: color-mix(in srgb, var(--fn-color-brand) 6%, transparent);
 }
 
 .browserStatusAuth {

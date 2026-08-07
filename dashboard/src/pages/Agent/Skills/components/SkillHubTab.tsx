@@ -392,7 +392,7 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
                 {skill.verified && (
                   <CircleCheck
                     size={14}
-                    style={{ color: "#4f6ef7", flexShrink: 0 }}
+                    style={{ color: "var(--fn-text-brand)", flexShrink: 0 }}
                   />
                 )}
                 {requiresApiKey(skill) && (

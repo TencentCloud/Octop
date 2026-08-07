@@ -31,7 +31,7 @@ export const ExpertCard = memo(function ExpertCard({
   const { t } = useTranslation();
   const label = pickLocale(expert.label, lang) || expert.id;
   const desc = pickLocale(expert.description, lang);
-  const accent = expert.color || "#E85D75";
+  const accent = expert.color || "var(--fn-color-brand)";
 
   return (
     <div

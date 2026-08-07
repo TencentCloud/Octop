@@ -48,7 +48,7 @@
   gap: 6px;
   padding: 9px 18px 9px 14px;
   background: var(--fn-bg-elevated, var(--fn-bg-primary));
-  border: 1px solid rgba(232, 93, 117, 0.35);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
   border-radius: 999px;
   color: var(--fn-text-brand);
   font-size: 13px;
@@ -56,7 +56,7 @@
   cursor: pointer;
   box-shadow:
     0 6px 20px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(232, 93, 117, 0.16);
+    0 2px 8px color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
   white-space: nowrap;
 
   /* Smooth transitions for hover and visibility changes */
@@ -78,10 +78,10 @@
   &:hover {
     background: var(--fn-bg-hover);
     color: var(--fn-text-brand);
-    border-color: rgba(232, 93, 117, 0.55);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
     box-shadow:
       0 8px 24px rgba(0, 0, 0, 0.14),
-      0 3px 10px rgba(232, 93, 117, 0.22);
+      0 3px 10px color-mix(in srgb, var(--fn-color-brand) 22%, transparent);
     transform: translateX(-50%) translateY(-2px);
   }
 
@@ -191,7 +191,7 @@
   transition: background 0.2s ease;
 
   &:hover {
-    background: rgba(232, 93, 117, 0.015);
+    background: color-mix(in srgb, var(--fn-color-brand) 1.5%, transparent);
   }
 
   > .messageBubble,
@@ -281,7 +281,11 @@
 }
 
 .userText {
-  background: linear-gradient(135deg, var(--fn-color-brand) 0%, #f07c95 100%);
+  background: linear-gradient(
+    135deg,
+    var(--fn-color-brand) 0%,
+    var(--fn-color-brand-soft) 100%
+  );
   color: #fff;
   padding: 10px 14px;
   border-radius: 16px 16px 6px 16px;
@@ -513,7 +517,7 @@
 
   &:hover {
     background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
-    border-color: rgba(232, 93, 117, 0.2);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 20%, transparent);
   }
 }
 
@@ -522,7 +526,7 @@
   align-items: center;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(232, 93, 117, 0.08);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
   color: var(--fn-text-brand);
   font-size: 10px;
   font-weight: 600;
@@ -833,7 +837,11 @@
   transition: border-color 0.2s ease;
 
   &:hover {
-    border-left-color: rgba(232, 93, 117, 0.35);
+    border-left-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 35%,
+      transparent
+    );
   }
 }
 

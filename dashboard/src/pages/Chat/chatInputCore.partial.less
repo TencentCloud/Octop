@@ -61,7 +61,7 @@
 
   &:focus-within {
     border-color: var(--fn-color-brand);
-    box-shadow: 0 0 0 2px rgba(232, 93, 117, 0.08);
+    box-shadow: 0 0 0 2px var(--fn-color-brand-glow);
   }
 
   @media (max-width: 767px) {
@@ -170,7 +170,7 @@
 
   &:hover {
     color: var(--fn-text-brand);
-    background: rgba(232, 93, 117, 0.08);
+    background: var(--fn-color-brand-bg);
   }
 
   &:disabled {
@@ -208,13 +208,14 @@
 }
 
 .secondaryBtnModelActive {
-  color: var(--fn-color-brand, #e85d75) !important;
-  background: rgba(232, 93, 117, 0.12) !important;
-  box-shadow: inset 0 0 0 1.5px rgba(232, 93, 117, 0.35);
+  color: var(--fn-color-brand) !important;
+  background: var(--fn-color-brand-bg) !important;
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
 
   &:hover {
-    color: #d9466a !important;
-    background: rgba(232, 93, 117, 0.18) !important;
+    color: var(--fn-color-brand-hover) !important;
+    background: var(--fn-bg-active) !important;
   }
 }
 
@@ -283,7 +284,7 @@
 
   &:hover {
     color: var(--fn-text-brand);
-    background: rgba(232, 93, 117, 0.08);
+    background: var(--fn-color-brand-bg);
   }
 
   &:focus-visible {
@@ -466,14 +467,18 @@
   height: 32px;
   border-radius: 10px;
   border: none;
-  background: linear-gradient(135deg, var(--fn-color-brand), #f5738a);
+  background: linear-gradient(
+    135deg,
+    var(--fn-color-brand),
+    var(--fn-color-brand-soft)
+  );
   color: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover:not(:disabled) {
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(232, 93, 117, 0.35);
+    box-shadow: var(--fn-shadow-brand-lg);
   }
 
   &:active:not(:disabled) {
@@ -565,7 +570,7 @@
   color: var(--fn-text-primary);
 
   &:hover .queuedMessageText {
-    color: var(--fn-color-brand, #e85d75);
+    color: var(--fn-color-brand);
   }
 }
 

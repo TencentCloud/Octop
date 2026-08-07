@@ -165,7 +165,7 @@ export function SkillHubDetailDrawer({
                 alignItems: "center",
                 justifyContent: "center",
                 background: "var(--fn-color-brand-bg, rgba(79,110,247,0.12))",
-                color: "var(--fn-color-brand, #4f6ef7)",
+                color: "var(--fn-color-brand)",
                 fontSize: 18,
               }}
             >
@@ -186,7 +186,7 @@ export function SkillHubDetailDrawer({
           {skill.verified && (
             <CircleCheck
               size={15}
-              style={{ color: "#4f6ef7", flexShrink: 0 }}
+              style={{ color: "var(--fn-text-brand)", flexShrink: 0 }}
             />
           )}
         </div>

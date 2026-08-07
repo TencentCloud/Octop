@@ -161,7 +161,7 @@
   gap: 5px;
   height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(232, 93, 117, 0.12);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
   border-radius: 12px;
   background: var(--fn-bg-secondary);
   color: var(--fn-text-brand);
@@ -180,7 +180,7 @@
 }
 
 .sessionCreateBtn:hover {
-  background: rgba(232, 93, 117, 0.1);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
 }
 
@@ -224,15 +224,15 @@
 
   &:active {
     @media (max-width: 767px) {
-      background: rgba(232, 93, 117, 0.08);
+      background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
       transition-duration: 0.05s;
     }
   }
 }
 
 .sessionItem:hover {
-  background: rgba(232, 93, 117, 0.05);
-  border-color: rgba(232, 93, 117, 0.08);
+  background: color-mix(in srgb, var(--fn-color-brand) 5%, transparent);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
   box-shadow: none;
 }
 
@@ -323,7 +323,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(232, 93, 117, 0.08);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
   color: var(--fn-text-brand);
 }
 
@@ -364,7 +364,7 @@
 .menuBtn {
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(232, 93, 117, 0.06);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 6%, transparent);
   background: var(--fn-bg-secondary);
   flex-shrink: 0;
 }
@@ -443,7 +443,7 @@
   border-radius: 24px;
   padding: 10px 12px 10px 16px;
   background: var(--fn-bg-primary);
-  border: 1px solid rgba(232, 93, 117, 0.12);
+  border: 1px solid var(--fn-assistant-bubble-border);
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
 
   @media (max-width: 767px) {
@@ -453,10 +453,10 @@
 }
 
 .inputWrapper:focus-within {
-  border-color: rgba(232, 93, 117, 0.3);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 30%, transparent);
   box-shadow:
-    0 0 0 4px rgba(232, 93, 117, 0.07),
-    0 22px 46px rgba(232, 93, 117, 0.12);
+    0 0 0 4px var(--fn-color-brand-glow),
+    0 22px 46px var(--fn-color-brand-shadow);
 }
 
 .textarea {
@@ -472,7 +472,7 @@
 .actionsRow {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(232, 93, 117, 0.08);
+  border-top: 1px solid var(--fn-color-brand-glow);
 
   @media (max-width: 767px) {
     margin-top: 4px;
@@ -484,27 +484,27 @@
 .newChatBtn {
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(232, 93, 117, 0.06);
+  border: 1px solid var(--fn-color-brand-glow);
   background: var(--fn-bg-secondary);
 }
 
 .secondaryBtn:hover,
 .newChatBtn:hover {
-  background: rgba(232, 93, 117, 0.08);
+  background: var(--fn-color-brand-bg);
 }
 
 .sendBtn {
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(232, 93, 117, 0.14);
+  box-shadow: var(--fn-shadow-brand);
 }
 
 .shortcutPopover {
   padding: 8px;
   border-radius: 16px;
   background: var(--fn-bg-primary);
-  border: 1px solid rgba(232, 93, 117, 0.1);
+  border: 1px solid var(--fn-assistant-bubble-border);
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
 }
 
