@@ -34,6 +34,7 @@ interface AssistantTurnViewProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  onDeleteMessage?: (messageId: string) => void;
 }
 
 export default function AssistantTurnView({
@@ -51,6 +52,7 @@ export default function AssistantTurnView({
   shellCommandDisabled,
   shellCommandDisabledTitle,
   compactProcess = false,
+  onDeleteMessage,
 }: AssistantTurnViewProps) {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
@@ -114,6 +116,7 @@ export default function AssistantTurnView({
         <MessageBubble
           message={hitlMessage}
           onHitlDecision={onHitlDecision}
+          onDeleteMessage={onDeleteMessage}
           groupPosition="only"
         />
       ) : null}
@@ -142,6 +145,7 @@ export default function AssistantTurnView({
             message={toAnswerOnlyMessage(answerSplit.answerMessage)}
             onRegenerate={onRegenerate}
             onEditUserMessage={onEditUserMessage}
+            onDeleteMessage={onDeleteMessage}
             groupPosition="only"
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}

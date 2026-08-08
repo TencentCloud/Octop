@@ -1061,3 +1061,118 @@
     opacity: 1;
   }
 }
+
+/* ---------- Delete mode ---------- */
+.messageRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.messageRowUser {
+  /* For user messages: checkbox stays left, content pushes right */
+  justify-content: flex-start;
+
+  /* Push the actual bubble content to right */
+  > *:last-child {
+    margin-left: auto;
+  }
+}
+
+.messageCheckboxWrapper {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 6px;
+}
+
+.messageCheckbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--fn-color-brand);
+}
+
+.deleteModeToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-top: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-primary);
+
+  @media (max-width: 767px) {
+    padding: 12px 12px;
+  }
+}
+
+.deleteModeLeft,
+.deleteModeRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deleteModeCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deleteModeSelectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--fn-text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.deleteModeDeleteBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--fn-color-danger);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    opacity var(--fn-transition-fast);
+
+  &:hover:not(:disabled) {
+    background: #d9213d;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.deleteModeExitBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--fn-radius-full);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--fn-transition-fast),
+    background var(--fn-transition-fast);
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-hover);
+  }
+}

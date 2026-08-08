@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Pencil,
   Volume2,
+  Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
@@ -53,6 +54,7 @@ interface MessageBubbleProps {
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
+  onDeleteMessage?: (messageId: string) => void;
 
   /** When true, the outer bubble uses reduced spacing (part of a group). */
   compact?: boolean;
@@ -491,6 +493,7 @@ function MessageBubble({
   onRegenerate,
   onEditUserMessage,
   onHitlDecision,
+  onDeleteMessage,
   compact,
   groupPosition = "only",
   onRunShellCommand,
@@ -719,7 +722,7 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
-                {(message.content || onEditUserMessage) && (
+                {(message.content || onEditUserMessage || onDeleteMessage) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
                       <CopyButton text={message.content} />
@@ -736,6 +739,17 @@ function MessageBubble({
                         aria-label={t("common.edit")}
                       >
                         <Pencil size={14} />
+                      </button>
+                    ) : null}
+                    {onDeleteMessage ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => onDeleteMessage(message.id)}
+                        title={t("common.delete", "删除")}
+                        type="button"
+                        aria-label={t("common.delete", "删除")}
+                      >
+                        <Trash2 size={14} />
                       </button>
                     ) : null}
                   </div>
@@ -844,6 +858,16 @@ function MessageBubble({
                       type="button"
                     >
                       <RotateCcw size={13} />
+                    </button>
+                  )}
+                  {!isUser && !isStreaming && onDeleteMessage && (
+                    <button
+                      className={styles.msgActionBtn}
+                      onClick={() => onDeleteMessage(message.id)}
+                      title={t("common.delete", "删除")}
+                      type="button"
+                    >
+                      <Trash2 size={13} />
                     </button>
                   )}
                 </div>

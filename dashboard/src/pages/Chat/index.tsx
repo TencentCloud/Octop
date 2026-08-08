@@ -8,6 +8,8 @@ import {
   Globe,
   FilePen,
   Terminal,
+  Trash2,
+  X,
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
@@ -558,6 +560,55 @@ function ChatPageInner() {
     [activeThreadId, editAndResend, resolvedAgentId],
   );
 
+  // Delete mode handlers
+  const isDeleteMode = activeThreadId ? chatStore.isDeleteMode(activeThreadId) : false;
+
+  const handleExitDeleteMode = useCallback(() => {
+    if (!activeThreadId) return;
+    chatStore.setDeleteMode(activeThreadId, false);
+  }, [activeThreadId]);
+
+  const handleToggleMessageSelection = useCallback(
+    (messageId: string) => {
+      if (!activeThreadId) return;
+      chatStore.toggleMessageSelection(activeThreadId, messageId);
+    },
+    [activeThreadId],
+  );
+
+  const handleSelectAllMessages = useCallback(() => {
+    if (!activeThreadId) return;
+    const allSelected = chatStore.areAllMessagesSelected(activeThreadId, messages);
+    chatStore.setAllMessagesSelected(activeThreadId, messages, !allSelected);
+  }, [activeThreadId, messages]);
+
+  const handleDeleteSelectedMessages = useCallback(() => {
+    if (!activeThreadId) return;
+    chatStore.deleteSelectedMessages(activeThreadId);
+  }, [activeThreadId]);
+
+  const handleIsMessageSelected = useCallback(
+    (messageId: string) => {
+      if (!activeThreadId) return false;
+      return chatStore.isMessageSelected(activeThreadId, messageId);
+    },
+    [activeThreadId],
+  );
+
+  // Handle clicking delete button on a message: enter delete mode and select that message
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => {
+      if (!activeThreadId) return;
+      // Enter delete mode first
+      chatStore.setDeleteMode(activeThreadId, true);
+      // Then select the message that was clicked
+      chatStore.toggleMessageSelection(activeThreadId, messageId);
+    },
+    [activeThreadId],
+  );
+
+  const areAllSelected = activeThreadId ? chatStore.areAllMessagesSelected(activeThreadId, messages) : false;
+
   const hasMessages = messages.length > 0;
   // On hard refresh / deep-link into a thread, messages start empty. Showing
   // Welcome until history returns looks like a full page flash. Keep the list
@@ -711,6 +762,10 @@ function ChatPageInner() {
                     ? openFileList
                     : undefined
                 }
+                isDeleteMode={isDeleteMode}
+                isMessageSelected={handleIsMessageSelected}
+                onToggleMessageSelection={handleToggleMessageSelection}
+                onDeleteMessage={handleDeleteMessage}
               />
             )}
           </div>
@@ -832,40 +887,78 @@ function ChatPageInner() {
             </div>
           )}
 
-          <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
-          <ChatInput
-            ref={chatInputRef}
-            onSend={wrappedHandleSend}
-            onQueue={enqueueQueued}
-            queuedItems={queuedItems}
-            onRemoveQueued={removeQueued}
-            onReclaimQueued={reclaimQueued}
-            onCancel={cancelStream}
-            onNewChat={handleNewChat}
-            isStreaming={isStreaming}
-            disabled={!agentChatReady || noAgents}
-            initialText={prefillInputRef.current}
-            onComposerCleared={() => {
-              prefillInputRef.current = "";
-            }}
-            availableModels={availableModels}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            availableConnectors={chatConnectors}
-            selectedConnectors={selectedConnectors}
-            onConnectorsChange={handleConnectorsChange}
-            availableSkills={chatSkills}
-            selectedSkills={selectedSkills}
-            onSkillsChange={handleSkillsChange}
-            availableAgents={chatAgentOptions}
-            selectedTargetAgents={selectedTargetAgents}
-            onTargetAgentsChange={setSelectedTargetAgents}
-            agentId={resolvedAgentId}
-            threadId={activeThreadId}
-            defaultModel={activeAgent?.default_model ?? null}
-            contextUsedTokens={contextUsedTokens}
-            contextMaxTokens={contextMaxTokens}
-          />
+          {!isDeleteMode ? (
+            <>
+              <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
+              <ChatInput
+                ref={chatInputRef}
+                onSend={wrappedHandleSend}
+                onQueue={enqueueQueued}
+                queuedItems={queuedItems}
+                onRemoveQueued={removeQueued}
+                onReclaimQueued={reclaimQueued}
+                onCancel={cancelStream}
+                onNewChat={handleNewChat}
+                isStreaming={isStreaming}
+                disabled={!agentChatReady || noAgents}
+                initialText={prefillInputRef.current}
+                onComposerCleared={() => {
+                  prefillInputRef.current = "";
+                }}
+                availableModels={availableModels}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+                availableConnectors={chatConnectors}
+                selectedConnectors={selectedConnectors}
+                onConnectorsChange={handleConnectorsChange}
+                availableSkills={chatSkills}
+                selectedSkills={selectedSkills}
+                onSkillsChange={handleSkillsChange}
+                availableAgents={chatAgentOptions}
+                selectedTargetAgents={selectedTargetAgents}
+                onTargetAgentsChange={setSelectedTargetAgents}
+                agentId={resolvedAgentId}
+                threadId={activeThreadId}
+                defaultModel={activeAgent?.default_model ?? null}
+                contextUsedTokens={contextUsedTokens}
+                contextMaxTokens={contextMaxTokens}
+              />
+            </>
+          ) : (
+            <div className={styles.deleteModeToolbar}>
+              {/* Left: Select all checkbox */}
+              <div className={styles.deleteModeLeft}>
+                <label className={styles.deleteModeSelectAll}>
+                  <input
+                    type="checkbox"
+                    checked={areAllSelected}
+                    onChange={handleSelectAllMessages}
+                  />
+                  <span>{t("chat.delete.selectAll", "全选")}</span>
+                </label>
+              </div>
+              {/* Center: Delete button */}
+              <div className={styles.deleteModeCenter}>
+                <button
+                  className={styles.deleteModeDeleteBtn}
+                  onClick={handleDeleteSelectedMessages}
+                  disabled={chatStore.getSelectedMessageIds(activeThreadId ?? "").size === 0}
+                >
+                  <Trash2 size={18} />
+                  <span>{t("chat.delete.delete", "删除")}</span>
+                </button>
+              </div>
+              {/* Right: Exit button */}
+              <div className={styles.deleteModeRight}>
+                <button
+                  className={styles.deleteModeExitBtn}
+                  onClick={handleExitDeleteMode}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <ChatDockPanels

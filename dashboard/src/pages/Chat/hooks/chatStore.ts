@@ -33,6 +33,7 @@ import {
   shouldForceSealStream,
   shouldResumeStreamAfterClose,
 } from "./wsResumeGate";
+import { groupConsecutiveAssistantMessages } from "../utils/messageGrouping";
 
 // ── Focused chat session (reconnect thrash only for the visible tab) ──────
 
@@ -121,6 +122,318 @@ export function consumePendingPrefillText(): string {
   const val = _pendingPrefillText;
   _pendingPrefillText = "";
   return val;
+}
+
+// ── Delete mode state ────────────────────────────────────────────────────
+// Tracks whether we're in delete mode and which messages are selected.
+// Delete mode is session-specific.
+
+interface DeleteModeState {
+  isDeleteMode: boolean;
+  selectedMessageIds: Set<string>;
+}
+
+const deleteModeStates = new Map<string, DeleteModeState>();
+
+function getDeleteModeState(sessionId: string): DeleteModeState {
+  let state = deleteModeStates.get(sessionId);
+  if (!state) {
+    state = {
+      isDeleteMode: false,
+      selectedMessageIds: new Set(),
+    };
+    deleteModeStates.set(sessionId, state);
+  }
+  return state;
+}
+
+/** Enter or exit delete mode for a session. */
+export function setDeleteMode(sessionId: string, isDeleteMode: boolean): void {
+  const deleteState = getDeleteModeState(sessionId);
+  if (deleteState.isDeleteMode !== isDeleteMode) {
+    deleteState.isDeleteMode = isDeleteMode;
+    deleteState.selectedMessageIds.clear();
+    const chatState = sessionStates.get(sessionId);
+    if (chatState) notify(chatState);
+  }
+}
+
+/** Check if we're in delete mode for a session. */
+export function isDeleteMode(sessionId: string): boolean {
+  return getDeleteModeState(sessionId).isDeleteMode;
+}
+
+/** Toggle a message's selected state in delete mode. */
+export function toggleMessageSelection(
+  sessionId: string,
+  messageId: string,
+): void {
+  const deleteState = getDeleteModeState(sessionId);
+  const chatState = sessionStates.get(sessionId);
+
+  // Find all messages in the same group as the clicked message
+  if (chatState) {
+    const groups = groupConsecutiveAssistantMessages(chatState.messages);
+    const targetGroup = groups.find((g) =>
+      g.messages.some((m) => m.id === messageId)
+    );
+
+    // Only apply group selection logic to ASSISTANT/TOOL message groups
+    // NEVER apply it to user messages (single user message groups)
+    if (
+      targetGroup &&
+      targetGroup.isGroup &&
+      targetGroup.messages.every((m) => m.role === "assistant" || m.role === "tool")
+    ) {
+      // This is a grouped assistant message - toggle the whole group
+      const groupIds = targetGroup.messages.map((m) => m.id);
+      // Check if all are already selected
+      const allSelected = groupIds.every((id) =>
+        deleteState.selectedMessageIds.has(id)
+      );
+
+      if (allSelected) {
+        // Deselect all in group
+        groupIds.forEach((id) => deleteState.selectedMessageIds.delete(id));
+      } else {
+        // Select all in group
+        groupIds.forEach((id) => deleteState.selectedMessageIds.add(id));
+      }
+    } else {
+      // Single message (user/system) - toggle just this one
+      if (deleteState.selectedMessageIds.has(messageId)) {
+        deleteState.selectedMessageIds.delete(messageId);
+      } else {
+        deleteState.selectedMessageIds.add(messageId);
+      }
+    }
+  } else {
+    // No chat state - just toggle the single message
+    if (deleteState.selectedMessageIds.has(messageId)) {
+      deleteState.selectedMessageIds.delete(messageId);
+    } else {
+      deleteState.selectedMessageIds.add(messageId);
+    }
+  }
+
+  if (chatState) notify(chatState);
+}
+
+/** Select or deselect all messages in delete mode. */
+export function setAllMessagesSelected(
+  sessionId: string,
+  messages: ChatMessage[],
+  selected: boolean,
+): void {
+  const deleteState = getDeleteModeState(sessionId);
+  deleteState.selectedMessageIds.clear();
+  if (selected) {
+    for (const msg of messages) {
+      deleteState.selectedMessageIds.add(msg.id);
+    }
+  }
+  const chatState = sessionStates.get(sessionId);
+  if (chatState) notify(chatState);
+}
+
+/** Check if all messages are selected. */
+export function areAllMessagesSelected(
+  sessionId: string,
+  messages: ChatMessage[],
+): boolean {
+  const deleteState = getDeleteModeState(sessionId);
+  return (
+    messages.length > 0 &&
+    messages.every((msg) => deleteState.selectedMessageIds.has(msg.id))
+  );
+}
+
+/** Get the set of selected message ids. */
+export function getSelectedMessageIds(sessionId: string): Set<string> {
+  const deleteState = getDeleteModeState(sessionId);
+  return new Set(deleteState.selectedMessageIds);
+}
+
+/** Delete selected messages from the session (surface only, no backend).
+ *
+ * The backend thread still owns the messages, so re-fetched history would
+ * normally bring them back (overscroll refresh, load-more, hard reload). We
+ * remember the deleted ids per session and filter them out of every history
+ * re-apply, so the deletion sticks without touching the agent memory layer.
+ */
+export function deleteSelectedMessages(sessionId: string): void {
+  const deleteState = getDeleteModeState(sessionId);
+  const chatState = sessionStates.get(sessionId);
+  if (!chatState || deleteState.selectedMessageIds.size === 0) return;
+
+  const selectedIds = deleteState.selectedMessageIds;
+  const { ids, fingerprints } = loadDeletedMessages(sessionId);
+  for (const msg of chatState.messages) {
+    if (selectedIds.has(msg.id)) {
+      ids.add(msg.id);
+      const fp = messageDeleteFingerprint(msg);
+      if (fp) fingerprints.add(fp);
+    }
+  }
+  persistDeletedMessages(sessionId);
+
+  chatState.messages = chatState.messages.filter((msg) => !selectedIds.has(msg.id));
+
+  // Exit delete mode after deletion
+  deleteState.isDeleteMode = false;
+  deleteState.selectedMessageIds.clear();
+
+  notify(chatState);
+}
+
+/** Check if a message is selected. */
+export function isMessageSelected(sessionId: string, messageId: string): boolean {
+  const deleteState = getDeleteModeState(sessionId);
+  return deleteState.selectedMessageIds.has(messageId);
+}
+
+// ── Surface-deleted messages (persistent) ────────────────────────────────
+// Delete mode removes messages from the local store only. To keep them gone
+// across overscroll-refresh / load-more / hard reloads, persist the deleted
+// ids per session and filter them out whenever history is re-applied.
+//
+// Live-streamed messages only ever carry a client-generated id (the backend
+// never echoes its own checkpoint id), so a reload would re-apply them under
+// a different id. To keep those deleted too, we also record a text fingerprint
+// per deleted message and match on id OR fingerprint.
+
+const DELETED_MESSAGES_STORAGE_PREFIX = "octop:deleted-messages:";
+
+const deletedMessageIds = new Map<string, Set<string>>();
+const deletedMessageFingerprints = new Map<string, Set<string>>();
+
+/**
+ * Checks if this message ID looks like a client-generated temporary ID
+ * (e.g., streamed messages before the server echoes back a real ID).
+ */
+function isTemporaryMessageId(id: string): boolean {
+  // Client-generated IDs: {timestamp}-{random}
+  if (/^\d+-\w+$/.test(id)) return true;
+  // Legacy call-* IDs from history conversion
+  if (id.startsWith("call-")) return true;
+  return false;
+}
+
+/**
+ * Signature used to re-identify a message after a reload — ONLY FOR
+ * CLIENT-GENERATED TEMPORARY MESSAGES (streamed content before server echo).
+ *
+ * For messages with stable backend IDs, we rely entirely on ID matching
+ * to avoid accidentally deleting unrelated messages with identical content.
+ */
+function messageDeleteFingerprint(message: ChatMessage): string {
+  // Only generate fingerprints for messages with temporary client IDs
+  if (!isTemporaryMessageId(message.id)) return "";
+
+  const role = message.role;
+
+  if (message.toolData?.name) {
+    return `${role}|tool:${message.toolData.name}:${message.toolData.callId ?? ""}:${message.timestamp}`;
+  }
+
+  let text = "";
+  if (message.contentBlocks) {
+    for (const block of message.contentBlocks) {
+      if (block.type === "text" && typeof block.content === "string") {
+        text += block.content;
+      }
+    }
+  } else if (typeof message.content === "string") {
+    text = message.content;
+  }
+  if (text.trim()) return `${role}|${text}|${message.timestamp}`;
+
+  if (message.contentBlocks && message.contentBlocks.length > 0) {
+    const payload = message.contentBlocks
+      .map((b) =>
+        typeof b.content === "string"
+          ? b.content
+          : JSON.stringify(b.content ?? ""),
+      )
+      .join("\n");
+    return `${role}|blocks:${payload}|${message.timestamp}`;
+  }
+
+  return "";
+}
+
+function loadDeletedMessages(
+  sessionId: string,
+): { ids: Set<string>; fingerprints: Set<string> } {
+  let ids = deletedMessageIds.get(sessionId);
+  let fingerprints = deletedMessageFingerprints.get(sessionId);
+  if (!ids || !fingerprints) {
+    ids = new Set<string>();
+    fingerprints = new Set<string>();
+    deletedMessageIds.set(sessionId, ids);
+    deletedMessageFingerprints.set(sessionId, fingerprints);
+    try {
+      const raw = localStorage.getItem(
+        `${DELETED_MESSAGES_STORAGE_PREFIX}${sessionId}`,
+      );
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          // Legacy format: bare id list.
+          for (const id of parsed) {
+            if (typeof id === "string" && id) ids.add(id);
+          }
+        } else if (parsed && typeof parsed === "object") {
+          if (Array.isArray(parsed.ids)) {
+            for (const id of parsed.ids) {
+              if (typeof id === "string" && id) ids.add(id);
+            }
+          }
+          if (Array.isArray(parsed.fingerprints)) {
+            for (const fp of parsed.fingerprints) {
+              if (typeof fp === "string" && fp) fingerprints.add(fp);
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore corrupt / unavailable storage
+    }
+  }
+  return { ids, fingerprints };
+}
+
+function persistDeletedMessages(sessionId: string): void {
+  try {
+    const ids = deletedMessageIds.get(sessionId) ?? new Set<string>();
+    const fingerprints =
+      deletedMessageFingerprints.get(sessionId) ?? new Set<string>();
+    localStorage.setItem(
+      `${DELETED_MESSAGES_STORAGE_PREFIX}${sessionId}`,
+      JSON.stringify({ ids: [...ids], fingerprints: [...fingerprints] }),
+    );
+  } catch {
+    // ignore quota / private-mode errors
+  }
+}
+
+/** Filter surface-deleted messages out of a history payload. */
+function filterDeletedMessages(
+  sessionId: string,
+  messages: ChatMessage[],
+): ChatMessage[] {
+  const { ids, fingerprints } = loadDeletedMessages(sessionId);
+  if (ids.size === 0 && fingerprints.size === 0) return messages;
+  return messages.filter((message) => {
+    if (ids.has(message.id)) return false;
+    // Only apply fingerprint matching to temporary client-generated IDs
+    // For real backend IDs, rely entirely on ID matching to avoid collateral deletion
+    if (fingerprints.size > 0 && isTemporaryMessageId(message.id)) {
+      const fp = messageDeleteFingerprint(message);
+      if (fp && fingerprints.has(fp)) return false;
+    }
+    return true;
+  });
 }
 
 // ── Composer draft (sessionStorage) ───────────────────────────────────────
@@ -478,7 +791,7 @@ export function getSnapshot(sessionId: string): SessionSnapshot {
 /** Directly set messages for a session (e.g. from loadHistory). */
 export function setMessages(sessionId: string, messages: ChatMessage[]) {
   const state = getOrCreate(sessionId);
-  state.messages = messages;
+  state.messages = filterDeletedMessages(sessionId, messages);
   state.runUsage = null;
   notify(state);
 }
@@ -490,7 +803,7 @@ export function setHistoryPage(
   opts: { hasMore: boolean; nextOffset: number },
 ) {
   const state = getOrCreate(sessionId);
-  state.messages = messages;
+  state.messages = filterDeletedMessages(sessionId, messages);
   state.runUsage = null;
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
@@ -515,7 +828,10 @@ export function prependHistoryMessages(
   opts: { hasMore: boolean; nextOffset: number },
 ) {
   const state = getOrCreate(sessionId);
-  const uniqueOlder = dedupePrependMessages(older, state.messages);
+  const uniqueOlder = dedupePrependMessages(
+    filterDeletedMessages(sessionId, older),
+    state.messages,
+  );
   if (uniqueOlder.length > 0) {
     state.messages = [...uniqueOlder, ...state.messages];
   }
@@ -685,6 +1001,16 @@ export function removeSession(sessionId: string) {
   clearStreamActivity(sessionId);
   clearStreamWatchdog(sessionId);
   closeLiveSocket(sessionId, { intentional: true, userCancelled: true });
+  // Surface-deleted message tracking is scoped to this session — drop it so a
+  // recreated thread with the same id starts clean.
+  deleteModeStates.delete(sessionId);
+  deletedMessageIds.delete(sessionId);
+  deletedMessageFingerprints.delete(sessionId);
+  try {
+    localStorage.removeItem(`${DELETED_MESSAGES_STORAGE_PREFIX}${sessionId}`);
+  } catch {
+    // ignore
+  }
 }
 
 /** Rename a cached session's key (e.g. temp id → real UUID).
@@ -717,6 +1043,23 @@ export function renameSessionKey(oldId: string, newId: string) {
     if (wd != null) {
       streamWatchdogs.delete(oldId);
       streamWatchdogs.set(newId, wd);
+    }
+    // Surface-deleted message tracking must follow the session key so the
+    // renamed thread keeps its deleted-message filter across the remount.
+    const dmIds = deletedMessageIds.get(oldId);
+    if (dmIds) {
+      deletedMessageIds.set(newId, dmIds);
+      deletedMessageIds.delete(oldId);
+    }
+    const dmFps = deletedMessageFingerprints.get(oldId);
+    if (dmFps) {
+      deletedMessageFingerprints.set(newId, dmFps);
+      deletedMessageFingerprints.delete(oldId);
+    }
+    const dmState = deleteModeStates.get(oldId);
+    if (dmState) {
+      deleteModeStates.set(newId, dmState);
+      deleteModeStates.delete(oldId);
     }
     if (focusedChatSessionId === oldId) {
       focusedChatSessionId = newId;

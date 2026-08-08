@@ -106,6 +106,10 @@ interface MessageListProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  isDeleteMode?: boolean;
+  isMessageSelected?: (messageId: string) => boolean;
+  onToggleMessageSelection?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void;
 }
 
 interface GroupRenderContext {
@@ -128,6 +132,10 @@ interface GroupRenderContext {
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
   registerBubbleRef: (messageId: string, el: HTMLDivElement | null) => void;
+  isDeleteMode?: boolean;
+  isMessageSelected?: (messageId: string) => boolean;
+  onToggleMessageSelection?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void;
 }
 
 function renderMessageGroup(
@@ -146,6 +154,35 @@ function renderMessageGroup(
     lastUserGroupIndex: ctx.lastUserGroupIndex,
   });
 
+  const groupMessageId = group.messages[0]?.id ?? "";
+
+  const renderCheckbox = (messageId: string) => (
+    <div className={styles.messageCheckboxWrapper}>
+      <input
+        type="checkbox"
+        checked={ctx.isMessageSelected?.(messageId) ?? false}
+        onChange={(e) => {
+          e.stopPropagation();
+          ctx.onToggleMessageSelection?.(messageId);
+        }}
+        className={styles.messageCheckbox}
+      />
+    </div>
+  );
+
+  // Only wrap in the flex row when delete mode is active. In normal browsing
+  // this would otherwise become a flex item and shrink assistant bubbles to
+  // content width, changing the existing layout.
+  const messageContent = (messageId: string, content: React.ReactNode, { isUser = false } = {}) => {
+    if (!ctx.isDeleteMode) return content;
+    return (
+      <div className={`${styles.messageRow} ${isUser ? styles.messageRowUser : ""}`}>
+        {renderCheckbox(messageId)}
+        {content}
+      </div>
+    );
+  };
+
   if (!group.isGroup || group.messages.length === 1) {
     const msg = group.messages[0];
     if (msg.role === "assistant") {
@@ -155,21 +192,25 @@ function renderMessageGroup(
             ctx.registerBubbleRef(msg.id, el);
           }}
         >
-          <AssistantTurnView
-            messages={[msg]}
-            agentId={ctx.agentId}
-            isTurnInProgress={isTurnInProgress}
-            onRegenerate={ctx.onRegenerate}
-            onEditUserMessage={ctx.onEditUserMessage}
-            onAcpPermissionSelect={ctx.onAcpPermissionSelect}
-            onHitlDecision={ctx.onHitlDecision}
-            onOpenBrowser={openBrowserHandler}
-            onEditFile={ctx.onEditFile}
-            onRunShellCommand={ctx.onRunShellCommand}
-            shellCommandDisabled={ctx.shellCommandDisabled}
-            shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
-            compactProcess={ctx.compactProcess}
-          />
+          {messageContent(
+            msg.id,
+            <AssistantTurnView
+              messages={[msg]}
+              agentId={ctx.agentId}
+              isTurnInProgress={isTurnInProgress}
+              onRegenerate={ctx.onRegenerate}
+              onEditUserMessage={ctx.onEditUserMessage}
+              onAcpPermissionSelect={ctx.onAcpPermissionSelect}
+              onHitlDecision={ctx.onHitlDecision}
+              onOpenBrowser={openBrowserHandler}
+              onEditFile={ctx.onEditFile}
+              onRunShellCommand={ctx.onRunShellCommand}
+              shellCommandDisabled={ctx.shellCommandDisabled}
+              shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
+              compactProcess={ctx.compactProcess}
+              onDeleteMessage={ctx.onDeleteMessage}
+            />
+          )}
         </div>
       );
     }
@@ -179,13 +220,18 @@ function renderMessageGroup(
           ctx.registerBubbleRef(msg.id, el);
         }}
       >
-        <MessageBubble
-          message={msg}
-          agentId={ctx.agentId}
-          composerLookups={ctx.composerLookups}
-          onRegenerate={ctx.onRegenerate}
-          onEditUserMessage={ctx.onEditUserMessage}
-        />
+        {messageContent(
+          msg.id,
+          <MessageBubble
+            message={msg}
+            agentId={ctx.agentId}
+            composerLookups={ctx.composerLookups}
+            onRegenerate={ctx.onRegenerate}
+            onEditUserMessage={ctx.onEditUserMessage}
+            onDeleteMessage={ctx.onDeleteMessage}
+          />,
+          { isUser: msg.role === "user" }
+        )}
       </div>
     );
   }
@@ -200,21 +246,25 @@ function renderMessageGroup(
         }
       }}
     >
-      <AssistantTurnView
-        messages={group.messages}
-        agentId={ctx.agentId}
-        isTurnInProgress={isTurnInProgress}
-        onRegenerate={ctx.onRegenerate}
-        onEditUserMessage={ctx.onEditUserMessage}
-        onAcpPermissionSelect={ctx.onAcpPermissionSelect}
-        onHitlDecision={ctx.onHitlDecision}
-        onOpenBrowser={openBrowserHandler}
-        onEditFile={ctx.onEditFile}
-        onRunShellCommand={ctx.onRunShellCommand}
-        shellCommandDisabled={ctx.shellCommandDisabled}
-        shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
-        compactProcess={ctx.compactProcess}
-      />
+      {messageContent(
+        groupMessageId,
+        <AssistantTurnView
+          messages={group.messages}
+          agentId={ctx.agentId}
+          isTurnInProgress={isTurnInProgress}
+          onRegenerate={ctx.onRegenerate}
+          onEditUserMessage={ctx.onEditUserMessage}
+          onAcpPermissionSelect={ctx.onAcpPermissionSelect}
+          onHitlDecision={ctx.onHitlDecision}
+          onOpenBrowser={openBrowserHandler}
+          onEditFile={ctx.onEditFile}
+          onRunShellCommand={ctx.onRunShellCommand}
+          shellCommandDisabled={ctx.shellCommandDisabled}
+          shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
+          compactProcess={ctx.compactProcess}
+          onDeleteMessage={ctx.onDeleteMessage}
+        />
+      )}
     </div>
   );
 }
@@ -244,6 +294,10 @@ export default function MessageList(props: MessageListProps) {
     shellCommandDisabled,
     shellCommandDisabledTitle,
     compactProcess,
+    isDeleteMode = false,
+    isMessageSelected,
+    onToggleMessageSelection,
+    onDeleteMessage,
   } = props;
 
   const { t } = useTranslation();
@@ -670,6 +724,10 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabledTitle,
       compactProcess,
       registerBubbleRef,
+      isDeleteMode,
+      isMessageSelected,
+      onToggleMessageSelection,
+      onDeleteMessage,
     }),
     [
       agentId,
@@ -689,6 +747,10 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabledTitle,
       compactProcess,
       registerBubbleRef,
+      isDeleteMode,
+      isMessageSelected,
+      onToggleMessageSelection,
+      onDeleteMessage,
     ],
   );
 
