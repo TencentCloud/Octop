@@ -223,9 +223,7 @@ def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
             if workspace_dir.exists():
                 shutil.rmtree(workspace_dir)
         except OSError:
-            logger.exception(
-                "rmtree failed for %s; agent removed from DB anyway", workspace_dir
-            )
+            logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         svc.agent_repo.delete(agent_id)
 
 
