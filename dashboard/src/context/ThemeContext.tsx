@@ -7,13 +7,13 @@ import {
   type ReactNode,
 } from "react";
 import {
-  DEFAULT_PALETTE,
-  PALETTE_STORAGE_KEY,
-  VALID_PALETTES,
-  type ThemePalette,
-} from "../styles/themePalettes";
+  loadAppearanceOnBoot,
+  writeStoredAppearance,
+  type ThemePreference,
+} from "../styles/appearanceStorage";
+import { DEFAULT_PALETTE, type ThemePalette } from "../styles/themePalettes";
 
-export type ThemePreference = "system" | "light" | "dark";
+export type { ThemePreference };
 
 export type ThemeMode = "light" | "dark";
 
@@ -59,27 +59,16 @@ export function isDarkMode(mode: ThemeMode): boolean {
   return mode === "dark";
 }
 
-const VALID_PREFERENCES: ThemePreference[] = ["system", "light", "dark"];
-
-function readStoredPalette(): ThemePalette {
-  const stored = localStorage.getItem(PALETTE_STORAGE_KEY);
-  if (stored && (VALID_PALETTES as string[]).includes(stored)) {
-    return stored as ThemePalette;
-  }
-  return DEFAULT_PALETTE;
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
-    const stored = localStorage.getItem("theme") as ThemePreference | null;
-    if (stored && VALID_PREFERENCES.includes(stored)) return stored;
-    return "system";
+    const stored = loadAppearanceOnBoot();
+    document.documentElement.setAttribute("data-palette", stored.palette);
+    return stored.preference;
   });
 
   const [palette, setPaletteState] = useState<ThemePalette>(() => {
-    const stored = readStoredPalette();
-    document.documentElement.setAttribute("data-palette", stored);
-    return stored;
+    // loadAppearanceOnBoot is idempotent for the migrated JSON shape.
+    return loadAppearanceOnBoot().palette;
   });
 
   const [mode, setMode] = useState<ThemeMode>(() => resolveMode(preference));
@@ -96,13 +85,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener("change", handler);
   }, [preference]);
 
-  // Apply resolved mode
+  // Apply resolved mode when preference changes
   useEffect(() => {
     setMode(resolveMode(preference));
   }, [preference]);
 
+  // Persist preference + palette together (mode is derived, not stored)
   useEffect(() => {
-    localStorage.setItem("theme", preference);
+    writeStoredAppearance({ preference, palette });
+    document.documentElement.setAttribute("data-palette", palette);
+  }, [preference, palette]);
+
+  useEffect(() => {
     document.documentElement.setAttribute("data-theme", mode);
 
     // Keep the PWA theme-color meta tag in sync with the resolved mode so
@@ -113,12 +107,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .forEach((el) => {
         el.content = themeColor;
       });
-  }, [mode, preference]);
-
-  useEffect(() => {
-    localStorage.setItem(PALETTE_STORAGE_KEY, palette);
-    document.documentElement.setAttribute("data-palette", palette);
-  }, [palette]);
+  }, [mode]);
 
   const setPreference = useCallback((p: ThemePreference) => {
     setPreferenceState(p);

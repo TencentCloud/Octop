@@ -36,7 +36,7 @@ html[data-theme="light"] {
   --fn-text-placeholder: #c0c5ce;
   --fn-text-disabled: #d1d5db;
   --fn-text-inverse: #ffffff;
-  --fn-text-brand: #e11d48;
+  --fn-text-brand: #e85d75;
   --fn-logo-color: #e05040;
   --fn-logo-filter: none;
 
@@ -46,12 +46,12 @@ html[data-theme="light"] {
   --fn-border-tertiary: #f9fafb;
   --fn-border-input: #d1d5db;
   --fn-border-input-alt: #e5e7eb;
-  --fn-border-focus: #e11d48;
+  --fn-border-focus: #e85d75;
 
   /* ---- Brand (rose) ---- */
-  --fn-color-brand: #e11d48;
-  --fn-color-brand-hover: #be123c;
-  --fn-color-brand-soft: #be123c;
+  --fn-color-brand: #e85d75;
+  --fn-color-brand-hover: #d14a62;
+  --fn-color-brand-soft: #d14a62;
   --fn-color-brand-border: color-mix(
     in srgb,
     var(--fn-color-brand) 28%,
@@ -202,9 +202,9 @@ html[data-theme="dark"] {
   --fn-border-focus: #f08b9a;
 
   /* ---- Brand (rose, lightened for dark bg) ---- */
-  --fn-color-brand: #e11d48;
-  --fn-color-brand-hover: #be123c;
-  --fn-color-brand-soft: #be123c;
+  --fn-color-brand: #f08b9a;
+  --fn-color-brand-hover: #e85d75;
+  --fn-color-brand-soft: #e85d75;
   --fn-color-brand-border: color-mix(
     in srgb,
     var(--fn-color-brand) 35%,

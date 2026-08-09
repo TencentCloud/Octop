@@ -23,7 +23,14 @@ export const VALID_PALETTES: ThemePalette[] = [
 
 export const DEFAULT_PALETTE: ThemePalette = "rose";
 
-export const PALETTE_STORAGE_KEY = "octop:ui-palette";
+/** Shared localStorage key for light/dark preference + brand palette. */
+export const THEME_STORAGE_KEY = "theme";
+
+/** Legacy palette-only key; migrated into {@link THEME_STORAGE_KEY}.palette. */
+export const LEGACY_PALETTE_STORAGE_KEY = "octop:ui-palette";
+
+/** @deprecated Use {@link LEGACY_PALETTE_STORAGE_KEY}; kept for import compatibility. */
+export const PALETTE_STORAGE_KEY = LEGACY_PALETTE_STORAGE_KEY;
 
 /** Swatch color shown in the palette picker (light brand). */
 export const PALETTE_SWATCH: Record<ThemePalette, string> = {
@@ -58,19 +65,19 @@ export const ANTD_BRAND_TOKENS: Record<
 > = {
   rose: {
     light: {
-      colorPrimary: "#E11D48",
-      colorPrimaryHover: "#BE123C",
-      colorPrimaryActive: "#9F1239",
-      colorLink: "#BE123C",
+      colorPrimary: "#E85D75",
+      colorPrimaryHover: "#D14A62",
+      colorPrimaryActive: "#B83A50",
+      colorLink: "#E85D75",
     },
     dark: {
-      colorPrimary: "#E11D48",
+      colorPrimary: "#F08B9A",
       colorPrimaryBg: "rgba(232, 93, 117, 0.12)",
       colorPrimaryBgHover: "rgba(232, 93, 117, 0.16)",
       colorPrimaryBorder: "rgba(232, 93, 117, 0.25)",
       colorPrimaryBorderHover: "rgba(232, 93, 117, 0.35)",
-      colorPrimaryHover: "#BE123C",
-      colorPrimaryActive: "#9F1239",
+      colorPrimaryHover: "#F5A8B4",
+      colorPrimaryActive: "#E85D75",
       colorPrimaryText: "#F08B9A",
       colorPrimaryTextHover: "#F5A8B4",
       colorPrimaryTextActive: "#E85D75",

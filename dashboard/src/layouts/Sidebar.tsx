@@ -583,6 +583,7 @@ export default function Sidebar({
         onUserChange={setUser}
         placement="sidebar"
         compact={isRailCollapsed}
+        onBeforeOpenSettings={isMobile && !collapsed ? onToggle : undefined}
       />
     </div>
   );

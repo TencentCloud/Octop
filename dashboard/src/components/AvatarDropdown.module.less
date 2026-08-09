@@ -166,6 +166,27 @@
   }
 }
 
+.settingsDrawer {
+  :global(.ant-drawer-content-wrapper) {
+    max-height: 92dvh;
+  }
+
+  :global(.ant-drawer-content) {
+    border-radius: 16px 16px 0 0;
+    overflow: hidden;
+  }
+
+  :global(.ant-drawer-header) {
+    padding: 14px 16px;
+  }
+
+  :global(.ant-drawer-body) {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
 .settingsBody {
   display: flex;
   flex-direction: column;

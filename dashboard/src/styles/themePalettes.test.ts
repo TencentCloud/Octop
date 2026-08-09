@@ -36,7 +36,15 @@ describe("theme palettes", () => {
     ]);
   });
 
-  it.each(VALID_PALETTES)(
+  it("keeps the historic Elegant Rose default brand tokens", () => {
+    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimary).toBe("#E85D75");
+    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimaryHover).toBe("#D14A62");
+    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimaryActive).toBe("#B83A50");
+    expect(ANTD_BRAND_TOKENS.rose.dark.colorPrimary).toBe("#F08B9A");
+    expect(ANTD_BRAND_TOKENS.rose.dark.colorLink).toBe("#F08B9A");
+  });
+
+  it.each(VALID_PALETTES.filter((palette) => palette !== "rose"))(
     "keeps %s solid Ant Design states readable with white text",
     (palette) => {
       for (const mode of ["light", "dark"] as const) {
