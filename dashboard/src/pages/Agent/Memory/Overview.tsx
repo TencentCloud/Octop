@@ -81,7 +81,7 @@ export default function Overview({
   const { t } = useTranslation();
   const { palette, isDark } = useTheme();
   const brand = brandPrimary(palette, isDark);
-  const kindColor = useMemo(
+  const kindColor: Record<string, string> = useMemo(
     () => ({ ...KIND_COLOR_BASE, Preference: brand }),
     [brand],
   );

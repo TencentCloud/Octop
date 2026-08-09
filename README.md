@@ -468,7 +468,7 @@ For the customer WeCom support group, scan:
   <img src="docs/assets/qrcode.png" alt="WeCom customer group QR code" width="220" />
 </p>
 
-> This QR code is valid until **2026-08-08** (UTC+8). Please ask the maintainer for an updated code after it expires.
+> This QR code is valid until **2026-08-16** (UTC+8). Please ask the maintainer for an updated code after it expires.
 
 ## 📄 License
 
