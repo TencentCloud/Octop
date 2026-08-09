@@ -132,7 +132,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#00c1de",
         phase="available",
         mcp_mode="remote",
-        quick_auth_url="https://lexiangla.com/ai/claw?company_from=csig",
+        quick_auth_url="https://lexiangla.com/ai/claw",
         guide_url="https://qclaw.qq.com/docs/211858629271314432",
         manual_url="https://lexiangla.com/mcp",
         auth_hint="打开乐享凭证页登录，复制企业标识（company_from）与访问令牌，分别填入下方",

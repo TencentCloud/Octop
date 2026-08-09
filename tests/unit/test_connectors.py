@@ -825,7 +825,7 @@ def test_build_tencent_lexiang_remote_spec():
         creds={"api_key": "lx-tok", "company_from": "csig"},
         config=OctopConfig(),
     )
-    assert spec["url"] == "https://mcp.lexiang-app.com/mcp?company_from=csig"
+    assert spec["url"] == "https://mcp.lexiang-app.com/mcp?company_from=csig&preset=meta"
     assert spec["headers"]["Authorization"] == "Bearer lx-tok"
 
 

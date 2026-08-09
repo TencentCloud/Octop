@@ -113,9 +113,12 @@ def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> d
     if entry.kind == "tencent-lexiang":
         token = str(creds.get("api_key") or creds.get("token") or "").strip()
         company_from = str(creds.get("company_from") or creds.get("client_id") or "").strip()
-        url = "https://mcp.lexiang-app.com/mcp"
+        url = "https://mcp.lexiang-app.com/mcp?preset=meta"
         if company_from:
-            url = f"{url}?company_from={quote(company_from, safe='')}"
+            url = (
+                "https://mcp.lexiang-app.com/mcp"
+                f"?company_from={quote(company_from, safe='')}&preset=meta"
+            )
         return {
             "transport": "http",
             "url": url,
