@@ -325,6 +325,21 @@ class ThreadRegistry:
     def set_pinned(self, thread_id: str, pinned: bool) -> None:
         self._threads.set_pinned(thread_id, pinned)
 
+    def update_composer(
+        self,
+        thread_id: str,
+        *,
+        model_ref: str | None | object = ...,
+        reasoning_mode: str | None | object = ...,
+        reasoning_effort: str | None | object = ...,
+    ) -> None:
+        self._threads.update_composer(
+            thread_id,
+            model_ref=model_ref,
+            reasoning_mode=reasoning_mode,
+            reasoning_effort=reasoning_effort,
+        )
+
     def touch_last_active(self, thread_id: str) -> None:
         self._threads.touch_last_active(thread_id)
 

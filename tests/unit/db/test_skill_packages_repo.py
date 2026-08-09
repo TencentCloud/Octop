@@ -25,7 +25,7 @@ def test_skill_packages_table_exists(db: SqlitePool) -> None:
         }
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
     assert "skill_packages" in names
-    assert v == 3
+    assert v == 4
 
 
 def test_skill_package_repo_create_get(db: SqlitePool) -> None:

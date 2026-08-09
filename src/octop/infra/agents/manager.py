@@ -1743,8 +1743,13 @@ class AgentManager:
         )
         plugin_middleware = PluginRegistry().build_middleware_chain(global_enabled=global_plugins)
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
+        from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
 
-        agent_middleware = [*plugin_middleware, BinaryReadGuardMiddleware()]
+        agent_middleware = [
+            *plugin_middleware,
+            ReasoningRequestMiddleware(),
+            BinaryReadGuardMiddleware(),
+        ]
 
         merged_tools: list[Any] = []
         if cron_tools:

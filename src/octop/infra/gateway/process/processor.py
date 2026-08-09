@@ -17,6 +17,7 @@ from harness_gateway.models import (
 )
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlSlashOutcome,
@@ -49,6 +50,10 @@ from octop.infra.gateway.process.stream_project import (
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
+from octop.infra.users.preferences import (
+    get_model_reasoning_from_json,
+    get_preferred_model_from_json,
+)
 from octop.infra.utils.locale import resolve_user_locale
 
 if TYPE_CHECKING:
@@ -187,9 +192,12 @@ class GlobalProcessor:
     def _model_ref_from_meta(
         thread_model: str | None,
         meta: dict[str, Any] | None,
+        sticky_model: str | None = None,
     ) -> str | None:
         meta_model = (meta or {}).get("model")
-        model_ref = thread_model or meta_model
+        # Explicit composer choice wins, followed by its persisted conversation
+        # value. The legacy /model override remains supported at lower priority.
+        model_ref = meta_model or sticky_model or thread_model
         if isinstance(model_ref, str):
             stripped = model_ref.strip()
             return stripped or None
@@ -202,6 +210,7 @@ class GlobalProcessor:
         meta: dict[str, Any] | None,
         *,
         needs_multimodal: bool,
+        user_id: int = 0,
     ) -> str | None:
         """Per-turn ``model`` for harness requests.
 
@@ -210,7 +219,12 @@ class GlobalProcessor:
         - When a model is passed and the turn needs vision, upgrade to a vision ref.
         """
         thread_model = self._agent_manager.get_thread_model(agent_id, thread_id)
-        model_ref = self._model_ref_from_meta(thread_model, meta)
+        thread_row = self._thread_registry.get_thread(thread_id)
+        model_ref = self._model_ref_from_meta(
+            thread_model,
+            meta,
+            thread_row.model_ref if thread_row is not None else None,
+        )
         if not model_ref:
             row = self._agent_repo.get(agent_id)
             if row is not None:
@@ -219,11 +233,62 @@ class GlobalProcessor:
                     self._agent_manager.get_config(agent_id),
                 )
         if not model_ref:
+            user_row = self._user_repo.get(user_id)
+            preferred = get_preferred_model_from_json(
+                user_row.preferences_json if user_row is not None else None
+            )
+            if preferred and self._agent_manager.providers.is_model_ref_usable(preferred):
+                model_ref = preferred
+        if not model_ref:
+            fallback = self._agent_manager.resolve_fallback_model_ref()
+            model_ref = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
+        if not model_ref:
             return None
         return self._agent_manager.providers.resolve_model_for_multimodal_turn(
             model_ref,
             needs_multimodal=needs_multimodal,
         )
+
+    def _resolve_reasoning_overrides(
+        self,
+        *,
+        user_id: int,
+        thread_id: str,
+        model_ref: str | None,
+        meta: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if not model_ref:
+            return {}
+        capability = self._agent_manager.providers.get_model_reasoning_capability(model_ref)
+        if capability is None:
+            return {}
+        thread = self._thread_registry.get_thread(thread_id)
+        user_row = self._user_repo.get(user_id)
+        user_prefs = get_model_reasoning_from_json(
+            user_row.preferences_json if user_row is not None else None
+        )
+        user_pref = user_prefs.get(model_ref)
+        raw_mode = (meta or {}).get("reasoning_mode")
+        raw_effort = (meta or {}).get("reasoning_effort")
+        mode = (
+            str(raw_mode)
+            if raw_mode in ("auto", "enabled", "disabled")
+            else thread.reasoning_mode
+            if thread is not None and thread.reasoning_mode
+            else user_pref.mode
+            if user_pref is not None
+            else None
+        )
+        effort = (
+            str(raw_effort).strip().lower()
+            if isinstance(raw_effort, str) and raw_effort.strip()
+            else thread.reasoning_effort
+            if thread is not None and thread.reasoning_effort
+            else user_pref.effort
+            if user_pref is not None
+            else None
+        )
+        return reasoning_request_parameters(capability, mode=mode, effort=effort)
 
     # -- IM channel entry (MessageEvent stream) --------------------------------
 
@@ -333,6 +398,7 @@ class GlobalProcessor:
             agent_id,
             thread_id,
             None,
+            user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
         request = build_harness_request(
@@ -536,7 +602,14 @@ class GlobalProcessor:
             agent_id,
             thread_id,
             meta,
+            user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
+        )
+        reasoning_overrides = self._resolve_reasoning_overrides(
+            user_id=user_id,
+            thread_id=thread_id,
+            model_ref=model_ref,
+            meta=meta,
         )
 
         message_kwargs: dict[str, Any] = {}
@@ -556,6 +629,7 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             message_kwargs=message_kwargs or None,
+            reasoning_overrides=reasoning_overrides,
         )
 
         mcp_servers = meta.get("mcp_servers")

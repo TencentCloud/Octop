@@ -137,6 +137,10 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
             "mcp_servers",
             "TEXT NOT NULL DEFAULT '[]'",
         )
+    if _table_exists(db, "threads"):
+        _ensure_column(db, "threads", "model_ref", "TEXT")
+        _ensure_column(db, "threads", "reasoning_mode", "TEXT")
+        _ensure_column(db, "threads", "reasoning_effort", "TEXT")
     _ensure_skill_packages_table(db)
     if _table_exists(db, "skill_packages"):
         _ensure_column(db, "skill_packages", "icon_name", "TEXT NOT NULL DEFAULT ''")
@@ -156,6 +160,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     partial upgrade does not fail.
 
     Version 3 bumps schema then rewrites legacy hard-cut thread titles in Python.
+    Version 4 adds composer columns idempotently after legacy schema repair.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -180,6 +185,14 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
             from octop.infra.db.repos.threads import repair_all_legacy_thread_titles
 
             repair_all_legacy_thread_titles(db)
+        return
+    if version == 4:
+        if _table_exists(db, "threads"):
+            _ensure_column(db, "threads", "model_ref", "TEXT")
+            _ensure_column(db, "threads", "reasoning_mode", "TEXT")
+            _ensure_column(db, "threads", "reasoning_effort", "TEXT")
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:

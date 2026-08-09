@@ -200,3 +200,15 @@ def test_resolve_harness_model_dashboard_override_wins() -> None:
         "p/picked",
         needs_multimodal=False,
     )
+
+
+def test_composer_model_precedes_sticky_and_legacy_slash_model() -> None:
+    assert (
+        GlobalProcessor._model_ref_from_meta(
+            "p/slash",
+            {"model": "p/composer"},
+            "p/sticky",
+        )
+        == "p/composer"
+    )
+    assert GlobalProcessor._model_ref_from_meta("p/slash", None, "p/sticky") == "p/sticky"

@@ -15,8 +15,10 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.password import hash_password, verify_password
 from octop.infra.users.preferences import (
+    ModelReasoningPreference,
     RemoteBrowserBookmark,
     get_remote_browser_bookmarks_from_json,
+    merge_model_preferences_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
 )
@@ -247,6 +249,23 @@ class UserManager:
         merged = merge_preferences_json(row.preferences_json, bookmarks)
         self._services.user_repo.set_preferences_json(row.id, merged)
         return bookmarks
+
+    async def set_model_preferences(
+        self,
+        username: str,
+        *,
+        preferred_model: str | None | object = ...,
+        model_reasoning: dict[str, ModelReasoningPreference] | None = None,
+    ) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        merged = merge_model_preferences_json(
+            row.preferences_json,
+            preferred_model=preferred_model,
+            model_reasoning=model_reasoning,
+        )
+        self._services.user_repo.set_preferences_json(row.id, merged)
 
     async def disable(self, username: str) -> None:
         row = self._services.user_repo.get_by_username(username)

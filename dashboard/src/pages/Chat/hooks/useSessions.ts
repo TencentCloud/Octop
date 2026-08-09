@@ -13,6 +13,9 @@ export interface Session {
   isActive?: boolean;
   hasActivity?: boolean;
   pinned?: boolean;
+  modelRef?: string | null;
+  reasoningMode?: "auto" | "enabled" | "disabled" | null;
+  reasoningEffort?: string | null;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -27,6 +30,9 @@ export function toSession(row: {
   is_active?: boolean;
   has_messages?: boolean;
   pinned?: boolean;
+  model_ref?: string | null;
+  reasoning_mode?: "auto" | "enabled" | "disabled" | null;
+  reasoning_effort?: string | null;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -46,6 +52,9 @@ export function toSession(row: {
     isActive: row.is_active ?? false,
     hasActivity,
     pinned: Boolean(row.pinned),
+    modelRef: row.model_ref ?? null,
+    reasoningMode: row.reasoning_mode ?? null,
+    reasoningEffort: row.reasoning_effort ?? null,
   };
 }
 

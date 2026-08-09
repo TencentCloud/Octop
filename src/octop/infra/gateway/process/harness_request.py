@@ -265,6 +265,7 @@ def build_harness_request(
     messages: list[Any] | None = None,
     model: str | None = None,
     message_kwargs: dict[str, Any] | None = None,
+    reasoning_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
         req: dict[str, Any] = {
@@ -275,8 +276,13 @@ def build_harness_request(
         }
         if agent_id is not None:
             req["agent_id"] = agent_id
+        configurable: dict[str, Any] = {}
         if session_key is not None:
-            req["configurable"] = {"session_key": session_key}
+            configurable["session_key"] = session_key
+        if reasoning_overrides:
+            configurable["octop_reasoning_overrides"] = reasoning_overrides
+        if configurable:
+            req["configurable"] = configurable
         if model:
             req["model"] = model
         return req
@@ -304,8 +310,13 @@ def build_harness_request(
     }
     if agent_id is not None:
         req["agent_id"] = agent_id
+    configurable = {}
     if session_key is not None:
-        req["configurable"] = {"session_key": session_key}
+        configurable["session_key"] = session_key
+    if reasoning_overrides:
+        configurable["octop_reasoning_overrides"] = reasoning_overrides
+    if configurable:
+        req["configurable"] = configurable
     if model:
         req["model"] = model
     return req

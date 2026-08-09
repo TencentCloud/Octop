@@ -46,3 +46,19 @@ async def test_preferences_patch_requires_one_field(env) -> None:
     client, _srv, auth = env
     r = await client.patch("/api/preferences", headers=auth, json={})
     assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_preferences_reasoning_defaults_roundtrip(env) -> None:
+    client, _srv, auth = env
+    payload = {
+        "model_reasoning": {
+            "token/glm-5": {"mode": "enabled", "effort": "high"},
+        }
+    }
+    r = await client.patch("/api/preferences", headers=auth, json=payload)
+    assert r.status_code == 200
+    assert r.json()["model_reasoning"] == payload["model_reasoning"]
+
+    fetched = await client.get("/api/preferences", headers=auth)
+    assert fetched.json()["model_reasoning"] == payload["model_reasoning"]

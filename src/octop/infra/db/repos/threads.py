@@ -20,6 +20,9 @@ class ThreadRow:
     last_active: int
     created_at: int
     pinned: bool = False
+    model_ref: str | None = None
+    reasoning_mode: str | None = None
+    reasoning_effort: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -34,6 +37,9 @@ class ThreadRow:
             last_active=r["last_active"],
             created_at=r["created_at"],
             pinned=bool(r["pinned"]),
+            model_ref=r["model_ref"],
+            reasoning_mode=r["reasoning_mode"],
+            reasoning_effort=r["reasoning_effort"],
         )
 
 
@@ -179,6 +185,34 @@ class ThreadRepo:
             conn.execute(
                 "UPDATE threads SET pinned = ? WHERE thread_id = ?",
                 (bool_int(pinned), thread_id),
+            )
+
+    def update_composer(
+        self,
+        thread_id: str,
+        *,
+        model_ref: str | None | object = ...,
+        reasoning_mode: str | None | object = ...,
+        reasoning_effort: str | None | object = ...,
+    ) -> None:
+        fields: list[str] = []
+        params: list[object] = []
+        for column, value in (
+            ("model_ref", model_ref),
+            ("reasoning_mode", reasoning_mode),
+            ("reasoning_effort", reasoning_effort),
+        ):
+            if value is ...:
+                continue
+            fields.append(f"{column} = ?")
+            params.append(value)
+        if not fields:
+            return
+        params.append(thread_id)
+        with self._db.transaction() as conn:
+            conn.execute(
+                f"UPDATE threads SET {', '.join(fields)} WHERE thread_id = ?",
+                params,
             )
 
     def touch_last_active(self, thread_id: str) -> None:

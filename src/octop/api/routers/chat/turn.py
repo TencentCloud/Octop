@@ -262,6 +262,23 @@ async def prepare_dashboard_turn(
         session_key=turn.session_key,
     )
     model_ref = (turn.default_model or "").strip() or None
+    if (
+        model_ref is not None
+        and not server.app_runtime.agent_registry.providers.is_model_ref_usable(model_ref)
+    ):
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            "default_model must reference an enabled model",
+        )
+    composer_updates: dict[str, Any] = {}
+    if model_ref is not None:
+        composer_updates["model_ref"] = model_ref
+    if turn.reasoning_mode is not None:
+        composer_updates["reasoning_mode"] = turn.reasoning_mode
+    if turn.reasoning_effort is not None:
+        composer_updates["reasoning_effort"] = turn.reasoning_effort.strip().lower() or None
+    if composer_updates:
+        thread_registry.update_composer(thread_id, **composer_updates)
     target_ids = [str(x) for x in turn.target_agent_ids] if turn.target_agent_ids else None
     composer_ctx = build_composer_context(
         mcp_servers=mcp_servers,
@@ -305,6 +322,10 @@ def build_dashboard_inbound(
         metadata["skills"] = prepared.skills
     if prepared.model_ref:
         metadata["model"] = prepared.model_ref
+    if turn.reasoning_mode is not None:
+        metadata["reasoning_mode"] = turn.reasoning_mode
+    if turn.reasoning_effort:
+        metadata["reasoning_effort"] = turn.reasoning_effort
     if prepared.composer_context:
         metadata[COMPOSER_CTX_KEY] = prepared.composer_context
     if prepared.inbound_attachments:

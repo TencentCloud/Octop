@@ -68,12 +68,14 @@ def test_run_migrations_idempotent(db: SqlitePool):
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 3
+        thread_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+    assert v == 4
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
     assert "task_type" in cron_cols
     assert "mcp_servers" in cron_cols
+    assert {"model_ref", "reasoning_mode", "reasoning_effort"}.issubset(thread_cols)
     assert "skill_packages" in {
         r["name"]
         for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -115,7 +117,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 3
+    assert v == 4
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]

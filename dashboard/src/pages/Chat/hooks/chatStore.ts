@@ -1646,6 +1646,8 @@ async function sendTurnWebSocket(
   skills?: string[] | null,
   targetAgentIds?: string[] | null,
   onStreamEnd?: () => void,
+  reasoningMode?: "auto" | "enabled" | "disabled",
+  reasoningEffort?: string | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -1713,6 +1715,8 @@ async function sendTurnWebSocket(
       if (targetAgentIds && targetAgentIds.length > 0) {
         payload.target_agent_ids = targetAgentIds;
       }
+      if (reasoningMode) payload.reasoning_mode = reasoningMode;
+      if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       ws.send(JSON.stringify(payload));
     };
 
@@ -1834,6 +1838,8 @@ export async function sendTurn(
   mcpServers?: string[] | null,
   skills?: string[] | null,
   targetAgentIds?: string[] | null,
+  reasoningMode?: "auto" | "enabled" | "disabled",
+  reasoningEffort?: string | null,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
 
@@ -1891,6 +1897,8 @@ export async function sendTurn(
     skills,
     targetAgentIds,
     onStreamEnd,
+    reasoningMode,
+    reasoningEffort,
   );
   if (!wsOk) {
     state.messages = [

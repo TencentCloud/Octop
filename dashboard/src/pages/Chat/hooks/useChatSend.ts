@@ -23,6 +23,8 @@ interface UseChatSendParams {
   selectedConnectors: string[];
   selectedSkills: string[];
   selectedTargetAgents: string[];
+  reasoningMode: "auto" | "enabled" | "disabled";
+  reasoningEffort: string | null;
   defaultModel?: string | null;
   sendMessage: (
     text: string,
@@ -35,6 +37,8 @@ interface UseChatSendParams {
     skills?: string[] | null,
     targetAgentIds?: string[] | null,
     composerContext?: UserComposerContext,
+    reasoningMode?: "auto" | "enabled" | "disabled",
+    reasoningEffort?: string | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   renameSession: (id: string, name: string) => void;
@@ -70,6 +74,8 @@ export function useChatSend({
   selectedConnectors,
   selectedSkills,
   selectedTargetAgents,
+  reasoningMode,
+  reasoningEffort,
   defaultModel,
   sendMessage,
   createSession,
@@ -118,6 +124,10 @@ export function useChatSend({
           connectors,
           targetAgents,
           selectedModel: modelSelection,
+          reasoningMode:
+            overrides?.composerContext?.reasoningMode ?? reasoningMode,
+          reasoningEffort:
+            overrides?.composerContext?.reasoningEffort ?? reasoningEffort,
         });
 
       const modelOverride =
@@ -138,6 +148,8 @@ export function useChatSend({
           skills,
           targetAgents,
           composerContext,
+          composerContext?.reasoningMode ?? reasoningMode,
+          composerContext?.reasoningEffort ?? reasoningEffort,
         );
       };
 
@@ -185,6 +197,8 @@ export function useChatSend({
           connectors,
           skills,
           targetAgents,
+          composerContext?.reasoningMode ?? reasoningMode,
+          composerContext?.reasoningEffort ?? reasoningEffort,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -203,6 +217,8 @@ export function useChatSend({
       selectedConnectors,
       selectedSkills,
       selectedTargetAgents,
+      reasoningMode,
+      reasoningEffort,
       defaultModel,
       t,
     ],

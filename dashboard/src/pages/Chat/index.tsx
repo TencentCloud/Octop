@@ -276,6 +276,11 @@ function ChatPageInner() {
     return dedupeDockFilePaths([...filePaths, ...fromTabs], resolvedAgentId);
   }, [filePaths, openTabs, resolvedAgentId]);
 
+  const composerSession = useMemo(
+    () => sessions.find((session) => session.id === activeThreadId) ?? null,
+    [sessions, activeThreadId],
+  );
+
   const {
     selectedModel,
     setSelectedModel,
@@ -284,12 +289,18 @@ function ChatPageInner() {
     chatConnectors,
     availableModels,
     activeModelRef,
+    reasoningMode,
+    reasoningEffort,
+    handleReasoningChange,
     handleConnectorsChange,
     handleSkillsChange,
   } = useChatComposerResources(
     resolvedAgentId,
     chatSkills,
-    activeAgent?.default_model,
+    activeThreadId,
+    composerSession?.modelRef,
+    composerSession?.reasoningMode,
+    composerSession?.reasoningEffort,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -371,6 +382,8 @@ function ChatPageInner() {
     selectedConnectors,
     selectedSkills,
     selectedTargetAgents,
+    reasoningMode,
+    reasoningEffort,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
@@ -851,6 +864,9 @@ function ChatPageInner() {
             availableModels={availableModels}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
+            reasoningMode={reasoningMode}
+            reasoningEffort={reasoningEffort}
+            onReasoningChange={handleReasoningChange}
             availableConnectors={chatConnectors}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={handleConnectorsChange}
