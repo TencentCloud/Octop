@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import mimetypes
 from collections.abc import Sequence
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +43,11 @@ _VISION_BLOCK_TYPES = frozenset({"image", "image_url", "input_image"})
 # Vision materialize limits — oversized / excess images become path hints.
 VISION_MAX_BYTES = 2 * 1024 * 1024
 VISION_MAX_COUNT = 4
+# Re-encode target: vision models commonly resize to ~1568 px on the longest
+# edge. JPEG at that size keeps even a worst-case (noisy) image under
+# VISION_MAX_BYTES.
+VISION_MAX_SIDE = 1568
+VISION_JPEG_QUALITY = 85
 
 
 def is_image_media_type(media_type: str) -> bool:
@@ -286,6 +293,54 @@ def _image_as_path_hint(
     )
 
 
+def _encoded_image_fits(img: Any, fmt: str, *, ref: bytes, **save_kwargs: Any) -> bytes | None:
+    """Encode ``img``; return the bytes only when smaller than ``ref`` and under the limit."""
+    buf = BytesIO()
+    img.save(buf, format=fmt, **save_kwargs)
+    out = buf.getvalue()
+    return out if out and len(out) < len(ref) and len(out) <= VISION_MAX_BYTES else None
+
+
+def _reencode_image_to_fit(data: bytes) -> tuple[bytes, str] | None:
+    """Downscale and re-encode ``data`` to fit :data:`VISION_MAX_BYTES`.
+
+    Returns ``(bytes, mime_type)`` for the re-encoded image, or ``None`` when
+    Pillow is unavailable, the bytes are not decodable, or re-encoding cannot
+    shrink them under the limit (the caller keeps the path-hint fallback).
+    """
+    try:
+        from PIL import Image, ImageOps  # noqa: PLC0415
+    except ImportError:  # Pillow not installed — keep legacy path-hint behaviour.
+        return None
+    try:
+        with Image.open(BytesIO(data)) as src:
+            img = ImageOps.exif_transpose(src)
+            img.thumbnail((VISION_MAX_SIDE, VISION_MAX_SIDE), Image.Resampling.LANCZOS)
+            has_alpha = img.mode in ("RGBA", "LA") or (
+                img.mode == "P" and "transparency" in img.info
+            )
+            if has_alpha:
+                rgba = img.convert("RGBA")
+                # Keep alpha when it fits (transparent PNG / WebP / GIF).
+                png = _encoded_image_fits(rgba, "PNG", ref=data, optimize=True)
+                if png is not None:
+                    return png, "image/png"
+                # PNG too large — flatten alpha onto white and fall through to JPEG.
+                canvas = Image.new("RGB", rgba.size, (255, 255, 255))
+                canvas.paste(rgba, mask=rgba.getchannel("A"))
+                img = canvas
+            elif img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            jpeg = _encoded_image_fits(
+                img, "JPEG", ref=data, quality=VISION_JPEG_QUALITY, optimize=True
+            )
+            if jpeg is not None:
+                return jpeg, "image/jpeg"
+    except Exception:
+        logger.warning("vision image re-encode failed for %d bytes", len(data), exc_info=True)
+    return None
+
+
 async def materialize_image_part(
     part: ImageContent,
     *,
@@ -295,8 +350,9 @@ async def materialize_image_part(
 ) -> dict[str, Any] | None:
     """Load image bytes into an ``image_url`` block, or degrade to a path hint.
 
-    Returns ``None`` when the part has no usable source at all.
-    Oversized images become path hints instead of base64.
+    Returns ``None`` when the part has no usable source at all. Images over
+    :data:`VISION_MAX_BYTES` are re-encoded to fit before inlining; only when
+    that fails do they become path hints.
     """
     mime = part.mime_type or "image/png"
 
@@ -307,10 +363,13 @@ async def materialize_image_part(
             return _image_unavailable_block(locale=locale)
         if len(raw) > VISION_MAX_BYTES:
             logger.info(
-                "vision skip inline image: %d bytes > %d",
+                "vision inline image %d bytes > %d, re-encoding",
                 len(raw),
                 VISION_MAX_BYTES,
             )
+            reencoded = await asyncio.to_thread(_reencode_image_to_fit, raw)
+            if reencoded is not None:
+                return make_image_url_block(base64.b64encode(reencoded[0]).decode(), reencoded[1])
             return _image_as_path_hint(part, workspace=workspace, locale=locale)
         return make_image_url_block(part.data, mime)
 
@@ -328,11 +387,17 @@ async def materialize_image_part(
     if data is not None:
         if len(data) > VISION_MAX_BYTES:
             logger.info(
-                "vision skip local image %s: %d bytes > %d",
+                "vision local image %s: %d bytes > %d, re-encoding",
                 part.local_path,
                 len(data),
                 VISION_MAX_BYTES,
             )
+            reencoded = await asyncio.to_thread(_reencode_image_to_fit, data)
+            if reencoded is not None:
+                out = make_image_url_block(base64.b64encode(reencoded[0]).decode(), reencoded[1])
+                if part.local_path:
+                    out["workspace_path"] = inbound_rel_path(part.local_path)
+                return out
             return _image_as_path_hint(part, workspace=workspace, locale=locale)
         mime = part.mime_type or mimetypes.guess_type(part.local_path or "")[0] or "image/png"
         out = make_image_url_block(base64.b64encode(data).decode(), mime)
@@ -346,10 +411,15 @@ async def materialize_image_part(
             raw_bytes, content_type = downloaded
             if len(raw_bytes) > VISION_MAX_BYTES:
                 logger.info(
-                    "vision skip url image: %d bytes > %d",
+                    "vision url image: %d bytes > %d, re-encoding",
                     len(raw_bytes),
                     VISION_MAX_BYTES,
                 )
+                reencoded = await asyncio.to_thread(_reencode_image_to_fit, raw_bytes)
+                if reencoded is not None:
+                    return make_image_url_block(
+                        base64.b64encode(reencoded[0]).decode(), reencoded[1]
+                    )
                 return _image_as_path_hint(part, workspace=workspace, locale=locale)
             mime = content_type or part.mime_type or "image/png"
             return make_image_url_block(base64.b64encode(raw_bytes).decode(), mime)
@@ -385,6 +455,7 @@ async def _download_image_url(url: str) -> tuple[bytes, str] | None:
 __all__ = [
     "VISION_MAX_BYTES",
     "VISION_MAX_COUNT",
+    "VISION_MAX_SIDE",
     "InboundAttachmentMeta",
     "content_blocks_need_vision",
     "format_attachment_path_hint",

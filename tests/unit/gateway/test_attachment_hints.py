@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import base64
+import io
 import tempfile
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
 from harness_agent.backends.workspace import BackendWorkspace
 from harness_gateway.models import FileContent, ImageContent, TextContent
+from PIL import Image
 
 from octop.api.routers.chat.models import ChatTurnBody
 from octop.api.routers.chat.turn import (
@@ -37,6 +39,22 @@ from octop.infra.gateway.ws import WS_CHANNEL_ID
 def _workspace(root: str) -> BackendWorkspace:
     backend = LocalShellBackend(root_dir=root, virtual_mode=False)
     return BackendWorkspace(backend, root)
+
+
+def _big_noise_png() -> bytes:
+    """A real PNG large enough to exceed :data:`VISION_MAX_BYTES` (Pillow-decodable)."""
+    img = Image.effect_noise((2048, 2048), 100).convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _tiny_png() -> bytes:
+    """A small solid-color PNG (compression must leave it byte-identical)."""
+    img = Image.new("RGB", (64, 64), (200, 40, 90))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def test_hints_from_file_content() -> None:
@@ -155,7 +173,8 @@ async def test_file_typed_image_path_still_materializes_via_content_parts() -> N
 
 
 @pytest.mark.asyncio
-async def test_oversized_image_degrades_to_path_hint() -> None:
+async def test_oversized_undecodable_image_degrades_to_path_hint() -> None:
+    """Bytes Pillow can't decode stay a path hint (re-encode fallback)."""
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         big = b"x" * (VISION_MAX_BYTES + 1)
@@ -172,6 +191,64 @@ async def test_oversized_image_degrades_to_path_hint() -> None:
         assert block["type"] == "text"
         hint = block["text"].replace("\\", "/")
         assert stored.path.replace("\\", "/") in hint or "inbound/" in hint
+
+
+@pytest.mark.asyncio
+async def test_oversized_image_is_compressed_and_inlined() -> None:
+    """A real oversized PNG is downscaled/re-encoded and still inlined for vision."""
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        big = _big_noise_png()
+        assert len(big) > VISION_MAX_BYTES
+        stored = await write_inbound(
+            workspace,
+            big,
+            filename="huge.png",
+            media_type="image/png",
+        )
+        backend = AgentBackedMediaBackend(workspace)
+        part = ImageContent(local_path=stored.path, mime_type="image/png", size=len(big))
+        block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
+        assert block is not None
+        assert block["type"] == "image_url"
+        url = block["image_url"]["url"]
+        assert url.startswith("data:image/jpeg;base64,")
+        assert len(base64.b64decode(url.split(",", 1)[1])) <= VISION_MAX_BYTES
+        assert block["workspace_path"] == stored.path
+
+
+@pytest.mark.asyncio
+async def test_oversized_image_in_data_branch_is_compressed() -> None:
+    """Oversized base64-embedded image (``part.data``) is compressed before inlining."""
+    big = _big_noise_png()
+    part = ImageContent(data=base64.b64encode(big).decode(), mime_type="image/png")
+    block = await materialize_image_part(part, media_backend=None)
+    assert block is not None
+    assert block["type"] == "image_url"
+    url = block["image_url"]["url"]
+    assert url.startswith("data:image/jpeg;base64,")
+    assert len(base64.b64decode(url.split(",", 1)[1])) <= VISION_MAX_BYTES
+
+
+@pytest.mark.asyncio
+async def test_small_image_is_not_reencoded() -> None:
+    """Images already under the limit pass through byte-identical."""
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        small = _tiny_png()
+        stored = await write_inbound(
+            workspace,
+            small,
+            filename="tiny.png",
+            media_type="image/png",
+        )
+        backend = AgentBackedMediaBackend(workspace)
+        part = ImageContent(local_path=stored.path, mime_type="image/png", size=len(small))
+        block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
+        assert block is not None
+        assert block["type"] == "image_url"
+        url = block["image_url"]["url"]
+        assert base64.b64decode(url.split(",", 1)[1]) == small
 
 
 def test_inbound_attachments_from_parts() -> None:

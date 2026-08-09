@@ -37,6 +37,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "langgraph-checkpoint-postgres>=2.0",
     "mcp>=1.9,<2",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
@@ -55,7 +56,8 @@ dev = [
 browser = [
     "playwright>=1.40",
 ]
-desktop = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
+# Kept for backward compatibility; pillow is now a core dependency.
+desktop = ["mss>=9.0", "pynput>=1.7"]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the

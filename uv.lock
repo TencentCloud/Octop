@@ -2184,7 +2184,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "0.9.19"
+version = "0.9.20"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2203,6 +2203,7 @@ dependencies = [
     { name = "langgraph-checkpoint-postgres" },
     { name = "mcp" },
     { name = "orcakit-harness-agent", extra = ["all"] },
+    { name = "pillow" },
     { name = "playwright" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -2221,7 +2222,6 @@ browser = [
 ]
 desktop = [
     { name = "mss" },
-    { name = "pillow" },
     { name = "pynput" },
 ]
 dev = [
@@ -2267,7 +2267,7 @@ requires-dist = [
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.19" },
-    { name = "pillow", marker = "extra == 'desktop'", specifier = ">=10.0" },
+    { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

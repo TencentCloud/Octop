@@ -121,7 +121,7 @@ async def build_content_from_message(
         locale=locale,
         skip_vision_images=True,
     )
-    # Oversized / unreadable vision parts may also degrade to hints inside
+    # Vision parts that cannot be re-encoded may still degrade to hints inside
     # materialize; excess images always become path hints.
     if excess_images:
         file_hints.extend(
