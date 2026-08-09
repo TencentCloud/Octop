@@ -32,13 +32,13 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
 
 
 def windows_neutralize_host_root(spec: Any, *, workspace_dir: Path) -> Any:
-    """Windows: replace local backends rooted at ``/`` with the workspace default.
+    """Windows: rewrite local backends rooted at ``/`` to the agent workspace.
 
     ``root_dir: "/"`` is the dashboard's default for local backends. On Windows
     it resolves to the *current drive root* (often a different drive than the
     agent workspace), so deepagents virtual-path checks reject every workspace
-    path with ``Path ... outside root directory``. Rewriting to the
-    workspace-scoped default keeps Windows agents functional out of the box.
+    path with ``Path ... outside root directory``. Only ``root_dir`` is rewritten
+    so ``type`` / ``virtual_mode`` and other fields stay intact.
 
     Applies to top-level ``local_shell`` / ``filesystem`` specs and to the
     ``default`` of composite specs (the default is what anchors the agent
@@ -51,13 +51,17 @@ def windows_neutralize_host_root(spec: Any, *, workspace_dir: Path) -> Any:
         return spec
     kind = spec.get("type")
     if kind in ("local_shell", "filesystem") and _is_host_root(spec.get("root_dir")):
-        return default_agent_backend_spec(workspace_dir)
+        return {**spec, "root_dir": str(workspace_dir.resolve())}
     if (
         kind == "composite"
         and isinstance(spec.get("default"), dict)
         and _is_host_root(spec["default"].get("root_dir"))
     ):
-        return {**spec, "default": default_agent_backend_spec(workspace_dir)}
+        default = spec["default"]
+        return {
+            **spec,
+            "default": {**default, "root_dir": str(workspace_dir.resolve())},
+        }
     return spec
 
 

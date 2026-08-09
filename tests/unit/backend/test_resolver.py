@@ -66,11 +66,6 @@ def test_default_agent_backend_spec_windows_scopes_to_workspace(tmp_path: Path) 
     }
 
 
-def _windows_default(ws: Path) -> dict[str, Any]:
-    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
-        return default_agent_backend_spec(ws)
-
-
 def test_is_host_root_matches_explicit_host_roots() -> None:
     for root in ("/", "\\", "", "  /  "):
         assert _is_host_root(root), root
@@ -101,7 +96,11 @@ def test_windows_neutralize_local_shell_host_root_scopes_to_workspace(
             {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
             workspace_dir=ws,
         )
-    assert out == _windows_default(ws)
+    assert out == {
+        "type": "local_shell",
+        "root_dir": str(ws.resolve()),
+        "virtual_mode": True,
+    }
 
 
 def test_windows_neutralize_filesystem_empty_root_scopes_to_workspace(
@@ -114,7 +113,12 @@ def test_windows_neutralize_filesystem_empty_root_scopes_to_workspace(
             {"type": "filesystem", "root_dir": "", "virtual_mode": True},
             workspace_dir=ws,
         )
-    assert out == _windows_default(ws)
+    # Preserve filesystem type; only rewrite the host-root sentinel.
+    assert out == {
+        "type": "filesystem",
+        "root_dir": str(ws.resolve()),
+        "virtual_mode": True,
+    }
 
 
 def test_windows_neutralize_keeps_explicit_drive_root(tmp_path: Path) -> None:
@@ -141,7 +145,11 @@ def test_windows_neutralize_composite_default_host_root_scoped(tmp_path: Path) -
     }
     with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
         out = windows_neutralize_host_root(spec, workspace_dir=ws)
-    assert out["default"] == _windows_default(ws)
+    assert out["default"] == {
+        "type": "local_shell",
+        "root_dir": str(ws.resolve()),
+        "virtual_mode": True,
+    }
     assert out["routes"] == {}
 
 

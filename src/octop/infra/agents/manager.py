@@ -444,8 +444,8 @@ class AgentManager:
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         workspace_dir = self._paths.agent_workspace(agent_id)
         try:
-            if workspace_dir.exists():
-                shutil.rmtree(workspace_dir)
+            if await asyncio.to_thread(workspace_dir.exists):
+                await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)

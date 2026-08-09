@@ -486,7 +486,7 @@
     "agentDeleted": "Agent \"{{name}}\" deleted",
     "agentDeleteFailed": "Failed to delete agent",
     "confirmDelete": "Delete \"{{name}}\"?",
-    "confirmDeleteHint": "This action cannot be undone.",
+    "confirmDeleteHint": "This cannot be undone. The agent workspace (including memory and session files) will also be permanently deleted and cannot be recovered.",
     "patchFailed": "Failed to save changes",
     "defaultModelLabel": "Default Model",
     "defaultModelPlaceholder": "Select a model",

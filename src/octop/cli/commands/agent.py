@@ -201,7 +201,11 @@ def reload(agent_id: str, as_user: str | None) -> None:
 @click.option("--yes", is_flag=True, default=False)
 def delete(agent_id: str, as_user: str | None, yes: bool) -> None:
     if not yes:
-        click.confirm(f"Really delete agent {agent_id}?", abort=True)
+        click.confirm(
+            f"Really delete agent {agent_id}? "
+            "Its workspace directory will also be permanently removed and cannot be recovered.",
+            abort=True,
+        )
     _act("delete", agent_id, as_user)
 
 

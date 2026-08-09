@@ -7,7 +7,8 @@
 ## [Unreleased]
 
 ### 修复
-- Windows 下新建 agent 时，本地后端 `root_dir:"/"` 被解析为当前盘根目录，导致读取工作区（通常位于另一盘符）时抛 `Path ... outside root directory`；现在后端规格解析会在 Windows 上将主机根 `/` 归一化为工作区作用域默认值
+- Windows 下新建 agent 时，本地后端 `root_dir:"/"` 被解析为当前盘根目录，导致读取工作区（通常位于另一盘符）时抛 `Path ... outside root directory`；现在后端规格解析会在 Windows 上将主机根 `/` 的 `root_dir` 改写为工作区路径（保留原 `type` 等字段）
+- 删除专家时同步清理 `~/.octop/agents/<id>/` 工作区目录；清理失败不阻断数据库删除；仪表盘与 CLI 删除确认提示工作区将永久删除且不可恢复
 
 ## [0.9.19] - 2026-08-05
 

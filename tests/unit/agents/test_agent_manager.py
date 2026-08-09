@@ -438,7 +438,7 @@ async def test_delete_removes_workspace_directory(manager: AgentManager) -> None
 
 
 @pytest.mark.asyncio
-async def test_delete_keeps_db_row_when_workspace_rmtree_fails(
+async def test_delete_still_removes_db_row_when_workspace_rmtree_fails(
     manager: AgentManager, monkeypatch: Any
 ) -> None:
     """A failed workspace rmtree must not abort agent deletion (mirrors user removal)."""
@@ -489,7 +489,7 @@ def test_backend_spec_for_row_neutralizes_host_root_on_windows(
 ) -> None:
     # The dashboard persists local backends with root_dir "/" (host-root sentinel).
     # On Windows that resolves to the current-drive root, breaking cross-drive reads
-    # of the workspace; the resolver must scope it to the workspace default.
+    # of the workspace; the resolver must rewrite root_dir to the workspace path.
     monkeypatch.setattr(os, "name", "nt")
     row = _row(
         config_json=json.dumps(
@@ -497,7 +497,11 @@ def test_backend_spec_for_row_neutralizes_host_root_on_windows(
         )
     )
     ws = manager._paths.ensure_agent_workspace(row.agent_id)
-    assert manager._backend_spec_for_row(row) == default_agent_backend_spec(ws)
+    assert manager._backend_spec_for_row(row) == {
+        "type": "local_shell",
+        "root_dir": str(ws.resolve()),
+        "virtual_mode": True,
+    }
 
 
 def test_build_harness_config_omits_fs_permissions_for_local_shell(manager: AgentManager) -> None:
