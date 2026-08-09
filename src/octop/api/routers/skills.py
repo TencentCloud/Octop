@@ -17,13 +17,10 @@ A skill is considered "enabled" unless its slug is listed in
 that list and hot-sync ``HarnessAgentConfig.skills_disabled`` so
 ``SkillFilterMiddleware`` excludes disabled skills on every turn.
 
-Limitations
------------
-The protocol has no ``delete``: removing a skill rewrites SKILL.md to
-an empty file with the leading frontmatter block ``---\\nremoved: true\\n---``
-so the directory listing still shows the entry but the dashboard knows
-to filter it. This is a deliberate design compromise — protocol-level
-delete is the right long-term answer.
+Deleting a skill removes its whole ``skills/<name>/`` directory from the
+agent workspace (``workspace.adelete``). Older soft-deleted leftovers whose
+``SKILL.md`` carries ``removed: true`` are cleaned up the same way, so the
+operation is idempotent: deleting a skill that is already gone returns 204.
 """
 
 from __future__ import annotations
@@ -123,14 +120,6 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 async def _aread_text(workspace: Any, path: str) -> str | None:
     return cast(str | None, await workspace.aread_text(path))
-
-
-async def _aoverwrite_text(workspace: Any, path: str, content: str) -> str | None:
-    try:
-        await workspace.awrite_text(path, content, force=True)
-    except Exception as exc:
-        return f"{exc}"
-    return None
 
 
 def _summary_dict(
@@ -836,7 +825,7 @@ async def delete_skill(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> None:
-    """Soft-delete via marker — see module docstring for rationale."""
+    """Hard-delete the skill directory — see module docstring for rationale."""
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     try:
         slug = validate_skill_slug(name)
@@ -844,18 +833,19 @@ async def delete_skill(
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
     resolved = await _resolve_skill(ctx.workspace, slug)
-    if resolved is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
-    manifest_path, kind, _body = resolved
-    if kind == "builtin":
+    if resolved is not None and resolved[1] == "builtin":
         raise OctopError(ErrorCode.NOT_FOUND, f"builtin skill {name!r} cannot be deleted")
-    target = manifest_path
-    existing = await _aread_text(ctx.workspace, target)
-    if existing is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")
-    err = await _aoverwrite_text(ctx.workspace, target, "---\nremoved: true\n---\n")
-    if err:
-        raise OctopError(ErrorCode.NOT_FOUND, f"cannot remove {target!r}: {err}")
+    # Idempotent hard delete: remove the whole skill directory on disk. This also
+    # clears soft-deleted leftovers whose SKILL.md still carries ``removed: true``,
+    # so stale UI entries can be cleaned up even when the manifest is gone.
+    with contextlib.suppress(Exception):
+        await ctx.workspace.adelete(f"{_SKILLS_ROOT}/{slug}")
+    # Drop stale skills_disabled entries so a re-created skill of the same name is
+    # not silently left disabled.
+    disabled = _disabled_set(ctx.config)
+    stale = {d for d in disabled if d in (slug, name)}
+    if stale:
+        await _persist_disabled(server, agent_id, disabled - stale)
 
 
 # --- enable / disable -------------------------------------------------------

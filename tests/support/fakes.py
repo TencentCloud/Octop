@@ -397,6 +397,18 @@ class _FakeBackend:
                     matches.append({"path": fpath, "line": lineno, "text": line})
         return GrepResult(error=None, matches=matches)
 
+    def delete_path(self, key: str) -> None:
+        """Mirror harness ``delete_path``: remove *key* and everything under it.
+
+        Keys arrive as virtual paths (``/skills/<slug>``) while ``_files`` stores
+        absolute on-disk paths, so deletion matches on the normalized suffix.
+        """
+        rel = key.rstrip("/").lstrip("/")
+        for fpath in list(self._files):
+            normalized = fpath.replace("\\", "/")
+            if normalized.endswith("/" + rel) or ("/" + rel + "/") in normalized:
+                del self._files[fpath]
+
 
 class LoopbackChannel(BaseChannel):
     """In-memory channel: tests push InboundMessage and collect MessageEvents."""
