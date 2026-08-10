@@ -254,8 +254,7 @@ class PluginManager:
                     raise
                 raise OctopError(
                     ErrorCode.PLUGIN_INVALID_ARCHIVE,
-                    f"{exc.message} "
-                    "(GitHub /blob/ pages return HTML — use a raw .zip URL)",
+                    f"{exc.message} (GitHub /blob/ pages return HTML — use a raw .zip URL)",
                     details=exc.details,
                 ) from exc
 
