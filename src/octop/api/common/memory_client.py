@@ -85,7 +85,9 @@ _CACHE = _MemoryCache()
 
 
 def _open_memory_for_agent(server: Any, agent_id: str) -> tuple[Any, Any]:
-    workspace = server.services.paths.ensure_agent_workspace(agent_id)
+    from octop.api.common.agent_workspace import resolve_agent_workspace_dir  # noqa: PLC0415
+
+    workspace = resolve_agent_workspace_dir(server, agent_id)
     row = server.services.agent_repo.get(agent_id)
     cfg: dict[str, Any] = {}
     if row is not None and row.config_json:

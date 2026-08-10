@@ -162,8 +162,19 @@
 
 .listMeta {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   margin-top: auto;
+}
+
+.listCreator {
+  min-width: 0;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listCountTag {
@@ -289,6 +300,12 @@
 .detailDescription {
   margin: 0 !important;
   max-width: 100%;
+}
+
+.detailCreator {
+  margin: 4px 0 0 !important;
+  max-width: 100%;
+  font-size: 12px;
 }
 
 .actions {

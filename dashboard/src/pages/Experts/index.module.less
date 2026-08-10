@@ -249,8 +249,13 @@
   color: var(--fn-text-secondary);
   transition: background 0.15s;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: var(--fn-sidebar-item-hover);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 }
 
@@ -1729,9 +1734,14 @@
     border-color 0.15s,
     background 0.15s;
 
-  &:hover {
+  &:hover:not(:disabled) {
     color: var(--fn-text-secondary);
     background: var(--fn-sidebar-item-hover);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 }
 

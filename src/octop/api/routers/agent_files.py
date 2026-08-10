@@ -41,6 +41,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
 from octop.api.common.agent import require_agent_row
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
@@ -210,7 +211,7 @@ async def delete_daily_memory(
     rt = _resolve_runtime(agent_id, user=user, as_user=as_user, server=server)
     # ``BackendProtocol`` has no delete — fall back to the filesystem
     # path we know lives behind the local_shell / filesystem backends.
-    workspace = server.services.paths.ensure_agent_workspace(rt.agent_id)
+    workspace = resolve_agent_workspace_dir(server, rt.agent_id)
     target = (workspace / "daily" / filename).resolve()
     # Belt-and-suspenders: regex already pinned the format, but resolve()
     # + relative_to() guarantees we stay inside the workspace if anyone

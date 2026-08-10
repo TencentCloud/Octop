@@ -187,6 +187,7 @@ def test_resolve_harness_model_dashboard_override_wins() -> None:
     )
     processor._agent_manager.get_thread_model.return_value = None
     processor._agent_repo.get.return_value = MagicMock(default_model="p/default")
+    processor._agent_manager.providers.is_model_ref_usable.return_value = True
     processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/picked"
 
     resolved = processor._resolve_harness_model(
@@ -200,3 +201,34 @@ def test_resolve_harness_model_dashboard_override_wins() -> None:
         "p/picked",
         needs_multimodal=False,
     )
+
+
+def test_resolve_harness_model_drops_unusable_dashboard_override() -> None:
+    """Stale composer/expert refs must not bypass catalog usability checks."""
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_repo.get.return_value = MagicMock(default_model="p/deleted")
+    processor._agent_manager.get_config.return_value = {}
+    processor._agent_manager.providers.is_model_ref_usable.return_value = False
+    processor._agent_manager.providers.resolve_explicit_default_model.return_value = None
+
+    assert (
+        processor._resolve_harness_model(
+            "a1",
+            "t1",
+            {"model": "p/deleted"},
+            needs_multimodal=False,
+        )
+        is None
+    )
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.assert_not_called()

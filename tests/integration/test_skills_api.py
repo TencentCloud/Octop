@@ -534,3 +534,102 @@ async def test_create_skill_rejects_invalid_base64_files(env: Any) -> None:
         },
     )
     assert r.status_code == 400, r.text
+
+
+async def test_reinstall_after_soft_delete_without_overwrite(env: Any) -> None:
+    """Soft-deleted multi-file skills must reinstall even when a sibling is listed first."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: zip-demo\ndescription: from zip\n---\n\n# Zip Demo\n"
+    first = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "notes.txt", "content_base64": _b64("hello")},
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+            ],
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    assert (
+        await c.post(f"/api/agents/{aid}/skills/zip-demo/disable", headers=auth)
+    ).status_code == 204
+    assert (await c.delete(f"/api/agents/{aid}/skills/zip-demo", headers=auth)).status_code == 204
+
+    reinstall = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "notes.txt", "content_base64": _b64("hello2")},
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+            ],
+            "overwrite": False,
+        },
+    )
+    assert reinstall.status_code == 201, reinstall.text
+    assert reinstall.json()["enabled"] is True
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    raw = await agent.workspace.aread_text("skills/zip-demo/SKILL.md")
+    assert raw is not None
+    assert "removed" not in raw
+    assert await agent.workspace.aread_text("skills/zip-demo/notes.txt") == "hello2"
+
+    cfg = srv.app_runtime.agent_registry.get_config(aid)
+    assert "zip-demo" not in set(cfg.get("skills_disabled") or [])
+    rows = (await c.get(f"/api/agents/{aid}/skills", headers=auth)).json()
+    row = next(item for item in rows if item["slug"] == "zip-demo")
+    assert row["enabled"] is True
+
+
+async def test_reinstall_overwrite_clears_skills_disabled(env: Any) -> None:
+    """Disable → delete → overwrite reinstall must leave the skill enabled."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: zip-demo\ndescription: from zip\n---\n\n# Zip Demo\n"
+    first = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "notes.txt", "content_base64": _b64("hello")},
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+            ],
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    assert (
+        await c.post(f"/api/agents/{aid}/skills/zip-demo/disable", headers=auth)
+    ).status_code == 204
+    assert (await c.delete(f"/api/agents/{aid}/skills/zip-demo", headers=auth)).status_code == 204
+
+    reinstall = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "notes.txt", "content_base64": _b64("hello2")},
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+            ],
+            "overwrite": True,
+        },
+    )
+    assert reinstall.status_code == 201, reinstall.text
+    assert reinstall.json()["enabled"] is True
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    raw = await agent.workspace.aread_text("skills/zip-demo/SKILL.md")
+    assert raw is not None
+    assert "removed: true" not in raw
+
+    cfg = srv.app_runtime.agent_registry.get_config(aid)
+    assert "zip-demo" not in set(cfg.get("skills_disabled") or [])
+    rows = (await c.get(f"/api/agents/{aid}/skills", headers=auth)).json()
+    row = next(item for item in rows if item["slug"] == "zip-demo")
+    assert row["enabled"] is True

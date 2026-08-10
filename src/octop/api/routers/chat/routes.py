@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -21,6 +21,8 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_has_content,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
+from octop.infra.gateway.hitl.store import HitlPendingRecord
 from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -78,6 +80,71 @@ async def get_chat_welcome(
     return default_welcome_payload(catalog)
 
 
+async def iter_dashboard_hitl_resume_sse(
+    *,
+    agent_registry: Any,
+    hitl_coordinator: HitlChannelCoordinator,
+    agent_id: str,
+    thread_id: str,
+    user_id: int,
+    decisions: list[dict[str, Any]],
+    pending: HitlPendingRecord | None,
+    session_key: str,
+    channel_type: str,
+    locale: str,
+    is_disconnected: Callable[[], Awaitable[bool]],
+) -> AsyncIterator[str]:
+    """Stream dashboard HITL resume chunks and persist any nested ``hitl_required``.
+
+    Follow-up interrupts during resume must land in the pending store so history
+    reload / refresh can reinject the approval card (same as the initial turn).
+    """
+    rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
+    hitl_ctx = HitlStreamContext(
+        thread_id=thread_id,
+        agent_id=agent_id,
+        user_id=user_id,
+        session_key=session_key,
+        channel_type=channel_type,
+    )
+    try:
+        async for chunk in agent_registry.resume_hitl(agent_id, thread_id, decisions):
+            if await is_disconnected():
+                break
+            if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                request_payload = chunk.get("request")
+                if isinstance(request_payload, dict):
+                    hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+            yield format_sse("chunk", chunk)
+        if pending is not None:
+            hitl_coordinator.store.mark_resolved(
+                pending.pending_id,
+                "rejected" if rejected else "approved",
+            )
+        yield format_sse("chunk", {"type": "done"})
+    except Exception as exc:
+        yield format_sse(
+            "chunk",
+            {"type": "error", "message": format_stream_error(exc, locale)},
+        )
+
+
+def _dashboard_hitl_stream_context(
+    server: Any,
+    *,
+    agent_id: str,
+    thread_id: str,
+    user_id: int,
+    pending: HitlPendingRecord | None,
+) -> tuple[str, str]:
+    if pending is not None:
+        return pending.session_key, pending.channel_type
+    row = server.app_runtime.gateway.thread_registry.get_thread(thread_id)
+    if row is not None:
+        return row.session_key, row.channel_type or "dashboard"
+    return f"{agent_id}:dashboard:{user_id}:dm", "dashboard"
+
+
 @router.post("/agents/{agent_id}/chat/hitl/resume", summary="Resume HITL approval (SSE)")
 async def resume_hitl(
     agent_id: str,
@@ -89,20 +156,35 @@ async def resume_hitl(
     """Resume a paused human-in-the-loop tool approval and stream subsequent chunks."""
     assert_agent_access(server, agent_id, user)
     agent_registry = server.app_runtime.agent_registry
+    hitl_coordinator = server.app_runtime.gateway.processor.hitl_coordinator
+    pending = hitl_coordinator.store.resolve_pending_for_thread(
+        body.thread_id,
+        agent_id=agent_id,
+        user_id=user.id,
+    )
+    session_key, channel_type = _dashboard_hitl_stream_context(
+        server,
+        agent_id=agent_id,
+        thread_id=body.thread_id,
+        user_id=user.id,
+        pending=pending,
+    )
 
     async def gen() -> AsyncIterator[str]:
-        locale = resolve_request_locale(request)
-        try:
-            async for chunk in agent_registry.resume_hitl(agent_id, body.thread_id, body.decisions):
-                if await request.is_disconnected():
-                    break
-                yield format_sse("chunk", chunk)
-            yield format_sse("chunk", {"type": "done"})
-        except Exception as exc:
-            yield format_sse(
-                "chunk",
-                {"type": "error", "message": format_stream_error(exc, locale)},
-            )
+        async for frame in iter_dashboard_hitl_resume_sse(
+            agent_registry=agent_registry,
+            hitl_coordinator=hitl_coordinator,
+            agent_id=agent_id,
+            thread_id=body.thread_id,
+            user_id=user.id,
+            decisions=body.decisions,
+            pending=pending,
+            session_key=session_key,
+            channel_type=channel_type,
+            locale=resolve_request_locale(request),
+            is_disconnected=request.is_disconnected,
+        ):
+            yield frame
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

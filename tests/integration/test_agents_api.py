@@ -27,6 +27,56 @@ async def test_create_and_list(env):
     assert any(a["id"] == agent_id for a in r.json())
 
 
+async def test_agent_runtime_fields_are_first_class_api_fields(env):
+    c, _, auth = env
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={
+            "name": "runtime-config",
+            "max_iters": 17,
+            "max_input_length": 64_000,
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "max_tokens": 2048,
+        },
+    )
+    assert r.status_code == 201
+    created = r.json()
+    agent_id = created["agent_id"]
+    assert created["max_iters"] == 17
+    assert created["max_input_length"] == 64_000
+    assert created["temperature"] == 0.4
+    assert created["top_p"] == 0.9
+    assert created["max_tokens"] == 2048
+    assert "max_iters" not in created["config"]
+
+    r = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"max_iters": 23, "temperature": None},
+    )
+    assert r.status_code == 200
+    updated = r.json()
+    assert updated["max_iters"] == 23
+    assert updated["temperature"] is None
+    assert "max_iters" not in updated["config"]
+    assert "temperature" not in updated["config"]
+
+
+async def test_create_keeps_legacy_runtime_values_from_config(env):
+    c, _, auth = env
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={"name": "legacy-runtime-config", "config": {"max_iters": 19}},
+    )
+    assert r.status_code == 201
+    created = r.json()
+    assert created["max_iters"] == 19
+    assert "max_iters" not in created["config"]
+
+
 async def test_start_stop(env):
     """Stop unloads harness runtime; start brings it back."""
     c, _, auth = env

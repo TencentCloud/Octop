@@ -622,8 +622,22 @@ async def test_get_config_returns_empty_for_null_json(tmp_path: Path) -> None:
     registry = _make_registry(services)
 
     row = await registry.create(AgentCreateSpec(name="no-cfg"))
+    # create() always seeds workspace_dir; clear to exercise NULL path.
+    services.repos.agent_repo.update_config(row.agent_id, config_json=None)
 
     assert registry.get_config(row.agent_id) == {}
+
+
+@pytest.mark.asyncio
+async def test_create_seeds_workspace_dir(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    registry = _make_registry(services)
+
+    row = await registry.create(AgentCreateSpec(name="with-ws"))
+    cfg = registry.get_config(row.agent_id)
+    assert isinstance(cfg.get("workspace_dir"), str)
+    assert cfg["workspace_dir"].endswith(f"/agents/{row.agent_id}")
+    assert Path(cfg["workspace_dir"]).is_dir()
 
 
 @pytest.mark.asyncio

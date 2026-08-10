@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  chatStreamErrorAction,
   classifyChatStreamError,
   formatChatStreamError,
   isChatStreamError,
@@ -26,6 +27,22 @@ describe("classifyChatStreamError", () => {
     expect(
       classifyChatStreamError("Error code: 401 - Incorrect API key provided"),
     ).toBe("stream_errors.auth");
+  });
+
+  it("classifies LangGraph recursion limit as recursion_limit", () => {
+    const msg =
+      "Recursion limit of 2 reached without hitting a stop condition. " +
+      "You can increase the limit by setting the `recursion_limit` config key.\n" +
+      "For troubleshooting, visit: " +
+      "https://docs.langchain.com/oss/python/langgraph/errors/GRAPH_RECURSION_LIMIT";
+    expect(classifyChatStreamError(msg)).toBe("stream_errors.recursion_limit");
+    expect(
+      classifyChatStreamError("GraphRecursionError: GRAPH_RECURSION_LIMIT"),
+    ).toBe("stream_errors.recursion_limit");
+    expect(chatStreamErrorAction(msg)).toEqual({
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    });
   });
 
   it("leaves unknown messages alone", () => {

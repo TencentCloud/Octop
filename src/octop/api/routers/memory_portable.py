@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_row
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path, memory_namespace
 from octop.api.deps import current_user, get_server
@@ -57,7 +58,7 @@ def _refuse_postgres_portable(server: Any, agent_id: str) -> None:
     another host (e.g. OpenClaw) access is to point it at the same DSN and
     namespace, where the memory is simply shared rather than migrated.
     """
-    workspace = server.services.paths.ensure_agent_workspace(agent_id)
+    workspace = resolve_agent_workspace_dir(server, agent_id)
     _ns, backend, _cfg = open_memory_kwargs(
         agent_id=agent_id,
         cfg=_agent_config_dict(server, agent_id),
@@ -136,7 +137,7 @@ async def pack_agent_memory(
         from harness_memory.operations.migration.portable.sources import _probe_db
 
         # Resolve the agent's db path and namespace
-        workspace = server.services.paths.ensure_agent_workspace(agent_id)
+        workspace = resolve_agent_workspace_dir(server, agent_id)
         db_path = memory_db_path(workspace)
         ns = memory_namespace(agent_id)
 
@@ -266,7 +267,7 @@ async def doctor_agent_memory(
         from harness_memory.operations.migration.portable import doctor
 
         # Resolve the agent's db path
-        workspace = server.services.paths.ensure_agent_workspace(agent_id)
+        workspace = resolve_agent_workspace_dir(server, agent_id)
         db_path = memory_db_path(workspace)
 
         # Handle the optional comparison package

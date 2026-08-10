@@ -286,11 +286,7 @@ function ChatPageInner() {
     activeModelRef,
     handleConnectorsChange,
     handleSkillsChange,
-  } = useChatComposerResources(
-    resolvedAgentId,
-    chatSkills,
-    activeAgent?.default_model,
-  );
+  } = useChatComposerResources(resolvedAgentId, chatSkills);
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
     messages,
@@ -299,6 +295,7 @@ function ChatPageInner() {
     availableModels,
     activeAgent?.default_model,
     activeModelRef,
+    activeAgent,
   );
 
   const sessionUsage = useMemo(() => {

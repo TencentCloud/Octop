@@ -68,6 +68,34 @@ async def test_create_tencent_instance(env):
     inst = r.json()
     assert inst["kind"] == "tencent-docs"
     assert inst["mcp_server_name"].startswith("tencent-docs__")
+    assert inst.get("default_open") is False
+
+
+async def test_create_instance_default_open(env):
+    c, _, auth, _ = env
+    r = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "我的文档",
+            "credentials": {"token": "test-token"},
+            "default_open": True,
+        },
+    )
+    assert r.status_code == 201
+    inst = r.json()
+    assert inst["default_open"] is True
+
+    listed = await c.get("/api/connector-instances", headers=auth)
+    assert listed.status_code == 200
+    row = next(i for i in listed.json() if i["instance_id"] == inst["instance_id"])
+    assert row["default_open"] is True
+
+    detail = await c.get(f"/api/connector-instances/{inst['instance_id']}", headers=auth)
+    assert detail.status_code == 200
+    assert detail.json()["config"]["default_open"] is True
+    assert detail.json()["default_open"] is True
 
 
 async def test_chat_accepts_user_instance_mcp(env):

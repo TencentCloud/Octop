@@ -9,7 +9,13 @@ import {
   turnUsedBrowserTool,
   turnUsedFileTool,
 } from "../utils/messageContent";
+import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
 import { useAgent } from "../../../context/AgentContext";
+import { TodoProgressPanel } from "../../../components/TodoProgressPanel";
+import {
+  collectWriteTodosFromMessages,
+  isWriteTodosToolName,
+} from "../../../utils/parseWriteTodos";
 import AssistantProcessSummary from "./AssistantProcessSummary";
 import MessageBubble from "./MessageBubble";
 import { ToolMediaStrip } from "./ToolMediaStrip";
@@ -36,6 +42,13 @@ interface AssistantTurnViewProps {
   compactProcess?: boolean;
 }
 
+function hasProcessContent(
+  split: ReturnType<typeof splitAssistantTurn>,
+): boolean {
+  const { toolCount, thinkingCount } = countProcessStats(split);
+  return toolCount > 0 || thinkingCount > 0;
+}
+
 export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
@@ -56,27 +69,24 @@ export default function AssistantTurnView({
   const { activeAgentId } = useAgent();
   const agentId = agentIdProp ?? activeAgentId;
 
-  const hitlIdx = messages.findIndex((m) => m.hitlData);
-  const hitlMessage = hitlIdx >= 0 ? messages[hitlIdx] : undefined;
+  const hitlLayout = useMemo(
+    () => layoutAssistantTurnHitl(messages),
+    [messages],
+  );
+  const hasPendingHitl = messages.some((m) => m.hitlData?.status === "pending");
 
-  const preSplit = useMemo(() => {
-    const preMessages = hitlIdx >= 0 ? messages.slice(0, hitlIdx) : messages;
-    return splitAssistantTurn(preMessages);
-  }, [messages, hitlIdx]);
-  const postSplit = useMemo(() => {
-    const postMessages = hitlIdx >= 0 ? messages.slice(hitlIdx + 1) : [];
-    return splitAssistantTurn(postMessages);
-  }, [messages, hitlIdx]);
-  const answerSplit = hitlMessage ? postSplit : preSplit;
-
-  const hasPreProcess = useMemo(() => {
-    const { toolCount, thinkingCount } = countProcessStats(preSplit);
-    return toolCount > 0 || thinkingCount > 0;
-  }, [preSplit]);
-  const hasPostProcess = useMemo(() => {
-    const { toolCount, thinkingCount } = countProcessStats(postSplit);
-    return toolCount > 0 || thinkingCount > 0;
-  }, [postSplit]);
+  const segmentProcess = useMemo(
+    () =>
+      hitlLayout.segments.map((seg) => ({
+        split: splitAssistantTurn(seg.processMessages),
+        hitl: seg.hitlMessage,
+      })),
+    [hitlLayout],
+  );
+  const trailingSplit = useMemo(
+    () => splitAssistantTurn(hitlLayout.trailingMessages),
+    [hitlLayout],
+  );
 
   const fullSplit = useMemo(() => splitAssistantTurn(messages), [messages]);
 
@@ -97,37 +107,82 @@ export default function AssistantTurnView({
     toolMedia.videos.length > 0 ||
     toolMedia.files.length > 0;
 
+  const todoItems = useMemo(
+    () => collectWriteTodosFromMessages(messages),
+    [messages],
+  );
+  const todoStreaming =
+    turnStreaming &&
+    messages.some(
+      (m) => m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
+    );
+
+  const firstProcessSegmentIdx = compactProcess
+    ? -1
+    : segmentProcess.findIndex(({ split }) => hasProcessContent(split));
+  const showTrailingProcess =
+    !compactProcess && hasProcessContent(trailingSplit);
+  const anyProcessShown = firstProcessSegmentIdx >= 0 || showTrailingProcess;
+
+  const todoPanel =
+    todoItems.length > 0 ? (
+      <TodoProgressPanel
+        items={todoItems}
+        isStreaming={todoStreaming}
+        followingProcessSummary={anyProcessShown}
+      />
+    ) : null;
+  const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
+
   return (
     <div className={styles.assistantTurn}>
-      {hasPreProcess && !compactProcess && (
-        <div className={styles.processSummaryRow}>
-          <AssistantProcessSummary
-            split={preSplit}
-            isStreaming={turnStreaming && !hitlMessage}
-            onAcpPermissionSelect={onAcpPermissionSelect}
-            hideToolMedia={hasToolMedia}
-            agentId={agentId}
-          />
-        </div>
-      )}
-      {hitlMessage ? (
-        <MessageBubble
-          message={hitlMessage}
-          onHitlDecision={onHitlDecision}
-          groupPosition="only"
-        />
+      {todoAtTop}
+      {segmentProcess.map(({ split, hitl }, idx) => {
+        const showProcess = !compactProcess && hasProcessContent(split);
+        // Freeze process spinner while a pending approval card is open.
+        const processStreaming =
+          turnStreaming &&
+          !hasPendingHitl &&
+          idx === segmentProcess.length - 1 &&
+          hitlLayout.trailingMessages.length === 0;
+        return (
+          <div key={hitl.id}>
+            {showProcess ? (
+              <>
+                <div className={styles.processSummaryRow}>
+                  <AssistantProcessSummary
+                    split={split}
+                    isStreaming={processStreaming}
+                    onAcpPermissionSelect={onAcpPermissionSelect}
+                    hideToolMedia={hasToolMedia}
+                    agentId={agentId}
+                  />
+                </div>
+                {todoPanel && idx === firstProcessSegmentIdx ? todoPanel : null}
+              </>
+            ) : null}
+            <MessageBubble
+              message={hitl}
+              onHitlDecision={onHitlDecision}
+              groupPosition="only"
+            />
+          </div>
+        );
+      })}
+      {showTrailingProcess ? (
+        <>
+          <div className={styles.processSummaryRow}>
+            <AssistantProcessSummary
+              split={trailingSplit}
+              isStreaming={turnStreaming && !hasPendingHitl}
+              onAcpPermissionSelect={onAcpPermissionSelect}
+              hideToolMedia={hasToolMedia}
+              agentId={agentId}
+            />
+          </div>
+          {todoPanel && firstProcessSegmentIdx < 0 ? todoPanel : null}
+        </>
       ) : null}
-      {hasPostProcess && !compactProcess && (
-        <div className={styles.processSummaryRow}>
-          <AssistantProcessSummary
-            split={postSplit}
-            isStreaming={turnStreaming}
-            onAcpPermissionSelect={onAcpPermissionSelect}
-            hideToolMedia={hasToolMedia}
-            agentId={agentId}
-          />
-        </div>
-      )}
       {hasToolMedia && (
         <ToolMediaStrip
           images={toolMedia.images}
@@ -136,10 +191,10 @@ export default function AssistantTurnView({
           agentId={agentId}
         />
       )}
-      {answerSplit.answerMessage ? (
+      {trailingSplit.answerMessage ? (
         <div className={styles.assistantTurnAnswer}>
           <MessageBubble
-            message={toAnswerOnlyMessage(answerSplit.answerMessage)}
+            message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
             onRegenerate={onRegenerate}
             onEditUserMessage={onEditUserMessage}
             groupPosition="only"

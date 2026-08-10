@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import (
     build_create_spec_from_expert,
@@ -51,7 +52,7 @@ _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
 }
 
 
-class FromExpertBody(BaseModel):
+class FromExpertBody(AgentRuntimeFields):
     name: str | None = None
     description: str | None = None
     providers: list[str] | None = None
@@ -266,6 +267,7 @@ async def install_expert_hub_item(
                 providers=body.providers,
                 default_model=body.default_model,
                 backend=body.backend,
+                **runtime_field_updates(body, exclude_unset=False),
             ),
         )
     except SkillHubMarketError as exc:
@@ -348,6 +350,7 @@ async def create_agent_from_expert(
         locale=locale,
         default_model=body.default_model,
         config_extra=config_extra or None,
+        runtime_config=runtime_field_updates(body, exclude_unset=True),
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
     if package_ids is not None:

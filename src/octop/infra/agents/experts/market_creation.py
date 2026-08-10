@@ -43,6 +43,11 @@ class SkillHubMarketAgentCreateOptions:
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    max_iters: int | None = None
+    max_input_length: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    max_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -288,6 +293,17 @@ async def create_agent_from_skillhub_skillset(
         locale=locale,
         default_model=options.default_model,
         config_extra=config_extra,
+        runtime_config={
+            key: value
+            for key, value in {
+                "max_iters": options.max_iters,
+                "max_input_length": options.max_input_length,
+                "temperature": options.temperature,
+                "top_p": options.top_p,
+                "max_tokens": options.max_tokens,
+            }.items()
+            if value is not None
+        },
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
 

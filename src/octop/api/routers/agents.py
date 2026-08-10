@@ -7,10 +7,14 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 
 from octop.api.common.agent import assert_agent_owner
+from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.runtime_limits import (
+    AGENT_RUNTIME_CONFIG_KEYS,
+    agent_runtime_values,
+)
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -18,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-class AgentCreateBody(BaseModel):
+class AgentCreateBody(AgentRuntimeFields):
     name: str
     description: str | None = None
     persona_mbti: str | None = None
@@ -29,7 +33,7 @@ class AgentCreateBody(BaseModel):
     template_name: str | None = None
 
 
-class AgentPatchBody(BaseModel):
+class AgentPatchBody(AgentRuntimeFields):
     name: str | None = None
     description: str | None = None
     persona_mbti: str | None = None
@@ -66,6 +70,7 @@ def _row_dict(
         cfg = {}
     if not isinstance(cfg, dict):
         cfg = {}
+    public_cfg = {key: value for key, value in cfg.items() if key not in AGENT_RUNTIME_CONFIG_KEYS}
     payload: dict[str, Any] = {
         "id": row.id,
         "agent_id": row.agent_id,
@@ -77,11 +82,12 @@ def _row_dict(
         "system_prompt": row.system_prompt,
         "state": row.last_state or "unknown",
         "last_error": row.last_error,
-        "config": cfg,
+        "config": public_cfg,
         "icon": row.icon,
         "template_name": row.template_name,
         "icon_name": cfg.get("icon_name"),
         "color": cfg.get("color"),
+        **agent_runtime_values(cfg),
     }
     if owner_username is not None:
         payload["owner_username"] = owner_username
@@ -132,7 +138,13 @@ async def list_agents(
     return _attach_unread_counts(
         server,
         user.id,
-        [_row_dict(r, bootstrap_pending=_bootstrap_pending_for(server, r.agent_id)) for r in rows],
+        [
+            _row_dict(
+                r,
+                bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
+            )
+            for r in rows
+        ],
     )
 
 
@@ -154,6 +166,7 @@ async def create_agent(
         default_model=body.default_model,
         system_prompt=body.system_prompt,
         config=body.config,
+        runtime_config=runtime_field_updates(body, exclude_unset=True),
         icon=body.icon,
         template_name=body.template_name,
     )
@@ -188,7 +201,10 @@ async def get_agent(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
-    return _row_dict(row, bootstrap_pending=_bootstrap_pending_for(server, agent_id))
+    return _row_dict(
+        row,
+        bootstrap_pending=_bootstrap_pending_for(server, agent_id),
+    )
 
 
 _assert_agent_owner = assert_agent_owner

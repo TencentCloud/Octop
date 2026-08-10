@@ -17,6 +17,7 @@ export interface ServerCardState {
   argsText: string;
   envText: string;
   enabled: boolean;
+  defaultOpen: boolean;
   collapsed: boolean;
 }
 
@@ -119,6 +120,7 @@ export function serversToCards(servers: CustomMcpServers): ServerCardState[] {
     argsText: (spec.args ?? []).join("\n"),
     envText: envToText(spec.env),
     enabled: spec.enabled !== false,
+    defaultOpen: spec.default_open === true,
     collapsed: true,
   }));
 }
@@ -140,6 +142,9 @@ export function cardsToServers(cards: ServerCardState[]): CustomMcpServers {
     const displayName = card.displayName.trim();
     if (displayName) {
       spec.display_name = displayName;
+    }
+    if (card.defaultOpen) {
+      spec.default_open = true;
     }
     if (card.transport === "streamable_http") {
       spec.url = card.url.trim();
@@ -183,6 +188,7 @@ export function newCard(
     argsText: "",
     envText: "",
     enabled: true,
+    defaultOpen: false,
     collapsed: false,
   };
 }

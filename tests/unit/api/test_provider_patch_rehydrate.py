@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -63,3 +63,29 @@ async def test_admin_patch_api_key_calls_on_provider_changed() -> None:
     await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
 
     on_changed.assert_awaited_once_with(provider_name="test-openai")
+
+
+@pytest.mark.asyncio
+async def test_admin_patch_models_clears_stale_agent_default_and_active() -> None:
+    on_changed = AsyncMock()
+    row = MagicMock()
+    row.id = 1
+    row.name = "hai"
+    server = MagicMock()
+    server.services.provider_repo.get.side_effect = [row, row]
+    server.services.provider_repo.update = MagicMock()
+    server.app_runtime.agent_registry.on_provider_changed = on_changed
+
+    body = ProviderPatchBody.model_validate(
+        {"models": [{"id": "keep", "name": "keep", "enabled": True}]}
+    )
+    with patch("octop.api.routers.providers.clear_stale_pins_for_provider") as clear_pins:
+        await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+
+    clear_pins.assert_called_once_with(
+        agent_repo=server.services.agent_repo,
+        settings_repo=server.services.settings_repo,
+        provider_name="hai",
+        models=body.models,
+    )
+    on_changed.assert_awaited_once_with(provider_name="hai")

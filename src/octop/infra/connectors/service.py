@@ -22,6 +22,7 @@ from octop.infra.connectors.custom_mcp import (
     validate_servers_map,
     wrap_servers,
 )
+from octop.infra.connectors.default_open import merge_mcp_servers_with_defaults, read_default_open
 from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
 from octop.infra.connectors.gateway.feishu_user_auth import (
     complete_user_device_login,
@@ -181,6 +182,24 @@ class ConnectorService:
         servers[server_name] = spec
         return self.put_custom_servers(user_id, servers)
 
+    def patch_custom_server_default_open(
+        self,
+        user_id: int,
+        server_name: str,
+        *,
+        default_open: bool,
+    ) -> dict[str, Any]:
+        servers = dict(self.get_custom_servers(user_id))
+        if server_name not in servers:
+            raise KeyError(server_name)
+        spec = dict(servers[server_name])
+        if default_open:
+            spec["default_open"] = True
+        else:
+            spec.pop("default_open", None)
+        servers[server_name] = spec
+        return self.put_custom_servers(user_id, servers)
+
     def list_instances_for_api(self, user_id: int) -> list[dict[str, Any]]:
         """Built-in rows + expanded custom servers (hide parent custom-mcp row)."""
         out: list[dict[str, Any]] = []
@@ -196,6 +215,7 @@ class ConnectorService:
                     "status": inst.status,
                     "mcp_server_name": inst.mcp_server_name,
                     "has_credentials": inst.has_credentials,
+                    "default_open": read_default_open(ConnectorRepo.parse_config_json(inst)),
                     "created_at": inst.created_at,
                     "updated_at": inst.updated_at,
                 }
@@ -221,6 +241,42 @@ class ConnectorService:
             if isinstance(spec, dict) and server_enabled(spec):
                 names.append(name)
         return sorted(names)
+
+    def list_default_open_mcp_server_names(self, user_id: int) -> list[str]:
+        """Active connectors marked default_open (dashboard + all IM channels)."""
+        names: list[str] = []
+        for inst in self._repo.list_by_user(user_id):
+            if is_custom_mcp_kind(inst.kind):
+                continue
+            if inst.status != "active" or not inst.has_credentials:
+                continue
+            if read_default_open(ConnectorRepo.parse_config_json(inst)):
+                names.append(inst.mcp_server_name)
+        for name, spec in self.get_custom_servers(user_id).items():
+            if not isinstance(spec, dict) or not server_enabled(spec):
+                continue
+            if spec.get("default_open") is True:
+                names.append(name)
+        return names
+
+    def merge_turn_mcp_servers(
+        self,
+        user_id: int,
+        explicit: list[str] | None,
+        *,
+        apply_defaults: bool | None = None,
+    ) -> list[str] | None:
+        """Resolve turn MCP servers vs the user's default_open set.
+
+        Dashboard passes an explicit list (``apply_defaults=False``) so users can
+        opt out for a turn. IM uses ``explicit is None`` + defaults. Cron follows
+        defaults when the job has no picks; explicit Cron picks win as-is.
+        """
+        return merge_mcp_servers_with_defaults(
+            explicit,
+            self.list_default_open_mcp_server_names(user_id),
+            apply_defaults=apply_defaults,
+        )
 
     def validate_mcp_servers_for_user(self, user_id: int, names: list[str]) -> list[str]:
         allowed = set(self.list_active_mcp_server_names(user_id))

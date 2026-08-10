@@ -404,6 +404,7 @@ def build_create_spec_from_expert(
     locale: str = "zh",
     default_model: str | None = None,
     config_extra: dict[str, Any] | None = None,
+    runtime_config: dict[str, Any] | None = None,
     agent_id: str | None = None,
     icon: str | None = None,
 ) -> AgentCreateSpec:
@@ -432,6 +433,7 @@ def build_create_spec_from_expert(
         description=resolved_description,
         default_model=default_model,
         config=expert_agent_config(expert_id, expert, **(config_extra or {})),
+        runtime_config=dict(runtime_config or {}),
         icon=icon,
         template_name=expert_id,
     )

@@ -122,6 +122,48 @@ def resolve_agent_backend_spec(
     return cleaned
 
 
+def collect_named_storage_backend_refs(spec: Any) -> set[str]:
+    """Collect ``storage_backends.name`` values referenced by an agent backend spec tree."""
+    if spec is None:
+        return set()
+    if isinstance(spec, str):
+        if spec.startswith("named:"):
+            return {spec.split(":", 1)[1]}
+        return set()
+    if not isinstance(spec, dict):
+        return set()
+    kind = spec.get("type")
+    if kind == "named":
+        name = spec.get("name")
+        return {str(name)} if name else set()
+    if kind == "composite":
+        out: set[str] = set()
+        out |= collect_named_storage_backend_refs(spec.get("default"))
+        routes = spec.get("routes")
+        if isinstance(routes, dict):
+            for sub in routes.values():
+                out |= collect_named_storage_backend_refs(sub)
+        return out
+    return set()
+
+
+def find_agents_using_storage_backend(
+    *,
+    agent_repo: Any,
+    get_config: Any,
+    backend_name: str,
+) -> list[dict[str, str]]:
+    """Return agents whose ``config.backend`` references *backend_name* (named / composite)."""
+    refs: list[dict[str, str]] = []
+    for row in agent_repo.list_all():
+        cfg = get_config(row.agent_id)
+        if not isinstance(cfg, dict):
+            continue
+        if backend_name in collect_named_storage_backend_refs(cfg.get("backend")):
+            refs.append({"agent_id": row.agent_id, "name": row.name})
+    return refs
+
+
 def backend_spec_supports_execution(spec: Any) -> bool:
     """True when the backend spec resolves to a sandbox/shell backend.
 
@@ -131,11 +173,13 @@ def backend_spec_supports_execution(spec: Any) -> bool:
     if spec is None:
         return True
     if isinstance(spec, str):
-        return spec == "local_shell"
+        return spec in {"local_shell", "docker"}
     if not isinstance(spec, dict):
         return False
     kind = spec.get("type")
     if kind == "local_shell":
+        return True
+    if kind == "docker":
         return True
     if kind == "composite":
         if backend_spec_supports_execution(spec.get("default")):

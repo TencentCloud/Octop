@@ -5,6 +5,13 @@ import type { ChatMessage } from "./useChat";
 
 const DEFAULT_MAX = 128_000;
 
+function readPositiveNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  return null;
+}
+
 function usageContextInput(
   usage: TokenUsage | null | undefined,
 ): number | null {
@@ -43,8 +50,12 @@ export function useChatContextWindow(
   agentDefaultModel?: string | null,
   /** Global preferred model (settings active-model) used when composer is Auto. */
   activeModelRef?: string | null,
+  agentConfig?: { max_input_length?: number | null } | null,
 ) {
   const contextMaxTokens = useMemo(() => {
+    const fromAgentConfig = readPositiveNumber(agentConfig?.max_input_length);
+    if (fromAgentConfig != null) return fromAgentConfig;
+
     const fromSelected = findModelWindow(availableModels, selectedModel);
     if (fromSelected != null) return fromSelected;
 
@@ -60,7 +71,13 @@ export function useChatContextWindow(
     if (fromFirst != null) return fromFirst;
 
     return DEFAULT_MAX;
-  }, [selectedModel, availableModels, agentDefaultModel, activeModelRef]);
+  }, [
+    selectedModel,
+    availableModels,
+    agentDefaultModel,
+    activeModelRef,
+    agentConfig?.max_input_length,
+  ]);
 
   const contextUsedTokens = useMemo(() => {
     const fromStream = usageContextInput(contextUsage);

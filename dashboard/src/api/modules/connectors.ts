@@ -35,6 +35,8 @@ export interface ConnectorInstance {
   status: string;
   mcp_server_name: string;
   has_credentials: boolean;
+  /** When true, chat composer pre-selects this connector. */
+  default_open?: boolean;
   created_at: number;
   updated_at: number;
 }
@@ -95,6 +97,8 @@ export interface CustomMcpServerSpec {
   enabled?: boolean;
   /** Friendly label shown in chat / connector lists (optional). */
   display_name?: string;
+  /** When true, chat composer pre-selects this MCP server. */
+  default_open?: boolean;
 }
 
 export type CustomMcpServers = Record<string, CustomMcpServerSpec>;
@@ -146,6 +150,7 @@ export const connectorsApi = {
     kind: string;
     display_name: string;
     credentials: Record<string, unknown>;
+    default_open?: boolean;
   }) =>
     request<ConnectorInstance>("/connector-instances", {
       method: "POST",
@@ -157,7 +162,7 @@ export const connectorsApi = {
 
   patchInstance: (
     instanceId: string,
-    body: { status?: "active" | "disabled" },
+    body: { status?: "active" | "disabled"; default_open?: boolean },
   ) =>
     request<ConnectorInstance>(`/connector-instances/${instanceId}`, {
       method: "PATCH",

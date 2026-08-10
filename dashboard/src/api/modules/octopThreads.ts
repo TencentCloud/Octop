@@ -1,3 +1,4 @@
+import type { HitlPendingPayload } from "../types/hitl";
 import { request } from "../request";
 
 export interface OctopThread {
@@ -28,6 +29,8 @@ export interface OctopThreadHistory {
   offset?: number;
   /** True while a turn is still streaming server-side for this thread. */
   turn_active?: boolean;
+  /** Pending tool approval for this thread (survives page reload). */
+  hitl_pending?: HitlPendingPayload | null;
 }
 
 export interface OctopThreadPatch {

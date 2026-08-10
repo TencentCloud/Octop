@@ -87,6 +87,17 @@ const SKILL_URL_PREFIXES = [
   "https://github.com/",
 ];
 
+function formatPackageCreator(
+  item: Pick<
+    SkillPackage,
+    "creator_display_name" | "creator_username" | "created_by"
+  >,
+): string {
+  const displayName = item.creator_display_name?.trim() || "";
+  const username = item.creator_username?.trim() || "";
+  return displayName || username || item.created_by;
+}
+
 export default function SkillPackagesPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -546,6 +557,11 @@ export default function SkillPackagesPage() {
                         {item.description || "—"}
                       </div>
                       <div className={styles.listMeta}>
+                        <span className={styles.listCreator}>
+                          {t("skillPackages.createdBy", {
+                            name: formatPackageCreator(item),
+                          })}
+                        </span>
                         <Tag className={styles.listCountTag}>
                           {t("skillPackages.skillCount", {
                             count: item.skill_count,
@@ -636,6 +652,14 @@ export default function SkillPackagesPage() {
                     className={styles.detailDescription}
                   >
                     {selected.description || t("skillPackages.noDescription")}
+                  </Typography.Paragraph>
+                  <Typography.Paragraph
+                    type="secondary"
+                    className={styles.detailCreator}
+                  >
+                    {t("skillPackages.createdBy", {
+                      name: formatPackageCreator(selected),
+                    })}
                   </Typography.Paragraph>
                 </div>
 

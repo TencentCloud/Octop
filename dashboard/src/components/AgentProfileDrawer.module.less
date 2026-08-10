@@ -72,7 +72,13 @@
   color: var(--fn-primary, #1677ff);
   white-space: nowrap;
 
-  &:hover {
+  &:hover:not(:disabled) {
     text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    color: var(--fn-text-tertiary);
   }
 }

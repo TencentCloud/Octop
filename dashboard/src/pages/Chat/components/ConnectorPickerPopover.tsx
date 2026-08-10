@@ -13,6 +13,7 @@ export interface ChatConnectorOption {
   mcp_server_name: string;
   label: string;
   kind: string;
+  default_open?: boolean;
 }
 
 interface ConnectorPickerPopoverProps {
@@ -66,6 +67,11 @@ export default function ConnectorPickerPopover({
             </span>
             <span className={pickerStyles.itemText}>
               <span className={pickerStyles.itemName}>{connector.label}</span>
+              {connector.default_open ? (
+                <span className={pickerStyles.itemDesc}>
+                  {t("connectors.defaultOpenLockedBadge", "默认打开")}
+                </span>
+              ) : null}
             </span>
             <Switch
               size="small"

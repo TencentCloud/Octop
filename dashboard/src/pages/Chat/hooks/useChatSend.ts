@@ -123,7 +123,7 @@ export function useChatSend({
       const modelOverride =
         overrides?.modelRef !== undefined
           ? overrides.modelRef
-          : resolveTurnModelRef(modelSelection, defaultModel);
+          : resolveTurnModelRef(modelSelection);
 
       const runSend = (tid: string, hadMessages: boolean) => {
         maybeRenameNewThread(tid, hadMessages);

@@ -105,6 +105,10 @@ class GlobalProcessor:
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
 
+    @property
+    def hitl_coordinator(self) -> HitlChannelCoordinator:
+        return self._hitl
+
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
 
     def compose_followup(
@@ -207,20 +211,25 @@ class GlobalProcessor:
 
         - Expert AUTO (no ``default_model`` on row): omit ``model`` → harness routes.
         - Expert default set: pass default (or slash/thread / dashboard override).
+        - Stale overrides (deleted / disabled catalog refs) are dropped so routing
+          falls through to a usable expert default or harness AUTO.
         - When a model is passed and the turn needs vision, upgrade to a vision ref.
         """
+        providers = self._agent_manager.providers
         thread_model = self._agent_manager.get_thread_model(agent_id, thread_id)
         model_ref = self._model_ref_from_meta(thread_model, meta)
+        if model_ref and not providers.is_model_ref_usable(model_ref):
+            model_ref = None
         if not model_ref:
             row = self._agent_repo.get(agent_id)
             if row is not None:
-                model_ref = self._agent_manager.providers.resolve_explicit_default_model(
+                model_ref = providers.resolve_explicit_default_model(
                     row,
                     self._agent_manager.get_config(agent_id),
                 )
         if not model_ref:
             return None
-        return self._agent_manager.providers.resolve_model_for_multimodal_turn(
+        return providers.resolve_model_for_multimodal_turn(
             model_ref,
             needs_multimodal=needs_multimodal,
         )
@@ -335,6 +344,31 @@ class GlobalProcessor:
             None,
             needs_multimodal=content_blocks_need_vision(content),
         )
+        mcp_servers = await self._resolve_turn_mcp_servers(
+            agent_id=agent_id,
+            user_id=user_id,
+            explicit=None,
+            apply_defaults=True,
+            raise_on_failure=False,
+        )
+        message_kwargs: dict[str, Any] | None = None
+        if mcp_servers:
+            from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
+                COMPOSER_CTX_KEY,
+                build_composer_context,
+            )
+
+            row = self._agent_repo.get(agent_id)
+            default_model = (row.default_model if row is not None else None) or None
+            composer = build_composer_context(
+                mcp_servers=mcp_servers,
+                skills=None,
+                target_agent_ids=None,
+                model_ref=model_ref,
+                default_model=default_model,
+            )
+            if composer:
+                message_kwargs = {COMPOSER_CTX_KEY: composer}
         request = build_harness_request(
             thread_id=thread_id,
             user_id=user_id,
@@ -343,7 +377,10 @@ class GlobalProcessor:
             source=f"{msg.channel_type}/{msg.channel_id}",
             content=content,
             model=model_ref,
+            message_kwargs=message_kwargs,
         )
+        if mcp_servers:
+            request["mcp_servers"] = mcp_servers
 
         yield MessageEvent.typing()
         stream_ok = False
@@ -470,6 +507,21 @@ class GlobalProcessor:
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 usage_tracker.observe(chunk)
+                if chunk.get("type") == "hitl_required":
+                    request_payload = chunk.get("request")
+                    if isinstance(request_payload, dict):
+                        from octop.infra.gateway.hitl.coordinator import HitlStreamContext
+
+                        self._hitl.register_from_request(
+                            request_payload,
+                            ctx=HitlStreamContext(
+                                thread_id=thread_id,
+                                agent_id=agent_id,
+                                user_id=user_id,
+                                session_key=session_key,
+                                channel_type=channel_type,
+                            ),
+                        )
                 if chunk.get("type") == "tool_result":
                     if harness_workspace is not None:
                         chunk = await enrich_tool_result_with_backend(
@@ -547,6 +599,43 @@ class GlobalProcessor:
         if isinstance(attachments, list) and attachments:
             message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
 
+        explicit_mcp = meta.get("mcp_servers")
+        # Dashboard always sends mcp_servers (possibly []); trust that list so
+        # users can opt out of default_open for a turn. Missing key → IM-style defaults.
+        if isinstance(explicit_mcp, list):
+            apply_defaults = False
+        else:
+            explicit_mcp = None
+            apply_defaults = True
+        mcp_servers = await self._resolve_turn_mcp_servers(
+            agent_id=agent_id,
+            user_id=user_id,
+            explicit=explicit_mcp,
+            apply_defaults=apply_defaults,
+        )
+        if mcp_servers:
+            # Keep history chips aligned with the servers actually injected.
+            if isinstance(composer, dict) and composer:
+                stamped = dict(composer)
+                stamped["connectors"] = list(mcp_servers)
+                message_kwargs[COMPOSER_CTX_KEY] = stamped
+            else:
+                from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
+                    build_composer_context,
+                )
+
+                row = self._agent_repo.get(agent_id)
+                default_model = (row.default_model if row is not None else None) or None
+                built = build_composer_context(
+                    mcp_servers=mcp_servers,
+                    skills=meta.get("skills") if isinstance(meta.get("skills"), list) else None,
+                    target_agent_ids=None,
+                    model_ref=model_ref,
+                    default_model=default_model,
+                )
+                if built:
+                    message_kwargs[COMPOSER_CTX_KEY] = built
+
         request = build_harness_request(
             thread_id=thread_id,
             user_id=user_id,
@@ -558,8 +647,7 @@ class GlobalProcessor:
             message_kwargs=message_kwargs or None,
         )
 
-        mcp_servers = meta.get("mcp_servers")
-        if isinstance(mcp_servers, list) and mcp_servers:
+        if mcp_servers:
             request["mcp_servers"] = mcp_servers
         if "skills" in meta:
             request["skills"] = meta["skills"]
@@ -582,6 +670,46 @@ class GlobalProcessor:
                 configurable["target_agent_ids"] = filtered
                 request["configurable"] = configurable
         return request
+
+    async def _resolve_turn_mcp_servers(
+        self,
+        *,
+        agent_id: str,
+        user_id: int,
+        explicit: list[str] | None,
+        apply_defaults: bool | None = None,
+        raise_on_failure: bool = True,
+    ) -> list[str] | None:
+        """Merge turn picks with default_open and ensure tools are loaded.
+
+        Dashboard / HTTP paths should keep ``raise_on_failure=True`` so the
+        client sees a clear MCP load error. IM ingress uses ``False`` so a
+        flaky connector does not abort the whole message turn.
+        """
+        from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
+
+        merged = self._agent_manager.merge_turn_mcp_servers(
+            user_id, explicit, apply_defaults=apply_defaults
+        )
+        if not merged:
+            return None
+        failed = await self._agent_manager.prepare_chat_mcp(
+            agent_id,
+            merged,
+            connector_user_id=user_id,
+        )
+        if failed:
+            detail = f"mcp load failed: {', '.join(failed)}"
+            if raise_on_failure:
+                raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
+            logger.warning(
+                "skipping turn MCP for agent=%s user=%s (%s)",
+                agent_id,
+                user_id,
+                detail,
+            )
+            return None
+        return merged
 
     async def _record_stream_error(self, *, user_id: int, agent_id: str, exc: Exception) -> None:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415

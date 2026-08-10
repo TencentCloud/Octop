@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import tempfile
 from typing import Any
 
@@ -19,23 +20,37 @@ def resolve_storage_backend(row: BackendRow) -> Any:
     workspace = tempfile.mkdtemp(prefix="octop-storage-browse-")
     try:
         return resolve_backend(spec, workspace_dir=workspace)
-    except ImportError as exc:
-        # Optional dependency (e.g. deepagents-backends for S3) is not installed.
+    except ValueError:
+        raise
+    except Exception as exc:
+        # ImportError (missing extra), RuntimeError (image/pull), DockerException, …
         raise ValueError(str(exc)) from exc
 
 
-async def list_storage_backend_tree(row: BackendRow, path: str = "/") -> list[dict[str, Any]]:
-    """Single-level listing under *path*; returns JSON-friendly file info dicts."""
-    kind = (row.kind or "").lower()
-    if kind == "docker":
-        raise ValueError("docker storage backend does not support file browsing")
+def _close_backend(backend: Any) -> None:
+    """Best-effort close for backends that own external resources (e.g. Docker)."""
+    close = getattr(backend, "close", None)
+    if callable(close):
+        with contextlib.suppress(Exception):
+            close()
 
+
+async def list_storage_backend_tree(row: BackendRow, path: str = "/") -> list[dict[str, Any]]:
+    """Single-level listing under *path*; returns JSON-friendly file info dicts.
+
+    For ``kind=docker``, starts a short-lived sandbox container, lists via
+    ``als`` (in-container ``workspace_path``, default ``/workspace``), then
+    stops the container.
+    """
     backend = resolve_storage_backend(row)
-    result = await backend.als(path)
-    if err := getattr(result, "error", None):
-        raise ValueError(str(err))
-    entries = getattr(result, "entries", None) or []
-    return [_entry_to_dict(e) for e in entries]
+    try:
+        result = await backend.als(path)
+        if err := getattr(result, "error", None):
+            raise ValueError(str(err))
+        entries = getattr(result, "entries", None) or []
+        return [_entry_to_dict(e) for e in entries]
+    finally:
+        _close_backend(backend)
 
 
 def _entry_to_dict(info: Any) -> dict[str, Any]:

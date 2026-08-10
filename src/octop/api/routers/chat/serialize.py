@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
@@ -284,7 +285,7 @@ async def _iter_session_jsonl_sources(
             )
 
     sources: list[tuple[str, str]] = []
-    local_workspace = server.services.paths.ensure_agent_workspace(agent_id)
+    local_workspace = resolve_agent_workspace_dir(server, agent_id)
     sessions_dir = Path(local_workspace) / "sessions"
     if sessions_dir.is_dir():
         for path in sorted(sessions_dir.glob("*.jsonl"), reverse=True):

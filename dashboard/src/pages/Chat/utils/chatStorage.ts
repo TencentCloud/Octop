@@ -18,6 +18,17 @@ export function loadSavedConnectors(agentId: string): string[] {
   return loadSavedStringList(`${CONNECTORS_STORAGE_PREFIX}${agentId}`);
 }
 
+/** True when the user has an explicit saved preference (including empty). */
+export function hasSavedConnectors(agentId: string): boolean {
+  try {
+    return (
+      localStorage.getItem(`${CONNECTORS_STORAGE_PREFIX}${agentId}`) != null
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function loadSavedSkills(agentId: string): string[] {
   return loadSavedStringList(`${SKILLS_STORAGE_PREFIX}${agentId}`);
 }

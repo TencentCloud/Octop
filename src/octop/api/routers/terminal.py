@@ -65,6 +65,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils import posix_compat
@@ -450,7 +451,7 @@ async def terminal_context(
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, "no agents for user")
-    workspace_dir = str(server.services.paths.ensure_agent_workspace(agent_id))
+    workspace_dir = str(resolve_agent_workspace_dir(server, agent_id))
 
     os_name = platform.system()
     os_release = platform.release()
@@ -534,7 +535,7 @@ async def terminal_ws(
     if agent_row is None:
         await websocket.close(code=4404, reason="agent not found")
         return
-    workspace_dir = str(server.services.paths.ensure_agent_workspace(agent_id))
+    workspace_dir = str(resolve_agent_workspace_dir(server, agent_id))
 
     supported, unsupported_reason = terminal_supported()
     if not supported:

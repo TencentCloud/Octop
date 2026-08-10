@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Empty, Tooltip } from "antd";
-import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import { requestBlob } from "../../../api/request";
@@ -237,7 +237,12 @@ export default function ChatDockFileList({
         URL.revokeObjectURL(a.href);
       } catch (err: unknown) {
         if (isNotFoundApiError(err)) {
-          message.warning(t("workspace.fileMaybeDeleted", "文件可能已被删除"));
+          message.warning(
+            t(
+              "chat.dockFileMaybeDeleted",
+              "该文件可能为处理过程中的临时文件，当前已经被删除。",
+            ),
+          );
           return;
         }
         message.error(
@@ -251,13 +256,36 @@ export default function ChatDockFileList({
     [agentId, t],
   );
 
+  const listHint = (
+    <div className={styles.dockFileListHint} role="note">
+      <Info
+        size={14}
+        strokeWidth={2}
+        className={styles.dockFileListHintIcon}
+        aria-hidden
+      />
+      <p>
+        {t(
+          "chat.dockFileListHint",
+          "当前仅列出执行过程中生成的文件，不代表最终一定存储，可能在处理结束后被大模型删除。",
+        )}
+      </p>
+    </div>
+  );
+
   if (paths.length === 0) {
     return (
-      <div className={styles.dockFileListEmpty}>
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t("chat.dockFileListEmpty", "暂无工具生成或发送的文件")}
-        />
+      <div className={styles.dockFileList}>
+        {listHint}
+        <div className={styles.dockFileListEmpty}>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t(
+              "chat.dockFileListEmpty",
+              "暂无工具生成或发送的文件",
+            )}
+          />
+        </div>
       </div>
     );
   }
@@ -266,6 +294,7 @@ export default function ChatDockFileList({
 
   return (
     <div className={styles.dockFileList}>
+      {listHint}
       <div className={styles.dockFileTreeWrap}>
         <div className={styles.dockFileTreeSummary}>
           {t("chat.dockFileListCount", {

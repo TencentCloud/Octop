@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Drawer, Form, Input, Select, Spin } from "antd";
+import { Button, Drawer, Form, Input, Select, Spin, Switch, Alert } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -41,6 +41,7 @@ import {
   MAIL_PROVIDERS,
   mailProviderById,
 } from "./connectorDefs";
+import { notifyConnectorsChanged } from "./customMcpUtils";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
 
@@ -115,11 +116,17 @@ function previewToFormValues(
   detail: ConnectorInstanceDetail | null,
 ): Record<string, unknown> {
   if (!detail) {
-    return { display_name: entry.name, mail_provider: "qq" };
+    return {
+      display_name: entry.name,
+      mail_provider: "qq",
+      default_open: false,
+    };
   }
   const preview = detail.credentials_preview ?? {};
   const values: Record<string, unknown> = {
     display_name: detail.display_name || entry.name,
+    default_open:
+      detail.default_open === true || detail.config?.default_open === true,
   };
   if (preview.email) values.email = preview.email;
   if (preview.mail_provider) values.mail_provider = preview.mail_provider;
@@ -261,6 +268,7 @@ function ConnectorConfigDrawer({
 
   const hasStoredCredentials = Boolean(instance?.has_credentials);
   const mailProvider = Form.useWatch("mail_provider", form) ?? "qq";
+  const defaultOpen = Form.useWatch("default_open", form) === true;
   const selectedMailProvider = mailProviderById(String(mailProvider));
   const draftScope = entry
     ? instance
@@ -290,7 +298,7 @@ function ConnectorConfigDrawer({
     setFeishuAuthNeedsReauth(false);
     setFeishuRefreshExpiresAt(null);
     form.resetFields();
-    form.setFieldsValue({ display_name: entry.name });
+    form.setFieldsValue({ display_name: entry.name, default_open: false });
 
     void connectorsApi
       .authInfo(entry.kind)
@@ -340,6 +348,7 @@ function ConnectorConfigDrawer({
         .catch(() => {
           form.setFieldsValue({
             display_name: instance.display_name || entry.name,
+            default_open: instance.default_open === true,
           });
           applyConnectorDraft();
         })
@@ -815,6 +824,7 @@ function ConnectorConfigDrawer({
         kind: entry.kind,
         display_name: values.display_name as string,
         credentials: payload,
+        default_open: values.default_open === true,
       });
       message.success(
         hasStoredCredentials
@@ -1575,6 +1585,33 @@ function ConnectorConfigDrawer({
               </Form.Item>
             </>
           )}
+
+          <Form.Item
+            name="default_open"
+            label={t("connectors.defaultOpen", "是否默认打开")}
+            valuePropName="checked"
+            extra={
+              defaultOpen
+                ? undefined
+                : t(
+                    "connectors.defaultOpenHint",
+                    "关闭时需在对话中手动勾选才会注入工具。",
+                  )
+            }
+          >
+            <Switch />
+          </Form.Item>
+          {defaultOpen ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t(
+                "connectors.defaultOpenWarning",
+                "开启后默认会在 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
+              )}
+            />
+          ) : null}
         </Form>
 
         {probeResult !== null && (
@@ -1705,6 +1742,7 @@ export default function ConnectorsPage() {
 
   const handleSaved = useCallback(async () => {
     await refresh();
+    notifyConnectorsChanged();
   }, [refresh]);
 
   const handleCloseDrawer = useCallback(() => {

@@ -299,8 +299,9 @@ def build_dashboard_inbound(
         "thread_id": prepared.thread_id,
         "user_is_admin": user_is_admin,
     }
-    if prepared.mcp_servers:
-        metadata["mcp_servers"] = prepared.mcp_servers
+    if prepared.mcp_servers is not None:
+        # Including [] — Dashboard opt-out of default_open for this turn.
+        metadata["mcp_servers"] = list(prepared.mcp_servers)
     if prepared.skills is not None:
         metadata["skills"] = prepared.skills
     if prepared.model_ref:

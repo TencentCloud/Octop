@@ -636,10 +636,10 @@ async def create_skill(
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
-    target = package.workspace_uploads()[0][0]
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
-    # Don't clobber an existing skill — return 409 instead.
-    existing = await _aread_text(ctx.workspace, target)
+    # Conflict check must use SKILL.md — ZIP payloads often list siblings first,
+    # and soft-delete only marks the manifest (leaving sibling files behind).
+    existing = await _aread_text(ctx.workspace, f"skills/{name}/SKILL.md")
     if existing is not None:
         meta, _ = _parse_frontmatter(existing)
         if not meta.get("removed") and not body.overwrite:
@@ -647,6 +647,12 @@ async def create_skill(
     with contextlib.suppress(Exception):
         await ctx.workspace.adelete(f"skills/{name}")
     await ctx.workspace.aupload_many(package.workspace_uploads())
+    # Reinstall after disable/delete must clear skills_disabled (ZIP create
+    # always installs as enabled, matching URL import with enable=True).
+    disabled = _disabled_set(ctx.config)
+    if name in disabled:
+        disabled.discard(name)
+        await _persist_disabled(server, agent_id, disabled)
     skill_md = next(
         (content for path, content in package.files if path == "SKILL.md"),
         body.content.encode("utf-8"),
@@ -678,9 +684,8 @@ async def update_skill(
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
 
-    target = package.workspace_uploads()[0][0]
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
-    existing = await _aread_text(ctx.workspace, target)
+    existing = await _aread_text(ctx.workspace, f"skills/{slug}/SKILL.md")
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
     meta_existing, _ = _parse_frontmatter(existing)

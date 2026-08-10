@@ -16,6 +16,7 @@ from octop.api.routers.chat.serialize import (
 )
 from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
 
 router = APIRouter()
@@ -109,11 +110,12 @@ async def get_thread_context_usage(
     """Return persisted context-window usage for a thread (harness-agent snapshot)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     registry = server.app_runtime.agent_registry
+    effective_max = registry.resolve_context_max_tokens(agent_id, fallback=max_tokens)
     breakdown = await compute_context_breakdown(
         registry,
         agent_id=agent_id,
         thread_id=thread_id,
-        max_tokens=max_tokens,
+        max_tokens=effective_max,
         input_tokens=input_tokens,
         mcp_servers=_parse_csv_query(mcp_servers),
         skills=_parse_csv_query(skills),
@@ -156,6 +158,13 @@ async def get_thread_history(
         offset=page_offset,
         user=user,
     )
+    effective_uid = as_user if as_user is not None else user.id
+    hitl_pending = pending_hitl_payload(
+        server.app_runtime.gateway.processor.hitl_coordinator.store,
+        thread_id=thread_id,
+        agent_id=agent_id,
+        user_id=effective_uid,
+    )
     return {
         "thread_id": thread_id,
         "messages": messages,
@@ -163,6 +172,7 @@ async def get_thread_history(
         "limit": page_limit,
         "offset": page_offset,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
+        "hitl_pending": hitl_pending,
     }
 
 

@@ -29,6 +29,10 @@ from octop.infra.connectors.custom_mcp import (
     is_custom_mcp_kind,
     parse_synthetic_instance_id,
 )
+from octop.infra.connectors.default_open import (
+    build_instance_config_json,
+    read_default_open,
+)
 from octop.infra.connectors.gateway.cli_dirs import cleanup_creds_cli_dirs, cleanup_keys_for_creds
 from octop.infra.connectors.gateway.cli_install import (
     cli_install_status,
@@ -52,6 +56,7 @@ from octop.infra.connectors.probe import (
     probe_custom_mcp_server,
 )
 from octop.infra.connectors.service import ConnectorService
+from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_ulid
 
@@ -64,10 +69,25 @@ class CreateInstanceBody(BaseModel):
     kind: str
     display_name: str
     credentials: dict[str, Any] = Field(default_factory=dict)
+    default_open: bool = Field(
+        default=False,
+        description=(
+            "When true, inject tools by default on IM and on Cron jobs with no "
+            "explicit connector picks. Dashboard and Cron with explicit picks "
+            "follow the user selection."
+        ),
+    )
 
 
 class PatchInstanceBody(BaseModel):
     status: str | None = None
+    default_open: bool | None = Field(
+        default=None,
+        description=(
+            "When set, update default-open. IM / empty Cron follow it; "
+            "Dashboard and Cron with explicit picks use the selection."
+        ),
+    )
 
 
 class OAuthStartBody(BaseModel):
@@ -124,6 +144,7 @@ def _connector_service(server: Any) -> ConnectorService:
 
 
 def _instance_to_dict(inst: Any) -> dict[str, Any]:
+    config = ConnectorRepo.parse_config_json(inst) if hasattr(inst, "config_json") else {}
     return {
         "instance_id": inst.instance_id,
         "kind": inst.kind,
@@ -131,6 +152,7 @@ def _instance_to_dict(inst: Any) -> dict[str, Any]:
         "status": inst.status,
         "mcp_server_name": inst.mcp_server_name,
         "has_credentials": inst.has_credentials,
+        "default_open": read_default_open(config),
         "created_at": inst.created_at,
         "updated_at": inst.updated_at,
     }
@@ -461,9 +483,11 @@ async def create_instance(
         kind=body.kind,
         display_name=body.display_name.strip(),
         mcp_server_name=mcp_server_name(body.kind, instance_id),
-        config_json=json.dumps({"email": cred_payload.get("email")})
-        if body.kind == "qq-mail"
-        else None,
+        config_json=build_instance_config_json(
+            kind=body.kind,
+            default_open=bool(body.default_open),
+            email=cred_payload.get("email"),
+        ),
     )
     svc.encrypt_and_store(instance_id=instance_id, payload=cred_payload)
     server.services.audit_repo.write(
@@ -485,19 +509,30 @@ async def patch_instance(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Enable or disable a connector instance without deleting credentials."""
+    """Enable/disable a connector or update default_open without deleting credentials."""
     synthetic_name = parse_synthetic_instance_id(instance_id)
     if synthetic_name is not None:
-        if body.status is None:
-            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "status is required")
-        status = body.status.strip()
-        if status not in ("active", "disabled"):
-            raise OctopError(
-                ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "status must be active or disabled"
-            )
         svc = _connector_service(server)
+        if body.status is None and body.default_open is None:
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                "status or default_open is required",
+            )
         try:
-            svc.patch_custom_server_enabled(user.id, synthetic_name, enabled=(status == "active"))
+            if body.status is not None:
+                status = body.status.strip()
+                if status not in ("active", "disabled"):
+                    raise OctopError(
+                        ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                        "status must be active or disabled",
+                    )
+                svc.patch_custom_server_enabled(
+                    user.id, synthetic_name, enabled=(status == "active")
+                )
+            if body.default_open is not None:
+                svc.patch_custom_server_default_open(
+                    user.id, synthetic_name, default_open=bool(body.default_open)
+                )
         except KeyError as exc:
             raise OctopError(
                 ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found"
@@ -521,6 +556,11 @@ async def patch_instance(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
             "use PATCH /connectors/custom-mcp/servers/{name} for custom MCP servers",
         )
+    if body.status is None and body.default_open is None:
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            "status or default_open is required",
+        )
     if body.status is not None:
         status = body.status.strip()
         if status not in ("active", "disabled"):
@@ -528,6 +568,15 @@ async def patch_instance(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "status must be active or disabled"
             )
         repo.update_status(instance_id, status)
+    if body.default_open is not None:
+        config = dict(ConnectorRepo.parse_config_json(inst))
+        if body.default_open:
+            config["default_open"] = True
+        else:
+            config.pop("default_open", None)
+        repo.update_config_json(
+            instance_id, json.dumps(config, ensure_ascii=False) if config else None
+        )
     inst = repo.get(instance_id)
     assert inst is not None
     _schedule_connector_reload(server, user.id)

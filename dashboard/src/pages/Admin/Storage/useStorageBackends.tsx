@@ -12,6 +12,7 @@ import {
   Globe,
   Archive,
   Package,
+  Container,
 } from "lucide-react";
 import { request } from "../../../api/request";
 
@@ -27,6 +28,8 @@ export interface StorageBackendRow {
   config_json: string | null;
   note: string | null;
   enabled: boolean;
+  /** Admin storage browse only (``/admin/backend``); expert workspace is always available. */
+  previewable?: boolean;
   created_at: number;
   updated_at: number;
 }
@@ -54,6 +57,7 @@ export const AGENT_RESOLVABLE_STORAGE_KINDS = new Set([
   "filesystem",
   "shell",
   "postgres",
+  "docker",
 ]);
 
 export function isAgentResolvableStorageKind(kind: string): boolean {
@@ -264,6 +268,22 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
         placeholder: "/workspace",
       },
       { key: "region", labelKey: "storage.timeoutLabel", placeholder: "120" },
+    ],
+  },
+  {
+    kind: "docker",
+    nameKey: "storage.kindDocker",
+    descKey: "storage.descDocker",
+    color: "#2496ed",
+    icon: <Container size={20} />,
+    fields: [
+      {
+        key: "bucket",
+        labelKey: "storage.dockerImageLabel",
+        requiredMessageKey: "storage.pleaseEnterDockerImage",
+        required: true,
+        placeholder: "python:3.12-slim",
+      },
     ],
   },
   {
