@@ -145,6 +145,40 @@ def test_install_archive_rejects_non_zip(tmp_path: Path) -> None:
     assert excinfo.value.status == 400
 
 
+def test_install_archive_rejects_symlink_entry(tmp_path: Path) -> None:
+    import stat as _stat
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    # A zip whose only member is a symlink must be refused so extraction
+    # cannot be escaped through a symlink (zip-slip / TOCTOU).
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        info = zipfile.ZipInfo("evil-link")
+        info.external_attr = (_stat.S_IFLNK | 0o777) << 16
+        zf.writestr(info, b"/etc/passwd")
+    archive = tmp_path / "evil.zip"
+    archive.write_bytes(buf.getvalue())
+    with pytest.raises(OctopError) as excinfo:
+        mgr.install_archive(archive)
+    assert excinfo.value.code is ErrorCode.PLUGIN_INVALID_ARCHIVE
+
+
+def test_install_archive_rejects_parent_traversal(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("../escape.txt", b"pwned")
+    archive = tmp_path / "escape.zip"
+    archive.write_bytes(buf.getvalue())
+    with pytest.raises(OctopError) as excinfo:
+        mgr.install_archive(archive)
+    assert excinfo.value.code is ErrorCode.PLUGIN_INVALID_ARCHIVE
+
+
 def test_install_path_already_exists(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text("{}", encoding="utf-8")

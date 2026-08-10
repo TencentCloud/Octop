@@ -46,6 +46,10 @@ def _require_admin(user: Any) -> None:
         raise OctopError(ErrorCode.FORBIDDEN, "admin only")
 
 
+# Bound in-memory upload to avoid exhausting memory on a malformed/huge archive.
+_MAX_PLUGIN_ARCHIVE_BYTES = 100 * 1024 * 1024
+
+
 @router.get("", summary="List installed plugins")
 async def list_plugins(
     server: OctopServer = Depends(get_server),
@@ -100,6 +104,11 @@ async def upload_plugin(
     raw = await file.read()
     if not raw:
         raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "empty plugin archive")
+    if len(raw) > _MAX_PLUGIN_ARCHIVE_BYTES:
+        raise OctopError(
+            ErrorCode.PLUGIN_INVALID_ARCHIVE,
+            "plugin archive exceeds the maximum allowed size",
+        )
     try:
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp.write(raw)
@@ -113,8 +122,7 @@ async def upload_plugin(
     except Exception as exc:
         raise OctopError(
             ErrorCode.PLUGIN_INSTALL_FAILED,
-            f"plugin install failed: {exc}",
-            details={"reason": str(exc)},
+            "plugin install failed",
         ) from exc
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)

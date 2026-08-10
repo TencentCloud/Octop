@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import shutil
+import stat
 import tempfile
 import urllib.error
 import urllib.request
@@ -194,9 +195,35 @@ class PluginManager:
             extract_to.mkdir()
             try:
                 with zipfile.ZipFile(archive) as zf:
+                    extract_to_resolved = extract_to.resolve()
                     for member in zf.namelist():
+                        # Reject absolute paths and parent traversal up front.
+                        if member.startswith(("/", "\\")) or ".." in (
+                            member.replace("\\", "/").split("/")
+                        ):
+                            raise OctopError(
+                                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                                "zip path traversal detected",
+                            )
+                        # Reject symlinks and special files: without them there is
+                        # no symlink/TOCTOU escape vector during extraction.
+                        mode = zf.getinfo(member).external_attr >> 16
+                        if (
+                            stat.S_ISLNK(mode)
+                            or stat.S_ISCHR(mode)
+                            or stat.S_ISBLK(mode)
+                            or stat.S_ISFIFO(mode)
+                            or stat.S_ISSOCK(mode)
+                        ):
+                            raise OctopError(
+                                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                                "unsafe zip entry type rejected",
+                            )
                         target = (extract_to / member).resolve()
-                        if not str(target).startswith(str(extract_to.resolve())):
+                        if (
+                            target != extract_to_resolved
+                            and extract_to_resolved not in target.parents
+                        ):
                             raise OctopError(
                                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                                 "zip path traversal detected",
