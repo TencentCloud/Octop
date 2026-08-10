@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import tempfile
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
@@ -63,6 +65,49 @@ async def install_plugin(
     mgr = _plugin_manager(server)
     try:
         loaded = mgr.install_url(body.url)
+    except OctopError:
+        raise
+    except Exception as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INSTALL_FAILED,
+            f"plugin install failed: {exc}",
+            details={"reason": str(exc)},
+        ) from exc
+    if server.app_runtime is not None:
+        mgr.load_installed(install_deps=False)
+        await server.app_runtime.agent_registry.reload_all()
+    return {
+        "id": loaded.manifest.id,
+        "version": loaded.manifest.version,
+        "name": loaded.manifest.name,
+        "kind": loaded.manifest.kind,
+    }
+
+
+@router.post("/upload", summary="Install plugin from an uploaded ZIP (admin)")
+async def upload_plugin(
+    file: UploadFile = File(...),
+    force: bool = Form(default=False),
+    server: OctopServer = Depends(get_server),
+    user: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Install a plugin from a locally-uploaded ZIP archive.
+
+    ``force=True`` overwrites an already-installed plugin with the same id.
+    """
+    _require_admin(user)
+    mgr = _plugin_manager(server)
+    raw = await file.read()
+    if not raw:
+        raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "empty plugin archive")
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            tmp.write(raw)
+            tmp_path = Path(tmp.name)
+        try:
+            loaded = mgr.install_archive(tmp_path, force=force)
+        finally:
+            tmp_path.unlink(missing_ok=True)
     except OctopError:
         raise
     except Exception as exc:

@@ -86,8 +86,7 @@ def _assert_zip_magic(archive: Path) -> None:
     if len(head) < 2 or head[:2] != b"PK":
         raise OctopError(
             ErrorCode.PLUGIN_INVALID_ARCHIVE,
-            "downloaded file is not a ZIP archive "
-            "(GitHub /blob/ pages return HTML — use a raw .zip URL)",
+            "file is not a valid ZIP archive",
         )
 
 
@@ -183,12 +182,50 @@ class PluginManager:
                 details={"reason": str(exc)},
             ) from exc
 
+    def install_archive(self, archive: Path, *, force: bool = False) -> LoadedPlugin:
+        """Install a plugin from a local ZIP archive.
+
+        The archive must contain exactly one plugin directory (at the zip root
+        or in a single top-level folder) with a ``plugin.yaml`` manifest.
+        """
+        _assert_zip_magic(archive)
+        with tempfile.TemporaryDirectory() as tmp:
+            extract_to = Path(tmp) / "extract"
+            extract_to.mkdir()
+            try:
+                with zipfile.ZipFile(archive) as zf:
+                    for member in zf.namelist():
+                        target = (extract_to / member).resolve()
+                        if not str(target).startswith(str(extract_to.resolve())):
+                            raise OctopError(
+                                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                                "zip path traversal detected",
+                            )
+                    zf.extractall(extract_to)
+            except OctopError:
+                raise
+            except zipfile.BadZipFile as exc:
+                raise OctopError(
+                    ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                    "file is not a valid ZIP archive",
+                ) from exc
+
+            # Support zip root being the plugin dir or containing one subdir
+            candidates = [p for p in extract_to.iterdir() if (p / "plugin.yaml").is_file()]
+            if not candidates and (extract_to / "plugin.yaml").is_file():
+                candidates = [extract_to]
+            if len(candidates) != 1:
+                raise OctopError(
+                    ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                    "zip must contain exactly one plugin directory with plugin.yaml",
+                )
+            return self.install_path(candidates[0], force=force)
+
     def install_url(self, url: str, *, force: bool = False) -> LoadedPlugin:
         resolved = normalize_plugin_download_url(url)
         _assert_http_url(resolved)
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            archive = tmp_path / "plugin.zip"
+            archive = Path(tmp) / "plugin.zip"
             try:
                 urllib.request.urlretrieve(resolved, archive)  # noqa: S310
             except urllib.error.HTTPError as exc:
@@ -210,38 +247,17 @@ class PluginManager:
                     f"download failed: {exc}",
                     details={"reason": str(exc)},
                 ) from exc
-
-            _assert_zip_magic(archive)
-            extract_to = tmp_path / "extract"
-            extract_to.mkdir()
             try:
-                with zipfile.ZipFile(archive) as zf:
-                    for member in zf.namelist():
-                        target = (extract_to / member).resolve()
-                        if not str(target).startswith(str(extract_to.resolve())):
-                            raise OctopError(
-                                ErrorCode.PLUGIN_INVALID_ARCHIVE,
-                                "zip path traversal detected",
-                            )
-                    zf.extractall(extract_to)
-            except OctopError:
-                raise
-            except zipfile.BadZipFile as exc:
+                return self.install_archive(archive, force=force)
+            except OctopError as exc:
+                if exc.code is not ErrorCode.PLUGIN_INVALID_ARCHIVE:
+                    raise
                 raise OctopError(
                     ErrorCode.PLUGIN_INVALID_ARCHIVE,
-                    "downloaded file is not a valid ZIP archive",
+                    f"{exc.message} "
+                    "(GitHub /blob/ pages return HTML — use a raw .zip URL)",
+                    details=exc.details,
                 ) from exc
-
-            # Support zip root being the plugin dir or containing one subdir
-            candidates = [p for p in extract_to.iterdir() if (p / "plugin.yaml").is_file()]
-            if not candidates and (extract_to / "plugin.yaml").is_file():
-                candidates = [extract_to]
-            if len(candidates) != 1:
-                raise OctopError(
-                    ErrorCode.PLUGIN_INVALID_ARCHIVE,
-                    "zip must contain exactly one plugin directory with plugin.yaml",
-                )
-            return self.install_path(candidates[0], force=force)
 
     def uninstall(self, plugin_id: str) -> None:
         unload_plugin(plugin_id)

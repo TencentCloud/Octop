@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   Alert,
   Button,
+  Checkbox,
   Collapse,
   Empty,
   Input,
@@ -14,7 +21,7 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { BookOpen, Package, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Package, Plus, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -31,6 +38,9 @@ export function InstalledPluginsPanel() {
   const [installOpen, setInstallOpen] = useState(false);
   const [installUrl, setInstallUrl] = useState("");
   const [installing, setInstalling] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [overwrite, setOverwrite] = useState(false);
 
   const fetchPlugins = useCallback(async () => {
     setLoading(true);
@@ -63,6 +73,26 @@ export function InstalledPluginsPanel() {
       message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
     } finally {
       setInstalling(false);
+    }
+  };
+
+  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const next = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!next) return;
+    if (!next.name.toLowerCase().endsWith(".zip")) {
+      message.error(t("plugins.zipOnly"));
+      return;
+    }
+    setUploading(true);
+    try {
+      await pluginsApi.upload(next, overwrite);
+      message.success(t("plugins.installSuccess"));
+      await fetchPlugins();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -153,13 +183,28 @@ export function InstalledPluginsPanel() {
         title={t("plugins.tabInstalled")}
         description={t("plugins.adminHint")}
         actions={
-          <Button
-            type="primary"
-            icon={<Plus size={16} />}
-            onClick={() => setInstallOpen(true)}
-          >
-            {t("plugins.install")}
-          </Button>
+          <Space size="small">
+            <Checkbox
+              checked={overwrite}
+              onChange={(e) => setOverwrite(e.target.checked)}
+            >
+              {t("plugins.overwriteInstall")}
+            </Checkbox>
+            <Button
+              icon={<Upload size={16} />}
+              loading={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {t("plugins.installFromZip")}
+            </Button>
+            <Button
+              type="primary"
+              icon={<Plus size={16} />}
+              onClick={() => setInstallOpen(true)}
+            >
+              {t("plugins.install")}
+            </Button>
+          </Space>
         }
       />
 
@@ -241,6 +286,14 @@ export function InstalledPluginsPanel() {
           />
         </Space>
       </Modal>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".zip,application/zip"
+        style={{ display: "none" }}
+        onChange={(e) => void handleFileSelected(e)}
+      />
     </div>
   );
 }

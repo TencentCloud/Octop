@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestUpload } from "../request";
 
 export interface PluginConfigField {
   name: string;
@@ -59,6 +59,16 @@ export const pluginsApi = {
       method: "POST",
       body: JSON.stringify({ url }),
     });
+  },
+
+  upload(
+    file: File,
+    force: boolean,
+  ): Promise<{ id: string; version: string; name: string; kind: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (force) formData.append("force", "true");
+    return requestUpload("/plugins/upload", formData);
   },
 
   uninstall(pluginId: string): Promise<{ status: string; id: string }> {

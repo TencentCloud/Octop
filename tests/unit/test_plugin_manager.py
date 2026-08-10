@@ -20,6 +20,15 @@ from octop.infra.errors import ErrorCode, OctopError
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "plugins" / "echo-tool"
 
 
+def _echo_zip_bytes() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for path in _FIXTURE.rglob("*"):
+            if path.is_file():
+                zf.write(path, arcname=f"echo-tool/{path.relative_to(_FIXTURE).as_posix()}")
+    return buf.getvalue()
+
+
 @pytest.fixture(autouse=True)
 def _reset_registry() -> None:
     PluginRegistry.reset()
@@ -110,6 +119,30 @@ def test_install_url_accepts_valid_zip(tmp_path: Path, monkeypatch: pytest.Monke
     )
     loaded = mgr.install_url("https://example.com/echo-tool.zip", force=True)
     assert loaded.manifest.id == "echo-tool"
+
+
+def test_install_archive_accepts_local_zip(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    archive = tmp_path / "echo-tool.zip"
+    archive.write_bytes(_echo_zip_bytes())
+    loaded = mgr.install_archive(archive, force=True)
+    assert loaded.manifest.id == "echo-tool"
+    items = mgr.list_installed()
+    assert any(i.get("id") == "echo-tool" for i in items)
+
+
+def test_install_archive_rejects_non_zip(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    archive = tmp_path / "not-a-zip.zip"
+    archive.write_text("not a zip", encoding="utf-8")
+    with pytest.raises(OctopError) as excinfo:
+        mgr.install_archive(archive)
+    assert excinfo.value.code is ErrorCode.PLUGIN_INVALID_ARCHIVE
+    assert excinfo.value.status == 400
 
 
 def test_install_path_already_exists(tmp_path: Path) -> None:
