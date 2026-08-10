@@ -1,6 +1,7 @@
 """WebSocket browser screencast — attaches to harness-browser sessions.
 
-Wire protocol matches the dashboard ``useBrowserStream`` hook:
+Wire protocol matches the dashboard ``useBrowserStream`` hook (screencast)
+and ``useBrowserSessionState`` (listen-only status):
 
 Client → Server::
 
@@ -23,6 +24,8 @@ Server → Client::
   {"type": "error", "message": "..."}
 
 Auth: ``?token=<JWT>`` query param (browsers cannot set Authorization on WS).
+Listen-only (``?listen_only=1``): still requires ``start``, but never launches
+Chrome — attaches to an existing harness session or pushes idle updates.
 """
 
 from __future__ import annotations
@@ -86,6 +89,46 @@ async def _send_json(ws: WebSocket, payload: dict[str, Any]) -> None:
         await ws.send_text(json.dumps(payload))
 
 
+async def _send_session_snapshot(
+    ws: WebSocket,
+    profile: str,
+    *,
+    sess: Any | None,
+) -> None:
+    """Push one session_update (+ tabs) frame for *profile*."""
+    if sess is None:
+        await _send_json(
+            ws,
+            {
+                "type": "session_update",
+                "session_id": profile,
+                "conversation_id": profile,
+                "channel_source": "dashboard",
+                "state": "idle",
+                "control_owner": control_owner_for(profile),
+                "current_url": "",
+            },
+        )
+        await _send_json(ws, {"type": "tabs", "tabs": []})
+        return
+
+    url = await harness_page_url(sess)
+    await _send_json(
+        ws,
+        {
+            "type": "session_update",
+            "session_id": profile,
+            "conversation_id": profile,
+            "channel_source": "dashboard",
+            "state": "streaming" if url else "idle",
+            "control_owner": control_owner_for(profile),
+            "current_url": url,
+        },
+    )
+    tabs = await harness_list_tabs(sess)
+    await _send_json(ws, {"type": "tabs", "tabs": tabs})
+
+
 async def _stream_loop(
     ws: WebSocket,
     sess: Any,
@@ -97,21 +140,7 @@ async def _stream_loop(
     await _send_json(ws, {"type": "status", "status": "streaming"})
 
     while ws.application_state == WebSocketState.CONNECTED:
-        url = await harness_page_url(sess)
-        await _send_json(
-            ws,
-            {
-                "type": "session_update",
-                "session_id": profile,
-                "conversation_id": profile,
-                "channel_source": "dashboard",
-                "state": "streaming" if url else "idle",
-                "control_owner": control_owner_for(profile),
-                "current_url": url,
-            },
-        )
-        tabs = await harness_list_tabs(sess)
-        await _send_json(ws, {"type": "tabs", "tabs": tabs})
+        await _send_session_snapshot(ws, profile, sess=sess)
 
         if not listen_only:
             frame = await _capture_jpeg(sess)
@@ -119,6 +148,21 @@ async def _stream_loop(
                 await _send_json(ws, {"type": "frame", "data": frame})
 
         await asyncio.sleep(_FRAME_INTERVAL_S)
+
+
+async def _listen_state_loop(ws: WebSocket, profile: str) -> None:
+    """Push session_update events without launching Chrome or capturing frames.
+
+    Re-resolves the harness registry each tick so a browser started later by
+    the agent becomes visible without reconnecting. Idle (no session) ticks
+    use a longer interval to avoid a request/render storm on the dashboard.
+    """
+    await _send_json(ws, {"type": "status", "status": "streaming"})
+
+    while ws.application_state == WebSocketState.CONNECTED:
+        sess = await resolve_harness_session(profile, create=False)
+        await _send_session_snapshot(ws, profile, sess=sess)
+        await asyncio.sleep(_FRAME_INTERVAL_S if sess is not None else 2.0)
 
 
 _CDP_BUTTON_MASK = {"left": 1, "right": 2, "middle": 4, "none": 0}
@@ -311,43 +355,49 @@ async def browser_stream_ws(
             return
 
         profile_hint = str(start_msg.get("session_id") or "auto")
-        sess = await resolve_harness_session(profile_hint)
         profile = profile_hint if profile_hint not in {"", "auto"} else "default"
 
-        start_url = _normalize_nav_url(str(start_msg.get("url") or ""))
-        if start_url and start_url not in {"about:blank"}:
-            try:
-                await sess.navigate(start_url)
-            except Exception as exc:
-                # Don't let a bad/unreachable initial URL kill the whole
-                # session — surface a warning and keep streaming so the
-                # user can navigate manually.
-                logger.warning("initial navigate to %s failed: %s", start_url, exc)
-                await _send_json(
-                    websocket,
-                    {
-                        "type": "error",
-                        "message": f"导航到 {start_url} 失败：{exc}",
-                    },
-                )
+        if listen:
+            # Status-only clients (chat browser badge) must not spawn Chrome.
+            stream_task = asyncio.create_task(_listen_state_loop(websocket, profile))
+        else:
+            sess = await resolve_harness_session(profile_hint)
+            assert sess is not None  # create=True always returns or raises
 
-        vw = int(start_msg.get("width") or width)
-        vh = int(start_msg.get("height") or height)
-        if vw > 0 and vh > 0:
-            with contextlib.suppress(Exception):
-                await sess._internal.client.send(  # noqa: SLF001
-                    "Emulation.setDeviceMetricsOverride",
-                    {
-                        "width": vw,
-                        "height": vh,
-                        "deviceScaleFactor": 1,
-                        "mobile": False,
-                    },
-                )
+            start_url = _normalize_nav_url(str(start_msg.get("url") or ""))
+            if start_url and start_url not in {"about:blank"}:
+                try:
+                    await sess.navigate(start_url)
+                except Exception as exc:
+                    # Don't let a bad/unreachable initial URL kill the whole
+                    # session — surface a warning and keep streaming so the
+                    # user can navigate manually.
+                    logger.warning("initial navigate to %s failed: %s", start_url, exc)
+                    await _send_json(
+                        websocket,
+                        {
+                            "type": "error",
+                            "message": f"导航到 {start_url} 失败：{exc}",
+                        },
+                    )
 
-        stream_task = asyncio.create_task(
-            _stream_loop(websocket, sess, profile, listen_only=listen)
-        )
+            vw = int(start_msg.get("width") or width)
+            vh = int(start_msg.get("height") or height)
+            if vw > 0 and vh > 0:
+                with contextlib.suppress(Exception):
+                    await sess._internal.client.send(  # noqa: SLF001
+                        "Emulation.setDeviceMetricsOverride",
+                        {
+                            "width": vw,
+                            "height": vh,
+                            "deviceScaleFactor": 1,
+                            "mobile": False,
+                        },
+                    )
+
+            stream_task = asyncio.create_task(
+                _stream_loop(websocket, sess, profile, listen_only=False)
+            )
 
         while websocket.application_state == WebSocketState.CONNECTED:
             try:

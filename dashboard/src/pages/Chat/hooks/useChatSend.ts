@@ -158,6 +158,9 @@ export function useChatSend({
 
       const { resolvedId } = createSession();
       const snap = chatStore.getSnapshot(EMPTY_CHAT_SESSION_KEY);
+      // Break any leftover ``__pending__`` → previous thr_* alias so this new
+      // chat cannot mutate / stream into an older thread's bucket.
+      chatStore.detachSessionKey(PENDING_THREAD_ID);
       chatStore.setMessages(PENDING_THREAD_ID, snap.messages);
       chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
       navigate(`/chat/${agent}/${PENDING_THREAD_ID}`);

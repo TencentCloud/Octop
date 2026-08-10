@@ -578,7 +578,11 @@ export function appendPushMessage(text: string) {
     content: text,
     timestamp: Date.now(),
   };
+  // renameSessionKey may briefly alias two keys to one state — dedupe.
+  const seen = new Set<SessionStreamState>();
   for (const state of sessionStates.values()) {
+    if (seen.has(state)) continue;
+    seen.add(state);
     state.messages = [...state.messages, msg];
     notify(state);
   }
@@ -687,14 +691,26 @@ export function removeSession(sessionId: string) {
   closeLiveSocket(sessionId, { intentional: true, userCancelled: true });
 }
 
+/** Drop a session map key without destroying the underlying state object.
+ *
+ * Used to break ``__pending__`` → real-thread aliases left by
+ * :func:`renameSessionKey`. Without this, the next "New Chat" reuses
+ * ``__pending__`` and mutates the previous thread's message bucket
+ * (cross-thread stream bleed).
+ */
+export function detachSessionKey(sessionId: string): void {
+  sessionStates.delete(sessionId);
+}
+
 /** Rename a cached session's key (e.g. temp id → real UUID).
- *  Keeps the old key as an alias so that components still subscribed
- *  to the old id continue to receive updates until they remount.   */
+ *
+ * Migrates live sockets / resume bookkeeping to *newId*. The old key is
+ * detached on a microtask so the current render can still read it, but a
+ * later reuse of ``__pending__`` cannot share the same state object.
+ */
 export function renameSessionKey(oldId: string, newId: string) {
   const state = sessionStates.get(oldId);
   if (state && oldId !== newId) {
-    // Both keys point to the same state object, so subscribers on
-    // either key see the same messages / streaming status.
     sessionStates.set(newId, state);
     // Move live socket + resume bookkeeping to the canonical thread id so
     // loadHistory / attachThread for *newId* still see the open stream.
@@ -724,25 +740,28 @@ export function renameSessionKey(oldId: string, newId: string) {
     // Notify listeners so that components subscribed under the new key
     // (after a navigate) immediately see the existing messages.
     notify(state);
-    // Don't delete oldId — the current component may still be
-    // subscribed to it.  It will be cleaned up when the component
-    // remounts with the new id.
+    // Detach the temporary key after the current turn so React can finish
+    // reading the pending snapshot, but before the next New Chat reuses it.
+    queueMicrotask(() => {
+      if (
+        sessionStates.get(oldId) === state &&
+        sessionStates.get(newId) === state
+      ) {
+        sessionStates.delete(oldId);
+      }
+    });
   }
 }
 
 /**
  * Look up the store key that holds data for a given session ID.
- * Because temporary IDs get aliased to real UUIDs via renameSessionKey,
- * a component mounting with a UUID might find data under the old temp key.
- * This helper returns the canonical key (whichever one has data).
+ * Temporary ids are renamed to real thread ids via renameSessionKey; the
+ * old key is detached shortly after, so callers should prefer the canonical
+ * thread id from the URL.
  */
 export function resolveSessionKey(sessionId: string): string {
   // Direct match — most common path
   if (sessionStates.has(sessionId)) return sessionId;
-  // Reverse lookup: another key might point to data whose listeners
-  // are also registered under sessionId (same object reference).
-  // But since renameSessionKey sets both keys to the same state object,
-  // the direct lookup above should cover it.
   return sessionId;
 }
 

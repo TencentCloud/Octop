@@ -66,18 +66,24 @@ async def resolve_harness_session(
     *,
     server: Any | None = None,
     agent_id: str | None = None,
-) -> Any:
+    create: bool = True,
+) -> Any | None:
     """Return a live :class:`harness_browser.BrowserSession` for ``profile_hint``.
 
     Resolution order:
       1. Exact profile name when present in the in-process registry
       2. ``default`` when the hint is ``auto`` / empty / unknown
       3. Any profile already registered (agent may have started Chrome)
-      4. Create (launch-or-attach) for the resolved profile name
+      4. Create (launch-or-attach) for the resolved profile name — only when
+         ``create=True`` (screencast / interactive clients). Listen-only
+         dashboard hooks pass ``create=False`` so a status WebSocket cannot
+         spawn Chrome just to watch for session updates.
 
     Cached entries are health-checked before reuse — a dead/stale session
     (e.g. browser crashed) is evicted and replaced with a freshly launched
     one rather than being handed back to fail again.
+
+    When ``create=False`` and no live session exists, returns ``None``.
     """
     try:
         from harness_browser import BrowserSession
@@ -104,12 +110,16 @@ async def resolve_harness_session(
         if await _is_session_alive(cached):
             return cached
         logger.warning(
-            "harness session %r is dead (stale CDP connection); discarding and relaunching",
+            "harness session %r is dead (stale CDP connection); discarding%s",
             name,
+            " and relaunching" if create else "",
         )
         _registry.pop(name, None)
         with contextlib.suppress(Exception):
             await cached.close()
+
+    if not create:
+        return None
 
     profile = candidates[0] if candidates else "default"
     harness_settings = None

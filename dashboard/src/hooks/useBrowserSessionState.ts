@@ -139,6 +139,23 @@ export function useBrowserSessionState(
         ws.close();
         return;
       }
+      // Protocol requires a ``start`` frame within 15s or the server closes
+      // the socket — omitting it caused a reconnect storm (issue #225).
+      try {
+        ws.send(
+          JSON.stringify({
+            type: "start",
+            url: "",
+            width: 1,
+            height: 1,
+            reuse_session: true,
+            session_id: DEFAULT_BROWSER_PROFILE,
+          }),
+        );
+      } catch {
+        scheduleReconnect();
+        return;
+      }
       setIsConnected(true);
       reconnectAttempt.current = 0;
       // Compensate: fetch once after reconnect to cover missed events
@@ -151,9 +168,13 @@ export function useBrowserSessionState(
           type: string;
         };
         if (msg.type === "session_update") {
-          // Only apply updates for the current conversation
+          // Shared default profile applies across conversations; also accept
+          // updates scoped to the current conversation id when present.
           const cid = conversationIdRef.current;
-          if (!cid || msg.conversation_id === cid) {
+          const shared =
+            msg.session_id === DEFAULT_BROWSER_PROFILE ||
+            msg.conversation_id === DEFAULT_BROWSER_PROFILE;
+          if (!cid || shared || msg.conversation_id === cid) {
             setSession((prev) => {
               if (!prev) {
                 // No session yet — bootstrap one from the WS event so the
@@ -171,16 +192,22 @@ export function useBrowserSessionState(
                   last_activity_at: Date.now(),
                 };
               }
-              if (prev.session_id === msg.session_id) {
-                // Update the existing session in-place
-                return {
-                  ...prev,
-                  state: msg.state,
-                  control_owner: msg.control_owner,
-                  current_url: msg.current_url,
-                };
+              if (prev.session_id !== msg.session_id) {
+                return prev;
               }
-              return prev;
+              if (
+                prev.state === msg.state &&
+                prev.control_owner === msg.control_owner &&
+                prev.current_url === msg.current_url
+              ) {
+                return prev;
+              }
+              return {
+                ...prev,
+                state: msg.state,
+                control_owner: msg.control_owner,
+                current_url: msg.current_url,
+              };
             });
           }
         }
