@@ -127,6 +127,25 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
+# 临时修复: orcakit-harness-agent 0.9.19 中 _Agent 类的 MRO 顺序问题
+#
+# 问题: harness_agent/acp/server.py 中 `class _Agent(Agent, HarnessACPAgent)`
+# 导致 Agent（Protocol 基类）的空实现优先于 HarnessACPAgent 的实际实现被调用，
+# 使 ACP initialize / session/new 等方法返回 null，Octop 无法通过 ACP 对接
+# 外部编排器（如 Multica）。
+#
+# 修复: 交换继承顺序为 `class _Agent(HarnessACPAgent, Agent)`，确保
+# HarnessACPAgent 的方法在 MRO 中优先解析。
+#
+# 上游修复发布后可移除此段。参考: https://github.com/TencentCloud/harness-agent
+RUN SERVER_PY="$(find /app/.venv/lib -path '*/harness_agent/acp/server.py' -print -quit)" \
+    && if [ -n "$SERVER_PY" ] && [ -f "$SERVER_PY" ]; then \
+        sed -i 's/class _Agent(Agent, HarnessACPAgent):/class _Agent(HarnessACPAgent, Agent):/' "$SERVER_PY"; \
+        echo "[Dockerfile] Patched harness_agent MRO order in: $SERVER_PY"; \
+    else \
+        echo "[Dockerfile] WARNING: harness_agent/acp/server.py not found, skipping MRO patch"; \
+    fi
+
 RUN mkdir -p /data/.octop
 
 EXPOSE 8088
