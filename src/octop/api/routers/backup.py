@@ -112,7 +112,7 @@ async def download_backup_file(
 async def restore_backup_file(
     filename: str,
     restore_config: bool = Query(default=True),
-    _: Any = Depends(current_admin),
+    user: Any = Depends(current_admin),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Restore database and workspaces from a file in ``backups_dir``.
@@ -121,6 +121,8 @@ async def restore_backup_file(
     are reloaded in-process so experts, messaging, and schedules can run without
     a full service restart.
     Restored ``config.json`` / ``env`` still require a process restart to take effect.
+
+    LightClaw migration archives reassign imported ownership to the restoring admin.
     """
     assert server.services is not None
     safe = normalize_backup_filename(filename)
@@ -131,10 +133,11 @@ async def restore_backup_file(
         pool=server.services.db,
         db_config=server.services.config.database,
         restore_config=restore_config,
+        owner_user_id=int(user.id),
     )
     await _rehydrate_runtime_after_restore(server)
     server.services.audit_repo.write(
-        actor=ACTOR_ADMIN,
+        actor=getattr(user, "username", None) or ACTOR_ADMIN,
         action="backup.restore",
         target=safe,
         payload=str(result),

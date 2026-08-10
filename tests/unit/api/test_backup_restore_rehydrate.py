@@ -48,7 +48,7 @@ async def test_restore_backup_file_rehydrates_providers_channels_and_cron(
     result = await backup_router.restore_backup_file(
         filename="octop-backup.tar.gz",
         restore_config=True,
-        _=None,
+        user=MagicMock(id=1, username="admin"),
         server=server,
     )
 
@@ -90,7 +90,7 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
     result = await backup_router.restore_backup_file(
         filename="octop-backup.tar.gz",
         restore_config=False,
-        _=None,
+        user=MagicMock(id=1, username="admin"),
         server=server,
     )
 

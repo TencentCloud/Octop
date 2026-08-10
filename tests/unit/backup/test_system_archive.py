@@ -163,10 +163,45 @@ def _make_migration_backup(
             "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
             (username, "lc_hash", "user", 1),
         )
+        uid = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()[0]
         conn.execute(
             "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
-            " VALUES (?, (SELECT id FROM users WHERE username=?), ?, 1, 1)",
-            ("agent-lc", username, "LC Agent"),
+            " VALUES (?, ?, ?, 1, 1)",
+            ("agent-lc", uid, "LC Agent"),
+        )
+        conn.execute(
+            "INSERT INTO channels(channel_id, agent_id, user_id, kind, name, config_json,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 1)",
+            ("migrated-feishu", "agent-lc", uid, "feishu", "feishu", "{}"),
+        )
+        session_key = f"agent-lc:dashboard:{uid}:dm"
+        conn.execute(
+            "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, session_key,"
+            " title, pinned, last_active, created_at)"
+            " VALUES (?, ?, ?, 'dashboard', ?, NULL, 0, 1, 1)",
+            ("thr-lc", "agent-lc", uid, session_key),
+        )
+        conn.execute(
+            "INSERT INTO sessions(session_key, agent_id, user_id, channel_type, chat_type,"
+            " thread_id, updated_at, channel_subject_id, channel_chat_type,"
+            " channel_metadata, unread_count)"
+            " VALUES (?, ?, ?, 'dashboard', 'dm', ?, 1, ?, 'dm', ?, 0)",
+            (
+                session_key,
+                "agent-lc",
+                uid,
+                "thr-lc",
+                str(uid),
+                json.dumps({"channel_type": "dashboard", "user_id": uid, "to_handle": str(uid)}),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO cron_jobs(cron_id, agent_id, user_id, schedule_spec, prompt,"
+            " session_key, enabled, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1)",
+            ("cron-lc", "agent-lc", uid, "0 * * * *", "ping", session_key),
         )
         if jwt_secret is not None:
             conn.execute(
@@ -269,15 +304,94 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
         # The imported agent from the backup must still exist after users write-back.
         # With the old DELETE-then-INSERT, foreign_keys=ON would cascade-delete this row.
         agent_row = conn.execute(
-            "SELECT agent_id FROM agents WHERE agent_id = ?", ("agent-lc",)
+            "SELECT agent_id, user_id FROM agents WHERE agent_id = ?", ("agent-lc",)
         ).fetchone()
         assert agent_row is not None, (
             "agent-lc was deleted — upsert strategy triggered CASCADE on agents"
         )
+        admin_id = conn.execute(
+            "SELECT id FROM users WHERE username = ?", ("octop_admin",)
+        ).fetchone()[0]
+        assert agent_row[1] == admin_id
 
         # The LightClaw source user must not appear in the target users table.
         lc_row = conn.execute("SELECT id FROM users WHERE username = ?", ("lc_user",)).fetchone()
         assert lc_row is None, "lc_user from backup was not removed after user write-back"
+
+    tgt_pool.close()
+
+
+def test_migration_restore_remaps_ownership_to_admin_user_id_2(tmp_path: Path) -> None:
+    """Migration import assigns agents/channels/cron to the restoring admin (id=2)."""
+    src_layout = PathLayout(tmp_path / "src")
+    src_layout.root.mkdir()
+    migration_data, src_pool = _make_migration_backup(src_layout, username="lc_user")
+    src_pool.close()
+
+    tgt_layout = PathLayout(tmp_path / "tgt")
+    tgt_layout.root.mkdir()
+    tgt_pool = SqlitePool(tgt_layout.db)
+    run_migrations(tgt_pool)
+    with tgt_pool.connect() as conn:
+        # Leave id=1 unused so the restoring admin is id=2 (the reported bug case).
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at)"
+            " VALUES (2, ?, ?, ?, ?)",
+            ("octop_admin", "admin_hash", "admin", 2),
+        )
+
+    result = restore_system_backup(
+        migration_data,
+        paths=tgt_layout,
+        pool=tgt_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+        owner_user_id=2,
+    )
+    assert result["users_preserved"] is True
+    assert result["owner_user_id"] == 2
+    assert result["ownership_remap"]["old_user_ids"] >= 1
+
+    with tgt_pool.connect() as conn:
+        users = conn.execute("SELECT id, username FROM users ORDER BY id").fetchall()
+        assert [(r[0], r[1]) for r in users] == [(2, "octop_admin")]
+
+        agent = conn.execute(
+            "SELECT user_id FROM agents WHERE agent_id = ?", ("agent-lc",)
+        ).fetchone()
+        assert agent is not None
+        assert agent[0] == 2
+
+        channel = conn.execute(
+            "SELECT user_id FROM channels WHERE channel_id = ?", ("migrated-feishu",)
+        ).fetchone()
+        assert channel is not None
+        assert channel[0] == 2
+
+        cron = conn.execute(
+            "SELECT user_id, session_key FROM cron_jobs WHERE cron_id = ?", ("cron-lc",)
+        ).fetchone()
+        assert cron is not None
+        assert cron[0] == 2
+        assert cron[1] == "agent-lc:dashboard:2:dm"
+
+        session = conn.execute(
+            "SELECT user_id, channel_subject_id, channel_metadata FROM sessions"
+            " WHERE session_key = ?",
+            ("agent-lc:dashboard:2:dm",),
+        ).fetchone()
+        assert session is not None
+        assert session[0] == 2
+        assert session[1] == "2"
+        meta = json.loads(session[2])
+        assert meta["user_id"] == 2
+        assert meta["to_handle"] == "2"
+
+        stale = conn.execute(
+            "SELECT 1 FROM sessions WHERE session_key = ?",
+            ("agent-lc:dashboard:1:dm",),
+        ).fetchone()
+        assert stale is None
 
     tgt_pool.close()
 

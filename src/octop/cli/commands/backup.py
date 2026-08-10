@@ -61,8 +61,21 @@ def create(output: Path | None, home: Path | None) -> None:
     "--home", type=click.Path(path_type=Path), default=None, help="Octop home (default ~/.octop)."
 )
 @click.option("--no-config", is_flag=True, default=False, help="Do not restore config.json / env.")
+@click.option(
+    "--owner-user-id",
+    type=int,
+    default=None,
+    help="For LightClaw migration archives: Octop user id that receives imported ownership "
+    "(default: first admin among current users).",
+)
 @click.option("--yes", is_flag=True, default=False, help="Skip confirmation.")
-def restore(archive: Path, home: Path | None, no_config: bool, yes: bool) -> None:
+def restore(
+    archive: Path,
+    home: Path | None,
+    no_config: bool,
+    owner_user_id: int | None,
+    yes: bool,
+) -> None:
     """Restore from a backup archive. Stop ``octop run`` first for a clean restore."""
     if not yes:
         click.confirm(
@@ -79,6 +92,7 @@ def restore(archive: Path, home: Path | None, no_config: bool, yes: bool) -> Non
         pool=db,
         db_config=config.database,
         restore_config=not no_config,
+        owner_user_id=owner_user_id,
     )
     db.close()
     click.echo(f"restored: {result}")
