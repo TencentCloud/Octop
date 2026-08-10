@@ -13,8 +13,10 @@ async def validate_chat_mcp_servers(
     user_id: int,
     names: list[str] | None,
 ) -> list[str] | None:
-    if not names:
+    if names is None:
         return None
+    if not names:
+        return []
     from octop.infra.connectors.service import ConnectorService
 
     svc = ConnectorService(

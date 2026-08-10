@@ -63,9 +63,48 @@ def test_row_for_probe_overrides_secrets_when_provided() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_storage_backend_tree_docker_unsupported() -> None:
-    with pytest.raises(ValueError, match="docker"):
-        await list_storage_backend_tree(_row(kind="docker"), "/")
+async def test_list_storage_backend_tree_docker_lists_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker kind uses container als; temporary sandbox must be closed."""
+    fake_backend = MagicMock()
+    fake_backend.als = AsyncMock(
+        return_value=MagicMock(
+            error=None,
+            entries=[
+                {"path": "SOUL.md", "is_dir": False, "size": 10},
+                {"path": "skills", "is_dir": True},
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        "octop.infra.backend.browse.resolve_storage_backend",
+        lambda _row: fake_backend,
+    )
+
+    entries = await list_storage_backend_tree(_row(kind="docker", bucket="python:3.12-slim"), "/")
+    assert len(entries) == 2
+    assert entries[0]["path"] == "SOUL.md"
+    assert entries[1]["is_dir"] is True
+    fake_backend.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_list_storage_backend_tree_maps_runtime_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker/image failures become ValueError (API 400), not uncaught 500."""
+    monkeypatch.setattr(
+        "octop.infra.backend.browse.resolve_backend",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            RuntimeError(
+                "Docker image 'python:3.12-slim' is not available; "
+                "run: docker pull python:3.12-slim"
+            )
+        ),
+    )
+    with pytest.raises(ValueError, match=r"docker pull python:3\.12-slim"):
+        await list_storage_backend_tree(_row(kind="docker", bucket="python:3.12-slim"), "/")
 
 
 @pytest.mark.asyncio
@@ -99,3 +138,4 @@ async def test_list_storage_backend_tree_returns_entries(
     assert len(entries) == 2
     assert entries[0]["path"] == "a.txt"
     assert entries[1]["is_dir"] is True
+    fake_backend.close.assert_called_once_with()

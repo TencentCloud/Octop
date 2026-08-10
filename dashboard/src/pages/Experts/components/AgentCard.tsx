@@ -364,10 +364,18 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Footer actions */}
         <div className={styles.agentCard2Footer}>
-          <Tooltip title={t("pageShell.workspace.title")} mouseEnterDelay={0.5}>
+          <Tooltip
+            title={
+              chatReady
+                ? t("pageShell.workspace.title")
+                : t("workspace.requiresRunning")
+            }
+            mouseEnterDelay={0.5}
+          >
             <button
               type="button"
               className={styles.agentCard2EditBtn}
+              disabled={!chatReady}
               onClick={() => setWorkspaceDrawerOpen(true)}
               aria-label={t("pageShell.workspace.title")}
             >

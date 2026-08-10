@@ -11,6 +11,7 @@ STREAM_STALL = f"{_PREFIX}stream_errors.stream_stall"
 RATE_LIMIT = f"{_PREFIX}stream_errors.rate_limit"
 AUTH = f"{_PREFIX}stream_errors.auth"
 CONTEXT_LENGTH = f"{_PREFIX}stream_errors.context_length"
+RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
@@ -21,6 +22,7 @@ __all__ = [
     "MODEL_CALL_FAILED",
     "PROVIDER_UNAVAILABLE",
     "RATE_LIMIT",
+    "RECURSION_LIMIT",
     "STREAM_STALL",
     "TIMEOUT_NETWORK",
     "classify_stream_error_message",
@@ -85,6 +87,16 @@ def classify_stream_error_message(message: str) -> str | None:
         or "openaicontextoverflowerror" in compact
     ):
         return CONTEXT_LENGTH
+
+    if (
+        "graph_recursion_limit" in lower
+        or "graphrecursionerror" in compact
+        or "recursion limit of" in lower
+        or (
+            "recursion_limit" in lower and ("reached" in lower or "without hitting a stop" in lower)
+        )
+    ):
+        return RECURSION_LIMIT
 
     if (
         "internalservererror" in compact

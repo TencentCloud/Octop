@@ -241,3 +241,80 @@ create(agent)
 若无法 jail（非 Linux / 无 bwrap），但 `virtual_mode` + 局部 `root_dir` 仍成立，则对 `execute` 命令中的虚拟绝对路径做映射（`/a` → `{root_dir}/a`），系统路径前缀不改写。`BackendWorkspace` 读/物化路径 failback：绝对路径先 virtual 映到 `root_dir` 再原始宿主机路径；相对路径先 `{root_dir}/{rel}` 再 `{workspace_dir}/{rel}`。Dashboard path I/O: use ``dashboard/src/utils/workspaceIoPath.ts`` for download/file API paths
 (host absolute stays ``file://…``). Dock tab identity may still ``canonicalizeDockFilePath``;
 do not collapse host abs before calling BackendWorkspace.
+
+---
+
+## 13. Docker sandbox backend
+
+需要把 agent 的文件系统工具与 `execute` 隔离到 Docker 容器时，配置 harness `type: "docker"`（需 `orcakit-harness-agent[docker]`，本机 Docker daemon 可用）。
+
+宿主 ``workspace_dir`` 在**创建专家时**写入 ``config_json.workspace_dir``（默认
+``{OCTOP_HOME}/agents/<agent_id>/``；创建时可覆盖）。**所有 backend 类型**共用这
+一路径作为 harness ``HarnessAgentConfig.workspace_dir``：
+
+| Backend | 专家可见内容 | 宿主 ``workspace_dir`` |
+|---------|--------------|------------------------|
+| ``local_shell`` / ``filesystem`` | 通常对齐该目录（或 ``root_dir``） | sessions / memory / checkpoints |
+| ``docker`` | 容器内**同名绝对路径**（不 bind-mount） | 同上 |
+| 对象存储等 | 远端对象；本地物化/缓存按 backend | 同上 |
+
+Harness 侧只认调用方传入的 ``workspace_dir``；Docker 默认把它镜像成容器内工作区根。
+
+### 直接写在 agent `config_json.backend`
+
+```json
+{
+  "backend": {
+    "type": "docker",
+    "image": "python:3.12-slim",
+    "sandbox_scope": "agent",
+    "sandbox_prefix": "octop_sandbox",
+    "allow_network": false,
+    "memory": "512m"
+  }
+}
+```
+
+字段：
+
+| 字段 | 说明 |
+|------|------|
+| `sandbox_scope` | `agent`（默认）/ `user` / `fixed` |
+| `sandbox_prefix` | 容器名前缀；Octop 默认注入 `octop_sandbox`；库默认 `sandbox` |
+| `sandbox_id` | `fixed` 必填 |
+| `username` | `user` 用；缺省时 Octop 注入专家所有者用户名 |
+| `previewable` | 仅影响 Admin「我的存储」浏览按钮；默认仅 `fixed` 为 true。专家工作区始终可预览 |
+| `volumes` | 用户自行配置的挂载，原样透传；**不**自动 named volume |
+
+容器命名：
+
+- `agent` → `{prefix}_agent_{agentId}`（如 `octop_sandbox_agent_ZE6GR2`）
+- `user` → `{prefix}_{username}`（同用户多专家共用一沙箱）
+- `fixed` → `sandbox_id`
+
+生命周期：没有则创建；`close` / 删除专家**不**删容器；显式 `destroy()` 才 stop+remove（容器内文件一并删除）。
+
+### 或经 storage_backends（`kind=docker`）+ named 引用
+
+- `bucket` 或 `config_json.image`：镜像名（必填）
+- Admin 表单可配 `sandbox_scope` / `sandbox_prefix` / `sandbox_id` / `username`，写入 `config_json`
+- 其余可选：`allow_network`、`memory`、`cpus`、`pids_limit`、`command_timeout`、`volumes` 等
+
+```json
+{ "type": "named", "name": "my-docker-sandbox" }
+```
+
+行为要点：
+
+- **同名路径、两处落盘（不自动挂载）**：
+  - 专家 ``workspace_dir``（创建时写入配置/库；Octop 默认 ``{OCTOP_HOME}/agents/<id>/``）：宿主上放 sessions / memory / checkpoints
+  - 容器内同一绝对路径：专家可见工作区（由传入的 ``workspace_dir`` 决定；可用 ``workspace_path`` 覆盖；皆无时回退 ``/workspace``）
+- **沙箱 FS**：`ls` / `read` / `write` / `execute` 都在容器内，经 Docker Python SDK 完成
+- **专家工作区**（专家页文件树 / SOUL.md 等）始终可预览；走 agent backend API（Docker 时即该专家对应容器内同名路径）
+- **Admin 存储浏览**（`/admin/backend`）：`previewable` 控制；Docker 默认仅 `fixed` 可浏览；`agent`/`user` 按钮置灰，仍可用「探测」验证连通性（test 沙箱）
+- 默认 `allow_network=false`；需要 pip/curl 时显式打开
+- 启动前会确认镜像在本地；缺失则尝试 pull
+- Admin 启用 Docker 存储后端或点「测试可用性」时会自动拉取镜像
+- storage backend 浏览 API 支持 docker kind（`previewable` 时）；探测走 test id 沙箱
+- Admin「支持类型」页的 Docker 卡片可配置沙箱镜像；打开配置抽屉后可探测本机 Docker，并提供一键安装 / 复制脚本 / 安装提示词
+

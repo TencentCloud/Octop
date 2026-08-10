@@ -119,6 +119,30 @@ class HitlPendingStore:
                 latest = record
         return latest
 
+    def resolve_pending_for_thread(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> HitlPendingRecord | None:
+        """Return the newest pending approval for a dashboard thread, if any."""
+        self._gc()
+        latest: HitlPendingRecord | None = None
+        for record in self._records.values():
+            if record.thread_id != thread_id or record.status != "pending":
+                continue
+            if record.agent_id != agent_id:
+                continue
+            if user_id is not None and record.user_id != user_id:
+                continue
+            if time.time() - record.created_at > self.ttl_seconds:
+                record.status = "expired"
+                continue
+            if latest is None or record.created_at > latest.created_at:
+                latest = record
+        return latest
+
     def list_pending_for_session(
         self,
         session_key: str,

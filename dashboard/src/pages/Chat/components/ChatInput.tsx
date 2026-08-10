@@ -357,7 +357,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             targetAgents: selectedTargetAgents,
             selectedModel,
           }),
-          modelRef: resolveTurnModelRef(selectedModel, defaultModel),
+          modelRef: resolveTurnModelRef(selectedModel),
         });
         if (result === "full") {
           antMessage.warning(t("chat.queue.full"));

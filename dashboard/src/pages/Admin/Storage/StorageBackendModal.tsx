@@ -26,6 +26,7 @@ import {
   STORAGE_TYPE_DEFS,
   type StorageBackendRow,
 } from "./useStorageBackends";
+import { DockerEnvFooter } from "./DockerEnvFooter";
 
 interface StorageBackendDrawerProps {
   open: boolean;
@@ -47,6 +48,10 @@ interface StorageForm {
   endpoint?: string;
   config_json?: string;
   note?: string;
+  sandbox_scope?: string;
+  sandbox_prefix?: string;
+  sandbox_id?: string;
+  username?: string;
 }
 
 export function StorageBackendDrawer({
@@ -71,11 +76,21 @@ export function StorageBackendDrawer({
     editing?.kind ?? presetKind ?? "cos",
   );
   const typeDef = STORAGE_TYPE_DEFS.find((d) => d.kind === activeKind);
+  const sandboxScope = Form.useWatch("sandbox_scope", form) ?? "agent";
 
   useEffect(() => {
     if (open) {
       if (editing) {
         setActiveKind(editing.kind);
+        let cfg: Record<string, unknown> = {};
+        try {
+          const parsed = JSON.parse(editing.config_json || "{}") as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            cfg = parsed as Record<string, unknown>;
+          }
+        } catch {
+          cfg = {};
+        }
         form.setFieldsValue({
           name: editing.name,
           kind: editing.kind,
@@ -86,12 +101,25 @@ export function StorageBackendDrawer({
           endpoint: editing.endpoint ?? "",
           config_json: editing.config_json ?? "",
           note: editing.note ?? "",
+          sandbox_scope:
+            typeof cfg.sandbox_scope === "string" ? cfg.sandbox_scope : "agent",
+          sandbox_prefix:
+            typeof cfg.sandbox_prefix === "string"
+              ? cfg.sandbox_prefix
+              : "octop_sandbox",
+          sandbox_id: typeof cfg.sandbox_id === "string" ? cfg.sandbox_id : "",
+          username: typeof cfg.username === "string" ? cfg.username : "",
         });
       } else {
         const kind = presetKind ?? "cos";
         setActiveKind(kind);
         form.resetFields();
         form.setFieldValue("kind", kind);
+        if (kind === "docker") {
+          form.setFieldValue("bucket", "python:3.12-slim");
+          form.setFieldValue("sandbox_scope", "agent");
+          form.setFieldValue("sandbox_prefix", "octop_sandbox");
+        }
       }
       const draft = loadFormDraft<Partial<StorageForm>>(draftScope);
       if (draft) {
@@ -119,7 +147,38 @@ export function StorageBackendDrawer({
       if (values.access_key?.trim()) body.access_key = values.access_key.trim();
       if (values.secret_key?.trim()) body.secret_key = values.secret_key.trim();
 
+      if (values.kind === "docker") {
+        let cfg: Record<string, unknown> = {};
+        try {
+          const parsed = JSON.parse(
+            values.config_json?.trim() || "{}",
+          ) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            cfg = { ...(parsed as Record<string, unknown>) };
+          }
+        } catch {
+          cfg = {};
+        }
+        const scope = (values.sandbox_scope || "agent").trim() || "agent";
+        cfg.sandbox_scope = scope;
+        cfg.sandbox_prefix =
+          (values.sandbox_prefix || "octop_sandbox").trim() || "octop_sandbox";
+        if (scope === "fixed" && values.sandbox_id?.trim()) {
+          cfg.sandbox_id = values.sandbox_id.trim();
+        } else {
+          delete cfg.sandbox_id;
+        }
+        if (scope === "user" && values.username?.trim()) {
+          cfg.username = values.username.trim();
+        } else if (scope !== "user") {
+          delete cfg.username;
+        }
+        body.config_json = JSON.stringify(cfg);
+      }
+
       const backendName = isEdit ? editing!.name : values.name.trim();
+
+      let backendId: number | undefined = isEdit ? editing!.id : undefined;
 
       if (isEdit) {
         await request(`/admin/storage-backends/${editing!.id}`, {
@@ -129,11 +188,44 @@ export function StorageBackendDrawer({
         message.success(t("storage.updateSuccess", { name: backendName }));
       } else {
         body.name = backendName;
-        await request("/admin/storage-backends", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        const created = await request<{ id: number }>(
+          "/admin/storage-backends",
+          {
+            method: "POST",
+            body: JSON.stringify(body),
+          },
+        );
+        backendId = created.id;
         message.success(t("storage.createSuccess", { name: backendName }));
+      }
+
+      // New docker backends are enabled by default — start image pull right away.
+      if (values.kind === "docker" && backendId != null) {
+        const hide = message.loading(t("storage.dockerPulling"), 0);
+        try {
+          const result = await request<{
+            ok: boolean;
+            message?: string;
+            message_key?: string;
+          }>(`/admin/storage-backends/${backendId}/test`, { method: "POST" });
+          hide();
+          if (result.ok) {
+            const msg = result.message_key
+              ? t(
+                  `storage.${result.message_key}`,
+                  result.message || t("storage.testSuccess"),
+                )
+              : result.message || t("storage.testSuccess");
+            message.success(msg);
+          } else {
+            message.warning(result.message || t("storage.testFailed"));
+          }
+        } catch (err) {
+          hide();
+          message.warning(
+            err instanceof Error ? err.message : t("storage.testFailed"),
+          );
+        }
       }
 
       clearFormDraft(draftScope);
@@ -445,6 +537,65 @@ export function StorageBackendDrawer({
           </Form.Item>
         )}
 
+        {activeKind === "docker" && (
+          <>
+            <Form.Item
+              name="sandbox_scope"
+              label={t("storage.sandboxScopeLabel")}
+              extra={t("storage.sandboxScopeExtra")}
+              initialValue="agent"
+            >
+              <Select
+                options={[
+                  {
+                    value: "agent",
+                    label: t("storage.sandboxScopeAgent"),
+                  },
+                  {
+                    value: "user",
+                    label: t("storage.sandboxScopeUser"),
+                  },
+                  {
+                    value: "fixed",
+                    label: t("storage.sandboxScopeFixed"),
+                  },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item
+              name="sandbox_prefix"
+              label={t("storage.sandboxPrefixLabel")}
+              extra={t("storage.sandboxPrefixExtra")}
+              initialValue="octop_sandbox"
+            >
+              <Input placeholder="octop_sandbox" />
+            </Form.Item>
+            {sandboxScope === "fixed" && (
+              <Form.Item
+                name="sandbox_id"
+                label={t("storage.sandboxIdLabel")}
+                rules={[
+                  {
+                    required: true,
+                    message: t("storage.pleaseEnterSandboxId"),
+                  },
+                ]}
+              >
+                <Input placeholder="my_shared_box" />
+              </Form.Item>
+            )}
+            {sandboxScope === "user" && (
+              <Form.Item
+                name="username"
+                label={t("storage.sandboxUsernameLabel")}
+                extra={t("storage.sandboxUsernameExtra")}
+              >
+                <Input placeholder="alice" />
+              </Form.Item>
+            )}
+          </>
+        )}
+
         {/* Advanced JSON */}
         <Collapse
           ghost
@@ -473,6 +624,8 @@ export function StorageBackendDrawer({
           <Input.TextArea rows={2} />
         </Form.Item>
       </Form>
+
+      {activeKind === "docker" ? <DockerEnvFooter /> : null}
     </Drawer>
   );
 }

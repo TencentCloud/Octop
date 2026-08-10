@@ -43,16 +43,19 @@ ARG NODE_MAX_OLD_SPACE_SIZE=2048
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
-    && npm ci --prefer-offline --no-audit
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    set -eu; \
+    if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi; \
+    npm ci --no-audit \
+    || { echo "npm ci failed — retrying clean"; rm -rf node_modules; npm ci --no-audit; }; \
+    test -x node_modules/.bin/vite
 
 COPY dashboard/ ./
 
 RUN mkdir -p ../src/octop/dashboard
 
-# 镜像构建跳过完整 tsc；生产打包由 vite/esbuild 完成
-RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npx vite build
+# 镜像构建跳过完整 tsc；生产打包由 vite/esbuild 完成（使用 lockfile 中的 vite，不用 npx）
+RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run build:docker
 
 
 # ---------------------------------------------------------------------------

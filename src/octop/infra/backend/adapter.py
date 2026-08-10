@@ -9,7 +9,7 @@ from octop.infra.db.repos.backends import BackendRow
 
 _OBJECT_KINDS = frozenset({"cos", "s3", "oss", "obs", "custom"})
 _AGENT_RESOLVABLE_KINDS = frozenset(
-    {"cos", "s3", "oss", "obs", "custom", "filesystem", "shell", "postgres"}
+    {"cos", "s3", "oss", "obs", "custom", "filesystem", "shell", "postgres", "docker"}
 )
 
 
@@ -125,5 +125,15 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
         if not conn:
             return None
         return {"type": "postgres", "connection_string": conn, **cfg}
+
+    if kind == "docker":
+        image = cfg.get("image") or row.bucket
+        if not image:
+            return None
+        from octop.infra.backend.docker_spec import apply_docker_cfg_keys
+
+        spec = {"type": "docker", "image": str(image)}
+        apply_docker_cfg_keys(spec, cfg)
+        return spec
 
     return None

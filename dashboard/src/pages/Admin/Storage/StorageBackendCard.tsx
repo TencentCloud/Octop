@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
 import {
   STORAGE_TYPE_DEFS,
   type StorageBackendRow,
@@ -56,6 +57,37 @@ export function StorageBackendCard({
         body: JSON.stringify({ enabled: next }),
       });
       await onSaved();
+      // Enabling a Docker sandbox should kick off image pull immediately.
+      if (next && backend.kind === "docker") {
+        setTesting(true);
+        const hide = message.loading(t("storage.dockerPulling"), 0);
+        try {
+          const result = await request<{
+            ok: boolean;
+            message?: string;
+            message_key?: string;
+          }>(`/admin/storage-backends/${backend.id}/test`, { method: "POST" });
+          hide();
+          if (result.ok) {
+            const msg = result.message_key
+              ? t(
+                  `storage.${result.message_key}`,
+                  result.message || t("storage.testSuccess"),
+                )
+              : result.message || t("storage.testSuccess");
+            message.success(msg);
+          } else {
+            message.error(result.message || t("storage.testFailed"));
+          }
+        } catch (err) {
+          hide();
+          message.error(
+            err instanceof Error ? err.message : t("storage.testFailed"),
+          );
+        } finally {
+          setTesting(false);
+        }
+      }
     } catch {
       message.error(t("storage.toggleFailed"));
     } finally {
@@ -78,9 +110,28 @@ export function StorageBackendCard({
           message.success(t("storage.deleteSuccess", { name: backend.name }));
           await onSaved();
         } catch (err) {
-          message.error(
-            err instanceof Error ? err.message : t("common.deleteFailed"),
-          );
+          const parsed = parseApiError(err);
+          const agents = parsed?.details?.agents;
+          if (
+            parsed?.code === "STORAGE_BACKEND_REFERENCED" &&
+            Array.isArray(agents) &&
+            agents.length > 0
+          ) {
+            const names = agents
+              .map((row) =>
+                row &&
+                typeof row === "object" &&
+                "name" in row &&
+                typeof (row as { name: unknown }).name === "string"
+                  ? (row as { name: string }).name
+                  : "",
+              )
+              .filter(Boolean)
+              .join("、");
+            message.error(t("storage.deleteReferenced", { names }));
+            return;
+          }
+          message.error(apiErrorMessage(err, t("common.deleteFailed"), t));
         }
       },
     });
@@ -204,12 +255,19 @@ export function StorageBackendCard({
             </span>
           </div>
           <div className={styles.backendActionsRight}>
-            <Tooltip title={t("storage.browse")}>
+            <Tooltip
+              title={
+                backend.previewable === false
+                  ? t("storage.browseDisabled")
+                  : t("storage.browse")
+              }
+            >
               <Button
                 type="text"
                 size="small"
                 icon={<FolderOpen size={14} />}
                 aria-label={t("storage.browse")}
+                disabled={backend.previewable === false}
                 onClick={() => setBrowseOpen(true)}
               />
             </Tooltip>

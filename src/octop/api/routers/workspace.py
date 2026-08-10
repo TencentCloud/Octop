@@ -11,6 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from harness_agent.backends.utils import BackendOperationNotSupportedError
 from pydantic import BaseModel
 
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.workspace import (
     coerce_read_content,
@@ -443,7 +444,7 @@ async def import_workspace_archive(
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "empty archive")
 
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    local_ws = server.paths.agent_workspace(agent_id)
+    local_ws = resolve_agent_workspace_dir(server, agent_id)
     result = await import_workspace_zip(
         ws,
         raw,

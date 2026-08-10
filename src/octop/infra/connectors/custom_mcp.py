@@ -12,7 +12,7 @@ CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_META_KEYS = frozenset({"enabled", "display_name"})
+_META_KEYS = frozenset({"enabled", "display_name", "default_open"})
 _DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
 
@@ -135,6 +135,8 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
 
     enabled = raw.get("enabled", True) is not False
     spec: dict[str, Any] = {"transport": transport, "enabled": enabled}
+    if raw.get("default_open") is True:
+        spec["default_open"] = True
 
     display_name = str(raw.get("display_name") or "").strip()
     if display_name:
@@ -241,6 +243,7 @@ def expand_custom_instances(
                 "status": "active" if enabled else "disabled",
                 "mcp_server_name": name,
                 "has_credentials": True,
+                "default_open": spec.get("default_open") is True,
                 "created_at": parent.created_at,
                 "updated_at": parent.updated_at,
             }

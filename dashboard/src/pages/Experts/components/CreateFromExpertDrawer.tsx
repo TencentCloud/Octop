@@ -7,7 +7,12 @@ import { message } from "@/utils/antdMessage";
 import { request } from "../../../api/request";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
+import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import { apiErrorMessage } from "../../../utils/apiError";
+import {
+  buildAgentRuntimeRequest,
+  type AgentRuntimeFormValues,
+} from "../../../utils/agentRuntimeConfig";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { pickLocale } from "../../../utils/localizedText";
 import {
@@ -57,15 +62,17 @@ export default function CreateFromExpertDrawer({
 }: CreateFromExpertDrawerProps) {
   const { t } = useTranslation();
   const skillSlugDisplayName = useSkillSlugDisplayName();
-  const [form] = Form.useForm<{
-    name: string;
-    description: string;
-    default_model: string;
-    backend_choice: string;
-    composite_default: string;
-    root_dir?: string;
-    skill_package_ids?: string[];
-  }>();
+  const [form] = Form.useForm<
+    {
+      name: string;
+      description: string;
+      default_model: string;
+      backend_choice: string;
+      composite_default: string;
+      root_dir?: string;
+      skill_package_ids?: string[];
+    } & AgentRuntimeFormValues
+  >();
   const [submitting, setSubmitting] = useState(false);
 
   const { models, modelsLoading, backends, backendsLoading } =
@@ -182,6 +189,7 @@ export default function CreateFromExpertDrawer({
               defaultModelFromForm(values.default_model) ?? undefined,
             backend: backendSpec,
             skill_package_ids: values.skill_package_ids ?? [],
+            ...buildAgentRuntimeRequest(values),
           }),
         },
       );
@@ -321,6 +329,17 @@ export default function CreateFromExpertDrawer({
           onAddPathMapping={addPathMapping}
           onRemovePathMapping={removePathMapping}
           onUpdatePathMapping={updatePathMapping}
+        />
+
+        <Collapse
+          ghost
+          items={[
+            {
+              key: "advanced",
+              label: t("experts.advancedOptions"),
+              children: <AgentAdvancedConfigFields />,
+            },
+          ]}
         />
       </Form>
 

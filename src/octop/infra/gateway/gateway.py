@@ -377,6 +377,21 @@ class Gateway:
             )
 
             servers = [s.strip() for s in (mcp_servers or []) if s and str(s).strip()]
+            # Empty job selection → follow default_open. Explicit picks win as-is.
+            if servers:
+                servers = (
+                    self._agent_manager.merge_turn_mcp_servers(
+                        session.user_id, servers, apply_defaults=False
+                    )
+                    or []
+                )
+            else:
+                servers = (
+                    self._agent_manager.merge_turn_mcp_servers(
+                        session.user_id, None, apply_defaults=True
+                    )
+                    or []
+                )
             if servers:
                 failed = await self._agent_manager.prepare_chat_mcp(
                     agent_id,

@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from octop.api.deps import current_admin, current_user, get_server
+from octop.infra.backend.adapter import row_to_backend_spec
+from octop.infra.backend.docker_spec import docker_spec_previewable
 from octop.infra.errors import ErrorCode, OctopError
 
 admin_router = APIRouter()
@@ -57,6 +59,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     """
     ak = r.access_key or ""
     masked_ak = f"{ak[:4]}{'*' * 8}" if len(ak) > 4 else "*" * len(ak)
+    spec = row_to_backend_spec(r)
     return {
         "id": r.id,
         "name": r.name,
@@ -68,6 +71,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "config_json": r.config_json,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "previewable": docker_spec_previewable(spec) if spec is not None else False,
         "created_at": r.created_at,
         "updated_at": r.updated_at,
     }
@@ -137,6 +141,14 @@ async def delete_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    assert server.app_runtime is not None
+    refs = server.app_runtime.agent_registry.find_agents_using_storage_backend(row.name)
+    if refs:
+        raise OctopError(
+            ErrorCode.STORAGE_BACKEND_REFERENCED,
+            f"storage backend {row.name!r} is referenced by {len(refs)} agent(s)",
+            details={"agents": refs},
+        )
     server.services.storage_backend_repo.delete(backend_id)
 
 
@@ -183,7 +195,7 @@ async def list_storage_backend_tree(
     try:
         return await _list_tree(row, path)
     except ValueError as exc:
-        raise OctopError(ErrorCode.NOT_FOUND, str(exc)) from exc
+        raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
 
 
 @admin_router.post("/{backend_id}/test")

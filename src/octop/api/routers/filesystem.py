@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.bwrap import ensure_bubblewrap
+from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
     list_host_subdirs,
@@ -84,6 +85,35 @@ async def ensure_bwrap(
     can warn without blocking agent config save.
     """
     return await asyncio.to_thread(ensure_bubblewrap)
+
+
+@router.get(
+    "/docker-status",
+    summary="Detect whether Docker CLI/daemon are available",
+)
+async def get_docker_status(
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Probe Docker without attempting installation.
+
+    Returns ``status`` plus ``install_script`` / ``agent_prompt`` for the UI.
+    """
+    return await asyncio.to_thread(docker_status, attempt_install=False)
+
+
+@router.post(
+    "/ensure-docker",
+    summary="Best-effort ensure Docker Engine for sandbox backends",
+)
+async def post_ensure_docker(
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Detect Docker; on Linux with passwordless sudo, try package install.
+
+    Never fails the HTTP call for missing packages — returns guidance fields
+    (``install_script``, ``agent_prompt``, ``docs_url``) for the dashboard.
+    """
+    return await asyncio.to_thread(ensure_docker)
 
 
 @router.post("/mkdir")

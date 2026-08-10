@@ -19,9 +19,17 @@ from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.runtime_limits import (
+    AGENT_RUNTIME_CONFIG_KEYS,
+    apply_agent_runtime_to_stream_request,
+    merge_agent_runtime_values,
+)
+from octop.infra.agents.runtime_limits import (
+    resolve_context_max_tokens as config_context_max_tokens,
+)
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
+from octop.infra.backend.docker_spec import enrich_docker_backend_spec
 from octop.infra.backend.resolver import (
-    backend_spec_supports_execution,
     default_agent_backend_spec,
     resolve_agent_backend_spec,
     windows_neutralize_host_root,
@@ -34,6 +42,7 @@ from octop.infra.connectors.service import ConnectorService
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.skill_package_store import SkillPackageStore
+from octop.infra.skills.workspace_catalog import list_workspace_skill_summaries
 from octop.infra.utils.ulid import new_short_id
 
 if TYPE_CHECKING:
@@ -193,6 +202,7 @@ class AgentCreateSpec:
     system_prompt: str | None = None
     icon: str | None = None
     template_name: str | None = None
+    runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
 
@@ -382,9 +392,15 @@ class AgentManager:
                         break
                 else:
                     raise RuntimeError("failed to allocate unique agent_id")
-            config = dict(spec.config)
+            config = merge_agent_runtime_values(
+                spec.config,
+                spec.runtime_config,
+            )
             if spec.persona_mbti:
                 config["persona"] = spec.persona_mbti.upper()
+            # Persist workspace path at create time (all backends share this root).
+            ws = self._paths.ensure_agent_workspace(agent_id).resolve()
+            config.setdefault("workspace_dir", str(ws))
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -420,6 +436,25 @@ class AgentManager:
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
         """Update agent config in DB and reload harness agent in the background."""
+        runtime_updates = {
+            key: kwargs.pop(key) for key in AGENT_RUNTIME_CONFIG_KEYS if key in kwargs
+        }
+        if runtime_updates:
+            raw_config = kwargs.get("config_json")
+            if raw_config is None:
+                current_row = self._repos.agent_repo.get(agent_id)
+                if current_row is None:
+                    raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+                raw_config = current_row.config_json
+            try:
+                parsed_config = json.loads(raw_config or "{}")
+            except (json.JSONDecodeError, TypeError):
+                parsed_config = {}
+            if not isinstance(parsed_config, dict):
+                parsed_config = {}
+            kwargs["config_json"] = json.dumps(
+                merge_agent_runtime_values(parsed_config, runtime_updates),
+            )
         new_name = kwargs.get("name")
         if isinstance(new_name, str):
             row = self._repos.agent_repo.get(agent_id)
@@ -527,6 +562,31 @@ class AgentManager:
         except Exception:
             return {}
 
+    def resolve_workspace_dir(self, agent_id: str, *, persist_if_missing: bool = True) -> Path:
+        """Return this agent's workspace directory (from config, else Octop default).
+
+        Same path for every backend: host sessions/memory live here; local FS
+        backends usually align content here; Docker mirrors the path inside the
+        sandbox. Legacy rows without ``config.workspace_dir`` fall back to
+        ``{OCTOP_HOME}/agents/<id>/`` and optionally backfill the DB.
+        """
+        from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+            default_agent_workspace_dir,
+            workspace_dir_from_config,
+        )
+
+        cfg = self.get_config(agent_id)
+        raw = cfg.get("workspace_dir")
+        if isinstance(raw, str) and raw.strip():
+            return workspace_dir_from_config(cfg, paths=self._paths, agent_id=agent_id)
+
+        out = default_agent_workspace_dir(self._paths, agent_id)
+        if persist_if_missing and self._repos.agent_repo.get(agent_id) is not None:
+            new_cfg = dict(cfg)
+            new_cfg["workspace_dir"] = str(out.resolve())
+            self._repos.agent_repo.update_config(agent_id, config_json=json.dumps(new_cfg))
+        return out
+
     def is_bootstrapped(self, agent_id: str) -> bool:
         """Whether onboarding has completed for a running agent."""
         try:
@@ -540,6 +600,16 @@ class AgentManager:
             agent_repo=self._repos.agent_repo,
             get_config=self.get_config,
             provider_name=provider_name,
+        )
+
+    def find_agents_using_storage_backend(self, backend_name: str) -> list[dict[str, str]]:
+        """Return agents whose ``config.backend`` references a storage backend by name."""
+        from octop.infra.backend.resolver import find_agents_using_storage_backend  # noqa: PLC0415
+
+        return find_agents_using_storage_backend(
+            agent_repo=self._repos.agent_repo,
+            get_config=self.get_config,
+            backend_name=backend_name,
         )
 
     # ------------------------------------------------------------------
@@ -890,6 +960,18 @@ class AgentManager:
             )
             return wrapped
 
+    def merge_turn_mcp_servers(
+        self,
+        user_id: int,
+        explicit: list[str] | None,
+        *,
+        apply_defaults: bool | None = None,
+    ) -> list[str] | None:
+        """Resolve turn MCP servers vs the user's default_open connectors."""
+        return self._connector_svc.merge_turn_mcp_servers(
+            user_id, explicit, apply_defaults=apply_defaults
+        )
+
     async def prepare_chat_mcp(
         self,
         agent_id: str,
@@ -1193,7 +1275,7 @@ class AgentManager:
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         normalized_ids = self.validate_skill_package_ids(package_ids)
-        workspace_dir = self._paths.ensure_agent_workspace(agent_id)
+        workspace_dir = self.resolve_workspace_dir(agent_id)
         if normalized_ids and not self._backend_supports_host_skill_packages(
             self._backend_spec_for_row(row),
             workspace_dir=workspace_dir,
@@ -1219,7 +1301,7 @@ class AgentManager:
             return
         cfg = self.get_config(agent_id)
         backend = self._backend_spec_for_row(row)
-        workspace_dir = self._paths.ensure_agent_workspace(agent_id)
+        workspace_dir = self.resolve_workspace_dir(agent_id)
         supports_packages = self._backend_supports_host_skill_packages(
             backend,
             workspace_dir=workspace_dir,
@@ -1295,6 +1377,10 @@ class AgentManager:
             self._repos.agent_repo.update_config(row.agent_id, config_json=json.dumps(cfg))
             self.sync_skill_package_dirs(row.agent_id)
 
+    def resolve_context_max_tokens(self, agent_id: str, *, fallback: int = 128_000) -> int:
+        """Return the configured context cap for *agent_id* (``max_input_length``)."""
+        return config_context_max_tokens(self.get_config(agent_id), fallback=fallback)
+
     async def list_skill_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed skills for *agent_id* (harness catalog + package ``kind`` labels).
 
@@ -1305,8 +1391,23 @@ class AgentManager:
         from octop.infra.utils.frontmatter import parse_frontmatter
 
         agent = self.get_agent(agent_id)
-        harness_rows = list(await agent.list_skill_summaries())
         cfg = self.get_config(agent_id)
+        try:
+            harness_rows = list(await agent.list_skill_summaries())
+        except (OSError, PermissionError) as exc:
+            logger.warning(
+                "harness list_skill_summaries failed for agent %s; using workspace fallback: %s",
+                agent_id,
+                exc,
+            )
+            harness_rows = []
+            workspace_dir = self.resolve_workspace_dir(agent_id)
+            harness_rows.extend(
+                list_workspace_skill_summaries(
+                    workspace_dir,
+                    skills_disabled=skills_disabled_set(cfg),
+                )
+            )
         package_ids = skill_package_ids_list(cfg)
         if not package_ids:
             return harness_rows
@@ -1523,7 +1624,7 @@ class AgentManager:
     def _backend_spec_for_row(self, row: AgentRow) -> Any:
         cfg = self._agent_config_dict(row)
         backend_spec = cfg.get("backend")
-        workspace_dir = self._paths.ensure_agent_workspace(row.agent_id)
+        workspace_dir = self.resolve_workspace_dir(row.agent_id)
         if backend_spec is None:
             return default_agent_backend_spec(workspace_dir)
         resolved = resolve_agent_backend_spec(
@@ -1534,13 +1635,38 @@ class AgentManager:
         # resolves to a drive other than the workspace and breaks path checks.
         return windows_neutralize_host_root(resolved, workspace_dir=workspace_dir)
 
+    def resolved_backend_spec(self, agent_id: str) -> Any:
+        """Backend spec for *agent_id* with Octop docker enrichments applied."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return None
+        return self._prepare_docker_backend(self._backend_spec_for_row(row), row)
+
+    def _owner_username(self, row: AgentRow) -> str | None:
+        if row.user_id is None:
+            return None
+        owner = self._repos.user_repo.get(row.user_id)
+        if owner is None:
+            return None
+        return owner.username or None
+
+    def _prepare_docker_backend(self, backend: Any, row: AgentRow) -> Any:
+        """Inject Octop docker defaults (prefix / agent_id / username) without overwrite."""
+        if not isinstance(backend, dict) or backend.get("type") != "docker":
+            return backend
+        return enrich_docker_backend_spec(
+            backend,
+            agent_id=row.agent_id,
+            username=self._owner_username(row),
+        )
+
     def _backend_workspace_for_row(self, row: AgentRow) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
         from harness_agent.backends import resolve_backend  # noqa: PLC0415
         from harness_agent.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
-        workspace_dir = self._paths.ensure_agent_workspace(row.agent_id)
-        backend = self._backend_spec_for_row(row)
+        workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        backend = self._prepare_docker_backend(self._backend_spec_for_row(row), row)
         return BackendWorkspace(
             resolve_backend(backend, workspace_dir=workspace_dir), workspace_dir
         )
@@ -1713,13 +1839,13 @@ class AgentManager:
             configurable = dict(req.get("configurable") or {})
             configurable["plugin_tool_configs"] = tool_configs
             req["configurable"] = configurable
-        return req
+        return apply_agent_runtime_to_stream_request(req, agent_cfg)
 
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
         from harness_agent.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
-        workspace_dir = self._paths.ensure_agent_workspace(row.agent_id)
+        workspace_dir = self.resolve_workspace_dir(row.agent_id)
         cfg = self._agent_config_dict(row)
 
         backend = self._backend_spec_for_row(row)
@@ -1742,9 +1868,18 @@ class AgentManager:
             global_plugins=global_plugins,
         )
         plugin_middleware = PluginRegistry().build_middleware_chain(global_enabled=global_plugins)
+        global_policy = self._security.harness_policy()
+        agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
+        policy = SecurityPolicy.merge(global_policy, agent_override)
+
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
 
-        agent_middleware = [*plugin_middleware, BinaryReadGuardMiddleware()]
+        # FilesystemGuard + ModelSettings live in harness-agent (auto-mounted).
+        # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
+        agent_middleware: list[Any] = [
+            *plugin_middleware,
+            BinaryReadGuardMiddleware(),
+        ]
 
         merged_tools: list[Any] = []
         if cron_tools:
@@ -1800,6 +1935,8 @@ class AgentManager:
         )
         skill_dirs = configured_skill_dirs + package_skill_dirs
 
+        backend = self._prepare_docker_backend(backend, row)
+
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),
             workspace_dir=workspace_dir,
@@ -1828,16 +1965,7 @@ class AgentManager:
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
-        global_policy = self._security.harness_policy()
-        agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
-        policy = SecurityPolicy.merge(global_policy, agent_override)
         applied = policy.apply_to_config(harness_cfg)
-        if backend_spec_supports_execution(applied.backend) and applied.permissions:
-            logger.debug(
-                "Omitting filesystem permissions for agent %s: backend supports shell execution",
-                row.agent_id,
-            )
-            applied = replace(applied, permissions=None)
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),

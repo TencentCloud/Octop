@@ -3,6 +3,8 @@ export interface SkillPackage {
   name: string;
   description: string;
   created_by: string;
+  creator_username?: string | null;
+  creator_display_name?: string | null;
   skill_count: number;
   icon_name?: string;
   icon_url?: string;

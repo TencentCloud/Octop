@@ -1708,7 +1708,11 @@ async function sendTurnWebSocket(
       };
       if (threadId) payload.thread_id = threadId;
       if (modelRef) payload.model = modelRef;
-      if (mcpServers && mcpServers.length > 0) payload.mcp_servers = mcpServers;
+      // Always send the array (including []) so the server can honor Dashboard
+      // opt-out of default_open connectors for this turn.
+      if (mcpServers !== undefined && mcpServers !== null) {
+        payload.mcp_servers = mcpServers;
+      }
       if (skills && skills.length > 0) payload.skills = skills;
       if (targetAgentIds && targetAgentIds.length > 0) {
         payload.target_agent_ids = targetAgentIds;

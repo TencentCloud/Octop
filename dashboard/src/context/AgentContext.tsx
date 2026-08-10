@@ -40,6 +40,11 @@ export interface OctopAgent {
   icon: string | null;
   icon_name: string | null;
   color: string | null;
+  max_iters?: number | null;
+  max_input_length?: number | null;
+  temperature?: number | null;
+  top_p?: number | null;
+  max_tokens?: number | null;
   config: Record<string, unknown>;
   /** Aggregated unread count across all sessions for this agent (current user). */
   unread_count?: number;

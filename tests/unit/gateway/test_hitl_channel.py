@@ -292,6 +292,56 @@ def test_hitl_store_gc_removes_stale_resolved() -> None:
     assert store.get(record.pending_id) is None
 
 
+def test_hitl_store_resolve_pending_for_thread() -> None:
+    store = HitlPendingStore()
+    store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk1",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {}}],
+        review_configs=None,
+    )
+    store.register(
+        thread_id="thr-b",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk2",
+        channel_type="dashboard",
+        action_requests=[{"name": "write_file", "args": {"path": "x"}}],
+        review_configs=None,
+    )
+    pending = store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=1)
+    assert pending is not None
+    assert pending.action_requests[0]["name"] == "execute"
+    assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
+
+
+def test_pending_hitl_payload() -> None:
+    from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
+
+    store = HitlPendingStore()
+    record = store.register(
+        thread_id="thr1",
+        agent_id="agent1",
+        user_id=7,
+        session_key="sk1",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {"command": "ls"}}],
+        review_configs=None,
+    )
+    payload = pending_hitl_payload(
+        store,
+        thread_id="thr1",
+        agent_id="agent1",
+        user_id=7,
+    )
+    assert payload is not None
+    assert payload["pending_id"] == record.pending_id
+    assert payload["action_requests"][0]["name"] == "execute"
+
+
 def test_hitl_store_get_pending_agent_mismatch() -> None:
     store = HitlPendingStore()
     record = store.register(

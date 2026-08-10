@@ -378,7 +378,9 @@ export default function WorkspaceDrawer({
     setEditMode(false);
     setMobilePane("tree");
     setDirEntries([]);
-    if (agentId && workspaceReady) void refreshRoot({ activateRoot: true });
+    if (agentId && workspaceReady) {
+      void refreshRoot({ activateRoot: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, agentId, workspaceReady]);
 

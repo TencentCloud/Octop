@@ -37,6 +37,9 @@ def gateway(tmp_path: Path) -> Gateway:
 
     agent_manager.stream = stream
     agent_manager.get_agent.return_value = harness
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.get_row = MagicMock(return_value=None)
 
     gw = Gateway(agent_manager=agent_manager, repos=repos)
     gw._channel_manager = MagicMock()

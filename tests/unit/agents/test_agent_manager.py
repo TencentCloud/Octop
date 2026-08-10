@@ -222,7 +222,8 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
     assert cfg.workspace_dir.name == "AGT001"
     assert cfg.workspace_dir.parent.name == "agents"
     assert cfg.bootstrap_enabled is True
-    assert cfg.permissions is None
+    # Kept for harness FilesystemGuardMiddleware (not passed to deepagents).
+    assert cfg.permissions is not None
     assert cfg.log_dir == str(manager.paths.logs_dir)
 
 
@@ -496,7 +497,7 @@ def test_backend_spec_for_row_neutralizes_host_root_on_windows(
             {"backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True}}
         )
     )
-    ws = manager._paths.ensure_agent_workspace(row.agent_id)
+    ws = manager.resolve_workspace_dir(row.agent_id)
     assert manager._backend_spec_for_row(row) == {
         "type": "local_shell",
         "root_dir": str(ws.resolve()),
@@ -504,16 +505,29 @@ def test_backend_spec_for_row_neutralizes_host_root_on_windows(
     }
 
 
-def test_build_harness_config_omits_fs_permissions_for_local_shell(manager: AgentManager) -> None:
+def test_build_harness_config_keeps_fs_permissions_for_local_shell_guard(
+    manager: AgentManager,
+) -> None:
+    """local_shell keeps permissions on config; harness mounts FilesystemGuard.
+
+    Octop must not re-mount the guard (or ModelSettings) via cfg.middleware.
+    """
+    from harness_agent.middleware.filesystem_guard import FilesystemGuardMiddleware
+    from harness_agent.middleware.model_settings import ModelSettingsMiddleware
+
     cfg = manager._build_harness_config(
         _row(config_json=json.dumps({"backend": {"type": "local_shell", "virtual_mode": True}})),
     )
     assert cfg.backend == {"type": "local_shell", "virtual_mode": True}
-    assert cfg.permissions is None
+    assert cfg.permissions is not None
+    middleware = cfg.middleware or []
+    assert not any(isinstance(item, FilesystemGuardMiddleware) for item in middleware)
+    assert not any(isinstance(item, ModelSettingsMiddleware) for item in middleware)
     cfg = manager._build_harness_config(
         _row(config_json=json.dumps({"backend": {"type": "filesystem", "virtual_mode": True}})),
     )
     assert cfg.permissions is not None
+    assert not any(isinstance(item, FilesystemGuardMiddleware) for item in (cfg.middleware or []))
 
 
 def test_build_harness_config_without_default_model(manager: AgentManager) -> None:
@@ -744,7 +758,36 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     agent = manager.get_agent(row.agent_id)
     assert agent.workspace.exists("BOOTSTRAP.md")
     assert agent.workspace.exists("AGENTS.md")
+    cfg = manager.get_config(row.agent_id)
+    assert cfg.get("workspace_dir") == str(
+        manager.paths.ensure_agent_workspace(row.agent_id).resolve()
+    )
+    assert manager.resolve_workspace_dir(row.agent_id) == Path(cfg["workspace_dir"])
     manager._harness_manager.close()
+
+
+def test_resolve_workspace_dir_uses_persisted_path(manager: AgentManager, tmp_path: Path) -> None:
+    custom = tmp_path / "custom-ws"
+    custom.mkdir()
+    manager._repos.agent_repo.create(
+        agent_id="WSDIR1",
+        user_id=None,
+        name="ws",
+        config_json=json.dumps({"workspace_dir": str(custom)}),
+    )
+    assert manager.resolve_workspace_dir("WSDIR1") == custom.resolve()
+
+
+def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(
+        agent_id="WSDIR2",
+        user_id=None,
+        name="legacy",
+        config_json="{}",
+    )
+    resolved = manager.resolve_workspace_dir("WSDIR2")
+    assert resolved == manager.paths.ensure_agent_workspace("WSDIR2").resolve()
+    assert manager.get_config("WSDIR2")["workspace_dir"] == str(resolved)
 
 
 @pytest.mark.asyncio
@@ -1012,3 +1055,41 @@ def test_mcp_tool_filter_uses_server_prefix(manager: AgentManager) -> None:
         active_servers=[mcp_name],
     )
     assert len(filtered) == 2
+
+
+def test_prepare_stream_request_maps_max_iters_to_recursion_limit(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_id = "01AGENT"
+    monkeypatch.setattr(
+        manager,
+        "get_config",
+        lambda _agent_id: {"max_iters": 17},
+    )
+    req = manager._prepare_stream_request(agent_id, {"messages": "hi"})
+    assert req["recursion_limit"] == 17
+
+
+def test_prepare_stream_request_maps_model_settings_and_max_input_tokens(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_id = "01AGENT"
+    monkeypatch.setattr(
+        manager,
+        "get_config",
+        lambda _agent_id: {
+            "temperature": 0.2,
+            "top_p": 0.95,
+            "max_tokens": 2048,
+            "max_input_length": 32000,
+        },
+    )
+    req = manager._prepare_stream_request(agent_id, {"messages": "hi"})
+    assert req["configurable"]["model_settings"] == {
+        "temperature": 0.2,
+        "top_p": 0.95,
+        "max_tokens": 2048,
+    }
+    assert req["configurable"]["max_input_tokens"] == 32000

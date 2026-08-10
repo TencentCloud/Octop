@@ -138,6 +138,13 @@ class ConnectorRepo:
                 (status, now_ts(), instance_id),
             )
 
+    def update_config_json(self, instance_id: str, config_json: str | None) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE connectors SET config_json = ?, updated_at = ? WHERE instance_id = ?",
+                (config_json, now_ts(), instance_id),
+            )
+
     def upsert_credentials(
         self,
         *,

@@ -39,16 +39,14 @@ export function normalizeComposerContext(
 /**
  * WS ``model`` field for each turn.
  *
- * A model explicitly selected in the composer wins; otherwise use the expert
- * default. Omit the field only when both are AUTO/empty.
+ * Only an explicit composer selection is sent. Auto (null/empty) omits the
+ * field so the backend resolves the expert default / catalog fallback.
  */
 export function resolveTurnModelRef(
   selectedModel: string | null | undefined,
-  agentDefaultModel: string | null | undefined,
 ): string | null {
   const selected = (selectedModel || "").trim();
-  const agentDefault = (agentDefaultModel || "").trim();
-  return selected || agentDefault || null;
+  return selected || null;
 }
 
 /** User picked a model different from the expert default (for UI chips / history). */

@@ -157,6 +157,63 @@ def test_resolve_default_model_returns_none_when_stale(store: ProviderStore) -> 
     assert ref is None
 
 
+def test_enabled_model_refs_excludes_disabled() -> None:
+    from octop.infra.agents.providers.store import enabled_model_refs
+
+    refs = enabled_model_refs(
+        "hai",
+        [
+            {"id": "keep", "enabled": True},
+            {"id": "gone", "enabled": False},
+            {"id": ""},
+        ],
+    )
+    assert refs == {"hai/keep"}
+
+
+def test_clear_stale_pins_for_provider(tmp_path: Path) -> None:
+    from octop.infra.agents.providers.store import clear_stale_pins_for_provider
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    db = SqlitePool(paths.db)
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=paths, config=OctopConfig())
+    agent_repo = services.repos.agent_repo
+    settings_repo = services.repos.settings_repo
+    agent_repo.create(
+        agent_id="01KEEP",
+        user_id=None,
+        name="keep",
+        default_model="hai/still-there",
+    )
+    agent_repo.create(
+        agent_id="01STALE",
+        user_id=None,
+        name="stale",
+        default_model="hai/deleted",
+    )
+    agent_repo.create(
+        agent_id="01OTHER",
+        user_id=None,
+        name="other",
+        default_model="other/m",
+    )
+    settings_repo.set_active_model("hai", "deleted")
+
+    cleared = clear_stale_pins_for_provider(
+        agent_repo=agent_repo,
+        settings_repo=settings_repo,
+        provider_name="hai",
+        models=[{"id": "still-there", "enabled": True}],
+    )
+    assert cleared == ["01STALE"]
+    assert agent_repo.get("01KEEP").default_model == "hai/still-there"
+    assert agent_repo.get("01STALE").default_model is None
+    assert agent_repo.get("01OTHER").default_model == "other/m"
+    assert settings_repo.get_active_model() == ("", "")
+
+
 def test_resolve_default_model_auto_returns_none(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="hai",

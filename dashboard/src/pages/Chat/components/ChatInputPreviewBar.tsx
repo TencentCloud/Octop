@@ -23,6 +23,7 @@ interface ChatInputPreviewBarProps {
     mcp_server_name: string;
     label: string;
     kind: string;
+    default_open?: boolean;
   }[];
   availableAgents: ChatAgentOption[];
   onRemoveAttachment: (index: number) => void;

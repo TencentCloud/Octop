@@ -1,0 +1,102 @@
+.drawerPanel {
+  margin: 20px 0 0;
+  padding: 16px;
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: var(--fn-radius-md);
+  background: var(
+    --fn-bg-secondary,
+    color-mix(in srgb, var(--fn-bg-primary) 94%, #2496ed 6%)
+  );
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawerTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  margin: 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-sm, 6px);
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+}
+
+.statusText {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
+.ok {
+  color: #52c41a;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.warn {
+  color: #faad14;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fn-card-border-normal);
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.sectionDesc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fn-text-tertiary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.codeBlock,
+.promptBlock {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-sm, 6px);
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.promptBlock {
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.docs {
+  font-size: 12px;
+}

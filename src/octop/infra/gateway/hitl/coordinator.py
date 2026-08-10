@@ -38,6 +38,27 @@ class HitlSlashOutcome:
     completed_turn: bool = False
 
 
+def pending_hitl_payload(
+    store: HitlPendingStore,
+    *,
+    thread_id: str,
+    agent_id: str,
+    user_id: int,
+) -> dict[str, Any] | None:
+    record = store.resolve_pending_for_thread(
+        thread_id,
+        agent_id=agent_id,
+        user_id=user_id,
+    )
+    if record is None:
+        return None
+    return {
+        "pending_id": record.pending_id,
+        "action_requests": record.action_requests,
+        "review_configs": record.review_configs,
+    }
+
+
 class HitlChannelCoordinator:
     def __init__(self, store: HitlPendingStore | None = None) -> None:
         self._store = store or HitlPendingStore()

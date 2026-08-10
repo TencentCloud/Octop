@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
+import { isAgentChatReady } from "../utils/agentError";
 import {
   listAgentSubagents,
   type AgentSubagentSummary,
@@ -97,33 +98,35 @@ export default function AgentProfileDrawer({
         setDetail(ag);
         setLoading(false);
 
-        setFilesLoading(true);
-        void fetchConfigMdFiles(agent.agent_id)
-          .then((files) => {
-            if (!cancelled) setWorkspaceFiles(files);
-          })
-          .catch(() => {
-            if (!cancelled) setWorkspaceFiles([]);
-          })
-          .finally(() => {
-            if (!cancelled) setFilesLoading(false);
-          });
+        if (isAgentChatReady(agent.state)) {
+          setFilesLoading(true);
+          void fetchConfigMdFiles(agent.agent_id)
+            .then((files) => {
+              if (!cancelled) setWorkspaceFiles(files);
+            })
+            .catch(() => {
+              if (!cancelled) setWorkspaceFiles([]);
+            })
+            .finally(() => {
+              if (!cancelled) setFilesLoading(false);
+            });
 
-        void request<SkillSummary[]>(`/agents/${agent.agent_id}/skills`)
-          .then((skills) => {
-            if (!cancelled) setAgentSkills(workspaceSkills(skills));
-          })
-          .catch(() => {
-            if (!cancelled) setAgentSkills([]);
-          });
+          void request<SkillSummary[]>(`/agents/${agent.agent_id}/skills`)
+            .then((skills) => {
+              if (!cancelled) setAgentSkills(workspaceSkills(skills));
+            })
+            .catch(() => {
+              if (!cancelled) setAgentSkills([]);
+            });
 
-        void listAgentSubagents(agent.agent_id)
-          .then((rows) => {
-            if (!cancelled) setSubagents(rows);
-          })
-          .catch(() => {
-            if (!cancelled) setSubagents([]);
-          });
+          void listAgentSubagents(agent.agent_id)
+            .then((rows) => {
+              if (!cancelled) setSubagents(rows);
+            })
+            .catch(() => {
+              if (!cancelled) setSubagents([]);
+            });
+        }
       } catch {
         if (!cancelled) setLoading(false);
       }
@@ -208,6 +211,10 @@ export default function AgentProfileDrawer({
       );
     }
 
+    if (!agent) {
+      return null;
+    }
+
     return (
       <>
         <div className={expertStyles.drawerSection}>
@@ -215,7 +222,7 @@ export default function AgentProfileDrawer({
             {t("experts.basicInfo")}
           </div>
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-            {detail?.name ?? agent?.name}
+            {detail?.name ?? agent.name}
           </div>
           <p
             style={{
@@ -227,7 +234,7 @@ export default function AgentProfileDrawer({
             }}
           >
             {detail?.description ||
-              agent?.description ||
+              agent.description ||
               t("chat.agentNoDescription")}
           </p>
           <div
@@ -242,7 +249,7 @@ export default function AgentProfileDrawer({
             <span style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}>
               {t("experts.table.persona")}
             </span>
-            <MbtiPersonaTag value={agent?.persona_mbti} />
+            <MbtiPersonaTag value={agent.persona_mbti} />
           </div>
         </div>
 
@@ -264,8 +271,15 @@ export default function AgentProfileDrawer({
                     <button
                       type="button"
                       className={styles.viewMoreLink}
+                      disabled={!isAgentChatReady(agent.state)}
+                      title={
+                        isAgentChatReady(agent.state)
+                          ? undefined
+                          : t("workspace.requiresRunning")
+                      }
                       onClick={(event) => {
                         event.stopPropagation();
+                        if (!isAgentChatReady(agent.state)) return;
                         setWorkspaceDrawerOpen(true);
                       }}
                     >

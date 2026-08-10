@@ -10,8 +10,10 @@ import {
   RotateCcw,
   Pencil,
   Volume2,
+  Settings,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
 import UserMessageComposerTags from "./UserMessageComposerTags";
@@ -38,6 +40,7 @@ import {
 import { useVoiceOutputContext } from "../../../context/VoiceOutputContext";
 import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
+  chatStreamErrorAction,
   formatChatStreamError,
   isChatStreamError,
 } from "../../../utils/chatStreamError";
@@ -498,6 +501,7 @@ function MessageBubble({
   shellCommandDisabledTitle,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -623,6 +627,7 @@ function MessageBubble({
   const errorBodyText = isError
     ? formatChatStreamError(textContent, t)
     : textContent;
+  const errorAction = isError ? chatStreamErrorAction(textContent) : null;
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) => attachment.kind === "image",
@@ -765,15 +770,29 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {onRegenerate && (
-                  <button
-                    className={styles.errorRetryBtn}
-                    onClick={() => onRegenerate(message.id)}
-                    type="button"
-                  >
-                    <RotateCcw size={13} />
-                    {t("chat.retry", "重试")}
-                  </button>
+                {(errorAction || onRegenerate) && (
+                  <div className={styles.errorActionRow}>
+                    {errorAction && (
+                      <button
+                        className={styles.errorConfigBtn}
+                        onClick={() => navigate(errorAction.path)}
+                        type="button"
+                      >
+                        <Settings size={13} />
+                        {t(errorAction.labelKey)}
+                      </button>
+                    )}
+                    {onRegenerate && (
+                      <button
+                        className={styles.errorRetryBtn}
+                        onClick={() => onRegenerate(message.id)}
+                        type="button"
+                      >
+                        <RotateCcw size={13} />
+                        {t("chat.retry", "重试")}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (

@@ -57,6 +57,7 @@ export function formatAgentError(
   return error;
 }
 
+/** Expert harness runtime is loaded (`running`); not storage-backend config. */
 export function isAgentChatReady(state: string | null | undefined): boolean {
   return state === "running";
 }

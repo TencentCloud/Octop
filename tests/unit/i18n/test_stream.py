@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from octop.i18n.domains.stream import (
     MODEL_CALL_FAILED,
+    RECURSION_LIMIT,
     STREAM_STALL,
     classify_stream_error_message,
     format_stream_error,
@@ -48,6 +49,20 @@ def test_classify_context_length() -> None:
     )
 
 
+def test_classify_recursion_limit() -> None:
+    msg = (
+        "Recursion limit of 2 reached without hitting a stop condition. "
+        "You can increase the limit by setting the `recursion_limit` config key.\n"
+        "For troubleshooting, visit: "
+        "https://docs.langchain.com/oss/python/langgraph/errors/GRAPH_RECURSION_LIMIT"
+    )
+    assert classify_stream_error_message(msg) == RECURSION_LIMIT
+    assert (
+        classify_stream_error_message("GraphRecursionError: GRAPH_RECURSION_LIMIT")
+        == RECURSION_LIMIT
+    )
+
+
 def test_classify_model_call_failed_fallback() -> None:
     assert (
         classify_stream_error_message("Model call failed after 3 attempts with RuntimeError: boom")
@@ -68,6 +83,18 @@ def test_format_stream_error_zh_guidance() -> None:
     assert "重试" in text
     assert "StreamChunkTimeoutError" not in text
     assert "LANGCHAIN" not in text
+
+
+def test_format_recursion_limit_zh_guides_to_config() -> None:
+    msg = (
+        "Recursion limit of 2 reached without hitting a stop condition. "
+        "You can increase the limit by setting the `recursion_limit` config key."
+    )
+    text = format_stream_error(msg, "zh")
+    assert "运行配置" in text
+    assert "最大迭代次数" in text
+    assert "GRAPH_RECURSION_LIMIT" not in text
+    assert "recursion_limit" not in text
 
 
 def test_stream_error_message_octop_key() -> None:

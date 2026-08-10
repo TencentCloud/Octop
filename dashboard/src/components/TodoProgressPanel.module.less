@@ -1,0 +1,109 @@
+.todoListBlock {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.02));
+}
+
+.todoProgressPanel {
+  margin-top: 0;
+  margin-bottom: 10px;
+  border-color: var(--fn-border-primary, rgba(22, 119, 255, 0.18));
+  background: var(--fn-bg-elevated, #fff);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.followingProcessSummary {
+  margin-top: 6px;
+}
+
+.todoListHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.todoListTitle {
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.todoListSummary {
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.todoListItems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todoListItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.todoListIcon {
+  display: inline-flex;
+  margin-top: 1px;
+}
+
+.todoListText {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.todoListTextCompleted,
+.todoListTextCancelled {
+  color: var(--fn-text-tertiary);
+  text-decoration: line-through;
+}
+
+.todoListStatus {
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.todoStatusPending {
+  color: #8c8c8c;
+}
+
+.todoStatusInProgress {
+  color: #1677ff;
+}
+
+.todoStatusInProgressSpin {
+  color: #1677ff;
+  animation: todoSpin 1s linear infinite;
+}
+
+@keyframes todoSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.todoStatusCompleted {
+  color: #52c41a;
+}
+
+.todoStatusCancelled {
+  color: #ff4d4f;
+}

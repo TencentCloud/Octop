@@ -381,12 +381,17 @@ export default function AgentExpertsTable({
               onChange={(checked) => void handleToggle(row, checked)}
             />
             <Tooltip
-              title={t("pageShell.workspace.title")}
+              title={
+                chatReady
+                  ? t("pageShell.workspace.title")
+                  : t("workspace.requiresRunning")
+              }
               mouseEnterDelay={0.5}
             >
               <button
                 type="button"
                 className={styles.tableActionBtn}
+                disabled={!chatReady}
                 onClick={() => setWorkspaceAgentId(row.agent_id)}
                 aria-label={t("pageShell.workspace.title")}
               >

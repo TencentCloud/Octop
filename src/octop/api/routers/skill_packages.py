@@ -146,6 +146,32 @@ def _package_payload(store: SkillPackageStore, row: SkillPackageRow) -> dict[str
     return {**asdict(row), "skills": store.list_skill_summaries(row.id)}
 
 
+def _creator_fields(server: OctopServer, created_by: str) -> dict[str, str | None]:
+    raw = str(created_by or "").strip()
+    if not raw.isdigit():
+        return {"creator_username": None, "creator_display_name": None}
+    if server.services is None:
+        return {"creator_username": None, "creator_display_name": None}
+    owner = server.services.user_repo.get(int(raw))
+    if owner is None:
+        return {"creator_username": None, "creator_display_name": None}
+    return {
+        "creator_username": owner.username,
+        "creator_display_name": owner.display_name or owner.username,
+    }
+
+
+def _package_payload_with_creator(
+    server: OctopServer,
+    store: SkillPackageStore,
+    row: SkillPackageRow,
+) -> dict[str, Any]:
+    return {
+        **_package_payload(store, row),
+        **_creator_fields(server, row.created_by),
+    }
+
+
 def _required(value: str, field: str) -> str:
     value = value.strip()
     if not value:
@@ -201,7 +227,9 @@ async def list_skill_packages(
     _user: User = Depends(current_user),
 ) -> list[dict[str, Any]]:
     store = _store(server)
-    return [asdict(row) for row in store.repo.list_all()]
+    return [
+        {**asdict(row), **_creator_fields(server, row.created_by)} for row in store.repo.list_all()
+    ]
 
 
 @router.get("/hub/search", summary="Search SkillHub for installing into packages")
@@ -268,7 +296,7 @@ async def create_skill_package(
         if is_skill_package_name_conflict(exc):
             raise_skill_package_name_taken(name)
         raise
-    return _package_payload(store, row)
+    return _package_payload_with_creator(server, store, row)
 
 
 @router.post(
@@ -295,7 +323,7 @@ async def create_from_skillhub(
         )
     except (SkillHubMarketError, SkillHubDownloadError) as exc:
         raise _map_skillhub_error(exc) from exc
-    return _package_payload(store, result.row)
+    return _package_payload_with_creator(server, store, result.row)
 
 
 @router.get("/{package_id}", summary="Get a global skill package and its skills")
@@ -307,7 +335,7 @@ async def get_skill_package(
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload(store, row)
+    return _package_payload_with_creator(server, store, row)
 
 
 @router.patch("/{package_id}", summary="Update global skill package metadata")
@@ -338,7 +366,7 @@ async def update_skill_package(
             raise_skill_package_name_taken(name)
         raise
     updated = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload(store, updated)
+    return _package_payload_with_creator(server, store, updated)
 
 
 @router.delete(

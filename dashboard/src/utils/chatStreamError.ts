@@ -7,12 +7,30 @@ const STREAM_ERROR_KEYS = [
   "stream_errors.rate_limit",
   "stream_errors.auth",
   "stream_errors.context_length",
+  "stream_errors.recursion_limit",
   "stream_errors.timeout_network",
   "stream_errors.provider_unavailable",
   "stream_errors.model_call_failed",
 ] as const;
 
 export type StreamErrorKey = (typeof STREAM_ERROR_KEYS)[number];
+
+export type StreamErrorAction = {
+  path: string;
+  labelKey: string;
+};
+
+const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
+  {
+    "stream_errors.auth": {
+      path: "/admin/models",
+      labelKey: "modelConfig.configureButton",
+    },
+    "stream_errors.recursion_limit": {
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    },
+  };
 
 function normalizeMessage(message: string): string {
   let msg = message.trim();
@@ -75,6 +93,16 @@ export function classifyChatStreamError(
   }
 
   if (
+    lower.includes("graph_recursion_limit") ||
+    compact.includes("graphrecursionerror") ||
+    lower.includes("recursion limit of") ||
+    (lower.includes("recursion_limit") &&
+      (lower.includes("reached") || lower.includes("without hitting a stop")))
+  ) {
+    return "stream_errors.recursion_limit";
+  }
+
+  if (
     compact.includes("internalservererror") ||
     lower.includes("bad gateway") ||
     lower.includes("service unavailable") ||
@@ -115,4 +143,13 @@ export function formatChatStreamError(
   const key = classifyChatStreamError(message);
   if (!key) return message;
   return t(key, { defaultValue: message });
+}
+
+/** Optional settings deep-link for known stream failures. */
+export function chatStreamErrorAction(
+  message: string | null | undefined,
+): StreamErrorAction | null {
+  const key = classifyChatStreamError(message);
+  if (!key) return null;
+  return STREAM_ERROR_ACTIONS[key] ?? null;
 }

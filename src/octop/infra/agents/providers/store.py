@@ -51,6 +51,46 @@ def _model_dict_supports_image(model: dict[str, Any]) -> bool:
     return "image" in _infer_model_input_modalities(model_id, explicit)
 
 
+def enabled_model_refs(provider_name: str, models: list[dict[str, Any]]) -> set[str]:
+    """Return ``provider/model`` refs for enabled entries with a non-empty id."""
+    refs: set[str] = set()
+    for model in models:
+        model_id = str(model.get("id") or "").strip()
+        if not model_id or not model.get("enabled", True):
+            continue
+        refs.add(f"{provider_name}/{model_id}")
+    return refs
+
+
+def clear_stale_pins_for_provider(
+    *,
+    agent_repo: Any,
+    settings_repo: Any,
+    provider_name: str,
+    models: list[dict[str, Any]],
+) -> list[str]:
+    """Clear agent / active-model pins for *provider_name* missing from *models*.
+
+    One pass over agents. Returns cleared agent ids. Covers models removed in the
+    current patch and pins left stale by earlier deletes.
+    """
+    valid = enabled_model_refs(provider_name, models)
+    prefix = f"{provider_name}/"
+    cleared: list[str] = []
+    for row in agent_repo.list_all():
+        dm = (row.default_model or "").strip()
+        if not dm.startswith(prefix) or dm in valid:
+            continue
+        agent_repo.update_config(row.agent_id, default_model=None)
+        cleared.append(row.agent_id)
+    active_name, active_model = settings_repo.get_active_model()
+    if active_name == provider_name and active_model:
+        ref = f"{active_name}/{active_model}"
+        if ref not in valid:
+            settings_repo.delete("active_model")
+    return cleared
+
+
 class ProviderStore:
     """Maps persisted provider rows to harness runtime provider configs."""
 
@@ -219,4 +259,9 @@ class ProviderStore:
         return refs
 
 
-__all__ = ["KIND_TO_PROTOCOL", "ProviderStore"]
+__all__ = [
+    "KIND_TO_PROTOCOL",
+    "ProviderStore",
+    "clear_stale_pins_for_provider",
+    "enabled_model_refs",
+]

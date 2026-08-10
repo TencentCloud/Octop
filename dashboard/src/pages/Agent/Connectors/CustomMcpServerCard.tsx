@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Button, Input, Modal, Select, Switch } from "antd";
+import { Alert, Button, Input, Modal, Select, Switch } from "antd";
 import {
   Activity,
   Cable,
@@ -260,6 +260,36 @@ export function CustomMcpServerCard({
               </div>
             </>
           )}
+
+          <div className={styles.customMcpField}>
+            <label>{t("connectors.defaultOpen", "是否默认打开")}</label>
+            <div className={styles.customMcpDefaultOpenRow}>
+              <Switch
+                checked={card.defaultOpen}
+                onChange={(checked) =>
+                  onUpdate(card.key, { defaultOpen: checked })
+                }
+              />
+              {!card.defaultOpen ? (
+                <span className={styles.customMcpFieldHint}>
+                  {t(
+                    "connectors.defaultOpenHint",
+                    "关闭时需在对话中手动勾选才会注入工具。",
+                  )}
+                </span>
+              ) : null}
+            </div>
+            {card.defaultOpen ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={t(
+                  "connectors.defaultOpenWarning",
+                  "开启后默认会在 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
+                )}
+              />
+            ) : null}
+          </div>
 
           <div className={styles.customMcpCardActions}>
             <Button

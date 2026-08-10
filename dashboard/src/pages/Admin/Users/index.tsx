@@ -48,6 +48,7 @@ import {
   LockOpen,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
   User,
@@ -522,6 +523,7 @@ export default function AdminUsersPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [agentDrawerUser, setAgentDrawerUser] = useState<UserRow | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
 
   const roleOptions = [
@@ -570,6 +572,16 @@ export default function AdminUsersPage() {
   const drawerAgents = agentDrawerUser
     ? agentsByUserId.get(agentDrawerUser.id) ?? []
     : [];
+
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) => {
+      const username = row.username.toLowerCase();
+      const displayName = (row.display_name ?? "").trim().toLowerCase();
+      return username.includes(query) || displayName.includes(query);
+    });
+  }, [rows, searchQuery]);
 
   const refreshUsers = useCallback(async () => {
     setLoading(true);
@@ -765,9 +777,14 @@ export default function AdminUsersPage() {
     >
       <div className={styles.pageTop}>
         <div className={expertStyles.gridToolbar}>
-          <span className={expertStyles.gridCount}>
-            {t("adminUsers.totalUsers", { count: rows.length })}
-          </span>
+          <Input
+            allowClear
+            prefix={<Search size={14} />}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t("adminUsers.searchPlaceholder")}
+            className={styles.userSearch}
+          />
           <div className={expertStyles.gridToolbarRight}>
             <Segmented
               size="small"
@@ -814,7 +831,7 @@ export default function AdminUsersPage() {
 
       {showCardView ? (
         <UserCardGrid
-          rows={rows}
+          rows={filteredRows}
           loading={loading}
           agentsByUserId={agentsByUserId}
           agentsLoading={agentsLoading}
@@ -835,7 +852,7 @@ export default function AdminUsersPage() {
         <Table<UserRow>
           rowKey="id"
           loading={loading}
-          dataSource={rows}
+          dataSource={filteredRows}
           pagination={false}
           scroll={{ x: "max-content" }}
           columns={[

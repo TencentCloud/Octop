@@ -20,6 +20,7 @@ from octop.infra.agents.providers.probe import (
     provider_headers,
 )
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
+from octop.infra.agents.providers.store import clear_stale_pins_for_provider
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.providers.codex_apply import (
     CODEX_PROVIDER_NAME,
@@ -238,6 +239,13 @@ async def admin_patch_provider(
         note=body.note,
         enabled=body.enabled,
     )
+    if body.models is not None:
+        clear_stale_pins_for_provider(
+            agent_repo=server.services.agent_repo,
+            settings_repo=server.services.settings_repo,
+            provider_name=row.name,
+            models=body.models,
+        )
     if server.app_runtime and _patch_requires_provider_rehydrate(body):
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
     return _row_to_dict(server.services.provider_repo.get(provider_id))

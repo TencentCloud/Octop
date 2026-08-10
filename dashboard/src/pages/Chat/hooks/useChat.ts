@@ -27,6 +27,7 @@ import { normalizeComposerContext } from "../utils/chatMessages";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { isImageAttachment } from "../utils/chatAttachments";
 import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
+import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
 import type {
   ChatAttachment,
   ChatMessage,
@@ -483,6 +484,7 @@ function toHistoryContentBlocks(content: unknown): unknown[] {
 }
 
 function isDisplayableHistoryMessage(message: ChatMessage): boolean {
+  if (message.hitlData) return true;
   if (message.toolData) return true;
   if (message.attachments && message.attachments.length > 0) return true;
   if (message.contentBlocks?.some((block) => block.content.trim())) return true;
@@ -548,14 +550,17 @@ async function loadThreadHistory(
       limit,
       offset,
     });
-    const messages = convertHistoryMessages(
-      history.messages.filter(
-        (message) =>
-          message.role === "user" ||
-          message.role === "assistant" ||
-          message.role === "tool",
+    const messages = injectPendingHitlMessage(
+      convertHistoryMessages(
+        history.messages.filter(
+          (message) =>
+            message.role === "user" ||
+            message.role === "assistant" ||
+            message.role === "tool",
+        ),
+        agentId,
       ),
-      agentId,
+      history.hitl_pending,
     );
     return {
       messages,

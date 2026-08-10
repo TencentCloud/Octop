@@ -26,6 +26,7 @@ const AdvancedSettingsPage = lazy(
 );
 const AdminStoragePage = lazy(() => import("../pages/Admin/Storage"));
 const AdminPluginsPage = lazy(() => import("../pages/Admin/Plugins"));
+const AgentConfigPage = lazy(() => import("../pages/Agent/Config"));
 
 // Misc
 const PwaDebugPage = lazy(() => import("../pages/PwaDebug"));
@@ -58,6 +59,7 @@ export const pathToKey: Record<string, string> = {
   "/personalization/memory": "personalization",
   "/skills": "personalization",
   "/token-usage": "token-usage",
+  "/agent-config": "agent-config",
   // Control
   "/channels": "channels",
   "/workbench": "workbench",
@@ -240,7 +242,7 @@ export const routeConfigs: RouteConfig[] = [
     element: <Navigate to="/admin/advanced" replace />,
   },
   { path: "/environments", element: <Navigate to="/admin/advanced" replace /> },
-  { path: "/agent-config", element: <Navigate to="/admin/advanced" replace /> },
+  { path: "/agent-config", element: <AgentConfigPage /> },
   {
     path: "/updates",
     element: <Navigate to="/admin/advanced?tab=updates" replace />,

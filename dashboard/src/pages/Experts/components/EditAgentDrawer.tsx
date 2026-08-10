@@ -8,7 +8,6 @@ import {
   Dropdown,
   Form,
   Input,
-  InputNumber,
   Modal,
   Select,
   Spin,
@@ -17,6 +16,7 @@ import { message } from "@/utils/antdMessage";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
+import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
@@ -29,6 +29,11 @@ import {
   defaultModelToForm,
 } from "../../../utils/modelOptions";
 import { metaForFile } from "./iconForName";
+import {
+  buildAgentRuntimeRequest,
+  omitAgentRuntimeConfig,
+  readAgentRuntimeFormValues,
+} from "../../../utils/agentRuntimeConfig";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import FileEditModal from "./FileEditModal";
 import { fetchConfigMdFiles } from "./expertFileGroups";
@@ -54,6 +59,11 @@ interface AgentDetail {
   name: string;
   description: string | null;
   default_model: string | null;
+  max_iters?: number | null;
+  max_input_length?: number | null;
+  temperature?: number | null;
+  top_p?: number | null;
+  max_tokens?: number | null;
   config?: Record<string, unknown>;
 }
 
@@ -105,16 +115,6 @@ interface EditAgentDrawerProps {
       "agent_id" | "name" | "description" | "default_model"
     >,
   ) => void;
-}
-
-function readNumber(
-  cfg: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = cfg[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
 }
 
 interface EditAgentDrawerBodyProps {
@@ -188,11 +188,7 @@ function EditAgentDrawerBody({
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
-          max_iters: readNumber(cfg, "max_iters"),
-          max_input_length: readNumber(cfg, "max_input_length"),
-          temperature: readNumber(cfg, "temperature"),
-          top_p: readNumber(cfg, "top_p"),
-          max_tokens: readNumber(cfg, "max_tokens"),
+          ...readAgentRuntimeFormValues(ag),
         });
         setLoading(false);
 
@@ -282,26 +278,10 @@ function EditAgentDrawerBody({
         values.root_dir,
       );
 
-      const nextConfig: Record<string, unknown> = {
+      const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
         backend: backendSpec,
-      };
-
-      const optionalNumbers: Array<[keyof EditFormValues, string]> = [
-        ["max_iters", "max_iters"],
-        ["max_input_length", "max_input_length"],
-        ["temperature", "temperature"],
-        ["top_p", "top_p"],
-        ["max_tokens", "max_tokens"],
-      ];
-      for (const [formKey, cfgKey] of optionalNumbers) {
-        const val = values[formKey];
-        if (typeof val === "number" && Number.isFinite(val)) {
-          nextConfig[cfgKey] = val;
-        } else {
-          delete nextConfig[cfgKey];
-        }
-      }
+      });
 
       await request(`/agents/${agent.agent_id}`, {
         method: "PATCH",
@@ -310,6 +290,7 @@ function EditAgentDrawerBody({
           description: values.description || null,
           default_model: defaultModelFromForm(values.default_model),
           config: nextConfig,
+          ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
       message.success(t("common.save") + " ✓");
@@ -565,62 +546,7 @@ function EditAgentDrawerBody({
                   label: t("experts.advancedOptions"),
                   children: (
                     <Form form={form} layout="vertical" size="middle">
-                      <Form.Item
-                        name="max_iters"
-                        label={t("agentConfig.maxIters")}
-                        tooltip={t("agentConfig.maxItersTooltip")}
-                      >
-                        <InputNumber
-                          min={1}
-                          style={{ width: "100%" }}
-                          placeholder={t("agentConfig.maxItersPlaceholder")}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="max_input_length"
-                        label={t("agentConfig.maxInputLength")}
-                        tooltip={t("agentConfig.maxInputLengthTooltip")}
-                      >
-                        <InputNumber
-                          min={1000}
-                          step={1024}
-                          style={{ width: "100%" }}
-                          placeholder={t(
-                            "agentConfig.maxInputLengthPlaceholder",
-                          )}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="temperature"
-                        label={t("experts.temperature")}
-                        tooltip={t("experts.temperatureTooltip")}
-                      >
-                        <InputNumber
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          style={{ width: "100%" }}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="top_p"
-                        label={t("experts.topP")}
-                        tooltip={t("experts.topPTooltip")}
-                      >
-                        <InputNumber
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          style={{ width: "100%" }}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="max_tokens"
-                        label={t("experts.maxTokens")}
-                        tooltip={t("experts.maxTokensTooltip")}
-                      >
-                        <InputNumber min={1} style={{ width: "100%" }} />
-                      </Form.Item>
+                      <AgentAdvancedConfigFields />
                     </Form>
                   ),
                 },

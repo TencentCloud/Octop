@@ -286,3 +286,74 @@ def test_custom_mcp_name_conflicts_with_builtin(svc: ConnectorService, db: Sqlit
                 }
             },
         )
+
+
+def test_normalize_preserves_default_open():
+    spec = normalize_server_spec(
+        "deepwiki",
+        {
+            "transport": "streamable_http",
+            "url": "https://mcp.deepwiki.com/mcp",
+            "default_open": True,
+        },
+    )
+    assert spec["default_open"] is True
+    harness = harness_spec_for_server(spec)
+    assert "default_open" not in harness
+
+
+def test_default_open_false_by_default_and_listed(svc: ConnectorService, db: SqlitePool):
+    uid = _ensure_user(db)
+    svc.put_custom_servers(
+        uid,
+        {
+            "always": {
+                "transport": "streamable_http",
+                "url": "https://mcp.example.com/mcp",
+                "default_open": True,
+            },
+            "opt": {
+                "transport": "stdio",
+                "command": "npx",
+            },
+        },
+    )
+    listed = {row["mcp_server_name"]: row for row in svc.list_instances_for_api(uid)}
+    assert listed["always"]["default_open"] is True
+    assert listed["opt"]["default_open"] is False
+
+
+def test_list_default_open_mcp_server_names(svc: ConnectorService, db: SqlitePool):
+    uid = _ensure_user(db)
+    iid = new_ulid()
+    svc._repo.create(
+        instance_id=iid,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="docs",
+        mcp_server_name=mcp_server_name("tencent-docs", iid),
+        config_json='{"default_open": true}',
+    )
+    from octop.infra.connectors.crypto import encrypt_credentials
+
+    blob = encrypt_credentials(svc._secret_repo, {"token": "t", "instance_id": iid})
+    svc._repo.upsert_credentials(instance_id=iid, blob=blob)
+
+    svc.put_custom_servers(
+        uid,
+        {
+            "always": {
+                "transport": "streamable_http",
+                "url": "https://mcp.example.com/mcp",
+                "default_open": True,
+            },
+            "opt": {
+                "transport": "stdio",
+                "command": "npx",
+            },
+        },
+    )
+    names = svc.list_default_open_mcp_server_names(uid)
+    assert mcp_server_name("tencent-docs", iid) in names
+    assert "always" in names
+    assert "opt" not in names

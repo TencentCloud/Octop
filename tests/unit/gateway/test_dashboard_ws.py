@@ -207,6 +207,64 @@ def test_enrich_media_block_preview_file_url() -> None:
 
 
 @pytest.mark.asyncio
+async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    async def _stream(*_args: object, **_kwargs: object):
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [{"name": "execute", "args": {"command": "ls"}}],
+            },
+        }
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-hitl")
+
+    hitl = HitlChannelCoordinator()
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+        hitl=hitl,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="run ls")],
+        metadata={"session_key": "sk", "thread_id": "thread-hitl"},
+    )
+
+    chunks = [c async for c in processor.iter_turn_chunks(msg)]
+    assert any(c.get("type") == "hitl_required" for c in chunks)
+    pending = hitl.store.resolve_pending_for_thread(
+        "thread-hitl",
+        agent_id="agent-1",
+        user_id=1,
+    )
+    assert pending is not None
+    assert pending.action_requests[0]["name"] == "execute"
+
+
+@pytest.mark.asyncio
 async def test_global_processor_iter_turn_chunks_slash() -> None:
     from unittest.mock import AsyncMock, MagicMock
 

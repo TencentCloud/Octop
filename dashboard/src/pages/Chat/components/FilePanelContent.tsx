@@ -196,7 +196,12 @@ export default function FilePanelContent({
     } catch (err: unknown) {
       if (isNotFoundApiError(err)) {
         setFileMissing(true);
-        message.warning(t("workspace.fileMaybeDeleted", "文件可能已被删除"));
+        message.warning(
+          t(
+            "chat.dockFileMaybeDeleted",
+            "该文件可能为处理过程中的临时文件，当前已经被删除。",
+          ),
+        );
         return;
       }
       message.error(
@@ -343,7 +348,10 @@ export default function FilePanelContent({
               aria-hidden
             />
             <p className={styles.fileMissingTitle}>
-              {t("workspace.fileMaybeDeleted", "文件可能已被删除")}
+              {t(
+                "chat.dockFileMaybeDeleted",
+                "该文件可能为处理过程中的临时文件，当前已经被删除。",
+              )}
             </p>
           </div>
         ) : (
