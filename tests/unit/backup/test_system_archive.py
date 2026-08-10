@@ -163,9 +163,7 @@ def _make_migration_backup(
             "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
             (username, "lc_hash", "user", 1),
         )
-        uid = conn.execute(
-            "SELECT id FROM users WHERE username = ?", (username,)
-        ).fetchone()[0]
+        uid = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
         conn.execute(
             "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
             " VALUES (?, ?, ?, 1, 1)",
