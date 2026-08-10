@@ -288,9 +288,7 @@ async def test_delete_removed_skill_is_idempotent(env: Any) -> None:
         headers=auth,
         json={"name": "tmp-skill", "content": SAMPLE_SKILL},
     )
-    assert (
-        await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)
-    ).status_code == 204
+    assert (await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)).status_code == 204
     # Second delete after the soft-delete marker is a no-op success.
     r = await c.delete(f"/api/agents/{aid}/skills/tmp-skill", headers=auth)
     assert r.status_code == 204
