@@ -56,6 +56,7 @@ def _row(
     agent_id: str = "01AGENT",
     config_json: str | None = None,
     default_model: str | None = None,
+    system_prompt: str | None = None,
 ) -> AgentRow:
     return AgentRow(
         id=1,
@@ -65,7 +66,7 @@ def _row(
         description=None,
         persona_mbti=None,
         default_model=default_model,
-        system_prompt=None,
+        system_prompt=system_prompt,
         enabled=1,
         config_json=config_json,
         last_state=None,
@@ -234,6 +235,20 @@ def test_build_harness_config_enables_bootstrap_for_expert_template(manager: Age
         replace(_row(agent_id="AGT001"), template_name="cvm-ai-doctor"),
     )
     assert cfg.bootstrap_enabled is True
+
+
+def test_build_harness_config_loads_identity_when_bootstrapped(manager: AgentManager) -> None:
+    """With the bootstrap marker present, persona/system_prompt survive and memory
+    is left to the harness (auto-loads workspace SOUL.md etc.) — so the first
+    message speaks as the assigned identity rather than a blank slate."""
+    row = _row(agent_id="AGT001", system_prompt="<persona>")
+    ws = manager._paths.ensure_agent_workspace("AGT001")
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+
+    cfg = manager._build_harness_config(row)
+
+    assert cfg.system_prompt == "<persona>"
+    assert cfg.memory is None
 
 
 def _fs_backend(ws: Path) -> dict[str, str]:

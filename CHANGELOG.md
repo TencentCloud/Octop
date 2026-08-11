@@ -17,6 +17,7 @@
 - 删除被专家 `named` 引用的存储后端时返回 `STORAGE_BACKEND_REFERENCED` 并列出引用专家
 
 ### 修复
+- 从专家模板新建的 agent，第一次对话不再回答"我还是一片空白"：此前 bootstrap 仪式会把首条消息的 system prompt 整体替换为 BOOTSTRAP.md（"记忆是空的，一切从零开始"），吞掉模板预置的身份（SOUL.md/IDENTITY.md）；现在模板文件 seed 成功后即写入完成标记 `.bootstrapped`，agent 从第一条消息起就以所赋身份作答。自定义（无模板）agent 仍保留原 onboarding 流程
 - 超大图片不再降级为附件路径提示：超过视觉嵌入上限（2 MB）的图片由 Pillow 压缩缩放至最长边 1568px 后仍以内联图片嵌入请求（保留 EXIF 方向与透明通道，仅当压缩失败时才回退为路径提示），视觉模型自动升级随之生效 (#219)
 
 ## [0.9.20] - 2026-08-09

@@ -935,6 +935,73 @@ async def test_on_provider_changed_removes_stale_provider(tmp_path: Path, monkey
 
 
 @pytest.mark.asyncio
+async def test_create_with_template_marks_bootstrapped(tmp_path: Path) -> None:
+    """create() from an expert template writes the bootstrap marker so the first
+    message speaks with its seeded identity instead of a blank-slate onboarding."""
+    from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
+        Expert,
+        ExpertCatalog,
+        ExpertSummary,
+    )
+
+    services = _make_services(tmp_path)
+    expert_dir = tmp_path / "experts-lib" / "my-expert"
+    expert_dir.mkdir(parents=True)
+    (expert_dir / "SOUL.md").write_text("# Soul", encoding="utf-8")
+
+    fake_entry = MagicMock()
+    fake_entry.agent.backend = MagicMock()
+    fake_hm = _make_fake_hm()
+    fake_hm.create_agent = MagicMock(return_value=fake_entry)
+
+    fake_catalog = MagicMock(spec=ExpertCatalog)
+    fake_catalog.get = MagicMock(
+        return_value=Expert(
+            summary=ExpertSummary(
+                id="my-expert",
+                label_zh="测试",
+                label_en="Test",
+                description_zh="",
+                description_en="",
+            ),
+            files=["SOUL.md"],
+            prompt_files=["SOUL.md"],
+        )
+    )
+    fake_catalog.expert_dir = MagicMock(return_value=expert_dir)
+
+    registry = _attach_registry(
+        services,
+        fake_hm=fake_hm,
+        expert_catalog=fake_catalog,
+    )
+    _bootstrap_factory_from_db(registry, fake_hm)
+
+    row = await registry.create(AgentCreateSpec(name="expert-bot", template_name="my-expert"))
+
+    ws = services.paths.agent_workspace(row.agent_id)
+    assert (ws / ".bootstrapped").is_file()
+
+
+@pytest.mark.asyncio
+async def test_create_without_template_no_bootstrapped_marker(tmp_path: Path) -> None:
+    """create() without a template must not skip onboarding for blank agents."""
+    services = _make_services(tmp_path)
+    fake_entry = MagicMock()
+    fake_entry.agent.backend = MagicMock()
+    fake_hm = _make_fake_hm()
+    fake_hm.shared_factory = MagicMock()
+    fake_hm.create_agent = MagicMock(return_value=fake_entry)
+
+    registry = AgentManager(repos=services.repos, paths=services.paths)
+    registry._harness_manager = fake_hm
+
+    row = await registry.create(AgentCreateSpec(name="plain-bot"))
+
+    assert not (services.paths.agent_workspace(row.agent_id) / ".bootstrapped").exists()
+
+
+@pytest.mark.asyncio
 async def test_create_with_template_writes_files(tmp_path: Path) -> None:
     """create() with template_name uploads expert files to the agent backend."""
     from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
