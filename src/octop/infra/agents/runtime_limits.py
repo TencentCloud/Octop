@@ -57,7 +57,7 @@ def agent_max_input_tokens(cfg: dict[str, Any]) -> int | None:
 def _unit_float(value: Any, *, min_val: float, max_val: float) -> float | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         parsed = float(value)
         return parsed if min_val <= parsed <= max_val else None
     if isinstance(value, str):

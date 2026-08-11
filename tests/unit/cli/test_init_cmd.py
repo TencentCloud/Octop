@@ -27,7 +27,7 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
             "--admin-username",
             "alice",
             "--admin-password",
-            "wonderland",
+            "Wonderland1",
             "--yes",
         ],
     )
@@ -48,7 +48,14 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
 
 def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:
     runner = CliRunner()
-    args = ["init", "--admin-username", "alice", "--admin-password", "pw1234", "--yes"]
+    args = [
+        "init",
+        "--admin-username",
+        "alice",
+        "--admin-password",
+        "TestPass12",
+        "--yes",
+    ]
     r1 = runner.invoke(cli, args)
     assert r1.exit_code == 0
     r2 = runner.invoke(cli, args)
@@ -61,14 +68,21 @@ def test_init_force_resets(fake_home: Path) -> None:
     if os.name == "nt":
         pytest.skip("Windows may lock SQLite during init force reset")
     runner = CliRunner()
-    args_a = ["init", "--admin-username", "alice", "--admin-password", "pw1234", "--yes"]
+    args_a = [
+        "init",
+        "--admin-username",
+        "alice",
+        "--admin-password",
+        "TestPass12",
+        "--yes",
+    ]
     args_b = [
         "init",
         "--force",
         "--admin-username",
         "bob",
         "--admin-password",
-        "pw5678",
+        "TestPass34",
         "--yes",
     ]
     runner.invoke(cli, args_a)
@@ -96,7 +110,7 @@ def test_init_password_too_short_rejects(fake_home: Path) -> None:
 
 def test_init_env_vars_supply_credentials(fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_ADMIN_USERNAME", "fromenv")
-    monkeypatch.setenv("OCTOP_ADMIN_PASSWORD", "envpass1")
+    monkeypatch.setenv("OCTOP_ADMIN_PASSWORD", "EnvPass12")
     runner = CliRunner()
     result = runner.invoke(cli, ["init", "--yes"])
     assert result.exit_code == 0, result.output

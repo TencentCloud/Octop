@@ -26,11 +26,11 @@ async def test_admin_only_admin_can_create(env):
     await c.post(
         "/api/users",
         headers=admin_auth,
-        json={"username": "regular", "password": "pw", "role": "user"},
+        json={"username": "regular", "password": "TestPass12", "role": "user"},
     )
-    tok = (await c.post("/api/auth/login", json={"username": "regular", "password": "pw"})).json()[
-        "access_token"
-    ]
+    tok = (
+        await c.post("/api/auth/login", json={"username": "regular", "password": "TestPass12"})
+    ).json()["access_token"]
     user_auth = {"Authorization": f"Bearer {tok}"}
 
     r = await c.post(

@@ -117,17 +117,17 @@ def _enforce_wizard_token_phase(server: Any) -> None:
 
 def _extract_bearer(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
-        raise OctopError(ErrorCode.AUTH_FAILED, "wizard token required")
+        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "wizard token required")
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
-        raise OctopError(ErrorCode.AUTH_FAILED, "wizard token required")
+        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "wizard token required")
     return token
 
 
 def _require_wizard_token(authorization: str | None, server: Any) -> str:
     token = _extract_bearer(authorization)
     if not server.wizard_tokens.validate(token):
-        raise OctopError(ErrorCode.AUTH_FAILED, "invalid or expired wizard token")
+        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "invalid or expired wizard token")
     return token
 
 
@@ -149,7 +149,7 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
                 return None
         except OctopError:
             pass
-    raise OctopError(ErrorCode.AUTH_FAILED, "invalid or expired wizard token")
+    raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "invalid or expired wizard token")
 
 
 async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
@@ -318,7 +318,7 @@ async def begin_setup(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Issue a wizard token when ``require_setup_password`` is disabled."""
     _enforce_wizard_open(server)
     if _setup_password_required(server):
-        raise OctopError(ErrorCode.AUTH_FAILED, "setup password required")
+        raise OctopError(ErrorCode.FORBIDDEN, "setup password required")
     token, ttl = server.wizard_tokens.issue()
     return {"wizard_token": token, "expires_in": ttl}
 
@@ -332,15 +332,15 @@ async def verify_password(
     """Validate the CLI-generated wizard password and return a short-lived wizard token."""
     _enforce_wizard_open(server)
     if not _setup_password_required(server):
-        raise OctopError(ErrorCode.AUTH_FAILED, "setup password not required")
+        raise OctopError(ErrorCode.FORBIDDEN, "setup password not required")
     client_ip = request.client.host if request.client else "unknown"
     try:
         server.wizard_tokens.record_attempt(client_ip)
     except RateLimited:
-        raise OctopError(ErrorCode.AUTH_FAILED, "too many attempts", status=429) from None
+        raise OctopError(ErrorCode.SETUP_RATE_LIMITED, "too many attempts") from None
     expected = _wizard.read_password(Path.home())
     if expected is None or body.password != expected:
-        raise OctopError(ErrorCode.AUTH_FAILED, "wrong password")
+        raise OctopError(ErrorCode.SETUP_PASSWORD_WRONG, "wrong password")
     token, ttl = server.wizard_tokens.issue()
     return {"wizard_token": token, "expires_in": ttl}
 
@@ -389,7 +389,7 @@ async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
     require_database(server)
     assert server.user_manager is not None
     if server.user_manager.count() == 0:
-        raise OctopError(ErrorCode.AUTH_FAILED, "admin not created yet", status=400)
+        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "admin not created yet", status=400)
     token, ttl = server.wizard_tokens.issue()
     return {"wizard_token": token, "expires_in": ttl}
 

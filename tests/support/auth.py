@@ -9,6 +9,9 @@ import httpx
 
 from octop.infra.setup.password_file import WIZARD_FILE_NAME, read_password
 
+# Meets ``validate_password_policy`` (letter + digit, length ≥ 8).
+TEST_PASSWORD = "TestPass12"
+
 
 def _wizard_password_home(home: Path) -> Path:
     """Resolve wizard password dir: file lives at ``~/octop-login.txt``, not under ``~/.octop/``."""
@@ -31,7 +34,7 @@ async def bootstrap_admin(
     home: Path,
     *,
     username: str = "admin",
-    password: str = "pw",
+    password: str = TEST_PASSWORD,
 ) -> httpx.Response:
     """Run verify-password → initial-admin → finish (creates default ``main`` agent)."""
     pw = read_password(_wizard_password_home(home))
@@ -57,7 +60,7 @@ async def login(
     client: httpx.AsyncClient,
     *,
     username: str = "admin",
-    password: str = "pw",
+    password: str = TEST_PASSWORD,
 ) -> str:
     r = await client.post("/api/auth/login", json={"username": username, "password": password})
     r.raise_for_status()
@@ -72,7 +75,7 @@ async def auth_header(
     client: httpx.AsyncClient,
     *,
     username: str = "admin",
-    password: str = "pw",
+    password: str = TEST_PASSWORD,
 ) -> dict[str, str]:
     return bearer(await login(client, username=username, password=password))
 
@@ -128,7 +131,7 @@ async def create_user(
     admin_auth: dict[str, str],
     *,
     username: str,
-    password: str = "pw",
+    password: str = TEST_PASSWORD,
     role: str = "user",
 ) -> dict[str, str]:
     r = await client.post(
@@ -144,7 +147,7 @@ async def ensure_users(
     client: httpx.AsyncClient,
     admin_auth: dict[str, str],
     *usernames: str,
-    password: str = "pw",
+    password: str = TEST_PASSWORD,
 ) -> dict[str, dict[str, str]]:
     auths: dict[str, dict[str, str]] = {}
     for username in usernames:

@@ -209,7 +209,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-Open **http://127.0.0.1:8088** — default credentials are `admin` / `octop` (change immediately).
+Open **http://127.0.0.1:8088**. With Docker first-run defaults, sign in as `admin` / `Octop123` and change the password immediately. Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits).
 
 ### Docker (recommended for production)
 
@@ -223,16 +223,18 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD=changeme \
+  -e OCTOP_DEFAULT_PASSWORD=Octop123 \
   octop:latest
 ```
 
-Open `http://localhost:8088` — default credentials are `admin` / `octop` (change immediately).
+Open `http://localhost:8088` — default credentials are `admin` / `Octop123` (change immediately). Credentials are also written to `/data/.octop/credential.txt` on first boot.
+
+> **Password policy:** at least 8 characters with letters and digits. A future release may replace the fixed Docker default with a randomly generated password written only to `credential.txt`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OCTOP_PORT` | `8088` | HTTP listen port |
-| `OCTOP_DEFAULT_PASSWORD` | `octop` | First-run admin password |
+| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | First-run admin password (Docker bootstrap) |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
 | `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
 
@@ -468,7 +470,7 @@ For the customer WeCom support group, scan:
   <img src="docs/assets/qrcode.png" alt="WeCom customer group QR code" width="220" />
 </p>
 
-> This QR code is valid until **2026-08-16** (UTC+8). Please ask the maintainer for an updated code after it expires.
+> Please scan the QR code to join the group. For any questions or assistance, please contact the group admin directly.
 
 ## 📄 License
 

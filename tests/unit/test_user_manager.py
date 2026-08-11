@@ -28,7 +28,7 @@ async def manager(tmp_path: Path) -> UserManager:
 
 async def test_create_user_writes_db(manager: UserManager):
     user = await manager.create(
-        username="alice", password="pw", role=Role.ADMIN, display_name="Alice"
+        username="alice", password="TestPass12", role=Role.ADMIN, display_name="Alice"
     )
     assert user.username == "alice"
     assert user.role is Role.ADMIN
@@ -36,26 +36,26 @@ async def test_create_user_writes_db(manager: UserManager):
 
 
 async def test_duplicate_username_rejected(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     with pytest.raises(OctopError) as ei:
-        await manager.create(username="a", password="pw2", role=Role.USER)
+        await manager.create(username="a", password="TestPass34", role=Role.USER)
     assert ei.value.code is ErrorCode.USERNAME_TAKEN
 
 
 async def test_authenticate_success(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
-    user = await manager.authenticate("a", "pw")
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
+    user = await manager.authenticate("a", "TestPass12")
     assert user is not None
     assert user.username == "a"
 
 
 async def test_authenticate_wrong_password(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     assert await manager.authenticate("a", "bad") is None
 
 
 async def test_authenticate_locks_after_max_failures(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     max_attempts = manager._login_max_attempts
     for _ in range(max_attempts - 1):
         assert await manager.authenticate("a", "bad") is None
@@ -66,71 +66,91 @@ async def test_authenticate_locks_after_max_failures(manager: UserManager):
         await manager.authenticate("a", "bad")
     assert ei2.value.code is ErrorCode.LOGIN_LOCKED
     with pytest.raises(OctopError) as ei3:
-        await manager.authenticate("a", "pw")
+        await manager.authenticate("a", "TestPass12")
     assert ei3.value.code is ErrorCode.LOGIN_LOCKED
 
 
 async def test_reset_password_clears_lockout(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     max_attempts = manager._login_max_attempts
     for _ in range(max_attempts - 1):
         assert await manager.authenticate("a", "bad") is None
     with pytest.raises(OctopError):
         await manager.authenticate("a", "bad")
     with pytest.raises(OctopError):
-        await manager.authenticate("a", "pw")
-    await manager.reset_password("a", "new")
-    user = await manager.authenticate("a", "new")
+        await manager.authenticate("a", "TestPass12")
+    await manager.reset_password("a", "NewPass12")
+    user = await manager.authenticate("a", "NewPass12")
     assert user is not None
 
 
 async def test_authenticate_disabled_returns_none(manager: UserManager):
-    user = await manager.create(username="a", password="pw", role=Role.USER)
+    user = await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.disable(user.username)
-    assert await manager.authenticate("a", "pw") is None
+    assert await manager.authenticate("a", "TestPass12") is None
 
 
 async def test_get_by_username_and_id(manager: UserManager):
-    user = await manager.create(username="a", password="pw", role=Role.USER)
+    user = await manager.create(username="a", password="TestPass12", role=Role.USER)
     assert manager.get("a").id == user.id
     assert manager.get_by_id(user.id).username == "a"
 
 
 async def test_change_password(manager: UserManager):
-    user = await manager.create(username="a", password="old", role=Role.USER)
-    await manager.change_password(user.username, "old", "new")
-    assert await manager.authenticate("a", "new") is not None
-    assert await manager.authenticate("a", "old") is None
+    user = await manager.create(username="a", password="OldPass12", role=Role.USER)
+    await manager.change_password(user.username, "OldPass12", "NewPass12")
+    assert await manager.authenticate("a", "NewPass12") is not None
+    assert await manager.authenticate("a", "OldPass12") is None
 
 
 async def test_change_password_wrong_old(manager: UserManager):
-    await manager.create(username="a", password="old", role=Role.USER)
+    await manager.create(username="a", password="OldPass12", role=Role.USER)
     with pytest.raises(OctopError) as ei:
-        await manager.change_password("a", "wrong", "new")
+        await manager.change_password("a", "wrong", "NewPass12")
     assert ei.value.code is ErrorCode.AUTH_FAILED
 
 
+async def test_change_password_rejects_same_as_old(manager: UserManager):
+    await manager.create(username="a", password="OldPass12", role=Role.USER)
+    with pytest.raises(OctopError) as ei:
+        await manager.change_password("a", "OldPass12", "OldPass12")
+    assert ei.value.code is ErrorCode.PASSWORD_SAME_AS_OLD
+
+
+async def test_change_password_rejects_weak_new(manager: UserManager):
+    await manager.create(username="a", password="OldPass12", role=Role.USER)
+    with pytest.raises(OctopError) as ei:
+        await manager.change_password("a", "OldPass12", "12345678")
+    assert ei.value.code is ErrorCode.PASSWORD_TOO_WEAK
+
+
+async def test_create_rejects_weak_password(manager: UserManager):
+    with pytest.raises(OctopError) as ei:
+        await manager.create(username="a", password="pw", role=Role.USER)
+    assert ei.value.code is ErrorCode.PASSWORD_TOO_WEAK
+
+
 async def test_set_role(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.set_role("a", Role.ADMIN)
     assert manager.get("a").role is Role.ADMIN
 
 
 async def test_disable_removes_from_memory(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.disable("a")
     assert manager.get("a") is None
 
 
 async def test_enable_restores_memory(manager: UserManager):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.disable("a")
     await manager.enable("a")
     assert manager.get("a") is not None
 
 
 async def test_remove_deletes_db_and_dir(manager: UserManager, tmp_path: Path):
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.remove("a")
     assert (tmp_path / ".octop" / "users" / "a").exists() is False
     assert manager.get("a") is None
@@ -138,7 +158,7 @@ async def test_remove_deletes_db_and_dir(manager: UserManager, tmp_path: Path):
 
 async def test_count(manager: UserManager):
     assert manager.count() == 0
-    await manager.create(username="a", password="pw", role=Role.USER)
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
     assert manager.count() == 1
 
 

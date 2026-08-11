@@ -8,7 +8,7 @@ async def test_create_list_get_delete(env):
     r = await c.post(
         "/api/users",
         headers=auth,
-        json={"username": "alice", "password": "pw", "role": "user"},
+        json={"username": "alice", "password": "TestPass12", "role": "user"},
     )
     assert r.status_code == 201
     uid = r.json()["id"]
@@ -36,11 +36,11 @@ async def test_non_admin_gets_403(env):
     await c.post(
         "/api/users",
         headers=admin_auth,
-        json={"username": "bob", "password": "pw", "role": "user"},
+        json={"username": "bob", "password": "TestPass12", "role": "user"},
     )
-    tok = (await c.post("/api/auth/login", json={"username": "bob", "password": "pw"})).json()[
-        "access_token"
-    ]
+    tok = (
+        await c.post("/api/auth/login", json={"username": "bob", "password": "TestPass12"})
+    ).json()["access_token"]
     user_auth = {"Authorization": f"Bearer {tok}"}
     r = await c.get("/api/users", headers=user_auth)
     assert r.status_code == 403
@@ -65,7 +65,7 @@ async def test_admin_can_enable_disabled_user(env):
     r = await c.post(
         "/api/users",
         headers=auth,
-        json={"username": "disabled_user", "password": "pw", "role": "user"},
+        json={"username": "disabled_user", "password": "TestPass12", "role": "user"},
     )
     assert r.status_code == 201
     uid = r.json()["id"]
@@ -84,7 +84,7 @@ async def test_admin_can_unlock_login(env):
     r = await c.post(
         "/api/users",
         headers=auth,
-        json={"username": "lock_user", "password": "pw", "role": "user"},
+        json={"username": "lock_user", "password": "TestPass12", "role": "user"},
     )
     uid = r.json()["id"]
     max_attempts = srv.services.config.login_max_attempts
@@ -98,5 +98,5 @@ async def test_admin_can_unlock_login(env):
     r = await c.get(f"/api/users/{uid}", headers=auth)
     assert r.json()["login_locked"] is False
 
-    r = await c.post("/api/auth/login", json={"username": "lock_user", "password": "pw"})
+    r = await c.post("/api/auth/login", json={"username": "lock_user", "password": "TestPass12"})
     assert r.status_code == 200

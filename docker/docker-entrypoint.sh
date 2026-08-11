@@ -4,7 +4,7 @@
 #
 # 环境变量:
 #   HOME                      — 必须为 /data，使 ~/.octop 映射到数据卷
-#   OCTOP_DEFAULT_PASSWORD    — 首次管理员密码（默认: octop）
+#   OCTOP_DEFAULT_PASSWORD    — 首次管理员密码（默认: Octop123；须 ≥8 位且含字母+数字）
 #   OCTOP_ADMIN_USERNAME      — 首次管理员用户名（默认: admin）
 #   OCTOP_ADMIN_DISPLAY_NAME  — 可选显示名
 #   OCTOP_PORT                — 服务端口（默认: 8088）
@@ -15,7 +15,7 @@ export HOME="${HOME:-/data}"
 OCTOP_HOME="${HOME}/.octop"
 DB_FILE="${OCTOP_HOME}/octop.db"
 CREDENTIAL_FILE="${OCTOP_HOME}/credential.txt"
-DEFAULT_PASSWORD="${OCTOP_DEFAULT_PASSWORD:-octop}"
+DEFAULT_PASSWORD="${OCTOP_DEFAULT_PASSWORD:-Octop123}"
 ADMIN_USERNAME="${OCTOP_ADMIN_USERNAME:-admin}"
 ADMIN_DISPLAY_NAME="${OCTOP_ADMIN_DISPLAY_NAME:-Admin}"
 PORT="${OCTOP_PORT:-8088}"
@@ -38,7 +38,7 @@ Username: $ADMIN_USERNAME
 Password: $DEFAULT_PASSWORD
 
 Please change this password after first login!
-  - Via Web: Settings → User → Password
+  - Via Web: avatar menu → Change password
   - Via CLI: docker exec -it <container> octop user passwd --username $ADMIN_USERNAME
 EOF
     chmod 600 "$CREDENTIAL_FILE"

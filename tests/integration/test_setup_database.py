@@ -92,7 +92,7 @@ async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:
         # Admin requires a bound DB.
         early = await client.post(
             "/api/setup/initial-admin",
-            json={"username": "admin", "password": "pw"},
+            json={"username": "admin", "password": "TestPass12"},
             headers={"Authorization": f"Bearer {tok}"},
         )
         assert early.status_code == 503
@@ -112,7 +112,7 @@ async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:
 
         created = await client.post(
             "/api/setup/initial-admin",
-            json={"username": "admin", "password": "pw"},
+            json={"username": "admin", "password": "TestPass12"},
             headers={"Authorization": f"Bearer {tok}"},
         )
         assert created.status_code == 201, created.text
@@ -139,7 +139,7 @@ async def test_setup_database_refuses_nonempty_target(patched_app_client) -> Non
     tok = await wizard_token(client, home)
     created = await client.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     assert created.status_code == 201, created.text

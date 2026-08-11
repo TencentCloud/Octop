@@ -59,7 +59,7 @@ async def test_full_golden_path(env: Any) -> None:
     assert r.status_code == 201
 
     # 2) admin login
-    r = await c.post("/api/auth/login", json={"username": "admin", "password": "pw"})
+    r = await c.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
     assert r.status_code == 200
     tok = r.json()["access_token"]
     auth = {"Authorization": f"Bearer {tok}"}
@@ -70,7 +70,7 @@ async def test_full_golden_path(env: Any) -> None:
         headers=auth,
         json={
             "username": "alice",
-            "password": "pw",
+            "password": "TestPass12",
             "role": "user",
             "display_name": "Alice",
         },
@@ -99,7 +99,7 @@ async def test_full_golden_path(env: Any) -> None:
     assert r.status_code == 201
 
     # 5) alice logs in
-    r = await c.post("/api/auth/login", json={"username": "alice", "password": "pw"})
+    r = await c.post("/api/auth/login", json={"username": "alice", "password": "TestPass12"})
     assert r.status_code == 200
     alice_tok = r.json()["access_token"]
     alice_auth = {"Authorization": f"Bearer {alice_tok}"}
@@ -151,7 +151,7 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
 
     # 1) setup admin + provider
     await bootstrap_admin(c, home)
-    r = await c.post("/api/auth/login", json={"username": "admin", "password": "pw"})
+    r = await c.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
     admin_auth = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     # Admin creates provider with explicit model list so /providers/resolved returns something
@@ -172,9 +172,9 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     await c.post(
         "/api/users",
         headers=admin_auth,
-        json={"username": "bob", "password": "pw", "role": "user", "display_name": "Bob"},
+        json={"username": "bob", "password": "TestPass12", "role": "user", "display_name": "Bob"},
     )
-    r = await c.post("/api/auth/login", json={"username": "bob", "password": "pw"})
+    r = await c.post("/api/auth/login", json={"username": "bob", "password": "TestPass12"})
     bob_auth = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     # 3) list experts — the default expert must be present

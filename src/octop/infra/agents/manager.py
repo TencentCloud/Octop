@@ -1224,7 +1224,7 @@ class AgentManager:
 
     @staticmethod
     def _normalize_skills_dir_config(value: Any) -> list[str]:
-        if isinstance(value, (str, bytes)):
+        if isinstance(value, str | bytes):
             text = str(value).strip()
             return [text] if text else []
         if isinstance(value, Sequence):

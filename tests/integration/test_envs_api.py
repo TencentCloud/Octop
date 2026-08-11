@@ -30,10 +30,10 @@ async def test_envs_non_admin_forbidden(env: Any) -> None:
     await c.post(
         "/api/users",
         headers=admin_auth,
-        json={"username": "bob", "password": "pw", "role": "user"},
+        json={"username": "bob", "password": "TestPass12", "role": "user"},
     )
-    bob_tok = (await c.post("/api/auth/login", json={"username": "bob", "password": "pw"})).json()[
-        "access_token"
-    ]
+    bob_tok = (
+        await c.post("/api/auth/login", json={"username": "bob", "password": "TestPass12"})
+    ).json()["access_token"]
     r = await c.get("/api/envs", headers={"Authorization": f"Bearer {bob_tok}"})
     assert r.status_code == 403

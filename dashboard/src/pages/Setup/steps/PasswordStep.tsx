@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { authApi } from "../../../api/modules/auth";
 import { wizardApi, wizardSession } from "../wizardClient";
+import { apiErrorMessage } from "../../../utils/apiError";
 
 const { Text, Paragraph } = Typography;
 
@@ -38,12 +39,7 @@ export default function PasswordStep({ onVerified }: Props) {
       wizardSession.saveToken(r.wizard_token);
       onVerified();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("429") || msg.toLowerCase().includes("too many")) {
-        setError(t("wizard.password.rateLimited"));
-      } else {
-        setError(t("wizard.password.wrong"));
-      }
+      setError(apiErrorMessage(e, t("wizard.password.wrong"), t));
     } finally {
       setSubmitting(false);
     }

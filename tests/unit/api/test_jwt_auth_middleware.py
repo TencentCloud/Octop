@@ -55,7 +55,7 @@ async def test_middleware_blocks_unauthenticated_api(client) -> None:
 async def test_middleware_allows_login_without_token(client) -> None:
     c, _srv, home = client
     await bootstrap_admin(c, home)
-    r = await c.post("/api/auth/login", json={"username": "admin", "password": "pw"})
+    r = await c.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
     assert r.status_code == 200
 
 

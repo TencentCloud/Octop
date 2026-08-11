@@ -239,12 +239,12 @@ async def test_non_owner_cannot_access_workspace(env: Any) -> None:
     await c.post(
         "/api/users",
         headers=admin_auth,
-        json={"username": "bob", "password": "pw", "role": "user"},
+        json={"username": "bob", "password": "TestPass12", "role": "user"},
     )
     bob_tok = (
         await c.post(
             "/api/auth/login",
-            json={"username": "bob", "password": "pw"},
+            json={"username": "bob", "password": "TestPass12"},
         )
     ).json()["access_token"]
     bob_auth = {"Authorization": f"Bearer {bob_tok}"}

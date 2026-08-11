@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, Select, Spin, Table, Empty, Tag, Segmented } from "antd";
+import { Alert, Card, Select, Spin, Table, Empty, Tag, Segmented } from "antd";
 import {
   BarChart,
   Bar,
@@ -907,6 +907,12 @@ export default function TokenUsagePage() {
       fill
     >
       <div className={styles.page}>
+        <Alert
+          type="info"
+          showIcon
+          message={t("tokenUsage.dataDisclaimer")}
+          className={styles.disclaimer}
+        />
         <div className={styles.toolbar}>
           <div className={styles.toolbarViews}>
             <Segmented

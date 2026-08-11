@@ -18,7 +18,7 @@ def _bootstrap() -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["init", "--admin-username", "alice", "--admin-password", "pw1234", "--yes"],
+        ["init", "--admin-username", "alice", "--admin-password", "TestPass12", "--yes"],
     )
     assert result.exit_code == 0, result.output
 

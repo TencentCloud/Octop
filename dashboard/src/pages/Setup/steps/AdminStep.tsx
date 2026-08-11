@@ -6,6 +6,10 @@ import { useTranslation } from "react-i18next";
 import { wizardApi, wizardSession } from "../wizardClient";
 import { setAuthToken } from "../../../api/request";
 import { apiErrorMessage } from "../../../utils/apiError";
+import {
+  MIN_PASSWORD_LENGTH,
+  passwordPolicyIssue,
+} from "../../../utils/passwordPolicy";
 
 const { Text } = Typography;
 
@@ -30,12 +34,23 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const passwordPolicyMessage = (
+    issue: ReturnType<typeof passwordPolicyIssue>,
+  ) => {
+    switch (issue) {
+      case "too_short":
+        return t("account.passwordTooShort", { min: MIN_PASSWORD_LENGTH });
+      case "need_letter_and_digit":
+        return t("account.passwordNeedLetterAndDigit");
+      case "too_common":
+        return t("account.passwordTooCommon");
+      default:
+        return t("account.passwordTooWeak");
+    }
+  };
+
   const onFinish = async (values: FormValues) => {
     setError(null);
-    if (values.password !== values.confirm) {
-      setError(t("wizard.admin.passwordMismatch"));
-      return;
-    }
     const wizardToken = wizardSession.loadToken();
     if (!wizardToken) {
       setError(t("wizard.sessionExpired"));
@@ -145,8 +160,21 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
         <Form.Item
           label={t("wizard.admin.password")}
           name="password"
+          extra={t("wizard.admin.passwordHint")}
           rules={[
             { required: true, message: t("wizard.admin.password") as string },
+            {
+              validator(_, value: string) {
+                if (!value) return Promise.resolve();
+                const issue = passwordPolicyIssue(value);
+                if (issue) {
+                  return Promise.reject(
+                    new Error(passwordPolicyMessage(issue)),
+                  );
+                }
+                return Promise.resolve();
+              },
+            },
           ]}
         >
           <Input.Password

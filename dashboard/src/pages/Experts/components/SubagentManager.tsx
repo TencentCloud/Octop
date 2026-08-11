@@ -3,10 +3,10 @@
  * Used inside SubagentCatalogDrawer (Drawer) and Subagents page.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Empty, Input, Modal, Spin, Tabs } from "antd";
+import { Alert, Empty, Form, Input, Modal, Spin, Tabs } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { CircleCheck, Download, RefreshCw, Search } from "lucide-react";
+import { CircleCheck, Download, Plus, RefreshCw, Search } from "lucide-react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -18,13 +18,19 @@ import {
   type SubagentCatalogDivision,
   type SubagentCatalogItem,
 } from "../../../api/modules/subagents";
+import { request } from "../../../api/request";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { withFromWorkspace } from "../../../utils/fromWorkspace";
 import { normalizeUiLocale } from "../../../utils/locale";
 import { pickLocale } from "../../../utils/localizedText";
 import type { LocalizedText } from "../../../utils/localizedText";
-import FileEditModal from "./FileEditModal";
+import {
+  SubagentDrawer,
+  type EditingSubagent,
+  type SubagentFormValues,
+} from "./SubagentDrawer";
 import SubagentPreviewDrawer from "./SubagentPreviewDrawer";
 import styles from "../index.module.less";
 
@@ -69,8 +75,12 @@ export default function SubagentManager({
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(
     () => new Set(initialInstalled ?? []),
   );
-  const [fileModalOpen, setFileModalOpen] = useState(false);
-  const [editingFile, setEditingFile] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingSubagent, setEditingSubagent] =
+    useState<EditingSubagent | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerSaving, setDrawerSaving] = useState(false);
+  const [form] = Form.useForm<SubagentFormValues>();
   const [previewItem, setPreviewItem] = useState<SubagentCatalogItem | null>(
     null,
   );
@@ -231,9 +241,91 @@ export default function SubagentManager({
     }
   };
 
-  const openFileEditor = (path: string) => {
-    setEditingFile(subagentFilePath(path));
-    setFileModalOpen(true);
+  const handleCreate = () => {
+    if (!agentReady) {
+      message.warning(t("subagents.agentNotReady"));
+      return;
+    }
+    setEditingSubagent(null);
+    form.resetFields();
+    setDrawerOpen(true);
+  };
+
+  const openFileEditor = async (subagent: AgentSubagentSummary) => {
+    const path = subagentFilePath(subagent.path);
+    setEditingSubagent({
+      slug: subagent.slug,
+      path,
+      content: "",
+    });
+    setDrawerLoading(true);
+    setDrawerOpen(true);
+    try {
+      const data = await request<{ content: string }>(
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+        ),
+      );
+      setEditingSubagent({
+        slug: subagent.slug,
+        path,
+        content: data.content ?? "",
+      });
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("subagents.loadDetailFailed")));
+      setDrawerOpen(false);
+      setEditingSubagent(null);
+    } finally {
+      setDrawerLoading(false);
+    }
+  };
+
+  const handleDrawerClose = () => {
+    setDrawerOpen(false);
+    setEditingSubagent(null);
+    setDrawerLoading(false);
+    setDrawerSaving(false);
+  };
+
+  const handleDrawerSubmit = async (values: SubagentFormValues) => {
+    const content = (values.content ?? "").trim();
+    if (!content) {
+      message.warning(t("subagents.sourceEmpty"));
+      return;
+    }
+    const slug = (editingSubagent?.slug || values.slug || "").trim();
+    if (!slug) {
+      message.warning(t("subagents.pleaseInputSlug"));
+      return;
+    }
+    if (!editingSubagent && installedSlugs.has(slug)) {
+      message.warning(t("subagents.slugExists", { slug }));
+      return;
+    }
+    const path = editingSubagent?.path ?? `/agents/${slug}.md`;
+    setDrawerSaving(true);
+    try {
+      await workspaceApi.createWorkspaceFile(agentId, path, content);
+      await request(`/agents/${agentId}/reload`, { method: "POST" });
+      message.success(
+        editingSubagent
+          ? t("subagents.updateSuccess")
+          : t("subagents.createSuccess"),
+      );
+      handleDrawerClose();
+      await syncAfterChange();
+    } catch (err) {
+      message.error(
+        apiErrorMessage(
+          err,
+          editingSubagent
+            ? t("subagents.updateFailed")
+            : t("subagents.createFailed"),
+        ),
+      );
+    } finally {
+      setDrawerSaving(false);
+    }
   };
 
   const confirmDeleteSubagent = (subagent: AgentSubagentSummary) => {
@@ -349,7 +441,23 @@ export default function SubagentManager({
       );
     }
     if (filteredInstalled.length === 0) {
-      return <Empty description={t("subagents.noInstalled")} />;
+      return (
+        <Empty
+          description={t("subagents.noInstalled")}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        >
+          {agentReady ? (
+            <button
+              type="button"
+              className={styles.toolbarBtnPrimary}
+              onClick={handleCreate}
+            >
+              <Plus size={14} />
+              {t("subagents.createSubagent")}
+            </button>
+          ) : null}
+        </Empty>
+      );
     }
     return (
       <div className={styles.catalogGrid}>
@@ -384,7 +492,7 @@ export default function SubagentManager({
                   <button
                     type="button"
                     className={styles.catalogCardActionBtn}
-                    onClick={() => openFileEditor(subagent.path)}
+                    onClick={() => void openFileEditor(subagent)}
                   >
                     <Pencil size={13} />
                     {t("common.edit")}
@@ -423,14 +531,27 @@ export default function SubagentManager({
           />
         )}
 
-        <Input
-          allowClear
-          prefix={<Search size={14} />}
-          placeholder={t("subagents.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={styles.catalogSearch}
-        />
+        <div className={styles.catalogToolbar}>
+          <Input
+            allowClear
+            prefix={<Search size={14} />}
+            placeholder={t("subagents.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={styles.catalogSearch}
+          />
+          {activeTab === INSTALLED_TAB ? (
+            <button
+              type="button"
+              className={styles.toolbarBtnPrimary}
+              onClick={handleCreate}
+              disabled={!agentReady}
+            >
+              <Plus size={14} />
+              {t("subagents.createSubagent")}
+            </button>
+          ) : null}
+        </div>
 
         <Tabs
           activeKey={activeTab}
@@ -444,17 +565,14 @@ export default function SubagentManager({
           : renderCatalogGrid()}
       </div>
 
-      <FileEditModal
-        open={fileModalOpen}
-        agentId={agentId}
-        filePath={editingFile}
-        onClose={() => {
-          setFileModalOpen(false);
-          setEditingFile(null);
-        }}
-        onSaved={() => {
-          void syncAfterChange();
-        }}
+      <SubagentDrawer
+        open={drawerOpen}
+        editing={editingSubagent}
+        loading={drawerLoading}
+        saving={drawerSaving}
+        form={form}
+        onClose={handleDrawerClose}
+        onSubmit={handleDrawerSubmit}
       />
 
       <SubagentPreviewDrawer

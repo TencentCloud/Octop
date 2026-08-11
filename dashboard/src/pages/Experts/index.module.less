@@ -1289,10 +1289,44 @@
 
 .catalogSearch {
   max-width: 480px;
+  flex: 1 1 auto;
 
   @media (max-width: 767px) {
     max-width: none;
     width: 100%;
+  }
+}
+
+.catalogToolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.toolbarBtnPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--fn-color-brand);
+  background: var(--fn-color-brand);
+  color: #fff;
+  border-radius: var(--fn-radius-md);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 

@@ -273,7 +273,7 @@ async def test_setup_database_postgresql_bind(tmp_octop_home: Path) -> None:
 
         created = await client.post(
             "/api/setup/initial-admin",
-            json={"username": "admin", "password": "admin-pass", "display_name": "Admin"},
+            json={"username": "admin", "password": "AdminPass1", "display_name": "Admin"},
             headers={"Authorization": f"Bearer {tok}"},
         )
         assert created.status_code in (200, 201), created.text

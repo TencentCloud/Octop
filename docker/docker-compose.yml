@@ -4,17 +4,19 @@
 # 用法（在仓库根目录执行）:
 #   docker compose -f docker/docker-compose.yml up -d
 #   OCTOP_PORT=9090 docker compose -f docker/docker-compose.yml up -d
-#   OCTOP_DEFAULT_PASSWORD=mypass docker compose -f docker/docker-compose.yml up -d
+#   OCTOP_DEFAULT_PASSWORD=Octop123 docker compose -f docker/docker-compose.yml up -d
 #
 # 可在 docker/ 目录放置 .env 文件，例如:
 #   OCTOP_PORT=9090
-#   OCTOP_DEFAULT_PASSWORD=mypass
+#   OCTOP_DEFAULT_PASSWORD=Octop123
 #   OCTOP_ADMIN_USERNAME=admin
 #   OCTOP_DATABASE_DRIVER=postgresql
 #   OCTOP_DATABASE_URL=postgresql://octop:octop@host.docker.internal:5432/octop
 #
 # 注意: docker/.env 仅用于 Compose 插值；变量必须列在下方 environment
 # 才会进入容器。也可写入数据卷内的 ~/.octop/env（宿主机挂载目录下的 env）。
+# 密码须 ≥8 位且同时包含字母与数字（与控制台改密策略一致）。
+# 后续计划：首次启动可改为随机生成密码并写入 credential.txt。
 # =============================================================================
 
 services:
@@ -34,7 +36,7 @@ services:
       - OCTOP_BIND_HOST=0.0.0.0
       - OCTOP_PORT=${OCTOP_PORT:-8088}
       - OCTOP_LOG_LEVEL=${OCTOP_LOG_LEVEL:-info}
-      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-octop}
+      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-Octop123}
       - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
       - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
       - OCTOP_DATABASE_URL=${OCTOP_DATABASE_URL:-}

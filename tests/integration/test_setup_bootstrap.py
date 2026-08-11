@@ -47,7 +47,7 @@ async def test_main_not_created_until_finish(patched_app_client: Any) -> None:
     admin = (
         await c.post(
             "/api/setup/initial-admin",
-            json={"username": "admin", "password": "pw"},
+            json={"username": "admin", "password": "TestPass12"},
             headers={"Authorization": f"Bearer {tok}"},
         )
     ).json()
@@ -73,7 +73,7 @@ async def test_double_bootstrap_returns_410(patched_app_client: Any) -> None:
     assert r.status_code == 201
     r = await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin2", "password": "pw"},
+        json={"username": "admin2", "password": "TestPass12"},
     )
     assert r.status_code == 410
     assert r.json()["error"]["code"] == "SETUP_REQUIRED"

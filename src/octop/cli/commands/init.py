@@ -6,8 +6,6 @@ import shutil
 
 import click
 
-_MIN_PASSWORD_LEN = 4
-
 
 @click.command("init")
 @click.option(
@@ -53,7 +51,8 @@ def init(
     from octop.infra.db.factory import open_database
     from octop.infra.db.migrate import run_migrations
     from octop.infra.db.repos.users import UserRepo
-    from octop.infra.users.password import hash_password
+    from octop.infra.errors import OctopError
+    from octop.infra.users.password import hash_password, validate_password_policy
     from octop.infra.utils.env_file import apply_env_file, env_file_path
     from octop.infra.utils.paths import PathLayout
 
@@ -98,16 +97,15 @@ def init(
     if not username:
         click.echo("error: admin username is required", err=True)
         raise SystemExit(1)
-    if not password or len(password) < _MIN_PASSWORD_LEN:
-        click.echo(
-            f"error: admin password must be at least {_MIN_PASSWORD_LEN} characters",
-            err=True,
-        )
-        raise SystemExit(1)
+    try:
+        validate_password_policy(password or "")
+    except OctopError as exc:
+        click.echo(f"error: {exc.message}", err=True)
+        raise SystemExit(1) from None
 
     UserRepo(db).create(
         username=username,
-        password_hash=hash_password(password),
+        password_hash=hash_password(password or ""),
         role="admin",
         display_name=display_name,
     )

@@ -39,6 +39,7 @@ async def test_verify_password_rejects_mismatch(env: Any) -> None:
     c, _srv, _home = env
     r = await c.post("/api/setup/verify-password", json={"password": "wrong"})
     assert r.status_code == 401
+    assert r.json()["error"]["code"] == "SETUP_PASSWORD_WRONG"
 
 
 async def test_verify_password_rate_limited(env: Any) -> None:
@@ -47,6 +48,7 @@ async def test_verify_password_rate_limited(env: Any) -> None:
         await c.post("/api/setup/verify-password", json={"password": "x"})
     r = await c.post("/api/setup/verify-password", json={"password": "x"})
     assert r.status_code == 429
+    assert r.json()["error"]["code"] == "SETUP_RATE_LIMITED"
 
 
 # ─── initial-admin token guard ──────────────────────────────────────
@@ -56,9 +58,10 @@ async def test_initial_admin_requires_wizard_token(env: Any) -> None:
     c, _srv, _home = env
     r = await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
     )
     assert r.status_code == 401
+    assert r.json()["error"]["code"] == "SETUP_TOKEN_INVALID"
 
 
 async def test_initial_admin_succeeds_with_token(env: Any) -> None:
@@ -67,7 +70,7 @@ async def test_initial_admin_succeeds_with_token(env: Any) -> None:
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     assert r.status_code == 201
@@ -76,13 +79,26 @@ async def test_initial_admin_succeeds_with_token(env: Any) -> None:
     assert not (Path.home() / WIZARD_FILE_NAME).exists()
 
 
+async def test_initial_admin_rejects_weak_password(env: Any) -> None:
+    c, _srv, _home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    r = await c.post(
+        "/api/setup/initial-admin",
+        json={"username": "admin", "password": "pw"},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "PASSWORD_TOO_WEAK"
+
+
 async def test_initial_admin_respects_locale_body(env: Any) -> None:
     c, srv, _home = env
     pw = read_password(Path.home())
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw", "locale": "en"},
+        json={"username": "admin", "password": "TestPass12", "locale": "en"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     assert r.status_code == 201
@@ -177,7 +193,7 @@ async def test_finish_works_after_admin_created(env: Any) -> None:
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     r = await c.post(
@@ -195,7 +211,7 @@ async def test_validate_token_still_valid_after_admin_created(env: Any) -> None:
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     r = await c.get(
@@ -244,7 +260,7 @@ async def test_resume_wizard_after_admin_created(env: Any) -> None:
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     r = await c.post("/api/setup/resume-wizard")
@@ -261,7 +277,7 @@ async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> 
     admin = (
         await c.post(
             "/api/setup/initial-admin",
-            json={"username": "admin", "password": "pw"},
+            json={"username": "admin", "password": "TestPass12"},
             headers={"Authorization": f"Bearer {tok}"},
         )
     ).json()
@@ -288,7 +304,7 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
     admin = (
         await c.post(
             "/api/setup/initial-admin",
-            json={"username": "admin", "password": "pw"},
+            json={"username": "admin", "password": "TestPass12"},
             headers={"Authorization": f"Bearer {tok}"},
         )
     ).json()
@@ -348,7 +364,7 @@ async def test_setup_410_after_admin_exists(env: Any) -> None:
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     # Plant a stale file to verify the cleanup branch.
@@ -387,7 +403,7 @@ async def test_lockdown_lifts_after_admin_created(env: Any) -> None:
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     r = await c.get("/api/agents")
@@ -401,7 +417,7 @@ async def test_finish_rejects_invalid_token_after_admin_exists(env: Any) -> None
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "pw"},
+        json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
     r = await c.post(
