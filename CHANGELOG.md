@@ -6,18 +6,26 @@
 
 ## [Unreleased]
 
+## [0.9.21] - 2026-08-11
+
 ### 新增
 - 插件管理页支持从本地 ZIP 上传安装插件，可选覆盖已安装的同名插件，无需先把插件托管到 HTTP 直链
 - Docker 沙箱 backend（agent `config.backend.type=docker` 或存储 `kind=docker`）；Admin Docker 卡片、本机 Docker 探测/安装；详见 [docs/agent-backend-file-io.md](docs/agent-backend-file-io.md) §13
+- 强制密码策略并优化账户与子代理（subagent）使用体验
+- 浏览器 HITL 流式交互与网关抢占能力
+- 新增每用户模型与推理（reasoning）偏好设置
 
 ### 变更
 - 依赖 `orcakit-harness-agent[all]>=0.9.20`；FilesystemGuard / ModelSettings 由 harness 自动挂载（Octop 仅保留 BinaryReadGuard 与 runtime_limits）
 - 专家 `workspace_dir`：创建时写入 `config_json.workspace_dir`（默认 `{OCTOP_HOME}/agents/<id>/`），所有 backend 共用；Docker 在容器内镜像同名路径为专家工作区，宿主同路径放 sessions/memory/checkpoints
 - Docker：`sandbox_scope`（agent/user/fixed）+ `sandbox_prefix`（默认 `octop_sandbox`）；删专家不删容器；专家工作区在 running 时可预览；Admin 存储 `previewable` 仅控制浏览（默认仅 fixed）；探测用 test 沙箱做真实读写
 - 删除被专家 `named` 引用的存储后端时返回 `STORAGE_BACKEND_REFERENCED` 并列出引用专家
+- 将 IM 频道定时任务从 ACE 迁移至 Octop cron
 
 ### 修复
 - 超大图片不再降级为附件路径提示：超过视觉嵌入上限（2 MB）的图片由 Pillow 压缩缩放至最长边 1568px 后仍以内联图片嵌入请求（保留 EXIF 方向与透明通道，仅当压缩失败时才回退为路径提示），视觉模型自动升级随之生效 (#219)
+- 保留技能 ZIP 导入时的空目录与根级技能的子文件夹
+- 修复移动端个人设置抽屉，并恢复玫瑰色主题配色
 
 ## [0.9.20] - 2026-08-09
 
