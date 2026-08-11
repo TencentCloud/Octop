@@ -130,7 +130,9 @@ export async function parseSkillZip(
   const isSkillGroup = (slug: string) =>
     groups.get(slug)?.some((item) => item.path === "SKILL.md") ?? false;
   const skillSlugs = new Set(
-    [...groups.keys()].filter((slug) => slug !== "__root__" && isSkillGroup(slug)),
+    [...groups.keys()].filter(
+      (slug) => slug !== "__root__" && isSkillGroup(slug),
+    ),
   );
 
   // Pass 2: attach EMPTY directories so they survive the import. JSZip (and

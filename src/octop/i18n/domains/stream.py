@@ -138,9 +138,9 @@ def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
 
 
 def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -> str:
-    """Classify an exception or raw message; fall back to a short raw string."""
+    """Classify an exception or raw message; fall back to a generic localized message."""
     message = str(exc) if isinstance(exc, BaseException) else exc
     classified = classify_stream_error_message(message)
     if classified is not None:
         return tr(classified.removeprefix(_PREFIX), locale)
-    return message[:500]
+    return tr(MODEL_CALL_FAILED.removeprefix(_PREFIX), locale)

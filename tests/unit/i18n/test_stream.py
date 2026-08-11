@@ -101,5 +101,7 @@ def test_stream_error_message_octop_key() -> None:
     assert "重试" in stream_error_message(STREAM_STALL, "zh")
 
 
-def test_format_stream_error_unknown_keeps_raw() -> None:
-    assert format_stream_error("disk full", "en") == "disk full"
+def test_format_stream_error_unknown_falls_back_to_localized() -> None:
+    text = format_stream_error("disk full", "en")
+    assert "disk full" not in text
+    assert "model call failed" in text
