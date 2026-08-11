@@ -30,6 +30,28 @@ class _RouterMount:
     tags: Sequence[str]
 
 
+_NO_CACHE_DASHBOARD_NAMES = frozenset({"sw.js", "manifest.json", "index.html"})
+
+
+def dashboard_cache_control(full_path: str) -> str | None:
+    """Cache-Control for a dashboard SPA path, or ``None`` to leave unset."""
+    name = Path(full_path).name.lower() if full_path else "index.html"
+    if not full_path or name in _NO_CACHE_DASHBOARD_NAMES:
+        return "no-cache"
+    # Vite emits content-hashed files under assets/ — safe to pin forever.
+    if full_path.startswith("assets/"):
+        return "public, max-age=31536000, immutable"
+    return None
+
+
+def _dashboard_response(path: Path, full_path: str) -> FileResponse:
+    response = FileResponse(path)
+    cache_control = dashboard_cache_control(full_path)
+    if cache_control is not None:
+        response.headers["Cache-Control"] = cache_control
+    return response
+
+
 def _mount_routers(app: FastAPI, mounts: Sequence[_RouterMount]) -> None:
     for spec in mounts:
         app.include_router(spec.router, prefix=spec.prefix, tags=list(spec.tags))
@@ -224,24 +246,14 @@ def build_app(server: OctopServer) -> FastAPI:
                 if full_path.startswith(("api/", "ws/")):
                     raise HTTPException(status_code=404, detail="Not Found")
 
-                # PWA shell files must never be cached, otherwise browsers may
-                # pin the old service worker or stale manifest and break updates.
-                no_cache_names = {"sw.js", "manifest.json", "index.html"}
-
                 if full_path:
                     candidate = (dashboard_dir / full_path).resolve()
                     try:
                         candidate.relative_to(dashboard_dir.resolve())
                     except ValueError:
-                        return FileResponse(index_file)
+                        return _dashboard_response(index_file, "")
                     if candidate.is_file():
-                        response = FileResponse(candidate)
-                        if Path(full_path).name.lower() in no_cache_names:
-                            response.headers["Cache-Control"] = "no-cache"
-                        return response
-                response = FileResponse(index_file)
-                if "index.html" in no_cache_names:
-                    response.headers["Cache-Control"] = "no-cache"
-                return response
+                        return _dashboard_response(candidate, full_path)
+                return _dashboard_response(index_file, "")
 
     return app

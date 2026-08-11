@@ -30,6 +30,64 @@
     <!-- Web App Manifest -->
     <link rel="manifest" href="/manifest.json" />
     <title>Octop</title>
+    <!--
+      Classic script (not type=module) so it runs even when hashed chunks 404.
+      Shares octop:chunk-reload with reloadOnStaleChunk.ts.
+    -->
+    <script>
+      (function () {
+        var KEY = "octop:chunk-reload";
+        function isAsset(url) {
+          return typeof url === "string" && url.indexOf("/assets/") !== -1;
+        }
+        function recover() {
+          try {
+            if (sessionStorage.getItem(KEY) === "1") {
+              sessionStorage.removeItem(KEY);
+              return;
+            }
+            sessionStorage.setItem(KEY, "1");
+          } catch (e) {}
+          var reload = function () {
+            location.reload();
+          };
+          var bust = Promise.resolve();
+          if ("serviceWorker" in navigator) {
+            bust = navigator.serviceWorker
+              .getRegistrations()
+              .then(function (regs) {
+                return Promise.all(
+                  regs.map(function (r) {
+                    return r.unregister();
+                  }),
+                );
+              });
+          }
+          if ("caches" in window) {
+            bust = bust.then(function () {
+              return caches.keys().then(function (keys) {
+                return Promise.all(
+                  keys.map(function (k) {
+                    return caches.delete(k);
+                  }),
+                );
+              });
+            });
+          }
+          bust.then(reload, reload);
+        }
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (!t || !t.tagName) return;
+            if (t.tagName === "SCRIPT" && isAsset(t.src)) recover();
+            if (t.tagName === "LINK" && isAsset(t.href)) recover();
+          },
+          true,
+        );
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
