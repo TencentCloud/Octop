@@ -191,37 +191,48 @@ export default defineConfig(({ mode }) => {
           "apple-touch-icon.png",
         ],
         workbox: {
-          // Precache the SPA shell and critical vendor chunks only.
-          // Lazy route chunks are cached at runtime via NetworkFirst below.
+          // Precache hashed entry + vendor chunks. Do NOT precache index.html:
+          // Cache-First on the shell pins a stale HTML that points at deleted
+          // hashes after deploy (white screen until a hard refresh).
           globPatterns: [
-            "index.html",
             "assets/index.*.js",
-            "assets/vendor-react.*.js",
-            "assets/vendor-antd.*.js",
+            "assets/vendor-*.js",
             "assets/*.{css,woff2}",
           ],
-          // SPA fallback: navigate requests that miss the precache get index.html
-          // so React Router can handle the route client-side. This is the correct
-          // pattern for SPAs — do NOT use offline.html here or every route that
-          // isn't in the precache will show the offline page instead of the app.
-          navigateFallback: "/index.html",
-          // Keep API, SSE and WebSocket requests completely outside SW control.
-          navigateFallbackDenylist: [/^\/api/, /^\/ws/],
+          // FastAPI already serves the SPA fallback. A Workbox NavigationRoute
+          // would Cache-First the old shell; use NetworkFirst below instead.
+          navigateFallback: null,
           // Take control on first activation so Chrome can fire beforeinstallprompt.
           clientsClaim: true,
           // Do not activate updated workers until the user confirms (SKIP_WAITING).
           skipWaiting: false,
           runtimeCaching: [
             {
-              // JS/CSS chunks have no content-hash in their names (fixed names
-              // like assets/index.js). Use NetworkFirst so a new deployment is
-              // picked up immediately; fall back to cache only when offline.
-              urlPattern: /\/assets\/.*\.(js|css)$/,
+              // Always revalidate the HTML shell so a new deploy is picked up
+              // without a hard refresh. Last good copy is kept for offline.
+              urlPattern: ({ request }) => request.mode === "navigate",
               handler: "NetworkFirst",
               options: {
+                cacheName: "html-shell",
+                networkTimeoutSeconds: 3,
+                expiration: {
+                  maxEntries: 8,
+                  maxAgeSeconds: 24 * 60 * 60,
+                },
+              },
+            },
+            {
+              // Vite emits content-hashed assets (assets/name.[hash].js).
+              // CacheFirst is correct: a new deploy uses new URLs.
+              // NetworkFirst would prefer a post-deploy 404 over the cache.
+              urlPattern: /\/assets\/.*\.(js|css)$/,
+              handler: "CacheFirst",
+              options: {
                 cacheName: "static-chunks",
-                networkTimeoutSeconds: 5,
-                expiration: { maxAgeSeconds: 30 * 24 * 60 * 60 },
+                expiration: {
+                  maxEntries: 200,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
               },
             },
             {

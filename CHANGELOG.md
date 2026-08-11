@@ -12,6 +12,9 @@
 ### 变更
 - 依赖新增 `python-docx==1.2.0`（含 `lxml`），用于工作区 `.docx` 的 Markdown 往返转换
 
+### 修复
+- 仪表盘发版后或长时间未打开时白屏：Service Worker 不再 Cache-First 钉死旧 `index.html`；hashed 资源改为 CacheFirst；入口脚本失败时清除 SW 缓存并自动刷新一次 (#236)
+
 ## [0.9.21] - 2026-08-11
 
 ### 新增
