@@ -194,6 +194,31 @@ export function ModelListEditor({
     if (values.max_tokens != null)
       entry.max_tokens = values.max_tokens as number;
     if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
+    if (values.reasoning === true) {
+      const efforts = (values.reasoning_efforts as string[] | undefined) || [];
+      entry.reasoning_config = {
+        supported: true,
+        toggle: values.reasoning_toggle !== false,
+        default_mode:
+          (values.reasoning_default_mode as "auto" | "enabled" | "disabled") ||
+          "auto",
+        efforts,
+        default_effort:
+          (values.reasoning_default_effort as string | undefined) || null,
+        effort_type:
+          (values.reasoning_effort_type as "enum" | "token_budget") || "enum",
+        adapter:
+          (values.reasoning_adapter as
+            | "status_only"
+            | "thinking"
+            | "thinking_nested_effort"
+            | "openai_reasoning_effort"
+            | "anthropic_adaptive"
+            | "anthropic_budget"
+            | "dashscope"
+            | "openrouter") || "thinking",
+      };
+    }
     return entry;
   };
 
@@ -240,6 +265,13 @@ export function ModelListEditor({
         (model as Record<string, unknown>).context_window ?? undefined,
       max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
+      reasoning_toggle: model.reasoning_config?.toggle ?? true,
+      reasoning_efforts: model.reasoning_config?.efforts ?? [],
+      reasoning_default_mode: model.reasoning_config?.default_mode ?? "auto",
+      reasoning_default_effort:
+        model.reasoning_config?.default_effort ?? undefined,
+      reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
+      reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
     });
     const hasAdvanced =
@@ -470,6 +502,163 @@ export function ModelListEditor({
                   style={{ marginBottom: 10 }}
                 >
                   <Switch size="small" />
+                </Form.Item>
+                <Form.Item noStyle shouldUpdate>
+                  {({ getFieldValue }) =>
+                    getFieldValue("reasoning") ? (
+                      <>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <Form.Item
+                            name="reasoning_toggle"
+                            label={t("models.reasoningToggle", "允许开关")}
+                            valuePropName="checked"
+                            initialValue
+                            style={{ flex: 1, marginBottom: 10 }}
+                          >
+                            <Switch size="small" />
+                          </Form.Item>
+                          <Form.Item
+                            name="reasoning_default_mode"
+                            label={t("models.reasoningDefault", "默认思考")}
+                            initialValue="auto"
+                            style={{ flex: 1, marginBottom: 10 }}
+                          >
+                            <Select
+                              options={[
+                                {
+                                  value: "auto",
+                                  label: t("chat.reasoningAuto", "自动"),
+                                },
+                                {
+                                  value: "enabled",
+                                  label: t("chat.reasoningEnabled", "开启"),
+                                },
+                                {
+                                  value: "disabled",
+                                  label: t("chat.reasoningDisabled", "关闭"),
+                                },
+                              ]}
+                            />
+                          </Form.Item>
+                        </div>
+                        <Form.Item
+                          name="reasoning_efforts"
+                          label={t("models.reasoningEfforts", "支持的思考强度")}
+                          style={{ marginBottom: 10 }}
+                        >
+                          <Select
+                            mode="tags"
+                            tokenSeparators={[","]}
+                            placeholder="low, medium, high, max, xhigh"
+                          />
+                        </Form.Item>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <Form.Item
+                            name="reasoning_default_effort"
+                            label={t(
+                              "models.reasoningDefaultEffort",
+                              "默认强度",
+                            )}
+                            style={{ flex: 1, marginBottom: 10 }}
+                          >
+                            <Input placeholder="high" />
+                          </Form.Item>
+                          <Form.Item
+                            name="reasoning_effort_type"
+                            label={t("models.reasoningEffortType", "强度类型")}
+                            initialValue="enum"
+                            style={{ flex: 1, marginBottom: 10 }}
+                          >
+                            <Select
+                              options={[
+                                {
+                                  value: "enum",
+                                  label: t(
+                                    "models.reasoningEffortEnum",
+                                    "强度档位",
+                                  ),
+                                },
+                                {
+                                  value: "token_budget",
+                                  label: t(
+                                    "models.reasoningEffortBudget",
+                                    "Token 预算",
+                                  ),
+                                },
+                              ]}
+                            />
+                          </Form.Item>
+                        </div>
+                        <Form.Item
+                          name="reasoning_adapter"
+                          label={t("models.reasoningAdapter", "推理协议")}
+                          initialValue="thinking"
+                          style={{ marginBottom: 10 }}
+                        >
+                          <Select
+                            options={[
+                              {
+                                value: "status_only",
+                                label: t(
+                                  "models.reasoningAdapterStatusOnly",
+                                  "仅标记（始终推理）",
+                                ),
+                              },
+                              {
+                                value: "openai_reasoning_effort",
+                                label: t(
+                                  "models.reasoningAdapterOpenAI",
+                                  "OpenAI / Gemini / Groq",
+                                ),
+                              },
+                              {
+                                value: "anthropic_adaptive",
+                                label: t(
+                                  "models.reasoningAdapterAnthropicAdaptive",
+                                  "Anthropic Adaptive",
+                                ),
+                              },
+                              {
+                                value: "anthropic_budget",
+                                label: t(
+                                  "models.reasoningAdapterAnthropicBudget",
+                                  "Anthropic Token Budget",
+                                ),
+                              },
+                              {
+                                value: "thinking",
+                                label: t(
+                                  "models.reasoningAdapterThinking",
+                                  "DeepSeek / GLM / Kimi",
+                                ),
+                              },
+                              {
+                                value: "thinking_nested_effort",
+                                label: t(
+                                  "models.reasoningAdapterNestedEffort",
+                                  "TokenHub 嵌套强度",
+                                ),
+                              },
+                              {
+                                value: "dashscope",
+                                label: t(
+                                  "models.reasoningAdapterDashScope",
+                                  "DashScope / 阿里云",
+                                ),
+                              },
+                              {
+                                value: "openrouter",
+                                label: t(
+                                  "models.reasoningAdapterOpenRouter",
+                                  "OpenRouter",
+                                ),
+                              },
+                            ]}
+                          />
+                        </Form.Item>
+                      </>
+                    ) : null
+                  }
                 </Form.Item>
               </div>
             )}

@@ -19,6 +19,7 @@ from octop.infra.agents.providers.probe import (
     probe_provider_row,
     provider_headers,
 )
+from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import clear_stale_pins_for_provider
 from octop.infra.errors import ErrorCode, OctopError
@@ -111,13 +112,21 @@ async def _maybe_refresh_codex_row(server: Any, row: Any) -> Any:
 
 
 def _row_to_dict(r: Any) -> dict[str, Any]:
+    models: list[dict[str, Any]] = []
+    for stored in r.get_models():
+        model = dict(stored)
+        capability = reasoning_capability(model, base_url=r.base_url)
+        if capability is not None:
+            model["reasoning"] = True
+            model["reasoning_config"] = capability
+        models.append(model)
     return {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
         "base_url": r.base_url,
         "api_key": r.api_key,
-        "models": r.get_models(),
+        "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
     }

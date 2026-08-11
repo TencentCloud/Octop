@@ -34,6 +34,8 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Model ref override, e.g. `openai/gpt-4o`. Uses the agent default when omitted.",
     )
+    reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
+    reasoning_effort: str | None = None
     target_agent_ids: list[str] | None = Field(
         default=None,
         description="Optional agent ids to involve via @mention (same user only).",
@@ -65,6 +67,13 @@ class ChatTurnBody(BaseModel):
             default_model=str(model).strip()
             if isinstance(model, str) and str(model).strip()
             else None,
+            reasoning_mode=payload.get("reasoning_mode")
+            if payload.get("reasoning_mode") in ("auto", "enabled", "disabled")
+            else None,
+            reasoning_effort=str(payload["reasoning_effort"]).strip()
+            if isinstance(payload.get("reasoning_effort"), str)
+            and str(payload["reasoning_effort"]).strip()
+            else None,
             target_agent_ids=(
                 [str(x) for x in payload["target_agent_ids"]]
                 if isinstance(payload.get("target_agent_ids"), list)
@@ -83,6 +92,8 @@ class UserTurnWsFrame(BaseModel):
     thread_id: str | None = None
     model: str | None = None
     default_model: str | None = None
+    reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
+    reasoning_effort: str | None = None
     mcp_servers: list[str] | None = None
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
@@ -104,6 +115,9 @@ class RebindSessionBody(BaseModel):
 class RenameThreadBody(BaseModel):
     title: str | None = None
     pinned: bool | None = None
+    model_ref: str | None = None
+    reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
+    reasoning_effort: str | None = None
 
 
 class HitlResumeBody(BaseModel):

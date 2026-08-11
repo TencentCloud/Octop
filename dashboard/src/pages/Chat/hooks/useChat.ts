@@ -648,6 +648,8 @@ export function useChat(
       skills?: string[] | null,
       targetAgentIds?: string[] | null,
       composerContext?: UserComposerContext,
+      reasoningMode?: "auto" | "enabled" | "disabled",
+      reasoningEffort?: string | null,
     ) => {
       const key = storeKey || stableSessionId;
 
@@ -678,6 +680,8 @@ export function useChat(
         mcpServers,
         skills,
         targetAgentIds,
+        reasoningMode,
+        reasoningEffort,
       );
     },
     [stableSessionId],

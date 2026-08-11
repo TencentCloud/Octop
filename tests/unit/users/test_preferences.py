@@ -6,7 +6,11 @@ import pytest
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import (
+    ModelReasoningPreference,
+    get_model_reasoning_from_json,
+    get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
+    merge_model_preferences_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
 )
@@ -73,3 +77,27 @@ def test_merge_preserves_other_keys() -> None:
     data = json.loads(merged)
     assert data["foo"] == 1
     assert len(data["remote_browser_bookmarks"]) == 1
+
+
+def test_model_preferences_roundtrip_and_preserve_other_keys() -> None:
+    merged = merge_model_preferences_json(
+        '{"foo":1}',
+        preferred_model="token/glm-5",
+        model_reasoning={"token/glm-5": ModelReasoningPreference(mode="enabled", effort="high")},
+    )
+    assert get_preferred_model_from_json(merged) == "token/glm-5"
+    assert get_model_reasoning_from_json(merged)["token/glm-5"] == ModelReasoningPreference(
+        mode="enabled",
+        effort="high",
+    )
+
+
+def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
+    raw = merge_model_preferences_json(
+        "{}",
+        preferred_model="token/glm-5",
+        model_reasoning={"token/glm-5": ModelReasoningPreference(mode="auto")},
+    )
+    cleared = merge_model_preferences_json(raw, preferred_model=None)
+    assert get_preferred_model_from_json(cleared) is None
+    assert "token/glm-5" in get_model_reasoning_from_json(cleared)

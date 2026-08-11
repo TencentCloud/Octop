@@ -3,12 +3,12 @@ import { resolveTurnModelOverride, resolveTurnModelRef } from "./chatMessages";
 
 describe("resolveTurnModelRef", () => {
   it("sends only an explicit composer selection", () => {
-    expect(resolveTurnModelRef("p/picked")).toBe("p/picked");
+    expect(resolveTurnModelRef("p/picked", null)).toBe("p/picked");
   });
 
   it("omits model when composer is Auto so backend can resolve expert default", () => {
-    expect(resolveTurnModelRef(null)).toBeNull();
-    expect(resolveTurnModelRef("")).toBeNull();
+    expect(resolveTurnModelRef(null, null)).toBeNull();
+    expect(resolveTurnModelRef("", null)).toBeNull();
   });
 });
 

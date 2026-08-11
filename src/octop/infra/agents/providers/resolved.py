@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from octop.infra.agents.providers.reasoning import reasoning_capability
+
 
 def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
     """Return enabled models for providers that have credentials configured."""
@@ -24,7 +26,8 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
                     "model": m["id"],
                     "name": m.get("name") or m["id"],
                     "input": m.get("input") or ["text"],
-                    "reasoning": m.get("reasoning"),
+                    "reasoning": reasoning_capability(m, base_url=provider.base_url) is not None,
+                    "reasoning_config": reasoning_capability(m, base_url=provider.base_url),
                     "context_window": window,
                     "max_tokens": m.get("max_tokens"),
                     "max_input_tokens": window,

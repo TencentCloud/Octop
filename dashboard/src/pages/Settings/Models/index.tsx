@@ -37,6 +37,7 @@ export default function ModelsPage() {
     presets,
     resolvedModels,
     activeModel,
+    modelReasoning,
     loading,
     error,
     fetchAll,
@@ -131,6 +132,7 @@ export default function ModelsPage() {
           <ActiveModelPool
             resolvedModels={resolvedModels}
             activeModel={activeModel}
+            modelReasoning={modelReasoning}
             providers={providers}
             onSaved={fetchAll}
           />

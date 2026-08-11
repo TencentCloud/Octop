@@ -20,6 +20,7 @@ def test_load_provider_presets_integration() -> None:
     assert "deepseek-v4-pro" in deepseek_ids
     reasoner = next(m for m in deepseek["models"] if m["id"] == "deepseek-reasoner")
     assert reasoner.get("reasoning") is True
+    assert reasoner["reasoning_config"]["adapter"] == "status_only"
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
     token_ids = {m["id"] for m in token_plan["models"]}
@@ -31,6 +32,8 @@ def test_load_provider_presets_integration() -> None:
     assert any(mid.startswith("kimi-k2") for mid in token_ids)
     assert token_plan.get("vendor") == "tencent"
     assert token_plan.get("provider_group") == "tencent"
+    token_deepseek = next(m for m in token_plan["models"] if m["id"].startswith("deepseek-v4"))
+    assert token_deepseek["reasoning_config"]["adapter"] == "thinking_nested_effort"
 
     coding_plan = next(p for p in presets if p["id"] == "tencent-coding-plan")
     assert "kimi-k2.5" in {m["id"] for m in coding_plan["models"]}
@@ -38,6 +41,8 @@ def test_load_provider_presets_integration() -> None:
     openai = next(p for p in presets if p["id"] == "openai")
     gpt4o = next(m for m in openai["models"] if m["id"] == "gpt-4o")
     assert gpt4o.get("input") == ["text", "image"]
+    gpt5 = next(m for m in openai["models"] if m["id"] == "gpt-5")
+    assert gpt5["reasoning_config"]["adapter"] == "openai_reasoning_effort"
 
     kimi_cn = next(p for p in presets if p["id"] == "kimi-cn")
     kimi_k25 = next(m for m in kimi_cn["models"] if m["id"] == "kimi-k2.5")

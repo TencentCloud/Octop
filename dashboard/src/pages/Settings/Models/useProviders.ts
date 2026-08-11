@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
 import { providerApi } from "../../../api/modules/provider";
+import { preferencesApi } from "../../../api/modules/preferences";
 import type { ResolvedModel } from "../../../api/types";
 
 export type { ResolvedModel };
@@ -18,6 +19,7 @@ export interface ProviderModel {
   input?: string[];
   thinking?: boolean | null;
   reasoning?: boolean;
+  reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
   max_tokens?: number;
 }
@@ -66,6 +68,10 @@ export interface UseProvidersResult {
   presets: ProviderPreset[];
   resolvedModels: ResolvedModel[];
   activeModel: { provider_name: string; model: string };
+  modelReasoning: Record<
+    string,
+    { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
+  >;
   loading: boolean;
   error: string | null;
   fetchAll: () => Promise<void>;
@@ -80,6 +86,9 @@ export function useProviders(): UseProvidersResult {
     provider_name: "",
     model: "",
   });
+  const [modelReasoning, setModelReasoning] = useState<
+    UseProvidersResult["modelReasoning"]
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
@@ -90,14 +99,16 @@ export function useProviders(): UseProvidersResult {
     if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
-      const [rows, presetList, resolved, active] = await Promise.all([
-        request<ProviderRow[]>("/admin/providers"),
-        request<ProviderPreset[]>("/providers/presets"),
-        providerApi.listResolvedModels(),
-        request<{ provider_name: string; model: string }>(
-          "/providers/active-model",
-        ),
-      ]);
+      const [rows, presetList, resolved, active, preferences] =
+        await Promise.all([
+          request<ProviderRow[]>("/admin/providers"),
+          request<ProviderPreset[]>("/providers/presets"),
+          providerApi.listResolvedModels(),
+          request<{ provider_name: string; model: string }>(
+            "/providers/active-model",
+          ),
+          preferencesApi.get(),
+        ]);
       if (!Array.isArray(rows)) {
         throw new Error(
           "Unexpected API response shape from /admin/providers — is BASE_URL configured correctly?",
@@ -110,14 +121,21 @@ export function useProviders(): UseProvidersResult {
       setProviders(normalized);
       setPresets(Array.isArray(presetList) ? presetList : []);
       setResolvedModels(Array.isArray(resolved) ? resolved : []);
+      const preferredParts = (preferences.preferred_model || "").split("/");
       setActiveModel(
-        active && typeof active === "object"
+        preferredParts.length > 1
+          ? {
+              provider_name: preferredParts[0],
+              model: preferredParts.slice(1).join("/"),
+            }
+          : active && typeof active === "object"
           ? {
               provider_name: active.provider_name ?? "",
               model: active.model ?? "",
             }
           : { provider_name: "", model: "" },
       );
+      setModelReasoning(preferences.model_reasoning || {});
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : t("models.loadProvidersFailed");
@@ -138,6 +156,7 @@ export function useProviders(): UseProvidersResult {
     presets,
     resolvedModels,
     activeModel,
+    modelReasoning,
     loading,
     error,
     fetchAll,

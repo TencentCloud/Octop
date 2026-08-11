@@ -12,6 +12,9 @@ export interface OctopThread {
   has_messages?: boolean;
   pinned?: boolean;
   unread_count?: number;
+  model_ref?: string | null;
+  reasoning_mode?: "auto" | "enabled" | "disabled" | null;
+  reasoning_effort?: string | null;
 }
 
 export interface OctopThreadHistory {
@@ -24,6 +27,9 @@ export interface OctopThreadHistory {
     timestamp?: number;
   }>;
   pinned?: boolean;
+  model_ref?: string | null;
+  reasoning_mode?: "auto" | "enabled" | "disabled" | null;
+  reasoning_effort?: string | null;
   has_more?: boolean;
   limit?: number;
   offset?: number;
@@ -36,6 +42,9 @@ export interface OctopThreadHistory {
 export interface OctopThreadPatch {
   title?: string;
   pinned?: boolean;
+  model_ref?: string | null;
+  reasoning_mode?: "auto" | "enabled" | "disabled" | null;
+  reasoning_effort?: string | null;
 }
 
 export type ContextUsageSegmentKey =
@@ -121,7 +130,14 @@ export const octopThreadsApi = {
     octopThreadsApi.patch(agentId, threadId, { title }),
 
   patch: (agentId: string, threadId: string, body: OctopThreadPatch) =>
-    request<{ thread_id: string; title: string | null; pinned?: boolean }>(
+    request<{
+      thread_id: string;
+      title: string | null;
+      pinned?: boolean;
+      model_ref?: string | null;
+      reasoning_mode?: "auto" | "enabled" | "disabled" | null;
+      reasoning_effort?: string | null;
+    }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
       )}`,

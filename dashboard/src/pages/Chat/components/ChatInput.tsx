@@ -68,6 +68,12 @@ interface ChatInputProps {
   availableModels?: ResolvedModel[];
   selectedModel?: string | null;
   onModelChange?: (model: string | null) => void;
+  reasoningMode?: "auto" | "enabled" | "disabled";
+  reasoningEffort?: string | null;
+  onReasoningChange?: (
+    mode: "auto" | "enabled" | "disabled",
+    effort: string | null,
+  ) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -112,6 +118,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableModels,
       selectedModel,
       onModelChange,
+      reasoningMode = "auto",
+      reasoningEffort = null,
+      onReasoningChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -356,8 +365,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             connectors: selectedConnectors,
             targetAgents: selectedTargetAgents,
             selectedModel,
+            reasoningMode,
+            reasoningEffort,
           }),
-          modelRef: resolveTurnModelRef(selectedModel),
+          modelRef: resolveTurnModelRef(selectedModel, defaultModel),
         });
         if (result === "full") {
           antMessage.warning(t("chat.queue.full"));
@@ -384,6 +395,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedConnectors,
       selectedTargetAgents,
       selectedModel,
+      reasoningMode,
+      reasoningEffort,
       defaultModel,
       t,
     ]);
@@ -408,6 +421,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               onModelChange?.(ctx.model);
             } else if (item.modelRef !== undefined) {
               onModelChange?.(item.modelRef);
+            }
+            if (ctx.reasoningMode !== undefined) {
+              onReasoningChange?.(
+                ctx.reasoningMode,
+                ctx.reasoningEffort || null,
+              );
             }
           } else if (item.modelRef !== undefined) {
             onModelChange?.(item.modelRef);
@@ -443,6 +462,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onConnectorsChange,
         onTargetAgentsChange,
         onModelChange,
+        onReasoningChange,
       ],
     );
 
@@ -669,6 +689,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             availableModels={availableModels}
             selectedModel={selectedModel}
             onModelChange={onModelChange}
+            reasoningMode={reasoningMode}
+            reasoningEffort={reasoningEffort}
+            onReasoningChange={onReasoningChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

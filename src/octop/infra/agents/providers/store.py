@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from harness_agent.config import ModelConfig, ProviderConfig
 
+from octop.infra.agents.providers.reasoning import reasoning_capability
+
 if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRow
     from octop.infra.db.repos.providers import ProviderRepo
@@ -222,6 +224,19 @@ class ProviderStore:
             if model.get("id") == model_id and model.get("enabled", True):
                 return True
         return False
+
+    def get_model_reasoning_capability(self, ref: str) -> dict[str, Any] | None:
+        """Return normalized reasoning metadata for a usable model ref."""
+        if not self.is_model_ref_usable(ref):
+            return None
+        provider_name, _, model_id = ref.partition("/")
+        row = self._provider_repo.get_by_name(provider_name)
+        if row is None:
+            return None
+        for model in row.get_models():
+            if model.get("id") == model_id and model.get("enabled", True):
+                return reasoning_capability(model, base_url=row.base_url)
+        return None
 
     def resolve_explicit_default_model(
         self,

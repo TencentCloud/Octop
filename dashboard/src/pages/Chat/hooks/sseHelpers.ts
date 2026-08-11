@@ -48,6 +48,8 @@ export interface UserComposerContext {
   connectors?: string[];
   targetAgents?: string[];
   model?: string;
+  reasoningMode?: "auto" | "enabled" | "disabled";
+  reasoningEffort?: string | null;
 }
 
 export interface ChatMessage {

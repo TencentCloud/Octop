@@ -1873,11 +1873,13 @@ class AgentManager:
         policy = SecurityPolicy.merge(global_policy, agent_override)
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
+        from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
 
         # FilesystemGuard + ModelSettings live in harness-agent (auto-mounted).
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         agent_middleware: list[Any] = [
             *plugin_middleware,
+            ReasoningRequestMiddleware(),
             BinaryReadGuardMiddleware(),
         ]
 

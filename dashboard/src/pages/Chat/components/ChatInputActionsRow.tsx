@@ -14,8 +14,11 @@ import {
   Play,
   Loader2,
   Cpu,
+  Brain,
   GraduationCap,
   MoreHorizontal,
+  Check,
+  ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { Tooltip, Popover, Drawer } from "antd";
@@ -68,6 +71,12 @@ interface ChatInputActionsRowProps {
   selectedModel?: string | null;
   defaultModel?: string | null;
   onModelChange?: (model: string | null) => void;
+  reasoningMode?: "auto" | "enabled" | "disabled";
+  reasoningEffort?: string | null;
+  onReasoningChange?: (
+    mode: "auto" | "enabled" | "disabled",
+    effort: string | null,
+  ) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -116,6 +125,9 @@ export default function ChatInputActionsRow({
   selectedModel,
   defaultModel,
   onModelChange,
+  reasoningMode = "auto",
+  reasoningEffort = null,
+  onReasoningChange,
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
@@ -142,6 +154,10 @@ export default function ChatInputActionsRow({
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
+    null,
+  );
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
   const [mobilePicker, setMobilePicker] = useState<MobilePickerKey | null>(
     null,
@@ -169,6 +185,12 @@ export default function ChatInputActionsRow({
   const showModelPicker = Boolean(
     availableModels && availableModels.length > 0 && onModelChange,
   );
+  const effectiveModelRef = selectedModel || defaultModel || "";
+  const selectedModelInfo = availableModels?.find(
+    (model) => modelOptionValue(model) === effectiveModelRef,
+  );
+  const reasoningCapability = selectedModelInfo?.reasoning_config;
+  const reasoningIsStatusOnly = reasoningCapability?.adapter === "status_only";
   const showConnectorPicker = Boolean(
     availableConnectors && onConnectorsChange,
   );
@@ -188,7 +210,10 @@ export default function ChatInputActionsRow({
     selectedSkills.length +
     selectedTargetAgents.length;
 
-  const closeMobilePicker = () => setMobilePicker(null);
+  const closeMobilePicker = () => {
+    setMobilePicker(null);
+    setReasoningModelRef(null);
+  };
 
   const openMobilePicker = (key: MobilePickerKey) => {
     setMobileOverflowOpen(false);
@@ -203,44 +228,187 @@ export default function ChatInputActionsRow({
     shortcut: t("shortcut.title", "快捷指令"),
   };
 
-  const modelMenu = (
-    <div className={styles.modelMenu}>
-      <button
-        type="button"
-        className={`${styles.modelMenuItem} ${
-          !selectedModel ? styles.modelMenuItemActive : ""
-        }`}
-        onClick={() => {
-          onModelChange?.(null);
-          closeMobilePicker();
-        }}
-      >
-        <span className={styles.modelMenuLabel}>
-          {t("chat.modelAuto", "Auto")}
-        </span>
-        <span className={styles.modelMenuHint}>
-          {t("chat.modelAutoHint", "Use agent default")}
-        </span>
-      </button>
-      {availableModels?.map((m) => {
-        const value = modelOptionValue(m);
-        const active = selectedModel === value;
-        return (
+  const reasoningModel = availableModels?.find(
+    (model) => modelOptionValue(model) === reasoningModelRef,
+  );
+  const reasoningModelCapability = reasoningModel?.reasoning_config;
+
+  const reasoningModeLabel = (mode: "auto" | "enabled" | "disabled") =>
+    mode === "auto"
+      ? t("chat.reasoningAuto", "自动")
+      : mode === "enabled"
+      ? t("chat.reasoningEnabled", "开启")
+      : t("chat.reasoningDisabled", "关闭");
+
+  const reasoningSummary = (model: ResolvedModel, active: boolean) => {
+    const capability = model.reasoning_config;
+    if (!capability) return null;
+    if (capability.adapter === "status_only") {
+      return t("chat.reasoningAlways", "始终推理");
+    }
+    if (active) {
+      return reasoningEffort || reasoningModeLabel(reasoningMode);
+    }
+    return (
+      capability.default_effort ||
+      reasoningModeLabel(capability.default_mode || "auto")
+    );
+  };
+
+  const openModelReasoning = (modelRef: string) => {
+    if (selectedModel !== modelRef) onModelChange?.(modelRef);
+    setReasoningModelRef(modelRef);
+  };
+
+  const reasoningMenu = reasoningModelCapability ? (
+    <div className={styles.reasoningMenuPanel}>
+      <div className={styles.reasoningMenuHeader}>
+        {useCompactControls && (
           <button
-            key={value}
+            type="button"
+            className={styles.reasoningMenuBack}
+            onClick={() => setReasoningModelRef(null)}
+            aria-label={t("common.back", "返回")}
+          >
+            <ChevronLeft size={16} />
+          </button>
+        )}
+        <span>{reasoningModel ? modelOptionLabel(reasoningModel) : ""}</span>
+      </div>
+      {reasoningModelCapability.adapter === "status_only" ? (
+        <div className={styles.reasoningStatusRow}>
+          <Brain size={16} />
+          <span>{t("chat.reasoningAlways", "始终推理")}</span>
+          <Check size={16} />
+        </div>
+      ) : (
+        <>
+          <div className={styles.reasoningMenuSectionLabel}>
+            {t("chat.reasoningMode", "思考模式")}
+          </div>
+          {(reasoningModelCapability.toggle
+            ? (["auto", "enabled", "disabled"] as const)
+            : (["auto", "enabled"] as const)
+          ).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`${styles.reasoningMenuChoice} ${
+                reasoningMode === mode ? styles.reasoningMenuChoiceActive : ""
+              }`}
+              onClick={() => onReasoningChange?.(mode, reasoningEffort)}
+            >
+              <span>{reasoningModeLabel(mode)}</span>
+              {reasoningMode === mode && <Check size={16} />}
+            </button>
+          ))}
+          {reasoningModelCapability.efforts.length > 0 && (
+            <>
+              <div className={styles.reasoningMenuDivider} />
+              <div className={styles.reasoningMenuSectionLabel}>
+                {t("chat.reasoningEffort", "思考强度")}
+              </div>
+              {reasoningModelCapability.efforts.map((effort) => (
+                <button
+                  key={effort}
+                  type="button"
+                  className={`${styles.reasoningMenuChoice} ${
+                    reasoningEffort === effort
+                      ? styles.reasoningMenuChoiceActive
+                      : ""
+                  }`}
+                  onClick={() =>
+                    onReasoningChange?.(
+                      reasoningMode === "disabled" ? "enabled" : reasoningMode,
+                      effort,
+                    )
+                  }
+                >
+                  <span>{effort}</span>
+                  {reasoningEffort === effort && <Check size={16} />}
+                </button>
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  ) : null;
+
+  const modelMenu = (
+    <div
+      className={`${styles.modelPickerPanel} ${
+        reasoningMenu ? styles.modelPickerPanelExpanded : ""
+      }`}
+    >
+      {(!useCompactControls || !reasoningMenu) && (
+        <div className={styles.modelMenu}>
+          <button
             type="button"
             className={`${styles.modelMenuItem} ${
-              active ? styles.modelMenuItemActive : ""
+              !selectedModel ? styles.modelMenuItemActive : ""
             }`}
             onClick={() => {
-              onModelChange?.(active ? null : value);
+              onModelChange?.(null);
               closeMobilePicker();
+              setModelPickerOpen(false);
             }}
           >
-            <span className={styles.modelMenuLabel}>{modelOptionLabel(m)}</span>
+            <span className={styles.modelMenuLabel}>
+              {t("chat.modelAuto", "Auto")}
+            </span>
+            <span className={styles.modelMenuHint}>
+              {t("chat.modelAutoHint", "Use agent default")}
+            </span>
           </button>
-        );
-      })}
+          {availableModels?.map((model) => {
+            const value = modelOptionValue(model);
+            const active = selectedModel === value;
+            const capability = model.reasoning_config;
+            const summary = reasoningSummary(model, active);
+            return (
+              <div
+                key={value}
+                className={`${styles.modelMenuRow} ${
+                  active ? styles.modelMenuItemActive : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  className={styles.modelMenuSelect}
+                  onClick={() => {
+                    onModelChange?.(active ? null : value);
+                    closeMobilePicker();
+                    setModelPickerOpen(false);
+                  }}
+                >
+                  <span className={styles.modelMenuLabel}>
+                    {modelOptionLabel(model)}
+                  </span>
+                </button>
+                {capability && onReasoningChange && (
+                  <button
+                    type="button"
+                    className={styles.modelMenuReasoning}
+                    onClick={() => openModelReasoning(value)}
+                    aria-label={`${modelOptionLabel(model)} ${t(
+                      "chat.reasoningMode",
+                      "思考模式",
+                    )}`}
+                  >
+                    <Brain size={14} />
+                    {summary && <span>{summary}</span>}
+                    {capability.adapter !== "status_only" && (
+                      <ChevronRight size={15} />
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {reasoningMenu}
     </div>
   );
 
@@ -405,7 +573,9 @@ export default function ChatInputActionsRow({
           {showModelPicker && (
             <button
               className={`${styles.secondaryBtn} ${
-                modelOverride ? styles.secondaryBtnModelActive : ""
+                modelOverride || reasoningMode !== "auto" || reasoningEffort
+                  ? styles.secondaryBtnModelActive
+                  : ""
               }`}
               type="button"
               onClick={() => setMobilePicker("model")}
@@ -471,6 +641,11 @@ export default function ChatInputActionsRow({
           <Popover
             trigger="click"
             placement="topLeft"
+            open={modelPickerOpen}
+            onOpenChange={(open) => {
+              setModelPickerOpen(open);
+              if (!open) setReasoningModelRef(null);
+            }}
             overlayClassName={styles.modelPopover}
             content={modelMenu}
           >
@@ -493,7 +668,9 @@ export default function ChatInputActionsRow({
             >
               <button
                 className={`${styles.secondaryBtn} ${styles.modelPickerBtn} ${
-                  modelOverride ? styles.secondaryBtnModelActive : ""
+                  modelOverride || reasoningMode !== "auto" || reasoningEffort
+                    ? styles.secondaryBtnModelActive
+                    : ""
                 }`}
                 type="button"
               >
@@ -502,6 +679,15 @@ export default function ChatInputActionsRow({
                   {selectedModel
                     ? modelShortLabel(selectedModel)
                     : t("chat.modelAuto", "Auto")}
+                  {selectedModel && reasoningCapability && (
+                    <span className={styles.modelPickerReasoningLabel}>
+                      {` · ${
+                        reasoningIsStatusOnly
+                          ? t("chat.reasoningAlways", "始终推理")
+                          : reasoningEffort || reasoningModeLabel(reasoningMode)
+                      }`}
+                    </span>
+                  )}
                 </span>
               </button>
             </Tooltip>

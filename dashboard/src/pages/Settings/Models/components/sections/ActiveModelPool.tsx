@@ -5,12 +5,13 @@
  * Mirrors finnie's ActiveModelPool component.
  */
 import { useMemo, useState } from "react";
-import { Check, Info, Star, X, Zap } from "lucide-react";
-import { Button, Empty, Tag, Tooltip } from "antd";
+import { Brain, Check, Info, Star, X, Zap } from "lucide-react";
+import { Button, Empty, Popover, Segmented, Select, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import { preferencesApi } from "../../../../../api/modules/preferences";
 import type { ProviderRow, ResolvedModel } from "../../useProviders";
 import { ModelMetaTags } from "../../modelMeta";
 import { modelOptionLabel } from "../../../../../utils/modelOptions";
@@ -25,6 +26,10 @@ interface ActiveModelPoolProps {
   resolvedModels: ResolvedModel[];
   activeModel: ActiveModel;
   providers: ProviderRow[];
+  modelReasoning: Record<
+    string,
+    { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
+  >;
   onSaved: () => void | Promise<void>;
 }
 
@@ -39,6 +44,7 @@ export function ActiveModelPool({
   resolvedModels,
   activeModel,
   providers,
+  modelReasoning,
   onSaved,
 }: ActiveModelPoolProps) {
   const { t } = useTranslation();
@@ -83,13 +89,7 @@ export function ActiveModelPool({
     const key = `${m.provider_name}/${m.model}`;
     setSetting(key);
     try {
-      await request("/providers/active-model", {
-        method: "PUT",
-        body: JSON.stringify({
-          provider_name: m.provider_name,
-          model: m.model,
-        }),
-      });
+      await preferencesApi.patch({ preferred_model: key });
       message.success(
         t("models.preferredModelSet", {
           model: modelOptionLabel(m),
@@ -148,6 +148,100 @@ export function ActiveModelPool({
         });
       }, 2000);
     }
+  };
+
+  const handleReasoningChange = async (
+    key: string,
+    patch: { mode?: "auto" | "enabled" | "disabled"; effort?: string | null },
+  ) => {
+    const current = modelReasoning[key] || { mode: "auto" as const };
+    try {
+      await preferencesApi.patch({
+        model_reasoning: {
+          ...modelReasoning,
+          [key]: { ...current, ...patch },
+        },
+      });
+      await onSaved();
+    } catch (err) {
+      message.error(
+        err instanceof Error ? err.message : t("common.saveFailed"),
+      );
+    }
+  };
+
+  const renderReasoningPreference = (m: ResolvedModel, key: string) => {
+    const capability = m.reasoning_config;
+    if (!capability) return null;
+    if (capability.adapter === "status_only") {
+      return (
+        <Tooltip title={t("chat.reasoningAlways", "始终推理")}>
+          <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+            <Brain size={12} style={{ marginRight: 4, verticalAlign: -2 }} />
+            {t("chat.reasoningAlways", "始终推理")}
+          </Tag>
+        </Tooltip>
+      );
+    }
+    const preference = modelReasoning[key] || {
+      mode: capability.default_mode,
+      effort: capability.default_effort,
+    };
+    const content = (
+      <div style={{ width: 250, display: "grid", gap: 10 }}>
+        <div style={{ fontWeight: 600 }}>
+          {t("chat.reasoningMode", "思考模式")}
+        </div>
+        <Segmented
+          block
+          value={preference.mode}
+          options={[
+            { value: "auto", label: t("chat.reasoningAuto", "自动") },
+            { value: "enabled", label: t("chat.reasoningEnabled", "开启") },
+            ...(capability.toggle
+              ? [
+                  {
+                    value: "disabled",
+                    label: t("chat.reasoningDisabled", "关闭"),
+                  },
+                ]
+              : []),
+          ]}
+          onChange={(value) =>
+            void handleReasoningChange(key, {
+              mode: value as "auto" | "enabled" | "disabled",
+            })
+          }
+        />
+        {capability.efforts.length > 0 && (
+          <Select
+            value={preference.effort || undefined}
+            allowClear
+            placeholder={t("chat.reasoningEffort", "思考强度")}
+            options={capability.efforts.map((effort) => ({
+              value: effort,
+              label: effort,
+            }))}
+            onChange={(effort) =>
+              void handleReasoningChange(key, { effort: effort || null })
+            }
+          />
+        )}
+      </div>
+    );
+    return (
+      <Popover trigger="click" placement="left" content={content}>
+        <Tag color="purple" style={{ cursor: "pointer", marginInlineEnd: 0 }}>
+          <Brain size={12} style={{ marginRight: 4, verticalAlign: -2 }} />
+          {preference.effort ||
+            (preference.mode === "enabled"
+              ? t("chat.reasoningEnabled", "开启")
+              : preference.mode === "disabled"
+              ? t("chat.reasoningDisabled", "关闭")
+              : t("chat.reasoningAuto", "自动"))}
+        </Tag>
+      </Popover>
+    );
   };
 
   const renderCapabilityTags = (m: ResolvedModel) => (
@@ -263,6 +357,7 @@ export function ActiveModelPool({
                     </div>
 
                     {capTags}
+                    {renderReasoningPreference(m, key)}
 
                     {canTest && (
                       <div className={styles.poolModelActions}>

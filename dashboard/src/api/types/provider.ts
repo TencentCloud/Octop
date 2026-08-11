@@ -13,8 +13,27 @@ export interface ModelInfo {
   context_window?: number;
   max_tokens?: number;
   reasoning?: boolean;
+  reasoning_config?: ReasoningCapability | null;
   input?: string[];
   cost?: ModelCost;
+}
+
+export interface ReasoningCapability {
+  supported: boolean;
+  toggle: boolean;
+  default_mode: "auto" | "enabled" | "disabled";
+  efforts: string[];
+  default_effort?: string | null;
+  effort_type: "enum" | "token_budget";
+  adapter:
+    | "status_only"
+    | "thinking"
+    | "thinking_nested_effort"
+    | "openai_reasoning_effort"
+    | "anthropic_adaptive"
+    | "anthropic_budget"
+    | "dashscope"
+    | "openrouter";
 }
 
 export interface ProviderInfo {
@@ -99,6 +118,7 @@ export interface ResolvedModel {
   max_tokens?: number | null;
   max_input_tokens?: number | null;
   reasoning?: boolean | null;
+  reasoning_config?: ReasoningCapability | null;
   input?: string[];
   /** @deprecated use context_window */
   contextWindow?: number;

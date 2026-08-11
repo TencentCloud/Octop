@@ -16,6 +16,17 @@
   gap: 2px;
 }
 
+.modelPickerPanel {
+  display: flex;
+  align-items: stretch;
+  max-width: min(620px, calc(100vw - 32px));
+}
+
+.modelPickerPanelExpanded .modelMenu {
+  padding-right: 6px;
+  border-right: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
 .modelMenuItem {
   display: flex;
   flex-direction: column;
@@ -32,6 +43,62 @@
 
   &:hover {
     background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.modelMenuRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 36px;
+  border-radius: 8px;
+  transition: background 0.15s;
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.modelMenuSelect {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  padding: 8px 6px 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.modelMenuReasoning {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 116px;
+  padding: 8px 8px 8px 4px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover {
+    color: var(--fn-color-brand, #e85d75);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: -2px;
+    border-radius: 6px;
   }
 }
 
@@ -55,6 +122,103 @@
 .modelMenuHint {
   font-size: 11px;
   color: var(--fn-text-tertiary);
+}
+
+.reasoningMenuPanel {
+  width: 220px;
+  min-width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-left: 6px;
+}
+
+.reasoningMenuHeader {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 8px;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.reasoningMenuBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: -6px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.reasoningMenuSectionLabel {
+  padding: 7px 10px 4px;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+}
+
+.reasoningMenuChoice,
+.reasoningStatusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  text-align: left;
+}
+
+.reasoningMenuChoice {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.reasoningMenuChoiceActive {
+  background: rgba(232, 93, 117, 0.08);
+  color: var(--fn-color-brand, #e85d75);
+}
+
+.reasoningStatusRow {
+  justify-content: flex-start;
+  color: var(--fn-color-brand, #e85d75);
+
+  span {
+    flex: 1;
+  }
+}
+
+.reasoningMenuDivider {
+  height: 1px;
+  margin: 5px 4px 0;
+  background: var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
 }
 
 /* ── Skill / connector / shortcut picker (chat input) ─────────────────── */
@@ -365,7 +529,7 @@
 }
 
 .modelPickerBtn {
-  max-width: 160px;
+  max-width: 220px;
 }
 
 .modelPickerLabel {
@@ -374,7 +538,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 110px;
+  max-width: 170px;
+}
+
+.modelPickerReasoningLabel {
+  color: currentColor;
+  opacity: 0.78;
 }
 
 .mobilePickerDrawer {
@@ -397,9 +566,21 @@
   .skillPickerPanel,
   .connectorPickerPanel,
   .shortcutPickerPanel,
-  .modelMenu {
+  .modelMenu,
+  .modelPickerPanel,
+  .reasoningMenuPanel {
     width: 100%;
     max-width: none;
+  }
+
+  .modelPickerPanelExpanded .modelMenu {
+    padding-right: 0;
+    border-right: none;
+  }
+
+  .reasoningMenuPanel {
+    min-width: 0;
+    padding: 4px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
   /* SearchablePickerPanel (picker.module.less) class names are hashed */

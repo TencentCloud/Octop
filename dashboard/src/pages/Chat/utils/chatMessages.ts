@@ -32,6 +32,18 @@ export function normalizeComposerContext(
     ctx.model = raw.model.trim();
     has = true;
   }
+  if (
+    raw.reasoningMode === "auto" ||
+    raw.reasoningMode === "enabled" ||
+    raw.reasoningMode === "disabled"
+  ) {
+    ctx.reasoningMode = raw.reasoningMode;
+    has = true;
+  }
+  if (typeof raw.reasoningEffort === "string" && raw.reasoningEffort.trim()) {
+    ctx.reasoningEffort = raw.reasoningEffort.trim();
+    has = true;
+  }
 
   return has ? ctx : undefined;
 }
@@ -39,13 +51,15 @@ export function normalizeComposerContext(
 /**
  * WS ``model`` field for each turn.
  *
- * Only an explicit composer selection is sent. Auto (null/empty) omits the
- * field so the backend resolves the expert default / catalog fallback.
+ * Only an explicit composer selection is sent. Agent/user/global defaults are
+ * resolved by the backend so they are not mistaken for a sticky override.
  */
 export function resolveTurnModelRef(
   selectedModel: string | null | undefined,
+  agentDefaultModel: string | null | undefined,
 ): string | null {
   const selected = (selectedModel || "").trim();
+  void agentDefaultModel;
   return selected || null;
 }
 
@@ -67,6 +81,8 @@ export function buildComposerContext(params: {
   connectors?: string[];
   targetAgents?: string[];
   selectedModel?: string | null;
+  reasoningMode?: "auto" | "enabled" | "disabled";
+  reasoningEffort?: string | null;
 }): UserComposerContext | undefined {
   const ctx: UserComposerContext = {};
   let has = false;
@@ -87,6 +103,14 @@ export function buildComposerContext(params: {
   const selectedModel = (params.selectedModel || "").trim();
   if (selectedModel) {
     ctx.model = selectedModel;
+    has = true;
+  }
+  if (params.reasoningMode) {
+    ctx.reasoningMode = params.reasoningMode;
+    has = true;
+  }
+  if (params.reasoningEffort) {
+    ctx.reasoningEffort = params.reasoningEffort;
     has = true;
   }
 
