@@ -108,6 +108,31 @@ def test_skill_validation_errors_are_mapped_to_octop_errors(
     assert exc_info.value.code is ErrorCode.SLASH_BAD_ARGS
 
 
+def test_write_skill_recreates_empty_directories(store: SkillPackageStore) -> None:
+    row = store.create(name="P", description="", created_by="42")
+
+    store.write_skill(
+        row.id,
+        "word-docx",
+        [
+            ("SKILL.md", b"---\nname: word-docx\n---\n"),
+            ("ai/", b""),
+            ("data/", b""),
+            ("scripts/", b""),
+            ("index.html", b"<html></html>"),
+        ],
+    )
+
+    skill_dir = store.package_skills_dir(row.id) / "word-docx"
+    assert skill_dir.is_dir()
+    assert (skill_dir / "SKILL.md").read_bytes() == b"---\nname: word-docx\n---\n"
+    assert (skill_dir / "index.html").read_bytes() == b"<html></html>"
+    assert (skill_dir / "ai").is_dir()
+    assert (skill_dir / "data").is_dir()
+    assert (skill_dir / "scripts").is_dir()
+    assert list((skill_dir / "ai").iterdir()) == []
+
+
 def test_skill_count_excludes_skills_hidden_from_summaries(store: SkillPackageStore) -> None:
     row = store.create(name="P", description="", created_by="42")
     skills_dir = store.package_skills_dir(row.id)

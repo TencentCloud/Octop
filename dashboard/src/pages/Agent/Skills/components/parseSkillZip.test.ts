@@ -5,10 +5,14 @@ import { parseSkillZip } from "./parseSkillZip";
 async function zipFromTree(
   tree: Record<string, string | Uint8Array>,
   filename = "skills.zip",
+  dirs: string[] = [],
 ): Promise<File> {
   const zip = new JSZip();
   for (const [path, content] of Object.entries(tree)) {
     zip.file(path, content);
+  }
+  for (const dir of dirs) {
+    zip.folder(dir);
   }
   const blob = await zip.generateAsync({ type: "blob" });
   return new File([blob], filename, { type: "application/zip" });
@@ -87,13 +91,14 @@ describe("parseSkillZip", () => {
     ]);
   });
 
-  it("does not attach sibling folders to a root-level skill", async () => {
-    // Nested folders without their own SKILL.md are ignored; only root files
-    // belong to the root skill group.
+  it("keeps supporting subfolders under a root-level skill", async () => {
+    // Subfolders without their own SKILL.md are supporting files of the
+    // root skill; they must be preserved with their nested paths.
     const file = await zipFromTree(
       {
         "SKILL.md": "---\nname: solo\n---\n",
         "helpers/util.py": "print(1)\n",
+        "scripts/run.py": "print(2)\n",
       },
       "solo.zip",
     );
@@ -101,7 +106,108 @@ describe("parseSkillZip", () => {
     const skills = await parseSkillZip(file);
     expect(skills).toHaveLength(1);
     expect(skills[0].slug).toBe("solo");
-    expect(skills[0].files.map((item) => item.path)).toEqual(["SKILL.md"]);
+    expect(skills[0].files.map((item) => item.path).sort()).toEqual([
+      "SKILL.md",
+      "helpers/util.py",
+      "scripts/run.py",
+    ]);
+  });
+
+  it("preserves empty directories inside a skill folder", async () => {
+    // The reported bug: a skill whose zip carries EMPTY folders (ai/, data/,
+    // scripts/) loses every folder during import. Empty dirs must survive.
+    const file = await zipFromTree(
+      {
+        "word-docx/SKILL.md": "---\nname: word-docx\n---\n",
+        "word-docx/index.html": "<html></html>",
+      },
+      "word-docx.zip",
+      ["word-docx/ai", "word-docx/data", "word-docx/scripts"],
+    );
+
+    const skills = await parseSkillZip(file);
+    expect(skills).toHaveLength(1);
+    expect(skills[0].slug).toBe("word-docx");
+    const paths = skills[0].files.map((item) => item.path).sort();
+    expect(paths).toEqual([
+      "SKILL.md",
+      "ai/",
+      "data/",
+      "index.html",
+      "scripts/",
+    ]);
+    const ai = skills[0].files.find((item) => item.path === "ai/");
+    expect(ai?.contentBase64).toBe("");
+  });
+
+  it("preserves empty directories under a root-level skill", async () => {
+    const file = await zipFromTree(
+      {
+        "SKILL.md": "---\nname: solo\n---\n",
+        "run.py": "print(1)\n",
+      },
+      "solo.zip",
+      ["scripts", "data"],
+    );
+
+    const skills = await parseSkillZip(file);
+    expect(skills).toHaveLength(1);
+    expect(skills[0].slug).toBe("solo");
+    expect(skills[0].files.map((item) => item.path).sort()).toEqual([
+      "SKILL.md",
+      "data/",
+      "run.py",
+      "scripts/",
+    ]);
+  });
+
+  it("drops empty dirs that belong to no skill", async () => {
+    // "stray/" is an empty folder with no SKILL.md and no root skill to hang
+    // under — it must not produce a bogus skill.
+    const file = await zipFromTree(
+      {
+        "good/SKILL.md": "---\nname: good\n---\n",
+      },
+      "skills.zip",
+      ["stray"],
+    );
+
+    const skills = await parseSkillZip(file);
+    expect(skills).toHaveLength(1);
+    expect(skills[0].slug).toBe("good");
+    expect(skills[0].files.map((item) => item.path).sort()).toEqual([
+      "SKILL.md",
+    ]);
+  });
+
+  it("keeps a separate skill beside a root-level skill", async () => {
+    // A sibling folder with its own SKILL.md stays its own skill, while
+    // folders without SKILL.md stay attached to the root skill.
+    const file = await zipFromTree(
+      {
+        "SKILL.md": "---\nname: root-skill\n---\n",
+        "shared/util.py": "print(1)\n",
+        "other/SKILL.md": "---\nname: other\n---\n",
+        "other/notes.txt": "hi",
+      },
+      "root-skill.zip",
+    );
+
+    const skills = await parseSkillZip(file);
+    expect(skills.map((skill) => skill.slug).sort()).toEqual([
+      "other",
+      "root-skill",
+    ]);
+    const root = skills.find((skill) => skill.slug === "root-skill");
+    expect(root?.files.map((item) => item.path).sort()).toEqual([
+      "SKILL.md",
+      "shared/util.py",
+    ]);
+    const other = skills.find((skill) => skill.slug === "other");
+    expect(other?.files.map((item) => item.path).sort()).toEqual([
+      "SKILL.md",
+      "notes.txt",
+    ]);
   });
 
   it("prefers rootSlugFallback for root-level skills", async () => {

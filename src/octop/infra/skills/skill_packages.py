@@ -51,12 +51,17 @@ def validate_skill_slug(slug: str) -> str:
 def _normalize_relative_path(value: str) -> str:
     if not value or "\\" in value or "\x00" in value:
         raise SkillPackageError(f"invalid skill package path: {value}")
+    # A trailing "/" marks an empty directory that must be recreated on install
+    # (PurePosixPath would silently strip it, turning the dir into a file).
+    is_dir_marker = value.endswith("/")
     path = PurePosixPath(value)
     if path.is_absolute() or ".." in path.parts or (path.parts and path.parts[0].endswith(":")):
         raise SkillPackageError(f"unsafe skill package path: {value}")
     normalized = path.as_posix()
     if normalized in {"", "."}:
         raise SkillPackageError(f"invalid skill package path: {value}")
+    if is_dir_marker and not normalized.endswith("/"):
+        normalized = f"{normalized}/"
     return normalized
 
 

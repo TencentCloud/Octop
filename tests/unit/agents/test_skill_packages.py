@@ -68,6 +68,55 @@ def test_resolve_package_rejects_unsafe_paths(path: str) -> None:
         )
 
 
+def test_resolve_package_preserves_empty_directory_markers() -> None:
+    package = skill_packages.resolve_skill_package(
+        slug="word-docx",
+        files=[
+            ("SKILL.md", b"---\nname: word-docx\n---\n"),
+            ("ai/", b""),
+            ("data/", b""),
+            ("scripts/", b""),
+            ("index.html", b"<html></html>"),
+        ],
+        source="zip",
+    )
+
+    assert list(package.files) == [
+        ("SKILL.md", b"---\nname: word-docx\n---\n"),
+        ("ai/", b""),
+        ("data/", b""),
+        ("scripts/", b""),
+        ("index.html", b"<html></html>"),
+    ]
+    assert package.workspace_uploads() == [
+        ("skills/word-docx/SKILL.md", b"---\nname: word-docx\n---\n"),
+        ("skills/word-docx/ai/", b""),
+        ("skills/word-docx/data/", b""),
+        ("skills/word-docx/scripts/", b""),
+        ("skills/word-docx/index.html", b"<html></html>"),
+    ]
+
+
+def test_normalize_relative_path_keeps_dir_marker_while_cleaning_others() -> None:
+    assert skill_packages._normalize_relative_path("ai/") == "ai/"
+    assert skill_packages._normalize_relative_path("nested/scripts/") == "nested/scripts/"
+    assert skill_packages._normalize_relative_path("scripts") == "scripts"
+    assert skill_packages._normalize_relative_path("./docs.md") == "docs.md"
+
+
+def test_resolve_import_preserves_empty_directory_markers() -> None:
+    package = skill_packages.resolve_workspace_uploads(
+        slug="gh-skill",
+        uploads=[
+            ("skills/gh-skill/SKILL.md", b"# skill"),
+            ("skills/gh-skill/empty/", b""),
+        ],
+        source="url",
+    )
+
+    assert list(package.files) == [("SKILL.md", b"# skill"), ("empty/", b"")]
+
+
 def test_resolve_import_rejects_files_outside_the_skill_root() -> None:
     with pytest.raises(skill_packages.SkillPackageError, match="outside"):
         skill_packages.resolve_workspace_uploads(

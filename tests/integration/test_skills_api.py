@@ -467,6 +467,38 @@ async def test_create_skill_from_files_payload(env: Any) -> None:
     assert script == "print(1)\n"
 
 
+async def test_create_skill_preserves_empty_directories(env: Any) -> None:
+    """Empty folders from a local ZIP import are recreated in the workspace."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: word-docx\ndescription: from zip\n---\n\n# Word Docx\n"
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "word-docx",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+                {"path": "index.html", "content_base64": _b64("<html></html>")},
+                {"path": "ai/", "content_base64": ""},
+                {"path": "data/", "content_base64": ""},
+                {"path": "scripts/", "content_base64": ""},
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["name"] == "word-docx"
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    index = await agent.workspace.aread_text("skills/word-docx/index.html")
+    assert index == "<html></html>"
+    for path in (
+        "skills/word-docx/ai",
+        "skills/word-docx/data",
+        "skills/word-docx/scripts",
+    ):
+        assert await agent.workspace.aexists(path), path
+
+
 async def test_create_skill_files_conflict_without_overwrite(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.post(

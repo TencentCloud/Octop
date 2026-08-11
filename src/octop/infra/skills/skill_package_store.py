@@ -142,6 +142,10 @@ class SkillPackageStore:
         skill_dir.mkdir(parents=True, exist_ok=True)
         for relative_path, content in normalized_files:
             path = skill_dir / relative_path
+            if relative_path.endswith("/"):
+                # Empty directory marker ("ai/"): recreate the folder, write nothing.
+                path.mkdir(parents=True, exist_ok=True)
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
         self._update_skill_count(pack_id)
