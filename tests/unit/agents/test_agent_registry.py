@@ -636,8 +636,12 @@ async def test_create_seeds_workspace_dir(tmp_path: Path) -> None:
     row = await registry.create(AgentCreateSpec(name="with-ws"))
     cfg = registry.get_config(row.agent_id)
     assert isinstance(cfg.get("workspace_dir"), str)
-    assert cfg["workspace_dir"].endswith(f"/agents/{row.agent_id}")
-    assert Path(cfg["workspace_dir"]).is_dir()
+    ws_dir = Path(cfg["workspace_dir"])
+    # Compare path components, not a serialized string, so the check is
+    # platform-agnostic (POSIX "/" vs Windows "\\" separators).
+    assert ws_dir.name == row.agent_id
+    assert ws_dir.parent.name == "agents"
+    assert ws_dir.is_dir()
 
 
 @pytest.mark.asyncio
