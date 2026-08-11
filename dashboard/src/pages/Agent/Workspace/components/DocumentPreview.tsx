@@ -57,6 +57,7 @@ export default function DocumentPreview({
   const [src, setSrc] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<"missing" | "error" | null>(null);
+  const [empty, setEmpty] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const objectUrlRef = useRef<string | undefined>(undefined);
   const pptxViewerRef = useRef<{ destroy: () => void } | null>(null);
@@ -81,6 +82,7 @@ export default function DocumentPreview({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setEmpty(false);
     setSrc("");
     pptxViewerRef.current?.destroy();
     pptxViewerRef.current = null;
@@ -116,6 +118,13 @@ export default function DocumentPreview({
         if (cancelled) return;
 
         if (kind === "word") {
+          if (buf.byteLength === 0) {
+            // A 0-byte docx is a common artifact of creating a file in the
+            // workspace UI; show an empty state instead of failing the renderer.
+            if (!cancelled) setEmpty(true);
+            if (!cancelled) setLoading(false);
+            return;
+          }
           const { renderAsync } = await import("docx-preview");
           if (containerRef.current && !cancelled) {
             await renderAsync(buf, containerRef.current, undefined, {
@@ -182,6 +191,16 @@ export default function DocumentPreview({
       pptxViewerRef.current = null;
     };
   }, [agentId, path, kind, fromWorkspace]);
+
+  if (empty) {
+    return (
+      <div className={styles.viewerEmpty}>
+        <p style={{ color: "var(--fn-text-tertiary)", margin: 0 }}>
+          {t("workspace.emptyFile", "文件为空")}
+        </p>
+      </div>
+    );
+  }
 
   if (error) {
     return (

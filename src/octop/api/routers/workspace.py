@@ -29,6 +29,7 @@ from octop.infra.gateway.media.backend_files import (
     is_host_absolute_path,
     resolve_preview_payload,
 )
+from octop.infra.utils.doc_edit import DocConverter, get_doc_converter
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,17 @@ def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> Oct
     if isinstance(exc, ValueError):
         return OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc))
     return OctopError(ErrorCode.INTERNAL_ERROR, f"cannot {operation} {path!r}: {exc}")
+
+
+def _ensure_editable_doc(path: str) -> DocConverter:
+    """Return the registered converter for *path* or reject with a 400."""
+    converter = get_doc_converter(path)
+    if converter is None:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"unsupported editable document {path!r}",
+        )
+    return converter
 
 
 def _agent_id_from_media_source(source: str) -> str | None:
@@ -126,6 +138,11 @@ class WriteFileBody(BaseModel):
     """UTF-8 text content. Use ``/upload`` for binary."""
 
 
+class WriteDocBody(BaseModel):
+    content: str
+    """Markdown content to convert back into the document format."""
+
+
 @router.get("/agents/{agent_id}/workspace/file")
 async def read_file(
     agent_id: str,
@@ -155,7 +172,21 @@ async def write_file(
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    data = body.content.encode("utf-8")
+    converter = get_doc_converter(path)
+    if converter is not None:
+        # Editable-document paths are always stored as the binary document
+        # format. This matters for workspace "new file": an empty .docx created
+        # here must be a valid package so its preview (and edit round-trip)
+        # works immediately instead of showing a 0-byte file.
+        try:
+            data = converter.from_markdown(body.content)
+        except Exception as exc:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                f"cannot build document for {path!r}: {exc}",
+            ) from exc
+    else:
+        data = body.content.encode("utf-8")
     try:
         await ws.aupload_bytes(_workspace_io_path(path, from_workspace=from_workspace), data)
     except Exception as exc:
@@ -313,6 +344,64 @@ async def download_file(
         media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
     )
+
+
+@router.get("/agents/{agent_id}/workspace/doc")
+async def read_doc(
+    agent_id: str,
+    path: str,
+    from_workspace: bool = Query(default=False, description=_FROM_WORKSPACE_DESC),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Read an editable document (e.g. ``.docx``) as Markdown for online editing."""
+    converter = _ensure_editable_doc(path)
+    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    try:
+        blob = await ws.adownload_bytes(io_path)
+    except PermissionError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}") from exc
+    if blob is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
+    try:
+        content = converter.to_markdown(blob)
+    except Exception as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"cannot parse {path!r}: {exc}") from exc
+    return {"path": path, "content": content}
+
+
+@router.put("/agents/{agent_id}/workspace/doc")
+async def write_doc(
+    agent_id: str,
+    body: WriteDocBody,
+    path: str,
+    from_workspace: bool = Query(
+        default=True,
+        description="Mutating endpoints always treat paths as workspace-relative.",
+    ),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Convert Markdown *content* back to the document format and overwrite *path*."""
+    _ = from_workspace  # Mutations always use workspace-relative paths.
+    rel = _assert_workspace_mutable(path)
+    converter = _ensure_editable_doc(path)
+    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    try:
+        data = converter.from_markdown(body.content)
+    except Exception as exc:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"cannot build document for {path!r}: {exc}",
+        ) from exc
+    try:
+        await ws.aupload_bytes(rel, data)
+    except Exception as exc:
+        raise _map_workspace_fs_error(exc, operation="write", path=path) from exc
+    return {"path": path, "size": len(data)}
 
 
 @router.get(

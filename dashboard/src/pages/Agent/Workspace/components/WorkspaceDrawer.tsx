@@ -60,7 +60,7 @@ import {
   defaultPreviewMode,
 } from "./FilePreview";
 import { getMediaKind } from "../utils/mediaKind";
-import { getDocKind } from "../utils/docKind";
+import { getDocKind, isEditableDoc } from "../utils/docKind";
 import { isProbablyText } from "../utils/fileKind";
 import styles from "../index.module.less";
 
@@ -872,20 +872,60 @@ export default function WorkspaceDrawer({
     </div>
   );
 
+  const handleEdit = async () => {
+    if (!agentId || !selectedKey) return;
+    const { path } = pathFromKey(selectedKey);
+    if (!isEditableDoc(path)) {
+      setEditMode(true);
+      return;
+    }
+    setFileLoading(true);
+    try {
+      const r = await request<{ content: string }>(
+        withFromWorkspace(
+          `/agents/${agentId}/workspace/doc?path=${encodeURIComponent(path)}`,
+        ),
+      );
+      setContent(r.content);
+      setEditMode(true);
+    } catch (err: unknown) {
+      message.error(
+        (err instanceof Error ? err.message : String(err)) ||
+          t("workspace.readFailed", "读取失败"),
+      );
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
   const save = async () => {
     if (!agentId || !selectedKey) return;
     const { path } = pathFromKey(selectedKey);
     setSaving(true);
     try {
-      await request(
-        withFromWorkspace(
-          `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
-        ),
-        {
-          method: "PUT",
-          body: JSON.stringify({ content }),
-        },
-      );
+      if (isEditableDoc(path)) {
+        await request(
+          withFromWorkspace(
+            `/agents/${agentId}/workspace/doc?path=${encodeURIComponent(path)}`,
+          ),
+          {
+            method: "PUT",
+            body: JSON.stringify({ content }),
+          },
+        );
+      } else {
+        await request(
+          withFromWorkspace(
+            `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
+              path,
+            )}`,
+          ),
+          {
+            method: "PUT",
+            body: JSON.stringify({ content }),
+          },
+        );
+      }
       message.success(t("workspace.saved", "已保存"));
       setEditMode(false);
     } catch (err: unknown) {
@@ -1010,7 +1050,9 @@ export default function WorkspaceDrawer({
   const docKind =
     selected && !selected.is_dir ? getDocKind(selected.path) : null;
   const showEditButton =
-    selected && !selected.is_dir && isProbablyText(selected.path);
+    selected &&
+    !selected.is_dir &&
+    (isProbablyText(selected.path) || isEditableDoc(selected.path));
   const showPreviewToggle = previewKind !== null && !editMode && content !== "";
 
   const drawerTitle = (
@@ -1443,7 +1485,7 @@ export default function WorkspaceDrawer({
                           <button
                             type="button"
                             className={styles.toolBtn}
-                            onClick={() => setEditMode(true)}
+                            onClick={() => void handleEdit()}
                           >
                             <Pencil size={14} />
                             {t("common.edit")}

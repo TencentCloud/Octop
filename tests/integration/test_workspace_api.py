@@ -6,12 +6,23 @@ through ``agent.workspace`` backed by ``local_shell`` on the agent dir.
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import Any
 
 import pytest
+from docx import Document
 
 # Workspace UI semantics: leading '/' is relative to agent workspace.
 FROM_WORKSPACE = {"from_workspace": "true"}
+
+
+def _sample_docx_bytes() -> bytes:
+    doc = Document()
+    doc.add_heading("Report Title", level=1)
+    doc.add_paragraph("Intro paragraph")
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
 
 
 @pytest.fixture
@@ -395,3 +406,125 @@ async def test_delete_builtin_skills_forbidden(env: Any) -> None:
         headers=auth,
     )
     assert r.status_code == 403
+
+
+# --- editable document (Markdown round-trip) --------------------------------
+
+
+async def test_doc_read_and_write_roundtrip(env: Any) -> None:
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("report.docx", _sample_docx_bytes())
+
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/report.docx"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["path"] == "/report.docx"
+    assert "# Report Title" in body["content"]
+    assert "Intro paragraph" in body["content"]
+
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/report.docx"},
+        headers=auth,
+        json={"content": "# Updated Title\n\nNew **bold** body\n"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["path"] == "/report.docx"
+    assert r.json()["size"] > 0
+
+    # Stored bytes parse back into a valid docx.
+    blob = await agent.workspace.adownload_bytes("report.docx")
+    assert blob is not None
+    parsed = Document(BytesIO(blob))
+    texts = [p.text for p in parsed.paragraphs if p.text]
+    assert "Updated Title" in texts
+    assert "New bold body" in texts
+
+    # Round-trip back through the API keeps the Markdown structure.
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/report.docx"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    content = r.json()["content"]
+    assert "# Updated Title" in content
+    assert "**bold**" in content
+
+
+async def test_doc_unsupported_extension_400(env: Any) -> None:
+    c, _srv, auth, aid = env
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/notes.md"},
+        headers=auth,
+    )
+    assert r.status_code == 400
+
+
+async def test_create_empty_docx_via_text_endpoint_is_previewable(env: Any) -> None:
+    """Workspace "new file" creates .docx through the text endpoint; it must be
+    stored as a valid document package so preview/edit work immediately."""
+    c, srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/fresh.docx"},
+        headers=auth,
+        json={"content": ""},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["size"] > 0  # not a 0-byte file
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    blob = await agent.workspace.adownload_bytes("fresh.docx")
+    assert blob is not None
+    parsed = Document(BytesIO(blob))
+    assert len(parsed.paragraphs) == 0  # valid empty document
+
+    # It can be opened for editing as an empty Markdown document.
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/fresh.docx"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["content"] == ""
+
+
+async def test_doc_missing_file_404(env: Any) -> None:
+    c, _srv, auth, aid = env
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/no-such.docx"},
+        headers=auth,
+    )
+    assert r.status_code == 404
+
+
+async def test_doc_write_root_forbidden(env: Any) -> None:
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/"},
+        headers=auth,
+        json={"content": "# hi\n"},
+    )
+    assert r.status_code == 403
+
+
+async def test_doc_write_invalid_content_400(env: Any) -> None:
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("broken.docx", b"not a real docx zip")
+
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/doc",
+        params={**FROM_WORKSPACE, "path": "/broken.docx"},
+        headers=auth,
+    )
+    assert r.status_code == 400

@@ -38,6 +38,8 @@ interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
+  /** Override the Monaco language derived from the file extension. */
+  language?: string;
 }
 
 export default function CodeEditor({
@@ -45,8 +47,9 @@ export default function CodeEditor({
   value,
   onChange,
   readOnly = false,
+  language,
 }: CodeEditorProps) {
-  const language = getEditorLanguage(path);
+  const resolvedLanguage = language ?? getEditorLanguage(path);
   const isDark = useIsDark();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<{
@@ -96,7 +99,7 @@ export default function CodeEditor({
       <Suspense fallback={fallback}>
         <MonacoEditor
           height="100%"
-          language={language}
+          language={resolvedLanguage}
           theme={isDark ? "vs-dark" : "light"}
           value={value}
           onChange={(v) => onChange(v ?? "")}

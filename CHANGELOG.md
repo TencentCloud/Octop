@@ -7,10 +7,12 @@
 ## [Unreleased]
 
 ### 新增
+- 专家工作区支持 `.docx` 在线编辑：以 Markdown 在 Monaco 中打开/保存，保存时转回 docx 覆盖原文件（标题/加粗/斜体/列表/表格保留，复杂格式简化）；工作区新建的 `.docx` 即初始化为合法文档包，预览/编辑立即可用。基于可扩展注册表，新增可编辑后缀只需注册一个后端转换器类 + 前端注册表一行
 - 插件管理页支持从本地 ZIP 上传安装插件，可选覆盖已安装的同名插件，无需先把插件托管到 HTTP 直链
 - Docker 沙箱 backend（agent `config.backend.type=docker` 或存储 `kind=docker`）；Admin Docker 卡片、本机 Docker 探测/安装；详见 [docs/agent-backend-file-io.md](docs/agent-backend-file-io.md) §13
 
 ### 变更
+- 依赖新增 `python-docx==1.2.0`（含 `lxml`），用于工作区 `.docx` 的 Markdown 往返转换
 - 依赖 `orcakit-harness-agent[all]>=0.9.20`；FilesystemGuard / ModelSettings 由 harness 自动挂载（Octop 仅保留 BinaryReadGuard 与 runtime_limits）
 - 专家 `workspace_dir`：创建时写入 `config_json.workspace_dir`（默认 `{OCTOP_HOME}/agents/<id>/`），所有 backend 共用；Docker 在容器内镜像同名路径为专家工作区，宿主同路径放 sessions/memory/checkpoints
 - Docker：`sandbox_scope`（agent/user/fixed）+ `sandbox_prefix`（默认 `octop_sandbox`）；删专家不删容器；专家工作区在 running 时可预览；Admin 存储 `previewable` 仅控制浏览（默认仅 fixed）；探测用 test 沙箱做真实读写

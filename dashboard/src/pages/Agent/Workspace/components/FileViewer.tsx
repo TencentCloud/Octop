@@ -23,7 +23,11 @@ import MediaPreview from "./MediaPreview";
 import CodeEditor from "./CodeEditor";
 import DocumentPreview from "./DocumentPreview";
 import { getMediaKind } from "../utils/mediaKind";
-import { getDocKind } from "../utils/docKind";
+import {
+  getDocKind,
+  getEditableDocLanguage,
+  isEditableDoc,
+} from "../utils/docKind";
 import { isProbablyText } from "../utils/fileKind";
 import styles from "../index.module.less";
 
@@ -61,7 +65,9 @@ export default function FileViewer({
   const mediaKind = getMediaKind(path);
   const docKind = getDocKind(path);
   const previewKind = getPreviewKind(path);
-  const showEditButton = isProbablyText(path);
+  const editableDoc = isEditableDoc(path);
+  const showEditButton = isProbablyText(path) || editableDoc;
+  const editingDoc = editMode && editableDoc;
 
   if (mediaKind) {
     return (
@@ -75,7 +81,7 @@ export default function FileViewer({
     );
   }
 
-  if (docKind) {
+  if (docKind && !editingDoc) {
     return (
       <DocumentPreview
         key={`${path}:${refreshToken}`}
@@ -106,7 +112,16 @@ export default function FileViewer({
   }
 
   if (editMode) {
-    return <CodeEditor path={path} value={value} onChange={onChange} />;
+    return (
+      <CodeEditor
+        path={path}
+        value={value}
+        onChange={onChange}
+        language={
+          editableDoc ? getEditableDocLanguage(path) ?? "markdown" : undefined
+        }
+      />
+    );
   }
 
   if (value === "") {

@@ -38,6 +38,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=2.0",
     "mcp>=1.9,<2",
     "pillow>=10.0",
+    "python-docx>=1.2.0",
 ]
 
 [project.optional-dependencies]
