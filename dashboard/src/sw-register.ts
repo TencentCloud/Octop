@@ -41,6 +41,53 @@ export function applyUpdate(): void {
   window.location.reload();
 }
 
+/** Production registration. Exported for unit tests (vitest always sets DEV). */
+export async function registerProductionSW(): Promise<void> {
+  const registration = await navigator.serviceWorker.register("/sw.js", {
+    scope: "/",
+    updateViaCache: "none",
+  });
+
+  // Intentionally no controllerchange → location.reload() listener.
+  // Chrome and Safari both pick up new assets via applyUpdate() instead.
+
+  const activateWaiting = (worker: ServiceWorker) => {
+    worker.postMessage({ type: "SKIP_WAITING" });
+  };
+
+  if (registration.waiting) {
+    if (navigator.serviceWorker.controller) {
+      pendingRegistration = registration;
+      notifyUpdateReady();
+    } else {
+      // Uncontrolled page (shift-reload): activate so the next visit is
+      // not handed back to the stale worker that caused the white screen.
+      activateWaiting(registration.waiting);
+    }
+  }
+
+  registration.addEventListener("updatefound", () => {
+    const installing = registration.installing;
+    if (!installing) return;
+    installing.addEventListener("statechange", () => {
+      if (installing.state !== "installed") return;
+      if (navigator.serviceWorker.controller) {
+        pendingRegistration = registration;
+        notifyUpdateReady();
+        return;
+      }
+      activateWaiting(installing);
+    });
+  });
+
+  setInterval(
+    () => {
+      void registration.update();
+    },
+    60 * 60 * 1000,
+  );
+}
+
 export async function registerSW(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
 
@@ -54,38 +101,7 @@ export async function registerSW(): Promise<void> {
   }
 
   try {
-    const registration = await navigator.serviceWorker.register("/sw.js", {
-      scope: "/",
-    });
-
-    // Intentionally no controllerchange → location.reload() listener.
-    // Chrome and Safari both pick up new assets via applyUpdate() instead.
-
-    if (registration.waiting) {
-      pendingRegistration = registration;
-      notifyUpdateReady();
-    }
-
-    registration.addEventListener("updatefound", () => {
-      const installing = registration.installing;
-      if (!installing) return;
-      installing.addEventListener("statechange", () => {
-        if (
-          installing.state === "installed" &&
-          navigator.serviceWorker.controller
-        ) {
-          pendingRegistration = registration;
-          notifyUpdateReady();
-        }
-      });
-    });
-
-    setInterval(
-      () => {
-        void registration.update();
-      },
-      60 * 60 * 1000,
-    );
+    await registerProductionSW();
   } catch (err) {
     console.error("[SW] Registration failed:", err);
   }

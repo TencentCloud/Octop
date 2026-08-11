@@ -31,6 +31,23 @@ export function isChunkLoadError(error: unknown): boolean {
   return CHUNK_ERROR_RE.test(text);
 }
 
+/** Drop SW + Cache Storage so the next load is not served a stale shell. */
+export async function bustServiceWorkerAndReload(): Promise<void> {
+  try {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if (typeof caches !== "undefined") {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch {
+    // Still reload — a soft refresh is better than staying on a blank page.
+  }
+  window.location.reload();
+}
+
 /** @returns true when a reload was triggered (caller should stop further handling). */
 export function tryReloadOnStaleChunk(error: unknown): boolean {
   if (typeof window === "undefined") return false;
@@ -48,7 +65,7 @@ export function tryReloadOnStaleChunk(error: unknown): boolean {
   }
 
   console.warn("[Octop] Stale chunk detected; reloading once.", error);
-  window.location.reload();
+  void bustServiceWorkerAndReload();
   return true;
 }
 
@@ -85,12 +102,22 @@ export function installChunkLoadRecovery(): void {
       const target = event.target;
       if (
         target instanceof HTMLScriptElement &&
-        typeof target.src === "string" &&
         target.src.includes("/assets/")
       ) {
         tryReloadOnStaleChunk(
           new Error(
             `Failed to fetch dynamically imported module: ${target.src}`,
+          ),
+        );
+        return;
+      }
+      if (
+        target instanceof HTMLLinkElement &&
+        target.href.includes("/assets/")
+      ) {
+        tryReloadOnStaleChunk(
+          new Error(
+            `Failed to fetch dynamically imported module: ${target.href}`,
           ),
         );
       }
