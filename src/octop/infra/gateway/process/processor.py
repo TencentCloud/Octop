@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from harness_agent.slash import SlashSink, parse_slash
@@ -50,6 +51,7 @@ from octop.infra.gateway.process.stream_project import (
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
+from octop.infra.knowledge.default_open import merge_knowledge_base_ids
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
@@ -94,6 +96,9 @@ class GlobalProcessor:
         agent_repo: AgentRepo,
         user_repo: UserRepo,
         connector_repo: ConnectorRepo,
+        knowledge_repo: Any | None = None,
+        settings_repo: Any | None = None,
+        provider_repo: Any | None = None,
         dispatcher: SlashDispatcher,
         usage_repo: Any | None = None,
         gateway: Any | None = None,
@@ -105,6 +110,15 @@ class GlobalProcessor:
         self._agent_repo = agent_repo
         self._user_repo = user_repo
         self._connector_repo = connector_repo
+        self._knowledge_services = (
+            SimpleNamespace(
+                knowledge_repo=knowledge_repo,
+                settings_repo=settings_repo,
+                provider_repo=provider_repo,
+            )
+            if knowledge_repo is not None and settings_repo is not None
+            else None
+        )
         self._dispatcher = dispatcher
         self._usage_repo = usage_repo
         self._gateway = gateway
@@ -445,6 +459,13 @@ class GlobalProcessor:
             model=model_ref,
             message_kwargs=message_kwargs,
         )
+        self._attach_turn_knowledge_config(
+            request,
+            user_id=user_id,
+            is_admin=False,
+            explicit_ids=None,
+            locale=locale,
+        )
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
 
@@ -720,6 +741,15 @@ class GlobalProcessor:
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )
+        self._attach_turn_knowledge_config(
+            request,
+            user_id=user_id,
+            is_admin=bool(meta.get("user_is_admin")),
+            explicit_ids=meta.get("knowledge_base_ids")
+            if isinstance(meta.get("knowledge_base_ids"), list)
+            else None,
+            locale=locale,
+        )
 
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
@@ -744,6 +774,30 @@ class GlobalProcessor:
                 configurable["target_agent_ids"] = filtered
                 request["configurable"] = configurable
         return request
+
+    def _attach_turn_knowledge_config(
+        self,
+        request: dict[str, Any],
+        *,
+        user_id: int,
+        is_admin: bool,
+        explicit_ids: list[str] | None,
+        locale: str,
+    ) -> None:
+        """Expose selected knowledge-base ids for the search_knowledge tool."""
+        if self._knowledge_services is None:
+            return
+        bases = (
+            self._knowledge_services.knowledge_repo.list_all()
+            if is_admin
+            else self._knowledge_services.knowledge_repo.list_visible(user_id)
+        )
+        selected_ids = merge_knowledge_base_ids(bases, explicit_ids)
+        configurable = dict(request.get("configurable") or {})
+        configurable["knowledge_base_ids"] = selected_ids
+        configurable["user_is_admin"] = is_admin
+        configurable["locale"] = locale
+        request["configurable"] = configurable
 
     async def _resolve_turn_mcp_servers(
         self,

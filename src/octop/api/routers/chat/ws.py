@@ -108,7 +108,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "subscribe requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id:
+                if row is None or row.agent_id != agent_id or row.user_id != user.id:
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
@@ -129,7 +129,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "cancel requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id:
+                if row is None or row.agent_id != agent_id or row.user_id != user.id:
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )

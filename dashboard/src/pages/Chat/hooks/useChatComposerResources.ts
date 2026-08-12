@@ -4,6 +4,10 @@ import { providerApi } from "../../../api/modules/provider";
 import { preferencesApi } from "../../../api/modules/preferences";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { request } from "../../../api/request";
+import {
+  knowledgeBasesApi,
+  type KnowledgeBase,
+} from "../../../api/modules/knowledgeBases";
 import type { ResolvedModel } from "../../../api/types";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import { CONNECTORS_CHANGED_EVENT } from "../../Agent/Connectors/customMcpUtils";
@@ -16,6 +20,7 @@ import {
   saveSkills,
 } from "../utils/chatStorage";
 import { resolveInitialConnectors } from "../utils/resolveInitialConnectors";
+import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -27,6 +32,12 @@ export function useChatComposerResources(
 ) {
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<
+    string[]
+  >([]);
+  const [chatKnowledgeBases, setChatKnowledgeBases] = useState<
+    KnowledgeBase[] | undefined
+  >(undefined);
   const [chatConnectors, setChatConnectors] = useState<
     {
       mcp_server_name: string;
@@ -169,6 +180,33 @@ export function useChatComposerResources(
 
   useEffect(() => {
     let cancelled = false;
+    setSelectedKnowledgeBaseIds([]);
+    setChatKnowledgeBases(undefined);
+    void knowledgeBasesApi
+      .getCapability()
+      .then((capability) => {
+        if (cancelled || !capability.usable) return;
+        return knowledgeBasesApi.list().then((bases) => {
+          if (cancelled) return;
+          setChatKnowledgeBases(bases);
+          setSelectedKnowledgeBaseIds((previous) =>
+            withDefaultOpenKnowledgeBases(
+              previous,
+              bases.filter((base) => base.default_open).map((base) => base.id),
+            ),
+          );
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setChatKnowledgeBases(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedAgentId]);
+
+  useEffect(() => {
+    let cancelled = false;
     const loadModels = () => {
       void providerApi
         .listResolvedModels()
@@ -241,6 +279,10 @@ export function useChatComposerResources(
     [resolvedAgentId],
   );
 
+  const handleKnowledgeBaseIdsChange = useCallback((ids: string[]) => {
+    setSelectedKnowledgeBaseIds(ids);
+  }, []);
+
   const handleModelChange = useCallback(
     (model: string | null) => {
       setSelectedModel(model);
@@ -305,10 +347,13 @@ export function useChatComposerResources(
     handleReasoningChange,
     selectedConnectors,
     selectedSkills,
+    selectedKnowledgeBaseIds,
     chatConnectors,
+    chatKnowledgeBases,
     availableModels,
     activeModelRef,
     handleConnectorsChange,
     handleSkillsChange,
+    handleKnowledgeBaseIdsChange,
   };
 }

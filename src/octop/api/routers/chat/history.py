@@ -29,6 +29,9 @@ def _require_thread(
     row = server.app_runtime.gateway.thread_registry.get_thread(thread_id)
     if row is None or row.agent_id != agent_id:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
+    effective_uid = as_user if as_user is not None else user.id
+    if row.user_id != effective_uid:
+        raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
     return row
 
 
@@ -43,8 +46,8 @@ async def list_threads(
     """List conversation threads for an agent, including which thread is active for this user."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
-    rows = thread_registry.list_threads(agent_id=agent_id, limit=limit)
     effective_uid = as_user if as_user is not None else user.id
+    rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
@@ -82,7 +85,7 @@ async def create_thread(
         agent_id=agent_id,
         user_id=effective_uid,
         channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
-        channel_subject_id=str(user.id),
+        channel_subject_id=str(effective_uid),
     )
     return {"thread_id": tid, "session_key": sk}
 
@@ -204,11 +207,8 @@ async def rebind_session(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Point the user's dashboard session at an existing thread."""
-    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    _require_thread(server, agent_id, body.thread_id, user, as_user=None)
     sk = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user.id)
-    row = server.app_runtime.gateway.thread_registry.get_thread(body.thread_id)
-    if row is None or row.agent_id != agent_id:
-        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {body.thread_id!r} not found")
     await server.app_runtime.gateway.thread_registry.rebind(
         session_key=sk, thread_id=body.thread_id, agent_id=agent_id
     )

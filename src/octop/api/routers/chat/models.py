@@ -26,6 +26,10 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Connector MCP server names to attach for this request only.",
     )
+    knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge base ids to retrieve for this request (empty disables defaults).",
+    )
     skills: list[str] | None = Field(
         default=None,
         description="Skill names to enable for this request (empty list disables all skills).",
@@ -61,6 +65,9 @@ class ChatTurnBody(BaseModel):
             mcp_servers=payload.get("mcp_servers")
             if isinstance(payload.get("mcp_servers"), list)
             else None,
+            knowledge_base_ids=payload.get("knowledge_base_ids")
+            if isinstance(payload.get("knowledge_base_ids"), list)
+            else None,
             skills=payload.get("skills")
             if isinstance(payload.get("skills"), list)
             else payload.get("skills"),
@@ -95,6 +102,7 @@ class UserTurnWsFrame(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     mcp_servers: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
     target_agent_ids: list[str] | None = None

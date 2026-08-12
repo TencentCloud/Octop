@@ -184,3 +184,8 @@ export function fileTreeIcon(path: string, size = 13) {
   const { Icon, color } = resolveSpec(path);
   return <Icon size={size} color={color} strokeWidth={2} aria-hidden />;
 }
+
+/** Icon component + color for a path (useful for card badges). */
+export function fileTreeIconSpec(path: string): IconSpec {
+  return resolveSpec(path);
+}

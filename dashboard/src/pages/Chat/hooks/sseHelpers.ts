@@ -42,10 +42,11 @@ export interface ChatAttachment {
   kind: "image" | "file";
 }
 
-/** Skills, connectors, experts, and selected model attached at send time. */
+/** Skills, connectors, knowledge bases, experts, and selected model attached at send time. */
 export interface UserComposerContext {
   skills?: string[];
   connectors?: string[];
+  knowledgeBaseIds?: string[];
   targetAgents?: string[];
   model?: string;
   reasoningMode?: "auto" | "enabled" | "disabled";

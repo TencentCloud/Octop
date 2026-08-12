@@ -24,6 +24,10 @@ export function normalizeComposerContext(
     ctx.connectors = raw.connectors.map((s) => String(s));
     has = true;
   }
+  if (Array.isArray(raw.knowledgeBaseIds) && raw.knowledgeBaseIds.length > 0) {
+    ctx.knowledgeBaseIds = raw.knowledgeBaseIds.map((id) => String(id));
+    has = true;
+  }
   if (Array.isArray(raw.targetAgents) && raw.targetAgents.length > 0) {
     ctx.targetAgents = raw.targetAgents.map((s) => String(s));
     has = true;
@@ -79,6 +83,7 @@ export function resolveTurnModelOverride(
 export function buildComposerContext(params: {
   skills?: string[];
   connectors?: string[];
+  knowledgeBaseIds?: string[];
   targetAgents?: string[];
   selectedModel?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled";
@@ -93,6 +98,10 @@ export function buildComposerContext(params: {
   }
   if (params.connectors && params.connectors.length > 0) {
     ctx.connectors = [...params.connectors];
+    has = true;
+  }
+  if (params.knowledgeBaseIds && params.knowledgeBaseIds.length > 0) {
+    ctx.knowledgeBaseIds = [...params.knowledgeBaseIds];
     has = true;
   }
   if (params.targetAgents && params.targetAgents.length > 0) {

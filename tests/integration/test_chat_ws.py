@@ -246,6 +246,29 @@ async def test_ws_subscribe_turn_status_idle(env: Any) -> None:
     assert frame == {"type": "turn_status", "thread_id": tid, "active": False}
 
 
+async def test_ws_subscribe_rejects_another_users_thread(env: Any) -> None:
+    c, _srv, _fake, alice_auth, bob_auth, aid = env
+    response = await c.patch(
+        f"/api/agents/{aid}",
+        headers=alice_auth,
+        json={"is_shared": True},
+    )
+    assert response.status_code == 200, response.text
+
+    response = await c.post(f"/api/agents/{aid}/threads", headers=bob_auth)
+    assert response.status_code == 201, response.text
+    tid = response.json()["thread_id"]
+
+    frame = await asyncio.to_thread(
+        _subscribe_ws_sync,
+        c._octop_app,  # type: ignore[attr-defined]
+        aid,
+        ws_token(alice_auth),
+        tid,
+    )
+    assert frame == {"type": "error", "message": f"thread {tid!r} not found"}
+
+
 def _cancel_ws_turn_sync(
     app: object,
     aid: str,

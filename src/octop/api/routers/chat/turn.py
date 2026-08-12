@@ -70,6 +70,8 @@ async def resolve_thread_id(
         row = thread_registry.get_thread(thread_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
+        if row.user_id != user_id:
+            raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
         await thread_registry.rebind(session_key=sk, thread_id=thread_id, agent_id=agent_id)
         return thread_id, sk
     bound = thread_registry.get_bound_thread_id(sk)
@@ -319,6 +321,9 @@ def build_dashboard_inbound(
     if prepared.mcp_servers is not None:
         # Including [] — Dashboard opt-out of default_open for this turn.
         metadata["mcp_servers"] = list(prepared.mcp_servers)
+    if turn.knowledge_base_ids is not None:
+        # Including [] — Dashboard opt-out of default_open knowledge bases for this turn.
+        metadata["knowledge_base_ids"] = list(turn.knowledge_base_ids)
     if prepared.skills is not None:
         metadata["skills"] = prepared.skills
     if prepared.model_ref:

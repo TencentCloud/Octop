@@ -16,6 +16,7 @@ import SlashCommandMenu from "./SlashCommandMenu";
 import { agentChatApi } from "../../../api/modules/agentChat";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { ResolvedModel } from "../../../api/types";
+import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import MentionPickerMenu from "./MentionPickerMenu";
@@ -81,6 +82,9 @@ interface ChatInputProps {
   }[];
   selectedConnectors?: string[];
   onConnectorsChange?: (names: string[]) => void;
+  availableKnowledgeBases?: KnowledgeBase[];
+  selectedKnowledgeBaseIds?: string[];
+  onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   availableSkills?: SkillSpec[];
   selectedSkills?: string[];
   onSkillsChange?: (names: string[]) => void;
@@ -124,6 +128,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
+      availableKnowledgeBases,
+      selectedKnowledgeBaseIds = [],
+      onKnowledgeBaseIdsChange,
       availableSkills,
       selectedSkills = [],
       onSkillsChange,
@@ -363,6 +370,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           composerContext: buildComposerContext({
             skills: selectedSkills,
             connectors: selectedConnectors,
+            knowledgeBaseIds: selectedKnowledgeBaseIds,
             targetAgents: selectedTargetAgents,
             selectedModel,
             reasoningMode,
@@ -416,6 +424,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           if (ctx) {
             onSkillsChange?.(ctx.skills ?? []);
             onConnectorsChange?.(ctx.connectors ?? []);
+            onKnowledgeBaseIdsChange?.(ctx.knowledgeBaseIds ?? []);
             onTargetAgentsChange?.(ctx.targetAgents ?? []);
             if (ctx.model !== undefined) {
               onModelChange?.(ctx.model);
@@ -460,6 +469,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         t,
         onSkillsChange,
         onConnectorsChange,
+        onKnowledgeBaseIdsChange,
         onTargetAgentsChange,
         onModelChange,
         onReasoningChange,
@@ -564,10 +574,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             selectedModel={selectedModel}
             availableSkills={availableSkills}
             availableConnectors={availableConnectors}
+            availableKnowledgeBases={availableKnowledgeBases}
             availableAgents={availableAgents}
             onRemoveAttachment={removeAttachment}
             onSkillsChange={onSkillsChange}
             onConnectorsChange={onConnectorsChange}
+            selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+            onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
             onTargetAgentsChange={onTargetAgentsChange}
             onModelChange={onModelChange}
           />
@@ -696,6 +709,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={onConnectorsChange}
+            availableKnowledgeBases={availableKnowledgeBases}
+            selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+            onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
             availableSkills={availableSkills}
             selectedSkills={selectedSkills}
             onSkillsChange={onSkillsChange}
