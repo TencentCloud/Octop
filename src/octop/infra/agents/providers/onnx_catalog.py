@@ -40,6 +40,22 @@ _FALLBACK_SIZE_GB: dict[str, float] = {
     "sentence-transformers/all-MiniLM-L6-v2": 0.09,
 }
 
+# When fastembed is not installed, still recognize HF cache dirs it would create.
+_HF_SOURCE_FALLBACK: dict[str, str] = {
+    "BAAI/bge-small-zh-v1.5": "Qdrant/bge-small-zh-v1.5",
+    "BAAI/bge-small-en-v1.5": "qdrant/bge-small-en-v1.5-onnx-q",
+    "BAAI/bge-base-en-v1.5": "qdrant/bge-base-en-v1.5-onnx-q",
+    "BAAI/bge-large-en-v1.5": "qdrant/bge-large-en-v1.5-onnx",
+    "sentence-transformers/all-MiniLM-L6-v2": "qdrant/all-MiniLM-L6-v2-onnx",
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": (
+        "qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"
+    ),
+    "jinaai/jina-embeddings-v2-base-en": "xenova/jina-embeddings-v2-base-en",
+    "jinaai/jina-embeddings-v2-small-en": "xenova/jina-embeddings-v2-small-en",
+    "thenlper/gte-large": "qdrant/gte-large-onnx",
+    "intfloat/multilingual-e5-large": "qdrant/multilingual-e5-large-onnx",
+}
+
 
 def _model_entry(
     model_id: str,
@@ -94,7 +110,7 @@ def get_onnx_model_meta(model_id: str) -> dict[str, Any]:
     sources = meta.get("sources") if isinstance(meta.get("sources"), dict) else {}
     hf_source = sources.get("hf") if isinstance(sources, dict) else None
     if not isinstance(hf_source, str) or not hf_source.strip():
-        hf_source = None
+        hf_source = _HF_SOURCE_FALLBACK.get(model_id)
     return {
         "id": model_id,
         "size_gb": size_gb,
@@ -119,11 +135,13 @@ def list_onnx_catalog_models() -> list[dict[str, Any]]:
                 size_gb = _FALLBACK_SIZE_GB.get(model_id)
             sources = item.get("sources") if isinstance(item.get("sources"), dict) else {}
             hf = sources.get("hf") if isinstance(sources, dict) else None
+            if not isinstance(hf, str) or not hf.strip():
+                hf = _HF_SOURCE_FALLBACK.get(model_id)
             return _model_entry(
                 model_id,
                 recommended=rec,
                 size_gb=size_gb,
-                hf_source=hf if isinstance(hf, str) else None,
+                hf_source=hf,
             )
         if info:
             return _model_entry(

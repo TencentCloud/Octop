@@ -132,7 +132,12 @@ def test_partial_cache_without_onnx_is_not_downloaded(tmp_path, monkeypatch) -> 
 
 def test_is_downloaded_recognizes_fastembed_hf_alias(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    from octop.infra.agents.providers import onnx_catalog as catalog
     from octop.infra.agents.providers import onnx_service as mod
+
+    # CI often lacks the optional local-embedding extra; alias detection must
+    # still work via static HF source fallbacks.
+    monkeypatch.setattr(catalog, "_fastembed_meta_map", lambda: {})
 
     cache = mod.embedding_models_dir()
     alias = cache / "models--Qdrant--bge-small-zh-v1.5" / "snapshots" / "abc"
@@ -164,6 +169,7 @@ def test_embed_texts_returns_vectors(monkeypatch) -> None:
             for _ in texts:
                 yield [0.1, 0.2, 0.3]
 
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
     monkeypatch.setattr(mod, "_build_text_embedding", lambda _model: FakeEmb())
     vectors = mod.embed_texts("BAAI/bge-small-zh-v1.5", ["hello"])
     assert len(vectors) == 1 and len(vectors[0]) == 3
