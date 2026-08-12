@@ -197,6 +197,14 @@ curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install
 ```bash
 pip install octop
 # 可选：pip install "octop[browser]"
+# 可选本地 ONNX Embedding 模型缓存（设置 → 模型 → 本地）：pip install "octop[local-embedding]"
+# 仅下载目录模型到 ~/.octop/embedding_models；不用于对话，也不接入 Memory。
+```
+
+从源码用 uv 开发时：
+
+```bash
+uv sync --extra local-embedding
 ```
 
 ### 2. 启动

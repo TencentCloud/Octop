@@ -17,7 +17,8 @@ API_DESCRIPTION = """\
 Most endpoints require a JWT bearer token:
 
 1. Complete initial setup via `/api/setup/*` (first install only).
-2. `POST /api/auth/login` with `username` and `password`.
+2. `POST /api/auth/login` with `username` and `password`, or complete the OIDC flow
+   with `/api/auth/oidc/start` and `/api/auth/oidc/exchange` when SSO is enabled.
 3. Send `Authorization: Bearer <access_token>` on subsequent requests.
 
 Access tokens use sliding renewal: when less than one-third of
@@ -26,8 +27,9 @@ token in the `X-Octop-Access-Token` header. Clients should replace the stored
 token when present.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
-`/api/setup/*`, `/api/auth/login`, `/api/connectors/oauth/callback`, and
-`/api/internal/mcp/*`.
+`/api/setup/*`, `/api/auth/login`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
+`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/connectors/oauth/callback`,
+and `/api/internal/mcp/*`.
 
 ## Agent scope
 
@@ -67,6 +69,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "connectors",
         "description": "Third-party integrations (Notion, Figma, …) exposed as MCP servers.",
+    },
+    {
+        "name": "knowledge",
+        "description": "Private, shareable document knowledge bases and their indexing capability.",
     },
     {
         "name": "internal-mcp",
@@ -134,6 +140,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "Remote OS desktop stream and input injection (admin only).",
     },
     {"name": "ollama", "description": "Local Ollama model discovery and download management."},
+    {
+        "name": "onnx",
+        "description": "Local ONNX / fastembed embedding service: enable, catalog, and download.",
+    },
 ]
 
 _BEARER_SCHEME = {

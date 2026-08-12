@@ -7,6 +7,7 @@ from pathlib import Path
 from octop.config import OctopConfig
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.sso import SsoRepo
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.utils.paths import PathLayout
 
@@ -24,3 +25,4 @@ def test_build_shared_services(tmp_path: Path):
     assert services.config is cfg
     # all repos resolved
     assert services.user_repo.count() == 0
+    assert isinstance(services.sso_repo, SsoRepo)

@@ -186,6 +186,14 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 ```bash
 pip install octop
 # optional: pip install "octop[browser]"
+# optional local ONNX embedding model cache (Models → Local): pip install "octop[local-embedding]"
+# Downloads catalog weights under ~/.octop/embedding_models; not chat, not Memory.
+```
+
+From a source checkout with uv:
+
+```bash
+uv sync --extra local-embedding
 ```
 
 ### 2. Initialize

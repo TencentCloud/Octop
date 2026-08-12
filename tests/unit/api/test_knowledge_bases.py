@@ -277,6 +277,7 @@ async def test_embedding_options_excludes_onnx_local_provider() -> None:
         SimpleNamespace(
             id=1,
             name="ONNX (Local)",
+            api_key="onnx",
             get_models=lambda: [
                 {
                     "id": "BAAI/bge-small-zh-v1.5",
@@ -288,6 +289,7 @@ async def test_embedding_options_excludes_onnx_local_provider() -> None:
         SimpleNamespace(
             id=2,
             name="OpenAI",
+            api_key="sk-test",
             get_models=lambda: [
                 {"id": "text-embedding-3-small", "name": "embed", "embedding": True},
                 {"id": "gpt-4o", "name": "GPT-4o"},

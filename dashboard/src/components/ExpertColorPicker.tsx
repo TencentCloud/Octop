@@ -20,11 +20,7 @@ export default function ExpertColorPicker({
   const { t } = useTranslation();
 
   return (
-    <div
-      className={styles.picker}
-      role="group"
-      aria-label={t("experts.color")}
-    >
+    <div className={styles.picker} role="group" aria-label={t("experts.color")}>
       {VALID_PALETTES.map((key) => {
         const active = value === key;
         const label = t(`header.palette.${key}`);

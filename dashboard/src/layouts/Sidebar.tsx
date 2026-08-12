@@ -16,6 +16,7 @@ import {
   Waypoints,
   Link2,
   Database,
+  Cpu,
   Users as UsersIcon,
   Activity,
   Share2,
@@ -181,6 +182,13 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
           icon: <Package size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.skillPackages",
         },
+        {
+          key: "knowledge-bases",
+          path: "/knowledge-bases",
+          icon: <Database size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.knowledgeBases",
+          badge: "BETA",
+        },
       ],
     },
   ];
@@ -221,7 +229,7 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
         {
           key: "models",
           path: "/admin/models",
-          icon: <Database size={iconSize} strokeWidth={iconStroke} />,
+          icon: <Cpu size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.models",
         },
         {

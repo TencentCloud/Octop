@@ -141,8 +141,7 @@ export default function CreateFromExpertDrawer({
   const [detailLoading, setDetailLoading] = useState(false);
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
   const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
-  const [colorPalette, setColorPalette] =
-    useState<ThemePalette>("rose");
+  const [colorPalette, setColorPalette] = useState<ThemePalette>("rose");
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;

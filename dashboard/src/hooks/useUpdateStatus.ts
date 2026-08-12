@@ -72,7 +72,8 @@ export function useUpdateStatus() {
       if (next) setStatus(next);
     };
     window.addEventListener(UPDATE_STATUS_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(UPDATE_STATUS_CHANGED_EVENT, onChanged);
+    return () =>
+      window.removeEventListener(UPDATE_STATUS_CHANGED_EVENT, onChanged);
   }, []);
 
   const hasUpdate = Boolean(status?.has_update && status?.latest_version);

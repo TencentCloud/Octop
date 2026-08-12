@@ -171,6 +171,8 @@ description: General-purpose agent
             }
             if meta.get("emoji"):
                 row["emoji"] = meta["emoji"]
+            if meta.get("color"):
+                row["color"] = str(meta["color"]).strip()
             out.append(row)
         return out
 

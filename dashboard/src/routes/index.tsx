@@ -7,6 +7,7 @@ const CronJobsPage = lazy(() => import("../pages/Control/CronJobs"));
 const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const ACPPage = lazy(() => import("../pages/Agent/ACP"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
+const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
@@ -50,6 +51,7 @@ export const pathToKey: Record<string, string> = {
   "/tasks": "tasks",
   "/connectors": "connectors",
   "/skill-packages": "skill-packages",
+  "/knowledge-bases": "knowledge-bases",
   "/acp": "acp",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
@@ -147,6 +149,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/tasks", element: <CronJobsPage /> },
   { path: "/connectors", element: <ConnectorsPage /> },
   { path: "/skill-packages", element: <SkillPackagesPage /> },
+  { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
   { path: "/personalization/*", element: <PersonalizationPage /> },
   {
     path: "/skills",
@@ -192,6 +195,10 @@ export const routeConfigs: RouteConfig[] = [
 
   // Admin (RequireAdmin wrapper applied in MainLayout — Task 10)
   { path: "/admin/users", element: <OctopAdminUsersPage /> },
+  {
+    path: "/admin/sso",
+    element: <Navigate to="/admin/users?tab=sso" replace />,
+  },
   {
     path: "/admin/shared-models",
     element: <Navigate to="/admin/models" replace />,

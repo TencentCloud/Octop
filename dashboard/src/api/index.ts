@@ -13,12 +13,15 @@ import { providerApi } from "./modules/provider";
 import { agentApi } from "./modules/agent";
 import { workspaceApi } from "./modules/workspace";
 import { ollamaModelApi } from "./modules/ollamaModel";
+import { onnxModelApi } from "./modules/onnxModel";
 import { uploadApi } from "./modules/upload";
 import { acpApi } from "./modules/acp";
 import { embeddingApi } from "./modules/embedding";
 import { browserApi } from "./modules/browser";
 import { mbtiApi } from "./modules/mbti";
 import { terminalAiApi } from "./modules/terminalAi";
+import { ssoApi } from "./modules/sso";
+import { knowledgeBasesApi } from "./modules/knowledgeBases";
 
 export const api = {
   // Root
@@ -29,6 +32,10 @@ export const api = {
 
   // Auth
   ...authApi,
+  ...ssoApi,
+
+  // Knowledge bases
+  ...knowledgeBasesApi,
 
   // ACP
   ...acpApi,
@@ -50,6 +57,9 @@ export const api = {
 
   // Ollama Models
   ...ollamaModelApi,
+
+  // ONNX local embedding service
+  ...onnxModelApi,
 
   // Upload
   ...uploadApi,

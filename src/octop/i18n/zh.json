@@ -332,13 +332,26 @@
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
     "SKILL_PACKAGE_NAME_TAKEN": "技能包 {name} 已存在。",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录须为 /（POSIX）或 Agent 工作区根目录（Windows 默认）。",
+    "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{slug}。",
+    "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{name}」，请改为刷新已发布模板。",
+    "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。",
     "PLUGIN_INVALID_ARCHIVE": "下载内容不是有效的插件 ZIP。请使用直接的 .zip 下载地址（GitHub 请用 raw.githubusercontent.com 或 “Download/raw” 链接，不要用 /blob/ 页面地址）。",
     "PLUGIN_INSTALL_FAILED": "下载或安装插件失败：{reason}",
-    "PLUGIN_ALREADY_EXISTS": "插件 {id} 已安装。"
+    "PLUGIN_ALREADY_EXISTS": "插件 {id} 已安装。",
+    "KNOWLEDGE_FEATURE_DISABLED": "管理员尚未启用知识库功能。",
+    "KNOWLEDGE_PREREQUISITES_FAILED": "知识库的向量模型或依赖尚未就绪。",
+    "KNOWLEDGE_NOT_FOUND": "未找到知识库或文档。",
+    "KNOWLEDGE_FORBIDDEN": "您没有此知识库的访问权限。",
+    "KNOWLEDGE_DOC_LIMIT": "每个知识库最多可包含 100 个文档。",
+    "KNOWLEDGE_DOC_TOO_LARGE": "文档超过 20 MB 大小限制。",
+    "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
+    "KNOWLEDGE_SHARED_DEFAULT_CONFLICT": "已共享的知识库不能设为默认开启。",
+    "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
+    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -412,7 +425,7 @@
     "read_file": "读取文件",
     "write_file": "写入文件",
     "edit_file": "编辑文件",
-    "execute": "执行",
+    "execute": "执行指令",
     "current_time": "当前时间",
     "write_todos": "编写计划",
     "task": "子智能体任务",
@@ -435,6 +448,7 @@
     "cronjob_update": "更新定时任务",
     "cronjob_delete": "删除定时任务",
     "cronjob_run_now": "立即执行定时任务",
+    "search_knowledge": "检索知识库",
     "agent_list": "列出 Agent",
     "ask_agent": "咨询 Agent",
     "call_agent": "调用 Agent",
@@ -519,6 +533,12 @@
     "empty_message": "[空消息]",
     "empty_image": "用户发送了图片。",
     "image_unavailable": "[附件] 图片无法加载到模型。"
+  },
+  "knowledge": {
+    "retrieval": {
+      "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
+      "preamble": "以下知识库内容仅供参考；回答时请引用对应来源。"
+    }
   },
   "proactive_care": {
     "system_prompt": "今天是 {today}。\n\n请根据用户近期的生活事件，用温暖自然的语气写一段关心的话，不超过 150 字。\n注意事件发生的时间，不要把几天前的事说成「今天」。\n不要提及你是 AI，直接表达关心即可。",

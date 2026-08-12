@@ -121,7 +121,12 @@ interface EditAgentDrawerProps {
   onSaved: (
     updated: Pick<
       OctopAgent,
-      "agent_id" | "name" | "description" | "default_model" | "is_shared" | "color"
+      | "agent_id"
+      | "name"
+      | "description"
+      | "default_model"
+      | "is_shared"
+      | "color"
     >,
   ) => void;
 }

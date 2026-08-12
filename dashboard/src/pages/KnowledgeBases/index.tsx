@@ -59,10 +59,7 @@ import { formatBytes } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
 import skillStyles from "../Agent/Skills/index.module.less";
-import {
-  KNOWLEDGE_ICON_NAMES,
-  knowledgeIconForName,
-} from "./knowledgeIcons";
+import { KNOWLEDGE_ICON_NAMES, knowledgeIconForName } from "./knowledgeIcons";
 import styles from "./index.module.less";
 
 type BaseFormValues = {
@@ -794,10 +791,7 @@ export default function KnowledgeBasesPage() {
                     </div>
                     {canManageSelected ? (
                       <div className={styles.actions}>
-                        <Button
-                          icon={<Pencil size={14} />}
-                          onClick={openEdit}
-                        >
+                        <Button icon={<Pencil size={14} />} onClick={openEdit}>
                           {t("common.edit")}
                         </Button>
                         <Popconfirm
@@ -1018,9 +1012,7 @@ export default function KnowledgeBasesPage() {
                             <Tooltip
                               title={document.error_message || undefined}
                             >
-                              <Tag
-                                color={documentStatusColor(document.status)}
-                              >
+                              <Tag color={documentStatusColor(document.status)}>
                                 {t(
                                   `knowledgeBases.statusesShort.${document.status}`,
                                 )}
@@ -1193,7 +1185,10 @@ export default function KnowledgeBasesPage() {
 
         {featureEnabledDraft ? (
           <Spin spinning={featureOptionsLoading}>
-            <Typography.Text type="secondary" className={styles.settingsSection}>
+            <Typography.Text
+              type="secondary"
+              className={styles.settingsSection}
+            >
               {t("knowledgeBases.selectModel")}
             </Typography.Text>
             <Radio.Group

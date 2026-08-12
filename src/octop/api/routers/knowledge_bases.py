@@ -156,14 +156,18 @@ async def embedding_options(
     assert server.services is not None
     remote = []
     for provider in server.services.provider_repo.list_all():
-        if is_onnx_local_provider(provider.name, provider_api_key=provider.api_key):
+        if is_onnx_local_provider(
+            provider.name, provider_api_key=getattr(provider, "api_key", None)
+        ):
             continue
         models = [
             {"id": str(model["id"]), "name": str(model.get("name") or model["id"])}
             for model in provider.get_models()
             if str(model.get("id") or "").strip()
             and is_embedding_model(
-                model, provider_name=provider.name, provider_api_key=provider.api_key
+                model,
+                provider_name=provider.name,
+                provider_api_key=getattr(provider, "api_key", None),
             )
         ]
         if models:

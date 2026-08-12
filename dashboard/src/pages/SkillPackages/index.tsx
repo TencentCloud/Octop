@@ -664,7 +664,7 @@ export default function SkillPackagesPage() {
                   </Typography.Paragraph>
                 </div>
 
-                  <div className={styles.detailBody}>
+                <div className={styles.detailBody}>
                   <div
                     className={`${skillStyles.gridToolbar} ${styles.skillsToolbar}`}
                   >

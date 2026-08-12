@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
+import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
 import AuthGuard from "./components/AuthGuard";
 import { AntdAppProvider } from "./components/AntdAppProvider";
@@ -99,6 +100,7 @@ function ThemedApp() {
       <AntdAppProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/login/oidc/complete" element={<OidcComplete />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route
             path="/*"
