@@ -1,18 +1,22 @@
 /**
  * PresetProviderCard — card for a built-in preset provider.
  *
- * Two states:
- *  - Not configured: gray card with logo, name, protocol badge, and status label
- *    → click opens PresetProviderModal to create the provider
- *  - Configured: renders the existing ProviderCard for the matching ProviderRow
- *    → click opens ProviderConfigModal to edit
+ * Local runtimes (Ollama / ONNX): always LocalServiceCard — service switch, no create CTA.
+ * Cloud presets:
+ *  - Not configured → gray card; click opens PresetProviderModal
+ *  - Configured → ProviderCard
  */
 import { useState } from "react";
 import { Card, Tag } from "antd";
 import { useTranslation } from "react-i18next";
 import type { ProviderRow, ProviderPreset } from "../../useProviders";
-import { findConfiguredProvider, presetLogoId } from "../../presetUtils";
+import {
+  findConfiguredProvider,
+  isLocalPreset,
+  presetLogoId,
+} from "../../presetUtils";
 import { ProviderCard } from "./ProviderCard";
+import { LocalServiceCard } from "./LocalServiceCard";
 import { PresetProviderModal } from "../modals/PresetProviderModal";
 import {
   getProviderLogo,
@@ -41,12 +45,22 @@ export function PresetProviderCard({
   const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Find an existing provider with matching name
   const configured = findConfiguredProvider(preset, providers);
-
   const logo = getProviderLogo(presetLogoId(preset)) ?? customProviderLogo;
 
-  // If already configured, render the real ProviderCard
+  if (isLocalPreset(preset)) {
+    return (
+      <LocalServiceCard
+        preset={preset}
+        provider={configured ?? null}
+        onSaved={onSaved}
+        isHover={isHover}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      />
+    );
+  }
+
   if (configured) {
     return (
       <ProviderCard
@@ -60,7 +74,6 @@ export function PresetProviderCard({
     );
   }
 
-  // Not configured: show a "click to set up" card
   return (
     <>
       <Card

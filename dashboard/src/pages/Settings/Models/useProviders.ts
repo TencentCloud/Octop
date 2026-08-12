@@ -22,6 +22,9 @@ export interface ProviderModel {
   reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
   max_tokens?: number;
+  /** Embedding-only: excluded from chat picker and auto-route. */
+  embedding?: boolean;
+  task?: string;
 }
 
 export interface ProviderPresetModel {

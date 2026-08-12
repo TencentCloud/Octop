@@ -28,4 +28,13 @@ export const ollamaModelApi = {
       `/ollama-models/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+
+  getService: () =>
+    request<{ enabled: boolean; running: boolean }>("/ollama-models/service"),
+
+  setService: (enabled: boolean) =>
+    request<{ enabled: boolean; running: boolean }>("/ollama-models/service", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
 };

@@ -38,7 +38,9 @@ dependencies = [
     "langgraph-checkpoint-postgres>=2.0",
     "mcp>=1.9,<2",
     "pillow>=10.0",
+    "pypdf>=5.0",
     "python-docx>=1.2.0",
+    "python-pptx>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +62,8 @@ browser = [
 ]
 # Kept for backward compatibility; pillow is now a core dependency.
 desktop = ["mss>=9.0", "pynput>=1.7"]
+# Local ONNX / fastembed embedding models (Models admin local tab).
+local-embedding = ["fastembed>=0.4", "huggingface_hub>=0.20"]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the
