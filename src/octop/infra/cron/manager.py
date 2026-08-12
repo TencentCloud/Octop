@@ -16,6 +16,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
 
 if TYPE_CHECKING:
+    from octop.infra.db.repos.audit import AuditRow
     from octop.infra.db.repos.cron import CronJobRow
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
@@ -144,6 +145,14 @@ class CronManager:
 
     def list_all(self, *, include_disabled: bool = True) -> list[CronJobRow]:
         return self._repos.cron_repo.list_all(include_disabled=include_disabled)
+
+    def list_runs(self, cron_id: str, *, limit: int, offset: int = 0) -> tuple[list[AuditRow], int]:
+        return self._repos.audit_repo.query_target_actions(
+            target=cron_id,
+            actions=("cron.run_ok", "cron.run_failed"),
+            limit=limit,
+            offset=offset,
+        )
 
     async def update(
         self,

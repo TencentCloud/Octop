@@ -33,6 +33,7 @@ interface CronJobCardProps {
   timeZone: string;
   onToggleEnabled: (job: CronJob) => void;
   onExecuteNow: (job: CronJob) => void;
+  onViewRuns: (job: CronJob) => void;
   onEdit: (job: CronJob) => void;
   onDelete: (jobId: string) => void;
 }
@@ -42,6 +43,7 @@ export function CronJobCard({
   timeZone,
   onToggleEnabled,
   onExecuteNow,
+  onViewRuns,
   onEdit,
   onDelete,
 }: CronJobCardProps) {
@@ -73,6 +75,11 @@ export function CronJobCard({
   const taskType = job.task_type === "text" ? "text" : "agent";
 
   const moreMenuItems: MenuProps["items"] = [
+    {
+      key: "runs",
+      label: t("cronJobs.runHistory.action"),
+      onClick: () => onViewRuns(job),
+    },
     {
       key: "edit",
       label: t("common.edit"),

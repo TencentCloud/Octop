@@ -67,3 +67,36 @@ def test_audit_write_and_query(audit: AuditRepo):
     action_rows = audit.query(action="login")
     assert len(action_rows) == 2
     assert all(r.action == "login" for r in action_rows)
+
+
+def test_audit_query_target_actions_is_paginated(audit: AuditRepo):
+    audit.write(actor="_system", action="cron.run_ok", target="cron-1")
+    audit.write(
+        actor="_system",
+        action="cron.run_failed",
+        target="cron-1",
+        payload="boom",
+    )
+    audit.write(actor="alice", action="cron.create", target="cron-1")
+    audit.write(actor="_system", action="cron.run_ok", target="cron-2")
+
+    rows, total = audit.query_target_actions(
+        target="cron-1",
+        actions=("cron.run_ok", "cron.run_failed"),
+        limit=1,
+        offset=0,
+    )
+
+    assert total == 2
+    assert len(rows) == 1
+    assert rows[0].action == "cron.run_failed"
+    assert rows[0].payload == "boom"
+
+    second_page, second_total = audit.query_target_actions(
+        target="cron-1",
+        actions=("cron.run_ok", "cron.run_failed"),
+        limit=1,
+        offset=1,
+    )
+    assert second_total == 2
+    assert [row.action for row in second_page] == ["cron.run_ok"]

@@ -20,6 +20,7 @@ interface ColumnHandlers {
   onDetail: (job: CronJob) => void;
   onToggleEnabled: (job: CronJob) => void;
   onExecuteNow: (job: CronJob) => void;
+  onViewRuns: (job: CronJob) => void;
   onEdit: (job: CronJob) => void;
   onDelete: (jobId: string) => void;
   t: TFunction;
@@ -248,7 +249,7 @@ export const createColumns = (
     {
       title: handlers.t("cronJobs.action"),
       key: "action",
-      width: 200,
+      width: 280,
       fixed: "right",
       render: (_: unknown, record: CronJob) => {
         const menuItems: MenuProps["items"] = [
@@ -284,6 +285,13 @@ export const createColumns = (
               onClick={() => handlers.onExecuteNow(record)}
             >
               {handlers.t("cronJobs.executeNow")}
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handlers.onViewRuns(record)}
+            >
+              {handlers.t("cronJobs.runHistory.action")}
             </Button>
             <Dropdown menu={{ items: menuItems }} placement="bottomRight">
               <Button

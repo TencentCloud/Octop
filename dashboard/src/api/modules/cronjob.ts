@@ -3,6 +3,7 @@ import type {
   OctopCronRow,
   OctopCronCreateBody,
   OctopCronPatchBody,
+  OctopCronRunPage,
 } from "../types";
 
 export interface OctopCronSettings {
@@ -36,4 +37,9 @@ export const octopCronApi = {
     request<void>(`/agents/${agentId}/cron/${cronId}/run-now`, {
       method: "POST",
     }),
+
+  listRuns: (agentId: string, cronId: string, page: number, pageSize: number) =>
+    request<OctopCronRunPage>(
+      `/agents/${agentId}/cron/${cronId}/runs?page=${page}&page_size=${pageSize}`,
+    ),
 };

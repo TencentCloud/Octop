@@ -103,3 +103,17 @@ export interface OctopCronPatchBody {
   task_type?: "text" | "agent";
   mcp_servers?: string[];
 }
+
+export interface OctopCronRun {
+  id: number;
+  completed_at: number;
+  status: "ok" | "error";
+  error: string | null;
+}
+
+export interface OctopCronRunPage {
+  items: OctopCronRun[];
+  page: number;
+  page_size: number;
+  total: number;
+}
