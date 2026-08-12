@@ -210,7 +210,9 @@ def _merge_defaults(value: dict[str, Any]) -> dict[str, Any]:
     # v1 has a top-level current_guideline but no learning container.  A v2
     # compatibility projection also has current_guideline, so this detection
     # must happen before defaults are merged.
-    legacy_v1_input = "learning" not in value and int(value.get("state_version") or 1) < LEARNING_SCHEMA_VERSION
+    legacy_v1_input = (
+        "learning" not in value and int(value.get("state_version") or 1) < LEARNING_SCHEMA_VERSION
+    )
     state = _deep_default_state()
     for section, section_value in value.items():
         if isinstance(section_value, dict) and isinstance(state.get(section), dict):
@@ -384,10 +386,25 @@ def normalize_region(region: str) -> str:
 def derive_department_system(department: str) -> str:
     if any(
         key in department
-        for key in ("呼吸", "消化", "心内", "神内", "内分泌", "肾内", "血液", "风湿", "感染", "全科", "内科")
+        for key in (
+            "呼吸",
+            "消化",
+            "心内",
+            "神内",
+            "内分泌",
+            "肾内",
+            "血液",
+            "风湿",
+            "感染",
+            "全科",
+            "内科",
+        )
     ):
         return "临床内科系统"
-    if any(key in department for key in ("普外", "骨科", "肝胆", "胃肠", "胸外", "泌尿外", "神外", "外科")):
+    if any(
+        key in department
+        for key in ("普外", "骨科", "肝胆", "胃肠", "胸外", "泌尿外", "神外", "外科")
+    ):
         return "临床外科系统"
     if "儿科" in department:
         return "儿科系统"
@@ -487,7 +504,9 @@ def _first_open_lesson(track: dict[str, Any]) -> dict[str, Any] | None:
 
 def _track_progress(track: dict[str, Any]) -> dict[str, int]:
     lessons = track.get("lessons", [])
-    delivered = sum(1 for lesson in lessons if lesson.get("delivery_status") in {"accepted", "legacy_completed"})
+    delivered = sum(
+        1 for lesson in lessons if lesson.get("delivery_status") in {"accepted", "legacy_completed"}
+    )
     completed = sum(1 for lesson in lessons if lesson.get("learning_status") == "mastered")
     return {"total": len(lessons), "delivered": delivered, "mastered": completed}
 
@@ -529,8 +548,7 @@ def _migrate_legacy_state(state: dict[str, Any]) -> list[str]:
 
     if (
         migration.get("legacy_state_detected")
-        and
-        not migration.get("legacy_v1_current_guideline_imported")
+        and not migration.get("legacy_v1_current_guideline_imported")
         and legacy.get("title")
         and legacy.get("title") != "待选择"
     ):
@@ -598,8 +616,7 @@ def _migrate_legacy_state(state: dict[str, Any]) -> list[str]:
     diagnostic = state["learning_diagnosis"]
     if (
         migration.get("legacy_state_detected")
-        and
-        not migration.get("legacy_v1_diagnosis_imported")
+        and not migration.get("legacy_v1_diagnosis_imported")
         and diagnostic.get("status") == "saved"
         and diagnostic.get("goal")
         and diagnostic.get("goal") != "待设定"
@@ -693,7 +710,9 @@ def register_profile(
 def _validate_goal_ids(state: dict[str, Any], goal_ids: list[str]) -> list[str]:
     unique: list[str] = []
     for raw_goal_id in goal_ids:
-        goal_id = _normalize_id("学习目标 ID", raw_goal_id, prefix="goal", fallback_label=raw_goal_id)
+        goal_id = _normalize_id(
+            "学习目标 ID", raw_goal_id, prefix="goal", fallback_label=raw_goal_id
+        )
         if goal_id not in unique:
             unique.append(goal_id)
     known = {goal["id"] for goal in state["learning"]["goals"]}
@@ -727,7 +746,9 @@ def save_learning_goal(
         raise ValueError("学习优先级必须在 0-100 之间")
     cleaned_label = _require_clean("学习目标", label)
     cleaned_target_date = _optional_iso_date("目标日期", target_date)
-    normalized_id = _normalize_id("学习目标 ID", goal_id, prefix="goal", fallback_label=cleaned_label)
+    normalized_id = _normalize_id(
+        "学习目标 ID", goal_id, prefix="goal", fallback_label=cleaned_label
+    )
 
     def mutate(state: dict[str, Any]) -> dict[str, Any]:
         goals = state["learning"]["goals"]
@@ -789,11 +810,16 @@ def save_learning_diagnosis(
         raise ValueError("至少保存一个优先学习主题")
     cleaned_start = _require_clean("建议起点", recommended_start)
     normalized_goal_id = (
-        _normalize_id("学习目标 ID", goal_id, prefix="goal", fallback_label=cleaned_goal) if goal_id else ""
+        _normalize_id("学习目标 ID", goal_id, prefix="goal", fallback_label=cleaned_goal)
+        if goal_id
+        else ""
     )
 
     def mutate(state: dict[str, Any]) -> None:
-        if normalized_goal_id and _find_by_id(state["learning"]["goals"], normalized_goal_id) is None:
+        if (
+            normalized_goal_id
+            and _find_by_id(state["learning"]["goals"], normalized_goal_id) is None
+        ):
             raise ValueError("未找到关联学习目标；请先保存目标或省略 goal_id")
         state["learning_diagnosis"].update(
             {
@@ -860,7 +886,9 @@ def create_learning_track(
     cleaned_version = _require_clean("指南版本", version)
     cleaned_source_url = _clean_url("权威来源", source_url)
     cleaned_revision = _require_clean("来源修订标识", source_revision)
-    normalized_id = _normalize_id("学习轨道 ID", track_id, prefix="track", fallback_label=cleaned_label)
+    normalized_id = _normalize_id(
+        "学习轨道 ID", track_id, prefix="track", fallback_label=cleaned_label
+    )
 
     def mutate(state: dict[str, Any]) -> dict[str, Any]:
         if _find_by_id(state["learning"]["tracks"], normalized_id) is not None:
@@ -913,7 +941,9 @@ def _parse_lesson_json(raw: str, *, track: dict[str, Any]) -> dict[str, Any]:
     source_anchor_value = source.get("source_anchor", "")
     if isinstance(source_anchor_value, dict):
         source_anchor = {
-            "section": _require_clean("章节锚点 section", str(source_anchor_value.get("section") or "")),
+            "section": _require_clean(
+                "章节锚点 section", str(source_anchor_value.get("section") or "")
+            ),
             "locator": _optional_clean(
                 "章节锚点 locator",
                 str(source_anchor_value.get("locator") or ""),
@@ -957,7 +987,10 @@ def _parse_lesson_json(raw: str, *, track: dict[str, Any]) -> dict[str, Any]:
     )
     topic_fingerprint = _normalize_sha256(
         "主题指纹",
-        str(source.get("topic_fingerprint") or _hash(f"{source_revision}|{'|'.join(topic_tags)}|{title}")),
+        str(
+            source.get("topic_fingerprint")
+            or _hash(f"{source_revision}|{'|'.join(topic_tags)}|{title}")
+        ),
     )
     lesson_id = _normalize_id(
         "学习单元 ID",
@@ -1001,13 +1034,14 @@ def replace_track_lessons(
     def mutate(state: dict[str, Any]) -> dict[str, Any]:
         track = _find_track(state, track_id)
         existing = list(track.get("lessons", []))
-        protected = [
-            lesson
-            for lesson in existing
-            if lesson.get("delivery_status") != "planned"
-        ]
-        if any(lesson.get("delivery_status") in {"claimed", "prepared", "dispatching", "unknown"} for lesson in protected):
-            raise ValueError("存在已领取、发送中或状态不明的学习单元；请先完成通道对账，不能改写计划")
+        protected = [lesson for lesson in existing if lesson.get("delivery_status") != "planned"]
+        if any(
+            lesson.get("delivery_status") in {"claimed", "prepared", "dispatching", "unknown"}
+            for lesson in protected
+        ):
+            raise ValueError(
+                "存在已领取、发送中或状态不明的学习单元；请先完成通道对账，不能改写计划"
+            )
         candidate = [_parse_lesson_json(raw, track=track) for raw in lesson_jsons]
         lesson_ids = [lesson["id"] for lesson in candidate]
         ordinals = [lesson["ordinal"] for lesson in candidate]
@@ -1142,7 +1176,15 @@ def get_track_status(*, track_id: str, root: Path = PACKAGE_ROOT) -> dict[str, A
         "goals": [
             {
                 key: goal.get(key)
-                for key in ("id", "label", "kind", "status", "target_date", "daily_minutes", "priority")
+                for key in (
+                    "id",
+                    "label",
+                    "kind",
+                    "status",
+                    "target_date",
+                    "daily_minutes",
+                    "priority",
+                )
             }
             for goal in state["learning"]["goals"]
         ],
@@ -1152,7 +1194,9 @@ def get_track_status(*, track_id: str, root: Path = PACKAGE_ROOT) -> dict[str, A
 def _resolve_active_track(state: dict[str, Any], track_id: str) -> dict[str, Any]:
     if track_id:
         return _find_track(state, track_id)
-    active_tracks = [track for track in state["learning"]["tracks"] if track.get("status") == "active"]
+    active_tracks = [
+        track for track in state["learning"]["tracks"] if track.get("status") == "active"
+    ]
     if not active_tracks:
         raise ValueError("没有已启用的学习轨道")
     if len(active_tracks) > 1:
@@ -1317,7 +1361,12 @@ def _lease_expiration(seconds: int) -> str:
     if not 60 <= seconds <= 3600:
         raise ValueError("投递领取租约必须在 60-3600 秒之间")
     timestamp = datetime.now(_UTC).timestamp() + seconds
-    return datetime.fromtimestamp(timestamp, _UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.fromtimestamp(timestamp, _UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _delivery_details(
@@ -1345,7 +1394,9 @@ def _delivery_details(
         "lesson": _lesson_public_summary(lesson),
     }
     if claim_token:
-        details["security_note"] = "投递令牌只允许由平台受鉴权的 outbox 服务持有，不向模板或用户输出。"
+        details["security_note"] = (
+            "投递令牌只允许由平台受鉴权的 outbox 服务持有，不向模板或用户输出。"
+        )
     return details
 
 
@@ -1476,7 +1527,9 @@ def _claim_delivery_for_platform(
                     should_send=False,
                 )
             if existing_same_key.get("state") in {"prepared", "dispatching", "unknown"}:
-                if existing_same_key.get("state") == "prepared" and _delivery_is_expired(existing_same_key):
+                if existing_same_key.get("state") == "prepared" and _delivery_is_expired(
+                    existing_same_key
+                ):
                     existing_same_key["state"] = "unknown"
                     existing_lesson["delivery_status"] = "unknown"
                     existing_same_key["updated_at"] = _now()
@@ -1488,7 +1541,9 @@ def _claim_delivery_for_platform(
                     disposition="needs_transport_reconcile",
                     should_send=False,
                 )
-            if existing_same_key.get("state") == "claimed" and not _delivery_is_expired(existing_same_key):
+            if existing_same_key.get("state") == "claimed" and not _delivery_is_expired(
+                existing_same_key
+            ):
                 return _delivery_details(
                     existing_same_key,
                     existing_track,
@@ -1654,7 +1709,9 @@ def _record_delivery_prepared_from_verified_sender(
         track = _find_track(state, str(delivery["track_id"]))
         lesson = _find_lesson(track, str(delivery["lesson_id"]))
         if delivery.get("state") == "accepted":
-            return _delivery_details(delivery, track, lesson, disposition="already_accepted", should_send=False)
+            return _delivery_details(
+                delivery, track, lesson, disposition="already_accepted", should_send=False
+            )
         if delivery.get("state") != "claimed":
             raise ValueError("只有已领取的投递记录可以写入已准备状态")
         if _delivery_is_expired(delivery):
@@ -1690,7 +1747,9 @@ def _begin_delivery_send_from_verified_sender(
         track = _find_track(state, str(delivery["track_id"]))
         lesson = _find_lesson(track, str(delivery["lesson_id"]))
         if delivery.get("state") == "accepted":
-            return _delivery_details(delivery, track, lesson, disposition="already_accepted", should_send=False)
+            return _delivery_details(
+                delivery, track, lesson, disposition="already_accepted", should_send=False
+            )
         if delivery.get("state") not in {"claimed", "prepared"}:
             raise ValueError("投递记录当前不能开始发送")
         if _delivery_is_expired(delivery):
@@ -1705,7 +1764,9 @@ def _begin_delivery_send_from_verified_sender(
         )
         lesson["delivery_status"] = "dispatching"
         lesson["updated_at"] = _now()
-        return _delivery_details(delivery, track, lesson, disposition="dispatching", should_send=True)
+        return _delivery_details(
+            delivery, track, lesson, disposition="dispatching", should_send=True
+        )
 
     return _mutate_state(root, mutate)
 
@@ -1726,7 +1787,9 @@ def _acknowledge_delivery_from_verified_sender(
         track = _find_track(state, str(delivery["track_id"]))
         lesson = _find_lesson(track, str(delivery["lesson_id"]))
         if delivery.get("state") == "accepted":
-            return _delivery_details(delivery, track, lesson, disposition="already_accepted", should_send=False)
+            return _delivery_details(
+                delivery, track, lesson, disposition="already_accepted", should_send=False
+            )
         if delivery.get("state") != "dispatching":
             raise ValueError("只有通道发送中的投递记录可以确认回执")
         _verify_delivery_token(delivery, claim_token)
@@ -1805,11 +1868,23 @@ def _recover_stale_deliveries_for_platform(
             lesson = _find_lesson(track, str(delivery["lesson_id"]))
             now = _now()
             if delivery.get("state") == "claimed":
-                delivery.update({"state": "failed_retryable", "updated_at": now, "error_code": "lease_expired_before_send"})
+                delivery.update(
+                    {
+                        "state": "failed_retryable",
+                        "updated_at": now,
+                        "error_code": "lease_expired_before_send",
+                    }
+                )
                 lesson["delivery_status"] = "failed_retryable"
                 recovered.append(str(delivery["id"]))
             else:
-                delivery.update({"state": "unknown", "updated_at": now, "error_code": "transport_receipt_unknown"})
+                delivery.update(
+                    {
+                        "state": "unknown",
+                        "updated_at": now,
+                        "error_code": "transport_receipt_unknown",
+                    }
+                )
                 lesson["delivery_status"] = "unknown"
                 reconciled.append(str(delivery["id"]))
             lesson["updated_at"] = now
@@ -1977,7 +2052,9 @@ def set_guideline(
     return state
 
 
-def advance_guideline(*, current_day: int | None, increment: int, root: Path = PACKAGE_ROOT) -> dict[str, Any]:
+def advance_guideline(
+    *, current_day: int | None, increment: int, root: Path = PACKAGE_ROOT
+) -> dict[str, Any]:
     del current_day, increment, root
     raise ValueError(
         "guideline-advance 已停用：生成内容不代表微信已送达。只有平台拥有的投递服务"
@@ -2005,7 +2082,11 @@ def state_migrate(
     with _state_lock(root):
         state = _read_state_unlocked(root)
         changes = _migrate_legacy_state(state)
-        details = {"dry_run": dry_run, "changes": changes, "will_write": bool(changes and not dry_run)}
+        details = {
+            "dry_run": dry_run,
+            "changes": changes,
+            "will_write": bool(changes and not dry_run),
+        }
         if dry_run:
             _refresh_legacy_guideline_projection(state)
             return state, details
@@ -2100,7 +2181,8 @@ read_when:
 - 状态：{learning_diagnosis.get("status") or "not_started"}
 - 关联指南：{learning_diagnosis.get("guideline_title") or "待选择"}
 - 自评：{learning_diagnosis.get("self_assessed_level") or "not_assessed"}
-- 优先主题：{'；'.join(learning_diagnosis.get("priority_topics") or []) or "待诊断"}
+- 优先主题：{"；".join(learning_diagnosis.get("priority_topics") or []) or "待诊断"}
+- 隐私：不保存原始答题过程
 
 ## 订阅任务
 
@@ -2130,7 +2212,10 @@ def _public_state(state: dict[str, Any]) -> dict[str, Any]:
     """Remove channel and delivery internals from agent-visible script output."""
     public = copy.deepcopy(state)
     subscriptions = public.get("subscriptions")
-    if isinstance(subscriptions, dict) and subscriptions.get("weixin_session_key") not in {"", "待绑定"}:
+    if isinstance(subscriptions, dict) and subscriptions.get("weixin_session_key") not in {
+        "",
+        "待绑定",
+    }:
         subscriptions["weixin_session_key"] = "[已隐藏]"
     learning = public.get("learning")
     if isinstance(learning, dict):
@@ -2189,15 +2274,21 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--title", required=True)
     register.add_argument("--consent-confirmed", required=True, type=_parse_bool)
 
-    guideline_set = sub.add_parser("guideline-set", help="Legacy compatibility bridge; creates a v2 re-plan requirement.")
+    guideline_set = sub.add_parser(
+        "guideline-set", help="Legacy compatibility bridge; creates a v2 re-plan requirement."
+    )
     guideline_set.add_argument("--title", required=True)
     guideline_set.add_argument("--publisher", required=True)
     guideline_set.add_argument("--source-url", required=True)
     guideline_set.add_argument("--total-days", required=True, type=int)
     guideline_set.add_argument("--current-day", type=int, default=0)
-    guideline_set.add_argument("--status", choices=("not_selected", "in_progress", "completed"), default="in_progress")
+    guideline_set.add_argument(
+        "--status", choices=("not_selected", "in_progress", "completed"), default="in_progress"
+    )
 
-    guideline_advance = sub.add_parser("guideline-advance", help="Deprecated; use delivery acknowledgements.")
+    guideline_advance = sub.add_parser(
+        "guideline-advance", help="Deprecated; use delivery acknowledgements."
+    )
     guideline_advance.add_argument("--current-day", type=int)
     guideline_advance.add_argument("--increment", type=int, default=1)
 
@@ -2383,7 +2474,10 @@ def main(argv: list[str] | None = None) -> int:
                 "guideline-set",
             )
         if args.command == "guideline-advance":
-            return _ok(advance_guideline(current_day=args.current_day, increment=args.increment), "guideline-advance")
+            return _ok(
+                advance_guideline(current_day=args.current_day, increment=args.increment),
+                "guideline-advance",
+            )
         if args.command == "learning-diagnosis-save":
             return _ok(
                 save_learning_diagnosis(

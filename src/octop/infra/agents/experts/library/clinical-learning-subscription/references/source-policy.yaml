@@ -50,6 +50,22 @@ source_restricted_modules:
 #   B 可增加的信源：国家疾病预防控制局、国家中医药管理局、全国标准信息公共服务平台。
 #   C 仅用于发现或辅助核验（聚合平台/指南注册），不作最终证据。
 #   D 不进入最终证据链（百科/问答/公众号等）。
+# 权威域名只是第一道门槛；最终依据还必须通过文档类型与版本时效性核验。
+allowed_final_evidence_content_types:
+  - official_guideline_or_consensus
+  - official_standard_pathway_or_quality_control_document
+  - official_policy_or_regulatory_document_and_attachment
+  - formal_journal_full_text
+
+# 即使来自白名单网站，以下内容也不得作为最终依据；如果页面链接正式原文，应继续回溯原文。
+excluded_final_evidence_content_types:
+  - science_popularization
+  - repost_or_excerpt
+  - interview_or_media_report
+  - public_health_check_education_or_interpretation
+  - conference_training_or_event_report
+  - marketing_or_institutional_promotion
+
 allowed_final_evidence_domain_suffixes:
   # A 正式采集 — S级 官方
   - ".gov.cn"

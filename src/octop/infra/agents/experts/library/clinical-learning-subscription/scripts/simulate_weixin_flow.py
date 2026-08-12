@@ -193,16 +193,30 @@ def _run_scenarios() -> list[dict[str, object]]:
         (
             "selection_waits_for_schedule",
             {"guideline_just_selected": True},
-            {"mode": "configuration", "advance_progress": False, "stop_after_guideline_selection": True},
+            {
+                "mode": "configuration",
+                "advance_progress": False,
+                "stop_after_guideline_selection": True,
+            },
         ),
         (
             "generic_scheduled_run_uses_weak_dedup",
             {"scheduled_run": True},
-            {"mode": "weak_delivery", "advance_progress": False, "create_delivery_ledger": True, "send_formal_content": True},
+            {
+                "mode": "weak_delivery",
+                "advance_progress": False,
+                "create_delivery_ledger": True,
+                "send_formal_content": True,
+            },
         ),
         (
             "receipt_adapter_advances_only_after_ack",
-            {"scheduled_run": True, "receipt_capable_adapter": True, "claimed": True, "transport_ack": True},
+            {
+                "scheduled_run": True,
+                "receipt_capable_adapter": True,
+                "claimed": True,
+                "transport_ack": True,
+            },
             {"mode": "formal_accepted", "advance_progress": True, "create_delivery_ledger": True},
         ),
     ]

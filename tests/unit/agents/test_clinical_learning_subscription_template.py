@@ -66,7 +66,9 @@ def test_learning_diagnostic_summary_is_opt_in_and_can_be_cleared(tmp_path: Path
 
 
 def test_learning_diagnostic_rejects_unconfirmed_or_patient_like_storage(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_rejection_test")
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_rejection_test"
+    )
 
     try:
         profile.save_learning_diagnosis(
@@ -104,7 +106,9 @@ def test_learning_diagnostic_rejects_unconfirmed_or_patient_like_storage(tmp_pat
 
 
 def test_learning_diagnostic_validator_requires_educational_structure_and_source() -> None:
-    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "clinical_output_validator_test")
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_output_validator_test"
+    )
     text = """【指南学习诊断｜仅评估学习状态】
 学习目标：副高考试复习
 学习信号：建议巩固（依据：本次作答）
@@ -125,7 +129,9 @@ def test_learning_diagnostic_validator_requires_educational_structure_and_source
 
 
 def test_daily_learning_validator_requires_fixed_unit_structure() -> None:
-    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "clinical_daily_validator_test")
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_daily_validator_test"
+    )
     text = """【指南学习单元｜全科】
 轨道：高血压学习轨道
 依据：高血压防治指南（2024，国家卫生健康委）
@@ -147,6 +153,24 @@ def test_daily_learning_validator_requires_fixed_unit_structure() -> None:
         allow_no_source=False,
     )
     assert result["ok"] is True
+
+
+def test_source_policy_filters_content_type_and_prefers_current_version() -> None:
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "source_policy_test")
+    policy = validator._load_list_yaml(_ROOT / "references" / "source-policy.yaml")
+
+    assert {
+        "science_popularization",
+        "repost_or_excerpt",
+        "interview_or_media_report",
+        "public_health_check_education_or_interpretation",
+    } <= set(policy["excluded_final_evidence_content_types"])
+
+    source_verify = (_ROOT / "skills" / "source-verify" / "SKILL.md").read_text(encoding="utf-8")
+    assert "权威网站不等于" in source_verify
+    assert "科普、转载/摘编、访谈/媒体报道" in source_verify
+    assert "最新且当前有效的正式版本" in source_verify
+    assert "网页更新时间" in source_verify
 
 
 def test_internal_learning_team_members_have_no_tools() -> None:
@@ -213,8 +237,12 @@ def _create_active_track(profile: ModuleType, root: Path) -> tuple[str, list[str
     return track["id"], lesson_ids
 
 
-def test_learning_track_preview_is_read_only_and_delivery_lifecycle_is_not_exposed(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_delivery_test")
+def test_learning_track_preview_is_read_only_and_delivery_lifecycle_is_not_exposed(
+    tmp_path: Path,
+) -> None:
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_delivery_test"
+    )
     track_id, lesson_ids = _create_active_track(profile, tmp_path)
 
     preview = profile.get_next_lesson(track_id=track_id, root=tmp_path)
@@ -243,10 +271,14 @@ def test_learning_track_preview_is_read_only_and_delivery_lifecycle_is_not_expos
 
 
 def test_weak_delivery_ledger_dedups_and_advances(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_weak_delivery_test")
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_weak_delivery_test"
+    )
     track_id, lesson_ids = _create_active_track(profile, tmp_path)
 
-    first_check = profile.check_daily_delivery(track_id=track_id, logical_date="2026-08-03", root=tmp_path)
+    first_check = profile.check_daily_delivery(
+        track_id=track_id, logical_date="2026-08-03", root=tmp_path
+    )
     assert first_check["already_sent"] is False
 
     recorded = profile.record_daily_delivery(
@@ -256,7 +288,9 @@ def test_weak_delivery_ledger_dedups_and_advances(tmp_path: Path) -> None:
     assert details["recorded"] is True
     assert details["lesson_id"] == lesson_ids[0]
 
-    second_check = profile.check_daily_delivery(track_id=track_id, logical_date="2026-08-03", root=tmp_path)
+    second_check = profile.check_daily_delivery(
+        track_id=track_id, logical_date="2026-08-03", root=tmp_path
+    )
     assert second_check["already_sent"] is True
 
     _state2, dup = profile.record_daily_delivery(
@@ -270,7 +304,9 @@ def test_weak_delivery_ledger_dedups_and_advances(tmp_path: Path) -> None:
 
 
 def test_public_state_hides_delivery_ledger_and_route_metadata(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_ledger_privacy_test")
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_ledger_privacy_test"
+    )
     track_id, lesson_ids = _create_active_track(profile, tmp_path)
     state = profile.load_state(tmp_path)
     state["learning"]["delivery_ledger"] = [
@@ -289,7 +325,9 @@ def test_public_state_hides_delivery_ledger_and_route_metadata(tmp_path: Path) -
 
 
 def test_v1_day_progress_migrates_without_fabricating_delivery_receipt(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_migration_test")
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_migration_test"
+    )
     legacy = {
         "current_guideline": {
             "title": "高血压防治指南",
@@ -321,7 +359,9 @@ def test_v1_day_progress_migrates_without_fabricating_delivery_receipt(tmp_path:
 
 
 def test_version_migration_requires_confirmation_and_keeps_old_track(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_version_migration_test")
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_version_migration_test"
+    )
     track_id, _lesson_ids = _create_active_track(profile, tmp_path)
     preview = profile.preview_track_migration(
         track_id=track_id,
@@ -363,7 +403,9 @@ def test_version_migration_requires_confirmation_and_keeps_old_track(tmp_path: P
 
 
 def test_user_summary_and_cli_state_hide_weixin_session_identifier(tmp_path: Path) -> None:
-    profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_privacy_test")
+    profile = _load_module(
+        _ROOT / "scripts" / "clinical_profile.py", "clinical_profile_privacy_test"
+    )
     state = profile._deep_default_state()
     state["subscriptions"]["weixin_session_key"] = "user:weixin:private-session-value"
     profile.save_state(state, root=tmp_path)

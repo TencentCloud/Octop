@@ -207,9 +207,7 @@ def validate(text: str, module: str, policy_path: Path, allow_no_source: bool) -
     bare_urls = _extract_bare_urls(text)
     urls = _extract_markdown_urls(text)
     source_lines = [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip().startswith(("来源：", "来源:"))
+        line.strip() for line in text.splitlines() if line.strip().startswith(("来源：", "来源:"))
     ]
     source_required = module in source_restricted
 
@@ -273,7 +271,9 @@ def validate(text: str, module: str, policy_path: Path, allow_no_source: bool) -
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="校验临床学习输出（投递前检查格式、来源与边界声明）。")
+    parser = argparse.ArgumentParser(
+        description="校验临床学习输出（投递前检查格式、来源与边界声明）。"
+    )
     parser.add_argument("--module", required=True)
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
     parser.add_argument("--text-file", type=Path)
