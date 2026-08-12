@@ -44,6 +44,9 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
+import { isSharedExpertViewer } from "../../../utils/sharedExpert";
+import type { PublishedExpert } from "../../../api/modules/publishedExperts";
+import PublishTemplateButton from "./PublishTemplateButton";
 
 const STATE_COLORS: Record<string, string> = {
   running: "success",
@@ -58,6 +61,8 @@ const TRANSIENT = new Set(["starting", "stopping"]);
 
 interface AgentExpertsTableProps {
   agents: OctopAgent[];
+  publishedByAgentId?: Record<string, PublishedExpert>;
+  onPublishedChange?: () => void;
   onEdit: (agentId: string) => void;
   onDeleted: (agentId: string) => void;
   onStateChange: (agentId: string, newState: string) => void;
@@ -65,6 +70,8 @@ interface AgentExpertsTableProps {
 
 export default function AgentExpertsTable({
   agents,
+  publishedByAgentId = {},
+  onPublishedChange,
   onEdit,
   onDeleted,
   onStateChange,
@@ -269,6 +276,15 @@ export default function AgentExpertsTable({
             {iconForName(row.icon_name, 16)}
           </span>
           <span className={styles.tableNameText}>{name}</span>
+          {row.is_shared && (
+            <Tag color="blue">
+              {isSharedExpertViewer(row)
+                ? t("experts.share.fromOwner", {
+                    name: row.owner_username,
+                  })
+                : t("experts.share.badge")}
+            </Tag>
+          )}
         </div>
       ),
     },
@@ -348,7 +364,11 @@ export default function AgentExpertsTable({
       render: (value: string | null, row) => (
         <MbtiPersonaTag
           value={value}
-          onClick={() => openMbtiCatalog(row.agent_id)}
+          onClick={
+            row.is_owner !== false
+              ? () => openMbtiCatalog(row.agent_id)
+              : undefined
+          }
         />
       ),
     },
@@ -362,109 +382,125 @@ export default function AgentExpertsTable({
         const isTransient = TRANSIENT.has(state);
         const switchChecked = state === "running" || state === "starting";
         const chatReady = isAgentChatReady(state);
+        const isOwner = row.is_owner !== false;
         return (
           <div className={styles.tableActions}>
-            <Tooltip title={t("experts.reloadAgent")}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                disabled={isTransient || actionLoadingId === row.agent_id}
-                onClick={() => void handleReload(row)}
-              >
-                <RefreshCw size={13} />
-              </button>
-            </Tooltip>
-            <Switch
-              size="small"
-              checked={switchChecked}
-              loading={isTransient || actionLoadingId === row.agent_id}
-              onChange={(checked) => void handleToggle(row, checked)}
-            />
-            <Tooltip
-              title={
-                chatReady
-                  ? t("pageShell.workspace.title")
-                  : t("workspace.requiresRunning")
-              }
-              mouseEnterDelay={0.5}
-            >
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                disabled={!chatReady}
-                onClick={() => setWorkspaceAgentId(row.agent_id)}
-                aria-label={t("pageShell.workspace.title")}
-              >
-                <FolderOpen size={13} />
-              </button>
-            </Tooltip>
-            <Tooltip title={t("experts.skillsBtn")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                onClick={() => setSkillCatalogAgentId(row.agent_id)}
-                aria-label={t("experts.skillsBtn")}
-              >
-                <Sparkles size={13} />
-              </button>
-            </Tooltip>
-            <Tooltip title={t("experts.subagentsBtn")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                onClick={() => openSubagentCatalog(row.agent_id)}
-                aria-label={t("experts.subagentsBtn")}
-              >
-                <Bot size={13} />
-              </button>
-            </Tooltip>
-            <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                onClick={() => setChannelCatalogAgentId(row.agent_id)}
-                aria-label={t("experts.channelsBtn")}
-              >
-                <Waypoints size={13} />
-              </button>
-            </Tooltip>
-            <Tooltip title={t("experts.memoryBtn")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                onClick={() => setMemoryCatalogAgentId(row.agent_id)}
-                aria-label={t("experts.memoryBtn")}
-              >
-                <Notebook size={13} />
-              </button>
-            </Tooltip>
-            <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.tableActionBtn}
-                onClick={() => onEdit(row.agent_id)}
-                aria-label={t("common.edit", "Edit")}
-              >
-                <Pencil size={13} />
-              </button>
-            </Tooltip>
-            <Popconfirm
-              title={t("experts.confirmDelete", { name: row.name })}
-              description={t("experts.confirmDeleteHint")}
-              onConfirm={() => void handleDelete(row)}
-              okText={t("common.delete", "Delete")}
-              cancelText={t("common.cancel")}
-              okButtonProps={{ danger: true }}
-            >
-              <Tooltip
-                title={t("common.delete", "Delete")}
-                mouseEnterDelay={0.5}
-              >
-                <button type="button" className={styles.tableActionBtn}>
-                  <Trash2 size={13} />
-                </button>
-              </Tooltip>
-            </Popconfirm>
+            {isOwner && (
+              <>
+                <Tooltip title={t("experts.reloadAgent")}>
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    disabled={isTransient || actionLoadingId === row.agent_id}
+                    onClick={() => void handleReload(row)}
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                </Tooltip>
+                <Switch
+                  size="small"
+                  checked={switchChecked}
+                  loading={isTransient || actionLoadingId === row.agent_id}
+                  onChange={(checked) => void handleToggle(row, checked)}
+                />
+                <Tooltip
+                  title={
+                    chatReady
+                      ? t("pageShell.workspace.title")
+                      : t("workspace.requiresRunning")
+                  }
+                  mouseEnterDelay={0.5}
+                >
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    disabled={!chatReady}
+                    onClick={() => setWorkspaceAgentId(row.agent_id)}
+                    aria-label={t("pageShell.workspace.title")}
+                  >
+                    <FolderOpen size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip title={t("experts.skillsBtn")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    onClick={() => setSkillCatalogAgentId(row.agent_id)}
+                    aria-label={t("experts.skillsBtn")}
+                  >
+                    <Sparkles size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip
+                  title={t("experts.subagentsBtn")}
+                  mouseEnterDelay={0.5}
+                >
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    onClick={() => openSubagentCatalog(row.agent_id)}
+                    aria-label={t("experts.subagentsBtn")}
+                  >
+                    <Bot size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    onClick={() => setChannelCatalogAgentId(row.agent_id)}
+                    aria-label={t("experts.channelsBtn")}
+                  >
+                    <Waypoints size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip title={t("experts.memoryBtn")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    onClick={() => setMemoryCatalogAgentId(row.agent_id)}
+                    aria-label={t("experts.memoryBtn")}
+                  >
+                    <Notebook size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    onClick={() => onEdit(row.agent_id)}
+                    aria-label={t("common.edit", "Edit")}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                </Tooltip>
+                <Popconfirm
+                  title={t("experts.confirmDelete", { name: row.name })}
+                  description={t("experts.confirmDeleteHint")}
+                  onConfirm={() => void handleDelete(row)}
+                  okText={t("common.delete", "Delete")}
+                  cancelText={t("common.cancel")}
+                  okButtonProps={{ danger: true }}
+                >
+                  <Tooltip
+                    title={t("common.delete", "Delete")}
+                    mouseEnterDelay={0.5}
+                  >
+                    <button type="button" className={styles.tableActionBtn}>
+                      <Trash2 size={13} />
+                    </button>
+                  </Tooltip>
+                </Popconfirm>
+                {onPublishedChange && (
+                  <PublishTemplateButton
+                    agent={row}
+                    published={publishedByAgentId[row.agent_id] ?? null}
+                    onChanged={onPublishedChange}
+                    buttonClassName={styles.tableActionBtn}
+                  />
+                )}
+              </>
+            )}
             {chatReady ? (
               <button
                 type="button"
@@ -475,9 +511,10 @@ export default function AgentExpertsTable({
                 {t("experts.openChat", "对话")}
                 <ChevronRight size={13} />
               </button>
-            ) : state === "failed" ||
-              state === "stopped" ||
-              state === "created" ? (
+            ) : isOwner &&
+              (state === "failed" ||
+                state === "stopped" ||
+                state === "created") ? (
               <button
                 type="button"
                 className={styles.tableChatBtn}

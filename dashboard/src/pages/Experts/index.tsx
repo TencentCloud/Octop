@@ -25,6 +25,10 @@ import { message } from "@/utils/antdMessage";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import PageShell from "../../layouts/PageShell";
 import { request } from "../../api/request";
+import {
+  publishedExpertsApi,
+  type PublishedExpert,
+} from "../../api/modules/publishedExperts";
 import { useAgent } from "../../context/AgentContext";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
@@ -32,10 +36,14 @@ import { AgentCard } from "./components/AgentCard";
 import { ExpertCard } from "./components/ExpertCard";
 import type { ExpertSummary } from "./components/ExpertCard";
 import EditAgentDrawer from "./components/EditAgentDrawer";
-import CreateFromExpertDrawer from "./components/CreateFromExpertDrawer";
+import CreateFromExpertDrawer, {
+  type CreateFromTemplateSource,
+} from "./components/CreateFromExpertDrawer";
+import { PublishedExpertCard } from "./components/PublishedExpertCard";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
+import { ownedExperts } from "../../utils/sharedExpert";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "library" | "market";
@@ -49,6 +57,10 @@ function loadViewMode(): ViewMode {
 
 async function fetchExpertLibrary(): Promise<ExpertSummary[]> {
   return request<ExpertSummary[]>("/experts");
+}
+
+async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
+  return publishedExpertsApi.list();
 }
 
 async function fetchInstalledExpertIds(): Promise<Set<string>> {
@@ -73,13 +85,16 @@ export default function ExpertsPage() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [agentList, expertList, installedIds] = await Promise.all([
-        request<OctopAgent[]>("/agents"),
-        fetchExpertLibrary(),
-        fetchInstalledExpertIds(),
-      ]);
-      setLocalAgents(agentList);
+      const [agentList, expertList, publishedList, installedIds] =
+        await Promise.all([
+          request<OctopAgent[]>("/agents"),
+          fetchExpertLibrary(),
+          fetchPublishedExperts(),
+          fetchInstalledExpertIds(),
+        ]);
+      setLocalAgents(ownedExperts(agentList));
       setExperts(expertList);
+      setPublishedExperts(publishedList);
       setAgentExpertIds(installedIds);
       await refreshAgents({ silent: true, force: true });
     } catch (err: unknown) {
@@ -100,13 +115,41 @@ export default function ExpertsPage() {
   // ── Built-in expert library ────────────────────────────────────
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
   const [expertLoading, setExpertLoading] = useState(false);
+  const [publishedExperts, setPublishedExperts] = useState<PublishedExpert[]>(
+    [],
+  );
+  const [publishedExpertLoading, setPublishedExpertLoading] = useState(false);
+
+  const publishedByAgentId = useMemo(() => {
+    const map: Record<string, PublishedExpert> = {};
+    for (const item of publishedExperts) {
+      if (item.source_agent_id) {
+        map[item.source_agent_id] = item;
+      }
+    }
+    return map;
+  }, [publishedExperts]);
+
+  const refreshPublishedExperts = useCallback(async () => {
+    try {
+      setPublishedExperts(await fetchPublishedExperts());
+    } catch (err: unknown) {
+      message.error(
+        err instanceof Error ? err.message : t("experts.loadFailed"),
+      );
+    }
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
     setExpertLoading(true);
-    fetchExpertLibrary()
-      .then((data) => {
-        if (!cancelled) setExperts(data);
+    setPublishedExpertLoading(true);
+    Promise.all([fetchExpertLibrary(), fetchPublishedExperts()])
+      .then(([expertData, publishedData]) => {
+        if (!cancelled) {
+          setExperts(expertData);
+          setPublishedExperts(publishedData);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -115,7 +158,10 @@ export default function ExpertsPage() {
         );
       })
       .finally(() => {
-        if (!cancelled) setExpertLoading(false);
+        if (!cancelled) {
+          setExpertLoading(false);
+          setPublishedExpertLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -123,11 +169,12 @@ export default function ExpertsPage() {
   }, [t]);
 
   // ── Local agent state (extends AgentContext for optimistic updates) ──
-  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(agents);
+  const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
+  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocalAgents(agents);
+    setLocalAgents(ownedExperts(agents));
   }, [agents]);
 
   const handleStateChange = useCallback((agentId: string, newState: string) => {
@@ -148,7 +195,12 @@ export default function ExpertsPage() {
     (
       updated: Pick<
         OctopAgent,
-        "agent_id" | "name" | "description" | "default_model"
+        | "agent_id"
+        | "name"
+        | "description"
+        | "default_model"
+        | "is_shared"
+        | "color"
       >,
     ) => {
       setEditAgent(null);
@@ -160,6 +212,8 @@ export default function ExpertsPage() {
                 name: updated.name,
                 description: updated.description,
                 default_model: updated.default_model,
+                is_shared: updated.is_shared,
+                color: updated.color,
               }
             : a,
         ),
@@ -170,11 +224,12 @@ export default function ExpertsPage() {
   );
 
   // ── Create-from-expert Drawer / Market create success ──────────
-  const [createExpert, setCreateExpert] = useState<ExpertSummary | null>(null);
+  const [createSource, setCreateSource] =
+    useState<CreateFromTemplateSource | null>(null);
 
   const handleCreated = useCallback(
-    (agentId: string) => {
-      setCreateExpert(null);
+    (agentId: string, _agentName?: string) => {
+      setCreateSource(null);
       void refreshAgents({ silent: true });
       setActiveTab("my");
       setNewAgentId(agentId);
@@ -298,6 +353,10 @@ export default function ExpertsPage() {
                   agent={agent}
                   iconName={agent.icon_name}
                   accentColor={agent.color}
+                  publishedExpert={publishedByAgentId[agent.agent_id] ?? null}
+                  onPublishedChange={() => {
+                    void refreshPublishedExperts();
+                  }}
                   onEdit={(id) =>
                     setEditAgent(
                       localAgents.find((a) => a.agent_id === id) ?? null,
@@ -312,6 +371,10 @@ export default function ExpertsPage() {
         ) : (
           <AgentExpertsTable
             agents={localAgents}
+            publishedByAgentId={publishedByAgentId}
+            onPublishedChange={() => {
+              void refreshPublishedExperts();
+            }}
             onEdit={(id) =>
               setEditAgent(localAgents.find((a) => a.agent_id === id) ?? null)
             }
@@ -326,20 +389,22 @@ export default function ExpertsPage() {
     localAgents,
     newAgentId,
     openExpertLibrary,
+    publishedByAgentId,
     refreshButton,
+    refreshPublishedExperts,
     showCardView,
     t,
   ]);
 
   const libraryContent = useMemo(() => {
-    if (expertLoading) {
+    if (expertLoading || publishedExpertLoading) {
       return (
         <div className={styles.loadingState}>
           <Spin />
         </div>
       );
     }
-    if (experts.length === 0) {
+    if (experts.length === 0 && publishedExperts.length === 0) {
       return (
         <div className={styles.emptyState}>
           <OctopEmptyMascot />
@@ -353,12 +418,54 @@ export default function ExpertsPage() {
     }
     return (
       <>
+        {publishedExperts.length > 0 && (
+          <>
+            <div className={styles.gridToolbar}>
+              <span className={styles.gridCount}>
+                {t("experts.published.listTitle", {
+                  count: publishedExperts.length,
+                })}
+              </span>
+            </div>
+            <p
+              style={{
+                color: "var(--fn-text-tertiary)",
+                fontSize: 13,
+                margin: "0 0 12px",
+              }}
+            >
+              {t("experts.published.listHint")}
+            </p>
+            <div className={styles.cardGrid}>
+              {publishedExperts.map((expert) => (
+                <PublishedExpertCard
+                  key={expert.id}
+                  expert={expert}
+                  onInstall={(item) =>
+                    setCreateSource({ kind: "published", expert: item })
+                  }
+                />
+              ))}
+            </div>
+          </>
+        )}
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
             {t("experts.totalLibrary", { count: experts.length })}
           </span>
           <div className={styles.gridToolbarRight}>{refreshButton}</div>
         </div>
+        {publishedExperts.length === 0 && (
+          <p
+            style={{
+              color: "var(--fn-text-tertiary)",
+              fontSize: 13,
+              margin: "0 0 12px",
+            }}
+          >
+            {t("experts.published.emptyHint")}
+          </p>
+        )}
         <div className={styles.cardGrid}>
           {experts.map((expert) => (
             <ExpertCard
@@ -366,23 +473,36 @@ export default function ExpertsPage() {
               expert={expert}
               lang={lang}
               isInstalled={agentExpertIds.has(expert.id)}
-              onCreate={setCreateExpert}
+              onCreate={(item) =>
+                setCreateSource({ kind: "builtin", expert: item })
+              }
             />
           ))}
         </div>
       </>
     );
-  }, [experts, expertLoading, lang, agentExpertIds, refreshButton, t]);
+  }, [
+    agentExpertIds,
+    expertLoading,
+    experts,
+    lang,
+    publishedExpertLoading,
+    publishedExperts,
+    refreshButton,
+    t,
+  ]);
 
   const marketContent = useMemo(
     () => (
       <ExpertMarketTab
         lang={lang}
         installedExpertIds={agentExpertIds}
-        onCreated={handleCreated}
+        onRequestCreate={(expert) =>
+          setCreateSource({ kind: "market", expert })
+        }
       />
     ),
-    [agentExpertIds, handleCreated, lang],
+    [agentExpertIds, lang],
   );
 
   return (
@@ -420,10 +540,10 @@ export default function ExpertsPage() {
       />
 
       <CreateFromExpertDrawer
-        open={!!createExpert}
-        expert={createExpert}
+        open={!!createSource}
+        source={createSource}
         lang={lang}
-        onClose={() => setCreateExpert(null)}
+        onClose={() => setCreateSource(null)}
         onCreated={handleCreated}
       />
     </PageShell.FillTabs>

@@ -1359,6 +1359,7 @@
 }
 
 .catalogCard {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1397,6 +1398,15 @@
       transform: none;
     }
   }
+}
+
+.catalogCardAccent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--agent-accent, #6366f1);
 }
 
 .catalogCardHeader {

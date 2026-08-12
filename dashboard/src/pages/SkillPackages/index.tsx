@@ -527,7 +527,7 @@ export default function SkillPackagesPage() {
                 locale={{
                   emptyText: (
                     <Empty
-                      image={<OctopEmptyMascot />}
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description={t("skillPackages.empty")}
                     />
                   ),
@@ -596,11 +596,12 @@ export default function SkillPackagesPage() {
               </div>
             ) : null}
             {!selected && !detailLoading ? (
-              <Empty
-                className={styles.emptyDetail}
-                image={<OctopEmptyMascot />}
-                description={t("skillPackages.selectPackage")}
-              />
+              <div className={styles.emptyDetail}>
+                <OctopEmptyMascot size={180} />
+                <p className={styles.emptyDetailText}>
+                  {t("skillPackages.selectPackage")}
+                </p>
+              </div>
             ) : !selected ? null : (
               <>
                 <div className={styles.detailHeader}>
@@ -663,8 +664,10 @@ export default function SkillPackagesPage() {
                   </Typography.Paragraph>
                 </div>
 
-                <div className={styles.detailBody}>
-                  <div className={skillStyles.gridToolbar}>
+                  <div className={styles.detailBody}>
+                  <div
+                    className={`${skillStyles.gridToolbar} ${styles.skillsToolbar}`}
+                  >
                     <span className={skillStyles.gridCount}>
                       {t("skills.totalCount", { count: skills.length })}
                     </span>

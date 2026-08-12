@@ -61,6 +61,13 @@ export interface CreateMarketExpertBody {
   providers?: string[];
   default_model?: string;
   backend?: Record<string, unknown>;
+  skill_package_ids?: string[];
+  color?: string;
+  max_iters?: number;
+  max_input_length?: number;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
 }
 
 function hubListPath(query: string, scene: string): string {

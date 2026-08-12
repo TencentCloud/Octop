@@ -3,7 +3,14 @@ import { Button, Drawer, Form, Input, Segmented, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 import type { FormInstance } from "antd";
 import { useTranslation } from "react-i18next";
+import ExpertColorPicker from "../../../components/ExpertColorPicker";
+import EmojiPicker from "../../../components/EmojiPicker";
+import {
+  expertPaletteColor,
+  resolveExpertPalette,
+} from "../../../utils/expertColor";
 import { splitMarkdownFrontmatter } from "../../../utils/markdown";
+import { DEFAULT_PALETTE } from "../../../styles/themePalettes";
 import styles from "./SubagentDrawer.module.less";
 
 export interface SubagentFormValues {
@@ -25,6 +32,22 @@ export interface EditingSubagent {
 type EditorTab = "form" | "source";
 
 export const SUBAGENT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** Form-bound adapter: stores hex in the form, shows curated swatches. */
+function SubagentColorField({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (hex: string) => void;
+}) {
+  return (
+    <ExpertColorPicker
+      value={resolveExpertPalette(value)}
+      onChange={(palette) => onChange?.(expertPaletteColor(palette))}
+    />
+  );
+}
 
 function yamlQuote(value: string): string {
   if (!value) return '""';
@@ -125,7 +148,7 @@ export function SubagentDrawer({
       name: "",
       description: "",
       emoji: "🤖",
-      color: "",
+      color: expertPaletteColor(DEFAULT_PALETTE),
       body: t("subagents.newBodyTemplate"),
       content: "",
     });
@@ -280,14 +303,19 @@ export function SubagentDrawer({
                         autoSize={{ minRows: 2, maxRows: 4 }}
                       />
                     </Form.Item>
-                    <Form.Item name="emoji" label={t("subagents.emojiLabel")}>
-                      <Input
-                        placeholder={t("subagents.emojiPlaceholder")}
-                        maxLength={8}
-                      />
+                    <Form.Item
+                      name="emoji"
+                      label={t("subagents.emojiLabel")}
+                      extra={t("subagents.emojiHint")}
+                    >
+                      <EmojiPicker />
                     </Form.Item>
-                    <Form.Item name="color" label={t("subagents.colorLabel")}>
-                      <Input placeholder={t("subagents.colorPlaceholder")} />
+                    <Form.Item
+                      name="color"
+                      label={t("subagents.colorLabel")}
+                      extra={t("subagents.colorHint")}
+                    >
+                      <SubagentColorField />
                     </Form.Item>
                   </div>
                   <div className={styles.bodyBlock}>

@@ -60,9 +60,19 @@ class PathLayout:
         return self.root / "expert_market"
 
     @property
+    def published_experts_dir(self) -> Path:
+        """User-published expert snapshots: ``~/.octop/published_experts/``."""
+        return self.root / "published_experts"
+
+    @property
     def skill_packages_dir(self) -> Path:
         """Global skill package content: ``~/.octop/skill-packages/``."""
         return self.root / "skill-packages"
+
+    @property
+    def knowledge_dir(self) -> Path:
+        """Global knowledge base files: ``~/.octop/knowledge/``."""
+        return self.root / "knowledge"
 
     def agent_workspace(self, agent_id: str) -> Path:
         """Global agent workspace: ~/.octop/agents/<agent_id>/"""

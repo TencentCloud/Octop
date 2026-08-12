@@ -2,7 +2,13 @@
  * SubagentManager — reusable subagent management content.
  * Used inside SubagentCatalogDrawer (Drawer) and Subagents page.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { Alert, Empty, Form, Input, Modal, Spin, Tabs } from "antd";
 import { message } from "@/utils/antdMessage";
 
@@ -462,9 +468,16 @@ export default function SubagentManager({
     return (
       <div className={styles.catalogGrid}>
         {filteredInstalled.map((subagent) => {
-          const accent = "#6366f1";
+          const accent = subagent.color?.startsWith("#")
+            ? subagent.color
+            : "#6366f1";
           return (
-            <div key={subagent.slug} className={styles.catalogCard}>
+            <div
+              key={subagent.slug}
+              className={styles.catalogCard}
+              style={{ "--agent-accent": accent } as CSSProperties}
+            >
+              <div className={styles.catalogCardAccent} />
               <div className={styles.catalogCardHeader}>
                 <div
                   className={styles.catalogCardIcon}

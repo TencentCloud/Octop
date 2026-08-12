@@ -1,14 +1,27 @@
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
+import {
+  expertMarketApi,
+  type MarketExpert,
+} from "../../../api/modules/expertMarket";
+import {
+  publishedExpertsApi,
+  type PublishedExpert,
+} from "../../../api/modules/publishedExperts";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { apiErrorMessage } from "../../../utils/apiError";
+import {
+  expertPaletteColor,
+  resolveExpertPalette,
+} from "../../../utils/expertColor";
 import {
   buildAgentRuntimeRequest,
   type AgentRuntimeFormValues,
@@ -20,6 +33,7 @@ import {
   defaultModelFromForm,
   MODEL_AUTO_VALUE,
 } from "../../../utils/modelOptions";
+import type { ThemePalette } from "../../../styles/themePalettes";
 import type { ExpertSummary } from "./ExpertCard";
 import { groupExpertFiles, type NamedFileContent } from "./expertFileGroups";
 import { metaForFile } from "./iconForName";
@@ -45,17 +59,60 @@ interface ExpertDetail {
   file_contents?: FileContent[];
 }
 
+export type CreateFromTemplateSource =
+  | { kind: "builtin"; expert: ExpertSummary }
+  | { kind: "published"; expert: PublishedExpert }
+  | { kind: "market"; expert: MarketExpert };
+
 interface CreateFromExpertDrawerProps {
   open: boolean;
-  expert: ExpertSummary | null;
+  source: CreateFromTemplateSource | null;
   lang: "zh" | "en";
   onClose: () => void;
   onCreated: (agentId: string, agentName: string) => void;
 }
 
+function sourceTitle(
+  source: CreateFromTemplateSource,
+  lang: "zh" | "en",
+): string {
+  if (source.kind === "builtin") {
+    return pickLocale(source.expert.label, lang) || source.expert.id;
+  }
+  if (source.kind === "published") {
+    return source.expert.name;
+  }
+  return pickLocale(source.expert.label, lang) || source.expert.slug;
+}
+
+function sourceDefaults(
+  source: CreateFromTemplateSource,
+  lang: "zh" | "en",
+): { name: string; description: string; color: string | null } {
+  if (source.kind === "builtin") {
+    return {
+      name: pickLocale(source.expert.label, lang) || source.expert.id,
+      description: pickLocale(source.expert.description, lang),
+      color: source.expert.color ?? null,
+    };
+  }
+  if (source.kind === "published") {
+    return {
+      name: source.expert.name,
+      description: source.expert.description,
+      color: source.expert.color ?? null,
+    };
+  }
+  return {
+    name: pickLocale(source.expert.label, lang) || source.expert.slug,
+    description: pickLocale(source.expert.description, lang),
+    color: source.expert.color ?? null,
+  };
+}
+
 export default function CreateFromExpertDrawer({
   open,
-  expert,
+  source,
   lang,
   onClose,
   onCreated,
@@ -76,7 +133,7 @@ export default function CreateFromExpertDrawer({
   const [submitting, setSubmitting] = useState(false);
 
   const { models, modelsLoading, backends, backendsLoading } =
-    useAgentFormResources(open && !!expert);
+    useAgentFormResources(open && !!source);
 
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
 
@@ -84,26 +141,47 @@ export default function CreateFromExpertDrawer({
   const [detailLoading, setDetailLoading] = useState(false);
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
   const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
+  const [colorPalette, setColorPalette] =
+    useState<ThemePalette>("rose");
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
 
+  const sourceKey = useMemo(() => {
+    if (!source) return "";
+    if (source.kind === "builtin") return `builtin:${source.expert.id}`;
+    if (source.kind === "published") return `published:${source.expert.id}`;
+    return `market:${source.expert.slug}`;
+  }, [source]);
+
   useEffect(() => {
-    if (!open || !expert) return;
+    if (!open || !source) return;
     let cancelled = false;
 
     setPathMappings([]);
+    const defaults = sourceDefaults(source, lang);
+    setColorPalette(resolveExpertPalette(defaults.color));
     form.setFieldsValue({
-      name: pickLocale(expert.label, lang) || expert.id,
-      description: pickLocale(expert.description, lang),
+      name: defaults.name,
+      description: defaults.description,
       default_model: MODEL_AUTO_VALUE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
     });
 
+    if (source.kind === "market") {
+      setFileContents([]);
+      setDetailLoading(false);
+      return;
+    }
+
     setDetailLoading(true);
-    request<ExpertDetail>(`/experts/${encodeURIComponent(expert.id)}`)
+    const detailPath =
+      source.kind === "builtin"
+        ? `/experts/${encodeURIComponent(source.expert.id)}`
+        : `/experts/published/${encodeURIComponent(source.expert.id)}`;
+    request<ExpertDetail>(detailPath)
       .then((data) => {
         if (!cancelled) setFileContents(data.file_contents ?? []);
       })
@@ -117,7 +195,7 @@ export default function CreateFromExpertDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, expert, lang, form]);
+  }, [open, source, sourceKey, lang, form]);
 
   useEffect(() => {
     if (!open) return;
@@ -140,7 +218,7 @@ export default function CreateFromExpertDrawer({
   }, [open]);
 
   const handleCreate = async () => {
-    if (!expert) return;
+    if (!source) return;
     const values = await form.validateFields();
     if (values.backend_choice === "composite") {
       const pathError = validatePathMappings(pathMappings, t);
@@ -178,22 +256,48 @@ export default function CreateFromExpertDrawer({
         values.root_dir,
       );
 
-      const body = await request<{ agent_id: string; name: string }>(
-        `/agents/from-expert/${encodeURIComponent(expert.id)}`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: values.name,
-            description: values.description || undefined,
-            default_model:
-              defaultModelFromForm(values.default_model) ?? undefined,
-            backend: backendSpec,
-            skill_package_ids: values.skill_package_ids ?? [],
-            ...buildAgentRuntimeRequest(values),
-          }),
-        },
-      );
-      message.success(t("experts.agentCreated", { name: body.name }));
+      const payload = {
+        name: values.name,
+        description: values.description || undefined,
+        default_model: defaultModelFromForm(values.default_model) ?? undefined,
+        backend: backendSpec,
+        skill_package_ids: values.skill_package_ids ?? [],
+        color: expertPaletteColor(colorPalette),
+        ...buildAgentRuntimeRequest(values),
+      };
+
+      let body: { agent_id: string; name: string };
+      if (source.kind === "builtin") {
+        body = await request<{ agent_id: string; name: string }>(
+          `/agents/from-expert/${encodeURIComponent(source.expert.id)}`,
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          },
+        );
+      } else if (source.kind === "published") {
+        body = await publishedExpertsApi.install(source.expert.id, payload);
+      } else {
+        const created = await expertMarketApi.install(
+          source.expert.slug,
+          payload,
+        );
+        body = { agent_id: created.agent_id, name: created.name };
+        const enrichment = created.market?.welcome_enrichment;
+        if (enrichment === "pending") {
+          message.success(
+            t("experts.marketCreateSuccessEnriching", { name: body.name }),
+          );
+        } else {
+          message.success(
+            t("experts.marketCreateSuccess", { name: body.name }),
+          );
+        }
+      }
+
+      if (source.kind !== "market") {
+        message.success(t("experts.agentCreated", { name: body.name }));
+      }
       if (bwrapToast?.kind === "success") {
         message.success(bwrapToast.text);
       } else if (bwrapToast?.kind === "warning") {
@@ -229,10 +333,11 @@ export default function CreateFromExpertDrawer({
   const createBlocked = submitting || hasNoModels;
 
   const { configFiles, skillGroups } = groupExpertFiles(fileContents);
+  const showFilePreview = source?.kind !== "market";
 
-  const title = expert
+  const title = source
     ? t("experts.createDrawerTitle", {
-        name: pickLocale(expert.label, lang) || expert.id,
+        name: sourceTitle(source, lang),
       })
     : "";
 
@@ -284,6 +389,10 @@ export default function CreateFromExpertDrawer({
 
         <Form.Item name="description" label={t("experts.agentDescription")}>
           <Input.TextArea rows={2} />
+        </Form.Item>
+
+        <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
+          <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
         </Form.Item>
 
         <Form.Item
@@ -343,16 +452,79 @@ export default function CreateFromExpertDrawer({
         />
       </Form>
 
-      {detailLoading ? (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <Spin size="small" />
-        </div>
-      ) : (
-        <>
-          {configFiles.length > 0 && (
-            <div style={{ marginTop: 8 }}>
+      {showFilePreview &&
+        (detailLoading ? (
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <Spin size="small" />
+          </div>
+        ) : (
+          <>
+            {configFiles.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+                  {t("experts.mdFilesTitle")}
+                </div>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--fn-text-tertiary)",
+                    margin: "0 0 8px",
+                  }}
+                >
+                  {t("experts.mdFilesHint")}
+                </p>
+                <Collapse
+                  size="small"
+                  items={configFiles.map((f) => {
+                    const meta = metaForFile(f.name, t);
+                    return {
+                      key: f.name,
+                      label: (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "baseline",
+                            gap: 8,
+                          }}
+                        >
+                          <span style={{ fontWeight: 500 }}>{meta.label}</span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color:
+                                "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                            }}
+                          >
+                            {f.name}
+                          </span>
+                        </span>
+                      ),
+                      children: (
+                        <pre
+                          style={{
+                            fontSize: 12,
+                            maxHeight: 200,
+                            overflowY: "auto",
+                            background: "var(--fn-bg-secondary, #f5f5f5)",
+                            padding: 8,
+                            borderRadius: 4,
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {f.content}
+                        </pre>
+                      ),
+                    };
+                  })}
+                />
+              </div>
+            )}
+
+            <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                {t("experts.mdFilesTitle")}
+                {t("experts.skillFilesTitle", { count: skillGroups.length })}
               </div>
               <p
                 style={{
@@ -361,146 +533,84 @@ export default function CreateFromExpertDrawer({
                   margin: "0 0 8px",
                 }}
               >
-                {t("experts.mdFilesHint")}
+                {t("experts.skillFilesHint")}
               </p>
-              <Collapse
-                size="small"
-                items={configFiles.map((f) => {
-                  const meta = metaForFile(f.name, t);
-                  return {
-                    key: f.name,
-                    label: (
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "baseline",
-                          gap: 8,
-                        }}
-                      >
-                        <span style={{ fontWeight: 500 }}>{meta.label}</span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color:
-                              "var(--fn-text-quaternary, var(--fn-text-tertiary))",
-                          }}
-                        >
-                          {f.name}
-                        </span>
-                      </span>
-                    ),
+              {skillGroups.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--fn-text-tertiary)",
+                    padding: "4px 0",
+                  }}
+                >
+                  {t("experts.noSkillFiles")}
+                </div>
+              ) : (
+                <Collapse
+                  size="small"
+                  items={skillGroups.map((group) => ({
+                    key: group.name,
+                    label: skillSlugDisplayName(group.name),
                     children: (
-                      <pre
-                        style={{
-                          fontSize: 12,
-                          maxHeight: 200,
-                          overflowY: "auto",
-                          background: "var(--fn-bg-secondary, #f5f5f5)",
-                          padding: 8,
-                          borderRadius: 4,
-                          margin: 0,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {f.content}
-                      </pre>
-                    ),
-                  };
-                })}
-              />
-            </div>
-          )}
-
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-              {t("experts.skillFilesTitle", { count: skillGroups.length })}
-            </div>
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--fn-text-tertiary)",
-                margin: "0 0 8px",
-              }}
-            >
-              {t("experts.skillFilesHint")}
-            </p>
-            {skillGroups.length === 0 ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--fn-text-tertiary)",
-                  padding: "4px 0",
-                }}
-              >
-                {t("experts.noSkillFiles")}
-              </div>
-            ) : (
-              <Collapse
-                size="small"
-                items={skillGroups.map((group) => ({
-                  key: group.name,
-                  label: skillSlugDisplayName(group.name),
-                  children: (
-                    <Collapse
-                      size="small"
-                      items={group.files.map((f) => {
-                        const skillBasename = f.name.replace(
-                          `skills/${group.name}/`,
-                          "",
-                        );
-                        const skillMeta = metaForFile(skillBasename, t);
-                        return {
-                          key: f.name,
-                          label: (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "baseline",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ fontWeight: 500 }}>
-                                {skillMeta.label}
-                              </span>
+                      <Collapse
+                        size="small"
+                        items={group.files.map((f) => {
+                          const skillBasename = f.name.replace(
+                            `skills/${group.name}/`,
+                            "",
+                          );
+                          const skillMeta = metaForFile(skillBasename, t);
+                          return {
+                            key: f.name,
+                            label: (
                               <span
                                 style={{
-                                  fontSize: 11,
-                                  color:
-                                    "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                  display: "inline-flex",
+                                  alignItems: "baseline",
+                                  gap: 8,
                                 }}
                               >
-                                {skillBasename}
+                                <span style={{ fontWeight: 500 }}>
+                                  {skillMeta.label}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    color:
+                                      "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                  }}
+                                >
+                                  {skillBasename}
+                                </span>
                               </span>
-                            </span>
-                          ),
-                          children: (
-                            <pre
-                              style={{
-                                fontSize: 12,
-                                maxHeight: 200,
-                                overflowY: "auto",
-                                background: "var(--fn-bg-secondary, #f5f5f5)",
-                                padding: 8,
-                                borderRadius: 4,
-                                margin: 0,
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-word",
-                              }}
-                            >
-                              {f.content}
-                            </pre>
-                          ),
-                        };
-                      })}
-                    />
-                  ),
-                }))}
-              />
-            )}
-          </div>
-        </>
-      )}
+                            ),
+                            children: (
+                              <pre
+                                style={{
+                                  fontSize: 12,
+                                  maxHeight: 200,
+                                  overflowY: "auto",
+                                  background: "var(--fn-bg-secondary, #f5f5f5)",
+                                  padding: 8,
+                                  borderRadius: 4,
+                                  margin: 0,
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {f.content}
+                              </pre>
+                            ),
+                          };
+                        })}
+                      />
+                    ),
+                  }))}
+                />
+              )}
+            </div>
+          </>
+        ))}
     </Drawer>
   );
 }

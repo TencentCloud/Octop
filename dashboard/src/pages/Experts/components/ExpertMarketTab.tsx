@@ -32,7 +32,7 @@ import styles from "../index.module.less";
 interface ExpertMarketTabProps {
   lang: "zh" | "en";
   installedExpertIds: Set<string>;
-  onCreated: (agentId: string) => void;
+  onRequestCreate: (expert: MarketExpert) => void;
 }
 
 const SCENE_ALL = "";
@@ -69,7 +69,7 @@ function promptText(
 export default function ExpertMarketTab({
   lang,
   installedExpertIds,
-  onCreated,
+  onRequestCreate,
 }: ExpertMarketTabProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<MarketExpert[]>([]);
@@ -81,7 +81,6 @@ export default function ExpertMarketTab({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<MarketExpert | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [creatingSlug, setCreatingSlug] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchMarket = useCallback(
@@ -136,31 +135,12 @@ export default function ExpertMarketTab({
     [t],
   );
 
-  const createMarketExpert = useCallback(
-    async (expert: MarketExpert) => {
-      if (creatingSlug) return;
-      setCreatingSlug(expert.slug);
-      try {
-        const result = await expertMarketApi.install(expert.slug);
-        const enrichment = result.market?.welcome_enrichment;
-        if (enrichment === "pending") {
-          message.success(
-            t("experts.marketCreateSuccessEnriching", { name: result.name }),
-          );
-        } else {
-          message.success(
-            t("experts.marketCreateSuccess", { name: result.name }),
-          );
-        }
-        setSelected(null);
-        onCreated(result.agent_id);
-      } catch (err) {
-        message.error(apiErrorMessage(err, t("experts.createFailed"), t));
-      } finally {
-        setCreatingSlug(null);
-      }
+  const openCreate = useCallback(
+    (expert: MarketExpert) => {
+      setSelected(null);
+      onRequestCreate(expert);
     },
-    [creatingSlug, onCreated, t],
+    [onRequestCreate],
   );
 
   const totalText = useMemo(
@@ -334,11 +314,9 @@ export default function ExpertMarketTab({
                     size="small"
                     type="primary"
                     icon={<Download size={14} />}
-                    loading={creatingSlug === expert.slug}
-                    disabled={Boolean(creatingSlug)}
                     onClick={(e) => {
                       e.stopPropagation();
-                      void createMarketExpert(expert);
+                      openCreate(expert);
                     }}
                   >
                     {installed
@@ -365,9 +343,7 @@ export default function ExpertMarketTab({
               size="large"
               block
               icon={<Download size={14} />}
-              loading={creatingSlug === selected.slug}
-              disabled={Boolean(creatingSlug)}
-              onClick={() => void createMarketExpert(selected)}
+              onClick={() => openCreate(selected)}
             >
               {installedExpertIds.has(selected.id)
                 ? t("experts.createAgainFromMarket")

@@ -43,6 +43,7 @@ class SkillHubMarketAgentCreateOptions:
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    color: str | None = None
     max_iters: int | None = None
     max_input_length: int | None = None
     temperature: float | None = None
@@ -279,6 +280,8 @@ async def create_agent_from_skillhub_skillset(
         config_extra["providers"] = list(options.providers)
     if options.backend:
         config_extra["backend"] = options.backend
+    if options.color:
+        config_extra["color"] = options.color
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,
@@ -322,7 +325,7 @@ async def create_agent_from_skillhub_skillset(
         row=row,
         expert_id=item.expert_id,
         icon_name=expert.summary.icon_name,
-        color=expert.summary.color,
+        color=options.color or expert.summary.color,
         slug=item.slug,
         welcome_enrichment=welcome_enrichment,
     )
