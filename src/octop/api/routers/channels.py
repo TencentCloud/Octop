@@ -16,7 +16,7 @@ from typing import Any, Literal, cast
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.channels import qr_bind
@@ -100,7 +100,7 @@ def _require_agent_access(
     as_user: int | None,
     server: Any,
 ) -> Any:
-    return require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    return require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
 
 
 def _acting_user_id(user: Any, as_user: int | None) -> int:

@@ -1,6 +1,8 @@
 import { Select, Spin } from "antd";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
+import { ownedExperts } from "../utils/sharedExpert";
 import { iconForName } from "../pages/Experts/components/iconForName";
 import styles from "./AgentSelector.module.less";
 
@@ -56,6 +58,18 @@ export default function AgentSelector({
 }: AgentSelectorProps) {
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
+  const selectable = useMemo(() => ownedExperts(agents), [agents]);
+
+  useEffect(() => {
+    if (loading || selectable.length === 0) return;
+    if (
+      activeAgentId &&
+      selectable.some((agent) => agent.agent_id === activeAgentId)
+    ) {
+      return;
+    }
+    setActiveAgent(selectable[0]?.agent_id ?? null);
+  }, [activeAgentId, loading, selectable, setActiveAgent]);
 
   if (loading) {
     return (
@@ -65,11 +79,11 @@ export default function AgentSelector({
     );
   }
 
-  if (agents.length === 0) return null;
+  if (selectable.length === 0) return null;
 
-  const currentId = activeAgentId ?? agents[0]?.agent_id;
+  const currentId = activeAgentId ?? selectable[0]?.agent_id;
   const useBar =
-    variant === "bar" || (variant === "auto" && agents.length <= 6);
+    variant === "bar" || (variant === "auto" && selectable.length <= 6);
 
   return (
     <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
@@ -83,7 +97,7 @@ export default function AgentSelector({
           role="tablist"
           aria-label={t("agentSelector.label")}
         >
-          {agents.map((agent) => (
+          {selectable.map((agent) => (
             <AgentChip
               key={agent.agent_id}
               agent={agent}
@@ -100,7 +114,7 @@ export default function AgentSelector({
           listHeight={360}
           popupMatchSelectWidth={320}
           optionLabelProp="label"
-          options={agents.map((agent) => {
+          options={selectable.map((agent) => {
             const accent = agentAccent(agent);
             return {
               value: agent.agent_id,
@@ -116,7 +130,7 @@ export default function AgentSelector({
             };
           })}
           optionRender={(opt) => {
-            const agent = agents.find((a) => a.agent_id === opt.value);
+            const agent = selectable.find((a) => a.agent_id === opt.value);
             if (!agent) return opt.label;
             const accent = agentAccent(agent);
             return (

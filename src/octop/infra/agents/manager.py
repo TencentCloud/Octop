@@ -202,6 +202,7 @@ class AgentCreateSpec:
     system_prompt: str | None = None
     icon: str | None = None
     template_name: str | None = None
+    is_shared: bool = False
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -415,6 +416,10 @@ class AgentManager:
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
+            if spec.is_shared:
+                self._repos.agent_repo.set_shared(agent_id, True)
+                row = self._repos.agent_repo.get(agent_id)
+                assert row is not None
             if spec.template_name:
                 await self._seed_expert_template(row, spec.template_name)
             if defer_bootstrap:
@@ -471,6 +476,14 @@ class AgentManager:
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         self._schedule_reload(agent_id)
+        return row
+
+    async def set_shared(self, agent_id: str, shared: bool) -> AgentRow:
+        """Persist whether other users may access this agent."""
+        self._repos.agent_repo.set_shared(agent_id, shared)
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         return row
 
     async def delete(self, agent_id: str) -> None:
@@ -1857,6 +1870,18 @@ class AgentManager:
 
             cron_tools = build_cronjob_tools(self._cron_manager)
 
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from octop.infra.knowledge.tools import build_knowledge_tools  # noqa: PLC0415
+
+        knowledge_tools = build_knowledge_tools(
+            SimpleNamespace(
+                knowledge_repo=self._repos.knowledge_repo,
+                settings_repo=self._repos.settings_repo,
+                provider_repo=self._repos.provider_repo,
+            )
+        )
+
         from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
         agent_plugins = cfg.get("plugins") if isinstance(cfg.get("plugins"), dict) else {}
@@ -1886,6 +1911,7 @@ class AgentManager:
         merged_tools: list[Any] = []
         if cron_tools:
             merged_tools.extend(cron_tools)
+        merged_tools.extend(knowledge_tools)
         merged_tools.extend(plugin_tools)
         if self._harness_manager is not None:
             merged_tools.extend(self._harness_manager.team.team_tools())

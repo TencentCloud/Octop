@@ -82,7 +82,7 @@ async def test_new_creates_thread(dispatcher, ctx):
         channel_type=ctx.channel_type,
     )
     await dispatcher.handle(SlashCommand("new", ""), ctx, sink)
-    assert len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id)) >= 2
+    assert len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id, user_id=ctx.user_id)) >= 2
 
 
 async def test_clear_is_alias_of_new(dispatcher, ctx):
@@ -93,9 +93,12 @@ async def test_clear_is_alias_of_new(dispatcher, ctx):
         user_id=ctx.user_id,
         channel_type=ctx.channel_type,
     )
-    before = len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id))
+    before = len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id, user_id=ctx.user_id))
     await dispatcher.handle(SlashCommand("clear", ""), ctx, sink)
-    assert len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id)) == before + 1
+    assert (
+        len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id, user_id=ctx.user_id))
+        == before + 1
+    )
 
 
 async def test_list_returns_threads(dispatcher, ctx):

@@ -29,6 +29,10 @@ export interface OctopAgent {
   user_id?: number | null;
   /** Resolved username for admin list view. */
   owner_username?: string | null;
+  /** Whether the owner has shared this expert with other users. */
+  is_shared?: boolean;
+  /** Whether the current user owns this expert. */
+  is_owner?: boolean;
   name: string;
   description: string | null;
   persona_mbti: string | null;

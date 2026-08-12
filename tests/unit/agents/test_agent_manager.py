@@ -206,14 +206,16 @@ def test_build_harness_config_includes_cronjob_tools_when_cron_manager_set(
         "cronjob_update",
         "cronjob_delete",
         "cronjob_run_now",
+        "search_knowledge",
     }
 
 
-def test_build_harness_config_without_cron_manager_has_no_extra_tools(
+def test_build_harness_config_includes_search_knowledge_without_cron(
     manager: AgentManager,
 ) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
-    assert cfg.tools is None
+    assert cfg.tools is not None
+    assert {t.name for t in cfg.tools} == {"search_knowledge"}
 
 
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:

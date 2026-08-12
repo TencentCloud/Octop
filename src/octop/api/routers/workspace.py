@@ -120,7 +120,9 @@ async def list_tree(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """Single-level directory listing under ``path`` (agent must be running)."""
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     result = await ws.als(io_path)
     if result is None:
@@ -171,7 +173,9 @@ async def write_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     converter = get_doc_converter(path)
     if converter is not None:
         # Editable-document paths are always stored as the binary document
@@ -218,7 +222,9 @@ async def mkdir_workspace_dir(
     """Create a directory (and parents) under the agent workspace."""
     _ = from_workspace  # API surface; mutations always use workspace-relative paths.
     rel = _assert_workspace_mutable(path)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     try:
         await ws.amkdir(rel)
     except Exception as exc:
@@ -246,7 +252,9 @@ async def delete_workspace_file(
     """Remove a file or directory tree from the agent workspace."""
     _ = from_workspace
     rel = _assert_workspace_mutable(path)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     try:
         await ws.adelete(rel)
     except Exception as exc:
@@ -274,7 +282,9 @@ async def move_workspace_file(
     _ = from_workspace
     src = _assert_workspace_mutable(path)
     dest = _assert_workspace_mutable(body.destination)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     try:
         await ws.amove(src, dest)
     except Exception as exc:
@@ -294,7 +304,9 @@ async def upload_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Upload a binary file via multipart ``file=@...``."""
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     target = path or f"/{file.filename or 'upload.bin'}"
     data = await file.read()
     try:
@@ -447,7 +459,9 @@ async def glob_files(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     root = _workspace_io_path(path, from_workspace=from_workspace)
     if pattern in ("**/*.md", "*.md") and root == ".":
         ls_result = await ws.als(".")
@@ -480,7 +494,9 @@ async def grep_files(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     result = await ws.agrep(pattern, _workspace_io_path(path, from_workspace=from_workspace))
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, "grep failed")
@@ -503,7 +519,9 @@ async def export_workspace_archive(
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
     """Pack workspace files into a zip archive."""
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     data = await export_workspace_zip(ws)
     filename = f"workspace-{agent_id}.zip"
     return StreamingResponse(
@@ -532,7 +550,9 @@ async def import_workspace_archive(
     if not raw:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "empty archive")
 
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     local_ws = resolve_agent_workspace_dir(server, agent_id)
     result = await import_workspace_zip(
         ws,
