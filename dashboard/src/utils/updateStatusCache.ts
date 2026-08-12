@@ -2,6 +2,9 @@ import type { UpdateStatus } from "../api/modules/update";
 
 export const UPDATE_STATUS_STORAGE_KEY = "octop:update-status";
 export const UPDATE_STATUS_TTL_MS = 60 * 60 * 1000;
+/** How often the UI re-evaluates the local cache / probes the API. */
+export const UPDATE_STATUS_POLL_MS = UPDATE_STATUS_TTL_MS;
+export const UPDATE_STATUS_CHANGED_EVENT = "octop:update-status-changed";
 
 interface StoredUpdateStatus {
   checkedAt: number;
@@ -39,6 +42,11 @@ export function storeUpdateStatus(
     localStorage.setItem(UPDATE_STATUS_STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // quota / private mode
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(UPDATE_STATUS_CHANGED_EVENT, { detail: status }),
+    );
   }
 }
 

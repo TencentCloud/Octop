@@ -68,19 +68,22 @@ def _build_status(
 
 @router.get("/status")
 async def update_status(_: Any = Depends(current_user)) -> dict[str, Any]:
+    """Return last check result; re-probe PyPI when the server cache TTL expires."""
     cached = get_cached_status()
     if cached is not None:
         return cached
-    return _build_status()
+    return await asyncio.to_thread(_build_status)
 
 
 @router.post("/check")
 async def check_for_updates(_: Any = Depends(current_admin)) -> dict[str, Any]:
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
-        return _build_status(latest=None, error="could not reach PyPI")
+        return await asyncio.to_thread(_build_status, latest=None, error="could not reach PyPI")
     release_notes = parse_changelog_for_version(pypi_info.description, pypi_info.version)
-    return _build_status(latest=pypi_info.version, release_notes=release_notes)
+    return await asyncio.to_thread(
+        _build_status, latest=pypi_info.version, release_notes=release_notes
+    )
 
 
 async def _upgrade_worker(task_id: str) -> None:
