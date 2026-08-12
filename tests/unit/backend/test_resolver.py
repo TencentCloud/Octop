@@ -63,6 +63,7 @@ def test_default_agent_backend_spec_windows_scopes_to_workspace(tmp_path: Path) 
         "type": "local_shell",
         "root_dir": str(ws.resolve()),
         "virtual_mode": True,
+        "inherit_env": True,
     }
 
 
@@ -100,7 +101,25 @@ def test_windows_neutralize_local_shell_host_root_scopes_to_workspace(
         "type": "local_shell",
         "root_dir": str(ws.resolve()),
         "virtual_mode": True,
+        "inherit_env": True,
     }
+
+
+def test_windows_neutralize_local_shell_injects_inherit_env(tmp_path: Path) -> None:
+    # local_shell executes on the host; without inherit_env its subprocesses have
+    # an empty PATH and cannot find python/curl/ffmpeg/edge-tts.
+    spec = {"type": "local_shell", "virtual_mode": True}
+    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
+        out = windows_neutralize_host_root(spec, workspace_dir=tmp_path)
+    assert out == {"type": "local_shell", "virtual_mode": True, "inherit_env": True}
+
+
+def test_windows_neutralize_filesystem_skips_inherit_env(tmp_path: Path) -> None:
+    # FilesystemBackend has no execute tool and its constructor rejects inherit_env.
+    spec = {"type": "filesystem", "virtual_mode": True}
+    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
+        out = windows_neutralize_host_root(spec, workspace_dir=tmp_path)
+    assert out == spec
 
 
 def test_windows_neutralize_filesystem_empty_root_scopes_to_workspace(
@@ -125,11 +144,22 @@ def test_windows_neutralize_keeps_explicit_drive_root(tmp_path: Path) -> None:
     spec = {"type": "local_shell", "root_dir": "D:\\develop", "virtual_mode": True}
     with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
         out = windows_neutralize_host_root(spec, workspace_dir=tmp_path)
-    assert out == spec
+    # Explicit drive root is preserved; inherit_env is still injected so the
+    # host shell commands can find python/curl/etc.
+    assert out == {**spec, "inherit_env": True}
 
 
 def test_windows_neutralize_keeps_missing_root_dir(tmp_path: Path) -> None:
     spec = {"type": "local_shell", "virtual_mode": True}
+    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
+        out = windows_neutralize_host_root(spec, workspace_dir=tmp_path)
+    assert out == {**spec, "inherit_env": True}
+
+
+def test_windows_neutralize_preserves_explicit_inherit_env(tmp_path: Path) -> None:
+    # A user who deliberately wants the empty-env sandbox opts out explicitly;
+    # the injected default must not override that choice.
+    spec = {"type": "local_shell", "virtual_mode": True, "inherit_env": False}
     with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
         out = windows_neutralize_host_root(spec, workspace_dir=tmp_path)
     assert out == spec
@@ -149,6 +179,7 @@ def test_windows_neutralize_composite_default_host_root_scoped(tmp_path: Path) -
         "type": "local_shell",
         "root_dir": str(ws.resolve()),
         "virtual_mode": True,
+        "inherit_env": True,
     }
     assert out["routes"] == {}
 
@@ -167,4 +198,9 @@ def test_windows_neutralize_composite_healthy_default_kept(tmp_path: Path) -> No
     }
     with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
         out = windows_neutralize_host_root(spec, workspace_dir=tmp_path)
-    assert out == spec
+    # Only the default sub-backend is touched (inherits env); routes stay as-is.
+    assert out == {
+        "type": "composite",
+        "default": {"type": "local_shell", "virtual_mode": True, "inherit_env": True},
+        "routes": spec["routes"],
+    }

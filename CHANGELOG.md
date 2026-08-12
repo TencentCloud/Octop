@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- Windows 下本地 agent 的 `execute` 工具无法运行任何外部命令（python/curl/ffmpeg/edge-tts 均报"找不到"）：deepagents `LocalShellBackend` 默认 `inherit_env=False`，子进程继承空环境（无 `PATH`/`SystemRoot`）。现于 Windows 默认 backend spec（`default_agent_backend_spec`）与 `windows_neutralize_host_root` 归一化中注入 `inherit_env`（`setdefault`，显式配置 `inherit_env: false` 的沙箱选择仍被保留；仅 `local_shell`，`filesystem` 不接受该参数）
+
 ## [0.9.22] - 2026-08-11
 
 ### 新增
