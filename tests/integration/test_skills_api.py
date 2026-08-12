@@ -111,6 +111,10 @@ async def test_list_includes_builtin_skills(env: Any) -> None:
     assert ws["enabled"] is True
     assert ws["emoji"] == "🔍"
 
+    manager = next(row for row in builtin if row["name"] == "skill-manager")
+    assert manager["enabled"] is True
+    assert "SkillHub" in manager["description"]
+
 
 async def test_get_builtin_skill_detail(env: Any) -> None:
     c, _srv, auth, aid = env
@@ -140,6 +144,20 @@ async def test_delete_builtin_skill_rejected(env: Any) -> None:
     await _seed_builtin_skill(env)
 
     r = await c.delete(f"/api/agents/{aid}/skills/web-search", headers=auth)
+    assert r.status_code == 404
+
+
+async def test_octop_skill_manager_detail_and_delete_protection(env: Any) -> None:
+    c, _srv, auth, aid = env
+
+    r = await c.get(f"/api/agents/{aid}/skills/skill-manager", headers=auth)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["kind"] == "builtin"
+    assert body["frontmatter"]["name"] == "skill-manager"
+    assert "manage_skills.py" in body["body"]
+
+    r = await c.delete(f"/api/agents/{aid}/skills/skill-manager", headers=auth)
     assert r.status_code == 404
 
 

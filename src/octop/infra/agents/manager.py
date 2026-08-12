@@ -1580,6 +1580,23 @@ class AgentManager:
             sorted(tool_set)[:8],
         )
         ws = agent.workspace
+        try:
+            from octop.infra.agents.builtin_skills import (  # noqa: PLC0415
+                sync_octop_builtin_skills,
+            )
+
+            synced_skills = await sync_octop_builtin_skills(ws)
+            logger.info(
+                "Agent %s: synced Octop built-in skills=%s",
+                row.agent_id,
+                synced_skills,
+            )
+        except Exception:
+            logger.warning(
+                "Agent %s: failed to sync Octop built-in skills",
+                row.agent_id,
+                exc_info=True,
+            )
         if self._plugin_manager is not None:
             await asyncio.to_thread(self._plugin_manager.sync_skills_to_workspace, ws)
 

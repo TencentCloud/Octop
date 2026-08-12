@@ -219,9 +219,14 @@ async def test_create_registers_with_harness(tmp_path: Path) -> None:
     fake_hm = _make_fake_hm()
     registry = _make_registry(services, fake_hm=fake_hm)
 
-    await registry.create(AgentCreateSpec(name="bot"))
+    row = await registry.create(AgentCreateSpec(name="bot"))
 
     fake_hm.acreate_agent.assert_called_once()
+    manager_skill = await registry.get_agent(row.agent_id).workspace.aread_text(
+        "_builtin_skills/skill-manager/SKILL.md"
+    )
+    assert manager_skill is not None
+    assert "name: skill-manager" in manager_skill
 
 
 @pytest.mark.asyncio

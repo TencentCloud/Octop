@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### 新增
+
+- Octop-owned built-in `skill-manager` for conversational Skill lifecycle
+  management from uploaded files, archives, Git/GitHub or web URLs, and
+  SkillHub. It is seeded into every agent instance without modifying
+  harness-agent and installs user Skills only under that agent's `skills/`.
+
 ## [0.9.22] - 2026-08-11
 
 ### 新增
