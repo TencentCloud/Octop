@@ -12,18 +12,22 @@ from octop.infra.db.repos._base import DbRow, bool_int, insert_returning_id, map
 class UserRow:
     id: int
     username: str
-    password_hash: str
+    password_hash: str | None
     role: str
     display_name: str | None
     disabled: int
     created_at: int
     locale: str
+    email: str | None
+    sso_provider_id: int | None
+    sso_subject: str | None
     preferences_json: str = "{}"
     login_failed_count: int = 0
     login_locked_until: int = 0
 
     @classmethod
     def from_row(cls, r: DbRow) -> UserRow:
+        keys = set(r.keys())
         return cls(
             id=r["id"],
             username=r["username"],
@@ -36,6 +40,9 @@ class UserRow:
             preferences_json=str(r["preferences_json"] or "{}"),
             login_failed_count=int(r["login_failed_count"] or 0),
             login_locked_until=int(r["login_locked_until"] or 0),
+            email=r["email"] if "email" in keys else None,
+            sso_provider_id=r["sso_provider_id"] if "sso_provider_id" in keys else None,
+            sso_subject=r["sso_subject"] if "sso_subject" in keys else None,
         )
 
 
@@ -47,17 +54,31 @@ class UserRepo:
         self,
         *,
         username: str,
-        password_hash: str,
+        password_hash: str | None = None,
         role: str,
         display_name: str | None = None,
         locale: str = "zh",
+        email: str | None = None,
+        sso_provider_id: int | None = None,
+        sso_subject: str | None = None,
     ) -> int:
         with self._db.transaction() as conn:
             return insert_returning_id(
                 conn,
-                "INSERT INTO users(username, password_hash, role, display_name, "
-                "locale, disabled, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
-                (username, password_hash, role, display_name, locale, now_ts()),
+                "INSERT INTO users(username, password_hash, role, display_name, locale, "
+                "email, sso_provider_id, sso_subject, disabled, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                (
+                    username,
+                    password_hash,
+                    role,
+                    display_name,
+                    locale,
+                    email,
+                    sso_provider_id,
+                    sso_subject,
+                    now_ts(),
+                ),
             )
 
     def get(self, user_id: int) -> UserRow | None:
@@ -69,6 +90,40 @@ class UserRepo:
         with self._db.connect() as conn:
             r = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         return UserRow.from_row(r) if r else None
+
+    def get_by_sso(self, provider_id: int, subject: str) -> UserRow | None:
+        with self._db.connect() as conn:
+            r = conn.execute(
+                "SELECT * FROM users WHERE sso_provider_id = ? AND sso_subject = ?",
+                (provider_id, subject),
+            ).fetchone()
+        return UserRow.from_row(r) if r else None
+
+    def get_by_email(self, email: str) -> UserRow | None:
+        with self._db.connect() as conn:
+            r = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        return UserRow.from_row(r) if r else None
+
+    def update_sso_profile(
+        self,
+        user_id: int,
+        *,
+        email: str | None = None,
+        display_name: str | None = None,
+    ) -> None:
+        fields: list[str] = []
+        params: list[object] = []
+        if email is not None:
+            fields.append("email = ?")
+            params.append(email)
+        if display_name is not None:
+            fields.append("display_name = ?")
+            params.append(display_name)
+        if not fields:
+            return
+        params.append(user_id)
+        with self._db.transaction() as conn:
+            conn.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", params)
 
     def list(self, *, include_disabled: bool = False) -> list[UserRow]:
         sql = "SELECT * FROM users"

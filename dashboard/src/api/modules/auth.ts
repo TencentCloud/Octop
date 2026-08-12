@@ -55,6 +55,11 @@ export interface LoginResponse {
   token: string;
 }
 
+export interface OidcStatus {
+  enabled: boolean;
+  display_name: string;
+}
+
 export interface SetupBody {
   username: string;
   password: string;
@@ -109,6 +114,25 @@ export const authApi = {
     const raw = await request<RawLoginResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
+    });
+    return { ...raw, token: raw.access_token };
+  },
+
+  /** Return whether the configured OIDC provider can accept logins. */
+  getOidcStatus: () => request<OidcStatus>("/auth/oidc/status"),
+
+  /** Start an OIDC authorization-code login flow. */
+  startOidc: (redirect_after?: string) =>
+    request<{ authorization_url: string }>("/auth/oidc/start", {
+      method: "POST",
+      body: JSON.stringify({ redirect_after }),
+    }),
+
+  /** Exchange the one-time browser code for the standard JWT login response. */
+  exchangeOidcCode: async (code: string): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>("/auth/oidc/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code }),
     });
     return { ...raw, token: raw.access_token };
   },
