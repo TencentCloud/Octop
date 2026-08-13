@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
@@ -36,6 +36,20 @@ class CronPatchBody(BaseModel):
     model: str | None = None
     task_type: str | None = None
     mcp_servers: list[str] | None = None
+
+
+class CronRunItem(BaseModel):
+    id: int = Field(description="Execution record id")
+    completed_at: int = Field(description="Unix timestamp when the execution completed")
+    status: Literal["ok", "error"]
+    error: str | None = None
+
+
+class CronRunPage(BaseModel):
+    items: list[CronRunItem]
+    page: int
+    page_size: int
+    total: int
 
 
 def _get_cron_manager(server: Any) -> Any:
@@ -111,6 +125,42 @@ async def get_cron(
     if row is None or row.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
     return cast(dict[str, Any], row.to_public_dict(include_agent=True))
+
+
+@router.get(
+    "/agents/{agent_id}/cron/{cron_id}/runs",
+    response_model=CronRunPage,
+    summary="List cron execution records",
+)
+async def list_cron_runs(
+    agent_id: str,
+    cron_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> CronRunPage:
+    """Return completed runs for one cron job, newest first."""
+    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    mgr = _get_cron_manager(server)
+    existing = mgr.get(cron_id)
+    if existing is None or existing.agent_id != agent_id:
+        raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
+    rows, total = mgr.list_runs(cron_id, limit=page_size, offset=(page - 1) * page_size)
+    return CronRunPage(
+        items=[
+            CronRunItem(
+                id=row.id,
+                completed_at=row.ts,
+                status="ok" if row.action == "cron.run_ok" else "error",
+                error=row.payload if row.action == "cron.run_failed" else None,
+            )
+            for row in rows
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.patch("/agents/{agent_id}/cron/{cron_id}", summary="Update cron job")

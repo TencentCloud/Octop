@@ -1353,6 +1353,18 @@
     "operationFailed": "操作失败",
     "triggeredSuccess": "任务已触发，结果稍后显示",
     "executeFailed": "触发执行失败",
+    "runHistory": {
+      "action": "执行记录",
+      "title": "执行记录",
+      "titleWithName": "执行记录 · {{name}}",
+      "completedAt": "完成时间",
+      "status": "状态",
+      "error": "失败原因",
+      "succeeded": "成功",
+      "failed": "失败",
+      "empty": "暂无执行记录",
+      "loadFailed": "加载执行记录失败"
+    },
     "totalItems": "共 {{count}} 项",
     "loadingJobs": "正在加载当前专家的任务…",
     "syncing": "正在同步…",

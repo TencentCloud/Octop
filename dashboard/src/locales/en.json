@@ -1356,6 +1356,18 @@
     "operationFailed": "Operation failed",
     "triggeredSuccess": "Task triggered, result will appear shortly",
     "executeFailed": "Failed to trigger execution",
+    "runHistory": {
+      "action": "Execution Records",
+      "title": "Execution Records",
+      "titleWithName": "Execution Records · {{name}}",
+      "completedAt": "Completed At",
+      "status": "Status",
+      "error": "Failure Reason",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "empty": "No execution records",
+      "loadFailed": "Failed to load execution records"
+    },
     "totalItems": "Total {{count}} items",
     "loadingJobs": "Loading this expert's tasks…",
     "syncing": "Syncing…",

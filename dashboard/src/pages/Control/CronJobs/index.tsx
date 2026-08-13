@@ -20,6 +20,7 @@ import {
   ExecuteNowModal,
   JobDrawer,
   JobDetailDrawer,
+  RunHistoryModal,
   useCronJobs,
 } from "./components";
 import type { CronJobFormValues } from "./useCronJobs";
@@ -111,6 +112,7 @@ function CronJobsPage() {
   // Execute-now confirmation
   const [executingJob, setExecutingJob] = useState<CronJob | null>(null);
   const [executing, setExecuting] = useState(false);
+  const [historyJob, setHistoryJob] = useState<CronJob | null>(null);
 
   // Close transient UI when switching experts — avoid dangling drawers
   // tied to the previous agent's jobs.
@@ -120,6 +122,7 @@ function CronJobsPage() {
     setDetailDrawerOpen(false);
     setDetailJob(null);
     setExecutingJob(null);
+    setHistoryJob(null);
   }, [activeAgentId]);
 
   const handleDetail = (job: CronJob) => {
@@ -179,6 +182,10 @@ function CronJobsPage() {
     setExecutingJob(job);
   };
 
+  const handleViewRuns = (job: CronJob) => {
+    setHistoryJob(job);
+  };
+
   const handleExecuteNowConfirm = async () => {
     if (!executingJob) return;
     setExecuting(true);
@@ -226,6 +233,7 @@ function CronJobsPage() {
     onDetail: handleDetail,
     onToggleEnabled: handleToggleEnabled,
     onExecuteNow: handleExecuteNow,
+    onViewRuns: handleViewRuns,
     onEdit: handleEdit,
     onDelete: handleDelete,
     t,
@@ -342,6 +350,7 @@ function CronJobsPage() {
                   timeZone={cronTimezone}
                   onToggleEnabled={handleToggleEnabled}
                   onExecuteNow={handleExecuteNow}
+                  onViewRuns={handleViewRuns}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                 />
@@ -389,6 +398,15 @@ function CronJobsPage() {
         loading={executing}
         onCancel={handleExecuteNowCancel}
         onConfirm={handleExecuteNowConfirm}
+      />
+
+      <RunHistoryModal
+        open={historyJob !== null}
+        agentId={activeAgentId}
+        cronId={historyJob?.id ?? null}
+        jobName={historyJob?.name}
+        timeZone={cronTimezone}
+        onClose={() => setHistoryJob(null)}
       />
     </PageShell>
   );

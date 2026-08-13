@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, map_rows, now_ts
+from octop.infra.db.repos._base import DbRow, map_rows, now_ts, sql_in_placeholders
 
 ACTOR_SYSTEM = "_system"
 ACTOR_ADMIN = "_admin"
@@ -105,6 +106,31 @@ class AuditRepo:
         with self._db.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, AuditRow)
+
+    def query_target_actions(
+        self,
+        *,
+        target: str,
+        actions: Sequence[str],
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[AuditRow], int]:
+        """Return one target's matching audit events and their total count."""
+        if not actions:
+            return [], 0
+        placeholders = sql_in_placeholders(len(actions))
+        params: list[object] = [target, *actions]
+        where = f"target = ? AND action IN ({placeholders})"
+        with self._db.connect() as conn:
+            total_row = conn.execute(
+                f"SELECT COUNT(*) AS count FROM audit_log WHERE {where}", params
+            ).fetchone()
+            rows = conn.execute(
+                f"SELECT * FROM audit_log WHERE {where} ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+        total = int(total_row["count"]) if total_row else 0
+        return map_rows(rows, AuditRow), total
 
     def delete_before(self, cutoff_ts: int) -> int:
         """Delete audit rows older than ``cutoff_ts``. Returns deleted count."""

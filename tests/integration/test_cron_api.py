@@ -190,6 +190,51 @@ async def test_run_now_unknown_cron_returns_404(env: Any) -> None:
     assert r.status_code == 404
 
 
+async def test_list_cron_runs_returns_paginated_history(env: Any) -> None:
+    c, srv, alice_auth, _bob_auth, aid = env
+    created = await c.post(
+        f"/api/agents/{aid}/cron",
+        headers=alice_auth,
+        json={"trigger": "interval:3600", "prompt": "history"},
+    )
+    cid = created.json()["id"]
+    srv.services.audit_repo.write(actor="_system", action="cron.run_ok", target=cid)
+    srv.services.audit_repo.write(
+        actor="_system", action="cron.run_failed", target=cid, payload="boom"
+    )
+    srv.services.audit_repo.write(
+        actor="alice", action="cron.create", target=cid, payload="ignored"
+    )
+
+    r = await c.get(
+        f"/api/agents/{aid}/cron/{cid}/runs?page=1&page_size=1",
+        headers=alice_auth,
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["page"] == 1
+    assert body["page_size"] == 1
+    assert body["total"] == 2
+    assert body["items"][0]["status"] == "error"
+    assert body["items"][0]["error"] == "boom"
+    assert isinstance(body["items"][0]["completed_at"], int)
+
+
+async def test_cross_user_cannot_list_cron_runs(env: Any) -> None:
+    c, _srv, alice_auth, bob_auth, aid = env
+    created = await c.post(
+        f"/api/agents/{aid}/cron",
+        headers=alice_auth,
+        json={"trigger": "interval:3600", "prompt": "private history"},
+    )
+    cid = created.json()["id"]
+
+    r = await c.get(f"/api/agents/{aid}/cron/{cid}/runs", headers=bob_auth)
+
+    assert r.status_code == 403
+
+
 # --- Cross-user isolation -----------------------------------------------------
 
 
