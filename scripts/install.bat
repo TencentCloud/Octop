@@ -96,10 +96,12 @@ if %_E% neq 0 exit /b 1
 goto :install_verify
 
 :install_from_pypi
-set "_PACKAGE=octop"
-if defined ARG_VERSION set "_PACKAGE=octop==%ARG_VERSION%"
-echo [octop] Installing %_PACKAGE%%EXTRAS_SUFFIX% from PyPI...
-uv pip install "%_PACKAGE%%EXTRAS_SUFFIX%" --python "%VENV_PYTHON%"
+REM PEP 508: extras must sit between name and version specifier
+REM (octop[browser]==x.y.z); octop==x.y.z[browser] is an invalid requirement.
+set "_PACKAGE=octop%EXTRAS_SUFFIX%"
+if defined ARG_VERSION set "_PACKAGE=octop%EXTRAS_SUFFIX%==%ARG_VERSION%"
+echo [octop] Installing %_PACKAGE% from PyPI...
+uv pip install "%_PACKAGE%" --python "%VENV_PYTHON%"
 if errorlevel 1 (echo [octop] ERROR: install failed & exit /b 1)
 
 :install_verify
