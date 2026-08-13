@@ -271,8 +271,6 @@ class OctopServer:
                 logger.warning("wizard self-heal failed: %s", err)
                 new_pw = None
         else:
-            if user_count == 0:
-                _wizard_pw.remove_password(wizard_home)
             new_pw = None
         if new_pw is not None:
             banner = (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
 import secrets
 from pathlib import Path
@@ -66,21 +65,17 @@ def read_password(home: Path) -> str | None:
     return None
 
 
-def remove_password(home: Path) -> None:
-    target = _password_path(home)
-    with contextlib.suppress(FileNotFoundError):
-        target.unlink()
-
-
 def boot_self_heal(home: Path, user_count: int) -> str | None:
     """Reconcile the wizard password file at server boot.
 
     When setup is still open (``user_count == 0``), ensure a password file exists
     and return the password so the CLI can print it — including when the file
     already exists (e.g. the DB was wiped but ``octop-login.txt`` was not).
+
+    The file is intentionally kept forever as a permanent record and is never
+    deleted, even after setup completes.
     """
     if user_count > 0:
-        remove_password(home)
         return None
     created = ensure_password(home)
     return created if created is not None else read_password(home)

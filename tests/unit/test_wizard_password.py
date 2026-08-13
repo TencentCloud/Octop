@@ -13,7 +13,6 @@ from octop.infra.setup.password_file import (
     boot_self_heal,
     ensure_password,
     read_password,
-    remove_password,
 )
 
 
@@ -53,17 +52,6 @@ def test_read_password_returns_none_when_missing(tmp_path: Path) -> None:
     assert read_password(tmp_path) is None
 
 
-def test_remove_password_unlinks_file(tmp_path: Path) -> None:
-    ensure_password(tmp_path)
-    remove_password(tmp_path)
-    assert not _file(tmp_path).exists()
-
-
-def test_remove_password_is_idempotent(tmp_path: Path) -> None:
-    remove_password(tmp_path)
-    remove_password(tmp_path)
-
-
 def test_boot_self_heal_generates_when_no_users(tmp_path: Path) -> None:
     pw = boot_self_heal(tmp_path, user_count=0)
     assert pw is not None
@@ -78,11 +66,11 @@ def test_boot_self_heal_redisplays_existing_password_with_no_users(tmp_path: Pat
     assert read_password(tmp_path) == first
 
 
-def test_boot_self_heal_removes_stale_file_when_users_exist(tmp_path: Path) -> None:
+def test_boot_self_heal_keeps_file_when_users_exist(tmp_path: Path) -> None:
     ensure_password(tmp_path)
     pw = boot_self_heal(tmp_path, user_count=1)
     assert pw is None
-    assert not _file(tmp_path).exists()
+    assert _file(tmp_path).exists()
 
 
 def test_boot_self_heal_no_op_when_users_exist_and_no_file(tmp_path: Path) -> None:

@@ -104,7 +104,6 @@ def _setup_password_required(server: Any) -> bool:
 def _enforce_wizard_open(server: Any) -> None:
     um = server.user_manager
     if um is not None and um.count() != 0:
-        _wizard.remove_password(Path.home())
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
@@ -366,7 +365,6 @@ async def initial_admin(
         display_name=body.display_name,
         locale=locale,
     )
-    _wizard.remove_password(Path.home())
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
     access_token = sign_token(
