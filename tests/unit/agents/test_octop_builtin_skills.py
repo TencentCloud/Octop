@@ -168,7 +168,7 @@ def test_manager_installs_namespaced_skillhub_page_url(tmp_path: Path) -> None:
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
     log_path = tmp_path / "skillhub-args.json"
-    fake_skillhub = fake_bin / "skillhub"
+    fake_skillhub = fake_bin / ("skillhub.py" if os.name == "nt" else "skillhub")
     fake_skillhub.write_text(
         """#!/usr/bin/env python3
 import json
@@ -190,7 +190,13 @@ print(json.dumps({"installed": slug}))
 """,
         encoding="utf-8",
     )
-    fake_skillhub.chmod(0o755)
+    if os.name == "nt":
+        (fake_bin / "skillhub.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0skillhub.py" %*\n',
+            encoding="utf-8",
+        )
+    else:
+        fake_skillhub.chmod(0o755)
     env = {
         **os.environ,
         "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",

@@ -204,6 +204,14 @@ def _run(command: list[str], *, timeout: int = 120) -> subprocess.CompletedProce
     return result
 
 
+def _command(name: str, *args: str) -> list[str]:
+    """Resolve a CLI entry point, including Windows ``.cmd`` shims."""
+    executable = shutil.which(name)
+    if executable is None:
+        raise SkillManagerError(f"required command is not installed: {name}")
+    return [executable, *args]
+
+
 def _github_source(source: str) -> tuple[str, str, str] | None:
     parsed = urlparse(source)
     if parsed.hostname not in {"github.com", "www.github.com"}:
@@ -291,7 +299,7 @@ def _materialize(source: str, target: Path) -> Path:
         slug, namespace = skillhub_source
         installed = target / "skillhub"
         installed.mkdir()
-        command = ["skillhub", "--skip-self-upgrade", "install", slug]
+        command = _command("skillhub", "--skip-self-upgrade", "install", slug)
         if namespace:
             command.extend(["--namespace", namespace])
         command.extend(["--dir", str(installed), "--json"])
@@ -564,7 +572,7 @@ def _install_source(
 
 def _skillhub_search(query: str, limit: int) -> None:
     result = _run(
-        [
+        _command(
             "skillhub",
             "--skip-self-upgrade",
             "search",
@@ -572,7 +580,7 @@ def _skillhub_search(query: str, limit: int) -> None:
             "--search-limit",
             str(max(1, min(limit, 100))),
             query,
-        ],
+        ),
         timeout=30,
     )
     try:
