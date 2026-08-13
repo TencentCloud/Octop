@@ -16,20 +16,20 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import {
   securityApi,
   type FilesystemRule,
+  type HitlToolCatalogItem,
   type SecurityPolicy,
 } from "../../../api/modules/security";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import tabStyles from "../AdvancedSettings/tabContent.module.less";
 import SettingsTabBar from "../shared/SettingsTabBar";
 import AuditLogPanel from "./AuditLogPanel";
+import HitlToolsPicker from "./HitlToolsPicker";
 import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
 const { confirm } = Modal;
 const { TextArea } = Input;
-
-const DEFAULT_HITL_TOOLS = ["bash", "execute", "write_file", "edit_file"];
 
 type SecurityTabKey =
   | "hitl"
@@ -133,6 +133,10 @@ export default function SecuritySettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null);
+  const [hitlToolCatalog, setHitlToolCatalog] = useState<HitlToolCatalogItem[]>(
+    [],
+  );
+  const [hitlDefaultTools, setHitlDefaultTools] = useState<string[]>([]);
 
   useEffect(() => {
     setActiveTab(parseTab(searchParams.get("tab")));
@@ -151,10 +155,17 @@ export default function SecuritySettingsPage() {
   const fetchPolicy = useCallback(async () => {
     setLoading(true);
     try {
-      const cfg = await securityApi.getPolicy();
+      const [cfg, defaults] = await Promise.all([
+        securityApi.getPolicy(),
+        securityApi.getDefaults(),
+      ]);
       setPolicy(cfg);
+      setHitlToolCatalog(defaults.hitl_tool_catalog);
+      setHitlDefaultTools([...defaults.hitl_tools]);
       const tools =
-        cfg.hitl.tools === "default" ? [...DEFAULT_HITL_TOOLS] : cfg.hitl.tools;
+        cfg.hitl.tools === "default"
+          ? [...defaults.hitl_tools]
+          : cfg.hitl.tools;
       form.setFieldsValue({
         hitl_enabled: cfg.hitl.enabled,
         hitl_tools: tools,
@@ -259,14 +270,12 @@ export default function SecuritySettingsPage() {
                   }}
                 />
               </Form.Item>
+            </div>
+            <div className={styles.hitlToolsSection}>
               <Form.Item name="hitl_tools" label={t("security.hitlTools")}>
-                <Select
-                  mode="tags"
-                  tokenSeparators={[","]}
-                  options={DEFAULT_HITL_TOOLS.map((v) => ({
-                    value: v,
-                    label: v,
-                  }))}
+                <HitlToolsPicker
+                  catalog={hitlToolCatalog}
+                  defaultTools={hitlDefaultTools}
                 />
               </Form.Item>
             </div>

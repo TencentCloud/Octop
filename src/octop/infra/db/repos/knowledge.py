@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts, partial_updates
-from octop.infra.utils.ulid import new_ulid
+from octop.infra.utils.ulid import new_short_id, new_ulid
 
 
 @dataclass(frozen=True)
@@ -94,6 +94,13 @@ class KnowledgeRepo:
     def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
+    def _allocate_base_id(self) -> str:
+        for _ in range(16):
+            kb_id = new_short_id()
+            if self.get_base(kb_id) is None:
+                return kb_id
+        raise RuntimeError("failed to allocate unique knowledge base id")
+
     def create_base(
         self,
         *,
@@ -106,7 +113,7 @@ class KnowledgeRepo:
         embedding_model: str = "",
         embedding_dim: int = 0,
     ) -> KnowledgeBaseRow:
-        kb_id = new_ulid()
+        kb_id = self._allocate_base_id()
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(

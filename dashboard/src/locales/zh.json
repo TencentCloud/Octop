@@ -186,9 +186,9 @@
     "adminAgents": "智能体",
     "adminAdvanced": "应用设置",
     "security": "安全防护",
-    "adminPlugins": "插件管理",
-    "skillPackages": "技能包",
-    "knowledgeBases": "知识库"
+    "knowledgeBases": "知识库",
+    "adminPlugins": "插件",
+    "skillPackages": "技能包"
   },
   "skillPackages": {
     "title": "技能包",
@@ -233,7 +233,11 @@
     "skillSaved": "技能已保存",
     "skillDeleted": "技能已删除",
     "resizeSidebar": "调整技能包列表宽度",
-    "createdBy": "创建者：{{name}}"
+    "createdBy": "创建者：{{name}}",
+    "packageId": "技能包 ID",
+    "copyPackageId": "点击复制技能包 ID",
+    "collapseListPanel": "收起列表",
+    "expandListPanel": "展开列表"
   },
   "knowledgeBases": {
     "title": "知识库",
@@ -260,6 +264,10 @@
     "selectBase": "选择一个知识库以查看文档",
     "backToList": "返回列表",
     "createdBy": "创建者：{{name}}",
+    "baseId": "知识库 ID",
+    "copyBaseId": "点击复制知识库 ID",
+    "collapseListPanel": "收起列表",
+    "expandListPanel": "展开列表",
     "documentCount": "{{count}} 个文档",
     "documentTotal": "共有 {{count}} 个文档",
     "defaultOpen": "是否默认启用",
@@ -1015,6 +1023,7 @@
     "write_file": "写入文件",
     "edit_file": "编辑文件",
     "execute": "执行指令",
+    "bash": "Shell 命令 (bash)",
     "current_time": "当前时间",
     "write_todos": "编写计划",
     "task": "子智能体任务",
@@ -1894,6 +1903,11 @@
     "hitlTools": "需审批的工具",
     "hitlHint": "命中列表的工具在执行前会暂停，等待用户在对话中批准或拒绝。",
     "hitlEnableWarning": "开启工具审批后，Agent 执行特定工具时将暂停并等待确认，这可能带来一些操作不便：在 IM 频道中需手动发送 /approve 或 /reject 指令才能继续；在 Dashboard 对话中会弹出审批卡片。请确认您愿意承担这些额外操作步骤。",
+    "hitlToolsPickerHint": "勾选需要在执行前人工审批的工具，下方为工具 id。",
+    "hitlToolsSelectDefaults": "推荐默认项",
+    "hitlToolsSelectAll": "全选",
+    "hitlToolsDeselectAll": "清空",
+    "hitlToolsEmpty": "暂无可配置审批的工具。",
     "fsDesc": "禁止文件工具读写敏感路径。",
     "fsEnable": "启用文件路径规则",
     "fsPaths": "敏感路径（每行一条，支持 glob）",
@@ -2296,9 +2310,11 @@
     "onnxModelPlaceholder": "从目录选择模型",
     "onnxApply": "应用",
     "onnxRecommended": "推荐",
-    "onnxDepsMissing": "缺少可选依赖。请先手动安装并重启服务：{{hint}}",
+    "onnxDepsPending": "本地嵌入组件尚未就绪，开启服务时将自动安装。",
+    "onnxDepsInstallFailed": "自动安装失败，请检查网络连接后重试。",
     "onnxInstallingDeps": "正在安装 ONNX 本地依赖，可能需要几分钟…",
     "onnxDepsInstalled": "ONNX 本地依赖已安装",
+    "enableAfterDownloadFailed": "模型已下载，但自动启用失败，请手动开启后保存。",
     "embeddingOnlyTag": "仅 Embedding（不进聊天/Auto）",
     "onnxTestNeedDownload": "请先下载模型后再测试",
     "onnxCached": "已缓存",
@@ -3220,9 +3236,9 @@
     "installSuccess": "浏览器安装成功",
     "installSuccessHint": "浏览器已就绪，可启动会话",
     "installFailed": "安装失败",
-    "installFailedHint": "可重试或手动运行 playwright install chromium",
+    "installFailedHint": "自动安装失败，请重试。若网络不稳定，可配置 PLAYWRIGHT_DOWNLOAD_HOST 镜像源后再次安装。",
     "notInstalled": "Chromium 未安装",
-    "notInstalledHint": "运行自动安装或手动执行 playwright install chromium。",
+    "notInstalledHint": "尚未检测到可用浏览器，请点击下方按钮自动安装内置 Chromium。",
     "install": "安装浏览器",
     "installProgress": "正在安装中…",
     "installCancelHint": "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
@@ -4300,7 +4316,7 @@
       "subtitle": "Agent 的本地文件系统工作空间"
     },
     "models": {
-      "title": "模型管理",
+      "title": "模型配置",
       "subtitle": "配置 LLM 提供商和 API 密钥"
     },
     "voice": {

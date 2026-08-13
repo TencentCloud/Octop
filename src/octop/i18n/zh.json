@@ -425,6 +425,7 @@
     "read_file": "读取文件",
     "write_file": "写入文件",
     "edit_file": "编辑文件",
+    "bash": "Shell 命令 (bash)",
     "execute": "执行指令",
     "current_time": "当前时间",
     "write_todos": "编写计划",

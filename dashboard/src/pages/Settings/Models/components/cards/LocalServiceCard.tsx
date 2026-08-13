@@ -60,7 +60,7 @@ export function LocalServiceCard({
   const [serviceRunning, setServiceRunning] = useState(false);
   const [serviceBusy, setServiceBusy] = useState(false);
   const [depsAvailable, setDepsAvailable] = useState(true);
-  const [depsHint, setDepsHint] = useState<string | null>(null);
+  const [depsInstallFailed, setDepsInstallFailed] = useState(false);
   const [ensuring, setEnsuring] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [row, setRow] = useState<ProviderRow | null>(provider);
@@ -79,7 +79,7 @@ export function LocalServiceCard({
             setServiceEnabled(st.enabled);
             setServiceRunning(st.ready || st.enabled);
             setDepsAvailable(st.deps_available !== false);
-            setDepsHint(st.deps_install_hint ?? null);
+            setDepsInstallFailed(false);
           }
         } else {
           const st = await ollamaModelApi.getService();
@@ -87,7 +87,7 @@ export function LocalServiceCard({
             setServiceEnabled(st.enabled);
             setServiceRunning(st.running);
             setDepsAvailable(true);
-            setDepsHint(null);
+            setDepsInstallFailed(false);
           }
         }
       } catch {
@@ -134,7 +134,7 @@ export function LocalServiceCard({
         setServiceEnabled(st.enabled);
         setServiceRunning(st.ready || st.enabled);
         setDepsAvailable(st.deps_available !== false);
-        setDepsHint(st.deps_install_hint ?? null);
+        setDepsInstallFailed(false);
       } else {
         const st = await ollamaModelApi.setService(next);
         setServiceEnabled(st.enabled);
@@ -151,6 +151,10 @@ export function LocalServiceCard({
           : t("models.localServiceStopped"),
       );
     } catch (err) {
+      if (isOnnx && next) {
+        setDepsInstallFailed(true);
+        setDepsAvailable(false);
+      }
       message.error(
         err instanceof Error
           ? err.message
@@ -279,12 +283,11 @@ export function LocalServiceCard({
               <div className={styles.infoRow}>
                 <span
                   className={styles.infoEmpty}
-                  title={depsHint || undefined}
                   style={{ whiteSpace: "normal", lineHeight: 1.4 }}
                 >
-                  {t("models.onnxDepsMissing", {
-                    hint: depsHint || "uv sync --extra local-embedding",
-                  })}
+                  {depsInstallFailed
+                    ? t("models.onnxDepsInstallFailed")
+                    : t("models.onnxDepsPending")}
                 </span>
               </div>
             )}

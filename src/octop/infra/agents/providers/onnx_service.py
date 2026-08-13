@@ -27,21 +27,25 @@ from octop.infra.agents.providers.onnx_catalog import (
     list_onnx_catalog_models,
 )
 from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.runtime_packages import (
+    PackageInstallSpec,
+    install_packages,
+    purge_import_cache,
+)
 
 logger = logging.getLogger(__name__)
 
 _SETTINGS_KEY = "onnx_local_service"
 _DEFAULT_MODEL = ONNX_PRESET_MODEL_IDS[0]
-LOCAL_EMBEDDING_INSTALL_HINT = (
-    "uv sync --extra local-embedding (or: pip install 'octop[local-embedding]')"
-)
 # Fixed allowlist — never take package names from user input.
 _LOCAL_EMBEDDING_PIP_SPECS: tuple[str, ...] = (
     "fastembed>=0.4",
     "huggingface_hub>=0.20",
 )
-_DEPS_INSTALL_LOCK = threading.Lock()
-_DEPS_INSTALL_TIMEOUT_SEC = 600
+_LOCAL_EMBEDDING_SPEC = PackageInstallSpec(
+    packages=_LOCAL_EMBEDDING_PIP_SPECS,
+    extra_fallback="local-embedding",
+)
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 
 
@@ -65,51 +69,7 @@ def local_embedding_deps_available() -> bool:
 
 
 def _purge_failed_imports() -> None:
-    import importlib
-    import sys
-
-    for name in ("fastembed", "huggingface_hub"):
-        sys.modules.pop(name, None)
-    importlib.invalidate_caches()
-
-
-def _pip_install_local_embedding() -> None:
-    """Install fixed local-embedding packages into the running interpreter."""
-    import subprocess
-    import sys
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        *_LOCAL_EMBEDDING_PIP_SPECS,
-    ]
-    logger.info("Installing ONNX local-embedding deps: %s", " ".join(cmd))
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_DEPS_INSTALL_TIMEOUT_SEC,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            "Timed out installing ONNX local-embedding dependencies. "
-            f"Install manually with: {LOCAL_EMBEDDING_INSTALL_HINT}"
-        ) from exc
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        if len(detail) > 800:
-            detail = detail[-800:]
-        raise RuntimeError(
-            "Failed to install ONNX local-embedding dependencies. "
-            f"Install manually with: {LOCAL_EMBEDDING_INSTALL_HINT}"
-            + (f" ({detail})" if detail else "")
-        )
-    _purge_failed_imports()
+    purge_import_cache(("fastembed", "huggingface_hub"))
 
 
 def require_local_embedding_deps() -> None:
@@ -117,16 +77,16 @@ def require_local_embedding_deps() -> None:
     if local_embedding_deps_available():
         return
     raise RuntimeError(
-        "ONNX local models require optional dependency 'fastembed'. "
-        f"Install with: {LOCAL_EMBEDDING_INSTALL_HINT}"
+        "Local embedding components are not installed. "
+        "Enable the ONNX service to install them automatically."
     )
 
 
 def ensure_local_embedding_deps(*, allow_install: bool | None = None) -> str:
     """Ensure deps are importable.
 
-    By default does **not** pip-install (set ``OCTOP_ALLOW_RUNTIME_PIP=1`` to
-    allow). Returns ``\"ready\"`` or ``\"installed\"``.
+    Admin ONNX actions pass ``allow_install=True``. Other callers default to
+    :func:`runtime_pip_allowed`. Returns ``\"ready\"`` or ``\"installed\"``.
     """
     if local_embedding_deps_available():
         return "ready"
@@ -134,16 +94,17 @@ def ensure_local_embedding_deps(*, allow_install: bool | None = None) -> str:
         allow_install = runtime_pip_allowed()
     if not allow_install:
         require_local_embedding_deps()
-    with _DEPS_INSTALL_LOCK:
-        if local_embedding_deps_available():
-            return "ready"
-        _pip_install_local_embedding()
-        if not local_embedding_deps_available():
-            raise RuntimeError(
-                "Installed local-embedding packages but imports still fail. "
-                f"Restart the server, or install manually with: {LOCAL_EMBEDDING_INSTALL_HINT}"
-            )
-        return "installed"
+    outcome = install_packages(
+        _LOCAL_EMBEDDING_SPEC,
+        is_satisfied=local_embedding_deps_available,
+        import_modules=("fastembed", "huggingface_hub"),
+    )
+    if not local_embedding_deps_available():
+        raise RuntimeError(
+            "Local embedding components were installed but could not be loaded. "
+            "Restart the server and try again."
+        )
+    return outcome
 
 
 async def ensure_local_embedding_deps_async(
@@ -462,7 +423,6 @@ def status_payload(settings_get: Any, download: OnnxDownloadState) -> dict[str, 
         "local_models": list_downloaded_models(),
         "presets": list(ONNX_PRESET_MODEL_IDS),
         "deps_available": deps_ok,
-        "deps_install_hint": None if deps_ok else LOCAL_EMBEDDING_INSTALL_HINT,
     }
 
 
@@ -494,8 +454,7 @@ class OnnxDownloadManager:
 
     async def start_download(self, model_name: str) -> OnnxDownloadState:
         model_name = assert_catalog_model(model_name)
-        # Never auto-pip here unless OCTOP_ALLOW_RUNTIME_PIP=1.
-        await ensure_local_embedding_deps_async()
+        await ensure_local_embedding_deps_async(allow_install=True)
         if is_model_downloaded(model_name):
             self._set(
                 status=OnnxDownloadStatus.DONE,
@@ -589,8 +548,9 @@ class OnnxDownloadManager:
                 from huggingface_hub import snapshot_download
             except ImportError as exc:
                 raise RuntimeError(
-                    "ONNX local models require optional dependency "
-                    f"'fastembed' (or 'huggingface_hub'). Install with: {LOCAL_EMBEDDING_INSTALL_HINT}"
+                    "Local embedding download requires optional components that "
+                    "could not be loaded. Enable the ONNX service to install them "
+                    "automatically."
                 ) from exc
 
             repo_id = str(meta.get("hf_source") or model_name)

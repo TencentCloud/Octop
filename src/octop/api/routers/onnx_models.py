@@ -19,8 +19,8 @@ from octop.infra.agents.providers.onnx_service import (
     assert_catalog_model,
     delete_downloaded_model,
     embed_texts,
+    ensure_local_embedding_deps_async,
     is_model_downloaded,
-    require_local_embedding_deps,
     save_config,
     status_payload,
 )
@@ -129,9 +129,12 @@ async def put_config(
     except ValueError as exc:
         raise _http_from_value_error(exc) from exc
     config = OnnxServiceConfig(enabled=body.enabled, model=model)
+    deps_just_installed = False
     if config.enabled:
         try:
-            require_local_embedding_deps()
+            deps_just_installed = (
+                await ensure_local_embedding_deps_async(allow_install=True) == "installed"
+            )
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
     save_config(_settings_set(server), config)
@@ -146,8 +149,7 @@ async def put_config(
             raise _http_from_value_error(exc) from exc
     payload = status_payload(_settings_get(server), DOWNLOAD_MANAGER.state)
     payload["download_started"] = download_started
-    # Runtime pip is off by default; kept for API compatibility with older UI.
-    payload["deps_just_installed"] = False
+    payload["deps_just_installed"] = deps_just_installed
     return payload
 
 
@@ -163,7 +165,7 @@ async def post_test(
     """Run a tiny local embedding to verify the model loads and works (admin only)."""
     try:
         model = assert_catalog_model(body.model)
-        require_local_embedding_deps()
+        await ensure_local_embedding_deps_async(allow_install=True)
     except ValueError as exc:
         return OnnxTestResponse(ok=False, error=str(exc))
     except RuntimeError as exc:

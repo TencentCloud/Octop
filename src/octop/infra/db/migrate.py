@@ -217,6 +217,103 @@ def _ensure_knowledge_bases_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_sso_oidc_schema(db: DatabasePool) -> None:
+    """Apply OIDC SSO tables and nullable password_hash (SQLite users rebuild)."""
+    if _table_exists(db, "sso_providers"):
+        return
+    with db.connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS sso_providers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              enabled INTEGER NOT NULL DEFAULT 0,
+              display_name TEXT NOT NULL DEFAULT '',
+              issuer TEXT NOT NULL DEFAULT '',
+              client_id TEXT NOT NULL DEFAULT '',
+              client_secret_enc BLOB,
+              scopes TEXT NOT NULL DEFAULT 'openid profile email',
+              dashboard_origin TEXT,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS sso_login_states (
+              state TEXT PRIMARY KEY,
+              provider_id INTEGER NOT NULL REFERENCES sso_providers(id) ON DELETE CASCADE,
+              nonce TEXT NOT NULL,
+              code_verifier TEXT NOT NULL,
+              redirect_after TEXT NOT NULL DEFAULT '/chat',
+              login_code TEXT,
+              user_id INTEGER,
+              expires_at INTEGER NOT NULL,
+              consumed_at INTEGER,
+              created_at INTEGER NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sso_login_states_login_code
+              ON sso_login_states(login_code) WHERE login_code IS NOT NULL;
+
+            PRAGMA foreign_keys = OFF;
+
+            CREATE TABLE users_new (
+              id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+              username            TEXT NOT NULL,
+              password_hash       TEXT,
+              role                TEXT NOT NULL,
+              display_name        TEXT,
+              disabled            INTEGER NOT NULL DEFAULT 0,
+              locale              TEXT NOT NULL DEFAULT 'zh',
+              created_at          INTEGER NOT NULL,
+              login_failed_count  INTEGER NOT NULL DEFAULT 0,
+              login_locked_until  INTEGER NOT NULL DEFAULT 0,
+              preferences_json    TEXT NOT NULL DEFAULT '{}',
+              email               TEXT,
+              sso_provider_id     INTEGER REFERENCES sso_providers(id),
+              sso_subject         TEXT
+            );
+
+            INSERT INTO users_new (
+              id,
+              username,
+              password_hash,
+              role,
+              display_name,
+              disabled,
+              locale,
+              created_at,
+              login_failed_count,
+              login_locked_until,
+              preferences_json
+            )
+            SELECT
+              id,
+              username,
+              password_hash,
+              role,
+              display_name,
+              disabled,
+              locale,
+              created_at,
+              login_failed_count,
+              login_locked_until,
+              preferences_json
+            FROM users;
+
+            DROP TABLE users;
+            ALTER TABLE users_new RENAME TO users;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+              ON users(email) WHERE email IS NOT NULL AND email != '';
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sso
+              ON users(sso_provider_id, sso_subject)
+              WHERE sso_provider_id IS NOT NULL AND sso_subject IS NOT NULL;
+
+            PRAGMA foreign_keys = ON;
+            """
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -253,9 +350,41 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_skill_packages_name_unique_index(db)
     _ensure_published_experts_table(db)
     _ensure_published_experts_indexes(db)
-    if _table_exists(db, "knowledge_bases"):
-        _ensure_column(db, "knowledge_bases", "shared", "INTEGER NOT NULL DEFAULT 0")
-        _ensure_column(db, "knowledge_bases", "icon_name", "TEXT NOT NULL DEFAULT ''")
+    # Cover pre-squash develop DBs that already recorded version ≥5 but only
+    # applied a subset of the former 005–009 files (or the old thin 005).
+    # Require ``users`` first — SSO rebuild and knowledge FKs need it, and a
+    # brand-new DB has not applied 001 yet when repair runs.
+    if _table_exists(db, "users"):
+        _ensure_sso_oidc_schema(db)
+        _ensure_knowledge_bases_schema(db)
+
+
+def _max_discovered_version(dialect: str) -> int:
+    versions = [version for version, _ in _discover(dialect)]
+    return max(versions) if versions else 0
+
+
+def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
+    """Clamp develop DBs that applied split 005–009 down to the consolidated max.
+
+    Before squash, local/develop installs could sit at schema versions 6–9.
+    After those files are merged into a single 005, leaving version > max would
+    permanently skip future migrations (e.g. a new 006).
+    """
+    current = _current_version(db)
+    max_version = _max_discovered_version(db.dialect)
+    if max_version <= 0 or current <= max_version:
+        return
+    if db.dialect == "postgresql":
+        path = next(path for version, path in _discover("postgresql") if version == max_version)
+        sql = path.read_text(encoding="utf-8")
+        with db.connect() as conn, conn.transaction():
+            _apply_postgresql_migration(conn, sql)
+            conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
+        return
+    # SQLite: ensure helpers already ran via _repair_legacy_schema / v5 apply.
+    with db.connect() as conn:
+        conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
 
 def _apply_postgresql_migration(conn: Any, sql: str) -> None:
@@ -271,11 +400,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
 
     Version 3 bumps schema then rewrites legacy hard-cut thread titles in Python.
     Version 4 adds composer columns idempotently after legacy schema repair.
-    Version 5 adds agents.is_shared idempotently after legacy schema repair.
-    Version 6 adds published_experts idempotently after legacy schema repair.
-    Version 7 applies OIDC SSO schema via migration SQL.
-    Version 8 applies knowledge bases schema idempotently (tables may already
-    exist from pre-renumber local upgrades that used an earlier 006).
+    Version 5 adds shared experts, published templates, OIDC SSO, and knowledge
+    bases idempotently after legacy schema repair.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -317,23 +443,10 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
                     "CREATE INDEX IF NOT EXISTS idx_agents_shared "
                     "ON agents(is_shared) WHERE is_shared = 1"
                 )
-        with db.connect() as conn:
-            conn.execute("UPDATE _schema_version SET version = ?", (version,))
-        return
-    if version == 6:
         _ensure_published_experts_table(db)
         _ensure_published_experts_indexes(db)
-        with db.connect() as conn:
-            conn.execute("UPDATE _schema_version SET version = ?", (version,))
-        return
-    if version == 8:
+        _ensure_sso_oidc_schema(db)
         _ensure_knowledge_bases_schema(db)
-        with db.connect() as conn:
-            conn.execute("UPDATE _schema_version SET version = ?", (version,))
-        return
-    if version == 9:
-        if _table_exists(db, "knowledge_bases"):
-            _ensure_column(db, "knowledge_bases", "icon_name", "TEXT NOT NULL DEFAULT ''")
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -358,3 +471,4 @@ def run_migrations(db: DatabasePool) -> None:
                 repair_all_legacy_thread_titles(db)
         else:
             _apply_sqlite_migration(db, version, path)
+    _reconcile_pre_squash_schema_version(db)

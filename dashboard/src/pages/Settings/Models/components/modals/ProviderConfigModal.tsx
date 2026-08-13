@@ -104,6 +104,61 @@ export function ProviderConfigModal({
   const ollamaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ollamaNotifiedRef = useRef<Set<string>>(new Set());
 
+  const enableModelAfterDownload = useCallback(
+    async (modelId: string) => {
+      const currentDefault = (
+        form.getFieldValue("model") as string | undefined
+      )?.trim();
+      const nextModels = draftModels.some((m) => m.id === modelId)
+        ? draftModels.map((m) =>
+            m.id === modelId ? { ...m, enabled: true } : m,
+          )
+        : [
+            ...draftModels,
+            {
+              id: modelId,
+              name: modelId,
+              enabled: true,
+              ...(isOnnx
+                ? { embedding: true as const, task: "embedding" as const }
+                : {}),
+              input: ["text"],
+              thinking: null,
+            },
+          ];
+      setDraftModels(nextModels);
+      setFormDirty(true);
+      const defaultModel = currentDefault || modelId;
+      if (!currentDefault) {
+        form.setFieldValue("model", modelId);
+      }
+      try {
+        await request(`${apiPrefix}/${provider.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            models: nextModels,
+            model: defaultModel,
+          }),
+        });
+        if (isOnnx) {
+          await onnxModelApi.updateConfig({
+            enabled: true,
+            model: modelId,
+            download_if_missing: false,
+          });
+        }
+        await onSaved();
+      } catch (err) {
+        message.warning(
+          err instanceof Error
+            ? err.message
+            : t("models.enableAfterDownloadFailed"),
+        );
+      }
+    },
+    [apiPrefix, draftModels, form, isOnnx, onSaved, provider.id, t],
+  );
+
   const stopOllamaPolling = useCallback(() => {
     if (ollamaPollRef.current) {
       clearInterval(ollamaPollRef.current);
@@ -152,6 +207,7 @@ export function ProviderConfigModal({
         if (!ollamaNotifiedRef.current.has(task.task_id)) {
           ollamaNotifiedRef.current.add(task.task_id);
           if (task.status === "completed") {
+            void enableModelAfterDownload(task.name);
             message.success(t("models.localDownloadSuccess"));
             needsRefresh = true;
           } else if (task.status === "cancelled") {
@@ -172,7 +228,13 @@ export function ProviderConfigModal({
     } catch {
       /* ignore polling errors */
     }
-  }, [t, onSaved, fetchOllamaModels, stopOllamaPolling]);
+  }, [
+    enableModelAfterDownload,
+    t,
+    onSaved,
+    fetchOllamaModels,
+    stopOllamaPolling,
+  ]);
 
   const startOllamaPolling = useCallback(() => {
     if (ollamaPollRef.current) return;
@@ -329,12 +391,13 @@ export function ProviderConfigModal({
       setDownloadProgressOpen(false);
       await refreshDownloadedIds();
       if (status === "done") {
+        await enableModelAfterDownload(modelId);
         message.success(t("models.onnxDownloadDone", { model: modelId }));
       } else {
         message.error(error || t("models.onnxDownloadFailed"));
       }
     },
-    [refreshDownloadedIds, t],
+    [enableModelAfterDownload, refreshDownloadedIds, t],
   );
 
   const dismissDownloadProgressToBackground = useCallback(() => {

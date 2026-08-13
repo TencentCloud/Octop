@@ -76,7 +76,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
         thread_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
-    assert v == 9
+    assert v == 5
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
@@ -125,7 +125,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 9
+    assert v == 5
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -249,6 +249,43 @@ def test_foreign_keys_enabled(db: SqlitePool):
     with db.connect() as conn:
         fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
     assert fk == 1
+
+
+def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
+    tmp_path: Path,
+) -> None:
+    """Develop DBs that applied split 005–009 must clamp to consolidated v5."""
+    db_path = tmp_path / "octop.db"
+    pool = SqlitePool(db_path)
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        # Simulate a fully-applied pre-squash develop install (version 9) that
+        # somehow lost knowledge tables after a partial local upgrade.
+        conn.execute("UPDATE _schema_version SET version = 9")
+        conn.execute("ALTER TABLE agents ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0")
+
+    run_migrations(pool)
+
+    with pool.connect() as conn:
+        version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+    assert version == 5
+    assert {
+        "published_experts",
+        "sso_providers",
+        "sso_login_states",
+        "knowledge_bases",
+        "knowledge_base_members",
+        "knowledge_documents",
+    }.issubset(tables)
 
 
 def test_transaction_rolls_back_on_exception(db: SqlitePool):

@@ -32,6 +32,7 @@ def owner_id(db: SqlitePool) -> int:
 
 def test_knowledge_create_with_icon(repo: KnowledgeRepo, owner_id: int) -> None:
     row = repo.create_base(owner_user_id=owner_id, name="Science", icon_name="flask-conical")
+    assert len(row.id) == 6
     assert row.icon_name == "flask-conical"
     repo.update_base(row.id, icon_name="cpu")
     updated = repo.get_base(row.id)
@@ -50,7 +51,7 @@ def test_knowledge_tables_migrated(db: SqlitePool) -> None:
         "knowledge_base_members",
         "knowledge_documents",
     }.issubset(names)
-    assert v == 9
+    assert v == 5
 
 
 def test_path_layout_knowledge_dir(tmp_path: Path) -> None:

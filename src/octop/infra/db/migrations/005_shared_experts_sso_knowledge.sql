@@ -1,4 +1,22 @@
--- Schema v7: OIDC SSO providers, login states, and user identities.
+-- Schema v5: shared experts, published templates, OIDC SSO, and knowledge bases.
+ALTER TABLE agents ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX idx_agents_shared ON agents(is_shared) WHERE is_shared = 1;
+
+CREATE TABLE published_experts (
+  id              TEXT PRIMARY KEY,
+  slug            TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  description     TEXT NOT NULL DEFAULT '',
+  created_by      TEXT NOT NULL,
+  source_agent_id TEXT,
+  icon_name       TEXT NOT NULL DEFAULT '',
+  color           TEXT NOT NULL DEFAULT '',
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_published_experts_slug ON published_experts(slug);
+CREATE INDEX idx_published_experts_created_by ON published_experts(created_by);
+
 CREATE TABLE IF NOT EXISTS sso_providers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   enabled INTEGER NOT NULL DEFAULT 0,
@@ -86,4 +104,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sso
 
 PRAGMA foreign_keys = ON;
 
-UPDATE _schema_version SET version = 7;
+CREATE TABLE IF NOT EXISTS knowledge_bases (
+  id TEXT PRIMARY KEY,
+  owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  default_open INTEGER NOT NULL DEFAULT 0,
+  shared INTEGER NOT NULL DEFAULT 0,
+  icon_name TEXT NOT NULL DEFAULT '',
+  embedding_model TEXT NOT NULL DEFAULT '',
+  embedding_dim INTEGER NOT NULL DEFAULT 0,
+  doc_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(owner_user_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_bases_owner ON knowledge_bases(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS knowledge_base_members (
+  kb_id TEXT NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (kb_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+  id TEXT PRIMARY KEY,
+  kb_id TEXT NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  content_hash TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  error_message TEXT NOT NULL DEFAULT '',
+  chunk_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_documents_kb ON knowledge_documents(kb_id);
+
+UPDATE _schema_version SET version = 5;

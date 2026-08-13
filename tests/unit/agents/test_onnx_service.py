@@ -60,15 +60,12 @@ def test_ensure_deps_noop_when_available(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
     monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
-    called = {"n": 0}
 
-    def boom() -> None:
-        called["n"] += 1
-        raise AssertionError("should not pip install")
+    def boom(*_args, **_kwargs) -> str:
+        raise AssertionError("should not install packages")
 
-    monkeypatch.setattr(mod, "_pip_install_local_embedding", boom)
+    monkeypatch.setattr(mod, "install_packages", boom)
     assert mod.ensure_local_embedding_deps() == "ready"
-    assert called["n"] == 0
 
 
 def test_ensure_deps_refuses_install_by_default(monkeypatch) -> None:
@@ -76,16 +73,8 @@ def test_ensure_deps_refuses_install_by_default(monkeypatch) -> None:
 
     monkeypatch.delenv("OCTOP_ALLOW_RUNTIME_PIP", raising=False)
     monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: False)
-    called = {"n": 0}
-
-    def boom() -> None:
-        called["n"] += 1
-        raise AssertionError("should not pip install")
-
-    monkeypatch.setattr(mod, "_pip_install_local_embedding", boom)
-    with pytest.raises(RuntimeError, match="local-embedding"):
+    with pytest.raises(RuntimeError, match="Enable the ONNX service"):
         mod.ensure_local_embedding_deps()
-    assert called["n"] == 0
 
 
 def test_ensure_deps_installs_when_env_allows(monkeypatch) -> None:
@@ -97,13 +86,41 @@ def test_ensure_deps_installs_when_env_allows(monkeypatch) -> None:
     def available() -> bool:
         return state["ok"]
 
-    def install() -> None:
+    def fake_install(*_args, **_kwargs) -> str:
         state["ok"] = True
+        return "installed"
 
     monkeypatch.setattr(mod, "local_embedding_deps_available", available)
-    monkeypatch.setattr(mod, "_pip_install_local_embedding", install)
+    monkeypatch.setattr(mod, "install_packages", fake_install)
     assert mod.ensure_local_embedding_deps() == "installed"
     assert state["ok"] is True
+
+
+def test_ensure_deps_installs_when_allow_install_true(monkeypatch) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    monkeypatch.delenv("OCTOP_ALLOW_RUNTIME_PIP", raising=False)
+    state = {"ok": False}
+
+    def available() -> bool:
+        return state["ok"]
+
+    def fake_install(*_args, **_kwargs) -> str:
+        state["ok"] = True
+        return "installed"
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", available)
+    monkeypatch.setattr(mod, "install_packages", fake_install)
+    assert mod.ensure_local_embedding_deps(allow_install=True) == "installed"
+    assert state["ok"] is True
+
+
+def test_status_payload_omits_install_commands(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    store: dict[str, str] = {}
+
+    payload = status_payload(store.get, OnnxDownloadState())
+    assert "deps_install_hint" not in payload
 
 
 def test_assert_catalog_rejects_unknown_and_path_tricks() -> None:

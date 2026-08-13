@@ -425,6 +425,7 @@
     "read_file": "Read file",
     "write_file": "Write file",
     "edit_file": "Edit file",
+    "bash": "Shell (bash)",
     "execute": "Execute",
     "current_time": "Current time",
     "write_todos": "Write plan",

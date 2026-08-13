@@ -31,6 +31,8 @@ import {
   FileUp,
   LayoutGrid,
   List as ListIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -49,12 +51,15 @@ import {
   type KnowledgeDocument,
 } from "../../api/modules/knowledgeBases";
 import { OctopEmptyMascot } from "../../components/EmptyState";
+import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
 import PageShell from "../../layouts/PageShell";
-import { apiErrorMessage } from "../../utils/apiError";
+import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
+import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { formatBytes } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
@@ -206,7 +211,7 @@ export default function KnowledgeBasesPage() {
   const [baseForm] = Form.useForm<BaseFormValues>();
   const sharedWatched = Form.useWatch("shared", baseForm);
   const uploadRef = useRef<HTMLInputElement>(null);
-  const detailTargetRef = useRef<string | null>(null);
+  const detailRequestGate = useRef(createDetailRequestGate());
   const {
     size: sidebarWidth,
     isResizing,
@@ -217,6 +222,8 @@ export default function KnowledgeBasesPage() {
     defaultSize: 280,
     storageKey: "octop:knowledge-bases:sidebar-width",
   });
+  const { collapsed: listPanelCollapsed, toggle: toggleListPanel } =
+    useListPanelCollapsed("octop:knowledge-bases:list-collapsed");
 
   const canManageSelected = Boolean(
     selected &&
@@ -272,24 +279,33 @@ export default function KnowledgeBasesPage() {
 
   const loadDetail = useCallback(
     async (id: string, options?: { silent?: boolean }) => {
-      detailTargetRef.current = id;
+      const requestId = detailRequestGate.current.begin();
       if (!options?.silent) setDetailLoading(true);
       try {
         const [base, nextDocuments] = await Promise.all([
           knowledgeBasesApi.get(id),
           knowledgeBasesApi.listDocuments(id),
         ]);
-        if (detailTargetRef.current !== id) return;
+        if (!detailRequestGate.current.isCurrent(requestId)) return;
         setSelected(base);
         setDocuments(nextDocuments);
       } catch (error) {
-        if (!options?.silent && detailTargetRef.current === id) {
+        if (!detailRequestGate.current.isCurrent(requestId)) return;
+        if (isNotFoundApiError(error)) {
+          setSelected(null);
+          setDocuments([]);
+          return;
+        }
+        if (!options?.silent) {
           message.error(
             apiErrorMessage(error, t("knowledgeBases.loadFailed"), t),
           );
         }
       } finally {
-        if (!options?.silent && detailTargetRef.current === id) {
+        if (
+          !options?.silent &&
+          detailRequestGate.current.isCurrent(requestId)
+        ) {
           setDetailLoading(false);
         }
       }
@@ -405,12 +421,20 @@ export default function KnowledgeBasesPage() {
 
   const deleteBase = async () => {
     if (!selected) return;
+    const deletedId = selected.id;
+    detailRequestGate.current.begin();
+    setSelected(null);
+    setDocuments([]);
+    setDetailLoading(false);
     try {
-      await knowledgeBasesApi.delete(selected.id);
-      setSelected(null);
-      setDocuments([]);
-      await loadBases();
-      if (isMobile) setMobilePane("list");
+      await knowledgeBasesApi.delete(deletedId);
+      const rows = await knowledgeBasesApi.list();
+      setBases(rows);
+      if (isMobile) {
+        setMobilePane("list");
+      } else if (rows.length > 0) {
+        await loadDetail(rows[0].id);
+      }
       message.success(t("knowledgeBases.deleted"));
     } catch (error) {
       message.error(
@@ -604,6 +628,7 @@ export default function KnowledgeBasesPage() {
 
   const showListPane = !isMobile || mobilePane === "list";
   const showDetailPane = !isMobile || mobilePane === "detail";
+  const showListPanel = showListPane && (isMobile || !listPanelCollapsed);
 
   const onDocsViewChange = (value: string | number) => {
     const mode = value === "table" ? "table" : "card";
@@ -634,8 +659,25 @@ export default function KnowledgeBasesPage() {
           } as CSSProperties
         }
       >
-        {showListPane ? (
+        {showListPanel ? (
           <aside className={styles.baseList}>
+            <div className={styles.listPanelHeader}>
+              <span className={styles.listPanelTitle}>
+                {t("knowledgeBases.title")}
+              </span>
+              {!isMobile ? (
+                <Tooltip title={t("knowledgeBases.collapseListPanel")}>
+                  <button
+                    type="button"
+                    className={styles.listPanelToggle}
+                    onClick={toggleListPanel}
+                    aria-label={t("knowledgeBases.collapseListPanel")}
+                  >
+                    <PanelLeftClose size={15} strokeWidth={1.8} />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
             <div className={styles.listActions}>
               <Button
                 type="primary"
@@ -721,7 +763,7 @@ export default function KnowledgeBasesPage() {
             )}
           </aside>
         ) : null}
-        {!isMobile ? (
+        {!isMobile && !listPanelCollapsed ? (
           <div data-split-divider="" className={styles.splitDivider}>
             <div
               className={styles.resizeHandle}
@@ -733,7 +775,25 @@ export default function KnowledgeBasesPage() {
           </div>
         ) : null}
         {showDetailPane ? (
-          <section className={styles.detail}>
+          <section
+            className={`${styles.detail}${
+              !isMobile && listPanelCollapsed
+                ? ` ${styles.detailListCollapsed}`
+                : ""
+            }`}
+          >
+            {!isMobile && listPanelCollapsed ? (
+              <Tooltip title={t("knowledgeBases.expandListPanel")}>
+                <button
+                  type="button"
+                  className={styles.listPanelExpandBtn}
+                  onClick={toggleListPanel}
+                  aria-label={t("knowledgeBases.expandListPanel")}
+                >
+                  <PanelLeftOpen size={16} strokeWidth={1.8} />
+                </button>
+              </Tooltip>
+            ) : null}
             {detailLoading ? (
               <div className={styles.detailLoading}>
                 <Spin />
@@ -788,24 +848,38 @@ export default function KnowledgeBasesPage() {
                       >
                         {selected.name}
                       </Typography.Title>
+                      {canManageSelected ? (
+                        <div className={styles.titleActions}>
+                          <Tooltip title={t("common.edit")}>
+                            <Button
+                              type="text"
+                              size="small"
+                              className={styles.titleActionBtn}
+                              icon={<Pencil size={14} />}
+                              aria-label={t("common.edit")}
+                              onClick={openEdit}
+                            />
+                          </Tooltip>
+                          <Popconfirm
+                            title={t("knowledgeBases.deleteConfirm")}
+                            okText={t("common.delete")}
+                            cancelText={t("common.cancel")}
+                            onConfirm={() => void deleteBase()}
+                          >
+                            <Tooltip title={t("common.delete")}>
+                              <Button
+                                type="text"
+                                size="small"
+                                danger
+                                className={styles.titleActionBtn}
+                                icon={<Trash2 size={14} />}
+                                aria-label={t("common.delete")}
+                              />
+                            </Tooltip>
+                          </Popconfirm>
+                        </div>
+                      ) : null}
                     </div>
-                    {canManageSelected ? (
-                      <div className={styles.actions}>
-                        <Button icon={<Pencil size={14} />} onClick={openEdit}>
-                          {t("common.edit")}
-                        </Button>
-                        <Popconfirm
-                          title={t("knowledgeBases.deleteConfirm")}
-                          okText={t("common.delete")}
-                          cancelText={t("common.cancel")}
-                          onConfirm={() => void deleteBase()}
-                        >
-                          <Button danger icon={<Trash2 size={14} />}>
-                            {t("common.delete")}
-                          </Button>
-                        </Popconfirm>
-                      </div>
-                    ) : null}
                   </div>
                   <Typography.Paragraph
                     type="secondary"
@@ -813,14 +887,22 @@ export default function KnowledgeBasesPage() {
                   >
                     {selected.description || t("knowledgeBases.noDescription")}
                   </Typography.Paragraph>
-                  <Typography.Paragraph
-                    type="secondary"
-                    className={styles.detailCreator}
-                  >
-                    {t("knowledgeBases.createdBy", {
-                      name: formatKnowledgeOwner(selected),
-                    })}
-                  </Typography.Paragraph>
+                  <div className={styles.detailMeta}>
+                    <CopyableResourceId
+                      inline
+                      label={t("knowledgeBases.baseId")}
+                      value={selected.id}
+                      copyTitle={t("knowledgeBases.copyBaseId")}
+                    />
+                    <Typography.Text
+                      type="secondary"
+                      className={styles.detailCreator}
+                    >
+                      {t("knowledgeBases.createdBy", {
+                        name: formatKnowledgeOwner(selected),
+                      })}
+                    </Typography.Text>
+                  </div>
                 </div>
 
                 <div className={styles.detailBody}>

@@ -36,7 +36,6 @@ export interface OnnxServiceStatus {
   presets: string[];
   download_started?: boolean;
   deps_available?: boolean;
-  deps_install_hint?: string | null;
   deps_just_installed?: boolean;
 }
 

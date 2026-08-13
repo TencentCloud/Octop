@@ -8,7 +8,6 @@ from typing import Any
 
 from octop.infra.agents.providers.model_flags import is_embedding_model
 from octop.infra.agents.providers.onnx_service import (
-    LOCAL_EMBEDDING_INSTALL_HINT,
     embedding_prerequisites_ok_for_model,
     is_model_downloaded,
     local_embedding_deps_available,
@@ -89,7 +88,6 @@ def get_capability(settings_get: SettingsGet, provider_repo: Any = None) -> dict
             "deps_available": deps_available,
             "provider_ready": provider_ready,
         },
-        "deps_install_hint": None if deps_available else LOCAL_EMBEDDING_INSTALL_HINT,
     }
 
 

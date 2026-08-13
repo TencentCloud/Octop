@@ -9,6 +9,7 @@ from harness_agent.security.models import DEFAULT_HITL_TOOLS, SecurityPolicy
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_admin, get_server
+from octop.i18n.domains.tools import hitl_tool_catalog
 from octop.infra.db.repos.audit import ACTOR_ADMIN
 
 router = APIRouter()
@@ -108,8 +109,15 @@ class ToolGuardRulesSaveResponse(BaseModel):
     rule_count: int
 
 
+class HitlToolCatalogItem(BaseModel):
+    name: str
+    label_zh: str
+    label_en: str
+
+
 class SecurityDefaultsResponse(BaseModel):
     hitl_tools: list[str]
+    hitl_tool_catalog: list[HitlToolCatalogItem]
     tool_guard_rules: list[ToolGuardRuleItem]
 
 
@@ -188,5 +196,9 @@ async def get_security_defaults(
     raw = store.list_catalog()
     return SecurityDefaultsResponse(
         hitl_tools=list(DEFAULT_HITL_TOOLS),
+        hitl_tool_catalog=[
+            HitlToolCatalogItem(name=e.name, label_zh=e.label_zh, label_en=e.label_en)
+            for e in hitl_tool_catalog()
+        ],
         tool_guard_rules=[ToolGuardRuleItem(**item) for item in raw],
     )

@@ -164,6 +164,63 @@
   background: var(--fn-bg-secondary);
 }
 
+.listPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.listPanelTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listPanelToggle,
+.listPanelExpandBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.listPanelToggle {
+  width: 28px;
+  height: 28px;
+}
+
+.listPanelExpandBtn {
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-container);
+  box-shadow: var(--fn-shadow-sm);
+}
+
 .listActions > :first-child {
   flex: 1;
 }
@@ -360,6 +417,10 @@
   padding: 16px 20px 0;
 }
 
+.detailListCollapsed {
+  padding-left: 52px;
+}
+
 .detailLoading,
 .centered {
   display: flex;
@@ -408,8 +469,7 @@
 .titleGroup,
 .sectionHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 16px;
 }
 
@@ -418,12 +478,31 @@
   min-width: 0;
   flex: 1;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .detailTitle {
   margin: 0 !important;
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
+}
+
+.titleActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.titleActionBtn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--fn-text-tertiary);
+
+  &:hover {
+    color: var(--fn-text-secondary) !important;
+  }
 }
 
 .detailDescription {
@@ -431,10 +510,20 @@
   max-width: 100%;
 }
 
+.detailMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 4px;
+  max-width: 100%;
+}
+
 .detailCreator {
-  margin: 4px 0 0 !important;
+  margin: 0 !important;
   max-width: 100%;
   font-size: 12px;
+  line-height: 1.5715;
 }
 
 .detailBody {
@@ -747,14 +836,6 @@
   .layoutMobile .titleRow {
     flex-wrap: wrap;
     gap: 10px;
-  }
-
-  .layoutMobile .actions {
-    width: 100%;
-  }
-
-  .layoutMobile .actions > * {
-    flex: 1;
   }
 
   .layoutMobile .detailBody {

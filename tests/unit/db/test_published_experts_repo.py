@@ -26,7 +26,7 @@ def test_published_experts_table_exists(db: SqlitePool) -> None:
         }
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
     assert "published_experts" in names
-    assert v == 9
+    assert v == 5
 
 
 def test_published_expert_repo_create_get_list_delete(db: SqlitePool) -> None:

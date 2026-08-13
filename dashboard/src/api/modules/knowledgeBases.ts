@@ -19,7 +19,6 @@ export interface KnowledgeCapability {
     deps_available: boolean;
     provider_ready: boolean;
   };
-  deps_install_hint?: string | null;
   limits?: KnowledgeLimits;
 }
 

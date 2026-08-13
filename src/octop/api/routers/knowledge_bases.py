@@ -11,7 +11,10 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_admin, current_user, get_server
 from octop.infra.agents.providers.model_flags import is_embedding_model, is_onnx_local_provider
 from octop.infra.agents.providers.onnx_catalog import list_onnx_catalog_models
-from octop.infra.agents.providers.onnx_service import is_model_downloaded
+from octop.infra.agents.providers.onnx_service import (
+    ensure_local_embedding_deps_async,
+    is_model_downloaded,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge.gate import (
     assert_knowledge_usable,
@@ -192,6 +195,12 @@ async def put_feature(
 ) -> dict[str, Any]:
     assert server.services is not None
     previous = get_capability(server.services.settings_repo.get, server.services.provider_repo)
+    selected_backend = (body.backend or "onnx").strip().lower()
+    if body.enabled and selected_backend == "onnx":
+        try:
+            await ensure_local_embedding_deps_async(allow_install=True)
+        except RuntimeError as exc:
+            raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
     try:
         set_feature_enabled(
             server.services.settings_repo.get,

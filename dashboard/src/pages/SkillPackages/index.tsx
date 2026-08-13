@@ -28,6 +28,8 @@ import {
   Download,
   LayoutGrid,
   List as ListIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -44,12 +46,18 @@ import type {
   SkillPackageSkillDetail,
 } from "../../api/types/skillPackage";
 import { CardSkeleton } from "../../components/Skeleton";
+import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import PageShell from "../../layouts/PageShell";
-import { apiErrorMessage, parseApiError } from "../../utils/apiError";
+import {
+  apiErrorMessage,
+  isNotFoundApiError,
+  parseApiError,
+} from "../../utils/apiError";
 import {
   SkillDrawer,
   type SkillFormValues,
@@ -65,7 +73,7 @@ import {
   EXPERT_ICON_NAMES,
   iconForName,
 } from "../Experts/components/iconForName";
-import { createDetailRequestGate } from "./detailRequestGate";
+import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -136,6 +144,8 @@ export default function SkillPackagesPage() {
     defaultSize: 280,
     storageKey: "octop:skill-packages:sidebar-width",
   });
+  const { collapsed: listPanelCollapsed, toggle: toggleListPanel } =
+    useListPanelCollapsed("octop:skill-packages:list-collapsed");
 
   const loadPackages = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -175,11 +185,15 @@ export default function SkillPackagesPage() {
           setSelectedId(detail.id);
         }
       } catch (error) {
-        if (detailRequestGate.current.isCurrent(requestId)) {
-          message.error(
-            apiErrorMessage(error, t("skillPackages.loadFailed"), t),
-          );
+        if (!detailRequestGate.current.isCurrent(requestId)) {
+          return;
         }
+        if (isNotFoundApiError(error)) {
+          setSelected(null);
+          setSelectedId(null);
+          return;
+        }
+        message.error(apiErrorMessage(error, t("skillPackages.loadFailed"), t));
       } finally {
         if (detailRequestGate.current.isCurrent(requestId)) {
           setDetailLoading(false);
@@ -296,20 +310,18 @@ export default function SkillPackagesPage() {
   const deletePackage = async () => {
     if (!selected) return;
     const deletedId = selected.id;
+    detailRequestGate.current.begin();
+    setSelected(null);
+    setSelectedId(null);
+    setDetailLoading(false);
     try {
       await skillPackagesApi.delete(deletedId);
-      // Drop current selection immediately so refresh cannot hit the deleted id.
-      detailRequestGate.current.begin();
-      setSelected(null);
-      setSelectedId(null);
-      setDetailLoading(false);
       const rows = await skillPackagesApi.list();
       setPackages(rows);
       initialLoadDone.current = true;
       if (isMobile) {
         setMobilePane("list");
       } else if (rows.length > 0) {
-        setSelectedId(rows[0].id);
         await loadDetail(rows[0].id);
       }
       message.success(t("skillPackages.deleted"));
@@ -480,6 +492,7 @@ export default function SkillPackagesPage() {
 
   const showListPane = !isMobile || mobilePane === "list";
   const showDetailPane = !isMobile || mobilePane === "detail";
+  const showListPanel = showListPane && (isMobile || !listPanelCollapsed);
 
   return (
     <PageShell
@@ -497,8 +510,25 @@ export default function SkillPackagesPage() {
           } as CSSProperties
         }
       >
-        {showListPane ? (
+        {showListPanel ? (
           <aside className={styles.packageList}>
+            <div className={styles.listPanelHeader}>
+              <span className={styles.listPanelTitle}>
+                {t("skillPackages.title")}
+              </span>
+              {!isMobile ? (
+                <Tooltip title={t("skillPackages.collapseListPanel")}>
+                  <button
+                    type="button"
+                    className={styles.listPanelToggle}
+                    onClick={toggleListPanel}
+                    aria-label={t("skillPackages.collapseListPanel")}
+                  >
+                    <PanelLeftClose size={15} strokeWidth={1.8} />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
             <div className={styles.packageListActions}>
               <Button
                 type="primary"
@@ -576,7 +606,7 @@ export default function SkillPackagesPage() {
           </aside>
         ) : null}
 
-        {!isMobile ? (
+        {!isMobile && !listPanelCollapsed ? (
           <div data-split-divider="" className={styles.splitDivider}>
             <div
               className={styles.resizeHandle}
@@ -589,7 +619,25 @@ export default function SkillPackagesPage() {
         ) : null}
 
         {showDetailPane ? (
-          <section className={styles.detail}>
+          <section
+            className={`${styles.detail}${
+              !isMobile && listPanelCollapsed
+                ? ` ${styles.detailListCollapsed}`
+                : ""
+            }`}
+          >
+            {!isMobile && listPanelCollapsed ? (
+              <Tooltip title={t("skillPackages.expandListPanel")}>
+                <button
+                  type="button"
+                  className={styles.listPanelExpandBtn}
+                  onClick={toggleListPanel}
+                  aria-label={t("skillPackages.expandListPanel")}
+                >
+                  <PanelLeftOpen size={16} strokeWidth={1.8} />
+                </button>
+              </Tooltip>
+            ) : null}
             {detailLoading ? (
               <div className={styles.detailLoadingOverlay}>
                 <Spin />
@@ -599,8 +647,27 @@ export default function SkillPackagesPage() {
               <div className={styles.emptyDetail}>
                 <OctopEmptyMascot size={180} />
                 <p className={styles.emptyDetailText}>
-                  {t("skillPackages.selectPackage")}
+                  {packages.length === 0
+                    ? t("skillPackages.empty")
+                    : t("skillPackages.selectPackage")}
                 </p>
+                {packages.length === 0 ? (
+                  <div className={styles.emptyDetailActions}>
+                    <Button
+                      type="primary"
+                      icon={<Plus size={15} />}
+                      onClick={openCreatePackage}
+                    >
+                      {t("skillPackages.createPackage")}
+                    </Button>
+                    <Button
+                      icon={<Store size={15} />}
+                      onClick={() => setSkillsetHubOpen(true)}
+                    >
+                      {t("skillPackages.fromSkillHub")}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : !selected ? null : (
               <>
@@ -623,30 +690,41 @@ export default function SkillPackagesPage() {
                       >
                         {selected.name}
                       </Typography.Title>
+                      {canMutate ? (
+                        <div className={styles.titleActions}>
+                          <Tooltip title={t("common.edit")}>
+                            <Button
+                              type="text"
+                              size="small"
+                              className={styles.titleActionBtn}
+                              icon={<Pencil size={14} />}
+                              aria-label={t("common.edit")}
+                              onClick={openEditPackage}
+                            />
+                          </Tooltip>
+                          <Popconfirm
+                            title={t("skillPackages.deletePackageConfirm")}
+                            description={t(
+                              "skillPackages.deletePackageMountedHint",
+                            )}
+                            okText={t("common.delete")}
+                            cancelText={t("common.cancel")}
+                            onConfirm={() => void deletePackage()}
+                          >
+                            <Tooltip title={t("common.delete")}>
+                              <Button
+                                type="text"
+                                size="small"
+                                danger
+                                className={styles.titleActionBtn}
+                                icon={<Trash2 size={14} />}
+                                aria-label={t("common.delete")}
+                              />
+                            </Tooltip>
+                          </Popconfirm>
+                        </div>
+                      ) : null}
                     </div>
-                    {canMutate ? (
-                      <div className={styles.actions}>
-                        <Button
-                          icon={<Pencil size={14} />}
-                          onClick={openEditPackage}
-                        >
-                          {t("common.edit")}
-                        </Button>
-                        <Popconfirm
-                          title={t("skillPackages.deletePackageConfirm")}
-                          description={t(
-                            "skillPackages.deletePackageMountedHint",
-                          )}
-                          okText={t("common.delete")}
-                          cancelText={t("common.cancel")}
-                          onConfirm={() => void deletePackage()}
-                        >
-                          <Button danger icon={<Trash2 size={14} />}>
-                            {t("common.delete")}
-                          </Button>
-                        </Popconfirm>
-                      </div>
-                    ) : null}
                   </div>
                   <Typography.Paragraph
                     type="secondary"
@@ -654,14 +732,22 @@ export default function SkillPackagesPage() {
                   >
                     {selected.description || t("skillPackages.noDescription")}
                   </Typography.Paragraph>
-                  <Typography.Paragraph
-                    type="secondary"
-                    className={styles.detailCreator}
-                  >
-                    {t("skillPackages.createdBy", {
-                      name: formatPackageCreator(selected),
-                    })}
-                  </Typography.Paragraph>
+                  <div className={styles.detailMeta}>
+                    <CopyableResourceId
+                      inline
+                      label={t("skillPackages.packageId")}
+                      value={selected.id}
+                      copyTitle={t("skillPackages.copyPackageId")}
+                    />
+                    <Typography.Text
+                      type="secondary"
+                      className={styles.detailCreator}
+                    >
+                      {t("skillPackages.createdBy", {
+                        name: formatPackageCreator(selected),
+                      })}
+                    </Typography.Text>
+                  </div>
                 </div>
 
                 <div className={styles.detailBody}>

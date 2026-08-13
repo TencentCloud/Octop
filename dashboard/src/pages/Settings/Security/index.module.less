@@ -15,20 +15,26 @@
 
 .footer {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 12px 20px;
   margin-top: 8px;
   padding-top: 20px;
   border-top: 1px solid var(--fn-border-primary);
-  max-width: 720px;
+  width: 100%;
 }
 
 .runtimeHint {
   flex: 1;
-  min-width: 200px;
+  min-width: 0;
   font-size: 12px;
   line-height: 1.5;
+}
+
+@media (max-width: 767px) {
+  .footer {
+    flex-wrap: wrap;
+  }
 }
 
 .rulesSection {
@@ -109,6 +115,70 @@
   gap: 8px;
 }
 
-.rulesTable {
+.hitlToolsSection {
   width: 100%;
+  margin-top: 4px;
+}
+
+.hitlToolsPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.hitlToolsPickerHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.hitlToolsPickerHint {
+  flex: 1;
+  min-width: 220px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hitlToolsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.hitlToolTile {
+  align-items: flex-start !important;
+  margin: 0 !important;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-layout, var(--fn-bg-page, transparent));
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--fn-border-secondary, var(--fn-border-primary));
+  }
+
+  :global(.ant-checkbox) {
+    margin-top: 2px;
+  }
+}
+
+.hitlToolLabel {
+  display: block;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fn-text-primary);
+}
+
+.hitlToolName {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }

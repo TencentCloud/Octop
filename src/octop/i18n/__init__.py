@@ -11,7 +11,7 @@ from octop.i18n.domains.channel import (
 )
 from octop.i18n.domains.errors import error_message
 from octop.i18n.domains.skills import all_skill_labels, skill_display_name
-from octop.i18n.domains.tools import all_tool_labels, tool_display_name
+from octop.i18n.domains.tools import all_tool_labels, hitl_tool_catalog, tool_display_name
 from octop.i18n.loader import all_keys_for_locale, flatten_keys, lookup, tr
 from octop.infra.utils.locale import (
     DEFAULT_LOCALE,
@@ -28,6 +28,7 @@ __all__ = [
     "all_keys_for_locale",
     "all_skill_labels",
     "all_tool_labels",
+    "hitl_tool_catalog",
     "channel_probe_field_label",
     "channel_probe_incomplete",
     "channel_runtime_reason",
