@@ -186,7 +186,9 @@ describe("<SkillImportModal /> local zip import", () => {
       'input[type="file"]',
     ) as HTMLInputElement;
     setInputFiles(fileInput, [zipFile]);
-    await user.click(screen.getByText("skills.removeZip"));
+    const removeButtons = screen.getAllByText("skills.removeZip");
+    // Click either remove button
+    await user.click(removeButtons[0]);
     expect(
       screen.getByRole("button", { name: "skills.importSkills" }),
     ).toBeDisabled();

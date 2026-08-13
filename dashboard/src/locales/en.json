@@ -994,6 +994,8 @@
     "invalidSkillUrlSource": "Enter a valid HTTP(S) skill URL; supported sources are validated by the server adapter",
     "zipHintTitle": "ZIP layout (each top-level folder = one skill):",
     "zipHintDetail": "Each folder must contain SKILL.md and may include scripts or other files. Only .zip is supported.",
+    "zipDragDropHint": "Drag and drop your files here to upload",
+    "zipSelected": "Selected: {{name}}",
     "chooseZip": "Choose ZIP file",
     "noZipSelected": "No file selected",
     "removeZip": "Remove",

@@ -992,6 +992,8 @@
     "invalidSkillUrlSource": "请输入有效的 HTTP(S) 技能 URL；具体来源由服务端适配器校验",
     "zipHintTitle": "压缩包结构（每个一级文件夹 = 一个技能）：",
     "zipHintDetail": "每个文件夹内必须包含 SKILL.md，可附带脚本等其他文件。仅支持 .zip。",
+    "zipDragDropHint": "将需要上传的文件拖拽到此处",
+    "zipSelected": "已选择: {{name}}",
     "chooseZip": "选择 ZIP 文件",
     "noZipSelected": "未选择文件",
     "removeZip": "移除",
