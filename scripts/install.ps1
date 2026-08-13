@@ -233,11 +233,13 @@ if ($FromSource) {
         }
     }
 } else {
-    $package = if ($Version) { "octop==$Version" } else { "octop" }
-    Write-Info "Installing ${package}${ExtrasSuffix} from PyPI..."
+    # PEP 508: extras must sit between name and version specifier
+    # (octop[browser]==x.y.z); octop==x.y.z[browser] is an invalid requirement.
+    $package = if ($Version) { "octop${ExtrasSuffix}==$Version" } else { "octop${ExtrasSuffix}" }
+    Write-Info "Installing ${package} from PyPI..."
     $installArgs = @("--python", $VenvPython, "--quiet")
     if ($Version -match '(dev|a|b|rc)') { $installArgs += "--prerelease=explicit" }
-    uv pip install "${package}${ExtrasSuffix}" @installArgs
+    uv pip install "${package}" @installArgs
 }
 
 Pin-McpCompat

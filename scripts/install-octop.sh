@@ -85,7 +85,7 @@ Options:
   --from-source [DIR]   Install from source; clones the git repo if DIR is omitted
   --from-pypi           Install from PyPI (default)
   --extras <EXTRAS>     Extra optional components (e.g. desktop); browser/playwright always installed
-  --mirror <URL>        Use a specific PyPI mirror (e.g. https://mirrors.cloud.tencent.com/pypi/simple)
+  --mirror <URL>        Use a specific PyPI mirror (e.g. https://mirrors.aliyun.com/pypi/simple)
   -h, --help            Show this help
 
 Note: if Chrome/Chromium is already installed (common on macOS/Windows or
@@ -695,41 +695,6 @@ if [ "$_CONSOLE_AVAILABLE" = 0 ]; then
     CONSOLE_CHECK="$("$OCTOP_VENV/bin/python" -c "import importlib.resources, octop; p=importlib.resources.files('octop')/'dashboard'/'index.html'; print('yes' if p.is_file() else 'no')" 2>/dev/null || echo 'no')"
     [ "$CONSOLE_CHECK" = "yes" ] && _CONSOLE_AVAILABLE=1
 fi
-
-# ── 步骤 3.4: Linux 安装 bubblewrap（局部 root_dir 下 execute jail）──────────
-_ensure_bubblewrap() {
-    # macOS 无可用 bwrap；仅 Linux 安装。缺失时 execute 仍可路径改写降级。
-    if [ "$(uname -s 2>/dev/null || echo unknown)" != "Linux" ]; then
-        return 0
-    fi
-    if command -v bwrap &>/dev/null; then
-        info "bubblewrap ready: $(command -v bwrap)"
-        return 0
-    fi
-    info "Installing bubblewrap (required for the execute jail under a local root_dir)..."
-    if command -v apt-get &>/dev/null || command -v apt &>/dev/null; then
-        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>/dev/null || true
-        _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bubblewrap 2>/dev/null || true
-    elif command -v dnf &>/dev/null; then
-        _run_as_root dnf install -y bubblewrap 2>/dev/null || true
-    elif command -v yum &>/dev/null; then
-        _run_as_root yum install -y bubblewrap 2>/dev/null || true
-    elif command -v pacman &>/dev/null; then
-        _run_as_root pacman -Sy --noconfirm bubblewrap 2>/dev/null || true
-    elif command -v zypper &>/dev/null; then
-        _run_as_root zypper install -y bubblewrap 2>/dev/null || true
-    else
-        warn "Unrecognized package manager; install bubblewrap (bwrap) manually"
-        return 0
-    fi
-    if command -v bwrap &>/dev/null; then
-        info "bubblewrap installed successfully: $(command -v bwrap)"
-    else
-        warn "bubblewrap install failed: execute under a local root_dir falls back to path rewriting (no real jail)"
-    fi
-}
-
-_ensure_bubblewrap
 
 # ── 步骤 3.5: 安装 Playwright Chromium 及系统依赖 ─────────────────────────────
 _install_playwright_system_deps() {
