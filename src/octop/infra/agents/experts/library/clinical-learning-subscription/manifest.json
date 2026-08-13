@@ -5,7 +5,7 @@
     "en": "Primary Care Doctor Learning Assistant"
   },
   "description": {
-    "zh": "以基层医生指南学习诊断、章节展开、学习路径图、备考选材、连续学习、医保政策学习和信源核验为专业模块，同时完整保留写作、总结、翻译、编程、计划等日常通用能力。",
+    "zh": "专注医学指南学习，擅长查找权威信源的指南信息、搭建学习计划、分学科推送指南总结、备考选材、医保政策解读与信源核验等，并兼具写作、总结、翻译、办公等通用能力。",
     "en": "A general-purpose assistant with specialist support for primary-care guideline learning diagnostics, section expansion, study pathways, exam-oriented material selection, continuous learning, insurance-policy study, and source verification."
   },
   "welcome_message": {
