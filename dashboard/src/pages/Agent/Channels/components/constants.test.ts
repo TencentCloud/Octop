@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_CHANNEL_DISPLAY_CONFIG,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeQqGroupContextConfig,
 } from "./constants";
+
+describe("channel display defaults", () => {
+  it("uses invoke delivery for external IM channels", () => {
+    expect(DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode).toBe("invoke");
+  });
+});
 
 describe("normalizeQqGroupContextConfig", () => {
   it("uses safe QQ group defaults for missing config", () => {

@@ -22,6 +22,10 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli import CLI_CHANNEL_ID, CliChannel, CliHub
 from octop.infra.gateway.process import build_harness_request, media_backend_for_agent
 from octop.infra.gateway.process.processor import GlobalProcessor
+from octop.infra.gateway.process.response_mode import (
+    normalize_channel_response_mode,
+    processor_for_response_mode,
+)
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
@@ -616,13 +620,15 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
+        response_mode = normalize_channel_response_mode(config.get("response_mode"))
+        processor = processor_for_response_mode(self._processor, response_mode)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,
             config,
             tenant_id=row.agent_id,
             channel_id=row.channel_id,
-            processor=self._processor,
+            processor=processor,
         )
         registered = manager.get_channel(row.channel_id)
         if registered is not None:

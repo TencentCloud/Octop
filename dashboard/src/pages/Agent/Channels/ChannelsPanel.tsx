@@ -16,7 +16,7 @@ import {
   useChannels,
   CHANNEL_KEYS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
-  CHANNEL_BOOLEAN_CONFIG_KEYS,
+  CHANNEL_DISPLAY_CONFIG_KEYS,
   CHANNEL_FIELDS,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
@@ -30,8 +30,11 @@ import styles from "./index.module.less";
 function configFromFormValues(
   values: ChannelFormValues,
 ): Record<string, unknown> {
-  const { __raw_config, show_thinking, show_tool_hints } = values;
+  const { __raw_config, response_mode, show_thinking, show_tool_hints } =
+    values;
   let config: Record<string, unknown> = {
+    response_mode:
+      response_mode ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode,
     show_thinking:
       show_thinking ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_thinking,
     show_tool_hints:
@@ -46,6 +49,7 @@ function configFromFormValues(
         k === "name" ||
         k === "enabled" ||
         k === "__raw_config" ||
+        k === "response_mode" ||
         k === "show_thinking" ||
         k === "show_tool_hints"
       ) {
@@ -63,6 +67,15 @@ function configFromFormValues(
       }
     }
   }
+  config = {
+    ...config,
+    response_mode:
+      response_mode ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode,
+    show_thinking:
+      show_thinking ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_thinking,
+    show_tool_hints:
+      show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
+  };
   return config;
 }
 
@@ -160,8 +173,8 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         for (const [k, v] of Object.entries(cfg)) {
           if (v === undefined || v === null) continue;
           if (
-            CHANNEL_BOOLEAN_CONFIG_KEYS.includes(
-              k as (typeof CHANNEL_BOOLEAN_CONFIG_KEYS)[number],
+            CHANNEL_DISPLAY_CONFIG_KEYS.includes(
+              k as (typeof CHANNEL_DISPLAY_CONFIG_KEYS)[number],
             )
           ) {
             continue;
@@ -186,6 +199,10 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         const next: ChannelFormValues = {
           kind: row.kind as ChannelKey,
           enabled: row.enabled,
+          response_mode:
+            cfg.response_mode === "stream"
+              ? "stream"
+              : DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode,
           show_thinking:
             typeof cfg.show_thinking === "boolean"
               ? cfg.show_thinking
