@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import get_server, require_permission
 from octop.api.routers.ollama_download_store import (
     DownloadTask,
     DownloadTaskStatus,
@@ -77,7 +77,7 @@ def _task_to_response(task: DownloadTask) -> OllamaDownloadTaskResponse:
 )
 async def list_ollama_models(
     server: Any = Depends(get_server),
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> list[OllamaModelResponse]:
     """Return the current Ollama model list via the SDK."""
     if not _ollama_service_enabled(server):
@@ -121,7 +121,7 @@ async def list_ollama_models(
 )
 async def download_ollama_model(
     body: OllamaDownloadRequest,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> OllamaDownloadTaskResponse:
     """Start a background pull via Ollama SDK.
 
@@ -182,7 +182,7 @@ async def _run_pull_in_background(
     summary="Get Ollama download tasks",
 )
 async def get_ollama_download_status(
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> list[OllamaDownloadTaskResponse]:
     """Return all Ollama-related download tasks."""
     tasks = await get_tasks(backend="ollama")
@@ -195,7 +195,7 @@ async def get_ollama_download_status(
 )
 async def cancel_ollama_download(
     task_id: str,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> dict[str, Any]:
     """Cancel a pending or downloading Ollama model pull."""
     success = await cancel_task(task_id)
@@ -213,7 +213,7 @@ async def cancel_ollama_download(
 )
 async def delete_ollama_model(
     name: str,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> dict[str, Any]:
     """Delete an Ollama model via the SDK."""
     try:
@@ -248,7 +248,7 @@ class OllamaServiceStatus(BaseModel):
 def _ollama_service_enabled(server: Any) -> bool:
     raw = server.services.settings_repo.get(_SETTINGS_KEY_OLLAMA_SERVICE)
     if raw is None:
-        return True  # default on for backward compatibility
+        return False
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -259,7 +259,7 @@ def _ollama_service_enabled(server: Any) -> bool:
 )
 async def get_ollama_service(
     server: Any = Depends(get_server),
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> OllamaServiceStatus:
     from octop.infra.utils.ollama_manager import is_ollama_reachable
 
@@ -280,7 +280,7 @@ async def get_ollama_service(
 async def put_ollama_service(
     body: OllamaServiceBody,
     server: Any = Depends(get_server),
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> OllamaServiceStatus:
     from octop.infra.utils.ollama_manager import (
         is_ollama_reachable,

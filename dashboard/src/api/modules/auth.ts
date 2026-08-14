@@ -44,6 +44,8 @@ export interface OctopUser {
   role: "admin" | "user";
   display_name: string | null;
   locale: string;
+  /** Module permission keys; admin responses include the full catalog. */
+  permissions?: string[];
 }
 
 export interface LoginResponse {

@@ -22,7 +22,6 @@ import {
   Modal,
   Form,
   Input,
-  Select,
   Space,
   Popconfirm,
   Switch,
@@ -33,11 +32,13 @@ import {
   Spin,
   Tag,
   Segmented,
+  Checkbox,
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
   Bot,
+  Check,
   ChevronRight,
   Clock,
   IdCard,
@@ -46,6 +47,7 @@ import {
   List,
   Lock,
   LockOpen,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -82,6 +84,20 @@ interface UserRow {
   login_locked_until?: number;
   login_retry_after_seconds?: number;
   created_at?: number;
+  permissions?: string[];
+}
+
+interface PermissionCatalogItem {
+  key: string;
+  category: string;
+  label: string;
+  page?: string;
+  page_label?: string;
+}
+
+function permFullLabel(item: PermissionCatalogItem): string {
+  if (item.page_label) return `${item.page_label} / ${item.label}`;
+  return item.label;
 }
 
 interface CreateValues {
@@ -90,6 +106,12 @@ interface CreateValues {
   password: string;
   confirm: string;
   role: "admin" | "user";
+  permissions?: string[];
+}
+
+interface EditValues {
+  role: "admin" | "user";
+  permissions?: string[];
 }
 
 interface ResetValues {
@@ -97,15 +119,9 @@ interface ResetValues {
   confirm: string;
 }
 
-interface RoleMeta {
-  color: string;
-  bg: string;
+function roleToneClass(role: "admin" | "user"): string {
+  return role === "admin" ? styles.roleToneAdmin : styles.roleToneUser;
 }
-
-const ROLE_META: Record<"admin" | "user", RoleMeta> = {
-  admin: { color: "#d4880e", bg: "rgba(212,136,14,0.10)" },
-  user: { color: "#1677ff", bg: "rgba(22,119,255,0.10)" },
-};
 
 function useNowSeconds(active: boolean): number {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -136,17 +152,17 @@ interface UserCardGridProps {
   agentsByUserId: Map<number, OctopAgent[]>;
   agentsLoading: boolean;
   currentUserId: number | null;
-  roleOptions: { value: "admin" | "user"; label: string }[];
+  permLabelByKey: Map<string, string>;
   onTogglePatch: (
     row: UserRow,
-    patch: Partial<Pick<UserRow, "role" | "disabled">>,
-  ) => Promise<void>;
+    patch: Partial<Pick<UserRow, "role" | "disabled" | "permissions">>,
+  ) => Promise<boolean>;
+  onEdit: (row: UserRow) => void;
   onShowAgents: (row: UserRow) => void;
   onResetPassword: (row: UserRow) => void;
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
-  isSelfAdmin: (row: UserRow) => boolean;
 }
 
 function userInitials(displayName: string, username: string): string {
@@ -166,6 +182,7 @@ const FIELD_ICON_PROPS = {
 interface RolePickerProps {
   value?: "admin" | "user";
   onChange?: (value: "admin" | "user") => void;
+  disabled?: boolean;
   options: {
     value: "admin" | "user";
     label: string;
@@ -173,7 +190,7 @@ interface RolePickerProps {
   }[];
 }
 
-function RolePicker({ value, onChange, options }: RolePickerProps) {
+function RolePicker({ value, onChange, options, disabled }: RolePickerProps) {
   return (
     <div className={styles.rolePicker} role="radiogroup">
       {options.map((opt) => {
@@ -185,14 +202,13 @@ function RolePicker({ value, onChange, options }: RolePickerProps) {
             type="button"
             role="radio"
             aria-checked={selected}
+            disabled={disabled}
             className={`${styles.roleOption} ${
               selected ? styles.roleOptionSelected : ""
-            } ${
-              opt.value === "admin"
-                ? styles.roleOptionAdmin
-                : styles.roleOptionUser
             }`}
-            onClick={() => onChange?.(opt.value)}
+            onClick={() => {
+              if (!disabled) onChange?.(opt.value);
+            }}
           >
             <span className={styles.roleOptionIcon} aria-hidden>
               <Icon size={15} strokeWidth={2} />
@@ -205,6 +221,221 @@ function RolePicker({ value, onChange, options }: RolePickerProps) {
         );
       })}
     </div>
+  );
+}
+
+interface PermissionCheckboxPickerProps {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+  catalog: PermissionCatalogItem[];
+  disabled?: boolean;
+}
+
+function PermissionCheckboxPicker({
+  value,
+  onChange,
+  catalog,
+  disabled,
+}: PermissionCheckboxPickerProps) {
+  const { t } = useTranslation();
+  const selected = value ?? [];
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const groups = useMemo(() => {
+    const order = [
+      {
+        category: "settings",
+        label: t("adminUsers.permGroupSettings"),
+      },
+      {
+        category: "control",
+        label: t("adminUsers.permGroupControl"),
+      },
+      {
+        category: "admin",
+        label: t("adminUsers.permGroupAdmin"),
+      },
+    ] as const;
+    return order
+      .map((g) => {
+        const items = catalog.filter((p) => p.category === g.category);
+        const pages: {
+          page: string;
+          label: string;
+          items: PermissionCatalogItem[];
+        }[] = [];
+        const standalone: PermissionCatalogItem[] = [];
+        for (const item of items) {
+          if (!item.page) {
+            standalone.push(item);
+            continue;
+          }
+          const existing = pages.find((p) => p.page === item.page);
+          if (existing) {
+            existing.items.push(item);
+          } else {
+            pages.push({
+              page: item.page,
+              label: item.page_label || item.page,
+              items: [item],
+            });
+          }
+        }
+        return { ...g, items, standalone, pages };
+      })
+      .filter((g) => g.items.length > 0);
+  }, [catalog, t]);
+
+  const toggle = (key: string, checked: boolean) => {
+    if (disabled) return;
+    if (checked) {
+      onChange?.([...selected, key]);
+      return;
+    }
+    onChange?.(selected.filter((k) => k !== key));
+  };
+
+  const setGroup = (keys: string[], checked: boolean) => {
+    if (disabled) return;
+    if (checked) {
+      const next = new Set(selected);
+      for (const k of keys) next.add(k);
+      onChange?.(Array.from(next));
+      return;
+    }
+    const drop = new Set(keys);
+    onChange?.(selected.filter((k) => !drop.has(k)));
+  };
+
+  if (catalog.length === 0) {
+    return (
+      <div className={styles.permEmpty}>
+        <Text type="secondary">{t("adminUsers.permCatalogEmpty")}</Text>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${styles.permPicker} ${
+        disabled ? styles.permPickerDisabled : ""
+      }`}
+    >
+      {groups.map((group) => {
+        const keys = group.items.map((i) => i.key);
+        const checkedCount = keys.filter((k) => selectedSet.has(k)).length;
+        const allChecked = checkedCount === keys.length && keys.length > 0;
+        const indeterminate = checkedCount > 0 && !allChecked;
+        const renderChips = (items: PermissionCatalogItem[]) => (
+          <div className={styles.permGrid} role="group">
+            {items.map((item) => {
+              const checked = selectedSet.has(item.key);
+              return (
+                <button
+                  key={`${item.key}:${item.label}`}
+                  type="button"
+                  disabled={disabled}
+                  aria-pressed={checked}
+                  className={`${styles.permChip} ${
+                    checked ? styles.permChipSelected : ""
+                  }`}
+                  onClick={() => toggle(item.key, !checked)}
+                >
+                  <span className={styles.permChipCheck} aria-hidden>
+                    {checked ? <Check size={12} strokeWidth={2.5} /> : null}
+                  </span>
+                  <span className={styles.permChipLabel}>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+        return (
+          <section key={group.category} className={styles.permGroup}>
+            <div className={styles.permGroupHeader}>
+              <Checkbox
+                checked={allChecked}
+                indeterminate={indeterminate}
+                disabled={disabled}
+                onChange={(e) => setGroup(keys, e.target.checked)}
+              >
+                <span className={styles.permGroupTitle}>{group.label}</span>
+              </Checkbox>
+              <span className={styles.permGroupCount}>
+                {checkedCount}/{keys.length}
+              </span>
+            </div>
+            {group.pages.length === 0 ? (
+              renderChips(group.items)
+            ) : (
+              <>
+                {group.standalone.length > 0
+                  ? renderChips(group.standalone)
+                  : null}
+                {group.pages.map((page) => {
+                  const pageKeys = page.items.map((i) => i.key);
+                  const pageChecked = pageKeys.filter((k) =>
+                    selectedSet.has(k),
+                  ).length;
+                  const pageAll =
+                    pageChecked === pageKeys.length && pageKeys.length > 0;
+                  const pageIndeterminate = pageChecked > 0 && !pageAll;
+                  return (
+                    <div key={page.page} className={styles.permPage}>
+                      <div className={styles.permPageHeader}>
+                        <Checkbox
+                          checked={pageAll}
+                          indeterminate={pageIndeterminate}
+                          disabled={disabled}
+                          onChange={(e) => setGroup(pageKeys, e.target.checked)}
+                        >
+                          <span className={styles.permPageTitle}>
+                            {page.label}
+                          </span>
+                        </Checkbox>
+                        <span className={styles.permGroupCount}>
+                          {pageChecked}/{pageKeys.length}
+                        </span>
+                      </div>
+                      {renderChips(page.items)}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function PermissionSummary({
+  row,
+  permLabelByKey,
+}: {
+  row: UserRow;
+  permLabelByKey: Map<string, string>;
+}) {
+  const { t } = useTranslation();
+  if (row.role === "admin") {
+    return (
+      <span className={`${styles.permBadge} ${styles.permBadgeAll}`}>
+        {t("adminUsers.permAll")}
+      </span>
+    );
+  }
+  const keys = row.permissions ?? [];
+  if (keys.length === 0) {
+    return <span className={styles.permBadgeMuted}>—</span>;
+  }
+  const names = keys.map((key) => permLabelByKey.get(key) ?? key);
+  return (
+    <Tooltip title={names.join("、")}>
+      <span className={styles.permBadge}>
+        {t("adminUsers.permCount", { count: keys.length })}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -226,14 +457,14 @@ function UserCardGrid({
   agentsByUserId,
   agentsLoading,
   currentUserId,
-  roleOptions,
+  permLabelByKey,
   onTogglePatch,
+  onEdit,
   onShowAgents,
   onResetPassword,
   onDelete,
   onUnlockLogin,
   nowSec,
-  isSelfAdmin,
 }: UserCardGridProps) {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
@@ -255,13 +486,14 @@ function UserCardGrid({
         const displayName = row.display_name?.trim() || row.username;
         const remaining = lockRemainingSeconds(row, nowSec);
         const isLocked = remaining > 0;
-        const roleMeta = ROLE_META[row.role] ?? ROLE_META.user;
         const failedCount = row.login_failed_count ?? 0;
-        const accentColor = isLocked
-          ? "#ff4d4f"
+        const accentClass = isLocked
+          ? styles.userCardAccentLocked
           : row.disabled
-          ? "#8c8c8c"
-          : roleMeta.color;
+          ? styles.userCardAccentDisabled
+          : row.role === "admin"
+          ? styles.userCardAccentAdmin
+          : styles.userCardAccentUser;
         const statusColor = row.disabled ? "#8c8c8c" : "#52c41a";
         const statusBg = row.disabled
           ? "rgba(140,140,140,0.10)"
@@ -277,16 +509,14 @@ function UserCardGrid({
               .filter(Boolean)
               .join(" ")}
           >
-            <div
-              className={styles.userCardAccent}
-              style={{ background: accentColor }}
-            />
+            <div className={`${styles.userCardAccent} ${accentClass}`} />
 
             <div className={styles.userCardInner}>
               <div className={styles.userCardHeader}>
                 <div
-                  className={styles.userCardAvatar}
-                  style={{ color: roleMeta.color, background: roleMeta.bg }}
+                  className={`${styles.userCardAvatar} ${roleToneClass(
+                    row.role,
+                  )}`}
                   aria-hidden="true"
                 >
                   {userInitials(displayName, row.username)}
@@ -296,71 +526,12 @@ function UserCardGrid({
                   <div className={styles.userCardNameRow}>
                     <span className={styles.userCardName}>{displayName}</span>
                     {isSelf && (
-                      <Tag color="blue" className={styles.userCardYouTag}>
+                      <Tag className={styles.userCardYouTag}>
                         {t("adminUsers.you")}
                       </Tag>
                     )}
                   </div>
                   <div className={styles.userCardHandle}>@{row.username}</div>
-                  {row.email && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {row.email}
-                    </Text>
-                  )}
-                  {row.created_at != null && (
-                    <Tooltip title={t("adminUsers.colCreatedAt")}>
-                      <div className={styles.userCardTime}>
-                        <Clock size={11} />
-                        <span>{formatUserTs(row.created_at, timeZone)}</span>
-                      </div>
-                    </Tooltip>
-                  )}
-                  <div className={styles.userCardMeta}>
-                    {row.sso_linked && (
-                      <Tag color="purple" style={{ margin: 0 }}>
-                        {t("adminUsers.ssoBadge")}
-                      </Tag>
-                    )}
-                    {row.has_password && (
-                      <Tag color="blue" style={{ margin: 0 }}>
-                        {t("adminUsers.passwordBadge")}
-                      </Tag>
-                    )}
-                    <Tooltip
-                      title={
-                        isSelfAdmin(row)
-                          ? t("adminUsers.demoteSelf")
-                          : undefined
-                      }
-                    >
-                      <Select
-                        size="small"
-                        value={row.role}
-                        options={roleOptions}
-                        disabled={isSelfAdmin(row)}
-                        onChange={(v) => void onTogglePatch(row, { role: v })}
-                        className={styles.userCardRoleSelect}
-                        popupMatchSelectWidth={false}
-                        style={{
-                          background: roleMeta.bg,
-                          color: roleMeta.color,
-                          borderRadius: 20,
-                        }}
-                      />
-                    </Tooltip>
-                    <span
-                      className={styles.userCardPill}
-                      style={{ color: statusColor, background: statusBg }}
-                    >
-                      <span
-                        className={styles.userCardStatusDot}
-                        style={{ background: statusColor }}
-                      />
-                      {row.disabled
-                        ? t("adminUsers.statusDisabled")
-                        : t("adminUsers.statusEnabled")}
-                    </span>
-                  </div>
                 </div>
 
                 <Switch
@@ -372,6 +543,52 @@ function UserCardGrid({
                   className={styles.userCardSwitch}
                   aria-label={t("common.enabled")}
                 />
+              </div>
+
+              <div className={styles.userCardMeta}>
+                <span
+                  className={`${styles.userCardPill} ${roleToneClass(
+                    row.role,
+                  )}`}
+                >
+                  {row.role === "admin"
+                    ? t("adminUsers.roleAdmin")
+                    : t("adminUsers.roleUser")}
+                </span>
+                <span
+                  className={styles.userCardPill}
+                  style={{ color: statusColor, background: statusBg }}
+                >
+                  <span
+                    className={styles.userCardStatusDot}
+                    style={{ background: statusColor }}
+                  />
+                  {row.disabled
+                    ? t("adminUsers.statusDisabled")
+                    : t("adminUsers.statusEnabled")}
+                </span>
+                {row.sso_linked && (
+                  <span className={styles.userCardAuth}>
+                    {t("adminUsers.ssoBadge")}
+                  </span>
+                )}
+                {row.has_password && (
+                  <span className={styles.userCardAuth}>
+                    {t("adminUsers.passwordBadge")}
+                  </span>
+                )}
+              </div>
+
+              <div className={styles.userCardInfo}>
+                {row.created_at != null && (
+                  <Tooltip title={t("adminUsers.colCreatedAt")}>
+                    <span className={styles.userCardTime}>
+                      <Clock size={11} />
+                      <span>{formatUserTs(row.created_at, timeZone)}</span>
+                    </span>
+                  </Tooltip>
+                )}
+                <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
               </div>
 
               <div className={styles.userCardStats}>
@@ -415,6 +632,17 @@ function UserCardGrid({
               )}
 
               <div className={styles.userCardFooter}>
+                <Tooltip title={t("common.edit")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.userCardIconBtn}
+                    onClick={() => onEdit(row)}
+                    aria-label={t("common.edit")}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                </Tooltip>
+
                 <Tooltip
                   title={t("adminUsers.resetPassword")}
                   mouseEnterDelay={0.5}
@@ -534,6 +762,9 @@ export default function UsersListPanel() {
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
+  const [editTarget, setEditTarget] = useState<UserRow | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editForm] = Form.useForm<EditValues>();
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetForm] = Form.useForm<ResetValues>();
@@ -542,11 +773,21 @@ export default function UsersListPanel() {
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
+  const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
 
-  const roleOptions = [
-    { value: "admin" as const, label: t("adminUsers.roleAdmin") },
-    { value: "user" as const, label: t("adminUsers.roleUser") },
-  ];
+  const permLabelByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of permCatalog) {
+      map.set(item.key, permFullLabel(item));
+    }
+    return map;
+  }, [permCatalog]);
+
+  const baselinePermissions = useMemo(
+    () =>
+      permCatalog.filter((p) => p.category === "settings").map((p) => p.key),
+    [permCatalog],
+  );
 
   const createRoleOptions = useMemo(
     () => [
@@ -689,6 +930,9 @@ export default function UsersListPanel() {
       .me()
       .then((u) => setCurrentUserId(u.id))
       .catch(() => setCurrentUserId(null));
+    request<PermissionCatalogItem[]>("/users/permissions")
+      .then(setPermCatalog)
+      .catch(() => setPermCatalog([]));
   }, [refreshAll]);
 
   const onCreate = async (values: CreateValues) => {
@@ -701,6 +945,7 @@ export default function UsersListPanel() {
           display_name: values.display_name?.trim() || null,
           password: values.password,
           role: values.role,
+          permissions: values.role === "admin" ? [] : values.permissions ?? [],
         }),
       });
       message.success(
@@ -718,17 +963,37 @@ export default function UsersListPanel() {
     }
   };
 
+  const openCreate = () => {
+    form.setFieldsValue({
+      role: "user",
+      permissions: [...baselinePermissions],
+      username: undefined,
+      display_name: undefined,
+      password: undefined,
+      confirm: undefined,
+    });
+    setCreateOpen(true);
+  };
+
+  const openEdit = (row: UserRow) => {
+    setEditTarget(row);
+    editForm.setFieldsValue({
+      role: row.role,
+      permissions: [...(row.permissions ?? [])],
+    });
+  };
+
   const togglePatch = async (
     row: UserRow,
-    patch: Partial<Pick<UserRow, "role" | "disabled">>,
-  ) => {
+    patch: Partial<Pick<UserRow, "role" | "disabled" | "permissions">>,
+  ): Promise<boolean> => {
     if (
       patch.role === "user" &&
       row.id === currentUserId &&
       row.role === "admin"
     ) {
       message.warning(t("adminUsers.demoteSelf"));
-      return;
+      return false;
     }
     try {
       await request(`/users/${row.id}`, {
@@ -736,10 +1001,29 @@ export default function UsersListPanel() {
         body: JSON.stringify(patch),
       });
       void refreshUsers();
+      return true;
     } catch (err) {
       message.error(
         err instanceof Error ? err.message : t("adminUsers.updateFailed"),
       );
+      return false;
+    }
+  };
+
+  const onEditSubmit = async (values: EditValues) => {
+    if (!editTarget) return;
+    setEditSubmitting(true);
+    try {
+      const ok = await togglePatch(editTarget, {
+        role: values.role,
+        permissions: values.role === "admin" ? [] : values.permissions ?? [],
+      });
+      if (ok) {
+        setEditTarget(null);
+        editForm.resetFields();
+      }
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -790,6 +1074,7 @@ export default function UsersListPanel() {
   return (
     <>
       <div className={styles.pageTop}>
+        <RoleLegend />
         <div className={expertStyles.gridToolbar}>
           <Input
             allowClear
@@ -834,13 +1119,12 @@ export default function UsersListPanel() {
             <Button
               type="primary"
               icon={<Plus size={14} />}
-              onClick={() => setCreateOpen(true)}
+              onClick={openCreate}
             >
               {t("adminUsers.newUser")}
             </Button>
           </div>
         </div>
-        <RoleLegend />
       </div>
 
       {showCardView ? (
@@ -850,8 +1134,9 @@ export default function UsersListPanel() {
           agentsByUserId={agentsByUserId}
           agentsLoading={agentsLoading}
           currentUserId={currentUserId}
-          roleOptions={roleOptions}
+          permLabelByKey={permLabelByKey}
           onTogglePatch={togglePatch}
+          onEdit={openEdit}
           onShowAgents={setAgentDrawerUser}
           onResetPassword={(row) => {
             setResetTarget(row);
@@ -860,90 +1145,113 @@ export default function UsersListPanel() {
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
-          isSelfAdmin={isSelfAdmin}
         />
       ) : (
         <Table<UserRow>
           rowKey="id"
+          size="middle"
+          className={styles.userTable}
           loading={loading}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: "max-content" }}
+          scroll={{ x: 960 }}
+          rowClassName={(row) =>
+            [
+              row.disabled ? styles.userTableRowDisabled : "",
+              row.login_locked ? styles.userTableRowLocked : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
+          }
           columns={[
-            { title: t("adminUsers.colId"), dataIndex: "id", width: 60 },
-            { title: t("adminUsers.colUsername"), dataIndex: "username" },
             {
-              title: t("adminUsers.colDisplayName"),
-              dataIndex: "display_name",
-            },
-            {
-              title: t("adminUsers.colEmail"),
-              dataIndex: "email",
-              render: (email: string | null | undefined) => email || "—",
+              title: t("adminUsers.colUsername"),
+              width: 240,
+              render: (_, row) => {
+                const displayName = row.display_name?.trim() || row.username;
+                return (
+                  <div className={styles.userCell}>
+                    <span
+                      className={`${styles.userCellAvatar} ${roleToneClass(
+                        row.role,
+                      )}`}
+                    >
+                      {userInitials(displayName, row.username)}
+                    </span>
+                    <span className={styles.userCellText}>
+                      <span className={styles.userCellName}>
+                        {displayName}
+                        {row.id === currentUserId && (
+                          <span className={styles.userCellYou}>
+                            {t("adminUsers.you")}
+                          </span>
+                        )}
+                      </span>
+                      <span className={styles.userCellHandle}>
+                        @{row.username}
+                      </span>
+                    </span>
+                  </div>
+                );
+              },
             },
             {
               title: t("adminUsers.colAuth"),
-              width: 148,
-              render: (_, row) => (
-                <Space size={4} wrap>
-                  {row.sso_linked && (
-                    <Tag color="purple">{t("adminUsers.ssoBadge")}</Tag>
-                  )}
-                  {row.has_password && (
-                    <Tag color="blue">{t("adminUsers.passwordBadge")}</Tag>
-                  )}
-                  {!row.sso_linked && !row.has_password ? "—" : null}
-                </Space>
-              ),
-            },
-            {
-              title: t("adminUsers.colCreatedAt"),
-              dataIndex: "created_at",
-              width: 168,
-              render: (ts: number | undefined) => (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {formatUserTs(ts, timeZone)}
-                </Text>
-              ),
+              width: 120,
+              render: (_, row) => {
+                const parts = [
+                  row.sso_linked ? t("adminUsers.ssoBadge") : null,
+                  row.has_password ? t("adminUsers.passwordBadge") : null,
+                ].filter(Boolean);
+                return (
+                  <span className={styles.userCellMuted}>
+                    {parts.length ? parts.join(" · ") : "—"}
+                  </span>
+                );
+              },
             },
             {
               title: t("adminUsers.colAgents"),
-              width: 96,
+              width: 80,
               render: (_, row) => {
                 const count = agentsByUserId.get(row.id)?.length ?? 0;
                 return (
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<Bot size={14} />}
+                  <button
+                    type="button"
+                    className={styles.userCellLink}
                     onClick={() => setAgentDrawerUser(row)}
                   >
+                    <Bot size={13} />
                     {agentsLoading ? "…" : count}
-                  </Button>
+                  </button>
                 );
               },
             },
             {
               title: t("adminUsers.colRole"),
+              width: 88,
               render: (_, row) => (
-                <Tooltip
-                  title={
-                    isSelfAdmin(row) ? t("adminUsers.demoteSelf") : undefined
-                  }
+                <span
+                  className={`${styles.userCardPill} ${roleToneClass(
+                    row.role,
+                  )}`}
                 >
-                  <Select
-                    size="small"
-                    value={row.role}
-                    style={{ width: 96 }}
-                    options={roleOptions}
-                    disabled={isSelfAdmin(row)}
-                    onChange={(v) => togglePatch(row, { role: v })}
-                  />
-                </Tooltip>
+                  {row.role === "admin"
+                    ? t("adminUsers.roleAdmin")
+                    : t("adminUsers.roleUser")}
+                </span>
+              ),
+            },
+            {
+              title: t("adminUsers.colPermissions"),
+              width: 120,
+              render: (_, row) => (
+                <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
               ),
             },
             {
               title: t("common.enabled"),
+              width: 72,
               render: (_, row) => (
                 <Switch
                   size="small"
@@ -955,8 +1263,18 @@ export default function UsersListPanel() {
               ),
             },
             {
+              title: t("adminUsers.colCreatedAt"),
+              dataIndex: "created_at",
+              width: 156,
+              render: (ts: number | undefined) => (
+                <span className={styles.userCellMuted}>
+                  {formatUserTs(ts, timeZone)}
+                </span>
+              ),
+            },
+            {
               title: t("adminUsers.colLoginLock"),
-              width: 200,
+              width: 180,
               render: (_, row) => (
                 <UserLoginLock
                   row={row}
@@ -967,17 +1285,32 @@ export default function UsersListPanel() {
             },
             {
               title: t("adminUsers.colActions"),
+              width: 120,
               render: (_, row) => (
                 <Space size={4}>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setResetTarget(row);
-                      resetForm.resetFields();
-                    }}
-                  >
-                    {t("adminUsers.resetPassword")}
-                  </Button>
+                  <Tooltip title={t("common.edit")}>
+                    <button
+                      type="button"
+                      className={styles.userCardIconBtn}
+                      onClick={() => openEdit(row)}
+                      aria-label={t("common.edit")}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </Tooltip>
+                  <Tooltip title={t("adminUsers.resetPassword")}>
+                    <button
+                      type="button"
+                      className={styles.userCardIconBtn}
+                      onClick={() => {
+                        setResetTarget(row);
+                        resetForm.resetFields();
+                      }}
+                      aria-label={t("adminUsers.resetPassword")}
+                    >
+                      <KeyRound size={14} />
+                    </button>
+                  </Tooltip>
                   <Popconfirm
                     title={t("adminUsers.deleteConfirm", {
                       username: row.username,
@@ -989,17 +1322,17 @@ export default function UsersListPanel() {
                       title={
                         row.id === currentUserId
                           ? t("adminUsers.deleteSelf")
-                          : undefined
+                          : t("common.delete")
                       }
                     >
-                      <Button
-                        danger
-                        size="small"
-                        type="link"
+                      <button
+                        type="button"
+                        className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
                         disabled={row.id === currentUserId}
+                        aria-label={t("common.delete")}
                       >
-                        {t("common.delete")}
-                      </Button>
+                        <Trash2 size={14} />
+                      </button>
                     </Tooltip>
                   </Popconfirm>
                 </Space>
@@ -1061,90 +1394,251 @@ export default function UsersListPanel() {
         onSaved={handleEditSaved}
       />
 
-      <Modal
+      <Drawer
         title={t("adminUsers.modalNewTitle")}
+        placement="right"
         open={createOpen}
-        onCancel={() => {
+        onClose={() => {
           setCreateOpen(false);
           form.resetFields();
         }}
-        onOk={() => form.submit()}
-        okText={t("common.create")}
-        cancelText={t("common.cancel")}
-        confirmLoading={submitting}
+        width={Math.min(
+          520,
+          typeof window !== "undefined" ? window.innerWidth - 24 : 520,
+        )}
         destroyOnHidden
-        className={styles.createUserModal}
+        className={styles.createUserDrawer}
+        styles={{ body: { paddingTop: 12, paddingBottom: 24 } }}
+        footer={
+          <div className={styles.createUserFooter}>
+            <Button
+              onClick={() => {
+                setCreateOpen(false);
+                form.resetFields();
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="primary"
+              loading={submitting}
+              onClick={() => form.submit()}
+            >
+              {t("common.create")}
+            </Button>
+          </div>
+        }
       >
         <Form<CreateValues>
           form={form}
           layout="vertical"
           requiredMark={false}
           onFinish={onCreate}
-          initialValues={{ role: "user" }}
+          initialValues={{ role: "user", permissions: [] }}
           className={styles.createUserForm}
         >
-          <Form.Item
-            label={t("adminUsers.formUsername")}
-            name="username"
-            rules={[
-              { required: true, message: t("adminUsers.formUsername") },
-              {
-                pattern: /^[a-zA-Z0-9_-]{1,64}$/,
-                message: t("wizard.admin.usernameRule"),
-              },
-            ]}
-          >
-            <Input prefix={<User {...FIELD_ICON_PROPS} />} autoFocus />
-          </Form.Item>
-          <Form.Item
-            label={t("adminUsers.formDisplayName")}
-            name="display_name"
-          >
-            <Input prefix={<IdCard {...FIELD_ICON_PROPS} />} />
-          </Form.Item>
-          <Form.Item
-            label={t("adminUsers.formPassword")}
-            name="password"
-            rules={[{ required: true, message: t("adminUsers.formPassword") }]}
-          >
-            <Input.Password
-              prefix={<Lock {...FIELD_ICON_PROPS} />}
-              autoComplete="new-password"
-            />
-          </Form.Item>
-          <Form.Item
-            label={t("adminUsers.formPasswordConfirm")}
-            name="confirm"
-            dependencies={["password"]}
-            rules={[
-              { required: true, message: t("adminUsers.formPasswordConfirm") },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("password") === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(
-                    new Error(t("wizard.admin.passwordMismatch")),
-                  );
+          <div className={styles.createSection}>
+            <div className={styles.createSectionTitle}>
+              {t("adminUsers.createSectionAccount")}
+            </div>
+            <Form.Item
+              label={t("adminUsers.formUsername")}
+              name="username"
+              rules={[
+                { required: true, message: t("adminUsers.formUsername") },
+                {
+                  pattern: /^[a-zA-Z0-9_-]{1,64}$/,
+                  message: t("wizard.admin.usernameRule"),
                 },
-              }),
-            ]}
-          >
-            <Input.Password
-              prefix={<LockOpen {...FIELD_ICON_PROPS} />}
-              autoComplete="new-password"
-            />
-          </Form.Item>
-          <Form.Item
-            label={t("adminUsers.formRole")}
-            name="role"
-            rules={[{ required: true }]}
-            className={styles.createUserRoleItem}
-          >
-            <RolePicker options={createRoleOptions} />
-          </Form.Item>
+              ]}
+            >
+              <Input prefix={<User {...FIELD_ICON_PROPS} />} autoFocus />
+            </Form.Item>
+            <Form.Item
+              label={t("adminUsers.formDisplayName")}
+              name="display_name"
+            >
+              <Input prefix={<IdCard {...FIELD_ICON_PROPS} />} />
+            </Form.Item>
+            <Form.Item
+              label={t("adminUsers.formPassword")}
+              name="password"
+              rules={[
+                { required: true, message: t("adminUsers.formPassword") },
+              ]}
+            >
+              <Input.Password
+                prefix={<Lock {...FIELD_ICON_PROPS} />}
+                autoComplete="new-password"
+              />
+            </Form.Item>
+            <Form.Item
+              label={t("adminUsers.formPasswordConfirm")}
+              name="confirm"
+              dependencies={["password"]}
+              rules={[
+                {
+                  required: true,
+                  message: t("adminUsers.formPasswordConfirm"),
+                },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue("password") === value) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t("wizard.admin.passwordMismatch")),
+                    );
+                  },
+                }),
+              ]}
+            >
+              <Input.Password
+                prefix={<LockOpen {...FIELD_ICON_PROPS} />}
+                autoComplete="new-password"
+              />
+            </Form.Item>
+          </div>
+
+          <div className={styles.createSection}>
+            <div className={styles.createSectionTitle}>
+              {t("adminUsers.createSectionAccess")}
+            </div>
+            <Form.Item
+              label={t("adminUsers.formRole")}
+              name="role"
+              rules={[{ required: true }]}
+              className={styles.createUserRoleItem}
+            >
+              <RolePicker options={createRoleOptions} />
+            </Form.Item>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, cur) => prev.role !== cur.role}
+            >
+              {({ getFieldValue }) => {
+                const isAdminRole = getFieldValue("role") === "admin";
+                if (isAdminRole) {
+                  return (
+                    <div className={styles.permAdminHint}>
+                      <ShieldCheck size={15} strokeWidth={2} />
+                      <span>{t("adminUsers.permAllHint")}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <Form.Item
+                    label={t("adminUsers.colPermissions")}
+                    name="permissions"
+                    extra={t("adminUsers.permEditHint")}
+                    className={styles.createUserPermItem}
+                  >
+                    <PermissionCheckboxPicker catalog={permCatalog} />
+                  </Form.Item>
+                );
+              }}
+            </Form.Item>
+          </div>
         </Form>
-      </Modal>
+      </Drawer>
+
+      <Drawer
+        title={
+          editTarget
+            ? t("adminUsers.modalEditTitle", {
+                username: editTarget.username,
+              })
+            : t("common.edit")
+        }
+        placement="right"
+        open={editTarget !== null}
+        onClose={() => {
+          setEditTarget(null);
+          editForm.resetFields();
+        }}
+        width={Math.min(
+          520,
+          typeof window !== "undefined" ? window.innerWidth - 24 : 520,
+        )}
+        destroyOnHidden
+        className={styles.createUserDrawer}
+        styles={{ body: { paddingTop: 12, paddingBottom: 24 } }}
+        footer={
+          <div className={styles.createUserFooter}>
+            <Button
+              onClick={() => {
+                setEditTarget(null);
+                editForm.resetFields();
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="primary"
+              loading={editSubmitting}
+              onClick={() => editForm.submit()}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        }
+      >
+        <Form<EditValues>
+          form={editForm}
+          layout="vertical"
+          requiredMark={false}
+          onFinish={onEditSubmit}
+          className={styles.createUserForm}
+        >
+          <div className={styles.createSection}>
+            <div className={styles.createSectionTitle}>
+              {t("adminUsers.createSectionAccess")}
+            </div>
+            <Form.Item
+              label={t("adminUsers.formRole")}
+              name="role"
+              rules={[{ required: true }]}
+              className={styles.createUserRoleItem}
+              extra={
+                editTarget && isSelfAdmin(editTarget)
+                  ? t("adminUsers.demoteSelf")
+                  : undefined
+              }
+            >
+              <RolePicker
+                options={createRoleOptions}
+                disabled={Boolean(editTarget && isSelfAdmin(editTarget))}
+              />
+            </Form.Item>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, cur) => prev.role !== cur.role}
+            >
+              {({ getFieldValue }) => {
+                const isAdminRole = getFieldValue("role") === "admin";
+                if (isAdminRole) {
+                  return (
+                    <div className={styles.permAdminHint}>
+                      <ShieldCheck size={15} strokeWidth={2} />
+                      <span>{t("adminUsers.permAllHint")}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <Form.Item
+                    label={t("adminUsers.colPermissions")}
+                    name="permissions"
+                    extra={t("adminUsers.permEditHint")}
+                    className={styles.createUserPermItem}
+                  >
+                    <PermissionCheckboxPicker catalog={permCatalog} />
+                  </Form.Item>
+                );
+              }}
+            </Form.Item>
+          </div>
+        </Form>
+      </Drawer>
 
       <Modal
         title={

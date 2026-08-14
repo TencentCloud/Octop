@@ -269,7 +269,8 @@ def _ensure_sso_oidc_schema(db: DatabasePool) -> None:
               preferences_json    TEXT NOT NULL DEFAULT '{}',
               email               TEXT,
               sso_provider_id     INTEGER REFERENCES sso_providers(id),
-              sso_subject         TEXT
+              sso_subject         TEXT,
+              permissions         TEXT NOT NULL DEFAULT '[]'
             );
 
             INSERT INTO users_new (
@@ -283,7 +284,8 @@ def _ensure_sso_oidc_schema(db: DatabasePool) -> None:
               created_at,
               login_failed_count,
               login_locked_until,
-              preferences_json
+              preferences_json,
+              permissions
             )
             SELECT
               id,
@@ -296,7 +298,8 @@ def _ensure_sso_oidc_schema(db: DatabasePool) -> None:
               created_at,
               login_failed_count,
               login_locked_until,
-              preferences_json
+              preferences_json,
+              '[]'
             FROM users;
 
             DROP TABLE users;
@@ -324,6 +327,9 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_column(db, "users", "email", "TEXT")
         _ensure_column(db, "users", "sso_provider_id", "INTEGER")
         _ensure_column(db, "users", "sso_subject", "TEXT")
+        # Pre-squash DBs may already report version ≥6; reconcile can clamp to 6
+        # without applying 006_user_permissions.sql — ensure the column here.
+        _ensure_column(db, "users", "permissions", "TEXT NOT NULL DEFAULT '[]'")
     if _table_exists(db, "cron_jobs"):
         _ensure_column(
             db,
@@ -357,6 +363,8 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
     if _table_exists(db, "users"):
         _ensure_sso_oidc_schema(db)
         _ensure_knowledge_bases_schema(db)
+        # SSO rebuild recreates ``users``; ensure permissions after that path.
+        _ensure_column(db, "users", "permissions", "TEXT NOT NULL DEFAULT '[]'")
 
 
 def _max_discovered_version(dialect: str) -> int:
@@ -382,7 +390,11 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
             _apply_postgresql_migration(conn, sql)
             conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
         return
-    # SQLite: ensure helpers already ran via _repair_legacy_schema / v5 apply.
+    # SQLite: ensure helpers already ran via _repair_legacy_schema; also apply
+    # the max migration's ensure path so clamping to a new max (e.g. 6) does not
+    # skip ADD COLUMN for DBs that previously sat at version 7–9.
+    if max_version == 6 and _table_exists(db, "users"):
+        _ensure_column(db, "users", "permissions", "TEXT NOT NULL DEFAULT '[]'")
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -402,6 +414,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 4 adds composer columns idempotently after legacy schema repair.
     Version 5 adds shared experts, published templates, OIDC SSO, and knowledge
     bases idempotently after legacy schema repair.
+    Version 6 adds ``users.permissions`` idempotently (also covered by
+    ``_repair_legacy_schema`` for DBs whose version was clamped past 006).
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -447,6 +461,12 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         _ensure_published_experts_indexes(db)
         _ensure_sso_oidc_schema(db)
         _ensure_knowledge_bases_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 6:
+        if _table_exists(db, "users"):
+            _ensure_column(db, "users", "permissions", "TEXT NOT NULL DEFAULT '[]'")
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return

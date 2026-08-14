@@ -28,6 +28,11 @@ def _tool_by_name(tools: list, name: str):
     raise KeyError(name)
 
 
+def test_search_knowledge_default_description_is_empty_catalog_fallback() -> None:
+    tool = _tool_by_name(build_knowledge_tools(SimpleNamespace()), "search_knowledge")
+    assert tool.description == "No knowledge bases are attached this turn."
+
+
 @pytest.mark.asyncio
 async def test_search_knowledge_requires_selected_bases() -> None:
     services = SimpleNamespace(

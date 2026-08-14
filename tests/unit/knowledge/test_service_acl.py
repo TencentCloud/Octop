@@ -32,28 +32,30 @@ def service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> KnowledgeService
     return KnowledgeService(services)
 
 
-def test_create_base_rejects_shared_with_default_open(service: KnowledgeService) -> None:
+def test_create_base_allows_shared_with_default_open(service: KnowledgeService) -> None:
     users = service._services.user_repo
     owner = users.create(username="owner", password_hash="h", role="user")
 
-    with pytest.raises(ValueError, match="shared knowledge bases cannot be default_open"):
-        service.create_base(
-            owner_user_id=owner,
-            name="Docs",
-            shared=True,
-            default_open=True,
-        )
+    kb = service.create_base(
+        owner_user_id=owner,
+        name="Docs",
+        shared=True,
+        default_open=True,
+    )
+    assert kb.shared is True
+    assert kb.default_open is True
 
 
-def test_update_base_rejects_enabling_both_shared_and_default_open(
+def test_update_base_allows_enabling_both_shared_and_default_open(
     service: KnowledgeService,
 ) -> None:
     users = service._services.user_repo
     owner = users.create(username="owner", password_hash="h", role="user")
     kb = service.create_base(owner_user_id=owner, name="Docs", shared=False, default_open=True)
 
-    with pytest.raises(ValueError, match="shared knowledge bases cannot be default_open"):
-        service.update_base(kb.id, actor_user_id=owner, shared=True)
+    updated = service.update_base(kb.id, actor_user_id=owner, shared=True)
+    assert updated.shared is True
+    assert updated.default_open is True
 
 
 def test_shared_reader_cannot_upload(service: KnowledgeService) -> None:

@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import get_server, require_permission
 from octop.infra.agents.providers.onnx_catalog import list_onnx_catalog_models
 from octop.infra.agents.providers.onnx_service import (
     DOWNLOAD_MANAGER,
@@ -80,7 +80,7 @@ def _http_from_runtime(exc: RuntimeError) -> HTTPException:
 
 
 @router.get("/catalog", response_model=list[OnnxCatalogItem], summary="List ONNX catalog")
-async def get_catalog(_: Any = Depends(current_user)) -> list[OnnxCatalogItem]:
+async def get_catalog(_: Any = Depends(require_permission("onnx_models"))) -> list[OnnxCatalogItem]:
     return [
         OnnxCatalogItem(
             id=str(m["id"]),
@@ -97,7 +97,7 @@ async def get_catalog(_: Any = Depends(current_user)) -> list[OnnxCatalogItem]:
 @router.get("/models/{model_name:path}/meta", summary="ONNX model size / source metadata")
 async def get_model_meta(
     model_name: str,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("onnx_models")),
 ) -> dict[str, Any]:
     from octop.infra.agents.providers.onnx_catalog import get_onnx_model_meta
 
@@ -113,7 +113,7 @@ async def get_model_meta(
 @router.get("/status", summary="Get local ONNX service status")
 async def get_status(
     server: Any = Depends(get_server),
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("onnx_models")),
 ) -> dict[str, Any]:
     return status_payload(_settings_get(server), DOWNLOAD_MANAGER.state)
 
@@ -122,7 +122,7 @@ async def get_status(
 async def put_config(
     body: OnnxServiceConfigBody,
     server: Any = Depends(get_server),
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("onnx_models")),
 ) -> dict[str, Any]:
     try:
         model = assert_catalog_model(body.model)
@@ -160,7 +160,7 @@ async def put_config(
 )
 async def post_test(
     body: OnnxTestRequest,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("onnx_models")),
 ) -> OnnxTestResponse:
     """Run a tiny local embedding to verify the model loads and works (admin only)."""
     try:
@@ -198,7 +198,7 @@ async def post_test(
 @router.post("/download", summary="Download a local ONNX embedding model")
 async def post_download(
     body: OnnxDownloadRequest,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("onnx_models")),
 ) -> dict[str, Any]:
     try:
         state = await DOWNLOAD_MANAGER.start_download(body.model.strip())
@@ -210,7 +210,9 @@ async def post_download(
 
 
 @router.get("/download-status", summary="Poll ONNX model download progress")
-async def get_download_status(_: Any = Depends(current_user)) -> dict[str, Any]:
+async def get_download_status(
+    _: Any = Depends(require_permission("onnx_models")),
+) -> dict[str, Any]:
     return DOWNLOAD_MANAGER.state.to_dict()
 
 
@@ -218,7 +220,7 @@ async def get_download_status(_: Any = Depends(current_user)) -> dict[str, Any]:
 async def delete_local_model(
     model_name: str,
     server: Any = Depends(get_server),
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("onnx_models")),
 ) -> dict[str, Any]:
     try:
         name = assert_catalog_model(model_name)

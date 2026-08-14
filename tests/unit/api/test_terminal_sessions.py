@@ -218,7 +218,7 @@ def _patch_user(monkeypatch, user_id: int = 1) -> None:
     monkeypatch.setattr(
         terminal,
         "resolve_user_from_token",
-        lambda _s, _t: SimpleNamespace(id=user_id, is_admin=False),
+        lambda _s, _t: SimpleNamespace(id=user_id, is_admin=False, permissions=["terminal"]),
     )
 
 

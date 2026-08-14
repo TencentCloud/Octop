@@ -42,12 +42,6 @@ def _resolve_content_type(filename: str, content_type: str) -> str:
     return ct
 
 
-def _normalize_shared_default_open(*, shared: bool, default_open: bool) -> tuple[bool, bool]:
-    if shared and default_open:
-        raise ValueError("shared knowledge bases cannot be default_open")
-    return shared, default_open
-
-
 class KnowledgeService:
     """Apply ownership while keeping control-plane rows and files synchronized."""
 
@@ -74,9 +68,6 @@ class KnowledgeService:
         owned = self._repo.count_bases_for_owner(owner_user_id)
         if owned >= MAX_BASES_PER_OWNER:
             raise ValueError(f"a user can own at most {MAX_BASES_PER_OWNER} knowledge bases")
-        shared, default_open = _normalize_shared_default_open(
-            shared=shared, default_open=default_open
-        )
         model = (self._services.settings_repo.get("knowledge_embedding_model") or "").strip()
         return cast(
             KnowledgeBaseRow,
@@ -111,12 +102,6 @@ class KnowledgeService:
         is_admin: bool = False,
     ) -> KnowledgeBaseRow:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
-        current = self._require_base(kb_id)
-        if shared is not None or default_open is not None:
-            _normalize_shared_default_open(
-                shared=current.shared if shared is None else shared,
-                default_open=current.default_open if default_open is None else default_open,
-            )
         self._repo.update_base(
             kb_id,
             name=name,

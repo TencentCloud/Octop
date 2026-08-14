@@ -213,9 +213,12 @@ def test_build_harness_config_includes_cronjob_tools_when_cron_manager_set(
 def test_build_harness_config_includes_search_knowledge_without_cron(
     manager: AgentManager,
 ) -> None:
+    from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
+
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.tools is not None
     assert {t.name for t in cfg.tools} == {"search_knowledge"}
+    assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:

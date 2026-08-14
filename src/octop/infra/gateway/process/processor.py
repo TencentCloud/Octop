@@ -52,6 +52,7 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
 from octop.infra.knowledge.default_open import merge_knowledge_base_ids
+from octop.infra.knowledge.hint import catalog_for_selected_bases
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
@@ -792,9 +793,10 @@ class GlobalProcessor:
             if is_admin
             else self._knowledge_services.knowledge_repo.list_visible(user_id)
         )
-        selected_ids = merge_knowledge_base_ids(bases, explicit_ids)
+        selected_ids = merge_knowledge_base_ids(bases, explicit_ids, owner_user_id=user_id)
         configurable = dict(request.get("configurable") or {})
         configurable["knowledge_base_ids"] = selected_ids
+        configurable["knowledge_base_catalog"] = catalog_for_selected_bases(bases, selected_ids)
         configurable["user_is_admin"] = is_admin
         configurable["locale"] = locale
         request["configurable"] = configurable

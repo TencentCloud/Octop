@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
 import { Button, Form, Input, Modal, Select, Switch, Typography } from "antd";
 import { message } from "@/utils/antdMessage";
 import {
@@ -26,6 +25,9 @@ import AuditLogPanel from "./AuditLogPanel";
 import HitlToolsPicker from "./HitlToolsPicker";
 import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
 import styles from "./index.module.less";
+import ForbiddenPage from "../../../components/ForbiddenPage";
+import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
+import { SECURITY_TAB_PERMISSIONS, userCan } from "../../../utils/permissions";
 
 const { Text } = Typography;
 const { confirm } = Modal;
@@ -125,10 +127,13 @@ function PolicyFooter({
 
 export default function SecuritySettingsPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<SecurityTabKey>(() =>
-    parseTab(searchParams.get("tab")),
-  );
+  const { user, allowedTabs, activeTab, forbidden, selectTab } =
+    useGatedSearchTabs({
+      tabs: TABS,
+      tabPermissions: SECURITY_TAB_PERMISSIONS,
+      parseTab,
+      querylessKey: "hitl",
+    });
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -137,20 +142,6 @@ export default function SecuritySettingsPage() {
     [],
   );
   const [hitlDefaultTools, setHitlDefaultTools] = useState<string[]>([]);
-
-  useEffect(() => {
-    setActiveTab(parseTab(searchParams.get("tab")));
-  }, [searchParams]);
-
-  const selectTab = (key: SecurityTabKey) => {
-    setActiveTab(key);
-    if (key === "hitl") {
-      searchParams.delete("tab");
-      setSearchParams(searchParams, { replace: true });
-    } else {
-      setSearchParams({ tab: key }, { replace: true });
-    }
-  };
 
   const fetchPolicy = useCallback(async () => {
     setLoading(true);
@@ -186,8 +177,12 @@ export default function SecuritySettingsPage() {
   }, [form, t]);
 
   useEffect(() => {
-    void fetchPolicy();
-  }, [fetchPolicy]);
+    if (userCan(user, "security")) {
+      void fetchPolicy();
+      return;
+    }
+    setLoading(false);
+  }, [fetchPolicy, user]);
 
   const handleSave = async () => {
     try {
@@ -422,13 +417,15 @@ export default function SecuritySettingsPage() {
     }
   };
 
+  if (forbidden) return <ForbiddenPage />;
+
   return (
     <PageShell.Tabbed
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
       tabBar={
         <SettingsTabBar
-          tabs={TABS}
+          tabs={allowedTabs}
           activeKey={activeTab}
           onChange={selectTab}
         />

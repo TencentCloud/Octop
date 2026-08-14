@@ -28,6 +28,10 @@ import { request } from "../../../api/request";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
+import {
+  resolveSubagentAccent,
+  subagentAccentIconStyle,
+} from "../../../utils/expertColor";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
 import { normalizeUiLocale } from "../../../utils/locale";
 import { pickLocale } from "../../../utils/localizedText";
@@ -366,13 +370,18 @@ export default function SubagentManager({
       <div className={styles.catalogGrid}>
         {filteredCatalogItems.map((item) => {
           const installed = installedSlugs.has(item.slug);
-          const accent = item.color?.startsWith("#") ? item.color : "#6366f1";
+          const accent = resolveSubagentAccent(item.color);
           return (
-            <div key={item.slug} className={styles.catalogCard}>
+            <div
+              key={item.slug}
+              className={styles.catalogCard}
+              style={{ "--agent-accent": accent } as CSSProperties}
+            >
+              <div className={styles.catalogCardAccent} />
               <div className={styles.catalogCardHeader}>
                 <div
                   className={styles.catalogCardIcon}
-                  style={{ color: accent, background: `${accent}1a` }}
+                  style={subagentAccentIconStyle(accent)}
                 >
                   {item.emoji ?? "🤖"}
                 </div>
@@ -468,9 +477,7 @@ export default function SubagentManager({
     return (
       <div className={styles.catalogGrid}>
         {filteredInstalled.map((subagent) => {
-          const accent = subagent.color?.startsWith("#")
-            ? subagent.color
-            : "#6366f1";
+          const accent = resolveSubagentAccent(subagent.color);
           return (
             <div
               key={subagent.slug}
@@ -481,7 +488,7 @@ export default function SubagentManager({
               <div className={styles.catalogCardHeader}>
                 <div
                   className={styles.catalogCardIcon}
-                  style={{ color: accent, background: `${accent}1a` }}
+                  style={subagentAccentIconStyle(accent)}
                 >
                   {subagent.emoji ?? "🤖"}
                 </div>

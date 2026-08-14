@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
 import jwt
 from fastapi import Depends, Header, Query, Request
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import PERMISSIONS, user_has_permission
 
 if TYPE_CHECKING:
     from octop.infra.server import OctopServer
+    from octop.infra.users.identity import User
+else:
     from octop.infra.users.identity import User
 
 
@@ -187,7 +191,33 @@ async def current_user(
     return resolve_user_from_token(server, raw)
 
 
-async def current_admin(user: User = Depends(current_user)) -> User:
-    if not user.is_admin:
-        raise OctopError(ErrorCode.FORBIDDEN, "admin required")
-    return user
+def require_permission(key: str) -> Callable[..., Awaitable[User]]:
+    """Dependency factory: require the module permission ``key``.
+
+    ``admin`` is bypassed inside ``user_has_permission``. Unknown keys fail
+    fast at construction so typos cannot silently grant access.
+    """
+    if key not in PERMISSIONS:
+        raise RuntimeError(f"unknown permission key: {key}")
+
+    async def _dep(user: User = Depends(current_user)) -> User:
+        if not user_has_permission(user, key):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "permission required",
+                details={"permission": key},
+            )
+        return user
+
+    return _dep
+
+
+def require_admin() -> Callable[..., Awaitable[User]]:
+    """Dependency factory: require the admin role (no module key)."""
+
+    async def _dep(user: User = Depends(current_user)) -> User:
+        if not user.is_admin:
+            raise OctopError(ErrorCode.FORBIDDEN, "admin required")
+        return user
+
+    return _dep

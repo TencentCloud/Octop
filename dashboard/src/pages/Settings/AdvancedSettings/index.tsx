@@ -1,5 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Archive,
@@ -20,6 +19,9 @@ import UpdateConfig from "./UpdateConfig";
 import PageShell from "../../../layouts/PageShell";
 import SettingsTabBar from "../shared/SettingsTabBar";
 import tabStyles from "./tabContent.module.less";
+import ForbiddenPage from "../../../components/ForbiddenPage";
+import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
+import { ADVANCED_TAB_PERMISSIONS } from "../../../utils/permissions";
 
 type TabKey =
   | "env-vars"
@@ -68,24 +70,14 @@ function parseTab(raw: string | null): TabKey {
 
 export default function AdvancedSettingsPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabKey>(() =>
-    parseTab(searchParams.get("tab")),
-  );
+  const { allowedTabs, activeTab, forbidden, selectTab } = useGatedSearchTabs({
+    tabs: TABS,
+    tabPermissions: ADVANCED_TAB_PERMISSIONS,
+    parseTab,
+    querylessKey: "env-vars",
+  });
 
-  useEffect(() => {
-    setActiveTab(parseTab(searchParams.get("tab")));
-  }, [searchParams]);
-
-  const selectTab = (key: TabKey) => {
-    setActiveTab(key);
-    if (key === "env-vars") {
-      searchParams.delete("tab");
-      setSearchParams(searchParams, { replace: true });
-    } else {
-      setSearchParams({ tab: key }, { replace: true });
-    }
-  };
+  if (forbidden) return <ForbiddenPage />;
 
   const renderTab = () => {
     switch (activeTab) {
@@ -112,7 +104,7 @@ export default function AdvancedSettingsPage() {
       subtitle={t("pageShell.adminAdvanced.subtitle")}
       tabBar={
         <SettingsTabBar
-          tabs={TABS}
+          tabs={allowedTabs}
           activeKey={activeTab}
           onChange={selectTab}
         />

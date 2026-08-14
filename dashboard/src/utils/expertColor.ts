@@ -65,3 +65,37 @@ export function resolveExpertPalette(
 export function expertPaletteColor(palette: ThemePalette): string {
   return PALETTE_SWATCH[palette];
 }
+
+/** Fallback accent when a subagent has no usable color. */
+export const DEFAULT_SUBAGENT_ACCENT = PALETTE_SWATCH.indigo;
+
+/**
+ * Resolve a subagent frontmatter color for card chrome.
+ *
+ * Accepts curated palette keys (`rose`), hex (`#4B74FA`), and CSS named
+ * colors (`orange`). Anything else falls back to indigo.
+ */
+export function resolveSubagentAccent(
+  color: string | null | undefined,
+): string {
+  const raw = (color ?? "").trim().replace(/^["']|["']$/g, "");
+  if (!raw) return DEFAULT_SUBAGENT_ACCENT;
+  const lower = raw.toLowerCase();
+  if ((VALID_PALETTES as readonly string[]).includes(lower)) {
+    return PALETTE_SWATCH[lower as ThemePalette];
+  }
+  if (raw.startsWith("#") && parseHex(raw)) return raw;
+  if (/^[a-zA-Z][\w-]*$/.test(raw)) return raw;
+  return DEFAULT_SUBAGENT_ACCENT;
+}
+
+/** Icon chip background that works for both hex and named CSS colors. */
+export function subagentAccentIconStyle(accent: string): {
+  color: string;
+  background: string;
+} {
+  return {
+    color: accent,
+    background: `color-mix(in srgb, ${accent} 10%, transparent)`,
+  };
+}

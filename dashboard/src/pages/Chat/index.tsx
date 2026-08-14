@@ -13,7 +13,8 @@ import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
-import { useUserRole } from "../../hooks/useUserRole";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
@@ -74,8 +75,8 @@ function ChatPageInner() {
     threadId?: string;
   }>();
   const isMobile = useIsMobile();
-  const role = useUserRole();
-  const isAdmin = role === "admin";
+  const user = useCurrentUser();
+  const canTerminal = userCan(user, "terminal");
   const chatHistoryRail = useChatHistoryRail();
   const [selectedTargetAgents, setSelectedTargetAgents] = useState<string[]>(
     [],
@@ -798,7 +799,7 @@ function ChatPageInner() {
                   </span>
                 </Tooltip>
               )}
-              {isAdmin && (
+              {canTerminal && (
                 <Tooltip
                   title={t("chat.openTerminal", "打开终端")}
                   mouseEnterDelay={0.35}

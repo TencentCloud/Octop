@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
-from octop.api.deps import current_admin, current_user
+from octop.api.deps import current_user, require_permission
 from octop.api.routers.update_store import (
     UpgradeTaskStatus,
     cache_status,
@@ -76,7 +76,7 @@ async def update_status(_: Any = Depends(current_user)) -> dict[str, Any]:
 
 
 @router.post("/check")
-async def check_for_updates(_: Any = Depends(current_admin)) -> dict[str, Any]:
+async def check_for_updates(_: Any = Depends(require_permission("update"))) -> dict[str, Any]:
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
         return await asyncio.to_thread(_build_status, latest=None, error="could not reach PyPI")
@@ -115,7 +115,7 @@ async def _upgrade_worker(task_id: str) -> None:
 
 
 @router.post("/upgrade")
-async def trigger_upgrade(_: Any = Depends(current_admin)) -> dict[str, Any]:
+async def trigger_upgrade(_: Any = Depends(require_permission("update"))) -> dict[str, Any]:
     if get_editable_path() is not None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -129,7 +129,7 @@ async def trigger_upgrade(_: Any = Depends(current_admin)) -> dict[str, Any]:
 @router.get("/progress")
 async def upgrade_progress(
     task_id: str = Query(...),
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     task = await get_task(task_id)
     if task is None:
@@ -156,7 +156,7 @@ def _restart_service_task(runtime: ServiceRuntime) -> None:
 @router.post("/restart")
 async def restart_service_endpoint(
     background_tasks: BackgroundTasks,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     mode = detect_service_mode()
     if mode is None:

@@ -16,6 +16,7 @@ from octop.infra.agents.runtime_limits import (
     agent_runtime_values,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import user_has_permission
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +121,14 @@ async def list_agents(
 
     Default ``scope=mine`` returns agents owned by the authenticated user plus
     agents other users have explicitly shared.
-    Admins may pass ``scope=all`` for the admin agents overview.
+    Holders of the ``users`` permission (and admins) may pass ``scope=all``.
     """
-    if scope == "all" and not user.is_admin:
-        raise OctopError(ErrorCode.FORBIDDEN, "scope=all requires admin")
+    if scope == "all" and not user_has_permission(user, "users"):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "permission required",
+            details={"permission": "users"},
+        )
 
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry

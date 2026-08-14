@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -132,7 +133,14 @@ async def test_dashboard_request_attaches_knowledge_base_ids_without_prepending(
     )
     agent_manager.get_thread_model = MagicMock(return_value=None)
 
-    base = MagicMock(id="kb-1", default_open=False, shared=False)
+    base = SimpleNamespace(
+        id="kb-1",
+        owner_user_id=1,
+        name="Refund policy",
+        description="Retail refund rules",
+        default_open=False,
+        shared=False,
+    )
     processor = GlobalProcessor(
         agent_manager=agent_manager,
         thread_registry=MagicMock(),
@@ -168,6 +176,13 @@ async def test_dashboard_request_attaches_knowledge_base_ids_without_prepending(
     assert content == "question"
     configurable = request.get("configurable") or {}
     assert configurable["knowledge_base_ids"] == ["kb-1"]
+    assert configurable["knowledge_base_catalog"] == [
+        {
+            "id": "kb-1",
+            "name": "Refund policy",
+            "description": "Retail refund rules",
+        }
+    ]
     assert configurable["user_is_admin"] is False
     assert "locale" in configurable
 

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
@@ -41,11 +41,6 @@ def _plugin_manager(server: OctopServer) -> PluginManager:
     return mgr
 
 
-def _require_admin(user: Any) -> None:
-    if not getattr(user, "is_admin", False):
-        raise OctopError(ErrorCode.FORBIDDEN, "admin only")
-
-
 @router.get("", summary="List installed plugins")
 async def list_plugins(
     server: OctopServer = Depends(get_server),
@@ -59,9 +54,8 @@ async def list_plugins(
 async def install_plugin(
     body: PluginInstallBody,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    _user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, Any]:
-    _require_admin(user)
     mgr = _plugin_manager(server)
     try:
         loaded = mgr.install_url(body.url)
@@ -89,13 +83,12 @@ async def upload_plugin(
     file: UploadFile = File(...),
     force: bool = Form(default=False),
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    _user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, Any]:
     """Install a plugin from a locally-uploaded ZIP archive.
 
     ``force=True`` overwrites an already-installed plugin with the same id.
     """
-    _require_admin(user)
     mgr = _plugin_manager(server)
     raw = await file.read()
     if not raw:
@@ -131,9 +124,8 @@ async def upload_plugin(
 async def uninstall_plugin(
     plugin_id: str,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    _user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, str]:
-    _require_admin(user)
     _plugin_manager(server).uninstall(plugin_id)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.reload_all()

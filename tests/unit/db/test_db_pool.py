@@ -76,10 +76,11 @@ def test_run_migrations_idempotent(db: SqlitePool):
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
         thread_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
-    assert v == 5
+    assert v == 6
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
+    assert "permissions" in cols
     assert {"email", "sso_provider_id", "sso_subject"}.issubset(cols)
     assert "task_type" in cron_cols
     assert "mcp_servers" in cron_cols
@@ -125,7 +126,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 5
+    assert v == 6
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -184,6 +185,7 @@ def test_migration_005_preserves_populated_users_and_constraints(tmp_path: Path)
             "email": None,
             "sso_provider_id": None,
             "sso_subject": None,
+            "permissions": "[]",
         }
         assert dict(agent) == {
             "agent_id": "legacy-agent",
@@ -245,6 +247,26 @@ def test_migration_005_preserves_populated_users_and_constraints(tmp_path: Path)
             )
 
 
+def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) -> None:
+    """Pre-squash version clamp can leave schema at 6 without users.permissions."""
+    db_path = tmp_path / "octop.db"
+    pool = SqlitePool(db_path)
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("UPDATE _schema_version SET version = 6")
+    run_migrations(pool)
+    with pool.connect() as conn:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+    assert version == 6
+    assert "permissions" in cols
+
+
 def test_foreign_keys_enabled(db: SqlitePool):
     with db.connect() as conn:
         fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
@@ -277,7 +299,9 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             row["name"]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 5
+        user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+    assert version == 6
+    assert "permissions" in user_cols
     assert {
         "published_experts",
         "sso_providers",

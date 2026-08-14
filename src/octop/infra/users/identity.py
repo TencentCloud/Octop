@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 
@@ -18,6 +18,7 @@ class User:
     role: Role
     display_name: str | None
     locale: str = "zh"
+    permissions: list[str] = field(default_factory=list)
 
     @property
     def label(self) -> str:

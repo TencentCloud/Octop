@@ -23,6 +23,7 @@ from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.password import hash_password, validate_password_policy, verify_password
+from octop.infra.users.permissions import validate_permission_keys
 from octop.infra.users.preferences import (
     ModelReasoningPreference,
     RemoteBrowserBookmark,
@@ -109,6 +110,7 @@ class UserManager:
                     role=Role(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
+                    permissions=list(row.permissions),
                 )
                 self._users[row.username] = user
 
@@ -126,11 +128,16 @@ class UserManager:
         role: Role,
         display_name: str | None = None,
         locale: str | None = None,
+        permissions: builtins.list[str] | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
         loc = normalize_locale(locale)
         validate_password_policy(password)
+        try:
+            keys = validate_permission_keys(permissions or [])
+        except ValueError as exc:
+            raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
         async with self._lock:
             if self._services.user_repo.get_by_username(username) is not None:
                 raise OctopError(
@@ -143,6 +150,7 @@ class UserManager:
                 role=role.value,
                 display_name=display_name,
                 locale=loc,
+                permissions=keys,
             )
             user = User(
                 id=uid,
@@ -150,6 +158,7 @@ class UserManager:
                 role=role,
                 display_name=display_name,
                 locale=loc,
+                permissions=keys,
             )
             self._users[username] = user
             self._services.audit_repo.write(actor=username, action="user.create", target=username)
@@ -225,6 +234,7 @@ class UserManager:
                             username=username,
                             role=Role.USER,
                             display_name=display_name,
+                            permissions=[],
                         )
                         self._users[username] = user
                         self._services.audit_repo.write(
@@ -252,6 +262,7 @@ class UserManager:
                     role=Role(row.role),
                     display_name=display_name if display_name is not None else row.display_name,
                     locale=normalize_locale(row.locale),
+                    permissions=list(row.permissions),
                 )
                 self._users[row.username] = user
                 return user
@@ -302,6 +313,7 @@ class UserManager:
                 role=Role(row.role),
                 display_name=row.display_name,
                 locale=normalize_locale(row.locale),
+                permissions=list(row.permissions),
             )
             self._users[username] = user
         self._services.audit_repo.write(actor=username, action="auth.login")
@@ -328,6 +340,26 @@ class UserManager:
         self._services.user_repo.clear_login_lockout(row.id)
         self._services.audit_repo.write(
             actor=ACTOR_ADMIN, action="user.password_reset", target=username
+        )
+
+    async def set_permissions(self, username: str, permissions: builtins.list[str]) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        try:
+            keys = validate_permission_keys(permissions)
+        except ValueError as exc:
+            raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
+        self._services.user_repo.set_permissions(row.id, keys)
+        async with self._lock:
+            current = self._users.get(username)
+            if current is not None:
+                current.permissions = list(keys)
+        self._services.audit_repo.write(
+            actor=ACTOR_ADMIN,
+            action="user.set_permissions",
+            target=username,
+            payload=",".join(keys),
         )
 
     async def set_role(self, username: str, role: Role) -> None:
@@ -423,6 +455,7 @@ class UserManager:
             role=Role(row.role),
             display_name=row.display_name,
             locale=normalize_locale(row.locale),
+            permissions=list(row.permissions),
         )
         async with self._lock:
             self._users[username] = user

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -72,9 +72,9 @@ class CreateInstanceBody(BaseModel):
     default_open: bool = Field(
         default=False,
         description=(
-            "When true, inject tools by default on IM and on Cron jobs with no "
-            "explicit connector picks. Dashboard and Cron with explicit picks "
-            "follow the user selection."
+            "Per-account default: when true, inject this connector's tools for "
+            "the owner on IM and on Cron jobs with no explicit connector picks. "
+            "Dashboard and Cron with explicit picks follow the selection."
         ),
     )
 
@@ -84,8 +84,9 @@ class PatchInstanceBody(BaseModel):
     default_open: bool | None = Field(
         default=None,
         description=(
-            "When set, update default-open. IM / empty Cron follow it; "
-            "Dashboard and Cron with explicit picks use the selection."
+            "When set, update per-account default-open. IM / empty Cron follow "
+            "it for this user; Dashboard and Cron with explicit picks use the "
+            "selection."
         ),
     )
 
@@ -744,7 +745,7 @@ async def connector_cli_status(
 )
 async def connector_install_cli(
     kind: str,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("connectors")),
 ) -> dict[str, Any]:
     """Run ``npm install -g`` for the connector CLI on the Octop host (admin only).
 

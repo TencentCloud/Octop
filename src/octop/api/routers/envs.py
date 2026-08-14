@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 
-from octop.api.deps import current_admin, get_server
+from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import (
     apply_env_file,
@@ -25,7 +25,7 @@ _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 @router.get("")
 async def list_envs(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("envs")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, str]]:
     path = env_file_path(server.paths.root)
@@ -35,7 +35,7 @@ async def list_envs(
 @router.put("")
 async def batch_save_envs(
     body: dict[str, str] = Body(...),
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("envs")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, str]]:
     cleaned: dict[str, str] = {}
@@ -55,7 +55,7 @@ async def batch_save_envs(
 @router.delete("/{key}")
 async def delete_env(
     key: str,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("envs")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, str]]:
     k = key.strip()

@@ -9,19 +9,24 @@ from octop.infra.knowledge.default_open import merge_knowledge_base_ids
 
 def test_merge_knowledge_base_ids_applies_only_visible_defaults_when_omitted() -> None:
     visible = [
-        SimpleNamespace(id="default", default_open=True, shared=False),
-        SimpleNamespace(id="optional", default_open=False, shared=False),
+        SimpleNamespace(id="default", owner_user_id=1, default_open=True, shared=False),
+        SimpleNamespace(id="optional", owner_user_id=1, default_open=False, shared=False),
     ]
 
-    assert merge_knowledge_base_ids(visible, None) == ["default"]
-    assert merge_knowledge_base_ids(visible, []) == []
-    assert merge_knowledge_base_ids(visible, ["optional", "unknown"]) == ["optional", "unknown"]
+    assert merge_knowledge_base_ids(visible, None, owner_user_id=1) == ["default"]
+    assert merge_knowledge_base_ids(visible, [], owner_user_id=1) == []
+    assert merge_knowledge_base_ids(visible, ["optional", "unknown"], owner_user_id=1) == [
+        "optional",
+        "unknown",
+    ]
 
 
-def test_merge_knowledge_base_ids_skips_shared_default_open() -> None:
+def test_merge_knowledge_base_ids_default_open_only_for_owner() -> None:
     visible = [
-        SimpleNamespace(id="mine", default_open=True, shared=False),
-        SimpleNamespace(id="shared-default", default_open=True, shared=True),
+        SimpleNamespace(id="mine", owner_user_id=1, default_open=True, shared=False),
+        SimpleNamespace(id="shared-default", owner_user_id=2, default_open=True, shared=True),
+        SimpleNamespace(id="shared-opt", owner_user_id=2, default_open=False, shared=True),
     ]
 
-    assert merge_knowledge_base_ids(visible, None) == ["mine"]
+    assert merge_knowledge_base_ids(visible, None, owner_user_id=1) == ["mine"]
+    assert merge_knowledge_base_ids(visible, None, owner_user_id=2) == ["shared-default"]

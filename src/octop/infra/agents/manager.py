@@ -184,6 +184,31 @@ def _resolve_memory_backend_kwargs(
     return memory_backend_from_agent_config(cfg, octop_config=config, workspace_dir=workspace_dir)
 
 
+async def _fill_missing_subagent_colors(agent: Any, rows: list[dict[str, Any]]) -> None:
+    """Copy ``color`` from workspace frontmatter when harness omitted it."""
+    missing = [row for row in rows if not str(row.get("color") or "").strip() and row.get("path")]
+    if not missing:
+        return
+    workspace = getattr(agent, "workspace", None)
+    aread = getattr(workspace, "aread_text", None)
+    if not callable(aread):
+        return
+    from octop.infra.utils.frontmatter import parse_frontmatter
+
+    for row in missing:
+        path = str(row.get("path") or "")
+        try:
+            text = await aread(path)
+        except (OSError, TypeError, ValueError):
+            continue
+        if not isinstance(text, str) or not text:
+            continue
+        meta, _body = parse_frontmatter(text)
+        color = str(meta.get("color") or "").strip()
+        if color:
+            row["color"] = color
+
+
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
@@ -1480,7 +1505,9 @@ class AgentManager:
     async def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""
         agent = self.get_agent(agent_id)
-        return await agent.list_subagent_summaries()
+        rows = [dict(row) for row in await agent.list_subagent_summaries()]
+        await _fill_missing_subagent_colors(agent, rows)
+        return rows
 
     def sync_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Push ``skills_disabled`` to the running harness agent (hot update)."""
@@ -1916,12 +1943,14 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
 
         # FilesystemGuard + ModelSettings live in harness-agent (auto-mounted).
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         agent_middleware: list[Any] = [
             *plugin_middleware,
             ReasoningRequestMiddleware(),
+            KnowledgeSearchHintMiddleware(),
             BinaryReadGuardMiddleware(),
         ]
 

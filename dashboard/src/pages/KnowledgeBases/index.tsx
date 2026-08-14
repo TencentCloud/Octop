@@ -42,7 +42,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { authApi, type OctopUser } from "../../api/modules/auth";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import {
   DEFAULT_KNOWLEDGE_LIMITS,
   knowledgeBasesApi,
@@ -170,6 +171,8 @@ export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
+  const user = useCurrentUser();
+  const canConfigureKb = userCan(user, "knowledge_bases");
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadDocsViewMode(),
   );
@@ -189,7 +192,6 @@ export default function KnowledgeBasesPage() {
       models: { id: string; name: string }[];
     }[]
   >([]);
-  const [user, setUser] = useState<OctopUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -209,7 +211,6 @@ export default function KnowledgeBasesPage() {
   const [previewFilename, setPreviewFilename] = useState("");
   const [previewText, setPreviewText] = useState("");
   const [baseForm] = Form.useForm<BaseFormValues>();
-  const sharedWatched = Form.useWatch("shared", baseForm);
   const uploadRef = useRef<HTMLInputElement>(null);
   const detailRequestGate = useRef(createDetailRequestGate());
   const {
@@ -314,14 +315,9 @@ export default function KnowledgeBasesPage() {
   );
 
   useEffect(() => {
-    void Promise.all([
-      loadBases(),
-      loadCapability(),
-      authApi
-        .me()
-        .then(setUser)
-        .catch(() => setUser(null)),
-    ]).finally(() => setLoading(false));
+    void Promise.all([loadBases(), loadCapability()]).finally(() =>
+      setLoading(false),
+    );
   }, [loadBases, loadCapability]);
 
   useEffect(() => {
@@ -398,10 +394,6 @@ export default function KnowledgeBasesPage() {
 
   const saveBase = async () => {
     const values = await baseForm.validateFields();
-    if (values.shared && values.default_open) {
-      message.error(t("knowledgeBases.defaultOpenDisabledWhenShared"));
-      return;
-    }
     try {
       const next =
         editingBase && selected
@@ -642,7 +634,7 @@ export default function KnowledgeBasesPage() {
       subtitle={t("knowledgeBases.subtitle")}
       fill
       actions={
-        user?.role === "admin" ? (
+        canConfigureKb ? (
           <Button icon={<Settings size={15} />} onClick={openSettings}>
             {t("knowledgeBases.settingsTitle")}
           </Button>
@@ -806,7 +798,7 @@ export default function KnowledgeBasesPage() {
                   type="warning"
                   message={t("knowledgeBases.unavailableTitle")}
                   description={
-                    user?.role === "admin" ? (
+                    canConfigureKb ? (
                       <>
                         {t("knowledgeBases.unavailableDescription")}{" "}
                         <Typography.Link onClick={openSettings}>
@@ -1193,18 +1185,12 @@ export default function KnowledgeBasesPage() {
             <div className={styles.formOptionRow}>
               <span className={styles.switchLabel}>
                 {t("knowledgeBases.defaultOpen")}
-                <Tooltip
-                  title={
-                    sharedWatched
-                      ? t("knowledgeBases.defaultOpenDisabledWhenShared")
-                      : t("knowledgeBases.defaultOpenHint")
-                  }
-                >
+                <Tooltip title={t("knowledgeBases.defaultOpenHint")}>
                   <CircleHelp size={14} className={styles.helpIcon} />
                 </Tooltip>
               </span>
               <Form.Item name="default_open" valuePropName="checked" noStyle>
-                <Switch size="small" disabled={Boolean(sharedWatched)} />
+                <Switch size="small" />
               </Form.Item>
             </div>
             <div className={styles.formOptionRow}>
@@ -1215,14 +1201,7 @@ export default function KnowledgeBasesPage() {
                 </Tooltip>
               </span>
               <Form.Item name="shared" valuePropName="checked" noStyle>
-                <Switch
-                  size="small"
-                  onChange={(checked) => {
-                    if (checked) {
-                      baseForm.setFieldValue("default_open", false);
-                    }
-                  }}
-                />
+                <Switch size="small" />
               </Form.Item>
             </div>
           </div>

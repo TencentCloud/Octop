@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.model_flags import is_embedding_model, is_onnx_local_provider
 from octop.infra.agents.providers.onnx_catalog import list_onnx_catalog_models
 from octop.infra.agents.providers.onnx_service import (
@@ -115,8 +115,6 @@ def _map_knowledge_error(exc: Exception, *, locale: str) -> OctopError:
         return OctopError.localized(ErrorCode.KNOWLEDGE_DOC_TOO_LARGE, locale)
     if "at most" in text and "knowledge bases" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
-    if "cannot be default_open" in text:
-        return OctopError.localized(ErrorCode.KNOWLEDGE_SHARED_DEFAULT_CONFLICT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
     if "unique constraint" in text or "duplicate key" in text:
@@ -154,7 +152,7 @@ async def capability(
 @router.get("/embedding-options", summary="List knowledge embedding backend options")
 async def embedding_options(
     server: OctopServer = Depends(get_server),
-    _admin: User = Depends(current_admin),
+    _admin: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     assert server.services is not None
     remote = []
@@ -191,7 +189,7 @@ async def put_feature(
     body: FeatureBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _admin: User = Depends(current_admin),
+    _admin: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     assert server.services is not None
     previous = get_capability(server.services.settings_repo.get, server.services.provider_repo)
@@ -242,7 +240,7 @@ async def create_base(
     body: CreateBaseBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     locale = resolve_request_locale(request)
     try:
@@ -268,7 +266,13 @@ async def default_open_bases(
     bases = _knowledge_service(server).list_visible_bases(
         actor_user_id=user.id, is_admin=_is_admin(user)
     )
-    return {"knowledge_base_ids": [base.id for base in bases if base.default_open]}
+    return {
+        "knowledge_base_ids": [
+            base.id
+            for base in bases
+            if base.default_open and int(base.owner_user_id) == int(user.id)
+        ]
+    }
 
 
 @router.get("/{kb_id}", summary="Get a visible knowledge base")
@@ -295,7 +299,7 @@ async def update_base(
     body: UpdateBaseBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     try:
         return _base_payload(
@@ -322,7 +326,7 @@ async def delete_base(
     kb_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> None:
     try:
         _knowledge_service(server).delete_base(
@@ -358,7 +362,7 @@ async def upload_document(
     request: Request,
     upload: UploadFile = File(..., description="A supported text, PDF, DOCX, or PPTX document."),
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     locale = resolve_request_locale(request)
     try:
@@ -408,7 +412,7 @@ async def delete_document(
     doc_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> None:
     try:
         _knowledge_service(server).delete_document(
@@ -427,7 +431,7 @@ async def reindex_document(
     doc_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     try:
         _require_usable(server, request)
@@ -446,7 +450,7 @@ async def reindex_base(
     kb_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, int]:
     try:
         _require_usable(server, request)

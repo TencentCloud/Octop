@@ -11,6 +11,7 @@ import {
 import type { ResolvedModel } from "../../../api/types";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import { CONNECTORS_CHANGED_EVENT } from "../../Agent/Connectors/customMcpUtils";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { activeModelToRef } from "./useChatContextWindow";
 import {
   hasSavedConnectors,
@@ -30,6 +31,8 @@ export function useChatComposerResources(
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
 ) {
+  const user = useCurrentUser();
+  const currentUserId = user?.id ?? null;
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<
@@ -189,11 +192,16 @@ export function useChatComposerResources(
         return knowledgeBasesApi.list().then((bases) => {
           if (cancelled) return;
           setChatKnowledgeBases(bases);
+          const ownedDefaults = bases
+            .filter(
+              (base) =>
+                base.default_open &&
+                currentUserId != null &&
+                base.owner_user_id === currentUserId,
+            )
+            .map((base) => base.id);
           setSelectedKnowledgeBaseIds((previous) =>
-            withDefaultOpenKnowledgeBases(
-              previous,
-              bases.filter((base) => base.default_open).map((base) => base.id),
-            ),
+            withDefaultOpenKnowledgeBases(previous, ownedDefaults),
           );
         });
       })
@@ -203,7 +211,7 @@ export function useChatComposerResources(
     return () => {
       cancelled = true;
     };
-  }, [resolvedAgentId]);
+  }, [resolvedAgentId, currentUserId]);
 
   useEffect(() => {
     let cancelled = false;

@@ -1,11 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { KeyRound, Users } from "lucide-react";
+import type { ReactNode } from "react";
 import PageShell from "../../../layouts/PageShell";
 import SettingsTabBar from "../../Settings/shared/SettingsTabBar";
 import UsersListPanel from "./UsersListPanel";
 import SsoPanel from "./SsoPanel";
+import ForbiddenPage from "../../../components/ForbiddenPage";
+import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
+import { USERS_TAB_PERMISSIONS } from "../../../utils/permissions";
 
 type TabKey = "local" | "sso";
 
@@ -29,24 +31,14 @@ function parseTab(raw: string | null): TabKey {
 
 export default function AdminUsersPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabKey>(() =>
-    parseTab(searchParams.get("tab")),
-  );
+  const { allowedTabs, activeTab, forbidden, selectTab } = useGatedSearchTabs({
+    tabs: TABS,
+    tabPermissions: USERS_TAB_PERMISSIONS,
+    parseTab,
+    querylessKey: "local",
+  });
 
-  useEffect(() => {
-    setActiveTab(parseTab(searchParams.get("tab")));
-  }, [searchParams]);
-
-  const selectTab = (key: TabKey) => {
-    setActiveTab(key);
-    if (key === "local") {
-      searchParams.delete("tab");
-      setSearchParams(searchParams, { replace: true });
-    } else {
-      setSearchParams({ tab: key }, { replace: true });
-    }
-  };
+  if (forbidden) return <ForbiddenPage />;
 
   return (
     <PageShell.Tabbed
@@ -54,7 +46,7 @@ export default function AdminUsersPage() {
       subtitle={t("pageShell.adminUsers.subtitle")}
       tabBar={
         <SettingsTabBar
-          tabs={TABS}
+          tabs={allowedTabs}
           activeKey={activeTab}
           onChange={selectTab}
         />

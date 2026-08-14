@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import builtins
+import json
+from dataclasses import dataclass, field
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, insert_returning_id, map_rows, now_ts
+
+
+def _parse_permissions(raw: object) -> builtins.list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw or "[]")
+        except (ValueError, TypeError):
+            return []
+        if isinstance(parsed, list):
+            return [str(x) for x in parsed]
+        return []
+    return []
 
 
 @dataclass(frozen=True)
@@ -24,6 +42,7 @@ class UserRow:
     preferences_json: str = "{}"
     login_failed_count: int = 0
     login_locked_until: int = 0
+    permissions: builtins.list[str] = field(default_factory=list)
 
     @classmethod
     def from_row(cls, r: DbRow) -> UserRow:
@@ -43,6 +62,7 @@ class UserRow:
             email=r["email"] if "email" in keys else None,
             sso_provider_id=r["sso_provider_id"] if "sso_provider_id" in keys else None,
             sso_subject=r["sso_subject"] if "sso_subject" in keys else None,
+            permissions=_parse_permissions(r["permissions"] if "permissions" in keys else None),
         )
 
 
@@ -61,13 +81,15 @@ class UserRepo:
         email: str | None = None,
         sso_provider_id: int | None = None,
         sso_subject: str | None = None,
+        permissions: builtins.list[str] | None = None,
     ) -> int:
+        perms_json = json.dumps(permissions or [], ensure_ascii=False)
         with self._db.transaction() as conn:
             return insert_returning_id(
                 conn,
                 "INSERT INTO users(username, password_hash, role, display_name, locale, "
-                "email, sso_provider_id, sso_subject, disabled, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                "email, sso_provider_id, sso_subject, disabled, created_at, permissions) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
                 (
                     username,
                     password_hash,
@@ -78,6 +100,7 @@ class UserRepo:
                     sso_provider_id,
                     sso_subject,
                     now_ts(),
+                    perms_json,
                 ),
             )
 
@@ -125,7 +148,7 @@ class UserRepo:
         with self._db.transaction() as conn:
             conn.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", params)
 
-    def list(self, *, include_disabled: bool = False) -> list[UserRow]:
+    def list(self, *, include_disabled: bool = False) -> builtins.list[UserRow]:
         sql = "SELECT * FROM users"
         if not include_disabled:
             sql += " WHERE disabled = 0"
@@ -168,6 +191,14 @@ class UserRepo:
             conn.execute(
                 "UPDATE users SET preferences_json = ? WHERE id = ?",
                 (preferences_json, user_id),
+            )
+
+    def set_permissions(self, user_id: int, permissions: builtins.list[str]) -> None:
+        payload = json.dumps(permissions, ensure_ascii=False)
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET permissions = ? WHERE id = ?",
+                (payload, user_id),
             )
 
     def delete(self, user_id: int) -> None:

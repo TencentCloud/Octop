@@ -7,6 +7,7 @@ import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import styles from "../index.module.less";
 
@@ -25,6 +26,7 @@ export default function KnowledgePickerPopover({
 }: KnowledgePickerPopoverProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const currentUserId = useCurrentUser()?.id ?? null;
 
   const filterFn = useCallback(
     (knowledgeBase: KnowledgeBase, query: string) =>
@@ -62,7 +64,9 @@ export default function KnowledgePickerPopover({
               <span className={pickerStyles.itemName}>
                 {knowledgeBase.name}
               </span>
-              {knowledgeBase.default_open ? (
+              {knowledgeBase.default_open &&
+              currentUserId != null &&
+              knowledgeBase.owner_user_id === currentUserId ? (
                 <span className={pickerStyles.itemDesc}>
                   {t("knowledgeBases.defaultOpenBadge")}
                 </span>
