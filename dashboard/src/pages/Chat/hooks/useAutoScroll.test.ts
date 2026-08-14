@@ -35,6 +35,30 @@ function makeScroller({
   return el;
 }
 
+/**
+ * Replace the no-op ResizeObserver stub (from src/test/setup.ts) with one we
+ * can fire manually, mirroring the real browser delivering RO callbacks after
+ * the dock resizes the scroller.
+ */
+function installCallableResizeObserver() {
+  const instances: Array<{ emit: () => void }> = [];
+  class MockResizeObserver {
+    private readonly cb: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) {
+      this.cb = cb;
+      instances.push(this);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    emit() {
+      this.cb([], this as unknown as ResizeObserver);
+    }
+  }
+  vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  return instances;
+}
+
 describe("useAutoScroll", () => {
   beforeEach(() => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
@@ -241,6 +265,154 @@ describe("useAutoScroll", () => {
 
     expect(result.current.showScrollBtn).toBe(true);
     expect(result.current.isFollowMode).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("does not show the jump-to-bottom control after a layout clamp at the bottom", () => {
+    // Regression: closing the file dock grows the viewport, so the browser
+    // clamps scrollTop to the new max and fires a fake "scroll-up". The user
+    // never scrolled — the ↓ control must not appear and mode stays follow.
+    vi.useFakeTimers();
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 800,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    // Dock closes → max scrollTop drops from 800 to 600; the browser rewrites
+    // scrollTop to 600 (the setter clamps it).
+    Object.defineProperty(container, "scrollHeight", {
+      value: 800,
+      configurable: true,
+    });
+    act(() => {
+      container.scrollTop = 800;
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    expect(result.current.isFollowMode).toBe(true);
+    expect(result.current.showScrollBtn).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("stays at the bottom with no button through a dock open/close resize cycle", () => {
+    // Regression (real browser, not just the stub): opening the file dock
+    // shrinks the chat scroller, closing it grows it back. The browser then
+    // clamps scrollTop and fires a fake "scroll-up" plus a ResizeObserver
+    // callback. Neither may surface the ↓ control while the user is at the
+    // bottom.
+    vi.useFakeTimers();
+    const roInstances = installCallableResizeObserver();
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 800,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(result.current.isFollowMode).toBe(true);
+    expect(result.current.showScrollBtn).toBe(false);
+
+    // Dock opens → scroller shrinks 200 → 120; follow pins to new max 880.
+    Object.defineProperty(container, "clientHeight", {
+      value: 120,
+      configurable: true,
+    });
+    act(() => {
+      roInstances.forEach((ro) => ro.emit());
+    });
+    expect(result.current.isFollowMode).toBe(true);
+    expect(result.current.showScrollBtn).toBe(false);
+    expect(container.scrollTop).toBe(880);
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    // Dock closes → scroller grows 120 → 200; max drops 880 → 800, so the
+    // browser clamps scrollTop to 800 (the setter clamps it).
+    Object.defineProperty(container, "clientHeight", {
+      value: 200,
+      configurable: true,
+    });
+    act(() => {
+      container.scrollTop = 880;
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    act(() => {
+      roInstances.forEach((ro) => ro.emit());
+    });
+
+    expect(result.current.isFollowMode).toBe(true);
+    expect(result.current.showScrollBtn).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("drops a stale jump-to-bottom control when a layout clamp lands at the bottom in free mode", () => {
+    // The user was already in free mode (scrolled up earlier), then a layout
+    // change clamps them back to the bottom. The ↓ control must disappear even
+    // though no scroll-down event fires to trigger the normal resume path.
+    vi.useFakeTimers();
+    const container = makeScroller({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 800,
+    });
+    const containerRef = { current: container };
+    const endRef = { current: document.createElement("div") };
+    endRef.current.scrollIntoView = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAutoScroll({ containerRef, endRef, deps: [] }),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    // User scrolls up genuinely → free mode, button shown.
+    act(() => {
+      container.scrollTop = 750;
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(result.current.isFollowMode).toBe(false);
+    expect(result.current.showScrollBtn).toBe(true);
+
+    // Content shrinks (scrollHeight 1000 → 850): the browser clamps scrollTop
+    // from 750 to the new max 650 — a scroll-up event whose resulting position
+    // is exactly the bottom. Follow must resume and the button must hide, even
+    // though no scroll-down event fires the normal resume path.
+    Object.defineProperty(container, "scrollHeight", {
+      value: 850,
+      configurable: true,
+    });
+    act(() => {
+      container.scrollTop = 750; // setter clamps to 650
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    expect(result.current.isFollowMode).toBe(true);
+    expect(result.current.showScrollBtn).toBe(false);
     vi.useRealTimers();
   });
 
