@@ -14,6 +14,8 @@ import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
 import { Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { userCan } from "../../../utils/permissions";
 import { useProviders, type ProviderRow } from "./useProviders";
 import { groupPresets, isLocalPreset, isPresetProvider } from "./presetUtils";
 import type { PresetGroup } from "./presetUtils";
@@ -32,6 +34,10 @@ const { Title } = Typography;
 
 export default function ModelsPage() {
   const { t } = useTranslation();
+  const user = useCurrentUser();
+  const canProviders = userCan(user, "providers");
+  const canOllama = userCan(user, "ollama_models");
+  const canOnnx = userCan(user, "onnx_models");
   const {
     providers,
     presets,
@@ -50,9 +56,22 @@ export default function ModelsPage() {
     [presets],
   );
   const localPresets = useMemo(
-    () => groupPresets(presets.filter((p) => isLocalPreset(p))),
-    [presets],
+    () =>
+      groupPresets(
+        presets.filter((p) => {
+          if (!isLocalPreset(p)) return false;
+          if (p.id === "onnx") return canOnnx;
+          if (p.id === "ollama") return canOllama;
+          return canOllama || canOnnx;
+        }),
+      ),
+    [presets, canOllama, canOnnx],
   );
+  const showCloudTab = canProviders;
+  const showLocalTab =
+    (canOllama || canOnnx) &&
+    (localPresets.grouped.length > 0 || localPresets.ungrouped.length > 0);
+  const showPresetSection = showCloudTab || showLocalTab;
 
   const renderPresetGrid = (
     grouped: PresetGroup[],
@@ -139,86 +158,90 @@ export default function ModelsPage() {
 
           <Divider style={{ margin: "24px 0" }} />
 
-          {/* Preset providers section */}
-          {presets.length > 0 && (
+          {showPresetSection && (
             <>
               <Title level={5} style={{ marginBottom: 12 }}>
                 {t("models.presetProviders")}
               </Title>
               <Tabs
                 items={[
-                  {
-                    key: "cloud",
-                    label: t("models.presetCloud"),
-                    children: renderPresetGrid(
-                      cloudPresets.grouped,
-                      cloudPresets.ungrouped,
-                    ),
-                  },
-                  {
-                    key: "local",
-                    label: t("models.presetLocal"),
-                    children: renderPresetGrid(
-                      localPresets.grouped,
-                      localPresets.ungrouped,
-                    ),
-                  },
-                ]}
+                  showCloudTab
+                    ? {
+                        key: "cloud",
+                        label: t("models.presetCloud"),
+                        children: renderPresetGrid(
+                          cloudPresets.grouped,
+                          cloudPresets.ungrouped,
+                        ),
+                      }
+                    : null,
+                  showLocalTab
+                    ? {
+                        key: "local",
+                        label: t("models.presetLocal"),
+                        children: renderPresetGrid(
+                          localPresets.grouped,
+                          localPresets.ungrouped,
+                        ),
+                      }
+                    : null,
+                ].filter((item) => item !== null)}
               />
             </>
           )}
 
-          {/* Custom providers section — title row with inline "+ add" button */}
-          <>
-            {(presets.length > 0 || customProviders.length > 0) && (
-              <Divider style={{ margin: "20px 0" }} />
-            )}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 12,
-              }}
-            >
-              <Title level={5} style={{ margin: 0 }}>
-                {t("models.customProviders")}
-              </Title>
-              <Button
-                type="primary"
-                size="small"
-                icon={<Plus size={13} />}
-                onClick={() => setAddOpen(true)}
+          {canProviders && (
+            <>
+              {(presets.length > 0 || customProviders.length > 0) && (
+                <Divider style={{ margin: "20px 0" }} />
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 12,
+                }}
               >
-                {t("models.addCustomProvider")}
-              </Button>
-            </div>
-            {customProviders.length > 0 ? (
-              <div className={styles.providerCards}>
-                {customProviders.map((p) => (
-                  <ProviderCard
-                    key={p.id}
-                    provider={p}
-                    onSaved={fetchAll}
-                    isHover={hoveredCard === String(p.id)}
-                    onMouseEnter={() => setHoveredCard(String(p.id))}
-                    onMouseLeave={() => setHoveredCard(null)}
-                    apiPrefix="/admin/providers"
-                  />
-                ))}
+                <Title level={5} style={{ margin: 0 }}>
+                  {t("models.customProviders")}
+                </Title>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<Plus size={13} />}
+                  onClick={() => setAddOpen(true)}
+                >
+                  {t("models.addCustomProvider")}
+                </Button>
               </div>
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t("models.noCustomProvidersHint")}
-              />
-            )}
-          </>
+              {customProviders.length > 0 ? (
+                <div className={styles.providerCards}>
+                  {customProviders.map((p) => (
+                    <ProviderCard
+                      key={p.id}
+                      provider={p}
+                      onSaved={fetchAll}
+                      isHover={hoveredCard === String(p.id)}
+                      onMouseEnter={() => setHoveredCard(String(p.id))}
+                      onMouseLeave={() => setHoveredCard(null)}
+                      apiPrefix="/admin/providers"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t("models.noCustomProvidersHint")}
+                />
+              )}
+            </>
+          )}
         </>
       )}
 
       <CustomProviderModal
-        open={addOpen}
+        open={addOpen && canProviders}
         onClose={() => setAddOpen(false)}
         onSaved={fetchAll}
         apiPrefix="/admin/providers"

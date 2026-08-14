@@ -1,5 +1,6 @@
 /**
- * PresetProviderModal — create a provider from preset using unified layout.
+ * PresetProviderModal — create a cloud provider from a built-in preset.
+ * Local runtimes (Ollama / ONNX) use LocalServiceCard + ProviderConfigModal instead.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Button, Divider, Form, Input, Modal } from "antd";
@@ -45,10 +46,9 @@ export function PresetProviderModal({
   const [fetchingModels, setFetchingModels] = useState(false);
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
   const [form] = Form.useForm<PresetForm>();
-  const isOllama = preset.id === "ollama";
   const isCodexOAuth = preset.auth_method === "codex_oauth";
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
-  const canTest = !!(apiKey?.trim() || isOllama);
+  const canTest = !!apiKey?.trim();
 
   const draftProvider = useMemo<ProviderRow>(
     () => ({
@@ -58,21 +58,12 @@ export function PresetProviderModal({
       base_url:
         (form.getFieldValue("base_url") as string | undefined) ||
         preset.base_url,
-      api_key:
-        (form.getFieldValue("api_key") as string | undefined) ||
-        (isOllama ? "ollama" : null),
+      api_key: (form.getFieldValue("api_key") as string | undefined) || null,
       models: draftModels,
       note: null,
       enabled: true,
     }),
-    [
-      draftModels,
-      form,
-      isOllama,
-      preset.base_url,
-      preset.name,
-      preset.protocol,
-    ],
+    [draftModels, form, preset.base_url, preset.name, preset.protocol],
   );
 
   useEffect(() => {
@@ -107,15 +98,15 @@ export function PresetProviderModal({
     if (isCodexOAuth) return;
     try {
       const values = await form.validateFields(["base_url", "api_key"]);
-      const apiKey = values.api_key?.trim() || (isOllama ? "ollama" : "");
-      if (!apiKey) {
+      const key = values.api_key?.trim();
+      if (!key) {
         message.warning(t("models.pleaseEnterApiKey"));
         return;
       }
       setFetchingModels(true);
       const result = await fetchProviderModels({
         kind: "openai",
-        api_key: apiKey,
+        api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
       });
       if (!result.ok) {
@@ -161,7 +152,7 @@ export function PresetProviderModal({
 
   const testDraftModel = async (modelId: string) => {
     const values = await form.validateFields(["name", "base_url", "api_key"]);
-    const key = values.api_key?.trim() || (isOllama ? "ollama" : "");
+    const key = values.api_key?.trim();
     if (!key) {
       return { ok: false, error: t("models.pleaseEnterApiKey") };
     }
@@ -184,8 +175,8 @@ export function PresetProviderModal({
         message.warning(t("models.testDraftNeedModel"));
         return;
       }
-      const apiKey = values.api_key?.trim() || (isOllama ? "ollama" : "");
-      if (!apiKey) {
+      const key = values.api_key?.trim();
+      if (!key) {
         message.warning(t("models.pleaseEnterApiKey"));
         return;
       }
@@ -227,7 +218,7 @@ export function PresetProviderModal({
           name: values.name.trim(),
           kind: preset.protocol,
           base_url: values.base_url?.trim() || null,
-          api_key: values.api_key?.trim() || (isOllama ? "ollama" : null),
+          api_key: values.api_key?.trim() || null,
           models: draftModels,
         }),
       });
@@ -318,17 +309,15 @@ export function PresetProviderModal({
             <Form.Item
               name="api_key"
               label="API Key"
-              rules={
-                isOllama
-                  ? []
-                  : [{ required: true, message: t("models.pleaseEnterApiKey") }]
-              }
-              extra={isOllama ? t("models.apiKeyExtraOptional") : undefined}
+              rules={[
+                {
+                  required: true,
+                  message: t("models.pleaseEnterApiKey"),
+                },
+              ]}
             >
               <Input.Password
-                placeholder={
-                  isOllama ? t("models.apiKeyExtraOptional") : apiKeyPlaceholder
-                }
+                placeholder={apiKeyPlaceholder}
                 visibilityToggle
               />
             </Form.Item>

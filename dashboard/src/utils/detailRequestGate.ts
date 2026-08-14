@@ -1,3 +1,4 @@
+/** Invalidate in-flight detail fetches after delete / re-select. */
 export function createDetailRequestGate() {
   let latestRequest = 0;
 

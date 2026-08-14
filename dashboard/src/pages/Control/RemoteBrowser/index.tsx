@@ -1063,7 +1063,7 @@ export default function RemoteBrowserPage({
             title={t("remoteBrowser.installFailed", "安装失败")}
             subTitle={t(
               "remoteBrowser.installFailedHint",
-              "可重试或手动运行 playwright install chromium",
+              "自动安装失败，请重试。",
             )}
             style={{ padding: "8px 0" }}
           />

@@ -3,9 +3,11 @@ import { Cpu } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { UserComposerContext } from "../hooks/useChat";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
+import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import ContextChip, { type ContextChipVariant } from "./ContextChip";
 import { skillChipLabel } from "../utils/skillChipLabel";
 import { modelShortLabel } from "../../../utils/modelOptions";
@@ -14,6 +16,7 @@ import styles from "../index.module.less";
 export interface ComposerTagLookups {
   skills?: SkillSpec[];
   connectors?: { mcp_server_name: string; label: string; kind: string }[];
+  knowledgeBases?: KnowledgeBase[];
   agents?: ChatAgentOption[];
 }
 
@@ -61,6 +64,18 @@ export default function UserMessageComposerTags({
           "⛓"
         ),
         label: connector?.label || name,
+      });
+    }
+
+    for (const id of context.knowledgeBaseIds ?? []) {
+      const knowledgeBase = lookups?.knowledgeBases?.find(
+        (base) => base.id === id,
+      );
+      items.push({
+        key: `knowledge-${id}`,
+        variant: "knowledge",
+        icon: knowledgeIconForName(knowledgeBase?.icon_name, 11),
+        label: knowledgeBase?.name || id,
       });
     }
 

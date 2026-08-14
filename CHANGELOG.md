@@ -12,6 +12,13 @@
 - 取消首次引导时删除 `octop-login.txt` 引导密码文件的逻辑，避免引导密码意外丢失
 - 修复安装脚本版本显示问题，并将安装输出调整为英文
 
+### 新增
+
+- Octop-owned built-in `skill-manager` for conversational Skill lifecycle
+  management from uploaded files, archives, Git/GitHub or web URLs, and
+  SkillHub. It is seeded into every agent instance without modifying
+  harness-agent and installs user Skills only under that agent's `skills/`.
+
 ## [0.9.22] - 2026-08-11
 
 ### 新增

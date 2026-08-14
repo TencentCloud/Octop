@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from harness_agent.backends.workspace import BackendWorkspace
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row, require_agent_row
 
 if TYPE_CHECKING:
     from harness_agent import HarnessAgent
@@ -39,9 +39,11 @@ async def require_running_workspace(
     user: Any,
     as_user: int | None,
     server: Any,
+    owner_only: bool = False,
 ) -> BackendWorkspace:
     """Auth-checked :class:`BackendWorkspace` for a running agent."""
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    checker = require_agent_owner_row if owner_only else require_agent_row
+    checker(agent_id, user=user, as_user=as_user, server=server)
     return require_running_agent(server, agent_id).workspace
 
 

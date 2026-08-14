@@ -174,8 +174,8 @@ def test_desktop_status_deps_missing() -> None:
 
 def test_python_deps_install_cmd_prefers_uv(monkeypatch) -> None:
     monkeypatch.setattr(
-        "octop.infra.desktop.setup.shutil.which",
-        lambda name: "/usr/bin/uv" if name == "uv" else None,
+        "octop.infra.utils.runtime_packages.find_uv_binary",
+        lambda: "/usr/bin/uv",
     )
     monkeypatch.setattr("octop.infra.desktop.setup.sys.executable", "/venv/bin/python3")
     cmd = python_deps_install_cmd()
@@ -185,18 +185,15 @@ def test_python_deps_install_cmd_prefers_uv(monkeypatch) -> None:
 
 
 def test_python_deps_install_cmd_falls_back_to_pip(monkeypatch) -> None:
-    monkeypatch.setattr("octop.infra.desktop.setup.shutil.which", lambda _name: None)
+    monkeypatch.setattr("octop.infra.utils.runtime_packages.find_uv_binary", lambda: None)
     monkeypatch.setattr("octop.infra.desktop.setup.sys.executable", "/venv/bin/python3")
-    monkeypatch.setattr(
-        "octop.infra.desktop.setup.importlib.util.find_spec",
-        lambda name: object() if name == "pip" else None,
-    )
     cmd = python_deps_install_cmd()
     assert cmd == [
         "/venv/bin/python3",
         "-m",
         "pip",
         "install",
+        "--disable-pip-version-check",
         "mss>=9.0",
         "pynput>=1.7",
         "pillow>=10.0",

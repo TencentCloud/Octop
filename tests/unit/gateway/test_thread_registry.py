@@ -62,7 +62,7 @@ async def test_reset_creates_new(registry: ThreadRegistry) -> None:
         channel_chat_type="dm",
     )
     assert tid1 != tid2
-    assert len(registry.list_threads(agent_id="a1")) == 2
+    assert len(registry.list_threads(agent_id="a1", user_id=1)) == 2
     row = registry.get_thread(tid2)
     assert row is not None
     assert row.last_active == 0

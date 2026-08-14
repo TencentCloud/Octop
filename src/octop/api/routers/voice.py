@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.voice.manager import VoiceManager
 from octop.infra.voice.presets import load_voice_presets
@@ -99,7 +99,7 @@ async def get_active_voice(
 @router.put("/active")
 async def set_active_voice(
     body: ActiveVoiceBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
     return _voice_manager(server).set_active(stt=body.stt, tts=body.tts)
@@ -148,7 +148,7 @@ async def synthesize_speech(
 
 @admin_router.get("")
 async def admin_list_voice_providers(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     return [_row_to_dict(r) for r in server.services.voice_provider_repo.list_all()]
@@ -157,7 +157,7 @@ async def admin_list_voice_providers(
 @admin_router.post("", status_code=201)
 async def admin_create_voice_provider(
     body: VoiceProviderCreateBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     repo = server.services.voice_provider_repo
@@ -183,7 +183,7 @@ async def admin_create_voice_provider(
 async def admin_patch_voice_provider(
     provider_id: int,
     body: VoiceProviderPatchBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     repo = server.services.voice_provider_repo
@@ -208,7 +208,7 @@ async def admin_patch_voice_provider(
 @admin_router.delete("/{provider_id}", status_code=204)
 async def admin_delete_voice_provider(
     provider_id: int,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> None:
     repo = server.services.voice_provider_repo
@@ -228,7 +228,7 @@ async def admin_delete_voice_provider(
 async def admin_test_voice_provider(
     provider_id: int,
     body: VoiceTestBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     return await _voice_manager(server).test_provider(provider_id, mode=body.mode)

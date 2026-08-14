@@ -53,6 +53,24 @@ async def test_register_success_sets_runtime_connected(tmp_path: Path) -> None:
     assert status is not None
     assert status.connected is True
     assert status.reason is None
+    assert gw._channel_manager.add_channel.await_args is not None
+    assert gw._channel_manager.add_channel.await_args.kwargs["processor"] is not gw._processor
+
+
+@pytest.mark.asyncio
+async def test_register_stream_mode_uses_original_processor(tmp_path: Path) -> None:
+    gw = _make_gateway(tmp_path)
+    gw._channel_manager = MagicMock()
+    gw._channel_manager.add_channel = AsyncMock()
+    gw._channel_manager.get_channel = MagicMock(return_value=MagicMock())
+    gw._processor = MagicMock()
+    row = _fake_row()
+    row.config_json = '{"app_id":"x","app_secret":"y","response_mode":"stream"}'
+
+    await gw._register_channel(row)
+
+    assert gw._channel_manager.add_channel.await_args is not None
+    assert gw._channel_manager.add_channel.await_args.kwargs["processor"] is gw._processor
 
 
 @pytest.mark.asyncio

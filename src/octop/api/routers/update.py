@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
-from octop.api.deps import current_admin, current_user
+from octop.api.deps import current_user, require_permission
 from octop.api.routers.update_store import (
     UpgradeTaskStatus,
     cache_status,
@@ -68,19 +68,22 @@ def _build_status(
 
 @router.get("/status")
 async def update_status(_: Any = Depends(current_user)) -> dict[str, Any]:
+    """Return last check result; re-probe PyPI when the server cache TTL expires."""
     cached = get_cached_status()
     if cached is not None:
         return cached
-    return _build_status()
+    return await asyncio.to_thread(_build_status)
 
 
 @router.post("/check")
-async def check_for_updates(_: Any = Depends(current_admin)) -> dict[str, Any]:
+async def check_for_updates(_: Any = Depends(require_permission("update"))) -> dict[str, Any]:
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
-        return _build_status(latest=None, error="could not reach PyPI")
+        return await asyncio.to_thread(_build_status, latest=None, error="could not reach PyPI")
     release_notes = parse_changelog_for_version(pypi_info.description, pypi_info.version)
-    return _build_status(latest=pypi_info.version, release_notes=release_notes)
+    return await asyncio.to_thread(
+        _build_status, latest=pypi_info.version, release_notes=release_notes
+    )
 
 
 async def _upgrade_worker(task_id: str) -> None:
@@ -112,7 +115,7 @@ async def _upgrade_worker(task_id: str) -> None:
 
 
 @router.post("/upgrade")
-async def trigger_upgrade(_: Any = Depends(current_admin)) -> dict[str, Any]:
+async def trigger_upgrade(_: Any = Depends(require_permission("update"))) -> dict[str, Any]:
     if get_editable_path() is not None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -126,7 +129,7 @@ async def trigger_upgrade(_: Any = Depends(current_admin)) -> dict[str, Any]:
 @router.get("/progress")
 async def upgrade_progress(
     task_id: str = Query(...),
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     task = await get_task(task_id)
     if task is None:
@@ -153,7 +156,7 @@ def _restart_service_task(runtime: ServiceRuntime) -> None:
 @router.post("/restart")
 async def restart_service_endpoint(
     background_tasks: BackgroundTasks,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     mode = detect_service_mode()
     if mode is None:

@@ -7,12 +7,33 @@ from typing import Any
 from octop.infra.errors import ErrorCode, OctopError
 
 
+def agent_is_shared(row: Any) -> bool:
+    return int(getattr(row, "is_shared", 0) or 0) == 1
+
+
+def user_owns_agent(row: Any, user: Any) -> bool:
+    return row.user_id is not None and row.user_id == user.id
+
+
 def assert_agent_owner(row: Any, user: Any) -> None:
-    """Raise if the user may not access this agent row (admin bypasses)."""
+    """Raise if the user may not mutate this agent row (admin bypasses)."""
     if user.is_admin:
         return
     if row.user_id is None or row.user_id != user.id:
         raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by user")
+
+
+def _user_may_access(row: Any, user: Any) -> bool:
+    if user.is_admin:
+        return True
+    if row.user_id is not None and row.user_id == user.id:
+        return True
+    return bool(agent_is_shared(row))
+
+
+def assert_agent_access_row(row: Any, user: Any) -> None:
+    if not _user_may_access(row, user):
+        raise OctopError(ErrorCode.FORBIDDEN, "agent not accessible to user")
 
 
 def require_agent_row(
@@ -36,7 +57,20 @@ def require_agent_row(
         if row.user_id is not None and row.user_id != as_user:
             raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by as_user")
     else:
-        assert_agent_owner(row, user)
+        assert_agent_access_row(row, user)
+    return row
+
+
+def require_agent_owner_row(
+    agent_id: str,
+    *,
+    user: Any,
+    as_user: int | None,
+    server: Any,
+) -> Any:
+    """Load an agent row and require owner-level access."""
+    row = require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    assert_agent_owner(row, user)
     return row
 
 

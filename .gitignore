@@ -37,6 +37,7 @@ ENV/
 
 # Test / coverage
 .pytest_cache/
+.testmondata*
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -90,3 +91,4 @@ scripts/dev-local-link.sh
 # Local agent planning docs (not for upstream)
 docs/superpowers/
 scripts/lh_image_install_octop_tencentos.sh
+.worktrees/

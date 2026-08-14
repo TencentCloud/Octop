@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Button } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { setAuthToken } from "../../api";
-import { authApi } from "../../api/modules/auth";
+import { authApi, type OidcStatus } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
 import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
@@ -17,9 +17,12 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const { isDark } = useTheme();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oidc, setOidc] = useState<OidcStatus | null>(null);
+  const [oidcLoading, setOidcLoading] = useState(false);
   const [slideVerified, setSlideVerified] = useState(false);
   const [slideResetKey, setSlideResetKey] = useState(0);
 
@@ -48,9 +51,38 @@ export default function LoginPage() {
     };
   }, [navigate]);
 
+  useEffect(() => {
+    authApi
+      .getOidcStatus()
+      .then(setOidc)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const code = searchParams.get("oidc_error");
+    if (!code) return;
+    message.error(
+      t(`login.oidcError.${code}`, {
+        defaultValue: t("login.oidcError.generic"),
+      }),
+    );
+    navigate("/login", { replace: true });
+  }, [navigate, searchParams, t]);
+
   const resetSlide = () => {
     setSlideVerified(false);
     setSlideResetKey((k) => k + 1);
+  };
+
+  const onOidc = async () => {
+    setOidcLoading(true);
+    try {
+      const { authorization_url } = await authApi.startOidc("/chat");
+      window.location.href = authorization_url;
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("login.oidcStartFailed"), t));
+      setOidcLoading(false);
+    }
   };
 
   const handleLogin = async () => {
@@ -163,6 +195,46 @@ export default function LoginPage() {
         >
           {t("login.submit")}
         </Button>
+
+        {oidc?.enabled && (
+          <>
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                color: "var(--fn-text-tertiary)",
+                fontSize: 13,
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  height: 1,
+                  background: "var(--fn-border-primary)",
+                }}
+              />
+              {t("login.or")}
+              <span
+                style={{
+                  flex: 1,
+                  height: 1,
+                  background: "var(--fn-border-primary)",
+                }}
+              />
+            </div>
+            <Button
+              size="large"
+              block
+              loading={oidcLoading}
+              onClick={onOidc}
+              style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+            >
+              {t("login.oidcWith", { name: oidc.display_name })}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

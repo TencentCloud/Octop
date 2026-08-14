@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from octop.api.deps import current_admin
+from octop.api.deps import require_permission
 from octop.infra.browser.setup import uninstall_browser_stream
 from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.post("/browser/uninstall")
 async def uninstall_browser(
     request: Request,
-    _user: User = Depends(current_admin),
+    _user: User = Depends(require_permission("browser")),
 ) -> StreamingResponse:
     """Stream browser uninstall progress as SSE (admin only)."""
     locale = resolve_request_locale(request)

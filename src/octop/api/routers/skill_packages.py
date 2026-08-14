@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import get_server, require_permission
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
     SkillHubMarketErrorKind,
@@ -224,7 +224,7 @@ def _package_skill_or_404(
 @router.get("", summary="List global skill packages")
 async def list_skill_packages(
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     store = _store(server)
     return [
@@ -236,7 +236,7 @@ async def list_skill_packages(
 async def package_hub_search(
     q: str = "",
     limit: int = 50,
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     from fastapi import HTTPException  # noqa: PLC0415
 
@@ -256,7 +256,7 @@ async def package_hub_search(
 @router.get("/hub/rankings", summary="SkillHub rankings for installing into packages")
 async def package_hub_rankings(
     type: str = "all",
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     from fastapi import HTTPException  # noqa: PLC0415
 
@@ -280,7 +280,7 @@ async def package_hub_rankings(
 async def create_skill_package(
     body: CreateSkillPackageBody,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     name = _required(body.name, "name")
@@ -307,7 +307,7 @@ async def create_skill_package(
 async def create_from_skillhub(
     body: FromSkillHubBody,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     try:
@@ -331,7 +331,7 @@ async def get_skill_package(
     package_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -344,7 +344,7 @@ async def update_skill_package(
     body: UpdateSkillPackageBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -376,7 +376,7 @@ async def delete_skill_package(
     package_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> None:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -391,7 +391,7 @@ async def list_package_skills(
     package_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     store = _store(server)
     _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -404,7 +404,7 @@ async def get_package_skill(
     slug: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -420,7 +420,7 @@ async def create_package_skill(
     body: CreatePackageSkillBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -449,7 +449,7 @@ async def update_package_skill(
     body: UpdatePackageSkillBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -475,7 +475,7 @@ async def delete_package_skill(
     slug: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> None:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
@@ -530,7 +530,7 @@ async def import_package_skill(
     body: ImportPackageSkillBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     import asyncio  # noqa: PLC0415
     from urllib.error import HTTPError, URLError  # noqa: PLC0415
@@ -610,7 +610,7 @@ async def hub_install_package_skill(
     body: HubInstallPackageSkillBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     from fastapi import HTTPException  # noqa: PLC0415
 

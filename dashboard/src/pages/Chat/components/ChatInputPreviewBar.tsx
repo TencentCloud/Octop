@@ -2,9 +2,11 @@ import { X, FileText, Cpu } from "lucide-react";
 import AuthImage from "../../../components/AuthImage";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
+import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import ContextChip from "./ContextChip";
 import { skillChipLabel } from "../utils/skillChipLabel";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
@@ -16,6 +18,7 @@ interface ChatInputPreviewBarProps {
   uploading: boolean;
   selectedSkills: string[];
   selectedConnectors: string[];
+  selectedKnowledgeBaseIds: string[];
   selectedTargetAgents: string[];
   selectedModel?: string | null;
   availableSkills?: SkillSpec[];
@@ -25,10 +28,12 @@ interface ChatInputPreviewBarProps {
     kind: string;
     default_open?: boolean;
   }[];
+  availableKnowledgeBases?: KnowledgeBase[];
   availableAgents: ChatAgentOption[];
   onRemoveAttachment: (index: number) => void;
   onSkillsChange?: (names: string[]) => void;
   onConnectorsChange?: (names: string[]) => void;
+  onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   onTargetAgentsChange?: (ids: string[]) => void;
   onModelChange?: (model: string | null) => void;
 }
@@ -38,13 +43,16 @@ export default function ChatInputPreviewBar({
   uploading,
   selectedSkills,
   selectedConnectors,
+  selectedKnowledgeBaseIds,
   selectedTargetAgents,
   availableSkills,
   availableConnectors,
+  availableKnowledgeBases,
   availableAgents,
   onRemoveAttachment,
   onSkillsChange,
   onConnectorsChange,
+  onKnowledgeBaseIdsChange,
   onTargetAgentsChange,
   selectedModel,
   onModelChange,
@@ -60,6 +68,7 @@ export default function ChatInputPreviewBar({
     attachments.length > 0 ||
     uploading ||
     selectedConnectors.length > 0 ||
+    selectedKnowledgeBaseIds.length > 0 ||
     selectedSkills.length > 0 ||
     selectedTargetAgents.length > 0 ||
     showModelChip;
@@ -145,6 +154,27 @@ export default function ChatInputPreviewBar({
               label={c.label}
               onRemove={() =>
                 onConnectorsChange(selectedConnectors.filter((n) => n !== name))
+              }
+            />
+          );
+        })}
+      {availableKnowledgeBases &&
+        onKnowledgeBaseIdsChange &&
+        selectedKnowledgeBaseIds.map((id) => {
+          const knowledgeBase = availableKnowledgeBases.find(
+            (base) => base.id === id,
+          );
+          if (!knowledgeBase) return null;
+          return (
+            <ContextChip
+              key={id}
+              variant="knowledge"
+              icon={knowledgeIconForName(knowledgeBase.icon_name, 12)}
+              label={knowledgeBase.name}
+              onRemove={() =>
+                onKnowledgeBaseIdsChange(
+                  selectedKnowledgeBaseIds.filter((baseId) => baseId !== id),
+                )
               }
             />
           );

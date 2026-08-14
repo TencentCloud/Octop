@@ -154,7 +154,7 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 @pytest.mark.asyncio
 async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPatch) -> None:
     server = MagicMock()
-    row = MagicMock(agent_id="agt_1")
+    row = MagicMock(agent_id="agt_1", user_id=1)
     server.app_runtime.gateway.thread_registry.get_thread.return_value = row
 
     monkeypatch.setattr(

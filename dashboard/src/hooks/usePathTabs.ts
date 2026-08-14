@@ -7,6 +7,8 @@ export interface UsePathTabsOptions<T extends string> {
   tabs: readonly T[];
   storageKey: string;
   defaultTab: T;
+  /** When set, saved/bare fallback only uses allowed tabs. Disallowed URLs stay. */
+  isAllowed?: (tab: T) => boolean;
 }
 
 export interface UsePathTabsResult<T extends string> {
@@ -29,6 +31,7 @@ export function usePathTabs<T extends string>({
   tabs,
   storageKey,
   defaultTab,
+  isAllowed,
 }: UsePathTabsOptions<T>): UsePathTabsResult<T> {
   const location = useLocation();
   const navigate = useNavigate();
@@ -54,12 +57,12 @@ export function usePathTabs<T extends string>({
   const readSaved = useCallback((): T => {
     try {
       const saved = localStorage.getItem(storageKey);
-      if (isTab(saved)) return saved;
+      if (isTab(saved) && (isAllowed?.(saved) ?? true)) return saved;
     } catch {
       /* ignore */
     }
     return defaultTab;
-  }, [storageKey, isTab, defaultTab]);
+  }, [storageKey, isTab, defaultTab, isAllowed]);
 
   const pathTab = tabFromPath(location.pathname);
   const underBase =

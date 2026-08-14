@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from octop.api.common.agent import assert_agent_owner
+from octop.api.common.agent import assert_agent_access_row, assert_agent_owner
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.runtime_limits import (
@@ -16,6 +16,7 @@ from octop.infra.agents.runtime_limits import (
     agent_runtime_values,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import user_has_permission
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class AgentCreateBody(AgentRuntimeFields):
     config: dict[str, Any] = {}
     icon: str | None = None
     template_name: str | None = None
+    is_shared: bool = False
 
 
 class AgentPatchBody(AgentRuntimeFields):
@@ -42,6 +44,7 @@ class AgentPatchBody(AgentRuntimeFields):
     config: dict[str, Any] | None = None
     icon: str | None = None
     template_name: str | None = None
+    is_shared: bool | None = None
 
 
 def _attach_unread_counts(
@@ -58,9 +61,17 @@ def _bootstrap_pending_for(server: Any, agent_id: str) -> bool:
     return not server.app_runtime.agent_registry.is_bootstrapped(agent_id)
 
 
+def _owner_username(server: Any, row: Any) -> str | None:
+    if row.user_id is None:
+        return None
+    owner = server.services.user_repo.get(row.user_id)
+    return owner.username if owner is not None else None
+
+
 def _row_dict(
     row: Any,
     *,
+    viewer_user_id: int | None = None,
     owner_username: str | None = None,
     bootstrap_pending: bool | None = None,
 ) -> dict[str, Any]:
@@ -87,10 +98,11 @@ def _row_dict(
         "template_name": row.template_name,
         "icon_name": cfg.get("icon_name"),
         "color": cfg.get("color"),
+        "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
+        "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
+        "owner_username": owner_username,
         **agent_runtime_values(cfg),
     }
-    if owner_username is not None:
-        payload["owner_username"] = owner_username
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
     return payload
@@ -107,12 +119,16 @@ async def list_agents(
 ) -> list[dict[str, Any]]:
     """List agents for the dashboard.
 
-    Default ``scope=mine`` returns only agents owned by the authenticated user
-    (including admins — chat/experts sidebars must not leak other users' agents).
-    Admins may pass ``scope=all`` for the admin agents overview.
+    Default ``scope=mine`` returns agents owned by the authenticated user plus
+    agents other users have explicitly shared.
+    Holders of the ``users`` permission (and admins) may pass ``scope=all``.
     """
-    if scope == "all" and not user.is_admin:
-        raise OctopError(ErrorCode.FORBIDDEN, "scope=all requires admin")
+    if scope == "all" and not user_has_permission(user, "users"):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "permission required",
+            details={"permission": "users"},
+        )
 
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
@@ -127,6 +143,7 @@ async def list_agents(
         payloads = [
             _row_dict(
                 r,
+                viewer_user_id=user.id,
                 owner_username=username_by_id.get(r.user_id) if r.user_id is not None else None,
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
             )
@@ -134,13 +151,26 @@ async def list_agents(
         ]
         return _attach_unread_counts(server, user.id, payloads)
 
-    rows = registry.list_agents(user.id)
+    owned = registry.list_agents(user.id)
+    shared = server.services.agent_repo.list_shared(exclude_user_id=user.id)
+    rows = list({row.agent_id: row for row in [*shared, *owned]}.values())
+    shared_owner_username_by_id: dict[int, str] = {}
+    for row in shared:
+        if row.user_id is None or row.user_id in shared_owner_username_by_id:
+            continue
+        owner = server.services.user_repo.get(row.user_id)
+        if owner is not None:
+            shared_owner_username_by_id[row.user_id] = owner.username
     return _attach_unread_counts(
         server,
         user.id,
         [
             _row_dict(
                 r,
+                viewer_user_id=user.id,
+                owner_username=(
+                    shared_owner_username_by_id.get(r.user_id) if r.user_id is not None else None
+                ),
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
             )
             for r in rows
@@ -169,9 +199,15 @@ async def create_agent(
         runtime_config=runtime_field_updates(body, exclude_unset=True),
         icon=body.icon,
         template_name=body.template_name,
+        is_shared=body.is_shared,
     )
     row = await server.app_runtime.agent_registry.create(spec)
-    return _row_dict(row, bootstrap_pending=_bootstrap_pending_for(server, row.agent_id))
+    return _row_dict(
+        row,
+        viewer_user_id=user.id,
+        owner_username=user.username,
+        bootstrap_pending=_bootstrap_pending_for(server, row.agent_id),
+    )
 
 
 @router.post("/{agent_id}/read", status_code=204, summary="Mark agent read")
@@ -200,9 +236,11 @@ async def get_agent(
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-    _assert_agent_owner(row, user)
+    assert_agent_access_row(row, user)
     return _row_dict(
         row,
+        viewer_user_id=user.id,
+        owner_username=_owner_username(server, row),
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
     )
 
@@ -223,12 +261,23 @@ async def patch_agent(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
-    row = await server.app_runtime.agent_registry.update(
-        agent_id,
-        **{k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "config"},
-        **({"config_json": json.dumps(body.config)} if body.config is not None else {}),
+    updates = {
+        key: value
+        for key, value in body.model_dump(exclude_unset=True).items()
+        if key not in {"config", "is_shared"}
+    }
+    if body.config is not None:
+        updates["config_json"] = json.dumps(body.config)
+    if updates:
+        row = await server.app_runtime.agent_registry.update(agent_id, **updates)
+    if body.is_shared is not None:
+        row = await server.app_runtime.agent_registry.set_shared(agent_id, body.is_shared)
+    return _row_dict(
+        row,
+        viewer_user_id=user.id,
+        owner_username=user.username,
+        bootstrap_pending=_bootstrap_pending_for(server, agent_id),
     )
-    return _row_dict(row, bootstrap_pending=_bootstrap_pending_for(server, agent_id))
 
 
 @router.delete("/{agent_id}", status_code=204, summary="Delete agent")

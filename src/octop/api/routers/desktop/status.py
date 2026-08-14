@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from octop.api.deps import current_admin
+from octop.api.deps import require_permission
 from octop.infra.desktop.session import active_session_count, session_limit
 from octop.infra.desktop.setup import desktop_status
 from octop.infra.users.identity import User
@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("/desktop/status")
 async def get_desktop_status(
     request: Request,
-    _user: User = Depends(current_admin),
+    _user: User = Depends(require_permission("desktop")),
 ) -> dict[str, object]:
     locale = resolve_request_locale(request)
     status = desktop_status(locale=locale)

@@ -333,13 +333,25 @@
     "SKILL_PACKAGE_NOT_FOUND": "Skill package not found.",
     "SKILL_PACKAGE_NAME_TAKEN": "Skill package {name} already exists.",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "Skill packages currently support only “Full local environment (filesystem + shell)” or “Local filesystem (no shell commands)”, with storage root / (POSIX) or the agent workspace root (Windows default).",
+    "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {slug} already exists.",
+    "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{name}”. Refresh the published template instead.",
+    "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect.",
     "PLUGIN_INVALID_ARCHIVE": "The download is not a valid plugin ZIP. Use a direct .zip download URL (on GitHub use raw.githubusercontent.com or the “Download” / “raw” link, not the /blob/ page).",
     "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
-    "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed."
+    "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed.",
+    "KNOWLEDGE_FEATURE_DISABLED": "Knowledge bases are disabled by the administrator.",
+    "KNOWLEDGE_PREREQUISITES_FAILED": "Knowledge-base embedding prerequisites are not ready.",
+    "KNOWLEDGE_NOT_FOUND": "Knowledge base or document not found.",
+    "KNOWLEDGE_FORBIDDEN": "You do not have access to this knowledge base.",
+    "KNOWLEDGE_DOC_LIMIT": "A knowledge base can contain at most 100 documents.",
+    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the 20 MB size limit.",
+    "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
+    "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
+    "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -413,6 +425,7 @@
     "read_file": "Read file",
     "write_file": "Write file",
     "edit_file": "Edit file",
+    "bash": "Shell (bash)",
     "execute": "Execute",
     "current_time": "Current time",
     "write_todos": "Write plan",
@@ -436,6 +449,7 @@
     "cronjob_update": "Update cron job",
     "cronjob_delete": "Delete cron job",
     "cronjob_run_now": "Run cron job now",
+    "search_knowledge": "Search knowledge base",
     "agent_list": "List agents",
     "ask_agent": "Ask agent",
     "call_agent": "Call agent",
@@ -520,6 +534,12 @@
     "empty_message": "[empty message]",
     "empty_image": "User sent an image.",
     "image_unavailable": "[Attachment] Image could not be loaded for the model."
+  },
+  "knowledge": {
+    "retrieval": {
+      "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
+      "preamble": "The following knowledge-base content is reference material. Cite the relevant source in your answer."
+    }
   },
   "proactive_care": {
     "system_prompt": "Today is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred \u2014 do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly.",

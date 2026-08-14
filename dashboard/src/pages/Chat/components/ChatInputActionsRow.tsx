@@ -16,6 +16,7 @@ import {
   Cpu,
   Brain,
   GraduationCap,
+  BookOpen,
   MoreHorizontal,
   Check,
   ChevronLeft,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { Tooltip, Popover, Drawer } from "antd";
 import type { ResolvedModel } from "../../../api/types";
+import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import {
@@ -34,6 +36,7 @@ import ContextWindowRing from "./ContextWindowRing";
 import SkillPickerPopover from "./SkillPickerPopover";
 import ExpertPickerPopover from "./ExpertPickerPopover";
 import ConnectorPickerPopover from "./ConnectorPickerPopover";
+import KnowledgePickerPopover from "./KnowledgePickerPopover";
 import SlashCommandMenu from "./SlashCommandMenu";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
 import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
@@ -42,7 +45,13 @@ import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
 import styles from "../index.module.less";
 
-type MobilePickerKey = "model" | "connector" | "skill" | "expert" | "shortcut";
+type MobilePickerKey =
+  | "model"
+  | "connector"
+  | "knowledge"
+  | "skill"
+  | "expert"
+  | "shortcut";
 
 // These browser APIs never change at runtime — compute once.
 const _sttAvailable = isSttAvailable();
@@ -84,6 +93,9 @@ interface ChatInputActionsRowProps {
   }[];
   selectedConnectors?: string[];
   onConnectorsChange?: (names: string[]) => void;
+  availableKnowledgeBases?: KnowledgeBase[];
+  selectedKnowledgeBaseIds?: string[];
+  onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   availableSkills?: SkillSpec[];
   selectedSkills?: string[];
   onSkillsChange?: (names: string[]) => void;
@@ -131,6 +143,9 @@ export default function ChatInputActionsRow({
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
+  availableKnowledgeBases,
+  selectedKnowledgeBaseIds = [],
+  onKnowledgeBaseIdsChange,
   availableSkills,
   selectedSkills = [],
   onSkillsChange,
@@ -153,6 +168,7 @@ export default function ChatInputActionsRow({
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
+  const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
@@ -194,6 +210,9 @@ export default function ChatInputActionsRow({
   const showConnectorPicker = Boolean(
     availableConnectors && onConnectorsChange,
   );
+  const showKnowledgePicker = Boolean(
+    availableKnowledgeBases && onKnowledgeBaseIdsChange,
+  );
   const showSkillPicker = Boolean(availableSkills && onSkillsChange);
   const showExpertPicker = Boolean(
     availableExperts && onTargetAgentsChange && availableExperts.length > 0,
@@ -201,12 +220,14 @@ export default function ChatInputActionsRow({
   const showShortcutPicker = true;
   const showOverflowMenu =
     showConnectorPicker ||
+    showKnowledgePicker ||
     showSkillPicker ||
     showExpertPicker ||
     showShortcutPicker;
 
   const overflowBadgeCount =
     selectedConnectors.length +
+    selectedKnowledgeBaseIds.length +
     selectedSkills.length +
     selectedTargetAgents.length;
 
@@ -223,6 +244,7 @@ export default function ChatInputActionsRow({
   const mobilePickerTitle: Record<MobilePickerKey, string> = {
     model: t("chat.selectModel", "Select model"),
     connector: t("connectors.chatPicker"),
+    knowledge: t("chat.knowledgePicker"),
     skill: t("chat.skillPicker"),
     expert: t("chat.expertPicker"),
     shortcut: t("shortcut.title", "快捷指令"),
@@ -466,6 +488,26 @@ export default function ChatInputActionsRow({
           </span>
         </button>
       )}
+      {showKnowledgePicker && (
+        <button
+          type="button"
+          className={styles.mobileOverflowItem}
+          onClick={() => openMobilePicker("knowledge")}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <BookOpen size={18} />
+            <span>{t("chat.knowledgePicker")}</span>
+          </span>
+          <span className={styles.mobileOverflowItemMeta}>
+            {selectedKnowledgeBaseIds.length > 0 && (
+              <span className={styles.toolbarBadge}>
+                {selectedKnowledgeBaseIds.length}
+              </span>
+            )}
+            <ChevronRight size={16} />
+          </span>
+        </button>
+      )}
       {showSkillPicker && (
         <button
           type="button"
@@ -538,6 +580,15 @@ export default function ChatInputActionsRow({
             connectors={availableConnectors ?? []}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={onConnectorsChange!}
+            onNavigateAway={closeMobilePicker}
+          />
+        );
+      case "knowledge":
+        return (
+          <KnowledgePickerPopover
+            knowledgeBases={availableKnowledgeBases ?? []}
+            selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+            onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
             onNavigateAway={closeMobilePicker}
           />
         );
@@ -720,6 +771,41 @@ export default function ChatInputActionsRow({
                 {selectedConnectors.length > 0 && (
                   <span className={styles.toolbarBadge}>
                     {selectedConnectors.length}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+          </Popover>
+        )}
+        {showKnowledgePicker && (
+          <Popover
+            trigger="click"
+            placement="topLeft"
+            open={knowledgePickerOpen}
+            onOpenChange={setKnowledgePickerOpen}
+            overlayClassName={styles.skillPickerPopover}
+            content={
+              <KnowledgePickerPopover
+                knowledgeBases={availableKnowledgeBases!}
+                selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+                onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
+                onNavigateAway={() => setKnowledgePickerOpen(false)}
+              />
+            }
+          >
+            <Tooltip title={t("chat.knowledgePicker")} mouseEnterDelay={0.4}>
+              <button
+                className={`${styles.secondaryBtn} ${
+                  selectedKnowledgeBaseIds.length > 0
+                    ? styles.secondaryBtnActive
+                    : ""
+                }`}
+                type="button"
+              >
+                <BookOpen size={16} />
+                {selectedKnowledgeBaseIds.length > 0 && (
+                  <span className={styles.toolbarBadge}>
+                    {selectedKnowledgeBaseIds.length}
                   </span>
                 )}
               </button>

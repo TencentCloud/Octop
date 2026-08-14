@@ -3,6 +3,7 @@ import { Modal, List, Avatar, Empty } from "antd";
 import { useTranslation } from "react-i18next";
 import { useAgent } from "../../../../context/AgentContext";
 import type { OctopAgent } from "../../../../context/AgentContext";
+import { ownedExperts } from "../../../../utils/sharedExpert";
 
 interface AgentPickerModalProps {
   open: boolean;
@@ -17,6 +18,7 @@ export default function AgentPickerModal({
 }: AgentPickerModalProps) {
   const { t } = useTranslation();
   const { agents } = useAgent();
+  const selectable = ownedExperts(agents);
 
   return (
     <Modal
@@ -27,11 +29,11 @@ export default function AgentPickerModal({
       width={480}
       destroyOnHidden
     >
-      {agents.length === 0 ? (
+      {selectable.length === 0 ? (
         <Empty description={t("skills.noAgents", "No agents available")} />
       ) : (
         <List
-          dataSource={agents}
+          dataSource={selectable}
           renderItem={(agent) => (
             <List.Item
               key={agent.agent_id}

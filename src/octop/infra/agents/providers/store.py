@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from harness_agent.config import ModelConfig, ProviderConfig
 
+from octop.infra.agents.providers.model_flags import is_chat_eligible_model
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
@@ -53,13 +54,20 @@ def _model_dict_supports_image(model: dict[str, Any]) -> bool:
     return "image" in _infer_model_input_modalities(model_id, explicit)
 
 
-def enabled_model_refs(provider_name: str, models: list[dict[str, Any]]) -> set[str]:
-    """Return ``provider/model`` refs for enabled entries with a non-empty id."""
+def enabled_model_refs(
+    provider_name: str,
+    models: list[dict[str, Any]],
+    *,
+    provider_api_key: str | None = None,
+) -> set[str]:
+    """Return ``provider/model`` refs for chat-eligible enabled entries."""
     refs: set[str] = set()
     for model in models:
-        model_id = str(model.get("id") or "").strip()
-        if not model_id or not model.get("enabled", True):
+        if not is_chat_eligible_model(
+            model, provider_name=provider_name, provider_api_key=provider_api_key
+        ):
             continue
+        model_id = str(model.get("id") or "").strip()
         refs.add(f"{provider_name}/{model_id}")
     return refs
 
@@ -112,7 +120,10 @@ class ProviderStore:
             models = row.get_models()
             if not models:
                 continue
-            if any(m.get("enabled", True) for m in models):
+            if any(
+                is_chat_eligible_model(m, provider_name=row.name, provider_api_key=row.api_key)
+                for m in models
+            ):
                 yield row
 
     def has_usable_providers(self) -> bool:
@@ -124,7 +135,13 @@ class ProviderStore:
         for row in self.iter_usable_rows():
             protocol = KIND_TO_PROTOCOL.get(row.kind, "openai")
             raw_models = json.loads(row.models_json) if getattr(row, "models_json", None) else []
-            models = [self._model_config_from_row(m) for m in raw_models]
+            models = [
+                self._model_config_from_row(m)
+                for m in raw_models
+                if is_chat_eligible_model(m, provider_name=row.name, provider_api_key=row.api_key)
+            ]
+            if not models:
+                continue
             headers: dict[str, str] = {}
             if row.extra_json:
                 try:
@@ -169,7 +186,9 @@ class ProviderStore:
         if row is None:
             return False
         for model in row.get_models():
-            if model.get("id") == model_id and model.get("enabled", True):
+            if model.get("id") == model_id and is_chat_eligible_model(
+                model, provider_name=provider_name, provider_api_key=row.api_key
+            ):
                 return _model_dict_supports_image(model)
         return False
 
@@ -177,7 +196,9 @@ class ProviderStore:
         """First enabled image-capable model across usable providers."""
         for row in self.iter_usable_rows():
             for model in row.get_models():
-                if not model.get("enabled", True):
+                if not is_chat_eligible_model(
+                    model, provider_name=row.name, provider_api_key=row.api_key
+                ):
                     continue
                 if _model_dict_supports_image(model):
                     return f"{row.name}/{model['id']}"
@@ -199,10 +220,12 @@ class ProviderStore:
         return upgraded or ref
 
     def resolve_first_model_ref(self) -> str | None:
-        """First enabled model across usable providers, for lightweight internal tasks."""
+        """First chat-eligible enabled model across usable providers."""
         for row in self.iter_usable_rows():
             for model in row.get_models():
-                if not model.get("enabled", True):
+                if not is_chat_eligible_model(
+                    model, provider_name=row.name, provider_api_key=row.api_key
+                ):
                     continue
                 model_id = str(model.get("id") or "").strip()
                 if model_id:
@@ -210,7 +233,7 @@ class ProviderStore:
         return None
 
     def is_model_ref_usable(self, ref: str) -> bool:
-        """Return True when *ref* points at an enabled model on a usable provider row."""
+        """Return True when *ref* points at a chat-eligible model on a usable provider."""
         ref = ref.strip()
         if not ref or ref.lower() == "auto" or "/" not in ref:
             return False
@@ -221,8 +244,11 @@ class ProviderStore:
         if row is None or not row.enabled or not row.api_key or not row.base_url:
             return False
         for model in row.get_models():
-            if model.get("id") == model_id and model.get("enabled", True):
-                return True
+            if model.get("id") != model_id:
+                continue
+            return is_chat_eligible_model(
+                model, provider_name=provider_name, provider_api_key=row.api_key
+            )
         return False
 
     def get_model_reasoning_capability(self, ref: str) -> dict[str, Any] | None:

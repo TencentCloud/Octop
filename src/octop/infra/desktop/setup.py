@@ -18,6 +18,12 @@ from typing import Literal
 
 from octop.i18n import tr
 from octop.infra.utils.posix_compat import geteuid
+from octop.infra.utils.runtime_packages import (
+    build_install_commands,
+    build_uninstall_command,
+)
+
+_DESKTOP_PYTHON_PACKAGES = ("mss>=9.0", "pynput>=1.7", "pillow>=10.0")
 
 _SUBPROCESS_READ_CHUNK = 4096
 _SUBPROCESS_MAX_LINE = 512 * 1024
@@ -341,24 +347,13 @@ SetupState = Literal[
 
 def python_deps_install_cmd() -> list[str] | None:
     """Build install command for desktop optional Python packages."""
-    packages = ["mss>=9.0", "pynput>=1.7", "pillow>=10.0"]
-    uv_bin = shutil.which("uv")
-    if uv_bin:
-        return [uv_bin, "pip", "install", "--python", sys.executable, *packages]
-    if importlib.util.find_spec("pip") is not None:
-        return [sys.executable, "-m", "pip", "install", *packages]
-    return None
+    commands = build_install_commands(_DESKTOP_PYTHON_PACKAGES)
+    return commands[0] if commands else None
 
 
 def python_deps_uninstall_cmd() -> list[str] | None:
     """Build uninstall command for desktop optional Python packages."""
-    packages = ["mss", "pynput", "pillow"]
-    uv_bin = shutil.which("uv")
-    if uv_bin:
-        return [uv_bin, "pip", "uninstall", "-y", *packages, "--python", sys.executable]
-    if importlib.util.find_spec("pip") is not None:
-        return [sys.executable, "-m", "pip", "uninstall", "-y", *packages]
-    return None
+    return build_uninstall_command(("mss", "pynput", "pillow"))
 
 
 @dataclass(frozen=True)
@@ -822,12 +817,12 @@ async def install_python_deps_stream(locale: str) -> AsyncIterator[str]:
         if build_deps_failed:
             return
 
+    yield _sse({"log": _install_log(locale, "install_log_deps")})
     cmd = python_deps_install_cmd()
     if cmd is None:
         async for chunk in _install_failure(_install_log(locale, "error_pip_unavailable")):
             yield chunk
         return
-    yield _sse({"log": _install_log(locale, "install_log_deps")})
     run = _SubprocessRun()
     async for chunk in _stream_subprocess(cmd, emit_done=False, result=run, locale=locale):
         yield chunk

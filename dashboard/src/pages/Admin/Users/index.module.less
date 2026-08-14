@@ -23,12 +23,24 @@
   padding: 60px;
 }
 
-/* ── Create-user modal ──────────────────────────────────────────── */
+/* ── Create-user drawer ─────────────────────────────────────────── */
 
-.createUserModal {
-  :global(.ant-modal-body) {
-    padding-top: 12px;
+.createUserDrawer {
+  :global(.ant-drawer-header) {
+    border-bottom: 1px solid var(--fn-border-primary);
   }
+
+  :global(.ant-drawer-footer) {
+    border-top: 1px solid var(--fn-border-primary);
+    padding: 12px 16px;
+  }
+}
+
+.createUserFooter {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
 }
 
 .createUserForm {
@@ -42,8 +54,195 @@
   }
 }
 
+.createSection {
+  margin-bottom: 8px;
+
+  & + & {
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--fn-border-primary);
+  }
+}
+
+.createSectionTitle {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fn-text-tertiary);
+  text-transform: uppercase;
+}
+
 .createUserRoleItem {
-  margin-bottom: 4px !important;
+  margin-bottom: 12px !important;
+}
+
+.createUserPermItem {
+  margin-bottom: 0 !important;
+}
+
+.permAdminHint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-color-brand-bg);
+  border: 1px solid
+    var(
+      --fn-color-brand-border,
+      color-mix(in srgb, var(--fn-color-brand) 22%, transparent)
+    );
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+
+  svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--fn-color-brand);
+  }
+}
+
+.permEmpty {
+  padding: 12px 0;
+}
+
+.permPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.permPickerDisabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.permGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.permGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.permGroupTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.permGroupCount {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fn-text-tertiary);
+}
+
+.permPage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+}
+
+.permPageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.permPageTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fn-text-secondary);
+}
+
+.permGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.permChip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  text-align: left;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-elevated, var(--fn-bg-primary));
+  color: var(--fn-text-primary);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--fn-border-strong, var(--fn-border-primary));
+    background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.permChipSelected {
+  border-color: var(
+    --fn-color-brand-border,
+    color-mix(in srgb, var(--fn-color-brand) 45%, transparent)
+  );
+  background: var(
+    --fn-color-brand-bg,
+    color-mix(in srgb, var(--fn-color-brand) 8%, transparent)
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--fn-color-brand) 18%, transparent);
+  color: var(--fn-color-brand);
+}
+
+.permChipCheck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid var(--fn-border-primary);
+  background: var(--fn-bg-primary);
+  color: var(--fn-color-on-brand, #fff);
+}
+
+.permChipSelected .permChipCheck {
+  border-color: var(--fn-color-brand);
+  background: var(--fn-color-brand);
+}
+
+.permChipLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
 }
 
 .rolePicker {
@@ -58,6 +257,7 @@
 }
 
 .roleOption {
+  --role-accent: var(--fn-text-secondary);
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -80,6 +280,11 @@
     background: var(--fn-bg-secondary, var(--fn-bg-elevated));
   }
 
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
   &:focus-visible {
     outline: 2px solid var(--fn-color-brand);
     outline-offset: 2px;
@@ -87,30 +292,43 @@
 }
 
 .roleOptionSelected {
-  box-shadow: 0 0 0 1px var(--role-accent);
-  border-color: var(--role-accent);
-  background: color-mix(
-    in srgb,
-    var(--role-accent) 10%,
-    var(--fn-bg-elevated, var(--fn-bg-primary))
+  border-color: var(
+    --fn-color-brand-border,
+    color-mix(in srgb, var(--fn-color-brand) 45%, transparent)
   );
+  background: var(
+    --fn-color-brand-bg,
+    color-mix(in srgb, var(--fn-color-brand) 8%, transparent)
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--fn-color-brand) 18%, transparent);
 
   &:hover {
-    border-color: var(--role-accent);
-    background: color-mix(
-      in srgb,
-      var(--role-accent) 14%,
-      var(--fn-bg-elevated, var(--fn-bg-primary))
+    border-color: var(--fn-color-brand);
+    background: var(
+      --fn-color-brand-bg,
+      color-mix(in srgb, var(--fn-color-brand) 8%, transparent)
     );
+  }
+
+  .roleOptionIcon {
+    color: var(--fn-color-brand);
+    background: color-mix(in srgb, var(--fn-color-brand) 14%, transparent);
+  }
+
+  .roleOptionLabel {
+    color: var(--fn-color-brand);
   }
 }
 
-.roleOptionAdmin {
-  --role-accent: #d4880e;
+.roleToneAdmin {
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
 }
 
-.roleOptionUser {
-  --role-accent: #4f6ef7;
+.roleToneUser {
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-container, rgba(0, 0, 0, 0.04));
 }
 
 .roleOptionIcon {
@@ -237,12 +455,28 @@
   flex-shrink: 0;
 }
 
+.userCardAccentAdmin {
+  background: var(--fn-color-brand);
+}
+
+.userCardAccentUser {
+  background: var(--fn-border-strong, var(--fn-border-primary));
+}
+
+.userCardAccentLocked {
+  background: #ff4d4f;
+}
+
+.userCardAccentDisabled {
+  background: var(--fn-text-tertiary);
+}
+
 .userCardInner {
   display: flex;
   flex-direction: column;
   flex: 1;
   padding: 16px 16px 12px;
-  gap: 14px;
+  gap: 12px;
 }
 
 /* ── Header ─────────────────────────────────────────────────────── */
@@ -298,6 +532,9 @@
   line-height: 16px !important;
   padding: 0 5px !important;
   border-radius: 4px !important;
+  border: none !important;
+  color: var(--fn-color-brand) !important;
+  background: var(--fn-color-brand-bg) !important;
 }
 
 .userCardHandle {
@@ -314,14 +551,10 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fn-text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
 }
 
 .userCardMeta {
@@ -329,7 +562,47 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
+}
+
+.userCardInfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.userCardAuth {
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--fn-bg-container, rgba(0, 0, 0, 0.04));
+}
+
+.permBadge,
+.permBadgeMuted {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.permBadge {
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-container, rgba(0, 0, 0, 0.04));
+}
+
+.permBadgeAll {
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
+}
+
+.permBadgeMuted {
+  color: var(--fn-text-tertiary);
 }
 
 .userCardPill {
@@ -518,4 +791,111 @@
   padding: 4px 8px;
   border-radius: var(--fn-radius-sm);
   background: var(--fn-bg-container, rgba(0, 0, 0, 0.03));
+}
+
+.userTable {
+  :global(.ant-table) {
+    background: transparent;
+  }
+
+  :global(.ant-table-container) {
+    border: 1px solid var(--fn-border-primary);
+    border-radius: var(--fn-radius-lg, 12px);
+    overflow: hidden;
+  }
+
+  :global(.ant-table-thead > tr > th) {
+    background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px 12px;
+  }
+
+  :global(.ant-table-tbody > tr > td) {
+    padding: 10px 12px;
+    vertical-align: middle;
+  }
+}
+
+.userTableRowDisabled {
+  opacity: 0.72;
+}
+
+.userTableRowLocked :global(td) {
+  background: rgba(255, 77, 79, 0.03);
+}
+
+.userCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.userCellAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.userCellText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.userCellName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
+}
+
+.userCellYou {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
+  border-radius: 4px;
+  padding: 0 5px;
+  line-height: 16px;
+}
+
+.userCellHandle {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.userCellMuted {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.userCellLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
 }

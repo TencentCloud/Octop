@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_admin
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ def _agent_row(server: Any, agent_id: str, user: Any) -> Any:
 
 @router.get("/acp", summary="Get global ACP runners")
 async def get_global_acp_runners(
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return ACP runner definitions shared by all agents for the current user."""
@@ -156,7 +156,7 @@ async def get_global_acp_runners(
 @router.put("/acp", summary="Update global ACP runners")
 async def put_global_acp_runners(
     body: ACPRunnersBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Replace the current user's global ACP runner configuration."""
@@ -170,7 +170,7 @@ async def put_global_acp_runners(
 @router.get("/acp/{runner_name}", summary="Get global ACP runner")
 async def get_global_acp_runner(
     runner_name: str,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     registry = _registry(server)
@@ -184,7 +184,7 @@ async def get_global_acp_runner(
 async def put_global_acp_runner(
     runner_name: str,
     body: ACPRunnerBody = Body(...),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     key = runner_name.strip()
@@ -202,7 +202,7 @@ async def put_global_acp_runner(
 @router.delete("/acp/{runner_name}", status_code=204, summary="Delete global ACP runner")
 async def delete_global_acp_runner(
     runner_name: str,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> None:
     if runner_name in _BUILTIN_RUNNERS:

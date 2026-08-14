@@ -28,6 +28,7 @@ from octop.infra.desktop.session import (
 from octop.infra.desktop.setup import desktop_status
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
@@ -284,8 +285,8 @@ async def desktop_stream_ws(
             )
             await websocket.close(code=4001, reason=f"auth failed: {exc}")
             return
-        if not user.is_admin:
-            await websocket.close(code=4003, reason="admin required")
+        if not user_has_permission(user, "desktop"):
+            await websocket.close(code=4003, reason="permission required")
             return
 
         user_id = str(user.id)

@@ -44,7 +44,7 @@ import yaml
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.manager import (
     skill_package_ids_list,
@@ -91,7 +91,7 @@ async def _ctx(
 ) -> _AgentCtx:
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
-    row = require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     cfg = registry.get_config(agent_id)
     agent = registry.get_agent(agent_id)
     return _AgentCtx(runtime=row, workspace=agent.workspace, config=cfg)
@@ -502,7 +502,7 @@ async def list_skill_package_mounts(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
     package_ids = skill_package_ids_list(server.app_runtime.agent_registry.get_config(agent_id))
     assert server.services is not None
@@ -537,7 +537,7 @@ async def replace_skill_package_mounts(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, list[str]]:
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
     package_ids = skill_package_ids_list({"skill_package_ids": body.package_ids})
     await server.app_runtime.agent_registry.persist_skill_package_ids(agent_id, package_ids)
@@ -1082,7 +1082,7 @@ async def hub_search_skills(
     # Verify the agent exists and belongs to this user. The skillhub CLI
     # runs globally, so we only need an existence/ownership check here —
     # the agent need not be running (unlike chat/workspace endpoints).
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     locale = resolve_request_locale(request)
     query = q.strip() or "a"
     effective_limit = max(1, min(limit, 100))
@@ -1139,7 +1139,7 @@ async def hub_rankings(
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
 
     rtype = type if type in _RANKING_TYPES else "all"
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415

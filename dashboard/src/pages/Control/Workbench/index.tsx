@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Globe, TerminalSquare } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import { usePathTabs } from "../../../hooks/usePathTabs";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { userCan } from "../../../utils/permissions";
 import TerminalPage from "../Terminal";
 import RemoteBrowserPage from "../RemoteBrowser";
 import styles from "./index.module.less";
@@ -28,28 +30,39 @@ export default function WorkbenchPage({
   isVisible = true,
 }: WorkbenchPageProps) {
   const { t } = useTranslation();
+  const user = useCurrentUser();
+  const isAllowed = useCallback(
+    (tab: WorkbenchTab) => userCan(user, tab),
+    [user],
+  );
+  const defaultTab: WorkbenchTab = userCan(user, "browser")
+    ? "browser"
+    : "terminal";
 
   const { activeTab, handleTabChange, isMounted } = usePathTabs({
     basePath: "/workbench",
     tabs: WORKBENCH_TABS,
     storageKey: "octop:workbench:tab",
-    defaultTab: "browser",
+    defaultTab,
+    isAllowed,
   });
 
   const pathTabs = useMemo(
     () => ({
       value: activeTab,
       onChange: handleTabChange,
-      options: WORKBENCH_TABS.map((value) => {
-        const Icon = TAB_ICONS[value];
-        return {
-          value,
-          label: t(`workbench.tabs.${value}`),
-          icon: <Icon size={14} strokeWidth={2} />,
-        };
-      }),
+      options: WORKBENCH_TABS.filter((value) => isAllowed(value)).map(
+        (value) => {
+          const Icon = TAB_ICONS[value];
+          return {
+            value,
+            label: t(`workbench.tabs.${value}`),
+            icon: <Icon size={14} strokeWidth={2} />,
+          };
+        },
+      ),
     }),
-    [activeTab, handleTabChange, t],
+    [activeTab, handleTabChange, isAllowed, t],
   );
 
   const browserVisible = isVisible && activeTab === "browser";

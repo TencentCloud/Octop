@@ -14,13 +14,13 @@ import {
   MOBILE_FULLSCREEN_PATHS,
   SELF_HEADER_PATHS,
   isWorkbenchPath,
-  isControlAdminPath,
 } from "../../routes";
 import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/components/ChatSidebarPanel";
-import RequireAdmin from "../../components/RequireAdmin";
+import RequirePermission from "../../components/RequirePermission";
+import { routeNeedsPermission } from "../../utils/permissions";
 
 const Chat = lazy(() => import("../../pages/Chat"));
 const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
@@ -159,8 +159,8 @@ export default function MainLayout() {
       <Routes>
         {routeConfigs.map((rc) => {
           let el = rc.useWrapper ? <ChatWithKey /> : rc.element;
-          if (rc.path.startsWith("/admin/") || isControlAdminPath(rc.path)) {
-            el = <RequireAdmin>{el}</RequireAdmin>;
+          if (!rc.useWrapper && routeNeedsPermission(rc.path)) {
+            el = <RequirePermission>{el}</RequirePermission>;
           }
           return <Route key={rc.path} path={rc.path} element={el} />;
         })}
@@ -295,7 +295,7 @@ export default function MainLayout() {
                     flexDirection: "column",
                   }}
                 >
-                  <RequireAdmin>
+                  <RequirePermission>
                     <Suspense
                       fallback={
                         <div
@@ -312,7 +312,7 @@ export default function MainLayout() {
                     >
                       <WorkbenchPage isVisible={onWorkbench} />
                     </Suspense>
-                  </RequireAdmin>
+                  </RequirePermission>
                 </div>
               )}
 

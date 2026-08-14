@@ -219,9 +219,14 @@ async def test_create_registers_with_harness(tmp_path: Path) -> None:
     fake_hm = _make_fake_hm()
     registry = _make_registry(services, fake_hm=fake_hm)
 
-    await registry.create(AgentCreateSpec(name="bot"))
+    row = await registry.create(AgentCreateSpec(name="bot"))
 
     fake_hm.acreate_agent.assert_called_once()
+    manager_skill = await registry.get_agent(row.agent_id).workspace.aread_text(
+        "_builtin_skills/skill-manager/SKILL.md"
+    )
+    assert manager_skill is not None
+    assert "name: skill-manager" in manager_skill
 
 
 @pytest.mark.asyncio
@@ -548,6 +553,41 @@ async def test_list_subagent_summaries_delegates_to_harness(tmp_path: Path) -> N
     assert len(summaries) == 1
     assert summaries[0]["slug"] == "general-purpose"
     fake_agent.list_subagent_summaries.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_list_subagent_summaries_fills_color_from_frontmatter(tmp_path: Path) -> None:
+    """When harness omits color, Octop copies it from workspace frontmatter."""
+    services = _make_services(tmp_path)
+    fake_agent = MagicMock(name="HarnessAgent")
+    fake_agent.list_subagent_summaries = AsyncMock(
+        return_value=[
+            {
+                "slug": "helper",
+                "name": "Helper",
+                "description": "Helps",
+                "path": "agents/helper.md",
+            }
+        ]
+    )
+
+    async def aread_text(path: str) -> str:
+        assert path == "agents/helper.md"
+        return '---\nname: Helper\ndescription: Helps\ncolor: "#4B74FA"\n---\nBody\n'
+
+    fake_agent.workspace.aread_text = aread_text
+    fake_hm = _make_fake_hm(fake_agent=fake_agent)
+    registry = _make_registry(services, fake_hm=fake_hm)
+
+    agent_id = "SUBCOLOR1"
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=None, name="live")
+    fake_hm.create_agent(MagicMock(), agent_id=agent_id)
+
+    summaries = await registry.list_subagent_summaries(agent_id)
+
+    assert len(summaries) == 1
+    assert summaries[0]["slug"] == "helper"
+    assert summaries[0]["color"] == "#4B74FA"
 
 
 # ---------------------------------------------------------------------------

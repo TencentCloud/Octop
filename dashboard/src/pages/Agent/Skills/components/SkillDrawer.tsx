@@ -5,6 +5,7 @@ import { message } from "@/utils/antdMessage";
 import { MinusCircle, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
+import EmojiPicker from "../../../../components/EmojiPicker";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
 import { splitMarkdownFrontmatter } from "../../../../utils/markdown";
 import type { SkillDetail } from "../useSkills";
@@ -19,12 +20,17 @@ export interface MetadataEntry {
 export interface SkillFormValues {
   name: string;
   description: string;
+  /** Surfaced as ``metadata.octop.emoji`` in SKILL.md. */
+  emoji: string;
   metadata: MetadataEntry[];
   body: string;
   content?: string;
   source?: string;
   path?: string;
 }
+
+export const OCTOP_EMOJI_META_KEY = "octop.emoji";
+const DEFAULT_SKILL_EMOJI = "✨";
 
 function yamlQuote(value: string): string {
   if (!value) return '""';
@@ -72,6 +78,36 @@ function metadataToYamlLines(
   return lines;
 }
 
+/** Split ``octop.emoji`` out of flattened metadata for the dedicated picker. */
+export function parseSkillEmojiAndMetadata(
+  pairs: MetadataEntry[] | undefined,
+  fallback = DEFAULT_SKILL_EMOJI,
+): { emoji: string; metadata: MetadataEntry[] } {
+  let emoji = fallback;
+  const metadata: MetadataEntry[] = [];
+  for (const row of pairs ?? []) {
+    if (row.key.trim() === OCTOP_EMOJI_META_KEY) {
+      const value = row.value.trim();
+      if (value) emoji = value;
+      continue;
+    }
+    metadata.push(row);
+  }
+  return { emoji, metadata };
+}
+
+function withEmojiMetadata(
+  pairs: MetadataEntry[] | undefined,
+  emoji: string,
+): MetadataEntry[] {
+  const rest = (pairs ?? []).filter(
+    (row) => row.key.trim() !== OCTOP_EMOJI_META_KEY,
+  );
+  const value = emoji.trim();
+  if (!value) return rest;
+  return [{ key: OCTOP_EMOJI_META_KEY, value }, ...rest];
+}
+
 function buildMetadataObject(
   pairs: MetadataEntry[] | undefined,
 ): Record<string, unknown> {
@@ -90,7 +126,9 @@ export function buildSkillMarkdown(values: SkillFormValues): string {
     `name: ${yamlQuote(values.name.trim())}`,
     `description: ${yamlQuote(values.description.trim())}`,
   ];
-  const meta = buildMetadataObject(values.metadata);
+  const meta = buildMetadataObject(
+    withEmojiMetadata(values.metadata, values.emoji ?? ""),
+  );
   if (Object.keys(meta).length > 0) {
     lines.push("metadata:");
     lines.push(...metadataToYamlLines(meta, 1));
@@ -145,10 +183,14 @@ function parseSkillFormFromDetail(detail: SkillDetail): SkillFormValues {
     typeof fm.name === "string" && fm.name.trim() ? fm.name : detail.slug;
   const description =
     typeof fm.description === "string" ? fm.description : detail.description;
-  const metadata = flattenMetadata(fm.metadata);
+  const { emoji, metadata } = parseSkillEmojiAndMetadata(
+    flattenMetadata(fm.metadata),
+    detail.emoji?.trim() || DEFAULT_SKILL_EMOJI,
+  );
   return {
     name: displayName,
     description,
+    emoji,
     metadata,
     body: detail.body || "",
     content: detail.raw,
@@ -211,7 +253,8 @@ export function SkillDrawer({
     form.setFieldsValue({
       name: "",
       description: "",
-      metadata: [{ key: "octop.emoji", value: "✨" }],
+      emoji: DEFAULT_SKILL_EMOJI,
+      metadata: [],
       body: t("skills.newSkillBodyTemplate"),
       content: "",
     });
@@ -321,6 +364,20 @@ export function SkillDrawer({
         autoSize={{ minRows: 2, maxRows: fieldsEditable ? 4 : 6 }}
         disabled={!fieldsEditable}
       />
+    </Form.Item>
+  );
+
+  const emojiField = (
+    <Form.Item
+      name="emoji"
+      label={t("skills.emojiLabel")}
+      extra={fieldsEditable ? t("skills.emojiHint") : undefined}
+    >
+      {fieldsEditable ? (
+        <EmojiPicker fallback={DEFAULT_SKILL_EMOJI} />
+      ) : (
+        <Input disabled />
+      )}
     </Form.Item>
   );
 
@@ -504,6 +561,7 @@ export function SkillDrawer({
                   <div className={styles.createFields}>
                     {nameField}
                     {descriptionField}
+                    {emojiField}
                     {metadataFields}
                   </div>
                   {bodyEditBlock}
@@ -516,6 +574,7 @@ export function SkillDrawer({
             <div className={styles.viewScroll}>
               {nameField}
               {descriptionField}
+              {emojiField}
               <Form.Item name="source" label={t("skills.sourceLabel")}>
                 <Input disabled />
               </Form.Item>

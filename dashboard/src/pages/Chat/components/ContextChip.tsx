@@ -2,11 +2,17 @@ import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import styles from "../index.module.less";
 
-export type ContextChipVariant = "skill" | "connector" | "expert" | "model";
+export type ContextChipVariant =
+  | "skill"
+  | "connector"
+  | "knowledge"
+  | "expert"
+  | "model";
 
 const variantClass: Record<ContextChipVariant, string> = {
   skill: styles.contextChipSkill,
   connector: styles.contextChipConnector,
+  knowledge: styles.contextChipKnowledge,
   expert: styles.contextChipExpert,
   model: styles.contextChipModel,
 };

@@ -1662,6 +1662,7 @@ async function sendTurnWebSocket(
   modelRef?: string | null,
   threadId?: string | null,
   mcpServers?: string[] | null,
+  knowledgeBaseIds?: string[] | null,
   skills?: string[] | null,
   targetAgentIds?: string[] | null,
   onStreamEnd?: () => void,
@@ -1733,6 +1734,11 @@ async function sendTurnWebSocket(
       // opt-out of default_open connectors for this turn.
       if (mcpServers !== undefined && mcpServers !== null) {
         payload.mcp_servers = mcpServers;
+      }
+      // Always send the array (including []) so the server can honor Dashboard
+      // opt-out of default_open knowledge bases for this turn.
+      if (knowledgeBaseIds !== undefined && knowledgeBaseIds !== null) {
+        payload.knowledge_base_ids = knowledgeBaseIds;
       }
       if (skills && skills.length > 0) payload.skills = skills;
       if (targetAgentIds && targetAgentIds.length > 0) {
@@ -1859,6 +1865,7 @@ export async function sendTurn(
   modelRef?: string | null,
   threadId?: string | null,
   mcpServers?: string[] | null,
+  knowledgeBaseIds?: string[] | null,
   skills?: string[] | null,
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
@@ -1917,6 +1924,7 @@ export async function sendTurn(
     modelRef,
     threadId,
     mcpServers,
+    knowledgeBaseIds,
     skills,
     targetAgentIds,
     onStreamEnd,

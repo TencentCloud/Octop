@@ -138,6 +138,9 @@ _PREVIEW_IMAGE = frozenset(
     {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/svg+xml"}
 )
 _PREVIEW_VIDEO = frozenset({"video/mp4", "video/webm", "video/quicktime", "video/ogg"})
+_PREVIEW_AUDIO = frozenset(
+    {"audio/mpeg", "audio/wav", "audio/webm", "audio/ogg", "audio/flac", "audio/aac", "audio/x-wav"}
+)
 
 
 def file_url_to_abs_path(file_url: str) -> str:
@@ -285,7 +288,7 @@ def _guess_mime(path: str, hint: str = "") -> str:
 
 def is_previewable_mime(mime: str) -> bool:
     base = mime.split(";", 1)[0].strip().lower()
-    return base in _PREVIEW_IMAGE or base in _PREVIEW_VIDEO
+    return base in _PREVIEW_IMAGE or base in _PREVIEW_VIDEO or base in _PREVIEW_AUDIO
 
 
 def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:

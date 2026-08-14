@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Pre-commit gate: make all (format BE+FE + lint + typecheck + test) + dashboard build.
+# Pre-commit gate: make precommit (format BE+FE + lint + typecheck + testmon-scoped
+# tests) + dashboard build. The full suite still runs in CI (`make all`); this is a
+# fast, change-aware local gate so commits don't wait on the whole test matrix.
 # Enable once per clone:  make install-hooks
 # Bypass (emergency only): SKIP_PRECOMMIT=1 git commit ...
 # Or: git commit --no-verify
@@ -20,8 +22,8 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && STAGED_FILES+=("$line")
 done < <(git diff --cached --name-only --diff-filter=ACMR || true)
 
-echo "[pre-commit] make all  (format-all + lint + typecheck + test)"
-make all
+echo "[pre-commit] make precommit  (format-all + lint + typecheck + testmon-scoped test)"
+make precommit
 
 # If format rewrote files that were already staged, refresh the index so the
 # commit includes the formatted content (worktree vs index drift).

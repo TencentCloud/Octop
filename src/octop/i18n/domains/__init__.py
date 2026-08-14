@@ -23,7 +23,13 @@ from octop.i18n.domains.stream import (
     format_stream_error,
     stream_error_message,
 )
-from octop.i18n.domains.tools import all_tool_labels, tool_display_name
+from octop.i18n.domains.tools import (
+    HITL_TOOL_EXCLUDE,
+    HitlToolCatalogEntry,
+    all_tool_labels,
+    hitl_tool_catalog,
+    tool_display_name,
+)
 
 __all__ = [
     "MODEL_REF_UNAVAILABLE",
@@ -38,7 +44,10 @@ __all__ = [
     "classify_stream_error_message",
     "format_agent_start_error",
     "format_stream_error",
+    "HITL_TOOL_EXCLUDE",
+    "HitlToolCatalogEntry",
     "all_tool_labels",
+    "hitl_tool_catalog",
     "channel_tool_hint_end",
     "channel_tool_hint_start",
     "error_message",

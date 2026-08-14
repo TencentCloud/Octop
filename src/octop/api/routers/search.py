@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin
+from octop.api.deps import require_permission
 from octop.infra.utils.search_probe import probe_search_provider
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -46,7 +46,7 @@ class TestSearchResponse(BaseModel):
 async def test_search_provider(
     provider_id: str,
     body: TestSearchRequest,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("search")),
 ) -> TestSearchResponse:
     result = await probe_search_provider(provider_id, body.env_vars)
     return TestSearchResponse(**result)

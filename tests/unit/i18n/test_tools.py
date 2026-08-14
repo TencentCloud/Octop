@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from octop.i18n import all_tool_labels, tool_display_name
+from octop.i18n import all_tool_labels, hitl_tool_catalog, tool_display_name
 
 
 def test_tool_display_name_known_zh():
@@ -25,6 +25,32 @@ def test_all_tool_labels_includes_unknown():
     labels = all_tool_labels("en")
     assert labels["grep"] == "Search content"
     assert "unknown" in labels
+
+
+def test_hitl_tool_catalog_excludes_must_use_tools():
+    names = {entry.name for entry in hitl_tool_catalog()}
+    assert "unknown" not in names
+    assert "current_time" not in names
+    assert "write_todos" not in names
+    assert "memory_search" not in names
+    assert "search_knowledge" not in names
+    assert "cronjob_create" not in names
+    assert "task" not in names
+    assert "ask_agent" not in names
+
+
+def test_hitl_tool_catalog_includes_common_tools():
+    names = {entry.name for entry in hitl_tool_catalog()}
+    assert "bash" in names
+    assert "write_file" in names
+    assert "browser_use" in names
+    assert "web_fetch" in names
+
+
+def test_hitl_tool_catalog_bilingual_labels():
+    entry = next(e for e in hitl_tool_catalog() if e.name == "read_file")
+    assert entry.label_zh == "读取文件"
+    assert entry.label_en == "Read file"
 
 
 def test_dashboard_tools_match_backend():

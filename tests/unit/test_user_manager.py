@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,14 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+
+
+def _insert_sso_provider(manager: UserManager) -> int:
+    with manager._services.db.transaction() as conn:
+        cursor = conn.execute(
+            "INSERT INTO sso_providers(enabled, created_at, updated_at) VALUES (1, 0, 0)"
+        )
+        return int(cursor.lastrowid)
 
 
 @pytest.fixture
@@ -52,6 +61,123 @@ async def test_authenticate_success(manager: UserManager):
 async def test_authenticate_wrong_password(manager: UserManager):
     await manager.create(username="a", password="TestPass12", role=Role.USER)
     assert await manager.authenticate("a", "bad") is None
+
+
+async def test_authenticate_rejects_null_password_hash(manager: UserManager):
+    manager._services.user_repo.create(username="sso_user", password_hash=None, role="user")
+    assert await manager.authenticate("sso_user", "any") is None
+
+
+async def test_change_password_rejects_null_password_hash(manager: UserManager):
+    manager._services.user_repo.create(username="sso_user", password_hash=None, role="user")
+    with pytest.raises(OctopError) as ei:
+        await manager.change_password("sso_user", "any", "NewPass12")
+    assert ei.value.code is ErrorCode.AUTH_FAILED
+
+
+async def test_sso_create_then_updates_same_subject(manager: UserManager):
+    provider_id = _insert_sso_provider(manager)
+    user = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-1",
+        claims={"preferred_username": "alice", "email": "Alice@Example.com", "name": "Alice"},
+    )
+
+    assert user.role is Role.USER
+    row = manager.get_row(user.id)
+    assert row.password_hash is None
+    assert row.email == "alice@example.com"
+    assert row.sso_provider_id == provider_id
+    assert row.sso_subject == "sub-1"
+
+    updated = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-1",
+        claims={"email": "alice-2@example.com", "name": "Alice 2"},
+    )
+
+    assert updated.id == user.id
+    row = manager.get_row(user.id)
+    assert row.display_name == "Alice 2"
+    assert row.email == "alice-2@example.com"
+
+
+async def test_sso_create_recovers_when_another_worker_wins_identity_race(
+    manager: UserManager, monkeypatch: pytest.MonkeyPatch
+):
+    provider_id = _insert_sso_provider(manager)
+    repo = manager._services.user_repo
+    create = repo.create
+
+    def create_after_race(*args: object, **kwargs: object) -> int:
+        create(*args, **kwargs)
+        raise sqlite3.IntegrityError(
+            "UNIQUE constraint failed: users.sso_provider_id, users.sso_subject"
+        )
+
+    monkeypatch.setattr(repo, "create", create_after_race)
+
+    user = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-race",
+        claims={"preferred_username": "alice", "name": "Alice"},
+    )
+
+    assert user.username == "alice"
+    assert repo.get_by_sso(provider_id, "sub-race").id == user.id
+
+
+async def test_sso_username_allocation_sanitizes_and_suffixes_conflicts(manager: UserManager):
+    provider_id = _insert_sso_provider(manager)
+    first = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-1",
+        claims={"preferred_username": "alice smith!"},
+    )
+    second = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-2",
+        claims={"preferred_username": "alice smith!"},
+    )
+
+    assert first.username == "alicesmith"
+    assert second.username == "alicesmith_2"
+
+
+async def test_sso_email_conflict_does_not_overwrite_existing_email(manager: UserManager):
+    provider_id = _insert_sso_provider(manager)
+    manager._services.user_repo.create(
+        username="local",
+        password_hash="not-used",
+        role="user",
+        email="taken@example.com",
+    )
+
+    user = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-1",
+        claims={"preferred_username": "sso-user", "email": "taken@example.com"},
+    )
+
+    assert manager.get_row(user.id).email is None
+
+
+async def test_sso_disabled_user_is_rejected(manager: UserManager):
+    provider_id = _insert_sso_provider(manager)
+    user = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-1",
+        claims={"preferred_username": "alice"},
+    )
+    await manager.disable(user.username)
+
+    with pytest.raises(OctopError) as ei:
+        await manager.resolve_or_create_sso_user(
+            provider_id=provider_id,
+            subject="sub-1",
+            claims={"name": "Alice"},
+        )
+    assert ei.value.code is ErrorCode.USER_DISABLED
 
 
 async def test_authenticate_locks_after_max_failures(manager: UserManager):

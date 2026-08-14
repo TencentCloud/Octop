@@ -7,7 +7,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import current_user, get_server
 from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
 from octop.infra.cron.trigger import build_trigger
@@ -59,7 +59,7 @@ async def list_cron(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """List scheduled jobs for an agent."""
-    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     return [
         r.to_public_dict(include_agent=True)
         for r in _get_cron_manager(server).list_by_agent(agent_id)
@@ -77,6 +77,7 @@ async def create_cron(
     from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
     from octop.infra.cron.manager import CronCreateSpec  # noqa: PLC0415
 
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     mcp_servers = (
         await validate_chat_mcp_servers(server, user_id=user.id, names=body.mcp_servers) or []
     )
@@ -105,6 +106,7 @@ async def get_cron(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return one scheduled job by id."""
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     row = _get_cron_manager(server).get(cron_id)
     if row is None or row.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
@@ -123,6 +125,7 @@ async def patch_cron(
     from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
     from octop.infra.db.repos._base import UNSET  # noqa: PLC0415
 
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     mgr = _get_cron_manager(server)
     existing = mgr.get(cron_id)
     if existing is None or existing.agent_id != agent_id:
@@ -157,6 +160,7 @@ async def delete_cron(
     server: Any = Depends(get_server),
 ) -> None:
     """Remove a scheduled job."""
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     mgr = _get_cron_manager(server)
     existing = mgr.get(cron_id)
     if existing is None or existing.agent_id != agent_id:
@@ -172,6 +176,7 @@ async def run_now(
     server: Any = Depends(get_server),
 ) -> None:
     """Trigger an immediate one-off run without waiting for the schedule."""
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     mgr = _get_cron_manager(server)
     existing = mgr.get(cron_id)
     if existing is None or existing.agent_id != agent_id:

@@ -7,7 +7,7 @@
  *     with local model list, download, and delete UI
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Divider, Form, Input, Modal, Select } from "antd";
+import { Button, Divider, Form, Input, Modal, Progress, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
@@ -16,6 +16,13 @@ import { request } from "../../../../../api/request";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
+import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
+import { onnxModelApi } from "../../../../../api/modules/onnxModel";
+import {
+  setOnnxDownloadProgressHandler,
+  watchOnnxDownload,
+} from "../../../../../api/modules/onnxDownloadWatcher";
+import { isOllamaProviderRow, isOnnxProviderRow } from "../../presetUtils";
 import { ModelListEditor } from "./ModelListEditor";
 import styles from "../../index.module.less";
 
@@ -60,15 +67,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-function isOllamaProvider(provider: ProviderRow): boolean {
-  return (
-    provider.name === "ollama" ||
-    provider.name === "Ollama (Local)" ||
-    (provider.base_url?.includes("11434") ?? false) ||
-    (provider.base_url?.includes("ollama") ?? false)
-  );
-}
-
 export function ProviderConfigModal({
   provider,
   open,
@@ -85,7 +83,15 @@ export function ProviderConfigModal({
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
 
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
-  const isOllama = isOllamaProvider(provider);
+  const isOllama = isOllamaProviderRow(provider);
+  const isOnnx = isOnnxProviderRow(provider);
+  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
+  const [downloadingIds, setDownloadingIds] = useState<string[]>([]);
+  const [onnxSizeById, setOnnxSizeById] = useState<Record<string, number>>({});
+  const [downloadProgressOpen, setDownloadProgressOpen] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadProgressLabel, setDownloadProgressLabel] = useState("");
+  const [downloadProgressModel, setDownloadProgressModel] = useState("");
 
   // === Ollama states ===
   const [downloadForm] = Form.useForm();
@@ -97,6 +103,61 @@ export function ProviderConfigModal({
   );
   const ollamaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ollamaNotifiedRef = useRef<Set<string>>(new Set());
+
+  const enableModelAfterDownload = useCallback(
+    async (modelId: string) => {
+      const currentDefault = (
+        form.getFieldValue("model") as string | undefined
+      )?.trim();
+      const nextModels = draftModels.some((m) => m.id === modelId)
+        ? draftModels.map((m) =>
+            m.id === modelId ? { ...m, enabled: true } : m,
+          )
+        : [
+            ...draftModels,
+            {
+              id: modelId,
+              name: modelId,
+              enabled: true,
+              ...(isOnnx
+                ? { embedding: true as const, task: "embedding" as const }
+                : {}),
+              input: ["text"],
+              thinking: null,
+            },
+          ];
+      setDraftModels(nextModels);
+      setFormDirty(true);
+      const defaultModel = currentDefault || modelId;
+      if (!currentDefault) {
+        form.setFieldValue("model", modelId);
+      }
+      try {
+        await request(`${apiPrefix}/${provider.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            models: nextModels,
+            model: defaultModel,
+          }),
+        });
+        if (isOnnx) {
+          await onnxModelApi.updateConfig({
+            enabled: true,
+            model: modelId,
+            download_if_missing: false,
+          });
+        }
+        await onSaved();
+      } catch (err) {
+        message.warning(
+          err instanceof Error
+            ? err.message
+            : t("models.enableAfterDownloadFailed"),
+        );
+      }
+    },
+    [apiPrefix, draftModels, form, isOnnx, onSaved, provider.id, t],
+  );
 
   const stopOllamaPolling = useCallback(() => {
     if (ollamaPollRef.current) {
@@ -110,13 +171,16 @@ export function ProviderConfigModal({
     setOllamaUnavailable(false);
     try {
       const data = await request<OllamaModelResponse[]>("/ollama-models");
-      setOllamaModels(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setOllamaModels(list);
+      setDownloadedIds(list.map((m) => m.name));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("503") || msg.includes("connect")) {
         setOllamaUnavailable(true);
       }
       setOllamaModels([]);
+      setDownloadedIds([]);
     } finally {
       setLoadingOllama(false);
     }
@@ -143,6 +207,7 @@ export function ProviderConfigModal({
         if (!ollamaNotifiedRef.current.has(task.task_id)) {
           ollamaNotifiedRef.current.add(task.task_id);
           if (task.status === "completed") {
+            void enableModelAfterDownload(task.name);
             message.success(t("models.localDownloadSuccess"));
             needsRefresh = true;
           } else if (task.status === "cancelled") {
@@ -163,7 +228,13 @@ export function ProviderConfigModal({
     } catch {
       /* ignore polling errors */
     }
-  }, [t, onSaved, fetchOllamaModels, stopOllamaPolling]);
+  }, [
+    enableModelAfterDownload,
+    t,
+    onSaved,
+    fetchOllamaModels,
+    stopOllamaPolling,
+  ]);
 
   const startOllamaPolling = useCallback(() => {
     if (ollamaPollRef.current) return;
@@ -273,6 +344,234 @@ export function ProviderConfigModal({
       },
     });
   };
+
+  const refreshDownloadedIds = useCallback(async () => {
+    try {
+      if (isOllama) {
+        const data = await request<OllamaModelResponse[]>("/ollama-models");
+        const list = Array.isArray(data) ? data : [];
+        setOllamaModels(list);
+        setDownloadedIds(list.map((m) => m.name));
+        setOllamaUnavailable(false);
+      } else if (isOnnx) {
+        const st = await onnxModelApi.getStatus();
+        setDownloadedIds(st.local_models || []);
+      }
+    } catch (err) {
+      if (isOllama) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes("503") ||
+          msg.includes("connect") ||
+          msg.includes("disabled")
+        ) {
+          setOllamaUnavailable(true);
+        }
+        setOllamaModels([]);
+        setDownloadedIds([]);
+      }
+    }
+  }, [isOllama, isOnnx]);
+
+  const formatSizeGb = useCallback(
+    (sizeGb?: number | null) => {
+      if (sizeGb == null || Number.isNaN(sizeGb)) {
+        return t("models.localDownloadSizeUnknown");
+      }
+      if (sizeGb < 0.01) return `${Math.round(sizeGb * 1024)} MB`;
+      if (sizeGb < 1) return `${(sizeGb * 1024).toFixed(0)} MB`;
+      return `${sizeGb.toFixed(2)} GB`;
+    },
+    [t],
+  );
+
+  const handleOnnxDownloadTerminal = useCallback(
+    async (modelId: string, status: string, error?: string | null) => {
+      setDownloadingIds((prev) => prev.filter((id) => id !== modelId));
+      setDownloadProgressOpen(false);
+      await refreshDownloadedIds();
+      if (status === "done") {
+        await enableModelAfterDownload(modelId);
+        message.success(t("models.onnxDownloadDone", { model: modelId }));
+      } else {
+        message.error(error || t("models.onnxDownloadFailed"));
+      }
+    },
+    [enableModelAfterDownload, refreshDownloadedIds, t],
+  );
+
+  const dismissDownloadProgressToBackground = useCallback(() => {
+    setDownloadProgressOpen(false);
+    setOnnxDownloadProgressHandler(undefined);
+    message.info(t("models.localDownloadBackground"));
+  }, [t]);
+
+  const runOnnxDownloadWithProgress = useCallback(
+    async (modelId: string) => {
+      setDownloadingIds((prev) =>
+        prev.includes(modelId) ? prev : [...prev, modelId],
+      );
+      setDownloadProgressModel(modelId);
+      setDownloadProgress(0);
+      setDownloadProgressLabel(t("models.localDownloadPreparing"));
+      setDownloadProgressOpen(true);
+      try {
+        await onnxModelApi.download(modelId);
+        watchOnnxDownload({
+          modelId,
+          onProgress: (d) => {
+            const pct = Math.max(
+              0,
+              Math.min(100, Math.round((d.progress || 0) * 100)),
+            );
+            setDownloadProgress(pct);
+            if (d.status === "loading") {
+              setDownloadProgressLabel(
+                t("models.onnxDownloadLoading", { model: modelId }),
+              );
+            } else if (d.status === "downloading") {
+              setDownloadProgressLabel(
+                t("models.onnxDownloadProgress", {
+                  model: modelId,
+                  percent: pct,
+                }),
+              );
+            }
+          },
+          onTerminal: (d) =>
+            handleOnnxDownloadTerminal(modelId, d.status, d.error),
+        });
+      } catch (err) {
+        setDownloadingIds((prev) => prev.filter((id) => id !== modelId));
+        setDownloadProgressOpen(false);
+        message.error(
+          err instanceof Error ? err.message : t("models.onnxDownloadFailed"),
+        );
+      }
+    },
+    [handleOnnxDownloadTerminal, t],
+  );
+
+  // If progress UI remounts / reopens while a watch is running, re-attach handler.
+  useEffect(() => {
+    if (!downloadProgressOpen) return;
+    setOnnxDownloadProgressHandler((d) => {
+      const pct = Math.max(
+        0,
+        Math.min(100, Math.round((d.progress || 0) * 100)),
+      );
+      setDownloadProgress(pct);
+      const modelId = d.model_name || downloadProgressModel;
+      if (d.status === "loading") {
+        setDownloadProgressLabel(
+          t("models.onnxDownloadLoading", { model: modelId }),
+        );
+      } else if (d.status === "downloading") {
+        setDownloadProgressLabel(
+          t("models.onnxDownloadProgress", { model: modelId, percent: pct }),
+        );
+      }
+    });
+    return () => setOnnxDownloadProgressHandler(undefined);
+  }, [downloadProgressOpen, downloadProgressModel, t]);
+
+  // Keep backend watch alive across config-modal close; only stop if still idle.
+  useEffect(() => {
+    return () => {
+      // Do not stopWatchingOnnxDownload on unmount — backend download continues
+      // and the module-level watcher will still fire onTerminal (toast).
+      setOnnxDownloadProgressHandler(undefined);
+    };
+  }, []);
+
+  const handleLocalModelDownload = useCallback(
+    async (modelId: string) => {
+      if (isOllama) {
+        Modal.confirm({
+          title: t("models.localDownloadConfirmTitle"),
+          content: t("models.localDownloadConfirmOllama", { name: modelId }),
+          okText: t("models.localDownloadModel"),
+          cancelText: t("common.cancel"),
+          onOk: async () => {
+            setDownloadingIds((prev) =>
+              prev.includes(modelId) ? prev : [...prev, modelId],
+            );
+            try {
+              const task = await ollamaModelApi.downloadOllamaModel({
+                name: modelId,
+              });
+              setOllamaTasks((prev) => [...prev, task]);
+              message.info(t("models.localDownloading", { repo: modelId }));
+              startOllamaPolling();
+            } catch (err) {
+              message.error(
+                err instanceof Error
+                  ? err.message
+                  : t("models.localDownloadFailed"),
+              );
+            } finally {
+              setDownloadingIds((prev) => prev.filter((id) => id !== modelId));
+            }
+          },
+        });
+        return;
+      }
+
+      if (!isOnnx) return;
+
+      let sizeGb = onnxSizeById[modelId];
+      try {
+        const meta = await onnxModelApi.getModelMeta(modelId);
+        if (meta.size_gb != null) {
+          sizeGb = meta.size_gb;
+          setOnnxSizeById((prev) => ({ ...prev, [modelId]: meta.size_gb! }));
+        }
+      } catch {
+        /* use cached / unknown */
+      }
+
+      Modal.confirm({
+        title: t("models.localDownloadConfirmTitle"),
+        content: t("models.localDownloadConfirmOnnx", {
+          name: modelId,
+          size: formatSizeGb(sizeGb),
+        }),
+        okText: t("models.localDownloadModel"),
+        cancelText: t("common.cancel"),
+        onOk: () => {
+          void runOnnxDownloadWithProgress(modelId);
+        },
+      });
+    },
+    [
+      formatSizeGb,
+      isOllama,
+      isOnnx,
+      onnxSizeById,
+      runOnnxDownloadWithProgress,
+      startOllamaPolling,
+      t,
+    ],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    if (isOllama || isOnnx) {
+      void refreshDownloadedIds();
+    }
+    if (isOnnx) {
+      void onnxModelApi
+        .getCatalog()
+        .then((items) => {
+          const map: Record<string, number> = {};
+          for (const it of items || []) {
+            if (it.size_gb != null) map[it.id] = it.size_gb;
+          }
+          setOnnxSizeById(map);
+        })
+        .catch(() => {});
+    }
+  }, [open, isOllama, isOnnx, refreshDownloadedIds]);
 
   // ======================== Form ========================
 
@@ -429,6 +728,36 @@ export function ProviderConfigModal({
         message.warning(t("models.testDraftNeedModel"));
         return;
       }
+
+      if (isOnnx) {
+        if (!downloadedIds.includes(modelId)) {
+          message.warning(t("models.onnxTestNeedDownload"));
+          return;
+        }
+        const result = await onnxModelApi.test(modelId);
+        if (result.ok) {
+          const latency =
+            result.latency_ms != null
+              ? t("models.testConnectionLatency", {
+                  time: Math.round(result.latency_ms),
+                })
+              : "";
+          message.success(
+            t("models.testConnectionSuccess", {
+              name: modelId,
+              latency,
+            }),
+          );
+        } else {
+          message.error(
+            t("models.testConnectionFailed", {
+              error: result.error ?? "unknown",
+            }),
+          );
+        }
+        return;
+      }
+
       const draftApiKey = (values.api_key as string | undefined)?.trim();
       const draftBaseUrl = (values.base_url as string | undefined)?.trim();
       const useDraft =
@@ -487,6 +816,37 @@ export function ProviderConfigModal({
 
   const handleFetchModels = async () => {
     try {
+      if (isOnnx) {
+        setFetchingModels(true);
+        const catalog = await onnxModelApi.getCatalog();
+        const existingIds = new Set(draftModels.map((m) => m.id));
+        const missing = (catalog || []).filter((m) => !existingIds.has(m.id));
+        if (missing.length === 0) {
+          message.info(t("models.fetchModelsNoNew"));
+          return;
+        }
+        const added: ProviderModel[] = missing.map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          enabled: false,
+          embedding: true,
+          task: "embedding",
+          input: ["text"],
+          thinking: null,
+        }));
+        setDraftModels((prev) => [...prev, ...added]);
+        setFormDirty(true);
+        const sizeMap: Record<string, number> = {};
+        for (const it of catalog || []) {
+          if (it.size_gb != null) sizeMap[it.id] = it.size_gb;
+        }
+        setOnnxSizeById((prev) => ({ ...prev, ...sizeMap }));
+        message.success(
+          t("models.fetchModelsMerged", { count: missing.length }),
+        );
+        return;
+      }
+
       const values = form.getFieldsValue();
       const kind = (values.kind as string | undefined) ?? provider.kind;
       if (kind !== "openai") {
@@ -559,7 +919,7 @@ export function ProviderConfigModal({
       footer={
         <div className={styles.modalFooter}>
           <div className={styles.modalFooterLeft}>
-            {hasApiKey && (
+            {hasApiKey && !isOnnx && (
               <Button danger size="small" onClick={handleRevoke}>
                 {t("models.revokeAuthorization")}
               </Button>
@@ -593,36 +953,59 @@ export function ProviderConfigModal({
           <Input disabled style={{ color: "var(--fn-text-secondary)" }} />
         </Form.Item>
 
-        <Form.Item
-          name="base_url"
-          label="Base URL"
-          extra={t("models.baseUrlExtra")}
-        >
-          <Input placeholder="https://api.openai.com/v1" />
-        </Form.Item>
+        {!isOnnx && (
+          <>
+            <Form.Item
+              name="base_url"
+              label="Base URL"
+              extra={t("models.baseUrlExtra")}
+            >
+              <Input placeholder="https://api.openai.com/v1" />
+            </Form.Item>
 
-        <Form.Item name="api_key" label="API Key" extra={apiKeyExtra}>
-          <Input.Password placeholder={apiKeyPlaceholder} visibilityToggle />
-        </Form.Item>
+            <Form.Item name="api_key" label="API Key" extra={apiKeyExtra}>
+              <Input.Password
+                placeholder={apiKeyPlaceholder}
+                visibilityToggle
+              />
+            </Form.Item>
+          </>
+        )}
 
         {/* Default model — Select from the models list, or type freely */}
         <Form.Item
           name="model"
           label={t("models.defaultModelLabel")}
-          extra={t(
-            "models.defaultModelExtra",
-            "测试连接时使用此模型；留空则使用第一个已启用的模型",
-          )}
+          extra={
+            isOnnx
+              ? t("models.defaultModelDownloadedOnly")
+              : t(
+                  "models.defaultModelExtra",
+                  "测试连接时使用此模型；留空则使用第一个已启用的模型",
+                )
+          }
         >
           {draftModels.length ? (
             <Select
               showSearch
               allowClear
-              placeholder={t("models.defaultModelPlaceholder")}
-              options={draftModels.map((m) => ({
+              placeholder={
+                isOllama || isOnnx
+                  ? t("models.defaultModelDownloadedOnly")
+                  : t("models.defaultModelPlaceholder")
+              }
+              options={(isOllama || isOnnx
+                ? draftModels.filter((m) => downloadedIds.includes(m.id))
+                : draftModels
+              ).map((m) => ({
                 value: m.id,
                 label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
               }))}
+              notFoundContent={
+                isOllama || isOnnx
+                  ? t("models.defaultModelNeedDownload")
+                  : undefined
+              }
             />
           ) : (
             <Input placeholder={t("models.defaultModelPlaceholder")} />
@@ -647,7 +1030,7 @@ export function ProviderConfigModal({
           size="small"
           icon={<Download size={12} />}
           loading={fetchingModels}
-          onClick={handleFetchModels}
+          onClick={() => void handleFetchModels()}
           style={{ marginLeft: 8 }}
         >
           {t("models.fetchModels")}
@@ -664,7 +1047,45 @@ export function ProviderConfigModal({
         models={draftModels}
         onModelsChange={handleModelsChange}
         apiPrefix={apiPrefix}
+        localDownload={
+          isOllama || isOnnx
+            ? {
+                downloadedIds,
+                downloadingIds,
+                onDownload: (id) => void handleLocalModelDownload(id),
+                requireDownloadToEnable: true,
+              }
+            : undefined
+        }
       />
+
+      <Modal
+        open={downloadProgressOpen}
+        title={t("models.localDownloadProgressTitle")}
+        onCancel={dismissDownloadProgressToBackground}
+        closable
+        maskClosable
+        destroyOnClose={false}
+        footer={
+          <Button onClick={dismissDownloadProgressToBackground}>
+            {t("models.localDownloadContinueBackground")}
+          </Button>
+        }
+      >
+        <div style={{ marginBottom: 8, fontSize: 13 }}>
+          {downloadProgressLabel || downloadProgressModel}
+        </div>
+        <Progress percent={downloadProgress} status="active" />
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: "var(--fn-text-tertiary)",
+          }}
+        >
+          {t("models.localDownloadBackgroundHint")}
+        </div>
+      </Modal>
 
       {/* ===== Ollama local models section ===== */}
       {isOllama && (

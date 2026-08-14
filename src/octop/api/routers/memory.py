@@ -39,7 +39,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from octop.api.common.agent import assert_agent_owner, require_agent_row
+from octop.api.common.agent import assert_agent_owner, require_agent_owner_row
 from octop.api.common.memory_client import call_memory_rpc
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
@@ -728,7 +728,7 @@ async def get_extract_config(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return the agent's extraction-trigger configuration (with defaults)."""
-    row = require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     return _read_extract_config(row)
 
 

@@ -22,7 +22,7 @@ from octop.infra.skills.skill_packages import (
 )
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
-from octop.infra.utils.ulid import new_ulid
+from octop.infra.utils.ulid import new_short_id
 
 
 def is_skill_package_name_conflict(exc: BaseException) -> bool:
@@ -66,6 +66,14 @@ def _apply_presentation_metadata(summary: dict[str, Any], metadata: dict[str, An
             summary["icon_url"] = icon_url
 
 
+def _allocate_package_id(repo: SkillPackageRepo) -> str:
+    for _ in range(16):
+        package_id = new_short_id()
+        if repo.get(package_id) is None:
+            return package_id
+    raise RuntimeError("failed to allocate unique skill package id")
+
+
 class SkillPackageStore:
     """Persist skill package contents below a host-local root."""
 
@@ -83,7 +91,7 @@ class SkillPackageStore:
         icon_url: str = "",
     ) -> SkillPackageRow:
         row = self.repo.create(
-            id=new_ulid(),
+            id=_allocate_package_id(self.repo),
             name=name,
             description=description,
             created_by=created_by,

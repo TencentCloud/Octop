@@ -184,6 +184,31 @@ def _resolve_memory_backend_kwargs(
     return memory_backend_from_agent_config(cfg, octop_config=config, workspace_dir=workspace_dir)
 
 
+async def _fill_missing_subagent_colors(agent: Any, rows: list[dict[str, Any]]) -> None:
+    """Copy ``color`` from workspace frontmatter when harness omitted it."""
+    missing = [row for row in rows if not str(row.get("color") or "").strip() and row.get("path")]
+    if not missing:
+        return
+    workspace = getattr(agent, "workspace", None)
+    aread = getattr(workspace, "aread_text", None)
+    if not callable(aread):
+        return
+    from octop.infra.utils.frontmatter import parse_frontmatter
+
+    for row in missing:
+        path = str(row.get("path") or "")
+        try:
+            text = await aread(path)
+        except (OSError, TypeError, ValueError):
+            continue
+        if not isinstance(text, str) or not text:
+            continue
+        meta, _body = parse_frontmatter(text)
+        color = str(meta.get("color") or "").strip()
+        if color:
+            row["color"] = color
+
+
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
@@ -202,6 +227,7 @@ class AgentCreateSpec:
     system_prompt: str | None = None
     icon: str | None = None
     template_name: str | None = None
+    is_shared: bool = False
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -415,6 +441,10 @@ class AgentManager:
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
+            if spec.is_shared:
+                self._repos.agent_repo.set_shared(agent_id, True)
+                row = self._repos.agent_repo.get(agent_id)
+                assert row is not None
             if spec.template_name:
                 await self._seed_expert_template(row, spec.template_name)
             if defer_bootstrap:
@@ -471,6 +501,14 @@ class AgentManager:
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         self._schedule_reload(agent_id)
+        return row
+
+    async def set_shared(self, agent_id: str, shared: bool) -> AgentRow:
+        """Persist whether other users may access this agent."""
+        self._repos.agent_repo.set_shared(agent_id, shared)
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         return row
 
     async def delete(self, agent_id: str) -> None:
@@ -1467,7 +1505,9 @@ class AgentManager:
     async def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""
         agent = self.get_agent(agent_id)
-        return await agent.list_subagent_summaries()
+        rows = [dict(row) for row in await agent.list_subagent_summaries()]
+        await _fill_missing_subagent_colors(agent, rows)
+        return rows
 
     def sync_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Push ``skills_disabled`` to the running harness agent (hot update)."""
@@ -1567,6 +1607,23 @@ class AgentManager:
             sorted(tool_set)[:8],
         )
         ws = agent.workspace
+        try:
+            from octop.infra.agents.builtin_skills import (  # noqa: PLC0415
+                sync_octop_builtin_skills,
+            )
+
+            synced_skills = await sync_octop_builtin_skills(ws)
+            logger.info(
+                "Agent %s: synced Octop built-in skills=%s",
+                row.agent_id,
+                synced_skills,
+            )
+        except Exception:
+            logger.warning(
+                "Agent %s: failed to sync Octop built-in skills",
+                row.agent_id,
+                exc_info=True,
+            )
         if self._plugin_manager is not None:
             await asyncio.to_thread(self._plugin_manager.sync_skills_to_workspace, ws)
 
@@ -1857,6 +1914,18 @@ class AgentManager:
 
             cron_tools = build_cronjob_tools(self._cron_manager)
 
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from octop.infra.knowledge.tools import build_knowledge_tools  # noqa: PLC0415
+
+        knowledge_tools = build_knowledge_tools(
+            SimpleNamespace(
+                knowledge_repo=self._repos.knowledge_repo,
+                settings_repo=self._repos.settings_repo,
+                provider_repo=self._repos.provider_repo,
+            )
+        )
+
         from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
         agent_plugins = cfg.get("plugins") if isinstance(cfg.get("plugins"), dict) else {}
@@ -1874,18 +1943,21 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
 
         # FilesystemGuard + ModelSettings live in harness-agent (auto-mounted).
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         agent_middleware: list[Any] = [
             *plugin_middleware,
             ReasoningRequestMiddleware(),
+            KnowledgeSearchHintMiddleware(),
             BinaryReadGuardMiddleware(),
         ]
 
         merged_tools: list[Any] = []
         if cron_tools:
             merged_tools.extend(cron_tools)
+        merged_tools.extend(knowledge_tools)
         merged_tools.extend(plugin_tools)
         if self._harness_manager is not None:
             merged_tools.extend(self._harness_manager.team.team_tools())

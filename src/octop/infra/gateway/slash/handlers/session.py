@@ -41,7 +41,7 @@ async def cmd_new(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: Sl
 
 async def cmd_list(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:
     lang = lang_of(ctx)
-    rows = ctx.thread_registry.list_threads(agent_id=ctx.agent_id, limit=10)
+    rows = ctx.thread_registry.list_threads(agent_id=ctx.agent_id, user_id=ctx.user_id, limit=10)
     if not rows:
         await sink.text(tr("list.empty", lang))
         return
@@ -65,7 +65,7 @@ async def cmd_switch(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
     if not short:
         await sink.text(tr("switch.usage", lang))
         return
-    target = find_thread_by_short(ctx.thread_registry, ctx.agent_id, short)
+    target = find_thread_by_short(ctx.thread_registry, ctx.agent_id, ctx.user_id, short)
     if target is None:
         await sink.text(tr("switch.not_found", lang, short=short))
         return
@@ -81,7 +81,7 @@ async def cmd_resume(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
     lang = lang_of(ctx)
     short = cmd.args.strip()
     if short:
-        target = find_thread_by_short(ctx.thread_registry, ctx.agent_id, short)
+        target = find_thread_by_short(ctx.thread_registry, ctx.agent_id, ctx.user_id, short)
         if target is None:
             await sink.text(tr("switch.not_found", lang, short=short))
             return
@@ -127,7 +127,7 @@ async def cmd_delete(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
         await sink.text(tr("delete.usage", lang))
         return
     active = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
-    target = find_thread_by_short(ctx.thread_registry, ctx.agent_id, short)
+    target = find_thread_by_short(ctx.thread_registry, ctx.agent_id, ctx.user_id, short)
     if target is None:
         await sink.text(tr("delete.not_found", lang, short=short))
         return

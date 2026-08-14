@@ -5,13 +5,23 @@
  * Connectivity tests still hit the live provider endpoint.
  */
 import { useState } from "react";
-import { Button, Form, Input, InputNumber, Modal, Select, Switch } from "antd";
+import {
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Switch,
+  Tooltip,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
   Check,
   ChevronDown,
   ChevronUp,
+  Download,
   Pencil,
   Plus,
   Trash2,
@@ -24,6 +34,16 @@ import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { ModelMetaTags } from "../../modelMeta";
 import styles from "../../index.module.less";
 
+export interface LocalModelDownloadControl {
+  /** Model ids already present on disk / in the local runtime. */
+  downloadedIds: ReadonlySet<string> | readonly string[];
+  /** Model ids currently downloading. */
+  downloadingIds?: ReadonlySet<string> | readonly string[];
+  onDownload: (modelId: string) => void;
+  /** When true, enable switch is locked until the model is downloaded. */
+  requireDownloadToEnable?: boolean;
+}
+
 interface ModelListEditorProps {
   provider: ProviderRow;
   models: ProviderModel[];
@@ -31,6 +51,7 @@ interface ModelListEditorProps {
   /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
   canTest?: boolean;
+  localDownload?: LocalModelDownloadControl;
   onTestModel?: (
     modelId: string,
     modelName: string,
@@ -49,9 +70,21 @@ export function ModelListEditor({
   onModelsChange,
   apiPrefix = "/providers",
   canTest,
+  localDownload,
   onTestModel,
 }: ModelListEditorProps) {
   const { t } = useTranslation();
+  const downloadedSet = (() => {
+    if (!localDownload) return null;
+    const raw = localDownload.downloadedIds;
+    return raw instanceof Set ? raw : new Set(raw);
+  })();
+  const downloadingSet = (() => {
+    if (!localDownload?.downloadingIds) return new Set<string>();
+    const raw = localDownload.downloadingIds;
+    return raw instanceof Set ? raw : new Set(raw);
+  })();
+  const requireDownload = !!localDownload?.requireDownloadToEnable;
   const [adding, setAdding] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -67,6 +100,15 @@ export function ModelListEditor({
     _modelName: string,
     enabled: boolean,
   ) => {
+    if (
+      enabled &&
+      requireDownload &&
+      downloadedSet &&
+      !downloadedSet.has(modelId)
+    ) {
+      message.warning(t("models.downloadBeforeEnable"));
+      return;
+    }
     onModelsChange(
       models.map((m) => (m.id === modelId ? { ...m, enabled } : m)),
     );
@@ -230,6 +272,9 @@ export function ModelListEditor({
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
         return;
       }
+      if (requireDownload) {
+        entry.enabled = false;
+      }
       onModelsChange([...models, entry]);
       message.success(t("models.modelAdded", { name: entry.name }));
       resetForm();
@@ -309,6 +354,9 @@ export function ModelListEditor({
             const isCurrentEditing = editingModelId === m.id;
             const isEnabled = m.enabled !== false;
             const isTesting = testingIds.has(m.id);
+            const isDownloaded = downloadedSet ? downloadedSet.has(m.id) : true;
+            const isDownloading = downloadingSet.has(m.id);
+            const enableLocked = requireDownload && !isDownloaded;
             return (
               <div
                 key={m.id}
@@ -316,18 +364,37 @@ export function ModelListEditor({
                   isCurrentEditing ? ` ${styles.modelListItemEditing}` : ""
                 }${!isEnabled ? ` ${styles.modelListItemDisabled}` : ""}`}
               >
-                <Switch
-                  size="small"
-                  checked={isEnabled}
-                  onChange={(checked) =>
-                    handleToggleEnabled(m.id, m.name, checked)
+                <Tooltip
+                  title={
+                    enableLocked ? t("models.downloadBeforeEnable") : undefined
                   }
-                  className={styles.modelToggle}
-                />
+                >
+                  <Switch
+                    size="small"
+                    checked={isEnabled && !enableLocked}
+                    disabled={enableLocked}
+                    onChange={(checked) =>
+                      handleToggleEnabled(m.id, m.name, checked)
+                    }
+                    className={styles.modelToggle}
+                  />
+                </Tooltip>
                 <div className={styles.modelListItemInfo}>
                   <span className={styles.modelListItemName}>{m.name}</span>
                   {m.name !== m.id && (
                     <span className={styles.modelListItemId}>{m.id}</span>
+                  )}
+                  {localDownload && (
+                    <span className={styles.modelListItemId}>
+                      {isDownloaded
+                        ? t("models.localModelDownloaded")
+                        : t("models.notDownloaded")}
+                    </span>
+                  )}
+                  {(m.embedding || m.task === "embedding") && (
+                    <span className={styles.modelListItemId}>
+                      {t("models.embeddingOnlyTag")}
+                    </span>
                   )}
                   <ModelMetaTags
                     includeText
@@ -338,6 +405,17 @@ export function ModelListEditor({
                   />
                 </div>
                 <div className={styles.modelListItemActions}>
+                  {localDownload && !isDownloaded && (
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Download size={14} />}
+                      loading={isDownloading}
+                      onClick={() => localDownload.onDownload(m.id)}
+                      title={t("models.localDownloadModel")}
+                      style={{ marginRight: 4 }}
+                    />
+                  )}
                   {hasApiKey &&
                     (isTesting ? (
                       <Button

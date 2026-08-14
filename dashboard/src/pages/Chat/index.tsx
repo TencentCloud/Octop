@@ -13,7 +13,8 @@ import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
-import { useUserRole } from "../../hooks/useUserRole";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
@@ -49,6 +50,7 @@ import { useSkills } from "../Agent/Skills/useSkills";
 import { useAgent } from "../../context/AgentContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
+import { isSharedExpertViewer } from "../../utils/sharedExpert";
 import ChatDockPanels from "./components/ChatDockPanels";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
@@ -73,8 +75,8 @@ function ChatPageInner() {
     threadId?: string;
   }>();
   const isMobile = useIsMobile();
-  const role = useUserRole();
-  const isAdmin = role === "admin";
+  const user = useCurrentUser();
+  const canTerminal = userCan(user, "terminal");
   const chatHistoryRail = useChatHistoryRail();
   const [selectedTargetAgents, setSelectedTargetAgents] = useState<string[]>(
     [],
@@ -147,6 +149,7 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
   const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
   const noAgents = !agentsLoading && agents.length === 0;
 
   useEffect(() => {
@@ -156,7 +159,9 @@ function ChatPageInner() {
   const { quickCards: expertQuickCards, welcomeSuffix } =
     useExpertChatWelcome(activeAgent);
   const { skills: chatSkills } = useSkills(
-    agentChatReady && !agentsLoading ? resolvedAgentId ?? null : null,
+    agentChatReady && !agentsLoading && !sharedExpertViewer
+      ? resolvedAgentId ?? null
+      : null,
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
 
@@ -289,7 +294,9 @@ function ChatPageInner() {
     setSelectedModel,
     selectedConnectors,
     selectedSkills,
+    selectedKnowledgeBaseIds,
     chatConnectors,
+    chatKnowledgeBases,
     availableModels,
     activeModelRef,
     reasoningMode,
@@ -297,6 +304,7 @@ function ChatPageInner() {
     handleReasoningChange,
     handleConnectorsChange,
     handleSkillsChange,
+    handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
     resolvedAgentId,
     chatSkills,
@@ -364,6 +372,9 @@ function ChatPageInner() {
         name: a.name,
         icon_name: a.icon_name,
         color: a.color,
+        is_shared: a.is_shared,
+        is_owner: a.is_owner,
+        owner_username: a.owner_username,
       })),
     [agents],
   );
@@ -372,9 +383,10 @@ function ChatPageInner() {
     () => ({
       skills: chatSkills,
       connectors: chatConnectors,
+      knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
     }),
-    [chatSkills, chatConnectors, chatAgentOptions],
+    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
   );
 
   const { handleSend } = useChatSend({
@@ -384,6 +396,7 @@ function ChatPageInner() {
     messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
+    selectedKnowledgeBaseIds,
     selectedSkills,
     selectedTargetAgents,
     reasoningMode,
@@ -442,6 +455,7 @@ function ChatPageInner() {
         selectedModel: item.composerContext?.model ?? item.modelRef ?? null,
         selectedSkills: item.composerContext?.skills,
         selectedConnectors: item.composerContext?.connectors,
+        selectedKnowledgeBaseIds: item.composerContext?.knowledgeBaseIds,
         selectedTargetAgents: item.composerContext?.targetAgents,
         threadId: ctx.threadId,
         agentId: ctx.agentId || undefined,
@@ -662,7 +676,7 @@ function ChatPageInner() {
                   {activeSessionTitle}
                 </div>
               )}
-              {resolvedAgentId && (
+              {resolvedAgentId && !sharedExpertViewer && (
                 <div className={styles.mobileToolbarRight}>
                   <button
                     className={styles.menuBtn}
@@ -724,7 +738,7 @@ function ChatPageInner() {
                   hasBrowserTool && !isMobile ? openBrowserTab : undefined
                 }
                 onEditFile={
-                  panelFilePaths.length > 0 && !isMobile
+                  !sharedExpertViewer && panelFilePaths.length > 0 && !isMobile
                     ? openFileList
                     : undefined
                 }
@@ -736,7 +750,7 @@ function ChatPageInner() {
             <div className={styles.chatFloatActions}>
               {/* PWA install first when available — same column as browser / experts. */}
               <PwaInstallPrompt appearance="chatFloat" />
-              {resolvedAgentId && (
+              {resolvedAgentId && !sharedExpertViewer && (
                 <Tooltip
                   title={t("chat.agentProfile.open")}
                   mouseEnterDelay={0.35}
@@ -754,7 +768,7 @@ function ChatPageInner() {
                   </span>
                 </Tooltip>
               )}
-              {panelFilePaths.length > 0 && (
+              {!sharedExpertViewer && panelFilePaths.length > 0 && (
                 <Tooltip
                   title={t("chat.modifiedFiles", {
                     count: panelFilePaths.length,
@@ -785,7 +799,7 @@ function ChatPageInner() {
                   </span>
                 </Tooltip>
               )}
-              {isAdmin && (
+              {canTerminal && (
                 <Tooltip
                   title={t("chat.openTerminal", "打开终端")}
                   mouseEnterDelay={0.35}
@@ -876,6 +890,9 @@ function ChatPageInner() {
             availableConnectors={chatConnectors}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={handleConnectorsChange}
+            availableKnowledgeBases={chatKnowledgeBases}
+            selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+            onKnowledgeBaseIdsChange={handleKnowledgeBaseIdsChange}
             availableSkills={chatSkills}
             selectedSkills={selectedSkills}
             onSkillsChange={handleSkillsChange}
@@ -897,7 +914,7 @@ function ChatPageInner() {
           isResizing={dockIsResizing}
           panelSizes={dockPanelSizes}
           agentId={resolvedAgentId ?? ""}
-          filePaths={panelFilePaths}
+          filePaths={sharedExpertViewer ? [] : panelFilePaths}
           openTabs={openTabs}
           activeTabId={activeTabId}
           onSelectTab={setDockActiveTab}
@@ -909,12 +926,14 @@ function ChatPageInner() {
           onResizeStart={dockHandleResizeStart}
         />
 
-        <AgentProfileDrawer
-          open={agentProfileOpen}
-          agent={activeAgent}
-          isMobile={isMobile}
-          onClose={() => setAgentProfileOpen(false)}
-        />
+        {!sharedExpertViewer && (
+          <AgentProfileDrawer
+            open={agentProfileOpen}
+            agent={activeAgent}
+            isMobile={isMobile}
+            onClose={() => setAgentProfileOpen(false)}
+          />
+        )}
       </div>
     </ChatFilePreviewProvider>
   );

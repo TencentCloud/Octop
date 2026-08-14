@@ -40,7 +40,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
@@ -56,7 +56,7 @@ router = APIRouter()
 
 def _resolve_runtime(agent_id: str, *, user: Any, as_user: int | None, server: Any) -> Any:
     """Return the AgentRow for the given agent_id after auth."""
-    return require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    return require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
 
 
 # --- heartbeat config ------------------------------------------------------

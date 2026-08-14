@@ -13,7 +13,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.infra.agents.memory_backend import open_memory_kwargs
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -131,7 +131,7 @@ def call_memory_rpc(
     as_user: int | None,
     server: Any,
 ) -> Any:
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     _memory, bridge = _open_memory_for_agent(server, agent_id)
     payload = {
         "jsonrpc": "2.0",

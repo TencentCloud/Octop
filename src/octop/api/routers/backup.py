@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
-from octop.api.deps import current_admin, get_server
+from octop.api.deps import get_server, require_permission
 from octop.config import load_config
 from octop.infra.backup.auto import (
     AUTO_BACKUP_JOB_ID,
@@ -90,7 +90,7 @@ async def _rehydrate_runtime_after_restore(server: Any) -> None:
 
 @router.get("/backup/list", summary="List stored backup archives")
 async def list_backups(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """List ``.tar.gz`` files in ``~/.octop/backups/``."""
@@ -144,7 +144,7 @@ async def run_auto_backup_now(
 
 @router.post("/backup/create", summary="Create backup and save to backups dir")
 async def create_backup(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create a full backup archive and persist it under ``backups_dir``."""
@@ -172,7 +172,7 @@ async def create_backup(
 )
 async def download_backup_file(
     filename: str,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
     """Stream a backup file from ``backups_dir``."""
@@ -189,7 +189,7 @@ async def download_backup_file(
 async def restore_backup_file(
     filename: str,
     restore_config: bool = Query(default=True),
-    user: Any = Depends(current_admin),
+    user: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Restore database and workspaces from a file in ``backups_dir``.
@@ -225,7 +225,7 @@ async def restore_backup_file(
 @router.delete("/backup/files/{filename}", summary="Delete a stored backup", status_code=204)
 async def remove_backup_file(
     filename: str,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> None:
     """Remove a backup archive from ``backups_dir``."""
@@ -239,7 +239,7 @@ async def remove_backup_file(
     response_class=StreamingResponse,
 )
 async def export_backup(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
     """Create and stream a backup without persisting to ``backups_dir``."""
@@ -260,7 +260,7 @@ async def export_backup(
 @router.post("/backup/import", summary="Upload backup archive to backups dir")
 async def import_backup(
     file: UploadFile = File(...),  # noqa: B008
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Save an uploaded ``.tar.gz`` into ``backups_dir`` (does not restore)."""

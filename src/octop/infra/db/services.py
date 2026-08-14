@@ -13,12 +13,15 @@ from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.cron import CronJobRepo
+from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
 from octop.infra.db.repos.providers import ProviderRepo
+from octop.infra.db.repos.published_experts import PublishedExpertRepo
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.skill_packages import SkillPackageRepo
+from octop.infra.db.repos.sso import SsoRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.users import UserRepo
@@ -44,9 +47,12 @@ class RepoBundle:
     storage_backend_repo: BackendRepo
     connector_repo: ConnectorRepo
     skill_package_repo: SkillPackageRepo
+    published_expert_repo: PublishedExpertRepo
+    knowledge_repo: KnowledgeRepo
     voice_provider_repo: VoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
+    sso_repo: SsoRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -66,9 +72,12 @@ class RepoBundle:
             storage_backend_repo=BackendRepo(db),
             connector_repo=ConnectorRepo(db),
             skill_package_repo=SkillPackageRepo(db),
+            published_expert_repo=PublishedExpertRepo(db),
+            knowledge_repo=KnowledgeRepo(db),
             voice_provider_repo=VoiceProviderRepo(db),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
+            sso_repo=SsoRepo(db),
         )
 
 
@@ -139,6 +148,14 @@ class SharedServices:
         return self.repos.skill_package_repo
 
     @property
+    def published_expert_repo(self) -> PublishedExpertRepo:
+        return self.repos.published_expert_repo
+
+    @property
+    def knowledge_repo(self) -> KnowledgeRepo:
+        return self.repos.knowledge_repo
+
+    @property
     def voice_provider_repo(self) -> VoiceProviderRepo:
         return self.repos.voice_provider_repo
 
@@ -149,6 +166,10 @@ class SharedServices:
     @property
     def proactive_care_config_repo(self) -> ProactiveCareConfigRepo:
         return self.repos.proactive_care_config_repo
+
+    @property
+    def sso_repo(self) -> SsoRepo:
+        return self.repos.sso_repo
 
 
 def build_shared_services(

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { updateApi, type UpdateStatus } from "../api/modules/update";
 import {
+  UPDATE_STATUS_CHANGED_EVENT,
+  UPDATE_STATUS_POLL_MS,
   isUpdateStatusCacheExpired,
   readStoredUpdateStatus,
   storeUpdateStatus,
@@ -54,6 +56,25 @@ export function useUpdateStatus() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refreshStatus]);
+
+  // Keep checking while the dashboard stays open (cache TTL still gates PyPI).
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void refreshStatus(false);
+    }, UPDATE_STATUS_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [refreshStatus]);
+
+  // Sync Header / Sidebar / Update page when any writer stores a new status.
+  useEffect(() => {
+    const onChanged = (event: Event) => {
+      const next = (event as CustomEvent<UpdateStatus>).detail;
+      if (next) setStatus(next);
+    };
+    window.addEventListener(UPDATE_STATUS_CHANGED_EVENT, onChanged);
+    return () =>
+      window.removeEventListener(UPDATE_STATUS_CHANGED_EVENT, onChanged);
+  }, []);
 
   const hasUpdate = Boolean(status?.has_update && status?.latest_version);
 

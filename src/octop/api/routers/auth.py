@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, sign_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import effective_permissions
 from octop.infra.utils.locale import normalize_locale
 
 router = APIRouter()
@@ -22,6 +23,7 @@ def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
         "role": user.role.value,
         "display_name": user.display_name,
         "locale": loc,
+        "permissions": effective_permissions(user),
     }
 
 
