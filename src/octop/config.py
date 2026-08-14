@@ -149,18 +149,15 @@ def _parse_backup_section(raw: object) -> BackupConfig:
     if raw is None:
         return BackupConfig()
     if not isinstance(raw, dict):
-        msg = f"config.backup must be an object, got {type(raw).__name__}"
-        raise ValueError(msg)
+        raise ValueError("config.backup must be an object")
     defaults = BackupConfig()
     schedule = str(raw.get("schedule", defaults.schedule)).strip() or defaults.schedule
     try:
         retention = int(raw.get("retention_count", defaults.retention_count))
     except (TypeError, ValueError) as exc:
-        msg = "config.backup.retention_count must be an integer"
-        raise ValueError(msg) from exc
+        raise ValueError("config.backup.retention_count must be an integer") from exc
     if retention < 1:
-        msg = f"config.backup.retention_count must be >= 1, got {retention}"
-        raise ValueError(msg)
+        raise ValueError("config.backup.retention_count must be >= 1")
     return BackupConfig(
         auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
@@ -172,7 +169,8 @@ def _coerce_int(name: str, value: str, default: int) -> int:
     try:
         return int(value)
     except ValueError:
-        logger.warning("env %s=%r is not int; using %s", name, value, default)
+        # Do not log the raw env value — names like OCTOP_*_PASSWORD can flow here.
+        logger.warning("env %s is not int; using %s", name, default)
         return default
 
 
@@ -182,7 +180,9 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    logger.warning("env %s=%r is not bool; using %s", name, value, default)
+    # Do not log the raw env value — OCTOP_REQUIRE_SETUP_PASSWORD is classified as
+    # sensitive by CodeQL (py/clear-text-logging-sensitive-data).
+    logger.warning("env %s is not bool; using %s", name, default)
     return default
 
 
@@ -365,8 +365,7 @@ def load_config(path: Path) -> OctopConfig:
         retention = _coerce_int("OCTOP_BACKUP_RETENTION_COUNT", v, backup.retention_count)
         if retention < 1:
             logger.warning(
-                "env OCTOP_BACKUP_RETENTION_COUNT=%r is < 1; using %s",
-                v,
+                "env OCTOP_BACKUP_RETENTION_COUNT is < 1; using %s",
                 backup.retention_count,
             )
             retention = backup.retention_count
