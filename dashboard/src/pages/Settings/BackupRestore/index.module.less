@@ -2,6 +2,67 @@
   margin-bottom: 28px;
 }
 
+.autoForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+}
+
+.autoRow {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: 0;
+  font-size: 13px;
+  color: var(--fn-text-primary);
+
+  @media (max-width: 767px) {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+.autoControl {
+  width: 100%;
+  max-width: 320px;
+}
+
+.autoSwitch {
+  justify-self: start;
+}
+
+.autoControlStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 320px;
+  width: 100%;
+}
+
+.autoHint {
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+  line-height: 1.4;
+}
+
+.autoStatus {
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.kindBadge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-secondary);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

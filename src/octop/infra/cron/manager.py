@@ -274,3 +274,13 @@ class CronManager:
             replace_existing=True,
             misfire_grace_time=300,
         )
+
+    def unschedule_system_job(self, job_id: str) -> None:
+        """Remove a process-level job previously registered via :meth:`schedule_system_job`."""
+        self._system_job_ids.discard(job_id)
+        if self._scheduler.get_job(job_id):
+            self._scheduler.remove_job(job_id)
+
+    def has_system_job(self, job_id: str) -> bool:
+        """True when a system job id is currently registered with the scheduler."""
+        return self._scheduler.get_job(job_id) is not None

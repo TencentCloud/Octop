@@ -23,9 +23,42 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.database.sqlite_path == "octop.db"
     assert cfg.database.is_sqlite
     assert cfg.database_in_file is False
+    assert cfg.backup.auto_enabled is False
+    assert cfg.backup.schedule == "cron:0 4 * * *"
+    assert cfg.backup.retention_count == 7
     assert cfg_path.exists()  # file written with defaults
     written = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert "password" not in written.get("database", {})
+    assert written.get("backup", {}).get("auto_enabled") is False
+
+
+def test_loads_backup_section(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "backup": {
+                    "auto_enabled": True,
+                    "schedule": "interval:7200",
+                    "retention_count": 3,
+                }
+            }
+        )
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.backup.auto_enabled is True
+    assert cfg.backup.schedule == "interval:7200"
+    assert cfg.backup.retention_count == 3
+
+
+def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OCTOP_BACKUP_AUTO_ENABLED", "true")
+    monkeypatch.setenv("OCTOP_BACKUP_SCHEDULE", "cron:30 5 * * *")
+    monkeypatch.setenv("OCTOP_BACKUP_RETENTION_COUNT", "5")
+    cfg = load_config(tmp_path / "config.json")
+    assert cfg.backup.auto_enabled is True
+    assert cfg.backup.schedule == "cron:30 5 * * *"
+    assert cfg.backup.retention_count == 5
 
 
 def test_loads_existing(tmp_path: Path):

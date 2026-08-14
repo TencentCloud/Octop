@@ -229,6 +229,10 @@ class OctopServer:
 
         install_auto_renewal_job(cron_mgr, paths=self.paths)
 
+        from octop.infra.backup.auto import install_auto_backup_job
+
+        install_auto_backup_job(cron_mgr, server=self)
+
         registry.set_cron_manager(cron_mgr)
         registry.set_team_processor(gateway.processor)
 

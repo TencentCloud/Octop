@@ -84,6 +84,15 @@ class TlsConfig:
 
 
 @dataclass(frozen=True)
+class BackupConfig:
+    """Automatic system backup settings persisted in config.json."""
+
+    auto_enabled: bool = False
+    schedule: str = "cron:0 4 * * *"
+    retention_count: int = 7
+
+
+@dataclass(frozen=True)
 class OctopConfig:
     bind_host: str = "127.0.0.1"
     port: int = 8088
@@ -100,6 +109,7 @@ class OctopConfig:
     # False when config.json omits ``database`` (use PathLayout.db unless env overrides).
     database_in_file: bool = False
     tls: TlsConfig = field(default_factory=TlsConfig)
+    backup: BackupConfig = field(default_factory=BackupConfig)
 
 
 def _defaults_for_file() -> dict[str, Any]:
@@ -132,6 +142,29 @@ def _parse_tls_section(raw: object) -> TlsConfig:
         expires_at=str(raw.get("expires_at", "")),
         acme_staging=bool(raw.get("acme_staging", False)),
         http_port=int(raw.get("http_port", 80)),
+    )
+
+
+def _parse_backup_section(raw: object) -> BackupConfig:
+    if raw is None:
+        return BackupConfig()
+    if not isinstance(raw, dict):
+        msg = f"config.backup must be an object, got {type(raw).__name__}"
+        raise ValueError(msg)
+    defaults = BackupConfig()
+    schedule = str(raw.get("schedule", defaults.schedule)).strip() or defaults.schedule
+    try:
+        retention = int(raw.get("retention_count", defaults.retention_count))
+    except (TypeError, ValueError) as exc:
+        msg = "config.backup.retention_count must be an integer"
+        raise ValueError(msg) from exc
+    if retention < 1:
+        msg = f"config.backup.retention_count must be >= 1, got {retention}"
+        raise ValueError(msg)
+    return BackupConfig(
+        auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
+        schedule=schedule,
+        retention_count=retention,
     )
 
 
@@ -314,6 +347,35 @@ def load_config(path: Path) -> OctopConfig:
             "OCTOP_REQUIRE_SETUP_PASSWORD", v, bool(merged["require_setup_password"])
         )
 
+    backup = _parse_backup_section(raw.get("backup"))
+    if v := os.environ.get("OCTOP_BACKUP_AUTO_ENABLED"):
+        backup = BackupConfig(
+            auto_enabled=_coerce_bool("OCTOP_BACKUP_AUTO_ENABLED", v, backup.auto_enabled),
+            schedule=backup.schedule,
+            retention_count=backup.retention_count,
+        )
+    if v := os.environ.get("OCTOP_BACKUP_SCHEDULE"):
+        schedule = v.strip() or backup.schedule
+        backup = BackupConfig(
+            auto_enabled=backup.auto_enabled,
+            schedule=schedule,
+            retention_count=backup.retention_count,
+        )
+    if v := os.environ.get("OCTOP_BACKUP_RETENTION_COUNT"):
+        retention = _coerce_int("OCTOP_BACKUP_RETENTION_COUNT", v, backup.retention_count)
+        if retention < 1:
+            logger.warning(
+                "env OCTOP_BACKUP_RETENTION_COUNT=%r is < 1; using %s",
+                v,
+                backup.retention_count,
+            )
+            retention = backup.retention_count
+        backup = BackupConfig(
+            auto_enabled=backup.auto_enabled,
+            schedule=backup.schedule,
+            retention_count=retention,
+        )
+
     return OctopConfig(
         bind_host=merged["bind_host"],
         port=int(merged["port"]),
@@ -329,4 +391,5 @@ def load_config(path: Path) -> OctopConfig:
         database=parse_database_config(merged_db),
         database_in_file=database_in_file,
         tls=_parse_tls_section(raw.get("tls")),
+        backup=backup,
     )
