@@ -103,7 +103,7 @@ async def list_backups(
 
 @router.get("/backup/auto", summary="Get automatic backup settings")
 async def get_auto_backup_settings(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return auto-backup config and whether the system job is currently scheduled."""
@@ -113,7 +113,7 @@ async def get_auto_backup_settings(
 @router.put("/backup/auto", summary="Update automatic backup settings")
 async def put_auto_backup_settings(
     body: AutoBackupSettingsBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Persist auto-backup settings and reschedule the in-process system job."""
@@ -124,7 +124,7 @@ async def put_auto_backup_settings(
 
 @router.post("/backup/auto/run", summary="Run automatic backup now")
 async def run_auto_backup_now(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create one automatic backup immediately (same path as the scheduled job)."""
