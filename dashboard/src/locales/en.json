@@ -997,10 +997,7 @@
     "autoRunSuccess": "Automatic backup created",
     "autoRunFailed": "Failed to run automatic backup",
     "autoScheduled": "Scheduler: active",
-    "autoNotScheduled": "Scheduler: inactive",
-    "autoKind": "Type",
-    "autoKindAuto": "Automatic",
-    "autoKindManual": "Manual"
+    "autoNotScheduled": "Scheduler: inactive"
   },
   "skills": {
     "title": "Skills",

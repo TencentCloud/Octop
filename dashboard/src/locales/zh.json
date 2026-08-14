@@ -995,10 +995,7 @@
     "autoRunSuccess": "已创建自动备份",
     "autoRunFailed": "立即备份失败",
     "autoScheduled": "调度：已生效",
-    "autoNotScheduled": "调度：未生效",
-    "autoKind": "类型",
-    "autoKindAuto": "自动",
-    "autoKindManual": "手动"
+    "autoNotScheduled": "调度：未生效"
   },
   "skills": {
     "title": "技能",

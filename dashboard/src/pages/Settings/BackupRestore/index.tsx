@@ -65,10 +65,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function isAutoBackupName(name: string): boolean {
-  return name.startsWith("octop-auto-backup-");
-}
-
 /** Seconds when the spec is `interval:<n>`, otherwise null. */
 function parseIntervalSeconds(spec: string): number | null {
   const matched = /^interval:(\d+)$/.exec(spec.trim());
@@ -98,14 +94,7 @@ function BackupFileCard({
 
   return (
     <div className={styles.backupCard}>
-      <div className={styles.backupCardName}>
-        {row.name}
-        <span className={styles.kindBadge}>
-          {isAutoBackupName(row.name)
-            ? t("backup.autoKindAuto")
-            : t("backup.autoKindManual")}
-        </span>
-      </div>
+      <div className={styles.backupCardName}>{row.name}</div>
       <div className={styles.backupCardMeta}>
         <span>
           {t("backup.colSize")}: {formatSize(row.size)}
@@ -334,15 +323,6 @@ export default function BackupRestorePanel() {
       dataIndex: "name",
       key: "name",
       ellipsis: true,
-    },
-    {
-      title: t("backup.autoKind"),
-      key: "kind",
-      width: 100,
-      render: (_: unknown, row) =>
-        isAutoBackupName(row.name)
-          ? t("backup.autoKindAuto")
-          : t("backup.autoKindManual"),
     },
     {
       title: t("backup.colSize"),
