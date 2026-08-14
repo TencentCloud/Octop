@@ -20,7 +20,7 @@ import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { workspaceApi } from "../../../api/modules/workspace";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -43,6 +43,7 @@ import {
 } from "../../../utils/agentRuntimeConfig";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import FileEditModal from "./FileEditModal";
+import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
 import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
   buildBackendSpec,
@@ -139,6 +140,44 @@ interface EditAgentDrawerBodyProps {
   onSavingChange: (saving: boolean) => void;
 }
 
+/**
+ * Write a workspace file, retrying briefly when the agent's harness is mid-reload.
+ *
+ * The PATCH /agents/{aid} endpoint schedules a background ``arebuild_agent``
+ * that briefly removes the agent from the registry and then re-creates it
+ * (slow graph compile, often 2-5s on Windows). Workspace writes go through
+ * ``require_running_workspace`` which raises ``AGENT_NOT_RUNNING`` during
+ * that absence window. The very first save in a session usually lands
+ * before the reload starts, but a follow-up save (the user re-opens the
+ * drawer, edits 页面配置, and clicks save again) hits the reload window.
+ * Backing off 500ms up to 10 times (~5s) is enough for typical agents; the
+ * manifest is best-effort so we let the caller's catch surface a warning
+ * rather than block the save.
+ */
+async function writeManifestWithRetry(
+  agentId: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  const maxAttempts = 10;
+  const delayMs = 500;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      await workspaceApi.createWorkspaceFile(agentId, path, content);
+      return;
+    } catch (err) {
+      lastErr = err;
+      const code = parseApiError(err)?.code;
+      if (code !== "AGENT_NOT_RUNNING") throw err;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 function EditAgentDrawerBody({
   agent,
   onClose,
@@ -173,6 +212,7 @@ function EditAgentDrawerBody({
   );
   const [listRenameSaving, setListRenameSaving] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
+  const welcomeConfigRef = useRef<WelcomeConfigRef>(null);
 
   const installedSubagentSlugs = useMemo(
     () => new Set(agentSubagents.map((s) => s.slug)),
@@ -308,6 +348,42 @@ function EditAgentDrawerBody({
         color: nextColor,
       });
 
+      // Save welcome config to manifest.json BEFORE patching the agent.
+      // The PATCH triggers a background harness reload which briefly removes
+      // the agent from the runtime; writing the workspace file after the
+      // PATCH can race with that reload and fail with "agent not running".
+      //
+      // The PATCH itself never returns AGENT_NOT_RUNNING (it reads the row,
+      // not the harness entry). The first save usually works because the
+      // agent is still loaded when we get here. But once a previous save's
+      // reload is still in flight (the harness arebuild_agent takes a few
+      // seconds to re-compile the graph), the manifest write below can land
+      // inside the "agent briefly absent from the registry" window and fail
+      // with AGENT_NOT_RUNNING — exactly when the user re-opens the drawer,
+      // expands 页面配置, edits, and saves again. So: retry briefly so the
+      // in-flight reload can re-register the agent, and fall back to a
+      // warning (not an error) so the agent's main config still saves.
+      if (welcomeConfigRef.current && isAgentChatReady(agent.state)) {
+        const data = welcomeConfigRef.current.getData();
+        const manifest = {
+          welcome_message: data.welcome_message,
+          quick_prompts: data.quick_prompts.filter(
+            (p) => p.title?.zh || p.title?.en || p.prompt?.zh || p.prompt?.en
+          ),
+        };
+        const manifestJson = JSON.stringify(manifest, null, 2);
+        try {
+          await writeManifestWithRetry(agent.agent_id, "/manifest.json", manifestJson);
+        } catch (manifestErr) {
+          // Manifest is best-effort: the agent's main config (PATCH) is the
+          // important part. Surface a warning so the user knows, but never
+          // block the save because of a brief reload race.
+          message.warning(
+            apiErrorMessage(manifestErr, t("experts.manifestWriteFailed"), t),
+          );
+        }
+      }
+
       await request(`/agents/${agent.agent_id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -319,6 +395,7 @@ function EditAgentDrawerBody({
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
+
       message.success(t("common.save") + " ✓");
       if (bwrapToast?.kind === "success") {
         message.success(bwrapToast.text);
@@ -342,6 +419,7 @@ function EditAgentDrawerBody({
     }
   }, [
     agent.agent_id,
+    agent.state,
     agentConfig,
     colorPalette,
     form,
@@ -522,7 +600,7 @@ function EditAgentDrawerBody({
         </div>
       ) : (
         <>
-          <div className={styles.drawerSection}>
+          <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
             <div className={styles.drawerSectionTitle}>
               {t("experts.basicInfo")}
             </div>
@@ -593,6 +671,7 @@ function EditAgentDrawerBody({
               ghost
               className={styles.drawerCollapse}
               style={{ margin: "8px 0 0", width: "100%" }}
+              defaultActiveKey={["configFiles"]}
               items={[
                 {
                   key: "advanced",
@@ -603,17 +682,29 @@ function EditAgentDrawerBody({
                     </Form>
                   ),
                 },
+                ...(isAgentChatReady(agent.state) ? [{
+                  key: "pageConfig",
+                  label: t("experts.pageConfigTitle"),
+                  children: (
+                    <div style={{ padding: 0 }}>
+                      <WelcomeConfig
+                        ref={welcomeConfigRef}
+                        agentId={agent.agent_id}
+                      />
+                    </div>
+                  ),
+                }] : []),
               ]}
             />
           </div>
 
           {isAgentChatReady(agent.state) && (
-            <div className={styles.drawerSection}>
+            <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
               <Collapse
                 ghost
                 className={styles.drawerCollapse}
                 defaultActiveKey={["configFiles"]}
-                style={{ margin: "-4px 0 0", width: "100%" }}
+                style={{ margin: 0, width: "100%" }}
                 items={[
                   {
                     key: "configFiles",
