@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from harness_agent.backends.workspace import BackendWorkspace
 
+from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
 from octop.infra.agents.experts.catalog import MANIFEST_FILENAME
 from octop.infra.agents.subagents.catalog import slugify
 from octop.infra.db.repos.published_experts import PublishedExpertRepo, PublishedExpertRow
@@ -24,15 +25,30 @@ _EXCLUDED_PARTS = frozenset(
         ".git",
         "__pycache__",
         ".harness-materialize",
+        OCTOP_BUILTIN_SKILLS_ROOT,
         # Runtime / user-session data — never seed into published templates.
         "inbound",
         "daily",
         "uploads",
         "sessions",
         "media",
+        "logs",
     }
 )
 _EXCLUDED_FILENAMES = frozenset({".env", "credentials.json"})
+_MEMORY_SQLITE_PREFIX = "memory.sqlite"
+_EXPORT_ROOT_MD = frozenset(
+    {
+        "SOUL.md",
+        "IDENTITY.md",
+        "USER.md",
+        "AGENTS.md",
+        "TOOLS.md",
+        "HEARTBEAT.md",
+        "PROACTIVE.md",
+    }
+)
+_SEEDABLE_GLOB_PATTERNS = ("*.md", "skills/**/*", "agents/*.md")
 
 
 @dataclass(frozen=True)
@@ -86,6 +102,7 @@ async def export_agent_workspace_to_dir(
     workspace: BackendWorkspace,
     dest: Path,
     metadata: PublishedExpertSnapshotMeta | None = None,
+    manifest_id: str | None = None,
 ) -> list[str]:
     """Atomically replace *dest* with exported workspace files."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -95,7 +112,7 @@ async def export_agent_workspace_to_dir(
             workspace=workspace,
             dest=staging_dir,
             metadata=metadata,
-            expert_id=dest.name,
+            manifest_id=manifest_id or dest.name,
         )
         _replace_snapshot_dir(staging_dir, dest)
     except BaseException:
@@ -109,22 +126,13 @@ async def _write_workspace_snapshot(
     workspace: BackendWorkspace,
     dest: Path,
     metadata: PublishedExpertSnapshotMeta | None,
-    expert_id: str,
+    manifest_id: str,
 ) -> list[str]:
     """Copy seedable workspace files into an empty staging directory."""
-    manifest = await workspace.adownload_bytes(MANIFEST_FILENAME)
-    if manifest is None:
-        if metadata is None:
-            raise ValueError(f"workspace does not contain {MANIFEST_FILENAME}")
-        manifest = _manifest_from_metadata(metadata, expert_id=expert_id)
-    else:
-        _validate_manifest(manifest)
     paths = await _workspace_file_paths(workspace)
     dest.mkdir(parents=True, exist_ok=True)
 
-    manifest_path = dest / MANIFEST_FILENAME
-    manifest_path.write_bytes(manifest)
-    exported: list[str] = [MANIFEST_FILENAME]
+    exported: list[str] = []
     for rel in paths:
         if not _is_seedable_path(rel):
             continue
@@ -138,6 +146,23 @@ async def _write_workspace_snapshot(
         target.write_bytes(content)
         exported.append(rel)
 
+    prompt_files = sorted(rel for rel in exported if "/" not in rel and rel.endswith(".md"))
+    if metadata is not None:
+        manifest = _manifest_from_metadata(
+            metadata,
+            manifest_id=manifest_id,
+            prompt_files=prompt_files,
+        )
+    else:
+        raw_manifest = await workspace.adownload_bytes(MANIFEST_FILENAME)
+        if raw_manifest is None:
+            raise ValueError(f"workspace does not contain {MANIFEST_FILENAME}")
+        _validate_manifest(raw_manifest)
+        manifest = raw_manifest
+
+    manifest_path = dest / MANIFEST_FILENAME
+    manifest_path.write_bytes(manifest)
+    exported.append(MANIFEST_FILENAME)
     return sorted(exported)
 
 
@@ -158,9 +183,15 @@ def _replace_snapshot_dir(staging_dir: Path, dest: Path) -> None:
         shutil.rmtree(backup_dir, ignore_errors=True)
 
 
-def _manifest_from_metadata(metadata: PublishedExpertSnapshotMeta, *, expert_id: str) -> bytes:
+def _manifest_from_metadata(
+    metadata: PublishedExpertSnapshotMeta,
+    *,
+    manifest_id: str,
+    prompt_files: list[str] | None = None,
+) -> bytes:
+    """Build snapshot manifest from publish metadata only — never copy workspace manifest."""
     data: dict[str, Any] = {
-        "id": expert_id,
+        "id": manifest_id,
         "label": {"zh": metadata.label_zh, "en": metadata.label_en},
         "description": {"zh": metadata.description, "en": metadata.description},
         "welcome_message": {
@@ -168,6 +199,8 @@ def _manifest_from_metadata(metadata: PublishedExpertSnapshotMeta, *, expert_id:
             "en": metadata.welcome_message_en,
         },
     }
+    if prompt_files:
+        data["prompt_files"] = prompt_files
     if metadata.icon_name:
         data["icon_name"] = metadata.icon_name
     if metadata.color:
@@ -189,26 +222,26 @@ def _validate_manifest(content: bytes | None) -> None:
 
 
 async def _workspace_file_paths(workspace: BackendWorkspace) -> list[str]:
-    """List all workspace files through the backend, never via host paths."""
-    result = await workspace.aglob("**/*")
-    if result is None:
-        raise RuntimeError("workspace backend cannot list files for snapshot export")
-
+    """List candidate workspace files for expert-template export."""
     paths: set[str] = set()
-    for entry in result.matches or []:
-        if isinstance(entry, dict):
-            is_dir = bool(entry.get("is_dir", False))
-            path = entry.get("path")
-        else:
-            is_dir = bool(getattr(entry, "is_dir", False))
-            path = getattr(entry, "path", None)
-        if is_dir:
-            continue
-        if not isinstance(path, str):
-            continue
-        rel = path.replace("\\", "/").lstrip("/")
-        if rel and rel != ".":
-            paths.add(rel)
+    for pattern in _SEEDABLE_GLOB_PATTERNS:
+        result = await workspace.aglob(pattern)
+        if result is None:
+            raise RuntimeError("workspace backend cannot list files for snapshot export")
+        for entry in result.matches or []:
+            if isinstance(entry, dict):
+                is_dir = bool(entry.get("is_dir", False))
+                path = entry.get("path")
+            else:
+                is_dir = bool(getattr(entry, "is_dir", False))
+                path = getattr(entry, "path", None)
+            if is_dir:
+                continue
+            if not isinstance(path, str):
+                continue
+            rel = path.replace("\\", "/").lstrip("/")
+            if rel and rel != ".":
+                paths.add(rel)
     return sorted(paths)
 
 
@@ -216,4 +249,15 @@ def _is_seedable_path(path: str) -> bool:
     parts = PurePosixPath(path).parts
     if not parts or any(part in _EXCLUDED_PARTS or part.startswith(".") for part in parts):
         return False
-    return parts[-1] not in _EXCLUDED_FILENAMES
+    basename = parts[-1]
+    if basename in _EXCLUDED_FILENAMES:
+        return False
+    if basename.startswith(_MEMORY_SQLITE_PREFIX):
+        return False
+    if len(parts) == 1:
+        return basename in _EXPORT_ROOT_MD
+    if parts[0] == "skills":
+        return True
+    if parts[0] == "agents":
+        return basename.endswith(".md")
+    return False

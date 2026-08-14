@@ -11,6 +11,7 @@ import {
   Pencil,
   Volume2,
   Settings,
+  GitBranch,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -53,6 +54,9 @@ interface MessageBubbleProps {
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onForkUserMessage?: (messageId: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
@@ -493,6 +497,9 @@ function MessageBubble({
   composerLookups,
   onRegenerate,
   onEditUserMessage,
+  onForkUserMessage,
+  forkDisabled,
+  forkDisabledHint,
   onHitlDecision,
   compact,
   groupPosition = "only",
@@ -724,7 +731,9 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
-                {(message.content || onEditUserMessage) && (
+                {(message.content ||
+                  onEditUserMessage ||
+                  onForkUserMessage) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
                       <CopyButton text={message.content} />
@@ -741,6 +750,22 @@ function MessageBubble({
                         aria-label={t("common.edit")}
                       >
                         <Pencil size={14} />
+                      </button>
+                    ) : null}
+                    {onForkUserMessage ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => onForkUserMessage(message.id)}
+                        disabled={forkDisabled}
+                        title={
+                          forkDisabled && forkDisabledHint
+                            ? forkDisabledHint
+                            : t("chat.forkFromHere")
+                        }
+                        type="button"
+                        aria-label={t("chat.forkFromHere")}
+                      >
+                        <GitBranch size={14} />
                       </button>
                     ) : null}
                   </div>

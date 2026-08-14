@@ -1,10 +1,12 @@
 import { useCallback, useState } from "react";
 
-function loadCollapsed(storageKey: string): boolean {
+function loadCollapsed(storageKey: string, defaultCollapsed: boolean): boolean {
   try {
-    return localStorage.getItem(storageKey) === "1";
+    const stored = localStorage.getItem(storageKey);
+    if (stored === null) return defaultCollapsed;
+    return stored === "1";
   } catch {
-    return false;
+    return defaultCollapsed;
   }
 }
 
@@ -16,8 +18,14 @@ function saveCollapsed(storageKey: string, collapsed: boolean) {
   }
 }
 
-export function useListPanelCollapsed(storageKey: string) {
-  const [collapsed, setCollapsed] = useState(() => loadCollapsed(storageKey));
+export function useListPanelCollapsed(
+  storageKey: string,
+  options?: { defaultCollapsed?: boolean },
+) {
+  const defaultCollapsed = options?.defaultCollapsed ?? false;
+  const [collapsed, setCollapsed] = useState(() =>
+    loadCollapsed(storageKey, defaultCollapsed),
+  );
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {

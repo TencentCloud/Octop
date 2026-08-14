@@ -25,6 +25,7 @@ from octop.infra.agents.experts.catalog import (
     build_create_spec_from_expert,
     discover_seed_paths,
     preview_file_paths,
+    preview_paths_from_expert_dir,
     read_text_file_contents,
 )
 from octop.infra.agents.experts.market_creation import (
@@ -86,6 +87,15 @@ class PublishExpertBody(BaseModel):
     name: str = Field(min_length=1)
     description: str = ""
     slug: str | None = None
+    welcome_message: LocalizedTextResponse | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
+
+
+class RefreshPublishedExpertBody(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    welcome_message: LocalizedTextResponse | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
 
 
 class InstallPublishedExpertBody(AgentRuntimeFields):
@@ -165,6 +175,24 @@ def _quick_prompt_dict(p: Any) -> dict[str, Any]:
         "color": p.color,
         "icon_name": p.icon_name,
     }
+
+
+def _quick_prompt_body_dict(p: QuickPromptResponse) -> dict[str, Any]:
+    return {
+        "title": {"zh": p.title.zh, "en": p.title.en},
+        "description": {"zh": p.description.zh, "en": p.description.en},
+        "prompt": {"zh": p.prompt.zh, "en": p.prompt.en},
+        "color": p.color,
+        "icon_name": p.icon_name,
+    }
+
+
+def _publish_welcome_fields(
+    welcome: LocalizedTextResponse | None,
+) -> tuple[str, str]:
+    if welcome is None:
+        return "", ""
+    return welcome.zh, welcome.en
 
 
 def _summary_dict(s: Any) -> dict[str, Any]:
@@ -280,13 +308,18 @@ async def get_published_expert(
     """Return published-expert metadata and a previewable snapshot file inventory."""
     row = _require_published_expert(server, expert_id)
     snapshot_dir = _published_snapshot_dir(server, row.id)
+    preview_paths = await asyncio.to_thread(preview_paths_from_expert_dir, snapshot_dir)
     files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
     if (snapshot_dir / MANIFEST_FILENAME).is_file():
         files.insert(0, MANIFEST_FILENAME)
     return {
         **_published_summary_dict(row, server),
         "files": files,
-        "file_contents": await asyncio.to_thread(read_text_file_contents, snapshot_dir, files),
+        "file_contents": await asyncio.to_thread(
+            read_text_file_contents,
+            snapshot_dir,
+            preview_paths,
+        ),
     }
 
 
@@ -310,6 +343,7 @@ async def publish_agent_expert(
     workspace = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
     if workspace is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+    welcome_zh, welcome_en = _publish_welcome_fields(body.welcome_message)
     row = await publish_owned_agent_expert(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -319,6 +353,9 @@ async def publish_agent_expert(
         name=body.name,
         description=body.description,
         slug=body.slug,
+        welcome_message_zh=welcome_zh,
+        welcome_message_en=welcome_en,
+        quick_prompts=tuple(_quick_prompt_body_dict(p) for p in (body.quick_prompts or [])),
     )
     return _published_summary_dict(row, server)
 
@@ -329,6 +366,7 @@ async def publish_agent_expert(
 )
 async def refresh_published_expert(
     expert_id: str,
+    body: RefreshPublishedExpertBody | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
@@ -342,6 +380,14 @@ async def refresh_published_expert(
     workspace = server.app_runtime.agent_registry.workspace_for_agent(row.source_agent_id)
     if workspace is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {row.source_agent_id!r} not found")
+    welcome_zh: str | None = None
+    welcome_en: str | None = None
+    quick_prompts: tuple[dict[str, Any], ...] | None = None
+    if body is not None:
+        if body.welcome_message is not None:
+            welcome_zh, welcome_en = _publish_welcome_fields(body.welcome_message)
+        if body.quick_prompts is not None:
+            quick_prompts = tuple(_quick_prompt_body_dict(p) for p in body.quick_prompts)
     updated = await refresh_owned_published_expert(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -349,6 +395,11 @@ async def refresh_published_expert(
         expert_id=expert_id,
         source=source,
         workspace=workspace,
+        name=body.name if body is not None else None,
+        description=body.description if body is not None else None,
+        welcome_message_zh=welcome_zh,
+        welcome_message_en=welcome_en,
+        quick_prompts=quick_prompts,
     )
     return _published_summary_dict(updated, server)
 

@@ -32,3 +32,10 @@ export function extractPromptFromJob(job: {
   if (typeof input === "string") return input;
   return "";
 }
+
+/** Short preview for tables and lists (full text via tooltip elsewhere). */
+export function truncatePromptPreview(text: string, maxLen = 48): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return `${trimmed.slice(0, maxLen)}…`;
+}

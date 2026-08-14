@@ -413,3 +413,82 @@ async def test_create_thread(env: Any) -> None:
     body = r.json()
     assert "thread_id" in body
     assert "session_key" in body
+
+
+async def test_fork_thread_from_user_message(env: Any) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    c, srv, _fake, alice_auth, bob_auth, aid = env
+    created = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    source_id = created.json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.seed_thread_messages(
+        source_id,
+        [
+            HumanMessage(content="first question", id="h1"),
+            AIMessage(content="first answer", id="a1"),
+            ToolMessage(content="tool-out", id="t1", tool_call_id="c1"),
+            HumanMessage(content="second question", id="h2"),
+            AIMessage(content="second answer", id="a2"),
+        ],
+    )
+
+    forked = await c.post(
+        f"/api/agents/{aid}/threads/{source_id}/fork",
+        headers=alice_auth,
+        json={
+            "message_id": "h2",
+            "content": "second question",
+            "user_turns_from_end": 1,
+        },
+    )
+    assert forked.status_code == 201, forked.text
+    body = forked.json()
+    dest_id = body["thread_id"]
+    assert dest_id != source_id
+    assert body["source_thread_id"] == source_id
+    assert body["copied_messages"] == 3
+
+    history = await c.get(
+        f"/api/agents/{aid}/threads/{dest_id}/history",
+        headers=alice_auth,
+    )
+    assert history.status_code == 200
+    roles = [m["role"] for m in history.json()["messages"]]
+    texts = []
+    for msg in history.json()["messages"]:
+        content = msg.get("content")
+        if isinstance(content, str):
+            texts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    texts.append(str(block.get("text") or ""))
+                elif isinstance(block, dict) and block.get("type") == "tool_result":
+                    texts.append(str(block.get("output") or ""))
+    assert "user" in roles
+    assert "first question" in texts
+    assert "second question" not in texts
+
+    source_history = await c.get(
+        f"/api/agents/{aid}/threads/{source_id}/history",
+        headers=alice_auth,
+    )
+    source_texts: list[str] = []
+    for msg in source_history.json()["messages"]:
+        content = msg.get("content")
+        if isinstance(content, str):
+            source_texts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    source_texts.append(str(block.get("text") or ""))
+    assert "first question" in source_texts
+    assert "second question" in source_texts
+
+    denied = await c.post(
+        f"/api/agents/{aid}/threads/{source_id}/fork",
+        headers=bob_auth,
+        json={"message_id": "h2", "user_turns_from_end": 1},
+    )
+    assert denied.status_code in {403, 404}

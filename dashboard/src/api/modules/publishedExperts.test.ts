@@ -18,7 +18,11 @@ describe("publishedExpertsApi", () => {
       description: "Finds sources",
       slug: "research-assistant",
     });
-    publishedExpertsApi.refresh("expert/1");
+    publishedExpertsApi.refresh("expert/1", {
+      name: "Updated",
+      description: "New description",
+      welcome_message: { zh: "欢迎", en: "Welcome" },
+    });
     publishedExpertsApi.unpublish("expert/1");
 
     expect(request).toHaveBeenNthCalledWith(1, "/experts/published");

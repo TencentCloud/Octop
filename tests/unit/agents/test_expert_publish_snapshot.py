@@ -10,6 +10,7 @@ import pytest
 from deepagents.backends.local_shell import LocalShellBackend
 from harness_agent.backends.workspace import BackendWorkspace
 
+from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
 from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, seed_expert_directory
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
@@ -103,12 +104,11 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
     assert set(exported) == {
         MANIFEST_FILENAME,
         "SOUL.md",
-        "MEMORY.md",
         "skills/research/SKILL.md",
     }
     assert json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8")) == manifest
     assert (destination / "SOUL.md").read_text(encoding="utf-8") == "# Source soul"
-    assert (destination / "MEMORY.md").read_text(encoding="utf-8") == "# Shared memory"
+    assert not (destination / "MEMORY.md").exists()
     assert (destination / "skills" / "research" / "SKILL.md").read_text(
         encoding="utf-8"
     ) == "# Research"
@@ -124,13 +124,13 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
         workspace=_workspace(installed_dir),
     )
 
-    assert copied == 4
+    assert copied == 3
     assert (installed_dir / MANIFEST_FILENAME).read_text(encoding="utf-8") == json.dumps(
         manifest,
         ensure_ascii=False,
     )
     assert (installed_dir / "skills" / "research" / "SKILL.md").read_bytes() == b"# Research"
-    assert (installed_dir / "MEMORY.md").read_bytes() == b"# Shared memory"
+    assert not (installed_dir / "MEMORY.md").exists()
 
 
 @pytest.mark.asyncio
@@ -172,6 +172,188 @@ async def test_export_snapshot_keeps_existing_directory_when_export_fails(
 
 
 @pytest.mark.asyncio
+async def test_export_snapshot_excludes_runtime_workspace_dirs(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    manifest = {
+        "id": "source-agent",
+        "label": {"zh": "来源专家", "en": "Source expert"},
+        "description": {"zh": "说明", "en": "Description"},
+    }
+    await source.aupload_many(
+        [
+            (MANIFEST_FILENAME, json.dumps(manifest, ensure_ascii=False).encode()),
+            ("SOUL.md", b"# Source soul"),
+            (f"{OCTOP_BUILTIN_SKILLS_ROOT}/skill-manager/SKILL.md", b"# Builtin"),
+            ("logs/agent.log", b"runtime log line"),
+        ]
+    )
+
+    destination = tmp_path / "published"
+    exported = await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=PublishedExpertSnapshotMeta(
+            name="Published Expert",
+            description="Published description",
+            icon_name=None,
+            color=None,
+            label_zh="发布专家",
+            label_en="Published Expert",
+            welcome_message_zh="",
+            welcome_message_en="",
+        ),
+        manifest_id="published-expert",
+    )
+
+    assert set(exported) == {MANIFEST_FILENAME, "SOUL.md"}
+    assert not (destination / OCTOP_BUILTIN_SKILLS_ROOT).exists()
+    assert not (destination / "logs").exists()
+    merged = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    assert merged["id"] == "published-expert"
+    assert merged["label"] == {"zh": "发布专家", "en": "Published Expert"}
+    assert merged["description"] == {
+        "zh": "Published description",
+        "en": "Published description",
+    }
+
+
+@pytest.mark.asyncio
+async def test_export_snapshot_excludes_memory_sqlite_files(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    await source.aupload_many(
+        [
+            ("SOUL.md", b"# Source soul"),
+            ("memory.sqlite", b"sqlite"),
+            ("memory.sqlite-wal", b"wal"),
+            ("memory.sqlite-shm", b"shm"),
+        ]
+    )
+
+    destination = tmp_path / "published"
+    exported = await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=PublishedExpertSnapshotMeta(
+            name="Expert",
+            description="desc",
+            icon_name=None,
+            color=None,
+            label_zh="专家",
+            label_en="Expert",
+            welcome_message_zh="欢迎",
+            welcome_message_en="Welcome",
+        ),
+        manifest_id="expert",
+    )
+
+    assert set(exported) == {MANIFEST_FILENAME, "SOUL.md"}
+    assert not (destination / "memory.sqlite").exists()
+
+
+@pytest.mark.asyncio
+async def test_export_snapshot_builds_manifest_from_publish_metadata_only(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    manifest = {
+        "id": "general-assistant",
+        "label": {"zh": "旧名称", "en": "Old name"},
+        "description": {"zh": "旧说明", "en": "Old description"},
+        "welcome_message": {"zh": "欢迎回来", "en": "Welcome back"},
+        "quick_prompts": [{"title": {"zh": "开始", "en": "Start"}}],
+        "icon_name": "zap",
+        "color": "#111111",
+        "skillhub": {"manifest_generated": {"by": "test"}},
+    }
+    await source.aupload_many(
+        [
+            (MANIFEST_FILENAME, json.dumps(manifest, ensure_ascii=False).encode()),
+            ("SOUL.md", b"# Source soul"),
+        ]
+    )
+
+    destination = tmp_path / "published-expert"
+    await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=PublishedExpertSnapshotMeta(
+            name="Research Expert",
+            description="Helps with research",
+            icon_name="search",
+            color="#123456",
+            label_zh="研究专家",
+            label_en="Research Expert",
+            welcome_message_zh="开始研究吧",
+            welcome_message_en="Start researching",
+        ),
+        manifest_id="research-expert",
+    )
+
+    merged = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    assert merged["id"] == "research-expert"
+    assert merged["label"] == {"zh": "研究专家", "en": "Research Expert"}
+    assert merged["description"] == {
+        "zh": "Helps with research",
+        "en": "Helps with research",
+    }
+    assert merged["welcome_message"] == {
+        "zh": "开始研究吧",
+        "en": "Start researching",
+    }
+    assert "quick_prompts" not in merged
+    assert "skillhub" not in merged
+    assert merged["icon_name"] == "search"
+    assert merged["color"] == "#123456"
+    assert merged["prompt_files"] == ["SOUL.md"]
+
+
+@pytest.mark.asyncio
+async def test_export_snapshot_includes_subagent_definitions(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    await source.aupload_many(
+        [
+            ("SOUL.md", b"# Soul"),
+            ("references/extra.json", b"{}"),
+            ("agents/reviewer.md", b"# Reviewer"),
+            ("skills/demo/SKILL.md", b"# Skill"),
+        ]
+    )
+
+    destination = tmp_path / "published"
+    exported = await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=PublishedExpertSnapshotMeta(
+            name="Expert",
+            description="desc",
+            icon_name=None,
+            color=None,
+            label_zh="专家",
+            label_en="Expert",
+            welcome_message_zh="",
+            welcome_message_en="",
+        ),
+        manifest_id="expert",
+    )
+
+    assert set(exported) == {
+        MANIFEST_FILENAME,
+        "SOUL.md",
+        "agents/reviewer.md",
+        "skills/demo/SKILL.md",
+    }
+    assert not (destination / "references").exists()
+
+
+@pytest.mark.asyncio
 async def test_export_snapshot_builds_manifest_from_publish_metadata(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()
@@ -193,6 +375,7 @@ async def test_export_snapshot_builds_manifest_from_publish_metadata(tmp_path: P
         workspace=source,
         dest=destination,
         metadata=metadata,
+        manifest_id="research-expert",
     )
 
     assert set(exported) == {MANIFEST_FILENAME, "SOUL.md"}
@@ -203,4 +386,5 @@ async def test_export_snapshot_builds_manifest_from_publish_metadata(tmp_path: P
         "welcome_message": {"zh": "开始研究", "en": "Start researching"},
         "icon_name": "search",
         "color": "#123456",
+        "prompt_files": ["SOUL.md"],
     }

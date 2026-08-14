@@ -348,20 +348,20 @@ function CronJobsPage() {
               ))}
             </div>
           ) : (
-            <Card className={styles.tableCard} bodyStyle={{ padding: 0 }}>
-              <Table
-                columns={columns}
-                dataSource={jobs}
-                rowKey="id"
-                scroll={{ x: "max-content" }}
-                pagination={{
-                  pageSize: 10,
-                  showSizeChanger: false,
-                  showTotal: (total) =>
-                    t("cronJobs.totalItems", { count: total }),
-                }}
-              />
-            </Card>
+            <Table
+              className={styles.cronTable}
+              columns={columns}
+              dataSource={jobs}
+              rowKey="id"
+              size="middle"
+              scroll={{ x: 1100 }}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: false,
+                showTotal: (total) =>
+                  t("cronJobs.totalItems", { count: total }),
+              }}
+            />
           )}
         </div>
       )}

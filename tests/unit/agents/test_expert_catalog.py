@@ -98,6 +98,12 @@ def test_preview_file_paths_limits_dashboard_preview(tmp_path: Path) -> None:
     skill = expert_dir / "skills" / "my-skill" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text("# Skill", encoding="utf-8")
+    agents_dir = expert_dir / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "reviewer.md").write_text(
+        "---\nname: Reviewer\ndescription: Code review\n---\n\n# Reviewer\n",
+        encoding="utf-8",
+    )
 
     catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
@@ -105,9 +111,23 @@ def test_preview_file_paths_limits_dashboard_preview(tmp_path: Path) -> None:
     expert = catalog.get("my-expert")
     assert expert is not None
     preview = preview_file_paths(expert)
-    assert preview == ["SOUL.md", "skills/my-skill/SKILL.md"]
+    assert preview == [
+        "SOUL.md",
+        "skills/my-skill/SKILL.md",
+        "agents/reviewer.md",
+    ]
     names = {item["name"] for item in catalog.read_file_contents("my-expert", paths=preview)}
-    assert names == {"SOUL.md", "skills/my-skill/SKILL.md"}
+    assert names == {"SOUL.md", "skills/my-skill/SKILL.md", "agents/reviewer.md"}
+
+
+def test_preview_paths_skip_manifest_json_in_prompt_files(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import preview_paths_from_inventory
+
+    paths = preview_paths_from_inventory(
+        ["SOUL.md", "manifest.json"],
+        ["skills/demo/SKILL.md"],
+    )
+    assert paths == ["SOUL.md", "skills/demo/SKILL.md"]
 
 
 def test_expert_prompt_files_metadata_only(tmp_path: Path) -> None:

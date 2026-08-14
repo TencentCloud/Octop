@@ -2,6 +2,8 @@ import { useMemo, useState, useCallback } from "react";
 import { Form, Segmented, Tooltip } from "antd";
 import { Download, LayoutGrid, List, Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useAgent } from "../../../../context/AgentContext";
+import { isAgentChatReady } from "../../../../utils/agentError";
 import { CardSkeleton } from "../../../../components/Skeleton";
 import { useCardTableView } from "../../../../hooks/useCardTableView";
 import { EmptyState } from "../../../../components/EmptyState";
@@ -15,6 +17,7 @@ import styles from "../index.module.less";
 
 interface InstalledSkillsTabProps {
   kind: "custom" | "builtin";
+  agentId: string;
   skills: SkillSpec[];
   loading: boolean;
   fetchSkills: () => Promise<void>;
@@ -46,6 +49,7 @@ interface InstalledSkillsTabProps {
 
 export default function InstalledSkillsTab({
   kind,
+  agentId,
   skills,
   loading,
   fetchSkills,
@@ -59,6 +63,14 @@ export default function InstalledSkillsTab({
   deleteSkill,
 }: InstalledSkillsTabProps) {
   const { t } = useTranslation();
+  const { agents } = useAgent();
+  const workspaceReady = useMemo(
+    () =>
+      isAgentChatReady(
+        agents.find((agent) => agent.agent_id === agentId)?.state,
+      ),
+    [agentId, agents],
+  );
 
   const { viewMode, setViewMode, showCardView } = useCardTableView("card");
   const [refreshing, setRefreshing] = useState(false);
@@ -269,6 +281,8 @@ export default function InstalledSkillsTab({
         open={drawerOpen}
         editingSkill={editingSkill}
         form={form}
+        agentId={agentId}
+        workspaceReady={workspaceReady}
         onClose={handleDrawerClose}
         onSubmit={handleSubmit}
       />

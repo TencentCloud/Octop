@@ -75,6 +75,8 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
   const [editingName, setEditingName] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [loadedKeys, setLoadedKeys] = useState<string[]>([]);
+  const loadingPathsRef = useRef(new Set<string>());
 
   useEffect(() => {
     if (!value) return;
@@ -84,8 +86,15 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
   const loadData = useCallback<NonNullable<TreeSelectProps["loadData"]>>(
     async (node) => {
       const path = String(node.value ?? "");
-      if (!path) return;
+      if (
+        !path ||
+        loadedKeys.includes(path) ||
+        loadingPathsRef.current.has(path)
+      ) {
+        return;
+      }
 
+      loadingPathsRef.current.add(path);
       try {
         const data = await request<{ entries: DirEntry[] }>(
           `/filesystem/dirs?path=${encodeURIComponent(path)}`,
@@ -98,11 +107,14 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         setTreeData(
           withSanitizedTree((prev) => appendChildren(prev, path, children)),
         );
+        setLoadedKeys((prev) => (prev.includes(path) ? prev : [...prev, path]));
       } catch {
         message.error(t("experts.rootDirListFailed"));
+      } finally {
+        loadingPathsRef.current.delete(path);
       }
     },
-    [t],
+    [loadedKeys, t],
   );
 
   const beginEditing = useCallback((path: string, name: string) => {
@@ -136,6 +148,9 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
           withSanitizedTree((prev) =>
             renameNode(prev, path, result.path, result.name),
           ),
+        );
+        setLoadedKeys((prev) =>
+          prev.map((key) => (key === path ? result.path : key)),
         );
         if (value === path) {
           onChange?.(result.path);
@@ -305,6 +320,8 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
       }}
       treeData={displayTreeData}
       loadData={loadData}
+      treeLoadedKeys={loadedKeys}
+      virtual={false}
       treeNodeLabelProp="value"
       treeExpandedKeys={expandedKeys}
       onTreeExpand={(keys) => setExpandedKeys(keys.map(String))}

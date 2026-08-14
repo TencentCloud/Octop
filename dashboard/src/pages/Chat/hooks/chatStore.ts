@@ -123,6 +123,24 @@ export function consumePendingPrefillText(): string {
   return val;
 }
 
+let _pendingPrefillAttachments: ChatAttachment[] = [];
+
+/** Enqueue attachments to restore in the composer on the next Chat mount / thread switch. */
+export function setPendingPrefillAttachments(
+  attachments: ChatAttachment[],
+): void {
+  _pendingPrefillAttachments = attachments.map((attachment) => ({
+    ...attachment,
+  }));
+}
+
+/** Consume pending prefill attachments (clears after reading). */
+export function consumePendingPrefillAttachments(): ChatAttachment[] {
+  const val = _pendingPrefillAttachments;
+  _pendingPrefillAttachments = [];
+  return val.map((attachment) => ({ ...attachment }));
+}
+
 // ── Composer draft (sessionStorage) ───────────────────────────────────────
 // Survives navigating away from /chat and back; keyed per agent + thread.
 
