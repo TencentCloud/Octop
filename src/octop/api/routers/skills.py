@@ -888,6 +888,31 @@ async def _persist_disabled(server: Any, agent_id: str, disabled: set[str]) -> N
     await server.app_runtime.agent_registry.persist_skills_disabled(agent_id, disabled)
 
 
+async def _skill_disable_keys(ctx: _AgentCtx, name: str) -> set[str]:
+    """Return slug / display-name keys to toggle for enable/disable."""
+    from harness_agent.skills.catalog import skill_identity_keys
+
+    slug = name.strip()
+    keys = {slug} if slug else set()
+    resolved = await _resolve_skill(ctx.workspace, slug)
+    if resolved is None:
+        return keys
+    manifest_path, kind, _body = resolved
+    manifest = await _aread_text(ctx.workspace, manifest_path)
+    if manifest is None:
+        return keys
+    meta, _ = _parse_frontmatter(manifest)
+    summary = _summary_dict(slug, meta, enabled=False, kind=kind)
+    keys |= skill_identity_keys(
+        {
+            "name": summary["name"],
+            "slug": summary["slug"],
+            "path": manifest_path,
+        }
+    )
+    return keys
+
+
 @router.post("/agents/{agent_id}/skills/{name}/enable", status_code=204)
 async def enable_skill(
     agent_id: str,
@@ -898,8 +923,9 @@ async def enable_skill(
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     disabled = _disabled_set(ctx.config)
-    if name in disabled:
-        disabled.discard(name)
+    keys = await _skill_disable_keys(ctx, name)
+    if disabled & keys:
+        disabled -= keys
         await _persist_disabled(server, agent_id, disabled)
 
 
@@ -913,7 +939,7 @@ async def disable_skill(
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     disabled = _disabled_set(ctx.config)
-    disabled.add(name)
+    disabled |= await _skill_disable_keys(ctx, name)
     await _persist_disabled(server, agent_id, disabled)
 
 

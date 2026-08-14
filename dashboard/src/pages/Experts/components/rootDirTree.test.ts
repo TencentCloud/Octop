@@ -140,6 +140,36 @@ describe("rootDirTree helpers", () => {
     expect(pathExistsInTree(next, "/Users/jubaoliang")).toBe(true);
   });
 
+  it("sanitizeTree removes duplicate values anywhere in the tree", () => {
+    const tree: DirTreeNode[] = [
+      {
+        ...root,
+        children: [
+          {
+            value: "/Users",
+            title: "Users",
+            isLeaf: false,
+            children: [
+              {
+                value: "/Users/a",
+                title: "a",
+                isLeaf: false,
+              },
+              {
+                value: "/Users/a",
+                title: "a-dup",
+                isLeaf: false,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const next = sanitizeTree(tree);
+    expect(next[0].children?.[0].children).toHaveLength(1);
+    expect(next[0].children?.[0].children?.[0].value).toBe("/Users/a");
+  });
+
   it("ancestorDirPaths returns parents from / down to the parent of path", () => {
     expect(ancestorDirPaths("/Users/jubaoliang/新建文件夹")).toEqual([
       "/",

@@ -1,5 +1,7 @@
+import { Image } from "antd";
 import { X, FileText, Cpu } from "lucide-react";
-import AuthImage from "../../../components/AuthImage";
+import { useTranslation } from "react-i18next";
+import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -36,6 +38,62 @@ interface ChatInputPreviewBarProps {
   onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   onTargetAgentsChange?: (ids: string[]) => void;
   onModelChange?: (model: string | null) => void;
+}
+
+function ComposerImagePreview({
+  url,
+  alt,
+  className,
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const { src, loadState } = useAuthImageSrc(url, alt);
+
+  if (loadState === "loading") {
+    return (
+      <div
+        aria-hidden
+        className={className}
+        style={{ background: "var(--fn-bg-secondary)" }}
+      />
+    );
+  }
+
+  if (loadState === "error" || !src) {
+    return (
+      <div
+        className={className}
+        role="img"
+        aria-label={alt || t("chat.imageLoadFailed")}
+        style={{
+          background: "#fff1f0",
+          color: "#cf1322",
+          fontSize: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: 4,
+        }}
+      >
+        {t("chat.imageLoadFailed")}
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={64}
+      height={64}
+      style={{ objectFit: "cover", display: "block" }}
+      preview={{ mask: false }}
+    />
+  );
 }
 
 export default function ChatInputPreviewBar({
@@ -75,28 +133,39 @@ export default function ChatInputPreviewBar({
 
   if (!hasContent) return null;
 
+  const imageAttachments = attachments.filter(
+    (attachment) => attachment.kind === "image",
+  );
+
   return (
     <div className={styles.imagePreviewBar}>
+      {imageAttachments.length > 0 ? (
+        <Image.PreviewGroup>
+          {attachments.map((attachment, idx) =>
+            attachment.kind === "image" ? (
+              <div
+                key={`${attachment.url}-${idx}`}
+                className={styles.imagePreviewItem}
+              >
+                <ComposerImagePreview
+                  url={attachment.url}
+                  alt={attachment.filename || "preview"}
+                  className={styles.imagePreviewThumb}
+                />
+                <button
+                  className={styles.imagePreviewRemove}
+                  onClick={() => onRemoveAttachment(idx)}
+                  type="button"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : null,
+          )}
+        </Image.PreviewGroup>
+      ) : null}
       {attachments.map((attachment, idx) =>
-        attachment.kind === "image" ? (
-          <div
-            key={`${attachment.url}-${idx}`}
-            className={styles.imagePreviewItem}
-          >
-            <AuthImage
-              url={attachment.url}
-              alt={attachment.filename || "preview"}
-              className={styles.imagePreviewThumb}
-            />
-            <button
-              className={styles.imagePreviewRemove}
-              onClick={() => onRemoveAttachment(idx)}
-              type="button"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        ) : (
+        attachment.kind === "image" ? null : (
           <div
             key={`${attachment.url}-${idx}`}
             className={styles.attachmentPreviewCard}

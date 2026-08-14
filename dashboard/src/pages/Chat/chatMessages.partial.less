@@ -1027,6 +1027,12 @@
     color: var(--fn-text-primary);
     background: var(--fn-bg-hover);
   }
+
+  .msgActionBtn:disabled,
+  .msgActionBtn:disabled:hover {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
 }
 
 /* Reveal when the user bubble is hovered/focused, not only the tiny buttons. */

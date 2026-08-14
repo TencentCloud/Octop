@@ -30,6 +30,7 @@ import {
   type PublishedExpert,
 } from "../../api/modules/publishedExperts";
 import { useAgent } from "../../context/AgentContext";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
 import { AgentCard } from "./components/AgentCard";
@@ -74,6 +75,14 @@ export default function ExpertsPage() {
   const { t, i18n } = useTranslation();
   const lang: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
   const { agents, refresh: refreshAgents } = useAgent();
+  const currentUser = useCurrentUser();
+
+  const canManagePublished = useCallback(
+    (expert: PublishedExpert) =>
+      currentUser?.role === "admin" ||
+      String(currentUser?.id) === expert.created_by,
+    [currentUser],
+  );
 
   // ── Tab state ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>("my");
@@ -441,9 +450,11 @@ export default function ExpertsPage() {
                 <PublishedExpertCard
                   key={expert.id}
                   expert={expert}
+                  canManage={canManagePublished(expert)}
                   onInstall={(item) =>
                     setCreateSource({ kind: "published", expert: item })
                   }
+                  onChanged={refreshPublishedExperts}
                 />
               ))}
             </div>

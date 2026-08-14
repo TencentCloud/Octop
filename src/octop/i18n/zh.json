@@ -500,6 +500,10 @@
       }
     }
   },
+  "threads": {
+    "fork_title_suffix": "（分叉）",
+    "fork_default_title": "分叉对话"
+  },
   "agents": {
     "state": {
       "running": "运行中",

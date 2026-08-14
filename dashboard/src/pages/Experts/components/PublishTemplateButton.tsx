@@ -9,6 +9,7 @@ import {
 } from "../../../api/modules/publishedExperts";
 import { apiErrorMessage } from "../../../utils/apiError";
 import type { OctopAgent } from "../../../context/AgentContext";
+import PublishExpertDrawer from "./PublishExpertDrawer";
 import styles from "../index.module.less";
 
 interface PublishTemplateButtonProps {
@@ -27,49 +28,19 @@ export default function PublishTemplateButton({
 }: PublishTemplateButtonProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<"publish" | "refresh">(
+    "publish",
+  );
 
-  const runPublish = async () => {
-    setLoading(true);
-    try {
-      await publishedExpertsApi.publish(agent.agent_id, {
-        name: agent.name,
-        description: agent.description || undefined,
-      });
-      message.success(t("experts.published.publishSuccessHint"));
-      onChanged();
-    } catch (err) {
-      message.error(
-        apiErrorMessage(err, t("experts.published.publishFailed"), t),
-      );
-    } finally {
-      setLoading(false);
-    }
+  const openPublishDrawer = () => {
+    setDrawerMode("publish");
+    setDrawerOpen(true);
   };
 
-  const confirmPublish = () => {
-    Modal.confirm({
-      title: t("experts.published.publishConfirmTitle"),
-      content: t("experts.published.publishConfirm"),
-      okText: t("experts.published.publish"),
-      cancelText: t("common.cancel"),
-      onOk: () => runPublish(),
-    });
-  };
-
-  const runRefresh = async () => {
-    if (!published) return;
-    setLoading(true);
-    try {
-      await publishedExpertsApi.refresh(published.id);
-      message.success(t("experts.published.updateSuccess"));
-      onChanged();
-    } catch (err) {
-      message.error(
-        apiErrorMessage(err, t("experts.published.updateFailed"), t),
-      );
-    } finally {
-      setLoading(false);
-    }
+  const openRefreshDrawer = () => {
+    setDrawerMode("refresh");
+    setDrawerOpen(true);
   };
 
   const confirmUnpublish = () => {
@@ -101,7 +72,7 @@ export default function PublishTemplateButton({
       type="button"
       className={buttonClassName}
       disabled={loading}
-      onClick={published ? undefined : confirmPublish}
+      onClick={published ? undefined : openPublishDrawer}
       aria-label={
         published
           ? t("experts.published.badge")
@@ -112,37 +83,49 @@ export default function PublishTemplateButton({
     </button>
   );
 
-  if (published) {
-    return (
-      <Dropdown
-        menu={{
-          items: [
-            {
-              key: "update",
-              label: t("experts.published.update"),
-              onClick: () => void runRefresh(),
-            },
-            {
-              key: "unpublish",
-              danger: true,
-              label: t("experts.published.unpublish"),
-              onClick: confirmUnpublish,
-            },
-          ],
-        }}
-        trigger={["click"]}
-        disabled={loading}
-      >
-        <Tooltip title={t("experts.published.badge")} mouseEnterDelay={0.5}>
+  return (
+    <>
+      {published ? (
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: "update",
+                label: t("experts.published.update"),
+                onClick: openRefreshDrawer,
+              },
+              {
+                key: "unpublish",
+                danger: true,
+                label: t("experts.published.unpublish"),
+                onClick: confirmUnpublish,
+              },
+            ],
+          }}
+          trigger={["click"]}
+          disabled={loading}
+        >
+          <Tooltip title={t("experts.published.badge")} mouseEnterDelay={0.5}>
+            {iconButton}
+          </Tooltip>
+        </Dropdown>
+      ) : (
+        <Tooltip
+          title={t("experts.published.cardPublish")}
+          mouseEnterDelay={0.5}
+        >
           {iconButton}
         </Tooltip>
-      </Dropdown>
-    );
-  }
+      )}
 
-  return (
-    <Tooltip title={t("experts.published.cardPublish")} mouseEnterDelay={0.5}>
-      {iconButton}
-    </Tooltip>
+      <PublishExpertDrawer
+        open={drawerOpen}
+        mode={drawerMode}
+        agent={agent}
+        published={published}
+        onClose={() => setDrawerOpen(false)}
+        onSuccess={onChanged}
+      />
+    </>
   );
 }

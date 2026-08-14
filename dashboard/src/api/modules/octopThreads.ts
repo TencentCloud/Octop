@@ -152,6 +152,30 @@ export const octopThreadsApi = {
       { method: "DELETE" },
     ),
 
+  fork: (
+    agentId: string,
+    threadId: string,
+    body: {
+      message_id: string;
+      content?: string;
+      user_turns_from_end?: number;
+    },
+  ) =>
+    request<{
+      thread_id: string;
+      session_key: string;
+      source_thread_id: string;
+      copied_messages: number;
+      title: string | null;
+      last_active: number;
+      created_at: number;
+    }>(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/fork`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
   markRead: (agentId: string, threadId: string) =>
     request<void>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(

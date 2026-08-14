@@ -19,6 +19,7 @@ import { message } from "@/utils/antdMessage";
 import type { ColumnsType } from "antd/es/table";
 import {
   Archive,
+  CalendarClock,
   Download,
   Plus,
   RefreshCw,
@@ -529,7 +530,7 @@ export default function BackupRestorePanel() {
       <Divider style={{ margin: "40px 0" }} />
 
       <TabPanelHeader
-        icon={<Archive size={22} />}
+        icon={<CalendarClock size={22} />}
         title={t("backup.autoTitle")}
         description={t("backup.autoDesc")}
       />

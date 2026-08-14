@@ -120,6 +120,19 @@ class RebindSessionBody(BaseModel):
     thread_id: str
 
 
+class ForkThreadBody(BaseModel):
+    message_id: str = Field(..., description="Selected user message id from the chat UI.")
+    content: str | None = Field(
+        default=None,
+        description="Plain text of that user message, used to locate it when ids differ.",
+    )
+    user_turns_from_end: int | None = Field(
+        default=None,
+        ge=1,
+        description="1 = latest user turn, 2 = second-to-last, … (preferred locator).",
+    )
+
+
 class RenameThreadBody(BaseModel):
     title: str | None = None
     pinned: bool | None = None

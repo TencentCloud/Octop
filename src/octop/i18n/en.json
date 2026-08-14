@@ -500,6 +500,10 @@
       }
     }
   },
+  "threads": {
+    "fork_title_suffix": " (fork)",
+    "fork_default_title": "Forked chat"
+  },
   "agents": {
     "state": {
       "running": "Running",

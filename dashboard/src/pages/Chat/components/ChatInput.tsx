@@ -28,7 +28,11 @@ import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
-import { readInputDraft, writeInputDraft } from "../hooks/chatStore";
+import {
+  consumePendingPrefillAttachments,
+  readInputDraft,
+  writeInputDraft,
+} from "../hooks/chatStore";
 import {
   buildComposerContext,
   resolveTurnModelRef,
@@ -42,6 +46,7 @@ import styles from "../index.module.less";
 /** Imperative handle exposed via ref for programmatic text injection. */
 export interface ChatInputHandle {
   setPrefillText: (text: string) => void;
+  setPrefillComposer: (text: string, attachments?: ChatAttachment[]) => void;
 }
 
 interface ChatInputProps {
@@ -174,24 +179,70 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       transcribing,
       toggle: toggleVoice,
     } = useVoiceInput(handleVoiceText);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const {
+      attachments,
+      uploading,
+      dragOver,
+      fileInputRef,
+      acceptAttr,
+      handleFileSelect,
+      handleFileChange,
+      removeAttachment,
+      clearAttachments,
+      restoreAttachments,
+      handlePaste,
+      handleDragEnter,
+      handleDragLeave,
+      handleDragOver,
+      handleDrop,
+    } = useChatAttachments(agentId);
 
     // Expose an imperative handle so the parent can push a new prefill without
     // triggering a prop change that would cause a re-render cascade.
-    useImperativeHandle(ref, () => ({
-      setPrefillText: (newText: string) => {
-        userHasEditedRef.current = false;
-        ignoreInitialTextRef.current = null;
-        prevInitialTextRef.current = newText;
-        setText(newText);
-        setTimeout(() => {
-          const el = textareaRef.current;
-          if (el) {
-            el.focus();
-            el.setSelectionRange(el.value.length, el.value.length);
+    useImperativeHandle(
+      ref,
+      () => ({
+        setPrefillText: (newText: string) => {
+          userHasEditedRef.current = false;
+          ignoreInitialTextRef.current = null;
+          prevInitialTextRef.current = newText;
+          setText(newText);
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        },
+        setPrefillComposer: (
+          newText: string,
+          nextAttachments?: ChatAttachment[],
+        ) => {
+          userHasEditedRef.current = false;
+          ignoreInitialTextRef.current = null;
+          prevInitialTextRef.current = newText;
+          setText(newText);
+          if (nextAttachments && nextAttachments.length > 0) {
+            restoreAttachments(
+              nextAttachments.map((attachment) => ({ ...attachment })),
+            );
+          } else {
+            clearAttachments();
           }
-        }, 50);
-      },
-    }));
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        },
+      }),
+      [clearAttachments, restoreAttachments],
+    );
+
     // When the parent passes a non-empty initialText after mount (e.g. navigated
     // from cron-jobs), update the input value and move the cursor to the end.
     // Only fires when initialText actually changes AND the user hasn't started
@@ -239,7 +290,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       ignoreInitialTextRef.current = null;
       prevInitialTextRef.current = "";
       setText(initialText || readInputDraft(agentId, threadId));
-    }, [agentId, threadId, initialText]);
+      const pendingAttachments = consumePendingPrefillAttachments();
+      if (pendingAttachments.length > 0) {
+        restoreAttachments(pendingAttachments);
+      } else {
+        clearAttachments();
+      }
+    }, [agentId, threadId, initialText, clearAttachments, restoreAttachments]);
 
     // Persist draft while typing so leaving /chat and returning keeps content.
     useEffect(() => {
@@ -249,24 +306,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }, 250);
       return () => window.clearTimeout(timer);
     }, [text, agentId, threadId]);
-    const {
-      attachments,
-      uploading,
-      dragOver,
-      fileInputRef,
-      acceptAttr,
-      handleFileSelect,
-      handleFileChange,
-      removeAttachment,
-      clearAttachments,
-      restoreAttachments,
-      handlePaste,
-      handleDragEnter,
-      handleDragLeave,
-      handleDragOver,
-      handleDrop,
-    } = useChatAttachments(agentId);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const submitRef = useRef<() => void>(() => {});
 
     const MIN_TEXTAREA_HEIGHT = isMobile ? 42 : 78;

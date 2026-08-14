@@ -71,8 +71,6 @@ import styles from "./index.module.less";
 type BaseFormValues = {
   name: string;
   description?: string;
-  default_open?: boolean;
-  shared?: boolean;
   icon_name?: string;
 };
 
@@ -211,6 +209,8 @@ export default function KnowledgeBasesPage() {
   const [previewFilename, setPreviewFilename] = useState("");
   const [previewText, setPreviewText] = useState("");
   const [baseForm] = Form.useForm<BaseFormValues>();
+  const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
+  const [sharedChecked, setSharedChecked] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
   const detailRequestGate = useRef(createDetailRequestGate());
   const {
@@ -371,10 +371,10 @@ export default function KnowledgeBasesPage() {
     baseForm.setFieldsValue({
       name: "",
       description: "",
-      default_open: false,
-      shared: false,
       icon_name: "book-open",
     });
+    setDefaultOpenChecked(false);
+    setSharedChecked(false);
     setEditingBase(false);
     setBaseModalOpen(true);
   };
@@ -384,21 +384,26 @@ export default function KnowledgeBasesPage() {
     baseForm.setFieldsValue({
       name: selected.name,
       description: selected.description,
-      default_open: selected.default_open,
-      shared: selected.shared,
       icon_name: selected.icon_name || undefined,
     });
+    setDefaultOpenChecked(selected.default_open);
+    setSharedChecked(selected.shared);
     setEditingBase(true);
     setBaseModalOpen(true);
   };
 
   const saveBase = async () => {
     const values = await baseForm.validateFields();
+    const payload = {
+      ...values,
+      default_open: defaultOpenChecked,
+      shared: sharedChecked,
+    };
     try {
       const next =
         editingBase && selected
-          ? await knowledgeBasesApi.update(selected.id, values)
-          : await knowledgeBasesApi.create(values);
+          ? await knowledgeBasesApi.update(selected.id, payload)
+          : await knowledgeBasesApi.create(payload);
       setBaseModalOpen(false);
       await loadBases();
       await loadDetail(next.id);
@@ -1189,9 +1194,11 @@ export default function KnowledgeBasesPage() {
                   <CircleHelp size={14} className={styles.helpIcon} />
                 </Tooltip>
               </span>
-              <Form.Item name="default_open" valuePropName="checked" noStyle>
-                <Switch size="small" />
-              </Form.Item>
+              <Switch
+                size="small"
+                checked={defaultOpenChecked}
+                onChange={setDefaultOpenChecked}
+              />
             </div>
             <div className={styles.formOptionRow}>
               <span className={styles.switchLabel}>
@@ -1200,9 +1207,11 @@ export default function KnowledgeBasesPage() {
                   <CircleHelp size={14} className={styles.helpIcon} />
                 </Tooltip>
               </span>
-              <Form.Item name="shared" valuePropName="checked" noStyle>
-                <Switch size="small" />
-              </Form.Item>
+              <Switch
+                size="small"
+                checked={sharedChecked}
+                onChange={setSharedChecked}
+              />
             </div>
           </div>
         </Form>

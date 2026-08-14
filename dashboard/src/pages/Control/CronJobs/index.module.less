@@ -10,43 +10,58 @@
   }
 }
 
-/* ── Table card wrapper (for table view) ─────────────────────── */
+/* ── Table (aligned with admin/users .userTable) ─────────────── */
 
-.tableCard {
-  border-radius: var(--fn-radius-lg);
-
-  :global(.ant-card-body) {
-    padding: 0;
+.cronTable {
+  :global(.ant-table) {
+    background: transparent;
   }
 
-  /* Fix transparent background on fixed columns when scrolling horizontally */
-  :global {
-    .ant-table-thead th,
-    .octop-ant-table-thead th {
-      white-space: nowrap;
-    }
-
-    .ant-table-cell-fix-left,
-    .ant-table-cell-fix-right,
-    .octop-ant-table-cell-fix-left,
-    .octop-ant-table-cell-fix-right {
-      background: var(--fn-bg-primary, #fff) !important;
-    }
-
-    .ant-table-thead .ant-table-cell-fix-left,
-    .ant-table-thead .ant-table-cell-fix-right,
-    .octop-ant-table-thead .octop-ant-table-cell-fix-left,
-    .octop-ant-table-thead .octop-ant-table-cell-fix-right {
-      background: var(--fn-bg-secondary, #fafafa) !important;
-    }
-
-    .ant-table-row:hover > .ant-table-cell-fix-left,
-    .ant-table-row:hover > .ant-table-cell-fix-right,
-    .octop-ant-table-row:hover > .octop-ant-table-cell-fix-left,
-    .octop-ant-table-row:hover > .octop-ant-table-cell-fix-right {
-      background: var(--fn-bg-hover, rgba(0, 0, 0, 0.02)) !important;
-    }
+  :global(.ant-table-container) {
+    border: 1px solid var(--fn-border-primary);
+    border-radius: var(--fn-radius-lg, 12px);
+    overflow: hidden;
   }
+
+  :global(.ant-table-thead > tr > th) {
+    background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+
+  :global(.ant-table-tbody > tr > td) {
+    padding: 10px 12px;
+    vertical-align: middle;
+  }
+
+  :global(.ant-table-cell-fix-left),
+  :global(.ant-table-cell-fix-right) {
+    background: var(--fn-bg-primary, #fff) !important;
+  }
+
+  :global(.ant-table-thead .ant-table-cell-fix-left),
+  :global(.ant-table-thead .ant-table-cell-fix-right) {
+    background: var(--fn-bg-secondary, #fafafa) !important;
+  }
+
+  :global(.ant-table-row:hover > .ant-table-cell-fix-left),
+  :global(.ant-table-row:hover > .ant-table-cell-fix-right) {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.02)) !important;
+  }
+}
+
+.promptCell {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* ── Toolbar (above card grid / table) ───────────────────────── */
@@ -147,18 +162,12 @@
   }
 }
 
-/* Accent bar at top */
-.cronCardAccent {
-  height: 2px;
-  background: var(--cron-accent, #8c8c8c);
-}
-
 /* Header row */
 .cronCardHeader {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px 10px;
+  padding: 16px 16px 10px;
 }
 
 /* Channel / clock icon box */
