@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Empty, Tooltip } from "antd";
-import { ChevronDown, ChevronRight, Download, Info } from "lucide-react";
+import { Empty, Popconfirm, Tooltip } from "antd";
+import { ChevronDown, ChevronRight, Download, Info, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import { requestBlob } from "../../../api/request";
+import { workspaceApi } from "../../../api/modules/workspace";
 import { isNotFoundApiError } from "../../../utils/apiError";
 import { fileTreeIcon } from "../../../utils/fileTreeIcon";
 import {
   buildDockPathTree,
+  canonicalizeDockFilePath,
   collectDockFolderPaths,
   dedupeDockFilePaths,
   dockFileBasename,
@@ -21,6 +23,8 @@ interface ChatDockFileListProps {
   agentId: string;
   filePaths: string[];
   onOpenFile: (path: string) => void;
+  /** Called after a file is deleted so its viewer tab can be closed. */
+  onCloseFile?: (path: string) => void;
 }
 
 function FolderRow({
@@ -64,17 +68,23 @@ function FileRow({
   node,
   depth,
   downloading,
+  deleting,
   onOpen,
   onDownload,
+  onDelete,
   downloadLabel,
 }: {
   node: DockPathTreeNode;
   depth: number;
   downloading: boolean;
+  deleting: boolean;
   onOpen: () => void;
   onDownload: () => void;
+  onDelete: () => void;
   downloadLabel: string;
 }) {
+  const { t } = useTranslation();
+  const deleteLabel = t("chat.dockFileDelete", "删除文件");
   return (
     <div
       className={styles.dockFileTreeFile}
@@ -93,20 +103,45 @@ function FileRow({
           {dockFileBasename(node.path)}
         </span>
       </button>
-      <Tooltip title={downloadLabel}>
-        <button
-          type="button"
-          className={styles.dockFileTreeDownload}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDownload();
-          }}
-          disabled={downloading}
-          aria-label={downloadLabel}
-        >
-          <Download size={15} strokeWidth={2} />
-        </button>
-      </Tooltip>
+      <div className={styles.dockFileTreeActions}>
+        <Tooltip title={deleteLabel}>
+          <Popconfirm
+            title={t(
+              "chat.dockFileDeleteConfirm",
+              "确定删除该文件吗？删除后不可恢复。",
+            )}
+            okText={t("common.delete", "删除")}
+            cancelText={t("common.cancel", "取消")}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => onDelete()}
+            disabled={downloading || deleting}
+          >
+            <button
+              type="button"
+              className={styles.dockFileTreeDelete}
+              onClick={(e) => e.stopPropagation()}
+              disabled={downloading || deleting}
+              aria-label={deleteLabel}
+            >
+              <Trash2 size={15} strokeWidth={2} />
+            </button>
+          </Popconfirm>
+        </Tooltip>
+        <Tooltip title={downloadLabel}>
+          <button
+            type="button"
+            className={styles.dockFileTreeDownload}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownload();
+            }}
+            disabled={downloading || deleting}
+            aria-label={downloadLabel}
+          >
+            <Download size={15} strokeWidth={2} />
+          </button>
+        </Tooltip>
+      </div>
     </div>
   );
 }
@@ -117,8 +152,10 @@ function TreeNodes({
   expanded,
   toggle,
   downloading,
+  deleting,
   onOpenFile,
   onDownload,
+  onDelete,
   downloadLabel,
 }: {
   nodes: DockPathTreeNode[];
@@ -126,8 +163,10 @@ function TreeNodes({
   expanded: Set<string>;
   toggle: (path: string) => void;
   downloading: string | null;
+  deleting: string | null;
   onOpenFile: (path: string) => void;
   onDownload: (path: string) => void;
+  onDelete: (path: string) => void;
   downloadLabel: string;
 }) {
   return (
@@ -150,8 +189,10 @@ function TreeNodes({
                   expanded={expanded}
                   toggle={toggle}
                   downloading={downloading}
+                  deleting={deleting}
                   onOpenFile={onOpenFile}
                   onDownload={onDownload}
+                  onDelete={onDelete}
                   downloadLabel={downloadLabel}
                 />
               ) : null}
@@ -164,8 +205,10 @@ function TreeNodes({
             node={node}
             depth={depth}
             downloading={downloading === node.path}
+            deleting={deleting === node.path}
             onOpen={() => onOpenFile(node.path)}
             onDownload={() => onDownload(node.path)}
+            onDelete={() => onDelete(node.path)}
             downloadLabel={downloadLabel}
           />
         );
@@ -181,11 +224,17 @@ export default function ChatDockFileList({
   agentId,
   filePaths,
   onOpenFile,
+  onCloseFile,
 }: ChatDockFileListProps) {
   const { t } = useTranslation();
+  // Deleted files stay in message-derived filePaths; hide them by canonical key.
+  const [deletedKeys, setDeletedKeys] = useState<Set<string>>(() => new Set());
   const paths = useMemo(
-    () => dedupeDockFilePaths(filePaths, agentId),
-    [filePaths, agentId],
+    () =>
+      dedupeDockFilePaths(filePaths, agentId).filter(
+        (p) => !deletedKeys.has(canonicalizeDockFilePath(p, agentId)),
+      ),
+    [filePaths, agentId, deletedKeys],
   );
   const tree = useMemo(
     () => buildDockPathTree(paths, agentId),
@@ -193,6 +242,7 @@ export default function ChatDockFileList({
   );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const seenFoldersRef = useRef<Set<string>>(new Set());
 
   // Expand newly appeared folders only; keep user collapse state.
@@ -256,6 +306,56 @@ export default function ChatDockFileList({
     [agentId, t],
   );
 
+  /** Hide a path from the list (by canonical key) and close its viewer tab. */
+  const hideDeletedPath = useCallback(
+    (path: string) => {
+      const key = canonicalizeDockFilePath(path, agentId);
+      if (key) {
+        setDeletedKeys((prev) => {
+          if (prev.has(key)) return prev;
+          const next = new Set(prev);
+          next.add(key);
+          return next;
+        });
+      }
+      onCloseFile?.(path);
+    },
+    [agentId, onCloseFile],
+  );
+
+  const handleDelete = useCallback(
+    async (path: string) => {
+      if (!agentId || !path) return;
+      setDeleting(path);
+      try {
+        await workspaceApi.deleteWorkspaceFile(
+          agentId,
+          toDockWorkspaceApiPath(path, agentId),
+        );
+        message.success(t("workspace.deleteSuccess", "已删除"));
+        hideDeletedPath(path);
+      } catch (err: unknown) {
+        if (isNotFoundApiError(err)) {
+          message.warning(
+            t(
+              "chat.dockFileMaybeDeleted",
+              "该文件可能为处理过程中的临时文件，当前已经被删除。",
+            ),
+          );
+          hideDeletedPath(path);
+          return;
+        }
+        message.error(
+          (err instanceof Error ? err.message : String(err)) ||
+            t("workspace.deleteFailed", "删除失败"),
+        );
+      } finally {
+        setDeleting(null);
+      }
+    },
+    [agentId, hideDeletedPath, t],
+  );
+
   const listHint = (
     <div className={styles.dockFileListHint} role="note">
       <Info
@@ -309,8 +409,10 @@ export default function ChatDockFileList({
             expanded={expanded}
             toggle={toggle}
             downloading={downloading}
+            deleting={deleting}
             onOpenFile={onOpenFile}
             onDownload={(p) => void handleDownload(p)}
+            onDelete={(p) => void handleDelete(p)}
             downloadLabel={downloadLabel}
           />
         </div>

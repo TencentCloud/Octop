@@ -392,12 +392,20 @@
   white-space: nowrap;
 }
 
-.dockFileTreeDownload {
+.dockFileTreeActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.dockFileTreeDownload,
+.dockFileTreeDelete {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-left: auto;
   width: 28px;
   height: 28px;
   padding: 0;
@@ -434,15 +442,28 @@
   }
 }
 
-/* Desktop: hide download until row hover / keyboard focus. */
+.dockFileTreeDelete:hover:not(:disabled) {
+  color: var(--fn-color-danger);
+  border-color: color-mix(in srgb, var(--fn-color-danger) 35%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-danger) 8%,
+    var(--fn-bg-primary)
+  );
+}
+
+/* Desktop: hide actions until row hover / keyboard focus. */
 @media (hover: hover) and (pointer: fine) {
-  .dockFileTreeDownload {
+  .dockFileTreeDownload,
+  .dockFileTreeDelete {
     opacity: 0;
     pointer-events: none;
   }
 
   .dockFileTreeFile:hover .dockFileTreeDownload,
-  .dockFileTreeFile:focus-within .dockFileTreeDownload {
+  .dockFileTreeFile:focus-within .dockFileTreeDownload,
+  .dockFileTreeFile:hover .dockFileTreeDelete,
+  .dockFileTreeFile:focus-within .dockFileTreeDelete {
     opacity: 1;
     pointer-events: auto;
   }
