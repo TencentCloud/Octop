@@ -53,13 +53,29 @@ export interface KnowledgeDocument {
   updated_at: number;
 }
 
+export interface KnowledgeOnnxModel {
+  id: string;
+  name: string;
+  downloaded: boolean;
+  recommended?: boolean;
+  size_gb?: number | null;
+}
+
 export interface KnowledgeEmbeddingOptions {
-  onnx: { id: string; name: string; downloaded: boolean }[];
+  onnx: KnowledgeOnnxModel[];
   remote: {
     provider_id: string;
     provider_name: string;
     models: { id: string; name: string }[];
   }[];
+}
+
+export interface KnowledgeOnnxDownloadState {
+  status: "idle" | "downloading" | "loading" | "done" | "failed";
+  progress: number;
+  error?: string | null;
+  model_name: string;
+  task_id?: string;
 }
 
 export const DEFAULT_KNOWLEDGE_LIMITS: KnowledgeLimits = {
@@ -84,8 +100,32 @@ export const knowledgeBasesApi = {
     }),
 
   list: () => request<KnowledgeBase[]>("/knowledge-bases"),
-  getEmbeddingOptions: () =>
-    request<KnowledgeEmbeddingOptions>("/knowledge-bases/embedding-options"),
+  getEmbeddingOptions: (opts?: { allOnnx?: boolean }) =>
+    request<KnowledgeEmbeddingOptions>(
+      opts?.allOnnx
+        ? "/knowledge-bases/embedding-options?all_onnx=true"
+        : "/knowledge-bases/embedding-options",
+    ),
+
+  downloadOnnx: (model: string) =>
+    request<KnowledgeOnnxDownloadState>("/knowledge-bases/onnx-download", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }),
+
+  getOnnxDownloadStatus: () =>
+    request<KnowledgeOnnxDownloadState>(
+      "/knowledge-bases/onnx-download-status",
+    ),
+
+  activateOnnx: (model: string) =>
+    request<{ enabled: boolean; model: string; ready: boolean }>(
+      "/knowledge-bases/onnx-activate",
+      {
+        method: "POST",
+        body: JSON.stringify({ model }),
+      },
+    ),
 
   get: (id: string) => request<KnowledgeBase>(`/knowledge-bases/${id}`),
 

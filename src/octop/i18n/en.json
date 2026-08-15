@@ -303,6 +303,7 @@
     "PROVIDER_NAME_TAKEN": "Provider name is already in use.",
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
+    "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",

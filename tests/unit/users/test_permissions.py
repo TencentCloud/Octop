@@ -67,6 +67,9 @@ def test_categories_match_nav_groups() -> None:
         "desktop",
     }
     assert PERMISSIONS["envs"].page == "advanced"
+    assert PERMISSIONS["knowledge_settings"].page == "advanced"
+    assert PERMISSIONS["knowledge_settings"].category == "admin"
+    assert "knowledge_settings" not in BASELINE_PERMISSIONS
     assert PERMISSIONS["users"].page == "users"
     assert PERMISSIONS["plugins"].page == "plugins"
     assert not PERMISSIONS["plugins"].extra_tabs

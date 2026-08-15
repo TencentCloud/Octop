@@ -149,6 +149,15 @@ PERMISSIONS: dict[str, PermissionDef] = {
         page_zh="应用设置",
         page_en="App settings",
     ),
+    "knowledge_settings": _p(
+        "knowledge_settings",
+        "admin",
+        "知识库设置",
+        "Knowledge-base settings",
+        page="advanced",
+        page_zh="应用设置",
+        page_en="App settings",
+    ),
     "voice": _p(
         "voice",
         "admin",

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
     fetch_openai_compatible_models,
@@ -75,6 +76,7 @@ def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
 
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
+    embedding: bool = False
 
 
 class ProviderTestDraftBody(BaseModel):
@@ -84,6 +86,7 @@ class ProviderTestDraftBody(BaseModel):
     base_url: str | None = None
     model_id: str
     extra_json: str | None = None
+    embedding: bool = False
 
 
 class ProviderFetchModelsBody(BaseModel):
@@ -269,6 +272,15 @@ async def admin_delete_provider(
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
+    if is_local_runtime_provider(
+        row.name,
+        provider_api_key=row.api_key,
+        provider_base_url=row.base_url,
+    ):
+        raise OctopError(
+            ErrorCode.PROVIDER_LOCAL_PROTECTED,
+            "local runtime providers cannot be deleted",
+        )
     refs = server.app_runtime.agent_registry.find_agents_using_provider(row.name)
     if refs:
         raise OctopError(
@@ -301,8 +313,9 @@ async def admin_test_provider_draft(
         base_url=(body.base_url or "").strip() or None,
         model_id=model_id,
         extra_json=body.extra_json,
+        embedding=body.embedding,
     )
-    return await probe_provider_row(row, model_id=model_id)
+    return await probe_provider_row(row, model_id=model_id, embedding=body.embedding)
 
 
 @admin_router.post("/fetch-models", summary="List models from an OpenAI-compatible draft")
@@ -447,10 +460,11 @@ async def admin_test_provider(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Probe a provider by sending a one-token ping and timing it."""
+    """Probe a provider: chat ping, or ``POST /embeddings`` for embedding models."""
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
-    return await probe_provider_row(row, model_id=model_id)
+    embedding = body.embedding if body else None
+    return await probe_provider_row(row, model_id=model_id, embedding=embedding)

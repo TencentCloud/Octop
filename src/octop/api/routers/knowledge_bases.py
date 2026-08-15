@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.model_flags import is_embedding_model, is_onnx_local_provider
-from octop.infra.agents.providers.onnx_catalog import list_onnx_catalog_models
+from octop.infra.agents.providers.onnx_catalog import (
+    ONNX_PRESET_MODEL_IDS,
+    list_onnx_catalog_models,
+)
 from octop.infra.agents.providers.onnx_service import (
+    DOWNLOAD_MANAGER,
+    OnnxServiceConfig,
+    assert_catalog_model,
     ensure_local_embedding_deps_async,
     is_model_downloaded,
+    save_config,
+    status_payload,
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge.gate import (
@@ -43,6 +52,10 @@ class FeatureBody(BaseModel):
     )
     backend: str | None = Field(default=None, pattern="^(onnx|remote)$")
     provider_id: str | None = None
+
+
+class OnnxDownloadBody(BaseModel):
+    model: str = Field(min_length=1, description="Catalog ONNX embedding model id to download.")
 
 
 class CreateBaseBody(BaseModel):
@@ -122,6 +135,36 @@ def _map_knowledge_error(exc: Exception, *, locale: str) -> OctopError:
     return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
 
 
+def _onnx_options_for_knowledge(*, include_all: bool = False) -> list[dict[str, Any]]:
+    """Recommended ONNX models, or the full catalog when *include_all* is set."""
+    catalog = list_onnx_catalog_models()
+    if include_all:
+        models = catalog
+    else:
+        by_id = {str(model["id"]): model for model in catalog}
+        models = [by_id[model_id] for model_id in ONNX_PRESET_MODEL_IDS if model_id in by_id]
+    return [
+        {
+            **model,
+            "downloaded": is_model_downloaded(str(model["id"])),
+            "recommended": bool(model.get("recommended")),
+        }
+        for model in models
+    ]
+
+
+def _enable_onnx_service(server: OctopServer, model: str) -> None:
+    """Turn on the local ONNX service for a downloaded catalog model."""
+    assert server.services is not None
+    verified = assert_catalog_model(model)
+    if not is_model_downloaded(verified):
+        raise RuntimeError("ONNX embedding model is not configured or not downloaded")
+    save_config(
+        server.services.settings_repo.set,
+        OnnxServiceConfig(enabled=True, model=verified),
+    )
+
+
 def _require_usable(server: OctopServer, request: Request) -> None:
     assert server.services is not None
     try:
@@ -151,8 +194,12 @@ async def capability(
 
 @router.get("/embedding-options", summary="List knowledge embedding backend options")
 async def embedding_options(
+    all_onnx: bool = Query(
+        False,
+        description="Include the full local ONNX catalog instead of the three recommended models",
+    ),
     server: OctopServer = Depends(get_server),
-    _admin: User = Depends(require_permission("knowledge_bases")),
+    _admin: User = Depends(require_permission("knowledge_settings")),
 ) -> dict[str, Any]:
     assert server.services is not None
     remote = []
@@ -176,20 +223,17 @@ async def embedding_options(
                 {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
             )
     return {
-        "onnx": [
-            {**model, "downloaded": is_model_downloaded(str(model["id"]))}
-            for model in list_onnx_catalog_models()
-        ],
+        "onnx": _onnx_options_for_knowledge(include_all=all_onnx is True),
         "remote": remote,
     }
 
 
-@router.put("/feature", summary="Enable or disable knowledge bases (admin)")
+@router.put("/feature", summary="Enable or disable knowledge bases")
 async def put_feature(
     body: FeatureBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _admin: User = Depends(require_permission("knowledge_bases")),
+    _admin: User = Depends(require_permission("knowledge_settings")),
 ) -> dict[str, Any]:
     assert server.services is not None
     previous = get_capability(server.services.settings_repo.get, server.services.provider_repo)
@@ -212,6 +256,11 @@ async def put_feature(
     except (RuntimeError, ValueError) as exc:
         raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
     capability = _capability_payload(server)
+    if body.enabled and selected_backend == "onnx":
+        selected_model = str(capability.get("selected_model") or "").strip()
+        if selected_model:
+            with suppress(RuntimeError, ValueError):
+                _enable_onnx_service(server, selected_model)
     if body.enabled and (
         not previous["feature_enabled"]
         or previous["selected_model"] != capability["selected_model"]
@@ -220,6 +269,42 @@ async def put_feature(
     ):
         reindex_all_documents(server.services, capability["selected_model"])
     return capability
+
+
+@router.post("/onnx-download", summary="Download a local ONNX embedding model")
+async def start_onnx_download(
+    body: OnnxDownloadBody,
+    request: Request,
+    _: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    try:
+        state = await DOWNLOAD_MANAGER.start_download(body.model.strip())
+    except (RuntimeError, ValueError) as exc:
+        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+    return state.to_dict()
+
+
+@router.get("/onnx-download-status", summary="Poll ONNX embedding model download progress")
+async def onnx_download_status(
+    _: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    return DOWNLOAD_MANAGER.state.to_dict()
+
+
+@router.post("/onnx-activate", summary="Enable local ONNX service for a downloaded model")
+async def activate_onnx_service(
+    body: OnnxDownloadBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    _: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    try:
+        await ensure_local_embedding_deps_async(allow_install=True)
+        _enable_onnx_service(server, body.model.strip())
+    except (RuntimeError, ValueError) as exc:
+        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+    assert server.services is not None
+    return status_payload(server.services.settings_repo.get, DOWNLOAD_MANAGER.state)
 
 
 @router.get("", summary="List visible knowledge bases")

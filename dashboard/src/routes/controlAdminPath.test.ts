@@ -50,6 +50,10 @@ describe("pathPermissionKeys", () => {
     expect(pathPermissionKeys("/personalization/channels")).toEqual([
       ...PERM.channels,
     ]);
+    expect(pathPermissionKeys("/knowledge-bases")).toEqual([
+      ...PERM.knowledgeBasesPage,
+    ]);
+    expect([...PERM.advancedPage]).not.toContain("knowledge_settings");
   });
 
   it("canAccessPath respects holder permissions", () => {
@@ -59,5 +63,23 @@ describe("pathPermissionKeys", () => {
     expect(canAccessPath({ role: "admin", permissions: [] }, "/acp")).toBe(
       true,
     );
+    expect(
+      canAccessPath(
+        { role: "user", permissions: ["knowledge_bases"] },
+        "/knowledge-bases",
+      ),
+    ).toBe(true);
+    expect(
+      canAccessPath(
+        { role: "user", permissions: ["knowledge_settings"] },
+        "/knowledge-bases",
+      ),
+    ).toBe(true);
+    expect(
+      canAccessPath(
+        { role: "user", permissions: ["knowledge_bases"] },
+        "/admin/advanced",
+      ),
+    ).toBe(false);
   });
 });

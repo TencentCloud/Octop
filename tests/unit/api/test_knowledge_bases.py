@@ -305,6 +305,52 @@ async def test_embedding_options_excludes_onnx_local_provider() -> None:
     assert [row["provider_name"] for row in options["remote"]] == ["OpenAI"]
     assert options["remote"][0]["models"] == [{"id": "text-embedding-3-small", "name": "embed"}]
     assert isinstance(options["onnx"], list)
+    from octop.infra.agents.providers.onnx_catalog import ONNX_PRESET_MODEL_IDS
+
+    onnx_ids = [row["id"] for row in options["onnx"]]
+    assert onnx_ids == list(ONNX_PRESET_MODEL_IDS)
+    assert all(row.get("recommended") for row in options["onnx"])
+    assert all("downloaded" in row for row in options["onnx"])
+    assert any(row.get("size_gb") for row in options["onnx"])
+
+
+@pytest.mark.asyncio
+async def test_embedding_options_omits_non_recommended_onnx() -> None:
+    from octop.api.routers import knowledge_bases
+    from octop.infra.agents.providers.onnx_catalog import ONNX_PRESET_MODEL_IDS
+
+    extra = "BAAI/bge-small-en-v1.5"
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            provider_repo=SimpleNamespace(list_all=lambda: []),
+            settings_repo=SimpleNamespace(
+                get=lambda key: extra if key == "knowledge_embedding_model" else None
+            ),
+        )
+    )
+
+    options = await knowledge_bases.embedding_options(server=server, _admin=object())
+
+    assert extra not in [row["id"] for row in options["onnx"]]
+    assert [row["id"] for row in options["onnx"]] == list(ONNX_PRESET_MODEL_IDS)
+
+
+@pytest.mark.asyncio
+async def test_embedding_options_all_onnx_includes_extras() -> None:
+    from octop.api.routers import knowledge_bases
+    from octop.infra.agents.providers.onnx_catalog import ONNX_PRESET_MODEL_IDS
+
+    server = SimpleNamespace(
+        services=SimpleNamespace(provider_repo=SimpleNamespace(list_all=lambda: []))
+    )
+
+    options = await knowledge_bases.embedding_options(all_onnx=True, server=server, _admin=object())
+
+    ids = [row["id"] for row in options["onnx"]]
+    assert ids[: len(ONNX_PRESET_MODEL_IDS)] == list(ONNX_PRESET_MODEL_IDS)
+    assert len(ids) > len(ONNX_PRESET_MODEL_IDS)
+    assert any(not row.get("recommended") for row in options["onnx"])
+    assert all("downloaded" in row for row in options["onnx"])
 
 
 @pytest.mark.asyncio
@@ -333,3 +379,69 @@ async def test_reindex_document_enqueues_job(
 
     assert response["status"] == "pending"
     assert calls == [(server.services, "kb-1", "doc-1")]
+
+
+@pytest.mark.asyncio
+async def test_onnx_download_starts_catalog_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    class _State:
+        def to_dict(self) -> dict[str, object]:
+            return {
+                "status": "downloading",
+                "progress": 0.1,
+                "model_name": "BAAI/bge-small-zh-v1.5",
+                "error": None,
+            }
+
+    async def start(model: str) -> _State:
+        assert model == "BAAI/bge-small-zh-v1.5"
+        return _State()
+
+    monkeypatch.setattr(knowledge_bases.DOWNLOAD_MANAGER, "start_download", start)
+
+    response = await knowledge_bases.start_onnx_download(
+        knowledge_bases.OnnxDownloadBody(model="BAAI/bge-small-zh-v1.5"),
+        request=_request(),
+        _=object(),
+    )
+
+    assert response["status"] == "downloading"
+    assert response["model_name"] == "BAAI/bge-small-zh-v1.5"
+
+
+@pytest.mark.asyncio
+async def test_onnx_activate_enables_downloaded_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    saved: dict[str, object] = {}
+
+    async def ready(**_kwargs: object) -> str:
+        return "ready"
+
+    monkeypatch.setattr(knowledge_bases, "ensure_local_embedding_deps_async", ready)
+    monkeypatch.setattr(knowledge_bases, "assert_catalog_model", lambda model: model)
+    monkeypatch.setattr(knowledge_bases, "is_model_downloaded", lambda _model: True)
+    monkeypatch.setattr(
+        knowledge_bases,
+        "save_config",
+        lambda _setter, config: saved.update(config.to_dict()) or config,
+    )
+    monkeypatch.setattr(
+        knowledge_bases,
+        "status_payload",
+        lambda *_args, **_kwargs: {"enabled": True, "model": "BAAI/bge-small-zh-v1.5"},
+    )
+    server = SimpleNamespace(services=_services())
+
+    response = await knowledge_bases.activate_onnx_service(
+        knowledge_bases.OnnxDownloadBody(model="BAAI/bge-small-zh-v1.5"),
+        request=_request(),
+        server=server,
+        _=object(),
+    )
+
+    assert saved == {"enabled": True, "model": "BAAI/bge-small-zh-v1.5"}
+    assert response["enabled"] is True

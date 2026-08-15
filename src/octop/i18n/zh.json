@@ -303,6 +303,7 @@
     "PROVIDER_NAME_TAKEN": "提供商名称已被占用。",
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
+    "PROVIDER_LOCAL_PROTECTED": "本地提供商无法删除。",
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",

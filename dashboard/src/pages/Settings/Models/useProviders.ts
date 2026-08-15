@@ -27,6 +27,13 @@ export interface ProviderModel {
   task?: string;
 }
 
+export function isEmbeddingModel(
+  model: Pick<ProviderModel, "embedding" | "task"> | undefined,
+): boolean {
+  if (!model) return false;
+  return model.embedding === true || model.task === "embedding";
+}
+
 export interface ProviderPresetModel {
   id: string;
   name: string;

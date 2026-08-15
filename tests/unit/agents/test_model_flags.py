@@ -50,6 +50,26 @@ def test_is_onnx_local_provider() -> None:
     assert not is_onnx_local_provider(provider_name=None)
 
 
+def test_is_local_runtime_provider() -> None:
+    from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+
+    assert is_local_runtime_provider(provider_api_key="onnx")
+    assert is_local_runtime_provider(provider_name="ONNX (Local)")
+    assert is_local_runtime_provider(provider_api_key="ollama")
+    assert is_local_runtime_provider(provider_name="Ollama (Local)")
+    assert is_local_runtime_provider(provider_base_url="http://127.0.0.1:11434")
+    assert not is_local_runtime_provider(
+        provider_name="OpenAI",
+        provider_api_key="sk-x",
+        provider_base_url="https://api.openai.com/v1",
+    )
+    assert not is_local_runtime_provider(
+        provider_name="My ONNX Cloud Proxy",
+        provider_api_key="sk-x",
+        provider_base_url="https://proxy.example/v1",
+    )
+
+
 def test_chat_eligible_excludes_embedding() -> None:
     assert is_chat_eligible_model({"id": "gpt", "enabled": True})
     assert not is_chat_eligible_model({"id": "emb", "enabled": True, "embedding": True})
