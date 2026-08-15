@@ -1936,6 +1936,16 @@ class AgentManager:
             agent_plugins=agent_plugins,
             global_plugins=global_plugins,
         )
+        # Plugin authors may register tools with non-ASCII (e.g. Chinese) names,
+        # which strict LLM tool-name APIs reject. Rewrite them to legal names
+        # before binding, keeping the original in the description. Config keys
+        # and the plugin-side closures still use the original names.
+        from octop.infra.agents.plugin_tool_names import sanitize_plugin_tool_names  # noqa: PLC0415
+
+        sanitize_plugin_tool_names(
+            plugin_tools,
+            reserved={str(getattr(t, "name", "")) for t in [*(cron_tools or []), *knowledge_tools]},
+        )
         plugin_middleware = PluginRegistry().build_middleware_chain(global_enabled=global_plugins)
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
