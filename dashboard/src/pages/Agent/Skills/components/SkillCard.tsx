@@ -5,6 +5,7 @@ import {
   FileText,
   Image,
   Info,
+  Lock,
   Presentation,
   Sparkles,
   Trash2,
@@ -251,6 +252,12 @@ export function SkillCard({
           <div className={styles.cardMeta}>
             <div className={styles.cardTitle}>{displayName}</div>
             <div className={styles.cardBadges}>
+              {skill.protected && (
+                <span className={styles.builtinBadge}>
+                  <Lock size={11} style={{ verticalAlign: "-1px" }} />{" "}
+                  {t("skills.protectedTag")}
+                </span>
+              )}
               {isBuiltin && (
                 <span className={styles.builtinBadge}>
                   {t("skills.kindBuiltin")}

@@ -104,7 +104,9 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
       </div>
       <div className={styles.expertCardFooter}>
         <div className={styles.expertCardHint}>
-          {t("experts.published.install")}
+          {expert.allow_skill_details === false
+            ? t("experts.published.skillsProtected")
+            : t("experts.published.install")}
         </div>
         {expert.creator_username && (
           <div className={styles.expertInstalledLabel}>

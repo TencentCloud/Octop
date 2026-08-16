@@ -26,7 +26,7 @@ def test_published_experts_table_exists(db: SqlitePool) -> None:
         }
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
     assert "published_experts" in names
-    assert v == 6
+    assert v == 7
 
 
 def test_published_expert_repo_create_get_list_delete(db: SqlitePool) -> None:
@@ -105,3 +105,30 @@ def test_published_expert_repo_get_by_source_and_update_meta(db: SqlitePool) -> 
     assert updated.color == "#abcdef"
     assert updated.updated_at >= row.updated_at
     assert updated.updated_at >= row.created_at
+
+
+def test_published_expert_repo_allow_skill_details(db: SqlitePool) -> None:
+    repo = PublishedExpertRepo(db)
+    row = repo.create(
+        id="01TESTEXPERT000000000004",
+        slug="guarded",
+        name="Guarded",
+        created_by="user-1",
+        allow_skill_details=False,
+    )
+    assert row.allow_skill_details is False
+    assert repo.get(row.id).allow_skill_details is False
+
+    # Default remains permissive for legacy rows / omitted flag.
+    permissive = repo.create(
+        id="01TESTEXPERT000000000005",
+        slug="open",
+        name="Open",
+        created_by="user-1",
+    )
+    assert permissive.allow_skill_details is True
+
+    toggled = repo.update_snapshot_meta(row.id, allow_skill_details=True)
+    assert toggled.allow_skill_details is True
+    untouched = repo.update_snapshot_meta(permissive.id, icon_name="zap")
+    assert untouched.allow_skill_details is True

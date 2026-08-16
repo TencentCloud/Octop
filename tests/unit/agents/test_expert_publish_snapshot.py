@@ -387,4 +387,5 @@ async def test_export_snapshot_builds_manifest_from_publish_metadata(tmp_path: P
         "icon_name": "search",
         "color": "#123456",
         "prompt_files": ["SOUL.md"],
+        "allow_skill_details": True,
     }

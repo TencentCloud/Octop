@@ -62,6 +62,7 @@ class PublishedExpertSnapshotMeta:
     welcome_message_zh: str
     welcome_message_en: str
     quick_prompts: tuple[dict[str, Any], ...] = ()
+    allow_skill_details: bool = True
 
 
 def assert_can_mutate_published(row: PublishedExpertRow, user: User) -> None:
@@ -207,6 +208,7 @@ def _manifest_from_metadata(
         data["color"] = metadata.color
     if metadata.quick_prompts:
         data["quick_prompts"] = list(metadata.quick_prompts)
+    data["allow_skill_details"] = bool(metadata.allow_skill_details)
     return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
 

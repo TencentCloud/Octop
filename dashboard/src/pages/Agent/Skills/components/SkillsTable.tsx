@@ -1,6 +1,6 @@
-import { Popconfirm, Switch, Table, Tag } from "antd";
+import { Popconfirm, Switch, Table, Tag, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
@@ -30,7 +30,19 @@ export default function SkillsTable({
       dataIndex: "name",
       width: "18%",
       ellipsis: true,
-      render: (_name: string, row) => skillDisplayName(row),
+      render: (_name: string, row) => (
+        <span>
+          {skillDisplayName(row)}
+          {row.protected ? (
+            <Tooltip title={t("skills.protectedHint")}>
+              <Lock
+                size={12}
+                style={{ marginLeft: 6, verticalAlign: "-2px", opacity: 0.6 }}
+              />
+            </Tooltip>
+          ) : null}
+        </span>
+      ),
     },
     {
       title: t("skills.skillDescription"),
@@ -85,7 +97,7 @@ export default function SkillsTable({
           >
             {t("common.view")}
           </button>
-          {kind === "custom" && onDelete ? (
+          {kind === "custom" && onDelete && !row.protected ? (
             <Popconfirm
               title={t("skills.deleteConfirmContent", { slug: row.slug })}
               okText={t("common.delete")}

@@ -33,6 +33,8 @@ export interface SkillSpec {
   emoji?: string;
   /** Persisted SkillHub marketplace icon. */
   iconUrl?: string;
+  /** True when the expert publisher disabled viewing this skill's details. */
+  protected?: boolean;
 }
 
 export interface SkillDetail extends SkillSpec {
@@ -54,6 +56,7 @@ interface ServerSummary {
   kind?: "workspace" | "builtin" | "package";
   emoji?: string;
   icon_url?: string;
+  protected?: boolean;
 }
 
 interface ServerDetail extends ServerSummary {
@@ -77,6 +80,7 @@ const toSpec = (row: ServerSummary): SkillSpec => ({
       : "workspace",
   emoji: row.emoji,
   iconUrl: row.icon_url,
+  protected: row.protected,
 });
 
 const toDetail = (row: ServerDetail): SkillDetail => ({

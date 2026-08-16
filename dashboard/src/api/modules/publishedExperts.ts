@@ -12,6 +12,9 @@ export interface PublishedExpert {
   color: string | null;
   created_at: string;
   updated_at: string;
+  /** When false, installers can use the expert's skills but not view or
+   * edit their contents. */
+  allow_skill_details?: boolean;
 }
 
 export interface PublishExpertBody {
@@ -19,6 +22,7 @@ export interface PublishExpertBody {
   description?: string;
   slug?: string;
   welcome_message?: { zh?: string; en?: string };
+  allow_skill_details?: boolean;
 }
 
 export type RefreshPublishedExpertBody = PublishExpertBody;

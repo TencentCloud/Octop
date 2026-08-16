@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -21,6 +22,10 @@ from octop.api.common.workspace import (
     workspace_api_path,
 )
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.experts.skill_protection import (
+    RESTRICTED_CONFIG_KEY,
+    assert_workspace_path_allowed,
+)
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.backend_files import (
@@ -44,6 +49,46 @@ def _assert_workspace_mutable(path: str) -> str:
     if rel == _PROTECTED_PREFIX or rel.startswith(f"{_PROTECTED_PREFIX}/"):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
     return rel
+
+
+def _guard_rel_path(io_path: str, ws: Any) -> str | None:
+    """Normalise *io_path* to a workspace-relative path when it lives in the workspace."""
+    if is_host_absolute_path(io_path):
+        ws_dir = str(getattr(ws, "workspace_dir", "") or "")
+        if not ws_dir:
+            return None
+        try:
+            rel = Path(io_path).resolve().relative_to(Path(ws_dir).resolve())
+        except ValueError:
+            return None
+        return rel.as_posix()
+    return io_path.replace("\\", "/").lstrip("/")
+
+
+def _assert_no_protected_skill_files(
+    server: Any,
+    agent_id: str,
+    user: Any,
+    ws: Any,
+    *io_paths: str,
+) -> None:
+    """Reject raw workspace IO that would read or rewrite protected skill files.
+
+    Applies to agents installed from a published expert whose publisher
+    disabled skill-detail viewing; publishers and admins stay exempt.
+    """
+    try:
+        config = server.app_runtime.agent_registry.get_config(agent_id)
+    except Exception:
+        return
+    if not isinstance(config, dict) or not config.get(RESTRICTED_CONFIG_KEY):
+        return
+    for io_path in io_paths:
+        if not io_path:
+            continue
+        rel = _guard_rel_path(io_path, ws)
+        if rel:
+            assert_workspace_path_allowed(config, user=user, services=server.services, rel_path=rel)
 
 
 def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> OctopError:
@@ -156,7 +201,9 @@ async def read_file(
 ) -> dict[str, Any]:
     """Read a UTF-8 text file."""
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    content = await ws.aread_text(_workspace_io_path(path, from_workspace=from_workspace))
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, io_path)
+    content = await ws.aread_text(io_path)
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
     return {"path": path, "content": coerce_read_content(content)}
@@ -176,6 +223,8 @@ async def write_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, io_path)
     converter = get_doc_converter(path)
     if converter is not None:
         # Editable-document paths are always stored as the binary document
@@ -192,7 +241,7 @@ async def write_file(
     else:
         data = body.content.encode("utf-8")
     try:
-        await ws.aupload_bytes(_workspace_io_path(path, from_workspace=from_workspace), data)
+        await ws.aupload_bytes(io_path, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {path!r}: {exc}") from exc
     return {"path": path, "size": len(data)}
@@ -255,6 +304,7 @@ async def delete_workspace_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _assert_no_protected_skill_files(server, agent_id, user, ws, rel)
     try:
         await ws.adelete(rel)
     except Exception as exc:
@@ -285,6 +335,7 @@ async def move_workspace_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    _assert_no_protected_skill_files(server, agent_id, user, ws, src, dest)
     try:
         await ws.amove(src, dest)
     except Exception as exc:
@@ -309,11 +360,10 @@ async def upload_file(
     )
     target = path or f"/{file.filename or 'upload.bin'}"
     data = await file.read()
+    io_path = _workspace_io_path(target, from_workspace=from_workspace)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, io_path)
     try:
-        await ws.aupload_bytes(
-            _workspace_io_path(target, from_workspace=from_workspace),
-            data,
-        )
+        await ws.aupload_bytes(io_path, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot upload to {target!r}: {exc}") from exc
     return {"path": target, "size": len(data)}
@@ -337,6 +387,7 @@ async def download_file(
     """
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, io_path)
     if is_host_absolute_path(io_path) and not is_allowed_host_download_abs_path(
         io_path,
         workspace=ws.workspace_dir,
@@ -371,6 +422,7 @@ async def read_doc(
     converter = _ensure_editable_doc(path)
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, io_path)
     try:
         blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -402,6 +454,7 @@ async def write_doc(
     rel = _assert_workspace_mutable(path)
     converter = _ensure_editable_doc(path)
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, rel)
     try:
         data = converter.from_markdown(body.content)
     except Exception as exc:
@@ -463,6 +516,7 @@ async def glob_files(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     root = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_no_protected_skill_files(server, agent_id, user, ws, root)
     if pattern in ("**/*.md", "*.md") and root == ".":
         ls_result = await ws.als(".")
         if ls_result is None:
@@ -522,6 +576,8 @@ async def export_workspace_archive(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    # A full-workspace zip would leak protected skill contents.
+    _assert_no_protected_skill_files(server, agent_id, user, ws, "skills")
     data = await export_workspace_zip(ws)
     filename = f"workspace-{agent_id}.zip"
     return StreamingResponse(
@@ -553,6 +609,8 @@ async def import_workspace_archive(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    # An imported archive could overwrite protected skill files wholesale.
+    _assert_no_protected_skill_files(server, agent_id, user, ws, "skills")
     local_ws = resolve_agent_workspace_dir(server, agent_id)
     result = await import_workspace_zip(
         ws,
