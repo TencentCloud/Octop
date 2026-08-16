@@ -13,11 +13,12 @@ import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
-import { useUserRole } from "../../hooks/useUserRole";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
-import { formatRunUsage } from "./utils/chatMessages";
+import { formatRunUsage, userTurnsFromEnd } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
 import { useChatHistoryRail } from "./hooks/useChatHistoryRail";
 import { useChatDockPanel } from "./hooks/useChatDockPanel";
@@ -37,6 +38,7 @@ import { useChatFileDetection } from "./hooks/useChatFileDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { dedupeDockFilePaths } from "./utils/dockFilePath";
 import { browserApi } from "../../api/modules/browser";
+import { octopThreadsApi } from "../../api/modules/octopThreads";
 import type { TokenUsage } from "../../api/types";
 import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
@@ -49,12 +51,14 @@ import { useSkills } from "../Agent/Skills/useSkills";
 import { useAgent } from "../../context/AgentContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
+import { isSharedExpertViewer } from "../../utils/sharedExpert";
 import ChatDockPanels from "./components/ChatDockPanels";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
+import { apiErrorMessage } from "../../utils/apiError";
 import PwaInstallPrompt from "../../components/PwaInstallPrompt";
 import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
 import styles from "./index.module.less";
@@ -73,8 +77,8 @@ function ChatPageInner() {
     threadId?: string;
   }>();
   const isMobile = useIsMobile();
-  const role = useUserRole();
-  const isAdmin = role === "admin";
+  const user = useCurrentUser();
+  const canTerminal = userCan(user, "terminal");
   const chatHistoryRail = useChatHistoryRail();
   const [selectedTargetAgents, setSelectedTargetAgents] = useState<string[]>(
     [],
@@ -147,6 +151,7 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
   const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
   const noAgents = !agentsLoading && agents.length === 0;
 
   useEffect(() => {
@@ -156,7 +161,9 @@ function ChatPageInner() {
   const { quickCards: expertQuickCards, welcomeSuffix } =
     useExpertChatWelcome(activeAgent);
   const { skills: chatSkills } = useSkills(
-    agentChatReady && !agentsLoading ? resolvedAgentId ?? null : null,
+    agentChatReady && !agentsLoading && !sharedExpertViewer
+      ? resolvedAgentId ?? null
+      : null,
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
 
@@ -289,7 +296,9 @@ function ChatPageInner() {
     setSelectedModel,
     selectedConnectors,
     selectedSkills,
+    selectedKnowledgeBaseIds,
     chatConnectors,
+    chatKnowledgeBases,
     availableModels,
     activeModelRef,
     reasoningMode,
@@ -297,6 +306,7 @@ function ChatPageInner() {
     handleReasoningChange,
     handleConnectorsChange,
     handleSkillsChange,
+    handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
     resolvedAgentId,
     chatSkills,
@@ -364,6 +374,9 @@ function ChatPageInner() {
         name: a.name,
         icon_name: a.icon_name,
         color: a.color,
+        is_shared: a.is_shared,
+        is_owner: a.is_owner,
+        owner_username: a.owner_username,
       })),
     [agents],
   );
@@ -372,9 +385,10 @@ function ChatPageInner() {
     () => ({
       skills: chatSkills,
       connectors: chatConnectors,
+      knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
     }),
-    [chatSkills, chatConnectors, chatAgentOptions],
+    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
   );
 
   const { handleSend } = useChatSend({
@@ -384,6 +398,7 @@ function ChatPageInner() {
     messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
+    selectedKnowledgeBaseIds,
     selectedSkills,
     selectedTargetAgents,
     reasoningMode,
@@ -442,6 +457,7 @@ function ChatPageInner() {
         selectedModel: item.composerContext?.model ?? item.modelRef ?? null,
         selectedSkills: item.composerContext?.skills,
         selectedConnectors: item.composerContext?.connectors,
+        selectedKnowledgeBaseIds: item.composerContext?.knowledgeBaseIds,
         selectedTargetAgents: item.composerContext?.targetAgents,
         threadId: ctx.threadId,
         agentId: ctx.agentId || undefined,
@@ -575,6 +591,87 @@ function ChatPageInner() {
     [activeThreadId, editAndResend, resolvedAgentId],
   );
 
+  const [forking, setForking] = useState(false);
+  const hasPendingHitl = useMemo(
+    () => messages.some((message) => message.hitlData?.status === "pending"),
+    [messages],
+  );
+  const forkDisabled = forking || isStreaming || hasPendingHitl;
+  const forkDisabledHint =
+    !forking && (isStreaming || hasPendingHitl)
+      ? t("chat.forkDisabledWhileBusy")
+      : undefined;
+  const handleForkUserMessage = useCallback(
+    async (messageId: string) => {
+      const agent = resolvedAgentId;
+      if (!agent || !activeThreadId || forkDisabled) return;
+      const idx = messages.findIndex((message) => message.id === messageId);
+      if (idx < 0) return;
+      const userMsg = messages[idx];
+      if (userMsg.role !== "user") return;
+      const turnsFromEnd = userTurnsFromEnd(messages, messageId);
+      if (turnsFromEnd < 1) return;
+      setForking(true);
+      try {
+        const created = await octopThreadsApi.fork(agent, activeThreadId, {
+          message_id: messageId,
+          content: userMsg.content,
+          user_turns_from_end: turnsFromEnd,
+        });
+        const ctx = userMsg.composerContext;
+        if (ctx?.skills) handleSkillsChange(ctx.skills);
+        if (ctx?.connectors) handleConnectorsChange(ctx.connectors);
+        if (ctx?.knowledgeBaseIds) {
+          handleKnowledgeBaseIdsChange(ctx.knowledgeBaseIds);
+        }
+        if (ctx?.targetAgents) setSelectedTargetAgents(ctx.targetAgents);
+        if (ctx?.model) setSelectedModel(ctx.model);
+        if (ctx?.reasoningMode) {
+          handleReasoningChange(ctx.reasoningMode, ctx.reasoningEffort ?? null);
+        }
+        const forkAttachments = userMsg.attachments?.map((attachment) => ({
+          ...attachment,
+        }));
+        prefillInputRef.current = userMsg.content;
+        if (forkAttachments && forkAttachments.length > 0) {
+          chatStore.setPendingPrefillAttachments(forkAttachments);
+        }
+        chatInputRef.current?.setPrefillComposer(
+          userMsg.content,
+          forkAttachments,
+        );
+        await ensureThreadInList(created.thread_id);
+        navigate(`/chat/${agent}/${created.thread_id}`, {
+          state: { prefillInput: userMsg.content },
+        });
+        antMessage.success(
+          created.copied_messages > 0
+            ? t("chat.forkSuccess")
+            : t("chat.forkSuccessEmpty"),
+        );
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("chat.forkFailed"), t));
+      } finally {
+        setForking(false);
+      }
+    },
+    [
+      activeThreadId,
+      forkDisabled,
+      handleConnectorsChange,
+      handleKnowledgeBaseIdsChange,
+      handleReasoningChange,
+      handleSkillsChange,
+      messages,
+      navigate,
+      resolvedAgentId,
+      setSelectedModel,
+      setSelectedTargetAgents,
+      t,
+      ensureThreadInList,
+    ],
+  );
+
   const hasMessages = messages.length > 0;
   // On hard refresh / deep-link into a thread, messages start empty. Showing
   // Welcome until history returns looks like a full page flash. Keep the list
@@ -662,7 +759,7 @@ function ChatPageInner() {
                   {activeSessionTitle}
                 </div>
               )}
-              {resolvedAgentId && (
+              {resolvedAgentId && !sharedExpertViewer && (
                 <div className={styles.mobileToolbarRight}>
                   <button
                     className={styles.menuBtn}
@@ -718,13 +815,16 @@ function ChatPageInner() {
                 onCancel={cancelStream}
                 onRegenerate={handleRegenerate}
                 onEditUserMessage={handleEditUserMessage}
+                onForkUserMessage={handleForkUserMessage}
+                forkDisabled={forkDisabled}
+                forkDisabledHint={forkDisabledHint}
                 onAcpPermissionSelect={handleAcpPermissionSelect}
                 onHitlDecision={handleHitlDecision}
                 onOpenBrowser={
                   hasBrowserTool && !isMobile ? openBrowserTab : undefined
                 }
                 onEditFile={
-                  panelFilePaths.length > 0 && !isMobile
+                  !sharedExpertViewer && panelFilePaths.length > 0 && !isMobile
                     ? openFileList
                     : undefined
                 }
@@ -736,7 +836,7 @@ function ChatPageInner() {
             <div className={styles.chatFloatActions}>
               {/* PWA install first when available — same column as browser / experts. */}
               <PwaInstallPrompt appearance="chatFloat" />
-              {resolvedAgentId && (
+              {resolvedAgentId && !sharedExpertViewer && (
                 <Tooltip
                   title={t("chat.agentProfile.open")}
                   mouseEnterDelay={0.35}
@@ -754,7 +854,7 @@ function ChatPageInner() {
                   </span>
                 </Tooltip>
               )}
-              {panelFilePaths.length > 0 && (
+              {!sharedExpertViewer && panelFilePaths.length > 0 && (
                 <Tooltip
                   title={t("chat.modifiedFiles", {
                     count: panelFilePaths.length,
@@ -785,7 +885,7 @@ function ChatPageInner() {
                   </span>
                 </Tooltip>
               )}
-              {isAdmin && (
+              {canTerminal && (
                 <Tooltip
                   title={t("chat.openTerminal", "打开终端")}
                   mouseEnterDelay={0.35}
@@ -876,6 +976,9 @@ function ChatPageInner() {
             availableConnectors={chatConnectors}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={handleConnectorsChange}
+            availableKnowledgeBases={chatKnowledgeBases}
+            selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+            onKnowledgeBaseIdsChange={handleKnowledgeBaseIdsChange}
             availableSkills={chatSkills}
             selectedSkills={selectedSkills}
             onSkillsChange={handleSkillsChange}
@@ -897,7 +1000,7 @@ function ChatPageInner() {
           isResizing={dockIsResizing}
           panelSizes={dockPanelSizes}
           agentId={resolvedAgentId ?? ""}
-          filePaths={panelFilePaths}
+          filePaths={sharedExpertViewer ? [] : panelFilePaths}
           openTabs={openTabs}
           activeTabId={activeTabId}
           onSelectTab={setDockActiveTab}
@@ -909,12 +1012,14 @@ function ChatPageInner() {
           onResizeStart={dockHandleResizeStart}
         />
 
-        <AgentProfileDrawer
-          open={agentProfileOpen}
-          agent={activeAgent}
-          isMobile={isMobile}
-          onClose={() => setAgentProfileOpen(false)}
-        />
+        {!sharedExpertViewer && (
+          <AgentProfileDrawer
+            open={agentProfileOpen}
+            agent={activeAgent}
+            isMobile={isMobile}
+            onClose={() => setAgentProfileOpen(false)}
+          />
+        )}
       </div>
     </ChatFilePreviewProvider>
   );

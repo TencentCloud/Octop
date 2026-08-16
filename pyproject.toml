@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "0.9.22"
+version = "0.9.24"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on harness-agent"
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,13 +32,15 @@ dependencies = [
     "acme>=5.6.0",
     "josepy>=2.2.0",
     "boto3>=1.40.61",
-    "harness-browser>=0.7.4",
+    "harness-browser>=0.7.5",
     "playwright>=1.40",
     "psycopg[binary]>=3.2",
     "langgraph-checkpoint-postgres>=2.0",
     "mcp>=1.9,<2",
     "pillow>=10.0",
+    "pypdf>=5.0",
     "python-docx>=1.2.0",
+    "python-pptx>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +50,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.1",
+    "pytest-testmon>=2.0",
     "httpx>=0.27",
     "ruff>=0.4",
     "mypy>=1.10",
@@ -59,6 +62,8 @@ browser = [
 ]
 # Kept for backward compatibility; pillow is now a core dependency.
 desktop = ["mss>=9.0", "pynput>=1.7"]
+# Local ONNX / fastembed embedding models (Models admin local tab).
+local-embedding = ["fastembed>=0.4", "huggingface_hub>=0.20"]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the
@@ -67,6 +72,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.1",
+    "pytest-testmon>=2.0",
     "httpx>=0.27",
     "ruff>=0.4",
     "mypy>=1.10",

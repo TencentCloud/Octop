@@ -60,6 +60,18 @@ export interface ToolGuardRulesSaveResponse {
   rule_count: number;
 }
 
+export interface HitlToolCatalogItem {
+  name: string;
+  label_zh: string;
+  label_en: string;
+}
+
+export interface SecurityDefaults {
+  hitl_tools: string[];
+  hitl_tool_catalog: HitlToolCatalogItem[];
+  tool_guard_rules: ToolGuardRule[];
+}
+
 export interface SecurityPolicy {
   hitl: HitlPolicy;
   filesystem: FilesystemPolicy;
@@ -102,5 +114,8 @@ export const securityApi = {
         method: "POST",
       },
     );
+  },
+  getDefaults(): Promise<SecurityDefaults> {
+    return request<SecurityDefaults>("/admin/security/defaults");
   },
 };

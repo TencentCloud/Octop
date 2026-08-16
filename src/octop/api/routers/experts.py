@@ -14,20 +14,41 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
+from octop.api.common.agent import require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import (
+    MANIFEST_FILENAME,
     build_create_spec_from_expert,
+    discover_seed_paths,
     preview_file_paths,
+    preview_paths_from_expert_dir,
+    read_text_file_contents,
 )
 from octop.infra.agents.experts.market_creation import (
     SkillHubMarketAgentCreateOptions,
 )
 from octop.infra.agents.experts.market_creation import (
     create_agent_from_skillhub_skillset as create_skillhub_market_agent,
+)
+from octop.infra.agents.experts.published_creation import (
+    PublishedExpertInstallOptions,
+    require_published_expert,
+)
+from octop.infra.agents.experts.published_creation import (
+    install_published_expert as install_published_expert_agent,
+)
+from octop.infra.agents.experts.published_creation import (
+    publish_agent_expert as publish_owned_agent_expert,
+)
+from octop.infra.agents.experts.published_creation import (
+    refresh_published_expert as refresh_owned_published_expert,
+)
+from octop.infra.agents.experts.published_creation import (
+    unpublish_expert as unpublish_owned_expert,
 )
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
@@ -59,6 +80,34 @@ class FromExpertBody(AgentRuntimeFields):
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    color: str | None = None
+
+
+class PublishExpertBody(BaseModel):
+    name: str = Field(min_length=1)
+    description: str = ""
+    slug: str | None = None
+    welcome_message: LocalizedTextResponse | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
+
+
+class RefreshPublishedExpertBody(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    welcome_message: LocalizedTextResponse | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
+
+
+class InstallPublishedExpertBody(AgentRuntimeFields):
+    """Same create knobs as bundled / market experts, plus required name."""
+
+    name: str = Field(min_length=1)
+    description: str = ""
+    providers: list[str] | None = None
+    default_model: str | None = None
+    backend: dict[str, Any] | None = None
+    skill_package_ids: list[str] | None = None
+    color: str | None = None
 
 
 class LocalizedTextResponse(BaseModel):
@@ -128,6 +177,24 @@ def _quick_prompt_dict(p: Any) -> dict[str, Any]:
     }
 
 
+def _quick_prompt_body_dict(p: QuickPromptResponse) -> dict[str, Any]:
+    return {
+        "title": {"zh": p.title.zh, "en": p.title.en},
+        "description": {"zh": p.description.zh, "en": p.description.en},
+        "prompt": {"zh": p.prompt.zh, "en": p.prompt.en},
+        "color": p.color,
+        "icon_name": p.icon_name,
+    }
+
+
+def _publish_welcome_fields(
+    welcome: LocalizedTextResponse | None,
+) -> tuple[str, str]:
+    if welcome is None:
+        return "", ""
+    return welcome.zh, welcome.en
+
+
 def _summary_dict(s: Any) -> dict[str, Any]:
     return {
         "id": s.id,
@@ -183,6 +250,205 @@ def _map_skillhub_error(exc: SkillHubMarketError) -> OctopError:
         ErrorCode.EXPERT_MARKET_FAILED,
         f"expert market failed: {reason}",
         details={"reason": reason, "kind": kind.value},
+    )
+
+
+def _published_snapshot_dir(server: Any, expert_id: str) -> Any:
+    return server.services.paths.published_experts_dir / expert_id
+
+
+def _published_creator_username(server: Any, created_by: str) -> str | None:
+    try:
+        user_id = int(created_by)
+    except ValueError:
+        return None
+    user = server.services.user_repo.get(user_id)
+    return user.username if user is not None else None
+
+
+def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "slug": row.slug,
+        "name": row.name,
+        "description": row.description,
+        "created_by": row.created_by,
+        "creator_username": _published_creator_username(server, row.created_by),
+        "source_agent_id": row.source_agent_id,
+        "icon_name": row.icon_name or None,
+        "color": row.color or None,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def _require_published_expert(server: Any, expert_id: str) -> Any:
+    assert server.services is not None
+    return require_published_expert(server.services, expert_id)
+
+
+@router.get("/experts/published", summary="List published expert templates")
+async def list_published_experts(
+    _: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[dict[str, Any]]:
+    """List expert snapshots published by users and available for private installation."""
+    return [
+        _published_summary_dict(row, server)
+        for row in server.services.published_expert_repo.list_all()
+    ]
+
+
+@router.get("/experts/published/{expert_id}", summary="Get published expert template detail")
+async def get_published_expert(
+    expert_id: str,
+    _: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Return published-expert metadata and a previewable snapshot file inventory."""
+    row = _require_published_expert(server, expert_id)
+    snapshot_dir = _published_snapshot_dir(server, row.id)
+    preview_paths = await asyncio.to_thread(preview_paths_from_expert_dir, snapshot_dir)
+    files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
+    if (snapshot_dir / MANIFEST_FILENAME).is_file():
+        files.insert(0, MANIFEST_FILENAME)
+    return {
+        **_published_summary_dict(row, server),
+        "files": files,
+        "file_contents": await asyncio.to_thread(
+            read_text_file_contents,
+            snapshot_dir,
+            preview_paths,
+        ),
+    }
+
+
+@router.post(
+    "/agents/{agent_id}/publish-expert",
+    status_code=201,
+    summary="Publish an agent workspace as an expert template",
+)
+async def publish_agent_expert(
+    agent_id: str,
+    body: PublishExpertBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Snapshot an owned agent workspace into a globally installable expert template."""
+    source = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    if not user_owns_agent(source, user):
+        raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by user")
+    assert server.app_runtime is not None
+    assert server.services is not None
+    workspace = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
+    if workspace is None:
+        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+    welcome_zh, welcome_en = _publish_welcome_fields(body.welcome_message)
+    row = await publish_owned_agent_expert(
+        services=server.services,
+        registry=server.app_runtime.agent_registry,
+        user=user,
+        source=source,
+        workspace=workspace,
+        name=body.name,
+        description=body.description,
+        slug=body.slug,
+        welcome_message_zh=welcome_zh,
+        welcome_message_en=welcome_en,
+        quick_prompts=tuple(_quick_prompt_body_dict(p) for p in (body.quick_prompts or [])),
+    )
+    return _published_summary_dict(row, server)
+
+
+@router.post(
+    "/experts/published/{expert_id}/refresh",
+    summary="Refresh a published expert snapshot",
+)
+async def refresh_published_expert(
+    expert_id: str,
+    body: RefreshPublishedExpertBody | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Replace a published snapshot using its still-owned source agent workspace."""
+    row = _require_published_expert(server, expert_id)
+    if row.source_agent_id is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "published expert source agent not found")
+    source = require_agent_owner_row(row.source_agent_id, user=user, as_user=None, server=server)
+    assert server.app_runtime is not None
+    assert server.services is not None
+    workspace = server.app_runtime.agent_registry.workspace_for_agent(row.source_agent_id)
+    if workspace is None:
+        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {row.source_agent_id!r} not found")
+    welcome_zh: str | None = None
+    welcome_en: str | None = None
+    quick_prompts: tuple[dict[str, Any], ...] | None = None
+    if body is not None:
+        if body.welcome_message is not None:
+            welcome_zh, welcome_en = _publish_welcome_fields(body.welcome_message)
+        if body.quick_prompts is not None:
+            quick_prompts = tuple(_quick_prompt_body_dict(p) for p in body.quick_prompts)
+    updated = await refresh_owned_published_expert(
+        services=server.services,
+        registry=server.app_runtime.agent_registry,
+        user=user,
+        expert_id=expert_id,
+        source=source,
+        workspace=workspace,
+        name=body.name if body is not None else None,
+        description=body.description if body is not None else None,
+        welcome_message_zh=welcome_zh,
+        welcome_message_en=welcome_en,
+        quick_prompts=quick_prompts,
+    )
+    return _published_summary_dict(updated, server)
+
+
+@router.delete(
+    "/experts/published/{expert_id}",
+    status_code=204,
+    summary="Unpublish an expert template",
+)
+async def unpublish_expert(
+    expert_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Remove a published expert's listing and snapshot without deleting installed forks."""
+    assert server.services is not None
+    await unpublish_owned_expert(services=server.services, user=user, expert_id=expert_id)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/experts/published/{expert_id}/install",
+    status_code=201,
+    summary="Install a private agent from a published expert",
+)
+async def install_published_expert(
+    expert_id: str,
+    body: InstallPublishedExpertBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Create a private agent and seed it from the immutable published snapshot."""
+    assert server.app_runtime is not None
+    assert server.services is not None
+    return await install_published_expert_agent(
+        services=server.services,
+        registry=server.app_runtime.agent_registry,
+        user=user,
+        expert_id=expert_id,
+        options=PublishedExpertInstallOptions(
+            name=body.name,
+            description=body.description,
+            providers=body.providers,
+            default_model=body.default_model,
+            backend=body.backend,
+            skill_package_ids=body.skill_package_ids,
+            color=body.color,
+            runtime_config=runtime_field_updates(body, exclude_unset=True),
+        ),
     )
 
 
@@ -267,6 +533,7 @@ async def install_expert_hub_item(
                 providers=body.providers,
                 default_model=body.default_model,
                 backend=body.backend,
+                color=body.color,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -336,6 +603,8 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
+    if body.color:
+        config_extra["color"] = body.color
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

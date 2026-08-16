@@ -136,6 +136,49 @@ def _ensure_ollama() -> Any:
     return sdk
 
 
+def is_ollama_reachable() -> bool:
+    """Public wrapper: True when the Ollama HTTP endpoint responds."""
+    return _is_ollama_reachable()
+
+
+def start_ollama_service() -> None:
+    """Ensure the Ollama daemon is running (start if needed)."""
+    _ensure_ollama_server()
+
+
+def stop_ollama_service() -> bool:
+    """Best-effort stop of an Ollama daemon we started; returns True if stopped."""
+    global _OLLAMA_SERVER_STARTED
+    if not _OLLAMA_SERVER_STARTED and not _is_ollama_reachable():
+        return True
+    import os
+
+    stopped = False
+    try:
+        # Prefer polite terminate of `ollama serve` we may have spawned.
+        # Cross-platform: try pkill on POSIX; on Windows skip process kill.
+        if os.name == "posix":
+            subprocess.run(
+                ["pkill", "-f", "ollama serve"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            # wait briefly
+            for _ in range(20):
+                if not _is_ollama_reachable():
+                    stopped = True
+                    break
+                time.sleep(0.25)
+        else:
+            # Windows: leave daemon running; preference flag still gates auto-start.
+            stopped = not _is_ollama_reachable()
+    except Exception as exc:
+        logger.warning("Failed to stop ollama serve: %s", exc)
+    _OLLAMA_SERVER_STARTED = False
+    return stopped or not _is_ollama_reachable()
+
+
 class OllamaModelManager:
     """High-level wrapper around the Ollama SDK for model lifecycle."""
 

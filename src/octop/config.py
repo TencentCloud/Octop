@@ -84,6 +84,15 @@ class TlsConfig:
 
 
 @dataclass(frozen=True)
+class BackupConfig:
+    """Automatic system backup settings persisted in config.json."""
+
+    auto_enabled: bool = False
+    schedule: str = "cron:0 4 * * *"
+    retention_count: int = 7
+
+
+@dataclass(frozen=True)
 class OctopConfig:
     bind_host: str = "127.0.0.1"
     port: int = 8088
@@ -100,6 +109,7 @@ class OctopConfig:
     # False when config.json omits ``database`` (use PathLayout.db unless env overrides).
     database_in_file: bool = False
     tls: TlsConfig = field(default_factory=TlsConfig)
+    backup: BackupConfig = field(default_factory=BackupConfig)
 
 
 def _defaults_for_file() -> dict[str, Any]:
@@ -135,11 +145,32 @@ def _parse_tls_section(raw: object) -> TlsConfig:
     )
 
 
+def _parse_backup_section(raw: object) -> BackupConfig:
+    if raw is None:
+        return BackupConfig()
+    if not isinstance(raw, dict):
+        raise ValueError("config.backup must be an object")
+    defaults = BackupConfig()
+    schedule = str(raw.get("schedule", defaults.schedule)).strip() or defaults.schedule
+    try:
+        retention = int(raw.get("retention_count", defaults.retention_count))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("config.backup.retention_count must be an integer") from exc
+    if retention < 1:
+        raise ValueError("config.backup.retention_count must be >= 1")
+    return BackupConfig(
+        auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
+        schedule=schedule,
+        retention_count=retention,
+    )
+
+
 def _coerce_int(name: str, value: str, default: int) -> int:
     try:
         return int(value)
     except ValueError:
-        logger.warning("env %s=%r is not int; using %s", name, value, default)
+        # Do not log the raw env value — names like OCTOP_*_PASSWORD can flow here.
+        logger.warning("env %s is not int; using %s", name, default)
         return default
 
 
@@ -149,7 +180,9 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    logger.warning("env %s=%r is not bool; using %s", name, value, default)
+    # Do not log the raw env value — OCTOP_REQUIRE_SETUP_PASSWORD is classified as
+    # sensitive by CodeQL (py/clear-text-logging-sensitive-data).
+    logger.warning("env %s is not bool; using %s", name, default)
     return default
 
 
@@ -314,6 +347,34 @@ def load_config(path: Path) -> OctopConfig:
             "OCTOP_REQUIRE_SETUP_PASSWORD", v, bool(merged["require_setup_password"])
         )
 
+    backup = _parse_backup_section(raw.get("backup"))
+    if v := os.environ.get("OCTOP_BACKUP_AUTO_ENABLED"):
+        backup = BackupConfig(
+            auto_enabled=_coerce_bool("OCTOP_BACKUP_AUTO_ENABLED", v, backup.auto_enabled),
+            schedule=backup.schedule,
+            retention_count=backup.retention_count,
+        )
+    if v := os.environ.get("OCTOP_BACKUP_SCHEDULE"):
+        schedule = v.strip() or backup.schedule
+        backup = BackupConfig(
+            auto_enabled=backup.auto_enabled,
+            schedule=schedule,
+            retention_count=backup.retention_count,
+        )
+    if v := os.environ.get("OCTOP_BACKUP_RETENTION_COUNT"):
+        retention = _coerce_int("OCTOP_BACKUP_RETENTION_COUNT", v, backup.retention_count)
+        if retention < 1:
+            logger.warning(
+                "env OCTOP_BACKUP_RETENTION_COUNT is < 1; using %s",
+                backup.retention_count,
+            )
+            retention = backup.retention_count
+        backup = BackupConfig(
+            auto_enabled=backup.auto_enabled,
+            schedule=backup.schedule,
+            retention_count=retention,
+        )
+
     return OctopConfig(
         bind_host=merged["bind_host"],
         port=int(merged["port"]),
@@ -329,4 +390,5 @@ def load_config(path: Path) -> OctopConfig:
         database=parse_database_config(merged_db),
         database_in_file=database_in_file,
         tls=_parse_tls_section(raw.get("tls")),
+        backup=backup,
     )

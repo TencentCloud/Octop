@@ -19,6 +19,9 @@ async def test_create_list_get_delete(env):
 
     r = await c.get(f"/api/users/{uid}", headers=auth)
     assert r.json()["username"] == "alice"
+    assert r.json()["email"] is None
+    assert r.json()["has_password"] is True
+    assert r.json()["sso_linked"] is False
     assert r.json()["login_locked"] is False
     assert r.json()["login_retry_after_seconds"] == 0
     assert isinstance(r.json()["created_at"], int)

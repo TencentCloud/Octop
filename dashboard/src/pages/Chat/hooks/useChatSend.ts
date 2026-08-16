@@ -21,6 +21,7 @@ interface UseChatSendParams {
   messagesLength: number;
   selectedModel: string | null;
   selectedConnectors: string[];
+  selectedKnowledgeBaseIds: string[];
   selectedSkills: string[];
   selectedTargetAgents: string[];
   reasoningMode: "auto" | "enabled" | "disabled";
@@ -34,6 +35,7 @@ interface UseChatSendParams {
     storeKey?: string,
     modelRef?: string | null,
     mcpServers?: string[] | null,
+    knowledgeBaseIds?: string[] | null,
     skills?: string[] | null,
     targetAgentIds?: string[] | null,
     composerContext?: UserComposerContext,
@@ -55,6 +57,7 @@ function deriveThreadTitle(msg: string): string {
 export type ChatSendOverrides = {
   selectedModel?: string | null;
   selectedConnectors?: string[];
+  selectedKnowledgeBaseIds?: string[];
   selectedSkills?: string[];
   selectedTargetAgents?: string[];
   composerContext?: UserComposerContext;
@@ -72,6 +75,7 @@ export function useChatSend({
   messagesLength,
   selectedModel,
   selectedConnectors,
+  selectedKnowledgeBaseIds,
   selectedSkills,
   selectedTargetAgents,
   reasoningMode,
@@ -110,6 +114,8 @@ export function useChatSend({
 
       const skills = overrides?.selectedSkills ?? selectedSkills;
       const connectors = overrides?.selectedConnectors ?? selectedConnectors;
+      const knowledgeBaseIds =
+        overrides?.selectedKnowledgeBaseIds ?? selectedKnowledgeBaseIds;
       const targetAgents =
         overrides?.selectedTargetAgents ?? selectedTargetAgents;
       const modelSelection =
@@ -122,6 +128,7 @@ export function useChatSend({
         buildComposerContext({
           skills,
           connectors,
+          knowledgeBaseIds,
           targetAgents,
           selectedModel: modelSelection,
           reasoningMode:
@@ -145,6 +152,7 @@ export function useChatSend({
           tid,
           modelOverride,
           connectors,
+          knowledgeBaseIds,
           skills,
           targetAgents,
           composerContext,
@@ -198,6 +206,7 @@ export function useChatSend({
           modelOverride,
           tid,
           connectors,
+          knowledgeBaseIds,
           skills,
           targetAgents,
           composerContext?.reasoningMode ?? reasoningMode,
@@ -218,6 +227,7 @@ export function useChatSend({
       resolvedAgentId,
       selectedModel,
       selectedConnectors,
+      selectedKnowledgeBaseIds,
       selectedSkills,
       selectedTargetAgents,
       reasoningMode,

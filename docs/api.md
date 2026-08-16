@@ -30,8 +30,9 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 ### Public endpoints (no token)
 
 `/api/docs`, `/api/openapi.json`, `/api/health`, `/api/setup/*`,
-`/api/auth/login`, `/api/connectors/oauth/callback`, and
-`/api/internal/mcp/*`. All other routes are JWT-gated by
+`/api/auth/login`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
+`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`,
+`/api/connectors/oauth/callback`, and `/api/internal/mcp/*`. All other routes are JWT-gated by
 `api/middleware/jwt_auth.py`; the setup lockdown middleware
 (`api/middleware/setup_lockdown.py`) additionally blocks non-setup
 routes until the wizard finishes.
@@ -50,6 +51,13 @@ routes until the wizard finishes.
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
 | `POST`   | `/auth/login` | public | body `{username, password}` → `{access_token, role, user, ...}` |
+| `GET`    | `/auth/oidc/status` | public | OIDC login availability and provider display name |
+| `POST`   | `/auth/oidc/start` | public | body `{redirect_after?}` → identity-provider authorization URL |
+| `GET`    | `/auth/oidc/callback` | public | Identity-provider callback; redirects to dashboard login completion |
+| `POST`   | `/auth/oidc/exchange` | public | body `{code}` → same JWT response as `/auth/login` |
+| `GET`    | `/auth/oidc/config` | admin | OIDC provider configuration and callback URL; client secret is omitted |
+| `PUT`    | `/auth/oidc/config` | admin | Write OIDC provider configuration; `client_secret` is write-only |
+| `POST`   | `/auth/oidc/config/test` | admin | Verify configured discovery metadata and JWKS endpoint |
 | `POST`   | `/auth/logout` | user | `204` |
 | `GET`    | `/auth/me` | user | `{id, username, role, display_name, locale, ...}` |
 | `PATCH`  | `/auth/me` | user | body `{display_name?, locale?, ...}` |

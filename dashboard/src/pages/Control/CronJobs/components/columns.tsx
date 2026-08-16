@@ -12,7 +12,9 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  truncatePromptPreview,
 } from "../cronDisplay";
+import styles from "../index.module.less";
 
 type CronJob = CronJobSpecOutput;
 
@@ -165,18 +167,18 @@ export const createColumns = (
     {
       title: handlers.t("cronJobs.col.prompt"),
       key: "prompt",
-      width: 220,
+      width: 200,
       ellipsis: true,
       render: (_: unknown, record: CronJob) => {
         const content = extractPromptFromJob(record);
         if (!content) {
           return <span style={{ color: "var(--fn-text-tertiary)" }}>—</span>;
         }
+        const preview = truncatePromptPreview(content);
+        const truncated = preview !== content.trim();
         return (
-          <Tooltip title={content}>
-            <span style={{ color: "var(--fn-text-secondary)", fontSize: 13 }}>
-              {content}
-            </span>
+          <Tooltip title={truncated ? content : undefined}>
+            <span className={styles.promptCell}>{preview}</span>
           </Tooltip>
         );
       },

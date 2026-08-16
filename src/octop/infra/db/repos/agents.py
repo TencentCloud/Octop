@@ -26,9 +26,14 @@ class AgentRow:
     updated_at: int
     icon: str | None = None
     template_name: str | None = None
+    is_shared: int = 0
 
     @classmethod
     def from_row(cls, r: DbRow) -> AgentRow:
+        try:
+            is_shared = int(r["is_shared"])
+        except KeyError:
+            is_shared = 0
         return cls(
             id=r["id"],
             agent_id=r["agent_id"],
@@ -46,6 +51,7 @@ class AgentRow:
             updated_at=r["updated_at"],
             icon=r["icon"],
             template_name=r["template_name"],
+            is_shared=is_shared,
         )
 
 
@@ -120,6 +126,24 @@ class AgentRepo:
                 "UPDATE agents SET enabled = ?, updated_at = ? WHERE agent_id = ?",
                 (bool_int(enabled), now_ts(), agent_id),
             )
+
+    def set_shared(self, agent_id: str, shared: bool) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE agents SET is_shared = ?, updated_at = ? WHERE agent_id = ?",
+                (bool_int(shared), now_ts(), agent_id),
+            )
+
+    def list_shared(self, *, exclude_user_id: int | None = None) -> list[AgentRow]:
+        sql = "SELECT * FROM agents WHERE is_shared = 1 AND enabled = 1"
+        params: list[object] = []
+        if exclude_user_id is not None:
+            sql += " AND user_id != ?"
+            params.append(exclude_user_id)
+        sql += " ORDER BY created_at ASC, id ASC"
+        with self._db.connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return map_rows(rows, AgentRow)
 
     def set_state(self, agent_id: str, state: str, *, error: str | None = None) -> None:
         with self._db.transaction() as conn:

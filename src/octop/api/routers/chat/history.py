@@ -4,20 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from octop.api.common.agent import require_agent_row
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import RebindSessionBody, RenameThreadBody
+from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     _clamp_history_limit,
     _load_thread_messages,
 )
 from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
+from octop.infra.agents.thread_fork import fork_dashboard_thread
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
+from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 
@@ -29,6 +31,9 @@ def _require_thread(
     row = server.app_runtime.gateway.thread_registry.get_thread(thread_id)
     if row is None or row.agent_id != agent_id:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
+    effective_uid = as_user if as_user is not None else user.id
+    if row.user_id != effective_uid:
+        raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
     return row
 
 
@@ -43,8 +48,8 @@ async def list_threads(
     """List conversation threads for an agent, including which thread is active for this user."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
-    rows = thread_registry.list_threads(agent_id=agent_id, limit=limit)
     effective_uid = as_user if as_user is not None else user.id
+    rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
@@ -82,7 +87,7 @@ async def create_thread(
         agent_id=agent_id,
         user_id=effective_uid,
         channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
-        channel_subject_id=str(user.id),
+        channel_subject_id=str(effective_uid),
     )
     return {"thread_id": tid, "session_key": sk}
 
@@ -196,6 +201,41 @@ async def mark_thread_read(
     server.app_runtime.gateway.thread_registry.mark_thread_read(thread_id)
 
 
+@router.post(
+    "/agents/{agent_id}/threads/{thread_id}/fork",
+    status_code=201,
+    summary="Fork thread from a user message",
+)
+async def fork_thread(
+    agent_id: str,
+    thread_id: str,
+    body: ForkThreadBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Create a new dashboard thread with history strictly before *message_id*.
+
+    The original thread is left unchanged. The selected user question is not
+    copied — the client should prefill the composer so the user can edit and
+    send a different follow-up.
+    """
+    row = _require_thread(server, agent_id, thread_id, user, as_user)
+    effective_uid = as_user if as_user is not None else user.id
+    harness = server.app_runtime.agent_registry.get_agent(agent_id)
+    return await fork_dashboard_thread(
+        thread_registry=server.app_runtime.gateway.thread_registry,
+        harness=harness,
+        source=row,
+        user_id=effective_uid,
+        message_id=body.message_id,
+        content=body.content,
+        user_turns_from_end=body.user_turns_from_end,
+        locale=resolve_request_locale(request),
+    )
+
+
 @router.patch("/agents/{agent_id}/session", summary="Rebind dashboard session")
 async def rebind_session(
     agent_id: str,
@@ -204,11 +244,8 @@ async def rebind_session(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Point the user's dashboard session at an existing thread."""
-    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    _require_thread(server, agent_id, body.thread_id, user, as_user=None)
     sk = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user.id)
-    row = server.app_runtime.gateway.thread_registry.get_thread(body.thread_id)
-    if row is None or row.agent_id != agent_id:
-        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {body.thread_id!r} not found")
     await server.app_runtime.gateway.thread_registry.rebind(
         session_key=sk, thread_id=body.thread_id, agent_id=agent_id
     )

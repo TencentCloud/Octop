@@ -9,6 +9,7 @@ import siliconLogo from "./silicon.png";
 import groqLogo from "./groq.png";
 import modelscopeLogo from "./modelscope.png";
 import ollamaLogo from "./ollama.png";
+import onnxLogo from "./onnx.svg";
 import tencentCodingPlanLogo from "./tencent-coding-plan.png";
 import tencentTokenPlanLogo from "./tencent-token-plan.png";
 import openrouterLogo from "./openrouter.png";
@@ -35,6 +36,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   groq: groqLogo,
   modelscope: modelscopeLogo,
   ollama: ollamaLogo,
+  onnx: onnxLogo,
   "tencent-coding-plan": tencentCodingPlanLogo,
   "tencent-token-plan": tencentTokenPlanLogo,
   "tencent-hai": tencentCodingPlanLogo,
@@ -75,6 +77,7 @@ export function getProviderLogo(providerId: string): string | undefined {
  */
 export const PROVIDER_DOCS: Record<string, string> = {
   ollama: "https://ollama.com/search",
+  onnx: "https://onnx.ai/",
   openai: "https://platform.openai.com/docs",
   anthropic: "https://docs.anthropic.com",
   gemini: "https://ai.google.dev/gemini-api/docs",

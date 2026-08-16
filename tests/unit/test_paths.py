@@ -55,6 +55,11 @@ def test_backups_dir(tmp_path: Path) -> None:
     assert p.ensure_backups_dir().is_dir()
 
 
+def test_knowledge_dir(tmp_path: Path) -> None:
+    p = PathLayout(tmp_path / ".octop")
+    assert p.knowledge_dir == tmp_path / ".octop" / "knowledge"
+
+
 def test_path_layout_from_env_defaults_to_dot_octop(monkeypatch) -> None:
     monkeypatch.delenv("OCTOP_HOME", raising=False)
     assert PathLayout.from_env().root == Path.home() / ".octop"

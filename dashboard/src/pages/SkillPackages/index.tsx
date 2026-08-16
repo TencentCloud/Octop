@@ -14,7 +14,6 @@ import {
   List,
   Modal,
   Popconfirm,
-  Select,
   Segmented,
   Spin,
   Tag,
@@ -28,6 +27,8 @@ import {
   Download,
   LayoutGrid,
   List as ListIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -44,12 +45,19 @@ import type {
   SkillPackageSkillDetail,
 } from "../../api/types/skillPackage";
 import { CardSkeleton } from "../../components/Skeleton";
+import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
+import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import PageShell from "../../layouts/PageShell";
-import { apiErrorMessage, parseApiError } from "../../utils/apiError";
+import {
+  apiErrorMessage,
+  isNotFoundApiError,
+  parseApiError,
+} from "../../utils/apiError";
 import {
   SkillDrawer,
   type SkillFormValues,
@@ -65,7 +73,7 @@ import {
   EXPERT_ICON_NAMES,
   iconForName,
 } from "../Experts/components/iconForName";
-import { createDetailRequestGate } from "./detailRequestGate";
+import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -96,6 +104,41 @@ function formatPackageCreator(
   const displayName = item.creator_display_name?.trim() || "";
   const username = item.creator_username?.trim() || "";
   return displayName || username || item.created_by;
+}
+
+function PackageIconPicker({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (value?: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.iconPicker}>
+      {EXPERT_ICON_NAMES.map((name) => {
+        const selected = value === name;
+        return (
+          <button
+            key={name}
+            type="button"
+            className={`${styles.iconPickerItem}${
+              selected ? ` ${styles.iconPickerItemActive}` : ""
+            }`}
+            onClick={() => onChange?.(selected ? undefined : name)}
+            title={t(`experts.iconLabels.${name}`, { defaultValue: name })}
+          >
+            <span className={styles.iconPickerGlyph}>
+              {iconForName(name, 18)}
+            </span>
+            <span className={styles.iconPickerLabel}>
+              {t(`experts.iconLabels.${name}`, { defaultValue: name })}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function SkillPackagesPage() {
@@ -136,6 +179,8 @@ export default function SkillPackagesPage() {
     defaultSize: 280,
     storageKey: "octop:skill-packages:sidebar-width",
   });
+  const { collapsed: listPanelCollapsed, toggle: toggleListPanel } =
+    useListPanelCollapsed("octop:skill-packages:list-collapsed");
 
   const loadPackages = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -175,11 +220,15 @@ export default function SkillPackagesPage() {
           setSelectedId(detail.id);
         }
       } catch (error) {
-        if (detailRequestGate.current.isCurrent(requestId)) {
-          message.error(
-            apiErrorMessage(error, t("skillPackages.loadFailed"), t),
-          );
+        if (!detailRequestGate.current.isCurrent(requestId)) {
+          return;
         }
+        if (isNotFoundApiError(error)) {
+          setSelected(null);
+          setSelectedId(null);
+          return;
+        }
+        message.error(apiErrorMessage(error, t("skillPackages.loadFailed"), t));
       } finally {
         if (detailRequestGate.current.isCurrent(requestId)) {
           setDetailLoading(false);
@@ -296,20 +345,18 @@ export default function SkillPackagesPage() {
   const deletePackage = async () => {
     if (!selected) return;
     const deletedId = selected.id;
+    detailRequestGate.current.begin();
+    setSelected(null);
+    setSelectedId(null);
+    setDetailLoading(false);
     try {
       await skillPackagesApi.delete(deletedId);
-      // Drop current selection immediately so refresh cannot hit the deleted id.
-      detailRequestGate.current.begin();
-      setSelected(null);
-      setSelectedId(null);
-      setDetailLoading(false);
       const rows = await skillPackagesApi.list();
       setPackages(rows);
       initialLoadDone.current = true;
       if (isMobile) {
         setMobilePane("list");
       } else if (rows.length > 0) {
-        setSelectedId(rows[0].id);
         await loadDetail(rows[0].id);
       }
       message.success(t("skillPackages.deleted"));
@@ -480,6 +527,8 @@ export default function SkillPackagesPage() {
 
   const showListPane = !isMobile || mobilePane === "list";
   const showDetailPane = !isMobile || mobilePane === "detail";
+  const showListPanel = showListPane && (isMobile || !listPanelCollapsed);
+  const showEmptyGuide = !loading && packages.length === 0;
 
   return (
     <PageShell
@@ -487,269 +536,379 @@ export default function SkillPackagesPage() {
       subtitle={isMobile ? undefined : t("skillPackages.subtitle")}
       fill
     >
-      <div
-        className={`${styles.layout}${
-          isResizing ? ` ${styles.layoutResizing}` : ""
-        }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
-        style={
-          {
-            "--skill-packages-sidebar-width": `${sidebarWidth}px`,
-          } as CSSProperties
-        }
-      >
-        {showListPane ? (
-          <aside className={styles.packageList}>
-            <div className={styles.packageListActions}>
-              <Button
-                type="primary"
-                icon={<Plus size={15} />}
-                onClick={openCreatePackage}
-              >
-                {t("skillPackages.createPackage")}
-              </Button>
-              <Tooltip title={t("skillPackages.fromSkillHub")}>
-                <Button
-                  icon={<Store size={15} />}
-                  aria-label={t("skillPackages.fromSkillHub")}
-                  onClick={() => setSkillsetHubOpen(true)}
-                />
-              </Tooltip>
-            </div>
-            {loading && packages.length === 0 ? (
-              <div className={styles.centered}>
-                <Spin />
-              </div>
-            ) : (
-              <List
-                className={styles.list}
-                split={false}
-                dataSource={packages}
-                locale={{
-                  emptyText: (
-                    <Empty
-                      image={<OctopEmptyMascot />}
-                      description={t("skillPackages.empty")}
-                    />
-                  ),
-                }}
-                renderItem={(item) => (
-                  <List.Item
-                    className={styles.listRow}
-                    onClick={() => selectPackage(item)}
-                  >
-                    <div
-                      className={`${styles.listItem} ${
-                        item.id === selectedId ? styles.active : ""
-                      }`}
-                    >
-                      <div className={styles.listName}>
-                        <span className={styles.listIcon}>
-                          <PackageIcon
-                            iconUrl={item.icon_url}
-                            iconName={item.icon_name}
-                            size={24}
-                            imageClassName={styles.listIconImage}
-                          />
-                        </span>
-                        <span>{item.name}</span>
-                      </div>
-                      <div className={styles.listDescription}>
-                        {item.description || "—"}
-                      </div>
-                      <div className={styles.listMeta}>
-                        <span className={styles.listCreator}>
-                          {t("skillPackages.createdBy", {
-                            name: formatPackageCreator(item),
-                          })}
-                        </span>
-                        <Tag className={styles.listCountTag}>
-                          {t("skillPackages.skillCount", {
-                            count: item.skill_count,
-                          })}
-                        </Tag>
-                      </div>
-                    </div>
-                  </List.Item>
-                )}
-              />
-            )}
-          </aside>
-        ) : null}
-
-        {!isMobile ? (
-          <div data-split-divider="" className={styles.splitDivider}>
-            <div
-              className={styles.resizeHandle}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={t("skillPackages.resizeSidebar")}
-              onPointerDown={onResizeStart}
-            />
+      {loading && packages.length === 0 ? (
+        <div
+          className={`${styles.emptyLayout}${
+            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
+          }`}
+        >
+          <div className={styles.centered}>
+            <Spin />
           </div>
-        ) : null}
-
-        {showDetailPane ? (
-          <section className={styles.detail}>
-            {detailLoading ? (
-              <div className={styles.detailLoadingOverlay}>
-                <Spin />
+        </div>
+      ) : showEmptyGuide ? (
+        <div
+          className={`${styles.emptyLayout}${
+            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
+          }`}
+        >
+          <StreamSetupGuide
+            className={styles.emptyGuide}
+            wide
+            icon={
+              <OctopEmptyMascot size={120} className={styles.setupMascot} />
+            }
+            title={t("skillPackages.emptyGuideTitle")}
+            description={t("skillPackages.emptyGuideDesc")}
+            steps={[
+              {
+                label: t("skillPackages.emptyGuideStepWhat"),
+                detail: t("skillPackages.emptyGuideStepWhatDetail"),
+              },
+              {
+                label: t("skillPackages.emptyGuideStepHow"),
+                detail: t("skillPackages.emptyGuideStepHowDetail"),
+              },
+              {
+                label: t("skillPackages.emptyGuideStepShare"),
+                detail: t("skillPackages.emptyGuideStepShareDetail"),
+              },
+            ]}
+            primaryAction={{
+              label: t("skillPackages.createPackage"),
+              onClick: openCreatePackage,
+              icon: <Plus size={14} />,
+            }}
+            secondaryAction={{
+              label: t("skillPackages.fromSkillHub"),
+              onClick: () => setSkillsetHubOpen(true),
+              icon: <Store size={14} />,
+              type: "default",
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          className={`${styles.layout}${
+            isResizing ? ` ${styles.layoutResizing}` : ""
+          }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
+          style={
+            {
+              "--skill-packages-sidebar-width": `${sidebarWidth}px`,
+            } as CSSProperties
+          }
+        >
+          {showListPanel ? (
+            <aside className={styles.packageList}>
+              <div className={styles.listPanelHeader}>
+                <span className={styles.listPanelTitle}>
+                  {t("skillPackages.title")}
+                </span>
+                {!isMobile ? (
+                  <Tooltip title={t("skillPackages.collapseListPanel")}>
+                    <button
+                      type="button"
+                      className={styles.listPanelToggle}
+                      onClick={toggleListPanel}
+                      aria-label={t("skillPackages.collapseListPanel")}
+                    >
+                      <PanelLeftClose size={15} strokeWidth={1.8} />
+                    </button>
+                  </Tooltip>
+                ) : null}
               </div>
-            ) : null}
-            {!selected && !detailLoading ? (
-              <Empty
-                className={styles.emptyDetail}
-                image={<OctopEmptyMascot />}
-                description={t("skillPackages.selectPackage")}
-              />
-            ) : !selected ? null : (
-              <>
-                <div className={styles.detailHeader}>
-                  <div className={styles.detailTitleRow}>
-                    <div className={styles.detailTitleGroup}>
-                      {isMobile ? (
-                        <button
-                          type="button"
-                          className={styles.mobileBackBtn}
-                          onClick={() => setMobilePane("list")}
-                          aria-label={t("skillPackages.backToList")}
-                        >
-                          <ChevronLeft size={18} />
-                        </button>
-                      ) : null}
-                      <Typography.Title
-                        level={4}
-                        className={styles.detailTitle}
-                      >
-                        {selected.name}
-                      </Typography.Title>
-                    </div>
-                    {canMutate ? (
-                      <div className={styles.actions}>
-                        <Button
-                          icon={<Pencil size={14} />}
-                          onClick={openEditPackage}
-                        >
-                          {t("common.edit")}
-                        </Button>
-                        <Popconfirm
-                          title={t("skillPackages.deletePackageConfirm")}
-                          description={t(
-                            "skillPackages.deletePackageMountedHint",
-                          )}
-                          okText={t("common.delete")}
-                          cancelText={t("common.cancel")}
-                          onConfirm={() => void deletePackage()}
-                        >
-                          <Button danger icon={<Trash2 size={14} />}>
-                            {t("common.delete")}
-                          </Button>
-                        </Popconfirm>
-                      </div>
-                    ) : null}
-                  </div>
-                  <Typography.Paragraph
-                    type="secondary"
-                    className={styles.detailDescription}
-                  >
-                    {selected.description || t("skillPackages.noDescription")}
-                  </Typography.Paragraph>
-                  <Typography.Paragraph
-                    type="secondary"
-                    className={styles.detailCreator}
-                  >
-                    {t("skillPackages.createdBy", {
-                      name: formatPackageCreator(selected),
-                    })}
-                  </Typography.Paragraph>
+              <div className={styles.packageListActions}>
+                <Button
+                  type="primary"
+                  icon={<Plus size={15} />}
+                  onClick={openCreatePackage}
+                >
+                  {t("skillPackages.createPackage")}
+                </Button>
+                <Tooltip title={t("skillPackages.fromSkillHub")}>
+                  <Button
+                    icon={<Store size={15} />}
+                    aria-label={t("skillPackages.fromSkillHub")}
+                    onClick={() => setSkillsetHubOpen(true)}
+                  />
+                </Tooltip>
+              </div>
+              {loading && packages.length === 0 ? (
+                <div className={styles.centered}>
+                  <Spin />
                 </div>
-
-                <div className={styles.detailBody}>
-                  <div className={skillStyles.gridToolbar}>
-                    <span className={skillStyles.gridCount}>
-                      {t("skills.totalCount", { count: skills.length })}
-                    </span>
-                    <div className={skillStyles.gridToolbarRight}>
-                      <Segmented
-                        size="small"
-                        value={viewMode}
-                        onChange={(value) =>
-                          setViewMode(value === "table" ? "table" : "card")
-                        }
-                        options={[
-                          {
-                            value: "card",
-                            label: (
-                              <span className={skillStyles.viewModeLabel}>
-                                <LayoutGrid size={14} />
-                                {t("experts.viewCard")}
-                              </span>
-                            ),
-                          },
-                          {
-                            value: "table",
-                            label: (
-                              <span className={skillStyles.viewModeLabel}>
-                                <ListIcon size={14} />
-                                {t("experts.viewTable")}
-                              </span>
-                            ),
-                          },
-                        ]}
+              ) : (
+                <List
+                  className={styles.list}
+                  split={false}
+                  dataSource={packages}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={t("skillPackages.empty")}
                       />
-                      <Tooltip title={t("common.refresh")}>
-                        <button
-                          type="button"
-                          className={skillStyles.toolbarIconBtn}
-                          onClick={() => void handleRefresh()}
-                          disabled={refreshing || detailLoading}
+                    ),
+                  }}
+                  renderItem={(item) => (
+                    <List.Item
+                      className={styles.listRow}
+                      onClick={() => selectPackage(item)}
+                    >
+                      <div
+                        className={`${styles.listItem} ${
+                          item.id === selectedId ? styles.active : ""
+                        }`}
+                      >
+                        <div className={styles.listName}>
+                          <span className={styles.listIcon}>
+                            <PackageIcon
+                              iconUrl={item.icon_url}
+                              iconName={item.icon_name}
+                              size={24}
+                              imageClassName={styles.listIconImage}
+                            />
+                          </span>
+                          <span>{item.name}</span>
+                        </div>
+                        <div className={styles.listDescription}>
+                          {item.description || "—"}
+                        </div>
+                        <div className={styles.listMeta}>
+                          <span className={styles.listCreator}>
+                            {t("skillPackages.createdBy", {
+                              name: formatPackageCreator(item),
+                            })}
+                          </span>
+                          <Tag className={styles.listCountTag}>
+                            {t("skillPackages.skillCount", {
+                              count: item.skill_count,
+                            })}
+                          </Tag>
+                        </div>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </aside>
+          ) : null}
+
+          {!isMobile && !listPanelCollapsed ? (
+            <div data-split-divider="" className={styles.splitDivider}>
+              <div
+                className={styles.resizeHandle}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t("skillPackages.resizeSidebar")}
+                onPointerDown={onResizeStart}
+              />
+            </div>
+          ) : null}
+
+          {showDetailPane ? (
+            <section
+              className={`${styles.detail}${
+                !isMobile && listPanelCollapsed
+                  ? ` ${styles.detailListCollapsed}`
+                  : ""
+              }`}
+            >
+              {!isMobile && listPanelCollapsed ? (
+                <Tooltip title={t("skillPackages.expandListPanel")}>
+                  <button
+                    type="button"
+                    className={styles.listPanelExpandBtn}
+                    onClick={toggleListPanel}
+                    aria-label={t("skillPackages.expandListPanel")}
+                  >
+                    <PanelLeftOpen size={16} strokeWidth={1.8} />
+                  </button>
+                </Tooltip>
+              ) : null}
+              {detailLoading ? (
+                <div className={styles.detailLoadingOverlay}>
+                  <Spin />
+                </div>
+              ) : null}
+              {!selected && !detailLoading ? (
+                <div className={styles.emptyDetail}>
+                  <OctopEmptyMascot size={180} />
+                  <p className={styles.emptyDetailText}>
+                    {t("skillPackages.selectPackage")}
+                  </p>
+                </div>
+              ) : !selected ? null : (
+                <>
+                  <div className={styles.detailHeader}>
+                    <div className={styles.detailTitleRow}>
+                      <div className={styles.detailTitleGroup}>
+                        {isMobile ? (
+                          <button
+                            type="button"
+                            className={styles.mobileBackBtn}
+                            onClick={() => setMobilePane("list")}
+                            aria-label={t("skillPackages.backToList")}
+                          >
+                            <ChevronLeft size={18} />
+                          </button>
+                        ) : null}
+                        <Typography.Title
+                          level={4}
+                          className={styles.detailTitle}
                         >
-                          <RefreshCw
-                            size={14}
-                            className={
-                              refreshing ? skillStyles.spinning : undefined
-                            }
-                          />
-                        </button>
-                      </Tooltip>
-                      {canMutate ? (
-                        <>
-                          <button
-                            type="button"
-                            className={skillStyles.toolbarBtn}
-                            onClick={() => setHubOpen(true)}
-                          >
-                            <Store size={14} />
-                            {t("skills.tencentSkillHub")}
-                          </button>
-                          <button
-                            type="button"
-                            className={skillStyles.toolbarBtn}
-                            onClick={() => setImportModalOpen(true)}
-                          >
-                            <Download size={14} />
-                            {t("skills.importSkills")}
-                          </button>
-                          <button
-                            type="button"
-                            className={skillStyles.toolbarBtnPrimary}
-                            onClick={openCreateSkill}
-                          >
-                            <Plus size={14} />
-                            {t("skillPackages.createSkill")}
-                          </button>
-                        </>
-                      ) : null}
+                          {selected.name}
+                        </Typography.Title>
+                        {canMutate ? (
+                          <div className={styles.titleActions}>
+                            <Tooltip title={t("common.edit")}>
+                              <Button
+                                type="text"
+                                size="small"
+                                className={styles.titleActionBtn}
+                                icon={<Pencil size={14} />}
+                                aria-label={t("common.edit")}
+                                onClick={openEditPackage}
+                              />
+                            </Tooltip>
+                            <Popconfirm
+                              title={t("skillPackages.deletePackageConfirm")}
+                              description={t(
+                                "skillPackages.deletePackageMountedHint",
+                              )}
+                              okText={t("common.delete")}
+                              cancelText={t("common.cancel")}
+                              onConfirm={() => void deletePackage()}
+                            >
+                              <Tooltip title={t("common.delete")}>
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  danger
+                                  className={styles.titleActionBtn}
+                                  icon={<Trash2 size={14} />}
+                                  aria-label={t("common.delete")}
+                                />
+                              </Tooltip>
+                            </Popconfirm>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Typography.Paragraph
+                      type="secondary"
+                      className={styles.detailDescription}
+                    >
+                      {selected.description || t("skillPackages.noDescription")}
+                    </Typography.Paragraph>
+                    <div className={styles.detailMeta}>
+                      <CopyableResourceId
+                        inline
+                        label={t("skillPackages.packageId")}
+                        value={selected.id}
+                        copyTitle={t("skillPackages.copyPackageId")}
+                      />
+                      <Typography.Text
+                        type="secondary"
+                        className={styles.detailCreator}
+                      >
+                        {t("skillPackages.createdBy", {
+                          name: formatPackageCreator(selected),
+                        })}
+                      </Typography.Text>
                     </div>
                   </div>
-                  <div className={skillStyles.skillsListArea}>
-                    {skillsContent}
+
+                  <div className={styles.detailBody}>
+                    <div
+                      className={`${skillStyles.gridToolbar} ${styles.skillsToolbar}`}
+                    >
+                      <span className={skillStyles.gridCount}>
+                        {t("skills.totalCount", { count: skills.length })}
+                      </span>
+                      <div className={skillStyles.gridToolbarRight}>
+                        <Segmented
+                          size="small"
+                          value={viewMode}
+                          onChange={(value) =>
+                            setViewMode(value === "table" ? "table" : "card")
+                          }
+                          options={[
+                            {
+                              value: "card",
+                              label: (
+                                <span className={skillStyles.viewModeLabel}>
+                                  <LayoutGrid size={14} />
+                                  {t("experts.viewCard")}
+                                </span>
+                              ),
+                            },
+                            {
+                              value: "table",
+                              label: (
+                                <span className={skillStyles.viewModeLabel}>
+                                  <ListIcon size={14} />
+                                  {t("experts.viewTable")}
+                                </span>
+                              ),
+                            },
+                          ]}
+                        />
+                        <Tooltip title={t("common.refresh")}>
+                          <button
+                            type="button"
+                            className={skillStyles.toolbarIconBtn}
+                            onClick={() => void handleRefresh()}
+                            disabled={refreshing || detailLoading}
+                          >
+                            <RefreshCw
+                              size={14}
+                              className={
+                                refreshing ? skillStyles.spinning : undefined
+                              }
+                            />
+                          </button>
+                        </Tooltip>
+                        {canMutate ? (
+                          <>
+                            <button
+                              type="button"
+                              className={skillStyles.toolbarBtn}
+                              onClick={() => setHubOpen(true)}
+                            >
+                              <Store size={14} />
+                              {t("skills.tencentSkillHub")}
+                            </button>
+                            <button
+                              type="button"
+                              className={skillStyles.toolbarBtn}
+                              onClick={() => setImportModalOpen(true)}
+                            >
+                              <Download size={14} />
+                              {t("skills.importSkills")}
+                            </button>
+                            <button
+                              type="button"
+                              className={skillStyles.toolbarBtnPrimary}
+                              onClick={openCreateSkill}
+                            >
+                              <Plus size={14} />
+                              {t("skillPackages.createSkill")}
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className={skillStyles.skillsListArea}>
+                      {skillsContent}
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
-          </section>
-        ) : null}
-      </div>
+                </>
+              )}
+            </section>
+          ) : null}
+        </div>
+      )}
 
       <Modal
         title={t(
@@ -762,13 +921,21 @@ export default function SkillPackagesPage() {
         onOk={() => void savePackage()}
         okText={t(editingPackage ? "common.save" : "common.create")}
         cancelText={t("common.cancel")}
+        width={520}
+        destroyOnClose
+        className={styles.packageModal}
       >
         {!editingPackage ? (
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
             {t("skillPackages.createPackageHint")}
           </Typography.Paragraph>
         ) : null}
-        <Form form={packageForm} layout="vertical">
+        <Form
+          form={packageForm}
+          layout="vertical"
+          className={styles.packageForm}
+          requiredMark={false}
+        >
           <Form.Item
             name="name"
             label={t("skillPackages.packageName")}
@@ -790,38 +957,12 @@ export default function SkillPackagesPage() {
             label={t("skillPackages.packageDescription")}
           >
             <Input.TextArea
-              autoSize={{ minRows: 3, maxRows: 6 }}
+              autoSize={{ minRows: 2, maxRows: 5 }}
               placeholder={t("skillPackages.packageDescriptionPlaceholder")}
             />
           </Form.Item>
           <Form.Item name="icon_name" label={t("skillPackages.iconName")}>
-            <Select
-              allowClear
-              showSearch
-              placeholder={t("skillPackages.iconNamePlaceholder")}
-              filterOption={(input, option) => {
-                const name = String(option?.value ?? "");
-                const label = t(`experts.iconLabels.${name}`, {
-                  defaultValue: name,
-                });
-                const q = input.trim().toLowerCase();
-                return (
-                  name.toLowerCase().includes(q) ||
-                  label.toLowerCase().includes(q)
-                );
-              }}
-              options={EXPERT_ICON_NAMES.map((name) => ({
-                value: name,
-                label: (
-                  <span className={styles.iconOption}>
-                    {iconForName(name, 18)}
-                    <span>
-                      {t(`experts.iconLabels.${name}`, { defaultValue: name })}
-                    </span>
-                  </span>
-                ),
-              }))}
-            />
+            <PackageIconPicker />
           </Form.Item>
           <Form.Item name="icon_url" label={t("skillPackages.iconUrl")}>
             <Input

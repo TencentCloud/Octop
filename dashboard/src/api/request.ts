@@ -10,6 +10,8 @@ const AUTH_TOKEN_KEY = "auth_token";
  * the SPA alive instead of tearing the document down mid-render.
  */
 export const UNAUTHORIZED_EVENT = "octop:unauthorized";
+/** Fired when an agent-scoped API request is forbidden. */
+export const FORBIDDEN_EVENT = "octop:forbidden";
 
 /** Response header used by the server for JWT sliding renewal. */
 export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
@@ -259,6 +261,11 @@ export async function request<T = unknown>(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
+    if (response.status === 403 && isAgentScopedPath(path)) {
+      window.dispatchEvent(
+        new CustomEvent(FORBIDDEN_EVENT, { detail: { path } }),
+      );
+    }
     const text = await response.text().catch(() => "");
     throw new Error(
       `Request failed: ${response.status} ${response.statusText}${

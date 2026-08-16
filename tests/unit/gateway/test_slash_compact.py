@@ -80,14 +80,16 @@ async def test_cmd_compact_calls_harness_without_reset(ctx, dispatcher) -> None:
         )
     )
     ctx.agent_manager.get_agent = MagicMock(return_value=harness)
-    before = len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id))
+    before = len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id, user_id=ctx.user_id))
 
     sink = BufferSink()
     await cmd_compact(dispatcher, SlashCommand("compact", ""), ctx, sink)
 
     harness.acompact_conversation.assert_awaited_once()
     assert harness.acompact_conversation.await_args.args[0] == tid
-    assert len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id)) == before
+    assert (
+        len(ctx.thread_registry.list_threads(agent_id=ctx.agent_id, user_id=ctx.user_id)) == before
+    )
     assert ctx.thread_registry.get_bound_thread_id(ctx.session_key) == tid
     text = "\n".join(sink.lines)
     assert "12" in text

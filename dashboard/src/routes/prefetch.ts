@@ -5,6 +5,7 @@ const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/tasks": () => import("../pages/Control/CronJobs"),
   "/connectors": () => import("../pages/Agent/Connectors"),
   "/skill-packages": () => import("../pages/SkillPackages"),
+  "/knowledge-bases": () => import("../pages/KnowledgeBases"),
   "/skills": () => import("../pages/Agent/Personalization"),
   "/token-usage": () => import("../pages/Control/TokenUsage"),
   "/channels": () => import("../pages/Agent/Personalization"),

@@ -1,5 +1,7 @@
 import { request } from "../../../api/request";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
+import { parseSkillPreviewFromMarkdown } from "../../Agent/Skills/skillMarkdown";
+import { parseSubagentForm } from "./SubagentDrawer";
 
 export interface NamedFileContent {
   name: string;
@@ -9,27 +11,84 @@ export interface NamedFileContent {
 export interface SkillFileGroup {
   name: string;
   files: NamedFileContent[];
+  emoji: string;
+  displayName: string;
+  description: string;
 }
 
-/** Split expert template files into root config md and skills/ tree. */
+export interface SubagentFilePreview {
+  slug: string;
+  name: string;
+  description: string;
+  emoji: string;
+  file: NamedFileContent;
+}
+
+function isSubagentPath(name: string): boolean {
+  return name.startsWith("agents/") && name.endsWith(".md");
+}
+
+function isPromptMdPath(name: string): boolean {
+  return !name.includes("/") && name.endsWith(".md");
+}
+
+/** Split expert template files into persona md, skills/, and subagent definitions. */
 export function groupExpertFiles(files: NamedFileContent[]): {
   configFiles: NamedFileContent[];
   skillGroups: SkillFileGroup[];
+  subagentFiles: SubagentFilePreview[];
 } {
-  const configFiles = files.filter((f) => !f.name.startsWith("skills/"));
+  const configFiles = files.filter(
+    (f) =>
+      isPromptMdPath(f.name) &&
+      f.name !== "manifest.json" &&
+      !f.name.startsWith("skills/") &&
+      !isSubagentPath(f.name),
+  );
   const skillFiles = files.filter((f) => f.name.startsWith("skills/"));
+  const subagentRaw = files.filter((f) => isSubagentPath(f.name));
 
   const groups: Record<string, SkillFileGroup> = {};
   for (const file of skillFiles) {
     const skillName = file.name.split("/")[1];
     if (!skillName) continue;
     if (!groups[skillName]) {
-      groups[skillName] = { name: skillName, files: [] };
+      groups[skillName] = {
+        name: skillName,
+        files: [],
+        emoji: "✨",
+        displayName: skillName,
+        description: "",
+      };
     }
     groups[skillName].files.push(file);
   }
 
-  return { configFiles, skillGroups: Object.values(groups) };
+  for (const group of Object.values(groups)) {
+    const skillMd = group.files.find((f) => f.name.endsWith("/SKILL.md"))
+      ?.content;
+    if (!skillMd) continue;
+    const preview = parseSkillPreviewFromMarkdown(skillMd, group.name);
+    group.emoji = preview.emoji;
+    group.displayName = preview.name;
+    group.description = preview.description;
+  }
+
+  const subagentFiles = subagentRaw
+    .map((file) => {
+      const slug = file.name.slice("agents/".length, -".md".length);
+      const parsed = parseSubagentForm(file.content, slug);
+      return {
+        slug,
+        name: parsed.name || slug,
+        description: parsed.description,
+        emoji: parsed.emoji || "🤖",
+        file,
+      };
+    })
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+
+  return { configFiles, skillGroups: Object.values(groups), subagentFiles };
 }
 
 /** Workspace glob entry from GET /workspace/glob. */

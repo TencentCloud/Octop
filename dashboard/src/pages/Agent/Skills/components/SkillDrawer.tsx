@@ -1,13 +1,27 @@
-import { useEffect, useState } from "react";
-import { Drawer, Form, Input, Button, Segmented } from "antd";
+import { useCallback, useEffect, useState } from "react";
+import { Drawer, Form, Input, Button, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { MinusCircle, Plus } from "lucide-react";
+import { MinusCircle, PanelLeftOpen, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
+import EmojiPicker from "../../../../components/EmojiPicker";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
+import { request } from "../../../../api/request";
 import { splitMarkdownFrontmatter } from "../../../../utils/markdown";
+import { withFromWorkspace } from "../../../../utils/fromWorkspace";
+import { useListPanelCollapsed } from "../../../../hooks/useListPanelCollapsed";
 import type { SkillDetail } from "../useSkills";
+import {
+  isSkillManifestPath,
+  skillDirectoryPath,
+  skillManifestPath,
+  DEFAULT_SKILL_EMOJI,
+} from "../skillMarkdown";
+import FileViewer from "../../Workspace/components/FileViewer";
+import { getDocKind } from "../../Workspace/utils/docKind";
+import { getMediaKind } from "../../Workspace/utils/mediaKind";
+import { SkillFileTree } from "./SkillFileTree";
 import styles from "./SkillDrawer.module.less";
 
 export interface MetadataEntry {
@@ -19,12 +33,16 @@ export interface MetadataEntry {
 export interface SkillFormValues {
   name: string;
   description: string;
+  /** Surfaced as ``metadata.octop.emoji`` in SKILL.md. */
+  emoji: string;
   metadata: MetadataEntry[];
   body: string;
   content?: string;
   source?: string;
   path?: string;
 }
+
+export const OCTOP_EMOJI_META_KEY = "octop.emoji";
 
 function yamlQuote(value: string): string {
   if (!value) return '""';
@@ -72,6 +90,36 @@ function metadataToYamlLines(
   return lines;
 }
 
+/** Split ``octop.emoji`` out of flattened metadata for the dedicated picker. */
+export function parseSkillEmojiAndMetadata(
+  pairs: MetadataEntry[] | undefined,
+  fallback = DEFAULT_SKILL_EMOJI,
+): { emoji: string; metadata: MetadataEntry[] } {
+  let emoji = fallback;
+  const metadata: MetadataEntry[] = [];
+  for (const row of pairs ?? []) {
+    if (row.key.trim() === OCTOP_EMOJI_META_KEY) {
+      const value = row.value.trim();
+      if (value) emoji = value;
+      continue;
+    }
+    metadata.push(row);
+  }
+  return { emoji, metadata };
+}
+
+function withEmojiMetadata(
+  pairs: MetadataEntry[] | undefined,
+  emoji: string,
+): MetadataEntry[] {
+  const rest = (pairs ?? []).filter(
+    (row) => row.key.trim() !== OCTOP_EMOJI_META_KEY,
+  );
+  const value = emoji.trim();
+  if (!value) return rest;
+  return [{ key: OCTOP_EMOJI_META_KEY, value }, ...rest];
+}
+
 function buildMetadataObject(
   pairs: MetadataEntry[] | undefined,
 ): Record<string, unknown> {
@@ -90,7 +138,9 @@ export function buildSkillMarkdown(values: SkillFormValues): string {
     `name: ${yamlQuote(values.name.trim())}`,
     `description: ${yamlQuote(values.description.trim())}`,
   ];
-  const meta = buildMetadataObject(values.metadata);
+  const meta = buildMetadataObject(
+    withEmojiMetadata(values.metadata, values.emoji ?? ""),
+  );
   if (Object.keys(meta).length > 0) {
     lines.push("metadata:");
     lines.push(...metadataToYamlLines(meta, 1));
@@ -145,10 +195,14 @@ function parseSkillFormFromDetail(detail: SkillDetail): SkillFormValues {
     typeof fm.name === "string" && fm.name.trim() ? fm.name : detail.slug;
   const description =
     typeof fm.description === "string" ? fm.description : detail.description;
-  const metadata = flattenMetadata(fm.metadata);
+  const { emoji, metadata } = parseSkillEmojiAndMetadata(
+    flattenMetadata(fm.metadata),
+    detail.emoji?.trim() || DEFAULT_SKILL_EMOJI,
+  );
   return {
     name: displayName,
     description,
+    emoji,
     metadata,
     body: detail.body || "",
     content: detail.raw,
@@ -163,12 +217,18 @@ function parseSkillFormFromDetail(detail: SkillDetail): SkillFormValues {
 type ViewTab = "preview" | "source";
 type EditorTab = "form" | "source";
 
+const FILE_TREE_COLLAPSED_KEY = "octop:skill-drawer-tree-collapsed";
+
 interface SkillDrawerProps {
   open: boolean;
   editingSkill: SkillDetail | null;
   form: FormInstance<SkillFormValues>;
   onClose: () => void;
   onSubmit: (values: SkillFormValues) => void;
+  /** When set, show skill directory file tree (workspace / built-in skills). */
+  agentId?: string | null;
+  /** Agent harness must be running for workspace file/tree APIs. */
+  workspaceReady?: boolean;
 }
 
 export function SkillDrawer({
@@ -177,14 +237,39 @@ export function SkillDrawer({
   form,
   onClose,
   onSubmit,
+  agentId,
+  workspaceReady = false,
 }: SkillDrawerProps) {
   const { t } = useTranslation();
   const isCreate = !editingSkill;
   const [localEditMode, setLocalEditMode] = useState(false);
   const [viewTab, setViewTab] = useState<ViewTab>("preview");
   const [editorTab, setEditorTab] = useState<EditorTab>("form");
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [siblingContent, setSiblingContent] = useState("");
+  const [siblingLoading, setSiblingLoading] = useState(false);
+  const [siblingViewTab, setSiblingViewTab] = useState<ViewTab>("preview");
+  const { collapsed: fileTreeCollapsed, toggle: toggleFileTreeCollapsed } =
+    useListPanelCollapsed(FILE_TREE_COLLAPSED_KEY, { defaultCollapsed: true });
 
+  const skillRoot = editingSkill ? skillDirectoryPath(editingSkill) : null;
+  const showFileTree = Boolean(editingSkill && agentId && skillRoot);
   const isEdit = !!editingSkill && localEditMode;
+
+  const handleSelectFilePath = useCallback(
+    (path: string) => {
+      if (isEdit && !isSkillManifestPath(path)) {
+        message.warning(t("skills.finishEditBeforeSwitchFile"));
+        return;
+      }
+      setSelectedFilePath(path);
+    },
+    [isEdit, t],
+  );
+
+  const viewingSkillMd =
+    !selectedFilePath || isSkillManifestPath(selectedFilePath);
+
   const fieldsEditable = isCreate || isEdit;
 
   useEffect(() => {
@@ -192,12 +277,17 @@ export function SkillDrawer({
       setLocalEditMode(false);
       setViewTab("preview");
       setEditorTab("form");
+      setSelectedFilePath(null);
+      setSiblingContent("");
+      setSiblingViewTab("preview");
       return;
     }
     setLocalEditMode(false);
     setViewTab("preview");
     setEditorTab("form");
+    setSiblingViewTab("preview");
     if (editingSkill) {
+      setSelectedFilePath(skillManifestPath(editingSkill));
       const parsed = parseSkillFormFromDetail(editingSkill);
       form.setFieldsValue({
         ...parsed,
@@ -208,14 +298,63 @@ export function SkillDrawer({
       });
       return;
     }
+    setSelectedFilePath(null);
     form.setFieldsValue({
       name: "",
       description: "",
-      metadata: [{ key: "octop.emoji", value: "✨" }],
+      emoji: DEFAULT_SKILL_EMOJI,
+      metadata: [],
       body: t("skills.newSkillBodyTemplate"),
       content: "",
     });
   }, [editingSkill, form, open, t]);
+
+  const loadSiblingFile = useCallback(
+    async (path: string) => {
+      if (!agentId || isSkillManifestPath(path)) return;
+      setSiblingLoading(true);
+      try {
+        const data = await request<{ content: string }>(
+          withFromWorkspace(
+            `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
+              path,
+            )}`,
+          ),
+        );
+        setSiblingContent(data.content ?? "");
+      } catch {
+        setSiblingContent("");
+      } finally {
+        setSiblingLoading(false);
+      }
+    },
+    [agentId],
+  );
+
+  useEffect(() => {
+    if (
+      !open ||
+      !selectedFilePath ||
+      viewingSkillMd ||
+      !agentId ||
+      !workspaceReady
+    ) {
+      return;
+    }
+    if (getMediaKind(selectedFilePath) || getDocKind(selectedFilePath)) {
+      setSiblingContent("");
+      setSiblingLoading(false);
+      return;
+    }
+    void loadSiblingFile(selectedFilePath);
+  }, [
+    agentId,
+    loadSiblingFile,
+    open,
+    selectedFilePath,
+    viewingSkillMd,
+    workspaceReady,
+  ]);
 
   const resetToViewForm = () => {
     if (!editingSkill) return;
@@ -321,6 +460,20 @@ export function SkillDrawer({
         autoSize={{ minRows: 2, maxRows: fieldsEditable ? 4 : 6 }}
         disabled={!fieldsEditable}
       />
+    </Form.Item>
+  );
+
+  const emojiField = (
+    <Form.Item
+      name="emoji"
+      label={t("skills.emojiLabel")}
+      extra={fieldsEditable ? t("skills.emojiHint") : undefined}
+    >
+      {fieldsEditable ? (
+        <EmojiPicker fallback={DEFAULT_SKILL_EMOJI} />
+      ) : (
+        <Input disabled />
+      )}
     </Form.Item>
   );
 
@@ -471,9 +624,104 @@ export function SkillDrawer({
     </div>
   );
 
+  const siblingFileName =
+    selectedFilePath?.split("/").filter(Boolean).pop() ?? "";
+  const siblingUsesRichPreview = Boolean(
+    selectedFilePath &&
+      (getMediaKind(selectedFilePath) || getDocKind(selectedFilePath)),
+  );
+
+  const siblingFileBlock = (
+    <div className={styles.contentViewBlock}>
+      <div className={styles.contentViewHeader}>
+        <span className={styles.contentViewLabel}>{siblingFileName}</span>
+        {!siblingUsesRichPreview ? (
+          <Segmented
+            size="small"
+            value={siblingViewTab}
+            onChange={(value) => setSiblingViewTab(value as ViewTab)}
+            options={[
+              { value: "preview", label: t("skills.viewPreview") },
+              { value: "source", label: t("skills.viewSource") },
+            ]}
+          />
+        ) : null}
+      </div>
+      {!workspaceReady ? (
+        <div className={styles.siblingEmpty}>
+          {t("skills.fileTreeAgentNotReady")}
+        </div>
+      ) : agentId && selectedFilePath ? (
+        <div className={styles.siblingViewer}>
+          <FileViewer
+            agentId={agentId}
+            path={selectedFilePath}
+            fromWorkspace
+            editMode={false}
+            value={siblingContent}
+            onChange={() => {}}
+            fileLoading={siblingLoading}
+            previewMode={siblingViewTab === "preview"}
+          />
+        </div>
+      ) : (
+        <div className={styles.siblingEmpty}>—</div>
+      )}
+    </div>
+  );
+
+  const mainPanel = (
+    <Form
+      form={form}
+      layout="vertical"
+      className={isCreate || isEdit ? styles.createForm : styles.viewForm}
+      onFinish={handleSubmit}
+    >
+      {viewingSkillMd ? (
+        isCreate || isEdit ? (
+          <div className={styles.createLayout}>
+            {editorModeToggle}
+            {editorTab === "form" ? (
+              <>
+                <div className={styles.createFields}>
+                  {nameField}
+                  {descriptionField}
+                  {emojiField}
+                  {metadataFields}
+                </div>
+                {bodyEditBlock}
+              </>
+            ) : (
+              sourceEditBlock
+            )}
+          </div>
+        ) : (
+          <div className={styles.viewScroll}>
+            {nameField}
+            {descriptionField}
+            {emojiField}
+            <Form.Item name="source" label={t("skills.sourceLabel")}>
+              <Input disabled />
+            </Form.Item>
+            <Form.Item name="path" label={t("skills.pathLabel")}>
+              <Input disabled />
+            </Form.Item>
+            {viewContentBlock}
+          </div>
+        )
+      ) : (
+        <div className={styles.viewScroll}>{siblingFileBlock}</div>
+      )}
+    </Form>
+  );
+
   return (
     <Drawer
-      width="min(860px, 92vw)"
+      width={
+        showFileTree && !fileTreeCollapsed
+          ? "min(1060px, 95vw)"
+          : "min(860px, 92vw)"
+      }
       placement="right"
       title={drawerTitle}
       open={open}
@@ -490,42 +738,40 @@ export function SkillDrawer({
       }}
     >
       <div className={styles.shell}>
-        <Form
-          form={form}
-          layout="vertical"
-          className={isCreate || isEdit ? styles.createForm : styles.viewForm}
-          onFinish={handleSubmit}
-        >
-          {isCreate || isEdit ? (
-            <div className={styles.createLayout}>
-              {editorModeToggle}
-              {editorTab === "form" ? (
-                <>
-                  <div className={styles.createFields}>
-                    {nameField}
-                    {descriptionField}
-                    {metadataFields}
-                  </div>
-                  {bodyEditBlock}
-                </>
-              ) : (
-                sourceEditBlock
-              )}
-            </div>
-          ) : (
-            <div className={styles.viewScroll}>
-              {nameField}
-              {descriptionField}
-              <Form.Item name="source" label={t("skills.sourceLabel")}>
-                <Input disabled />
-              </Form.Item>
-              <Form.Item name="path" label={t("skills.pathLabel")}>
-                <Input disabled />
-              </Form.Item>
-              {viewContentBlock}
-            </div>
-          )}
-        </Form>
+        <div className={showFileTree ? styles.splitBody : styles.singleBody}>
+          {showFileTree && skillRoot && agentId && !fileTreeCollapsed ? (
+            <SkillFileTree
+              agentId={agentId}
+              skillRoot={skillRoot}
+              selectedPath={selectedFilePath}
+              onSelectPath={handleSelectFilePath}
+              onCollapse={toggleFileTreeCollapsed}
+              workspaceReady={workspaceReady}
+              selectionDisabled={isEdit}
+            />
+          ) : null}
+          <div
+            className={`${styles.mainPane} ${
+              showFileTree && fileTreeCollapsed
+                ? styles.mainPaneTreeCollapsed
+                : ""
+            }`}
+          >
+            {showFileTree && fileTreeCollapsed ? (
+              <Tooltip title={t("skills.fileTreeShow")}>
+                <button
+                  type="button"
+                  className={styles.fileTreeExpandBtn}
+                  onClick={toggleFileTreeCollapsed}
+                  aria-label={t("skills.fileTreeShow")}
+                >
+                  <PanelLeftOpen size={16} strokeWidth={1.8} />
+                </button>
+              </Tooltip>
+            ) : null}
+            {mainPanel}
+          </div>
+        </div>
 
         <div className={styles.footer}>
           {isCreate ? (
@@ -545,10 +791,13 @@ export function SkillDrawer({
           ) : (
             <>
               <Button onClick={onClose}>{t("common.close")}</Button>
-              {editingSkill?.kind === "workspace" ? (
+              {editingSkill?.kind === "workspace" && viewingSkillMd ? (
                 <Button
                   type="primary"
                   onClick={() => {
+                    if (editingSkill) {
+                      setSelectedFilePath(skillManifestPath(editingSkill));
+                    }
                     setEditorTab("form");
                     setLocalEditMode(true);
                   }}

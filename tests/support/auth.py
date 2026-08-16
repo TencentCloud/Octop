@@ -133,11 +133,22 @@ async def create_user(
     username: str,
     password: str = TEST_PASSWORD,
     role: str = "user",
+    permissions: list[str] | None = None,
 ) -> dict[str, str]:
+    from octop.infra.users.permissions import BASELINE_PERMISSIONS
+
+    body: dict[str, object] = {
+        "username": username,
+        "password": password,
+        "role": role,
+        "permissions": (
+            list(permissions) if permissions is not None else sorted(BASELINE_PERMISSIONS)
+        ),
+    }
     r = await client.post(
         "/api/users",
         headers=admin_auth,
-        json={"username": username, "password": password, "role": role},
+        json=body,
     )
     r.raise_for_status()
     return await auth_header(client, username=username, password=password)

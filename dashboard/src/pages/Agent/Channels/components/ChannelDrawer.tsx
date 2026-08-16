@@ -74,6 +74,7 @@ export interface ChannelFormValues {
   kind: ChannelKey;
   name?: string;
   enabled?: boolean;
+  response_mode?: "invoke" | "stream";
   show_thinking?: boolean;
   show_tool_hints?: boolean;
   group_context?: QqGroupContextConfig;
@@ -390,6 +391,9 @@ function QqGroupContextPolicyFields({
 
 function DisplaySettingsFields() {
   const { t } = useTranslation();
+  const responseMode =
+    Form.useWatch("response_mode") ??
+    DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode;
   return (
     <div className={styles.displaySettings}>
       <div className={styles.displaySettingsTitle}>
@@ -404,12 +408,30 @@ function DisplaySettingsFields() {
         <Switch />
       </Form.Item>
       <Form.Item
+        name="response_mode"
+        label={t("channels.responseMode")}
+        tooltip={t("channels.responseModeDesc")}
+      >
+        <Segmented
+          options={[
+            {
+              label: t("channels.responseModeInvoke"),
+              value: "invoke",
+            },
+            {
+              label: t("channels.responseModeStream"),
+              value: "stream",
+            },
+          ]}
+        />
+      </Form.Item>
+      <Form.Item
         name="show_thinking"
         label={t("channels.showThinking")}
         tooltip={t("channels.showThinkingDesc")}
         valuePropName="checked"
       >
-        <Switch />
+        <Switch disabled={responseMode === "invoke"} />
       </Form.Item>
       <Form.Item
         name="show_tool_hints"
@@ -417,7 +439,7 @@ function DisplaySettingsFields() {
         tooltip={t("channels.showToolHintsDesc")}
         valuePropName="checked"
       >
-        <Switch />
+        <Switch disabled={responseMode === "invoke"} />
       </Form.Item>
     </div>
   );
@@ -766,10 +788,16 @@ export function ChannelDrawer({
 
   const getDisplayConfig = useCallback((): Pick<
     ChannelFormValues,
-    "show_thinking" | "show_tool_hints"
+    "response_mode" | "show_thinking" | "show_tool_hints"
   > => {
-    const values = form.getFieldsValue(["show_thinking", "show_tool_hints"]);
+    const values = form.getFieldsValue([
+      "response_mode",
+      "show_thinking",
+      "show_tool_hints",
+    ]);
     return {
+      response_mode:
+        values.response_mode ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode,
       show_thinking:
         values.show_thinking ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_thinking,
       show_tool_hints:
@@ -969,9 +997,17 @@ export function ChannelDrawer({
   };
 
   const handleFinish = (values: ChannelFormValues) => {
-    const { kind, __raw_config, show_thinking, show_tool_hints, ...rest } =
-      values;
+    const {
+      kind,
+      __raw_config,
+      response_mode,
+      show_thinking,
+      show_tool_hints,
+      ...rest
+    } = values;
     let config: Record<string, unknown> = {
+      response_mode:
+        response_mode ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode,
       show_thinking:
         show_thinking ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_thinking,
       show_tool_hints:
@@ -995,6 +1031,15 @@ export function ChannelDrawer({
         }
       }
     }
+    config = {
+      ...config,
+      response_mode:
+        response_mode ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode,
+      show_thinking:
+        show_thinking ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_thinking,
+      show_tool_hints:
+        show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
+    };
     void (async () => {
       const ok = await onSubmit(kind, kind, config, values.enabled ?? false);
       if (ok) clearFormDraft(draftScope);

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
 import { Button, Form, Input, Modal, Select, Switch, Typography } from "antd";
 import { message } from "@/utils/antdMessage";
 import {
@@ -16,20 +15,23 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import {
   securityApi,
   type FilesystemRule,
+  type HitlToolCatalogItem,
   type SecurityPolicy,
 } from "../../../api/modules/security";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import tabStyles from "../AdvancedSettings/tabContent.module.less";
 import SettingsTabBar from "../shared/SettingsTabBar";
 import AuditLogPanel from "./AuditLogPanel";
+import HitlToolsPicker from "./HitlToolsPicker";
 import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
 import styles from "./index.module.less";
+import ForbiddenPage from "../../../components/ForbiddenPage";
+import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
+import { SECURITY_TAB_PERMISSIONS, userCan } from "../../../utils/permissions";
 
 const { Text } = Typography;
 const { confirm } = Modal;
 const { TextArea } = Input;
-
-const DEFAULT_HITL_TOOLS = ["bash", "execute", "write_file", "edit_file"];
 
 type SecurityTabKey =
   | "hitl"
@@ -125,36 +127,36 @@ function PolicyFooter({
 
 export default function SecuritySettingsPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<SecurityTabKey>(() =>
-    parseTab(searchParams.get("tab")),
-  );
+  const { user, allowedTabs, activeTab, forbidden, selectTab } =
+    useGatedSearchTabs({
+      tabs: TABS,
+      tabPermissions: SECURITY_TAB_PERMISSIONS,
+      parseTab,
+      querylessKey: "hitl",
+    });
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null);
-
-  useEffect(() => {
-    setActiveTab(parseTab(searchParams.get("tab")));
-  }, [searchParams]);
-
-  const selectTab = (key: SecurityTabKey) => {
-    setActiveTab(key);
-    if (key === "hitl") {
-      searchParams.delete("tab");
-      setSearchParams(searchParams, { replace: true });
-    } else {
-      setSearchParams({ tab: key }, { replace: true });
-    }
-  };
+  const [hitlToolCatalog, setHitlToolCatalog] = useState<HitlToolCatalogItem[]>(
+    [],
+  );
+  const [hitlDefaultTools, setHitlDefaultTools] = useState<string[]>([]);
 
   const fetchPolicy = useCallback(async () => {
     setLoading(true);
     try {
-      const cfg = await securityApi.getPolicy();
+      const [cfg, defaults] = await Promise.all([
+        securityApi.getPolicy(),
+        securityApi.getDefaults(),
+      ]);
       setPolicy(cfg);
+      setHitlToolCatalog(defaults.hitl_tool_catalog);
+      setHitlDefaultTools([...defaults.hitl_tools]);
       const tools =
-        cfg.hitl.tools === "default" ? [...DEFAULT_HITL_TOOLS] : cfg.hitl.tools;
+        cfg.hitl.tools === "default"
+          ? [...defaults.hitl_tools]
+          : cfg.hitl.tools;
       form.setFieldsValue({
         hitl_enabled: cfg.hitl.enabled,
         hitl_tools: tools,
@@ -175,8 +177,12 @@ export default function SecuritySettingsPage() {
   }, [form, t]);
 
   useEffect(() => {
-    void fetchPolicy();
-  }, [fetchPolicy]);
+    if (userCan(user, "security")) {
+      void fetchPolicy();
+      return;
+    }
+    setLoading(false);
+  }, [fetchPolicy, user]);
 
   const handleSave = async () => {
     try {
@@ -259,14 +265,12 @@ export default function SecuritySettingsPage() {
                   }}
                 />
               </Form.Item>
+            </div>
+            <div className={styles.hitlToolsSection}>
               <Form.Item name="hitl_tools" label={t("security.hitlTools")}>
-                <Select
-                  mode="tags"
-                  tokenSeparators={[","]}
-                  options={DEFAULT_HITL_TOOLS.map((v) => ({
-                    value: v,
-                    label: v,
-                  }))}
+                <HitlToolsPicker
+                  catalog={hitlToolCatalog}
+                  defaultTools={hitlDefaultTools}
                 />
               </Form.Item>
             </div>
@@ -413,13 +417,15 @@ export default function SecuritySettingsPage() {
     }
   };
 
+  if (forbidden) return <ForbiddenPage />;
+
   return (
     <PageShell.Tabbed
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
       tabBar={
         <SettingsTabBar
-          tabs={TABS}
+          tabs={allowedTabs}
           activeKey={activeTab}
           onChange={selectTab}
         />

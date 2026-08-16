@@ -22,6 +22,16 @@ export interface ProviderModel {
   reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
   max_tokens?: number;
+  /** Embedding-only: excluded from chat picker and auto-route. */
+  embedding?: boolean;
+  task?: string;
+}
+
+export function isEmbeddingModel(
+  model: Pick<ProviderModel, "embedding" | "task"> | undefined,
+): boolean {
+  if (!model) return false;
+  return model.embedding === true || model.task === "embedding";
 }
 
 export interface ProviderPresetModel {
@@ -99,29 +109,49 @@ export function useProviders(): UseProvidersResult {
     if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
-      const [rows, presetList, resolved, active, preferences] =
-        await Promise.all([
-          request<ProviderRow[]>("/admin/providers"),
-          request<ProviderPreset[]>("/providers/presets"),
-          providerApi.listResolvedModels(),
-          request<{ provider_name: string; model: string }>(
-            "/providers/active-model",
-          ),
-          preferencesApi.get(),
-        ]);
-      if (!Array.isArray(rows)) {
-        throw new Error(
-          "Unexpected API response shape from /admin/providers — is BASE_URL configured correctly?",
-        );
+      const settled = await Promise.allSettled([
+        request<ProviderRow[]>("/admin/providers"),
+        request<ProviderPreset[]>("/providers/presets"),
+        providerApi.listResolvedModels(),
+        request<{ provider_name: string; model: string }>(
+          "/providers/active-model",
+        ),
+        preferencesApi.get(),
+      ]);
+      const rows =
+        settled[0].status === "fulfilled" && Array.isArray(settled[0].value)
+          ? settled[0].value
+          : [];
+      const presetList =
+        settled[1].status === "fulfilled" && Array.isArray(settled[1].value)
+          ? settled[1].value
+          : [];
+      const resolved =
+        settled[2].status === "fulfilled" && Array.isArray(settled[2].value)
+          ? settled[2].value
+          : [];
+      const active =
+        settled[3].status === "fulfilled" ? settled[3].value : null;
+      const preferences =
+        settled[4].status === "fulfilled" ? settled[4].value : null;
+
+      if (
+        settled[0].status === "rejected" &&
+        settled[1].status === "rejected"
+      ) {
+        throw settled[0].reason instanceof Error
+          ? settled[0].reason
+          : new Error(t("models.loadProvidersFailed"));
       }
+
       const normalized = rows.map((r) => ({
         ...r,
         models: Array.isArray(r.models) ? r.models : [],
       }));
       setProviders(normalized);
-      setPresets(Array.isArray(presetList) ? presetList : []);
-      setResolvedModels(Array.isArray(resolved) ? resolved : []);
-      const preferredParts = (preferences.preferred_model || "").split("/");
+      setPresets(presetList);
+      setResolvedModels(resolved);
+      const preferredParts = (preferences?.preferred_model || "").split("/");
       setActiveModel(
         preferredParts.length > 1
           ? {
@@ -135,7 +165,7 @@ export function useProviders(): UseProvidersResult {
             }
           : { provider_name: "", model: "" },
       );
-      setModelReasoning(preferences.model_reasoning || {});
+      setModelReasoning(preferences?.model_reasoning || {});
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : t("models.loadProvidersFailed");

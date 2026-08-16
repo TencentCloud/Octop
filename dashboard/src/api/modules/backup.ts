@@ -12,8 +12,32 @@ export interface BackupListResponse {
   items: BackupFileItem[];
 }
 
+export interface AutoBackupSettings {
+  auto_enabled: boolean;
+  schedule: string;
+  retention_count: number;
+  scheduled?: boolean;
+}
+
 export const backupApi = {
   listBackups: () => request<BackupListResponse>("/admin/backup/list"),
+
+  getAutoSettings: () => request<AutoBackupSettings>("/admin/backup/auto"),
+
+  updateAutoSettings: (body: {
+    auto_enabled: boolean;
+    schedule: string;
+    retention_count: number;
+  }) =>
+    request<{ ok: boolean } & AutoBackupSettings>("/admin/backup/auto", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  runAutoBackup: () =>
+    request<{ ok: boolean; item: BackupFileItem }>("/admin/backup/auto/run", {
+      method: "POST",
+    }),
 
   createBackup: () =>
     request<{ ok: boolean; item: BackupFileItem }>("/admin/backup/create", {

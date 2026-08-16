@@ -47,10 +47,16 @@ export function parseApiError(error: unknown): ParsedApiError | null {
   return null;
 }
 
+const NOT_FOUND_ERROR_CODES = new Set([
+  "NOT_FOUND",
+  "KNOWLEDGE_NOT_FOUND",
+  "SKILL_PACKAGE_NOT_FOUND",
+]);
+
 /** True when a failed ``request`` / ``requestBlob`` looks like HTTP 404 / NOT_FOUND. */
 export function isNotFoundApiError(error: unknown): boolean {
   const parsed = parseApiError(error);
-  if (parsed?.code === "NOT_FOUND") return true;
+  if (parsed?.code && NOT_FOUND_ERROR_CODES.has(parsed.code)) return true;
   const msg = error instanceof Error ? error.message : String(error ?? "");
   return /\b404\b/i.test(msg) || /not found/i.test(msg);
 }

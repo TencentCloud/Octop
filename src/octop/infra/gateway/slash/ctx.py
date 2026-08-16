@@ -56,8 +56,10 @@ def chat_type(ctx: SlashCtx) -> str:
     return parts[3] if len(parts) >= 4 else "dm"
 
 
-def find_thread_by_short(registry: ThreadRegistry, agent_id: str, short: str) -> Any | None:
-    rows = registry.list_threads(agent_id=agent_id, limit=200)
+def find_thread_by_short(
+    registry: ThreadRegistry, agent_id: str, user_id: int, short: str
+) -> Any | None:
+    rows = registry.list_threads(agent_id=agent_id, user_id=user_id, limit=200)
     matches = [r for r in rows if r.thread_id.endswith(short)]
     return matches[0] if matches else None
 

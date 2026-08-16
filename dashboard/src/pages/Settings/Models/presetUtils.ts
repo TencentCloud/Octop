@@ -117,8 +117,51 @@ export function isPresetProvider(
   );
 }
 
-const LOCAL_PRESET_IDS = new Set(["ollama"]);
+const LOCAL_PRESET_IDS = new Set(["ollama", "onnx"]);
 
 export function isLocalPreset(preset: ProviderPreset): boolean {
   return LOCAL_PRESET_IDS.has(preset.id);
+}
+
+/** Local providers that do not require a real API key. */
+export function isLocalNoKeyPresetId(presetId: string): boolean {
+  return presetId === "ollama" || presetId === "onnx";
+}
+
+/** Stable placeholder api_key written when creating a local preset row. */
+function localPresetApiKey(provider: { api_key?: string | null }): string {
+  return (provider.api_key ?? "").trim().toLowerCase();
+}
+
+export function isOnnxProviderRow(provider: {
+  name: string;
+  api_key?: string | null;
+}): boolean {
+  if (localPresetApiKey(provider) === "onnx") return true;
+  const n = provider.name.toLowerCase();
+  return n === "onnx" || n === "onnx (local)";
+}
+
+export function isOllamaProviderRow(provider: {
+  name: string;
+  base_url?: string | null;
+  api_key?: string | null;
+}): boolean {
+  if (isOnnxProviderRow(provider)) return false;
+  if (localPresetApiKey(provider) === "ollama") return true;
+  const n = provider.name.toLowerCase();
+  return (
+    n === "ollama" ||
+    n === "ollama (local)" ||
+    (provider.base_url?.includes("11434") ?? false) ||
+    (provider.base_url?.includes("ollama") ?? false)
+  );
+}
+
+export function isLocalProviderRow(provider: {
+  name: string;
+  base_url?: string | null;
+  api_key?: string | null;
+}): boolean {
+  return isOnnxProviderRow(provider) || isOllamaProviderRow(provider);
 }

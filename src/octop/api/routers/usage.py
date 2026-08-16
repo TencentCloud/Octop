@@ -16,7 +16,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
@@ -78,11 +78,13 @@ async def admin_summary(
     granularity: str = "by_day",
     user_id: int | None = None,
     agent_id: str | None = None,
-    _: Any = Depends(current_admin),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Global usage roll-up. Optional ``user_id`` / ``agent_id`` narrow
-    the scope; absent both fields mean *all rows*."""
+    the scope; absent both fields mean *all rows*. Admin only."""
+    if not user.is_admin:
+        raise OctopError(ErrorCode.FORBIDDEN, "admin required")
     return cast(
         "dict[str, Any]",
         server.services.usage_repo.summary(

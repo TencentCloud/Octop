@@ -5,13 +5,23 @@
  * Connectivity tests still hit the live provider endpoint.
  */
 import { useState } from "react";
-import { Button, Form, Input, InputNumber, Modal, Select, Switch } from "antd";
+import {
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Switch,
+  Tooltip,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
   Check,
   ChevronDown,
   ChevronUp,
+  Download,
   Pencil,
   Plus,
   Trash2,
@@ -21,8 +31,20 @@ import {
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
+import { isEmbeddingModel } from "../../useProviders";
+import { isOnnxProviderRow } from "../../presetUtils";
 import { ModelMetaTags } from "../../modelMeta";
 import styles from "../../index.module.less";
+
+export interface LocalModelDownloadControl {
+  /** Model ids already present on disk / in the local runtime. */
+  downloadedIds: ReadonlySet<string> | readonly string[];
+  /** Model ids currently downloading. */
+  downloadingIds?: ReadonlySet<string> | readonly string[];
+  onDownload: (modelId: string) => void;
+  /** When true, enable switch is locked until the model is downloaded. */
+  requireDownloadToEnable?: boolean;
+}
 
 interface ModelListEditorProps {
   provider: ProviderRow;
@@ -31,6 +53,7 @@ interface ModelListEditorProps {
   /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
   canTest?: boolean;
+  localDownload?: LocalModelDownloadControl;
   onTestModel?: (
     modelId: string,
     modelName: string,
@@ -49,9 +72,21 @@ export function ModelListEditor({
   onModelsChange,
   apiPrefix = "/providers",
   canTest,
+  localDownload,
   onTestModel,
 }: ModelListEditorProps) {
   const { t } = useTranslation();
+  const downloadedSet = (() => {
+    if (!localDownload) return null;
+    const raw = localDownload.downloadedIds;
+    return raw instanceof Set ? raw : new Set(raw);
+  })();
+  const downloadingSet = (() => {
+    if (!localDownload?.downloadingIds) return new Set<string>();
+    const raw = localDownload.downloadingIds;
+    return raw instanceof Set ? raw : new Set(raw);
+  })();
+  const requireDownload = !!localDownload?.requireDownloadToEnable;
   const [adding, setAdding] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -61,12 +96,23 @@ export function ModelListEditor({
   >(new Map());
   const [testingForm, setTestingForm] = useState(false);
   const [form] = Form.useForm();
+  const isOnnx = isOnnxProviderRow(provider);
+  const embeddingOn = isOnnx || Form.useWatch("embedding", form) === true;
 
   const handleToggleEnabled = (
     modelId: string,
     _modelName: string,
     enabled: boolean,
   ) => {
+    if (
+      enabled &&
+      requireDownload &&
+      downloadedSet &&
+      !downloadedSet.has(modelId)
+    ) {
+      message.warning(t("models.downloadBeforeEnable"));
+      return;
+    }
     onModelsChange(
       models.map((m) => (m.id === modelId ? { ...m, enabled } : m)),
     );
@@ -93,17 +139,21 @@ export function ModelListEditor({
   const runTest = async (
     modelId: string,
     modelName: string,
+    embedding?: boolean,
   ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
     if (onTestModel) {
       return onTestModel(modelId, modelName);
     }
+    const isEmbedding =
+      embedding ??
+      (isOnnx || isEmbeddingModel(models.find((m) => m.id === modelId)));
     return request<{
       ok: boolean;
       latency_ms?: number;
       error?: string;
     }>(`${apiPrefix}/${provider.id}/test`, {
       method: "POST",
-      body: JSON.stringify({ model_id: modelId }),
+      body: JSON.stringify({ model_id: modelId, embedding: isEmbedding }),
     });
   };
 
@@ -157,7 +207,7 @@ export function ModelListEditor({
     }
     setTestingForm(true);
     try {
-      const result = await runTest(modelId, modelId);
+      const result = await runTest(modelId, modelId, embeddingOn);
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
@@ -182,13 +232,23 @@ export function ModelListEditor({
   const buildModelEntry = (values: Record<string, unknown>): ProviderModel => {
     const id = (values.id as string).trim();
     const name = (values.name as string | undefined)?.trim() || id;
+    const isOnnx = isOnnxProviderRow(provider);
+    const embedding = isOnnx || values.embedding === true;
     const entry: ProviderModel = {
       id,
       name,
       enabled: true,
-      input: (values.input as string[] | undefined) || ["text"],
+      input: ["text"],
       thinking: null,
     };
+    if (embedding) {
+      entry.embedding = true;
+      entry.task = "embedding";
+      return entry;
+    }
+    if (values.input != null) {
+      entry.input = (values.input as string[] | undefined) || ["text"];
+    }
     if (values.context_window != null)
       entry.context_window = values.context_window as number;
     if (values.max_tokens != null)
@@ -229,6 +289,9 @@ export function ModelListEditor({
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
         return;
+      }
+      if (requireDownload) {
+        entry.enabled = false;
       }
       onModelsChange([...models, entry]);
       message.success(t("models.modelAdded", { name: entry.name }));
@@ -273,6 +336,7 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
+      embedding: Boolean(model.embedding || model.task === "embedding"),
     });
     const hasAdvanced =
       (model as Record<string, unknown>).context_window != null ||
@@ -309,6 +373,9 @@ export function ModelListEditor({
             const isCurrentEditing = editingModelId === m.id;
             const isEnabled = m.enabled !== false;
             const isTesting = testingIds.has(m.id);
+            const isDownloaded = downloadedSet ? downloadedSet.has(m.id) : true;
+            const isDownloading = downloadingSet.has(m.id);
+            const enableLocked = requireDownload && !isDownloaded;
             return (
               <div
                 key={m.id}
@@ -316,28 +383,60 @@ export function ModelListEditor({
                   isCurrentEditing ? ` ${styles.modelListItemEditing}` : ""
                 }${!isEnabled ? ` ${styles.modelListItemDisabled}` : ""}`}
               >
-                <Switch
-                  size="small"
-                  checked={isEnabled}
-                  onChange={(checked) =>
-                    handleToggleEnabled(m.id, m.name, checked)
+                <Tooltip
+                  title={
+                    enableLocked ? t("models.downloadBeforeEnable") : undefined
                   }
-                  className={styles.modelToggle}
-                />
+                >
+                  <Switch
+                    size="small"
+                    checked={isEnabled && !enableLocked}
+                    disabled={enableLocked}
+                    onChange={(checked) =>
+                      handleToggleEnabled(m.id, m.name, checked)
+                    }
+                    className={styles.modelToggle}
+                  />
+                </Tooltip>
                 <div className={styles.modelListItemInfo}>
                   <span className={styles.modelListItemName}>{m.name}</span>
                   {m.name !== m.id && (
                     <span className={styles.modelListItemId}>{m.id}</span>
                   )}
-                  <ModelMetaTags
-                    includeText
-                    input={m.input}
-                    context_window={m.context_window}
-                    max_tokens={m.max_tokens}
-                    reasoning={m.reasoning}
-                  />
+                  {localDownload && (
+                    <span className={styles.modelListItemId}>
+                      {isDownloaded
+                        ? t("models.localModelDownloaded")
+                        : t("models.notDownloaded")}
+                    </span>
+                  )}
+                  {(m.embedding || m.task === "embedding") && (
+                    <span className={styles.modelListItemId}>
+                      {t("models.embeddingOnlyTag")}
+                    </span>
+                  )}
+                  {m.embedding || m.task === "embedding" ? null : (
+                    <ModelMetaTags
+                      includeText
+                      input={m.input}
+                      context_window={m.context_window}
+                      max_tokens={m.max_tokens}
+                      reasoning={m.reasoning}
+                    />
+                  )}
                 </div>
                 <div className={styles.modelListItemActions}>
+                  {localDownload && !isDownloaded && (
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Download size={14} />}
+                      loading={isDownloading}
+                      onClick={() => localDownload.onDownload(m.id)}
+                      title={t("models.localDownloadModel")}
+                      style={{ marginRight: 4 }}
+                    />
+                  )}
                   {hasApiKey &&
                     (isTesting ? (
                       <Button
@@ -417,250 +516,276 @@ export function ModelListEditor({
               <Input placeholder={t("models.modelNamePlaceholder")} />
             </Form.Item>
 
-            <Form.Item
-              name="input"
-              label={t("models.inputTypes")}
-              initialValue={["text"]}
-              style={{ marginBottom: 12 }}
-            >
-              <Select
-                mode="multiple"
-                allowClear
-                placeholder={t("models.inputTypes")}
-                options={INPUT_TYPE_OPTIONS.map((opt) => ({
-                  value: opt.value,
-                  label: t(`models.${opt.label}`),
-                }))}
-              />
-            </Form.Item>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: showAdvanced ? 8 : 12,
-              }}
-            >
-              <Button
-                type="link"
-                size="small"
-                style={{ padding: 0 }}
-                icon={
-                  showAdvanced ? (
-                    <ChevronUp size={14} />
-                  ) : (
-                    <ChevronDown size={14} />
-                  )
-                }
-                onClick={() => setShowAdvanced(!showAdvanced)}
+            {isOnnx ? null : (
+              <Form.Item
+                name="embedding"
+                label={t("models.embeddingModel")}
+                extra={t("models.embeddingModelHint")}
+                valuePropName="checked"
+                initialValue={false}
+                style={{ marginBottom: 12 }}
               >
-                {showAdvanced
-                  ? t("models.hideAdvanced")
-                  : t("models.showAdvanced")}
-              </Button>
-            </div>
+                <Switch size="small" />
+              </Form.Item>
+            )}
 
-            {showAdvanced && (
-              <div
-                style={{
-                  background:
-                    "var(--ant-color-fill-quaternary, rgba(0,0,0,0.02))",
-                  borderRadius: 6,
-                  padding: "12px 12px 4px",
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ display: "flex", gap: 12 }}>
-                  <Form.Item
-                    name="context_window"
-                    label={t("models.contextWindow")}
-                    style={{ flex: 1, marginBottom: 10 }}
-                  >
-                    <InputNumber
-                      min={0}
-                      style={{ width: "100%" }}
-                      placeholder={t("models.contextWindowPlaceholder")}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="max_tokens"
-                    label={t("models.maxTokens")}
-                    style={{ flex: 1, marginBottom: 10 }}
-                  >
-                    <InputNumber
-                      min={0}
-                      style={{ width: "100%" }}
-                      placeholder={t("models.maxTokensPlaceholder")}
-                    />
-                  </Form.Item>
-                </div>
+            {embeddingOn ? null : (
+              <>
                 <Form.Item
-                  name="reasoning"
-                  label={t("models.reasoning")}
-                  valuePropName="checked"
-                  style={{ marginBottom: 10 }}
+                  name="input"
+                  label={t("models.inputTypes")}
+                  initialValue={["text"]}
+                  style={{ marginBottom: 12 }}
                 >
-                  <Switch size="small" />
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    placeholder={t("models.inputTypes")}
+                    options={INPUT_TYPE_OPTIONS.map((opt) => ({
+                      value: opt.value,
+                      label: t(`models.${opt.label}`),
+                    }))}
+                  />
                 </Form.Item>
-                <Form.Item noStyle shouldUpdate>
-                  {({ getFieldValue }) =>
-                    getFieldValue("reasoning") ? (
-                      <>
-                        <div style={{ display: "flex", gap: 12 }}>
-                          <Form.Item
-                            name="reasoning_toggle"
-                            label={t("models.reasoningToggle", "允许开关")}
-                            valuePropName="checked"
-                            initialValue
-                            style={{ flex: 1, marginBottom: 10 }}
-                          >
-                            <Switch size="small" />
-                          </Form.Item>
-                          <Form.Item
-                            name="reasoning_default_mode"
-                            label={t("models.reasoningDefault", "默认思考")}
-                            initialValue="auto"
-                            style={{ flex: 1, marginBottom: 10 }}
-                          >
-                            <Select
-                              options={[
-                                {
-                                  value: "auto",
-                                  label: t("chat.reasoningAuto", "自动"),
-                                },
-                                {
-                                  value: "enabled",
-                                  label: t("chat.reasoningEnabled", "开启"),
-                                },
-                                {
-                                  value: "disabled",
-                                  label: t("chat.reasoningDisabled", "关闭"),
-                                },
-                              ]}
-                            />
-                          </Form.Item>
-                        </div>
-                        <Form.Item
-                          name="reasoning_efforts"
-                          label={t("models.reasoningEfforts", "支持的思考强度")}
-                          style={{ marginBottom: 10 }}
-                        >
-                          <Select
-                            mode="tags"
-                            tokenSeparators={[","]}
-                            placeholder="low, medium, high, max, xhigh"
-                          />
-                        </Form.Item>
-                        <div style={{ display: "flex", gap: 12 }}>
-                          <Form.Item
-                            name="reasoning_default_effort"
-                            label={t(
-                              "models.reasoningDefaultEffort",
-                              "默认强度",
-                            )}
-                            style={{ flex: 1, marginBottom: 10 }}
-                          >
-                            <Input placeholder="high" />
-                          </Form.Item>
-                          <Form.Item
-                            name="reasoning_effort_type"
-                            label={t("models.reasoningEffortType", "强度类型")}
-                            initialValue="enum"
-                            style={{ flex: 1, marginBottom: 10 }}
-                          >
-                            <Select
-                              options={[
-                                {
-                                  value: "enum",
-                                  label: t(
-                                    "models.reasoningEffortEnum",
-                                    "强度档位",
-                                  ),
-                                },
-                                {
-                                  value: "token_budget",
-                                  label: t(
-                                    "models.reasoningEffortBudget",
-                                    "Token 预算",
-                                  ),
-                                },
-                              ]}
-                            />
-                          </Form.Item>
-                        </div>
-                        <Form.Item
-                          name="reasoning_adapter"
-                          label={t("models.reasoningAdapter", "推理协议")}
-                          initialValue="thinking"
-                          style={{ marginBottom: 10 }}
-                        >
-                          <Select
-                            options={[
-                              {
-                                value: "status_only",
-                                label: t(
-                                  "models.reasoningAdapterStatusOnly",
-                                  "仅标记（始终推理）",
-                                ),
-                              },
-                              {
-                                value: "openai_reasoning_effort",
-                                label: t(
-                                  "models.reasoningAdapterOpenAI",
-                                  "OpenAI / Gemini / Groq",
-                                ),
-                              },
-                              {
-                                value: "anthropic_adaptive",
-                                label: t(
-                                  "models.reasoningAdapterAnthropicAdaptive",
-                                  "Anthropic Adaptive",
-                                ),
-                              },
-                              {
-                                value: "anthropic_budget",
-                                label: t(
-                                  "models.reasoningAdapterAnthropicBudget",
-                                  "Anthropic Token Budget",
-                                ),
-                              },
-                              {
-                                value: "thinking",
-                                label: t(
-                                  "models.reasoningAdapterThinking",
-                                  "DeepSeek / GLM / Kimi",
-                                ),
-                              },
-                              {
-                                value: "thinking_nested_effort",
-                                label: t(
-                                  "models.reasoningAdapterNestedEffort",
-                                  "TokenHub 嵌套强度",
-                                ),
-                              },
-                              {
-                                value: "dashscope",
-                                label: t(
-                                  "models.reasoningAdapterDashScope",
-                                  "DashScope / 阿里云",
-                                ),
-                              },
-                              {
-                                value: "openrouter",
-                                label: t(
-                                  "models.reasoningAdapterOpenRouter",
-                                  "OpenRouter",
-                                ),
-                              },
-                            ]}
-                          />
-                        </Form.Item>
-                      </>
-                    ) : null
-                  }
-                </Form.Item>
-              </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: showAdvanced ? 8 : 12,
+                  }}
+                >
+                  <Button
+                    type="link"
+                    size="small"
+                    style={{ padding: 0 }}
+                    icon={
+                      showAdvanced ? (
+                        <ChevronUp size={14} />
+                      ) : (
+                        <ChevronDown size={14} />
+                      )
+                    }
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                  >
+                    {showAdvanced
+                      ? t("models.hideAdvanced")
+                      : t("models.showAdvanced")}
+                  </Button>
+                </div>
+
+                {showAdvanced && (
+                  <div
+                    style={{
+                      background:
+                        "var(--ant-color-fill-quaternary, rgba(0,0,0,0.02))",
+                      borderRadius: 6,
+                      padding: "12px 12px 4px",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 12 }}>
+                      <Form.Item
+                        name="context_window"
+                        label={t("models.contextWindow")}
+                        style={{ flex: 1, marginBottom: 10 }}
+                      >
+                        <InputNumber
+                          min={0}
+                          style={{ width: "100%" }}
+                          placeholder={t("models.contextWindowPlaceholder")}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="max_tokens"
+                        label={t("models.maxTokens")}
+                        style={{ flex: 1, marginBottom: 10 }}
+                      >
+                        <InputNumber
+                          min={0}
+                          style={{ width: "100%" }}
+                          placeholder={t("models.maxTokensPlaceholder")}
+                        />
+                      </Form.Item>
+                    </div>
+                    <Form.Item
+                      name="reasoning"
+                      label={t("models.reasoning")}
+                      valuePropName="checked"
+                      style={{ marginBottom: 10 }}
+                    >
+                      <Switch size="small" />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate>
+                      {({ getFieldValue }) =>
+                        getFieldValue("reasoning") ? (
+                          <>
+                            <div style={{ display: "flex", gap: 12 }}>
+                              <Form.Item
+                                name="reasoning_toggle"
+                                label={t("models.reasoningToggle", "允许开关")}
+                                valuePropName="checked"
+                                initialValue
+                                style={{ flex: 1, marginBottom: 10 }}
+                              >
+                                <Switch size="small" />
+                              </Form.Item>
+                              <Form.Item
+                                name="reasoning_default_mode"
+                                label={t("models.reasoningDefault", "默认思考")}
+                                initialValue="auto"
+                                style={{ flex: 1, marginBottom: 10 }}
+                              >
+                                <Select
+                                  options={[
+                                    {
+                                      value: "auto",
+                                      label: t("chat.reasoningAuto", "自动"),
+                                    },
+                                    {
+                                      value: "enabled",
+                                      label: t("chat.reasoningEnabled", "开启"),
+                                    },
+                                    {
+                                      value: "disabled",
+                                      label: t(
+                                        "chat.reasoningDisabled",
+                                        "关闭",
+                                      ),
+                                    },
+                                  ]}
+                                />
+                              </Form.Item>
+                            </div>
+                            <Form.Item
+                              name="reasoning_efforts"
+                              label={t(
+                                "models.reasoningEfforts",
+                                "支持的思考强度",
+                              )}
+                              style={{ marginBottom: 10 }}
+                            >
+                              <Select
+                                mode="tags"
+                                tokenSeparators={[","]}
+                                placeholder="low, medium, high, max, xhigh"
+                              />
+                            </Form.Item>
+                            <div style={{ display: "flex", gap: 12 }}>
+                              <Form.Item
+                                name="reasoning_default_effort"
+                                label={t(
+                                  "models.reasoningDefaultEffort",
+                                  "默认强度",
+                                )}
+                                style={{ flex: 1, marginBottom: 10 }}
+                              >
+                                <Input placeholder="high" />
+                              </Form.Item>
+                              <Form.Item
+                                name="reasoning_effort_type"
+                                label={t(
+                                  "models.reasoningEffortType",
+                                  "强度类型",
+                                )}
+                                initialValue="enum"
+                                style={{ flex: 1, marginBottom: 10 }}
+                              >
+                                <Select
+                                  options={[
+                                    {
+                                      value: "enum",
+                                      label: t(
+                                        "models.reasoningEffortEnum",
+                                        "强度档位",
+                                      ),
+                                    },
+                                    {
+                                      value: "token_budget",
+                                      label: t(
+                                        "models.reasoningEffortBudget",
+                                        "Token 预算",
+                                      ),
+                                    },
+                                  ]}
+                                />
+                              </Form.Item>
+                            </div>
+                            <Form.Item
+                              name="reasoning_adapter"
+                              label={t("models.reasoningAdapter", "推理协议")}
+                              initialValue="thinking"
+                              style={{ marginBottom: 10 }}
+                            >
+                              <Select
+                                options={[
+                                  {
+                                    value: "status_only",
+                                    label: t(
+                                      "models.reasoningAdapterStatusOnly",
+                                      "仅标记（始终推理）",
+                                    ),
+                                  },
+                                  {
+                                    value: "openai_reasoning_effort",
+                                    label: t(
+                                      "models.reasoningAdapterOpenAI",
+                                      "OpenAI / Gemini / Groq",
+                                    ),
+                                  },
+                                  {
+                                    value: "anthropic_adaptive",
+                                    label: t(
+                                      "models.reasoningAdapterAnthropicAdaptive",
+                                      "Anthropic Adaptive",
+                                    ),
+                                  },
+                                  {
+                                    value: "anthropic_budget",
+                                    label: t(
+                                      "models.reasoningAdapterAnthropicBudget",
+                                      "Anthropic Token Budget",
+                                    ),
+                                  },
+                                  {
+                                    value: "thinking",
+                                    label: t(
+                                      "models.reasoningAdapterThinking",
+                                      "DeepSeek / GLM / Kimi",
+                                    ),
+                                  },
+                                  {
+                                    value: "thinking_nested_effort",
+                                    label: t(
+                                      "models.reasoningAdapterNestedEffort",
+                                      "TokenHub 嵌套强度",
+                                    ),
+                                  },
+                                  {
+                                    value: "dashscope",
+                                    label: t(
+                                      "models.reasoningAdapterDashScope",
+                                      "DashScope / 阿里云",
+                                    ),
+                                  },
+                                  {
+                                    value: "openrouter",
+                                    label: t(
+                                      "models.reasoningAdapterOpenRouter",
+                                      "OpenRouter",
+                                    ),
+                                  },
+                                ]}
+                              />
+                            </Form.Item>
+                          </>
+                        ) : null
+                      }
+                    </Form.Item>
+                  </div>
+                )}
+              </>
             )}
 
             <div

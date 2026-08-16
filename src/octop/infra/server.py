@@ -9,6 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
@@ -27,6 +28,9 @@ from octop.infra.setup.password_file import WIZARD_FILE_NAME
 from octop.infra.setup.wizard_tokens import WizardTokenStore
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+
+if TYPE_CHECKING:
+    from octop.infra.auth.sso.service import SsoService
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +114,27 @@ class OctopServer:
         self.wizard_tokens = WizardTokenStore(ttl_seconds=300)
         self._started = False
         self._started_at: int | None = None
+        self._sso_service: SsoService | None = None
 
     # Backward compat: expose user_manager directly
     @property
     def user_manager(self) -> UserManager | None:
         return self.app_runtime.user_manager if self.app_runtime else None
+
+    @property
+    def sso_service(self) -> SsoService:
+        """Process-level SSO service so discovery/JWKS cache survives across requests."""
+        from octop.infra.auth.sso.service import SsoService as SsoServiceCls  # noqa: PLC0415
+
+        if self.services is None or self.user_manager is None:
+            raise RuntimeError("SSO service requires a started server with user manager")
+        if (
+            self._sso_service is None
+            or getattr(self._sso_service, "_services", None) is not self.services
+            or getattr(self._sso_service, "_user_manager", None) is not self.user_manager
+        ):
+            self._sso_service = SsoServiceCls(self.services, self.user_manager)
+        return self._sso_service
 
     @property
     def database_bound(self) -> bool:
@@ -229,6 +249,10 @@ class OctopServer:
 
         install_auto_renewal_job(cron_mgr, paths=self.paths)
 
+        from octop.infra.backup.auto import install_auto_backup_job
+
+        install_auto_backup_job(cron_mgr, server=self)
+
         registry.set_cron_manager(cron_mgr)
         registry.set_team_processor(gateway.processor)
 
@@ -258,6 +282,9 @@ class OctopServer:
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
         )
+        from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
+
+        resume_pending_index_jobs(self.services)
 
     def _emit_wizard_password(self, *, user_count: int) -> None:
         config = self.config
@@ -271,8 +298,6 @@ class OctopServer:
                 logger.warning("wizard self-heal failed: %s", err)
                 new_pw = None
         else:
-            if user_count == 0:
-                _wizard_pw.remove_password(wizard_home)
             new_pw = None
         if new_pw is not None:
             banner = (

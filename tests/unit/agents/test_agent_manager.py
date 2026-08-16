@@ -206,14 +206,19 @@ def test_build_harness_config_includes_cronjob_tools_when_cron_manager_set(
         "cronjob_update",
         "cronjob_delete",
         "cronjob_run_now",
+        "search_knowledge",
     }
 
 
-def test_build_harness_config_without_cron_manager_has_no_extra_tools(
+def test_build_harness_config_includes_search_knowledge_without_cron(
     manager: AgentManager,
 ) -> None:
+    from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
+
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
-    assert cfg.tools is None
+    assert cfg.tools is not None
+    assert {t.name for t in cfg.tools} == {"search_knowledge"}
+    assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
@@ -931,7 +936,9 @@ async def test_update_config_json_still_schedules_reload(
 
 
 @pytest.mark.asyncio
-async def test_reload_agent_does_not_block_event_loop(tmp_path: Path) -> None:
+async def test_reload_agent_does_not_block_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Harness create/remove must run off the event loop (MCP init blocks the loop)."""
     import asyncio
     import time
@@ -949,28 +956,42 @@ async def test_reload_agent_does_not_block_event_loop(tmp_path: Path) -> None:
     fake_hm = MagicMock()
     fake_entry = MagicMock()
     fake_entry.agent = MagicMock()
+    fake_hm.shared_factory = object()
+    fake_hm.acreate_agent = AsyncMock(return_value=fake_entry)
+
+    rebuild_started = asyncio.Event()
+    rebuild_finished = asyncio.Event()
+    post_start_finished = asyncio.Event()
 
     async def slow_rebuild(*_args: object, **_kwargs: object) -> MagicMock:
+        rebuild_started.set()
         await asyncio.to_thread(time.sleep, 0.15)
+        rebuild_finished.set()
         return fake_entry
+
+    async def fake_post_start(*_args: object, **_kwargs: object) -> None:
+        post_start_finished.set()
 
     fake_hm.arebuild_agent = AsyncMock(side_effect=slow_rebuild)
     fake_hm.aremove_agent = AsyncMock()
     registry._harness_manager = fake_hm
+    monkeypatch.setattr(registry, "_post_start_agent", fake_post_start)
 
     row = await registry.create(AgentCreateSpec(name="block-test"))
+    post_start_finished.clear()
 
     tick = asyncio.Event()
 
     async def ticker() -> None:
-        await asyncio.sleep(0.05)
+        await rebuild_started.wait()
         tick.set()
 
-    asyncio.create_task(ticker())
+    ticker_task = asyncio.create_task(ticker())
     await registry.update(row.agent_id, name="block-test-v2")
-    await asyncio.wait_for(tick.wait(), timeout=0.2)
-    # Background reload may still be running; wait for it to finish.
-    await asyncio.sleep(0.3)
+    await asyncio.wait_for(tick.wait(), timeout=1.0)
+    assert not rebuild_finished.is_set()
+    await asyncio.wait_for(post_start_finished.wait(), timeout=1.0)
+    await ticker_task
 
 
 def test_build_mcp_configs_registers_gateway_without_transport(manager: AgentManager) -> None:

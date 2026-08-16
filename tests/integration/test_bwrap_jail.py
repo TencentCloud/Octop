@@ -6,6 +6,7 @@ Cross-platform cases run on Windows, macOS, and Linux. POSIX-shell and real
 
 from __future__ import annotations
 
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -208,6 +209,8 @@ def test_subprocess_run_invokes_real_bwrap(tmp_path: Path) -> None:
     marker = "octop-bwrap-smoke"
     bwrap = shutil.which("bwrap")
     assert bwrap is not None
+    # Merged-/usr hosts expose /bin,/lib,/lib64 as symlinks into /usr; bind those
+    # as symlinks (and always mount /usr) so the dynamic linker and /bin/sh resolve.
     argv = [
         bwrap,
         "--die-with-parent",
@@ -217,22 +220,29 @@ def test_subprocess_run_invokes_real_bwrap(tmp_path: Path) -> None:
         "--ro-bind",
         "/usr",
         "/usr",
-        "--ro-bind",
-        "/bin",
-        "/bin",
-        "--dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--tmpfs",
-        "/tmp",
-        "--chdir",
-        "/",
-        "--",
-        "/bin/sh",
-        "-c",
-        f"echo {marker} > /smoke.txt",
     ]
+    for host, guest in (("/lib", "/lib"), ("/lib64", "/lib64"), ("/bin", "/bin")):
+        path = Path(host)
+        if path.is_symlink():
+            argv.extend(["--symlink", os.readlink(host), guest])
+        elif path.exists():
+            argv.extend(["--ro-bind", host, guest])
+    argv.extend(
+        [
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--tmpfs",
+            "/tmp",
+            "--chdir",
+            "/",
+            "--",
+            "/bin/sh",
+            "-c",
+            f"echo {marker} > /smoke.txt",
+        ]
+    )
     result = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     assert (root / "smoke.txt").read_text(encoding="utf-8").strip() == marker

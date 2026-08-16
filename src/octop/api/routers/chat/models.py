@@ -26,6 +26,10 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Connector MCP server names to attach for this request only.",
     )
+    knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge base ids to retrieve for this request (empty disables defaults).",
+    )
     skills: list[str] | None = Field(
         default=None,
         description="Skill names to enable for this request (empty list disables all skills).",
@@ -61,6 +65,9 @@ class ChatTurnBody(BaseModel):
             mcp_servers=payload.get("mcp_servers")
             if isinstance(payload.get("mcp_servers"), list)
             else None,
+            knowledge_base_ids=payload.get("knowledge_base_ids")
+            if isinstance(payload.get("knowledge_base_ids"), list)
+            else None,
             skills=payload.get("skills")
             if isinstance(payload.get("skills"), list)
             else payload.get("skills"),
@@ -95,6 +102,7 @@ class UserTurnWsFrame(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     mcp_servers: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
     target_agent_ids: list[str] | None = None
@@ -110,6 +118,19 @@ class PolishBody(BaseModel):
 
 class RebindSessionBody(BaseModel):
     thread_id: str
+
+
+class ForkThreadBody(BaseModel):
+    message_id: str = Field(..., description="Selected user message id from the chat UI.")
+    content: str | None = Field(
+        default=None,
+        description="Plain text of that user message, used to locate it when ids differ.",
+    )
+    user_turns_from_end: int | None = Field(
+        default=None,
+        ge=1,
+        description="1 = latest user turn, 2 = second-to-last, … (preferred locator).",
+    )
 
 
 class RenameThreadBody(BaseModel):

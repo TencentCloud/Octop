@@ -4,6 +4,7 @@ import type { UpdateStatus } from "../api/modules/update";
 import {
   UPDATE_STATUS_STORAGE_KEY,
   UPDATE_STATUS_TTL_MS,
+  UPDATE_STATUS_CHANGED_EVENT,
   clearStoredUpdateStatus,
   isUpdateStatusCacheExpired,
   readStoredUpdateStatus,
@@ -56,5 +57,19 @@ describe("updateStatusCache", () => {
     storeUpdateStatus(sample);
     clearStoredUpdateStatus();
     expect(localStorage.getItem(UPDATE_STATUS_STORAGE_KEY)).toBeNull();
+  });
+
+  it("dispatches change event when storing", () => {
+    const seen: UpdateStatus[] = [];
+    const handler = (event: Event) => {
+      seen.push((event as CustomEvent<UpdateStatus>).detail);
+    };
+    window.addEventListener(UPDATE_STATUS_CHANGED_EVENT, handler);
+    try {
+      storeUpdateStatus(sample);
+      expect(seen).toEqual([sample]);
+    } finally {
+      window.removeEventListener(UPDATE_STATUS_CHANGED_EVENT, handler);
+    }
   });
 });

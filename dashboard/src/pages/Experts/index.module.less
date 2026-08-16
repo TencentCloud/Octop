@@ -1359,6 +1359,7 @@
 }
 
 .catalogCard {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1397,6 +1398,15 @@
       transform: none;
     }
   }
+}
+
+.catalogCardAccent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--agent-accent, #6366f1);
 }
 
 .catalogCardHeader {
@@ -1793,4 +1803,28 @@
   margin-left: auto;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ── Publish expert drawer ─────────────────────────────────────── */
+
+.publishDrawerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.publishDrawerLoading {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 12px;
+}
+
+.publishDrawerHint {
+  margin-bottom: 16px;
+}
+
+.publishDrawerFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

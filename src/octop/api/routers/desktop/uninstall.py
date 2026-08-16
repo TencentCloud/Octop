@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from octop.api.deps import current_admin
+from octop.api.deps import require_permission
 from octop.infra.desktop.setup import uninstall_desktop_stream
 from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.post("/desktop/uninstall")
 async def uninstall_desktop(
     request: Request,
-    _user: User = Depends(current_admin),
+    _user: User = Depends(require_permission("desktop")),
 ) -> StreamingResponse:
     """Stream virtual desktop uninstall progress as SSE (admin only)."""
     locale = resolve_request_locale(request)

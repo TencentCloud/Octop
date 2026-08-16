@@ -65,9 +65,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from octop.api.common.agent import assert_agent_owner
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
-from octop.api.deps import current_user, get_server, resolve_user_from_token
+from octop.api.deps import get_server, require_permission, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils import posix_compat
 
 logger = logging.getLogger(__name__)
@@ -443,7 +445,7 @@ def _arm_detach_cleanup(session: _PtySession) -> None:
 @router.get("/agents/{agent_id}/terminal/context")
 async def terminal_context(
     agent_id: str,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("terminal")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return system context for the AI terminal panel."""
@@ -451,6 +453,7 @@ async def terminal_context(
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, "no agents for user")
+    assert_agent_owner(row, user)
     workspace_dir = str(resolve_agent_workspace_dir(server, agent_id))
 
     os_name = platform.system()
@@ -512,6 +515,9 @@ async def terminal_ws(
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
         return
+    if not user_has_permission(user, "terminal"):
+        await websocket.close(code=4003, reason="permission required")
+        return
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
     agent_row = registry.get_row(agent_id)
@@ -534,6 +540,11 @@ async def terminal_ws(
                 break
     if agent_row is None:
         await websocket.close(code=4404, reason="agent not found")
+        return
+    try:
+        assert_agent_owner(agent_row, user)
+    except OctopError:
+        await websocket.close(code=4003, reason="agent not owned by user")
         return
     workspace_dir = str(resolve_agent_workspace_dir(server, agent_id))
 

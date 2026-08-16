@@ -58,6 +58,7 @@ help:
 	@echo ""
 	@echo "Quality targets (ship bar):"
 	@echo "  all              format-all + lint + typecheck + test (backend lint/typecheck/test)"
+	@echo "  precommit        fast change-aware gate for the git pre-commit hook (testmon-scoped tests)"
 	@echo "  lint             Ruff check + format check (src, tests)"
 	@echo "  format           Ruff auto-fix + format (src, tests)"
 	@echo "  typecheck        mypy --strict src/octop"
@@ -226,6 +227,29 @@ test-live:
 	@echo "[test] pytest (live)..."
 	$(RUN) pytest -m live
 
+# Fast, change-aware gate for the local pre-commit hook. Runs ruff/mypy (cheap
+# and kept full for accuracy) plus only the tests affected by changed files via
+# pytest-testmon. The full suite still runs in CI (`make all`); this is local
+# feedback only, so a missed cross-module impact is caught there.
+.PHONY: precommit
+precommit: format-all lint typecheck test-affected
+
+# NOTE: do NOT pass `-m` here — pytest-testmon deactivates its affected-test
+# selection whenever a marker expression is present, which would fall back to
+# the full suite. Live tests under tests/live/ auto-skip when credentials are
+# absent, so running them unscoped is cheap and safe; the CI `make all` gate
+# keeps `-m "not live"` for the authoritative full run.
+#
+# NOTE: testmon detects changes via `git ls-files -m` (worktree vs index), which
+# is empty once changes are staged — exactly the pre-commit state — so it would
+# silently run zero tests. The patch in conftest.py / tests/support/
+# testmon_staged_changes.py redirects detection to `git diff HEAD` (staged +
+# unstaged) so the gate actually fires on a commit's changes.
+.PHONY: test-affected
+test-affected:
+	@echo "[test] pytest (testmon: only tests affected by changes)..."
+	$(RUN) pytest --testmon
+
 # ─── Quality (frontend) ──────────────────────────────────────────────────────
 
 .PHONY: lint-frontend
@@ -266,7 +290,7 @@ install-hooks:
 	@echo "[install-hooks] Setting core.hooksPath=.githooks"
 	git config core.hooksPath .githooks
 	@chmod +x "$(REPO_ROOT)/.githooks/"* 2>/dev/null || true
-	@echo "[install-hooks] Done. Pre-commit will run: make all (incl. format-all), dashboard build"
+	@echo "[install-hooks] Done. Pre-commit will run: make precommit (format-all + lint + typecheck + testmon-scoped tests), dashboard build"
 	@echo "[install-hooks] Bypass: SKIP_PRECOMMIT=1 git commit …   or   git commit --no-verify"
 
 .PHONY: install install-dev

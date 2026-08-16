@@ -9,8 +9,10 @@ import pytest
 
 from octop.infra.backup.store import (
     delete_backup_file,
+    is_auto_backup_filename,
     list_backup_files,
     normalize_backup_filename,
+    prune_auto_backups,
     read_backup_file,
     write_backup_file,
 )
@@ -71,3 +73,41 @@ def test_created_at_falls_back_on_invalid_filename_stamp(tmp_path: Path) -> None
     items = list_backup_files(layout)
     assert len(items) == 1
     datetime.fromisoformat(items[0].created_at)
+
+
+def test_created_at_from_auto_filename(tmp_path: Path) -> None:
+    layout = PathLayout(tmp_path / ".octop")
+    name = "octop-auto-backup-20260721T020000Z.tar.gz"
+    write_backup_file(layout, name, b"x")
+    items = list_backup_files(layout)
+    assert len(items) == 1
+    assert items[0].created_at == "2026-07-21T02:00:00+00:00"
+    assert is_auto_backup_filename(name)
+    assert not is_auto_backup_filename("octop-backup-20260721T020000Z.tar.gz")
+
+
+def test_prune_auto_backups_keeps_newest_and_spares_manual(tmp_path: Path) -> None:
+    layout = PathLayout(tmp_path / ".octop")
+    write_backup_file(layout, "octop-backup-20260101T000000Z.tar.gz", b"manual")
+    write_backup_file(layout, "octop-auto-backup-20260101T010000Z.tar.gz", b"a1")
+    write_backup_file(layout, "octop-auto-backup-20260102T010000Z.tar.gz", b"a2")
+    write_backup_file(layout, "octop-auto-backup-20260103T010000Z.tar.gz", b"a3")
+
+    deleted = prune_auto_backups(layout, keep=2)
+    assert set(deleted) == {"octop-auto-backup-20260101T010000Z.tar.gz"}
+    names = {f.name for f in list_backup_files(layout)}
+    assert names == {
+        "octop-backup-20260101T000000Z.tar.gz",
+        "octop-auto-backup-20260102T010000Z.tar.gz",
+        "octop-auto-backup-20260103T010000Z.tar.gz",
+    }
+
+
+def test_prune_auto_backups_keep_zero_deletes_all_auto(tmp_path: Path) -> None:
+    layout = PathLayout(tmp_path / ".octop")
+    write_backup_file(layout, "octop-backup-20260101T000000Z.tar.gz", b"manual")
+    write_backup_file(layout, "octop-auto-backup-20260101T010000Z.tar.gz", b"a1")
+    deleted = prune_auto_backups(layout, keep=0)
+    assert deleted == ["octop-auto-backup-20260101T010000Z.tar.gz"]
+    names = {f.name for f in list_backup_files(layout)}
+    assert names == {"octop-backup-20260101T000000Z.tar.gz"}

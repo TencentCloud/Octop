@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
         --from-source)
             FROM_SOURCE=true
             if [[ $# -ge 2 && "$2" != --* ]]; then
-                SOURCE_DIR="$(cd "$2" && pwd)" || die "目录不存在: $2"
+                SOURCE_DIR="$(cd "$2" && pwd)" || die "Directory not found: $2"
                 shift
             fi
             shift ;;
@@ -76,42 +76,44 @@ while [[ $# -gt 0 ]]; do
             PYPI_MIRROR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-Octop 安装脚本 (macOS / Linux)
+Octop installer (macOS / Linux)
 
-用法: bash install.sh [选项]
+Usage: bash install.sh [OPTIONS]
 
-选项:
-  --version <版本>      安装指定版本（例如 0.1.0）[仅限 PyPI]
-  --from-source [目录]  从源码安装；未指定目录时从 git 仓库克隆
-  --from-pypi           从 PyPI 安装（默认）
-  --extras <附加组件>   额外可选组件（例如 desktop）；browser/playwright 默认安装
-  --mirror <镜像URL>    指定 PyPI 镜像（例如 https://mirrors.cloud.tencent.com/pypi/simple）
-  -h, --help            显示此帮助
+Options:
+  --version <VER>       Install a specific version (e.g. 0.1.0) [PyPI only]
+  --from-source [DIR]   Install from source; clones the git repo if DIR is omitted
+  --from-pypi           Install from PyPI (default)
+  --extras <EXTRAS>     Extra optional components (e.g. desktop); browser/playwright always installed
+  --mirror <URL>        Use a specific PyPI mirror (e.g. https://mirrors.cloud.tencent.com/pypi/simple)
+  -h, --help            Show this help
 
-说明: 若系统已安装 Chrome/Chromium（常见于 macOS/Windows 或 Linux 桌面），
-  安装脚本将直接使用它，跳过体积较大的 Playwright 自带 Chromium 下载。
+Note: if Chrome/Chromium is already installed (common on macOS/Windows or
+  Linux desktops), the installer reuses it and skips the large bundled
+  Chromium download.
 
-环境变量:
-  OCTOP_HOME              安装目录（默认: ~/.octop）
-  OCTOP_PYPI_MIRROR       PyPI 镜像地址（与 --mirror 等效）
-  OCTOP_REPO              源码克隆地址（--from-source 且无本地目录时使用）
-  HARNESS_AGENT_REPO      harness-agent 仓库（默认从 OCTOP_REPO 推导）
-  HARNESS_GATEWAY_REPO    harness-gateway 仓库（默认从 OCTOP_REPO 推导）
-  HARNESS_BROWSER_REPO    harness-browser 仓库（源码安装时使用）
-  PLAYWRIGHT_DOWNLOAD_HOST  Playwright 下载镜像（可选；未设时自动：npmmirror → 官方）
-  PLAYWRIGHT_INSTALL_TIMEOUT  单镜像下载超时秒数（默认 600）
+Environment variables:
+  OCTOP_HOME              Install directory (default: ~/.octop)
+  OCTOP_PYPI_MIRROR       PyPI mirror URL (same as --mirror)
+  OCTOP_REPO              Git URL to clone (used by --from-source with no local dir)
+  HARNESS_AGENT_REPO      harness-agent repo (derived from OCTOP_REPO by default)
+  HARNESS_GATEWAY_REPO    harness-gateway repo (derived from OCTOP_REPO by default)
+  HARNESS_BROWSER_REPO    harness-browser repo (used for source installs)
+  PLAYWRIGHT_DOWNLOAD_HOST  Playwright download mirror (optional; auto: npmmirror -> official)
+  PLAYWRIGHT_INSTALL_TIMEOUT  Per-mirror download timeout in seconds (default 600)
 
-说明:
-  本脚本在隔离虚拟环境（~/.octop/venv）中安装，不会影响系统 Python。
-  默认会安装 Playwright 相关依赖；若检测到系统已安装 Chrome/Chromium，
-  则跳过 Playwright 自带 Chromium 的下载，直接使用系统浏览器：
-  1. Playwright Chromium 浏览器及 Python 包（已安装系统浏览器时跳过）
-  2. 系统级依赖（Linux: apt/dnf/yum/pacman/zypper；仅下载 Chromium 时需要）
-  3. CJK 字体用于中文网页渲染
+Details:
+  Everything is installed into an isolated virtualenv (~/.octop/venv), so the
+  system Python is untouched. Playwright dependencies are installed by
+  default; if a system Chrome/Chromium is detected, the bundled Chromium
+  download is skipped and the system browser is used instead:
+  1. Playwright Chromium browser and Python package (skipped if a system browser exists)
+  2. System libraries (Linux: apt/dnf/yum/pacman/zypper; only needed for Chromium)
+  3. CJK fonts for rendering Chinese web pages
 EOF
             exit 0 ;;
         *)
-            die "未知选项: $1（尝试 --help）" ;;
+            die "Unknown option: $1 (try --help)" ;;
     esac
 done
 
@@ -119,10 +121,10 @@ done
 OS="$(uname -s)"
 case "$OS" in
     Linux|Darwin) ;;
-    *) die "不支持的操作系统: $OS。请使用 install.ps1 或 install.bat 安装 Windows 版本。" ;;
+    *) die "Unsupported OS: $OS. Use install.ps1 or install.bat on Windows." ;;
 esac
 
-printf "${GREEN}[octop]${RESET} 正在将 Octop 安装到 ${BOLD}%s${RESET}\n" "$OCTOP_HOME"
+printf "${GREEN}[octop]${RESET} Installing Octop into ${BOLD}%s${RESET}\n" "$OCTOP_HOME"
 
 # ── 步骤 1: 确保 uv 可用 ────────────────────────────────────────────────────
 _install_uv_via_pip() {
@@ -146,7 +148,7 @@ _install_uv_via_pip() {
     for mirror in "${mirrors[@]}"; do
         local host
         host="$(echo "$mirror" | awk -F/ '{print $3}')"
-        info "尝试通过 PyPI 镜像安装 uv: $mirror"
+        info "Trying uv from PyPI mirror: $mirror"
         "$py_bin" -m pip install -q uv \
             --break-system-packages \
             -i "$mirror" --trusted-host "$host" 2>/dev/null || \
@@ -188,7 +190,7 @@ for p in [
 }
 
 _install_uv_via_astral() {
-    info "尝试通过官方安装脚本安装 uv..."
+    info "Trying the official uv installer..."
     if curl -LsSf --connect-timeout 20 https://astral.sh/uv/install.sh 2>/dev/null | sh 2>/dev/null; then
         if [ -f "$HOME/.local/bin/env" ]; then
             # shellcheck disable=SC1091
@@ -202,25 +204,25 @@ _install_uv_via_astral() {
 
 ensure_uv() {
     if command -v uv &>/dev/null; then
-        info "已找到 uv: $(command -v uv)"
+        info "Found uv: $(command -v uv)"
         return
     fi
     for candidate in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
         if [ -x "$candidate" ]; then
             export PATH="$(dirname "$candidate"):$PATH"
-            info "已找到 uv: $candidate"
+            info "Found uv: $candidate"
             return
         fi
     done
 
-    info "正在安装 uv..."
+    info "Installing uv..."
     if _install_uv_via_pip; then
-        command -v uv &>/dev/null && { info "uv 安装成功（via PyPI）"; return; }
+        command -v uv &>/dev/null && { info "uv installed successfully (via PyPI)"; return; }
     fi
     if _install_uv_via_astral; then
-        command -v uv &>/dev/null && { info "uv 安装成功（via astral.sh）"; return; }
+        command -v uv &>/dev/null && { info "uv installed successfully (via astral.sh)"; return; }
     fi
-    die "uv 安装失败。请手动运行: pip3 install uv -i https://mirrors.cloud.tencent.com/pypi/simple"
+    die "Failed to install uv. Run manually: pip3 install uv -i https://mirrors.cloud.tencent.com/pypi/simple"
 }
 
 ensure_uv
@@ -237,7 +239,7 @@ _select_fastest_pypi_mirror() {
     local best_mirror="${_PYPI_MIRRORS[0]}"
     local best_time=9999
     local found=0
-    info "正在测速 PyPI 镜像..."
+    info "Benchmarking PyPI mirrors..."
     for mirror in "${_PYPI_MIRRORS[@]}"; do
         local t t_ms code
         # 同时校验 HTTP 状态：连通快但返回非 2xx 的源不可用
@@ -247,7 +249,7 @@ _select_fastest_pypi_mirror() {
         case "$code" in
             2*) ;;
             *)
-                warn "镜像不可用 (HTTP $code)，跳过: $mirror"
+                warn "Mirror unavailable (HTTP $code), skipping: $mirror"
                 continue
                 ;;
         esac
@@ -262,11 +264,11 @@ _select_fastest_pypi_mirror() {
         fi
     done
     if [ "$found" -eq 0 ]; then
-        warn "未找到可用国内镜像，将仅使用官方 PyPI"
+        warn "No usable mirror found; using official PyPI only"
         _FASTEST_MIRROR=""
         return
     fi
-    info "最快镜像: $best_mirror (${best_time}ms)"
+    info "Fastest mirror: $best_mirror (${best_time}ms)"
     _FASTEST_MIRROR="$best_mirror"
 }
 
@@ -305,16 +307,16 @@ _uv_pip_install_with_mirror_fallback() {
         )
         if [ -n "$mirror" ]; then
             args+=(--extra-index-url "$mirror")
-            info "尝试依赖加速镜像: $mirror"
+            info "Trying dependency mirror: $mirror"
         else
-            info "尝试仅使用官方 PyPI（无镜像加速）..."
+            info "Trying official PyPI only (no mirror)..."
         fi
 
         if UV_SYSTEM_PYTHON=0 uv pip install "$package" "${args[@]}" "$@"; then
             _EXTRA_MIRROR="$mirror"
             return 0
         fi
-        warn "该源安装失败，尝试下一镜像..."
+        warn "Install failed from this index, trying the next mirror..."
     done
     return 1
 }
@@ -344,18 +346,18 @@ _glibc_too_old_for_wheels() {
 
 _ensure_rustc() {
     if command -v rustc &>/dev/null; then
-        info "已找到 rustc: $(command -v rustc) ($(rustc --version 2>/dev/null | awk '{print $2}'))"
+        info "Found rustc: $(command -v rustc) ($(rustc --version 2>/dev/null | awk '{print $2}'))"
         return 0
     fi
     for candidate in "$HOME/.cargo/bin/rustc"; do
         if [ -x "$candidate" ]; then
             export PATH="$(dirname "$candidate"):$PATH"
-            info "已找到 rustc: $candidate"
+            info "Found rustc: $candidate"
             return 0
         fi
     done
 
-    info "正在安装 Rust 工具链（rustup）以便从源码编译部分依赖..."
+    info "Installing the Rust toolchain (rustup) to build some deps from source..."
     if curl -LsSf --connect-timeout 30 https://sh.rustup.rs 2>/dev/null | sh -s -- -y --default-toolchain stable 2>/dev/null; then
         # shellcheck disable=SC1091
         . "$HOME/.cargo/env" 2>/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
@@ -408,7 +410,7 @@ _ensure_c_build_tools() {
         return 0
     fi
 
-    info "正在安装本地编译依赖（gcc / Python 开发头文件）..."
+    info "Installing local build dependencies (gcc / Python dev headers)..."
     if command -v apt-get &>/dev/null; then
         _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>/dev/null || true
         _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
@@ -460,17 +462,17 @@ _ensure_modern_cxx() {
     local major
     major="$(_cxx_major)"
     if [ -n "$major" ] && [ "$major" -ge 10 ] 2>/dev/null; then
-        info "C++ 编译器就绪: $(${CXX:-g++} --version 2>/dev/null | head -n1)"
+        info "C++ compiler ready: $(${CXX:-g++} --version 2>/dev/null | head -n1)"
         return 0
     fi
 
     if ! command -v yum &>/dev/null; then
-        warn "系统 gcc 过旧且无 yum，greenlet/numpy 源码编译可能失败"
+        warn "System gcc is too old and yum is unavailable; building greenlet/numpy may fail"
         return 1
     fi
 
     if [ "$(id -u)" -ne 0 ] && ! _sudo_nopass; then
-        warn "需要 root/sudo 安装 devtoolset"
+        warn "Installing devtoolset requires root/sudo"
         return 1
     fi
 
@@ -479,7 +481,7 @@ _ensure_modern_cxx() {
 
     local dts enable_file=""
     for dts in 11 10 9; do
-        info "系统 gcc 过旧（numpy 需 >=10.3），正在安装 devtoolset-${dts}..."
+        info "System gcc is too old (numpy needs >=10.3), installing devtoolset-${dts}..."
         if _run_as_root yum install -y \
             "devtoolset-${dts}-gcc" "devtoolset-${dts}-gcc-c++" make 2>/dev/null; then
             if [ -f "/opt/rh/devtoolset-${dts}/enable" ]; then
@@ -487,11 +489,11 @@ _ensure_modern_cxx() {
                 break
             fi
         fi
-        warn "devtoolset-${dts} 安装失败，尝试下一版本..."
+        warn "devtoolset-${dts} install failed, trying the next version..."
     done
 
     if [ -z "$enable_file" ]; then
-        warn "未能安装可用的 devtoolset，greenlet/numpy 可能无法编译"
+        warn "Could not install a usable devtoolset; greenlet/numpy may fail to build"
         return 1
     fi
 
@@ -501,19 +503,19 @@ _ensure_modern_cxx() {
     . "$enable_file"
     set -u
     export CC=gcc CXX=g++
-    info "已启用 $(basename "$(dirname "$enable_file")"): $(g++ --version 2>/dev/null | head -n1)"
+    info "Enabled $(basename "$(dirname "$enable_file")"): $(g++ --version 2>/dev/null | head -n1)"
     major="$(_cxx_major)"
     if [ -n "$major" ] && [ "$major" -ge 10 ] 2>/dev/null; then
         return 0
     fi
     # gcc 9 仍可能编 greenlet，但编不了新版 numpy
-    warn "当前 g++ 主版本为 ${major:-?}（numpy 2.5+ 需 >=10）"
+    warn "Current g++ major version is ${major:-?} (numpy 2.5+ needs >=10)"
     return 0
 }
 
 _ensure_old_glibc_image_libs() {
     # Pillow 等在无 manylinux_2_28 wheel 时需源码编译，依赖 jpeg/zlib/freetype 头文件
-    info "正在安装图像库开发包（Pillow 源码编译需要）..."
+    info "Installing image library headers (needed to build Pillow from source)..."
     if command -v apt-get &>/dev/null; then
         _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
             libjpeg-dev zlib1g-dev libfreetype6-dev libtiff-dev libwebp-dev \
@@ -536,28 +538,28 @@ _ensure_old_glibc_build_toolchain() {
     fi
     local ver
     ver="$(_glibc_major_minor)"
-    warn "检测到 glibc ${ver}（< 2.28，如 CentOS 7）：部分依赖需本地编译"
-    _ensure_c_build_tools || warn "未找到 gcc，源码编译可能失败"
+    warn "Detected glibc ${ver} (< 2.28, e.g. CentOS 7): some deps must be built locally"
+    _ensure_c_build_tools || warn "gcc not found; building from source may fail"
     _ensure_old_glibc_image_libs
-    _ensure_modern_cxx || warn "未启用新版 g++，playwright 依赖（greenlet）可能编译失败"
+    _ensure_modern_cxx || warn "No modern g++ enabled; the playwright dep (greenlet) may fail to build"
     if ! _ensure_rustc; then
-        die "当前系统 glibc=$ver，无法使用预编译 wheel，且 Rust 安装失败。请升级到 CentOS/RHEL 8+、Ubuntu 20.04+，或手动安装 rustup 后重试。"
+        die "glibc=$ver on this system: prebuilt wheels are unusable and installing Rust failed. Upgrade to CentOS/RHEL 8+ or Ubuntu 20.04+, or install rustup manually and retry."
     fi
 }
 
 # ── 步骤 2: 创建/更新虚拟环境 ────────────────────────────────────────────────
 if [ -x "$OCTOP_VENV/bin/python" ]; then
-    info "发现已有环境，正在升级..."
+    info "Existing environment found, upgrading..."
 else
-    info "正在创建 Python $PYTHON_VERSION 环境..."
+    info "Creating the Python $PYTHON_VERSION environment..."
     uv venv "$OCTOP_VENV" --python "$PYTHON_VERSION" --quiet --seed
 fi
-[ -x "$OCTOP_VENV/bin/python" ] || die "虚拟环境创建失败"
-info "Python 环境就绪 ($("$OCTOP_VENV/bin/python" --version))"
+[ -x "$OCTOP_VENV/bin/python" ] || die "Failed to create the virtualenv"
+info "Python environment ready ($("$OCTOP_VENV/bin/python" --version))"
 
 # Linux 上始终确保可编译本地扩展（Ubuntu 缺 python3-dev、CentOS 缺 python3-devel 等）
 if [ "$OS" = "Linux" ]; then
-    _ensure_c_build_tools || warn "未完整安装 gcc/Python 头文件，若依赖需源码编译可能失败"
+    _ensure_c_build_tools || warn "gcc / Python headers are incomplete; deps needing a source build may fail"
 fi
 _ensure_old_glibc_build_toolchain
 
@@ -585,7 +587,7 @@ if [ -z "$_EXTRA_MIRROR" ]; then
     _select_fastest_pypi_mirror
     _EXTRA_MIRROR="$_FASTEST_MIRROR"
 else
-    info "使用指定镜像: $_EXTRA_MIRROR"
+    info "Using the specified mirror: $_EXTRA_MIRROR"
 fi
 
 _CONSOLE_AVAILABLE=0
@@ -599,23 +601,23 @@ prepare_console() {
     fi
 
     if [ ! -f "$repo_dir/dashboard/package.json" ]; then
-        warn "未找到前端源码 — Web UI 将不可用。"
+        warn "Frontend source not found - the Web UI will be unavailable."
         return
     fi
 
     if ! command -v npm &>/dev/null; then
-        warn "未找到 npm — 跳过前端构建。"
-        warn "请安装 Node.js 后重新运行，或手动执行: cd dashboard && npm ci && npm run build"
+        warn "npm not found - skipping the frontend build."
+        warn "Install Node.js and re-run, or build manually: cd dashboard && npm ci && npm run build"
         return
     fi
 
-    info "正在构建前端 (npm ci && npm run build)..."
+    info "Building the frontend (npm ci && npm run build)..."
     (cd "$repo_dir/dashboard" && npm ci && npm run build)
     if [ -f "$console_dest/index.html" ]; then
         _CONSOLE_AVAILABLE=1
-        info "前端构建成功"
+        info "Frontend build succeeded"
     else
-        warn "前端构建完成但未找到 index.html — Web UI 将不可用。"
+        warn "Frontend build finished but index.html is missing - the Web UI will be unavailable."
     fi
 }
 
@@ -623,27 +625,27 @@ prepare_console() {
 # harness-agent>=0.9.18 已在依赖中 pin；此处在验证前再钉一次，覆盖仍拉取到
 # 旧版 harness / 镜像滞后的安装路径。待 Octop 发版跟上后可删除。
 _pin_mcp_compat() {
-    info "正在固定 mcp<2（兼容 langchain-mcp-adapters；临时措施）..."
+    info "Pinning mcp<2 (langchain-mcp-adapters compatibility; temporary)..."
     if ! _uv_pip_install_with_mirror_fallback "mcp>=1.27.1,<2"; then
-        warn "mcp 版本固定失败，安装验证可能会失败"
+        warn "Failed to pin mcp; install verification may fail"
         return 1
     fi
     return 0
 }
 
 _verify_install() {
-    info "正在验证安装..."
+    info "Verifying the installation..."
     if ! "$OCTOP_VENV/bin/python" -c "from octop.infra.agents.manager import AgentManager" 2>/dev/null; then
-        die "安装验证失败：核心模块无法导入。请检查依赖版本或重新运行安装脚本。"
+        die "Verification failed: core modules cannot be imported. Check dependency versions or re-run the installer."
     fi
-    info "安装验证通过"
+    info "Installation verified"
 }
 
 _clone_source_workspace() {
     local workdir="$1"
-    command -v git &>/dev/null || die "克隆仓库需要 git。请安装 git 或使用 --from-pypi。"
+    command -v git &>/dev/null || die "git is required to clone the repos. Install git or use --from-pypi."
     mkdir -p "$workdir"
-    info "正在克隆 harness-agent / harness-gateway / Octop 源码..."
+    info "Cloning harness-agent / harness-gateway / Octop sources..."
     git clone --depth 1 "$HARNESS_AGENT_REPO" "$workdir/harness-agent"
     git clone --depth 1 "$HARNESS_GATEWAY_REPO" "$workdir/harness-gateway"
     git clone --depth 1 "$HARNESS_BROWSER_REPO" "$workdir/harness-browser"
@@ -652,7 +654,7 @@ _clone_source_workspace() {
 
 if [ "$FROM_SOURCE" = true ]; then
     if [ -n "$SOURCE_DIR" ]; then
-        info "正在从本地源码安装: $SOURCE_DIR"
+        info "Installing from local source: $SOURCE_DIR"
         prepare_console "$SOURCE_DIR"
         uv pip install "${SOURCE_DIR}${EXTRAS_SUFFIX}" --python "$OCTOP_VENV/bin/python"
     else
@@ -664,28 +666,30 @@ if [ "$FROM_SOURCE" = true ]; then
         uv pip install "${REPO_DIR}${EXTRAS_SUFFIX}" --python "$OCTOP_VENV/bin/python"
     fi
 else
-    PACKAGE="octop"
-    [ -n "$VERSION" ] && PACKAGE="octop==$VERSION"
+    # PEP 508: extras 必须在包名与版本说明符之间（octop[browser]==x.y.z），
+    # 不能拼在版本号后面（octop==x.y.z[browser] 是非法需求串，uv/pip 解析报错）。
+    PACKAGE="octop${EXTRAS_SUFFIX}"
+    [ -n "$VERSION" ] && PACKAGE="octop${EXTRAS_SUFFIX}==$VERSION"
 
-    info "正在从 PyPI 安装 ${PACKAGE}${EXTRAS_SUFFIX}..."
+    info "Installing ${PACKAGE} from PyPI..."
     if [ -n "${_EXTRA_MIRROR:-}" ]; then
-        info "主源: https://pypi.org/simple  首选加速: $_EXTRA_MIRROR"
+        info "Primary index: https://pypi.org/simple  preferred mirror: $_EXTRA_MIRROR"
     else
-        info "主源: https://pypi.org/simple"
+        info "Primary index: https://pypi.org/simple"
     fi
     _PYPI_EXTRA_ARGS=()
     if [ -n "$VERSION" ] && [[ "$VERSION" =~ (dev|a|b|rc) ]]; then
         _PYPI_EXTRA_ARGS+=(--prerelease=explicit)
     fi
-    _uv_pip_install_with_mirror_fallback "${PACKAGE}${EXTRAS_SUFFIX}" ${_PYPI_EXTRA_ARGS[@]+"${_PYPI_EXTRA_ARGS[@]}"} \
-        || die "从 PyPI 安装失败（已尝试国内镜像与官方源）"
+    _uv_pip_install_with_mirror_fallback "$PACKAGE" ${_PYPI_EXTRA_ARGS[@]+"${_PYPI_EXTRA_ARGS[@]}"} \
+        || die "Install from PyPI failed (tried mirrors and the official index)"
 fi
 
 _pin_mcp_compat || true
 _verify_install
 
-[ -x "$OCTOP_VENV/bin/octop" ] || die "安装失败: 在虚拟环境中未找到 octop CLI"
-info "Octop 安装成功"
+[ -x "$OCTOP_VENV/bin/octop" ] || die "Install failed: octop CLI not found in the virtualenv"
+info "Octop installed successfully"
 
 if [ "$_CONSOLE_AVAILABLE" = 0 ]; then
     CONSOLE_CHECK="$("$OCTOP_VENV/bin/python" -c "import importlib.resources, octop; p=importlib.resources.files('octop')/'dashboard'/'index.html'; print('yes' if p.is_file() else 'no')" 2>/dev/null || echo 'no')"
@@ -699,10 +703,10 @@ _ensure_bubblewrap() {
         return 0
     fi
     if command -v bwrap &>/dev/null; then
-        info "bubblewrap 已就绪: $(command -v bwrap)"
+        info "bubblewrap ready: $(command -v bwrap)"
         return 0
     fi
-    info "正在安装 bubblewrap（局部目录 execute jail 需要）..."
+    info "Installing bubblewrap (required for the execute jail under a local root_dir)..."
     if command -v apt-get &>/dev/null || command -v apt &>/dev/null; then
         _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>/dev/null || true
         _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bubblewrap 2>/dev/null || true
@@ -715,13 +719,13 @@ _ensure_bubblewrap() {
     elif command -v zypper &>/dev/null; then
         _run_as_root zypper install -y bubblewrap 2>/dev/null || true
     else
-        warn "未识别的包管理器，请手动安装 bubblewrap（bwrap）"
+        warn "Unrecognized package manager; install bubblewrap (bwrap) manually"
         return 0
     fi
     if command -v bwrap &>/dev/null; then
-        info "bubblewrap 安装成功: $(command -v bwrap)"
+        info "bubblewrap installed successfully: $(command -v bwrap)"
     else
-        warn "bubblewrap 未安装成功：局部 root_dir 下 execute 将降级为路径改写（无真实 jail）"
+        warn "bubblewrap install failed: execute under a local root_dir falls back to path rewriting (no real jail)"
     fi
 }
 
@@ -731,13 +735,13 @@ _ensure_bubblewrap
 _install_playwright_system_deps() {
     # macOS 无需额外系统依赖
     if [ "$OS" = "Darwin" ]; then
-        info "macOS: Playwright 系统依赖已内置"
+        info "macOS: Playwright system dependencies are built in"
         return
     fi
 
     if command -v apt-get &>/dev/null || command -v apt &>/dev/null; then
-        info "检测到 apt 包管理器 (Debian/Ubuntu)..."
-        info "正在安装 Playwright 系统依赖..."
+        info "Detected the apt package manager (Debian/Ubuntu)..."
+        info "Installing Playwright system dependencies..."
         # 优先使用 Playwright 自带的 install-deps
         if "$OCTOP_VENV/bin/python" -m playwright install-deps chromium --with-deps 2>/dev/null; then
             return
@@ -762,8 +766,8 @@ _install_playwright_system_deps() {
     fi
 
     if command -v dnf &>/dev/null; then
-        info "检测到 dnf 包管理器 (Fedora/RHEL)..."
-        info "正在安装 Playwright 系统依赖..."
+        info "Detected the dnf package manager (Fedora/RHEL)..."
+        info "Installing Playwright system dependencies..."
         _run_as_root dnf install -y \
             alsa-lib atk at-spi2-atk cups-libs libdrm libgbm \
             libX11 libXcomposite libXdamage libXext libXfixes libXrandr \
@@ -773,8 +777,8 @@ _install_playwright_system_deps() {
     fi
 
     if command -v yum &>/dev/null; then
-        info "检测到 yum 包管理器 (CentOS/RHEL)..."
-        info "正在安装 Playwright 系统依赖..."
+        info "Detected the yum package manager (CentOS/RHEL)..."
+        info "Installing Playwright system dependencies..."
         _run_as_root yum install -y \
             alsa-lib atk at-spi2-atk cups-libs libdrm libgbm \
             libX11 libXcomposite libXdamage libXext libXfixes libXrandr \
@@ -784,8 +788,8 @@ _install_playwright_system_deps() {
     fi
 
     if command -v pacman &>/dev/null; then
-        info "检测到 pacman 包管理器 (Arch/Manjaro)..."
-        info "正在安装 Playwright 系统依赖..."
+        info "Detected the pacman package manager (Arch/Manjaro)..."
+        info "Installing Playwright system dependencies..."
         _run_as_root pacman -S --noconfirm --needed \
             alsa-lib atk at-spi2-atk cups libdrm mesa \
             libx11 libxcomposite libxdamage libxext libxfixes libxrandr \
@@ -795,8 +799,8 @@ _install_playwright_system_deps() {
     fi
 
     if command -v zypper &>/dev/null; then
-        info "检测到 zypper 包管理器 (openSUSE)..."
-        info "正在安装 Playwright 系统依赖..."
+        info "Detected the zypper package manager (openSUSE)..."
+        info "Installing Playwright system dependencies..."
         _run_as_root zypper install -y \
             alsa libatk-1_0-0 libatk-bridge-2_0-0 libcups2 libdrm2 \
             Mesa-libgbm1 libX11-6 libXcomposite1 libXdamage1 libXext6 \
@@ -806,14 +810,14 @@ _install_playwright_system_deps() {
         return
     fi
 
-    warn "未检测到已知包管理器，跳过 Playwright 系统依赖自动安装"
-    warn "如果 Playwright 运行出错，请手动安装依赖或运行: playwright install-deps chromium"
+    warn "No known package manager detected; skipping automatic Playwright system deps"
+    warn "If Playwright fails at runtime, install deps manually or run: playwright install-deps chromium"
 }
 
 _install_playwright_browsers() {
     if _glibc_too_old_for_wheels; then
-        warn "当前 glibc=$(_glibc_major_minor)（如 CentOS 7）无法运行 Playwright 自带的 Node/Chromium（需 glibc ≥ 2.28）"
-        warn "已安装 playwright Python 包，但跳过 Chromium；建议使用 Ubuntu 20.04+ / CentOS/RHEL 8+"
+        warn "glibc=$(_glibc_major_minor) (e.g. CentOS 7) cannot run Playwright's bundled Node/Chromium (needs glibc >= 2.28)"
+        warn "The playwright Python package is installed but Chromium was skipped; Ubuntu 20.04+ / CentOS/RHEL 8+ recommended"
         return 1
     fi
 
@@ -848,20 +852,20 @@ _install_playwright_browsers() {
 
         if [ -n "$_h" ]; then
             export PLAYWRIGHT_DOWNLOAD_HOST="$_h"
-            info "尝试 Playwright 镜像: $_h"
+            info "Trying Playwright mirror: $_h"
         else
             unset PLAYWRIGHT_DOWNLOAD_HOST || true
-            info "尝试 Playwright 官方 CDN..."
+            info "Trying the official Playwright CDN..."
         fi
 
         if _run_playwright_chromium_install; then
-            info "✓ Playwright Chromium 安装成功"
+            info "✓ Playwright Chromium installed successfully"
             return 0
         fi
-        warn "该源失败或超时，尝试下一镜像..."
+        warn "This source failed or timed out, trying the next mirror..."
     done
 
-    warn "⚠ Playwright Chromium 安装失败，可稍后运行:"
+    warn "⚠ Playwright Chromium install failed; you can run this later:"
     warn "  PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \\"
     warn "    $OCTOP_VENV/bin/python -m playwright install chromium"
     return 1
@@ -912,16 +916,16 @@ if p:
 if "$OCTOP_VENV/bin/python" -c "import playwright" 2>/dev/null; then
     _SYSTEM_CHROME="$(_detect_system_chrome || true)"
     if [ -n "$_SYSTEM_CHROME" ]; then
-        info "检测到系统已安装 Chrome/Chromium: $_SYSTEM_CHROME"
-        info "将直接使用系统浏览器，跳过 Playwright Chromium 下载（更快、更省空间）。"
-        info "如需改用 Playwright 自带的 Chromium，可运行:"
+        info "Detected system Chrome/Chromium: $_SYSTEM_CHROME"
+        info "Using the system browser and skipping the Playwright Chromium download (faster, smaller)."
+        info "To use Playwright's bundled Chromium instead, run:"
         info "  $OCTOP_VENV/bin/python -m playwright install chromium"
     else
         _install_playwright_system_deps
         _install_playwright_browsers || true
     fi
 else
-    warn "playwright 未安装到虚拟环境，跳过 Chromium；可稍后: uv pip install playwright --python $OCTOP_VENV/bin/python"
+    warn "playwright is not in the virtualenv, skipping Chromium; you can later run: uv pip install playwright --python $OCTOP_VENV/bin/python"
 fi
 
 # ── 步骤 4: 创建包装脚本 ─────────────────────────────────────────────────────
@@ -936,8 +940,8 @@ OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
 REAL_BIN="$OCTOP_HOME/venv/bin/octop"
 
 if [ ! -x "$REAL_BIN" ]; then
-    echo "错误: 在 $OCTOP_HOME/venv 未找到 Octop 环境" >&2
-    echo "请重新运行安装脚本" >&2
+    echo "Error: Octop environment not found in $OCTOP_HOME/venv" >&2
+    echo "Please re-run the installer" >&2
     exit 1
 fi
 
@@ -945,7 +949,7 @@ exec "$REAL_BIN" "$@"
 WRAPPER
 
 chmod +x "$OCTOP_BIN/octop"
-info "包装脚本已创建: $OCTOP_BIN/octop"
+info "Wrapper script created: $OCTOP_BIN/octop"
 
 # ── 步骤 5: 让 octop 立即可用（无需 source）──────────────────────────────────
 # 子进程无法修改父 shell 的 PATH。要让 curl|bash / bash install.sh 后立刻可用，
@@ -1018,9 +1022,9 @@ _link_into_existing_path() {
 IMMEDIATE_OK=false
 if _link_into_existing_path; then
     IMMEDIATE_OK=true
-    info "已链接到 ${LINKED_PATH}（当前终端可直接运行 octop）"
+    info "Linked to ${LINKED_PATH} (octop works in the current shell)"
 elif [ -n "$LINKED_PATH" ]; then
-    info "已链接到 $LINKED_PATH"
+    info "Linked to $LINKED_PATH"
 fi
 
 # ── 步骤 6: 更新 shell / 系统 profile（新开终端持久生效）─────────────────────
@@ -1038,7 +1042,7 @@ add_to_profile() {
     fi
     if [ -f "$profile" ] || [ "$create" = "create" ]; then
         printf '\n# Octop\n%s\n' "$PATH_ENTRY" >> "$profile"
-        info "已更新 $profile"
+        info "Updated $profile"
         return 0
     fi
     return 1
@@ -1053,13 +1057,13 @@ export PATH=\"${OCTOP_BIN}:\$PATH\"
     if [ -d /etc/profile.d ]; then
         if [ -w /etc/profile.d ] || _can_write_dir /etc/profile.d; then
             printf '%s' "$content" > "$dest" && chmod 644 "$dest" && {
-                info "已写入 $dest"
+                info "Wrote $dest"
                 return 0
             }
         fi
         if _sudo_nopass; then
             printf '%s' "$content" | sudo tee "$dest" >/dev/null && sudo chmod 644 "$dest" && {
-                info "已写入 $dest"
+                info "Wrote $dest"
                 return 0
             }
         fi
@@ -1088,40 +1092,40 @@ export PATH="$OCTOP_BIN:$PATH"
 
 # ── 完成 ──────────────────────────────────────────────────────────────────────
 echo ""
-printf "${GREEN}${BOLD}Octop 安装成功！${RESET}\n"
+printf "${GREEN}${BOLD}Octop installed successfully!${RESET}\n"
 echo ""
-printf "  安装位置:          ${BOLD}%s${RESET}\n" "$OCTOP_HOME"
+printf "  Location:          ${BOLD}%s${RESET}\n" "$OCTOP_HOME"
 printf "  Python:            ${BOLD}%s${RESET}\n" "$("$OCTOP_VENV/bin/python" --version 2>&1)"
 if [ -n "$LINKED_PATH" ]; then
-    printf "  CLI 链接:          ${BOLD}%s${RESET}\n" "$LINKED_PATH"
+    printf "  CLI link:          ${BOLD}%s${RESET}\n" "$LINKED_PATH"
 fi
 if [ "$_CONSOLE_AVAILABLE" = 1 ]; then
-    printf "  控制台 (Web UI):   ${GREEN}可用${RESET}\n"
+    printf "  Console (Web UI):  ${GREEN}available${RESET}\n"
 else
-    printf "  控制台 (Web UI):   ${YELLOW}不可用${RESET}\n"
+    printf "  Console (Web UI):  ${YELLOW}unavailable${RESET}\n"
 fi
 echo ""
 
 if [ "$IMMEDIATE_OK" = true ]; then
-    info "octop 命令已就绪，当前终端可直接使用（无需 source）"
+    info "octop is ready to use in the current shell (no source needed)"
 elif [ -n "${BASH_SOURCE[0]:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
     export PATH="$OCTOP_BIN:$PATH"
-    info "PATH 已更新，octop 命令即刻可用"
+    info "PATH updated; octop is available now"
 else
-    warn "未能写入已在 PATH 中的目录（如 /usr/local/bin）。当前终端请执行:"
+    warn "Could not write to a directory already in PATH (e.g. /usr/local/bin). In this shell run:"
     echo ""
     printf "  ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n" "$OCTOP_BIN"
     echo ""
     if [ "$UPDATED_PROFILE" = true ]; then
-        echo "新开终端无需此步骤。"
+        echo "New shells will not need this step."
     fi
 fi
 echo ""
-echo "然后运行:"
+echo "Then run:"
 echo ""
-printf "  ${BOLD}octop run${RESET}       # 前台启动（API + Web 控制台）\n"
-printf "  ${BOLD}octop service start${RESET}  # 安装并后台守护运行（systemd / launchd）\n"
+printf "  ${BOLD}octop run${RESET}       # Run in the foreground (API + Web console)\n"
+printf "  ${BOLD}octop service start${RESET}  # Install and run in the background (systemd / launchd)\n"
 printf "  ${BOLD}open http://127.0.0.1:8088${RESET}\n"
 echo ""
-printf "升级: 重新运行本安装脚本。清理: ${BOLD}octop clean${RESET}\n"
-printf "Playwright 重装: ${BOLD}$OCTOP_VENV/bin/python -m playwright install chromium${RESET}\n"
+printf "Upgrade: re-run this installer. Cleanup: ${BOLD}octop clean${RESET}\n"
+printf "Playwright reinstall: ${BOLD}$OCTOP_VENV/bin/python -m playwright install chromium${RESET}\n"

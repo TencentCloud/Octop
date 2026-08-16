@@ -4,17 +4,26 @@ from __future__ import annotations
 
 from typing import Any
 
+from octop.infra.agents.providers.model_flags import is_chat_eligible_model
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 
 def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
-    """Return enabled models for providers that have credentials configured."""
+    """Return chat-eligible enabled models for providers with credentials.
+
+    Embedding-only models (``embedding: true`` / ``task: embedding`` / ONNX
+    local) are excluded so they never appear in chat pickers or auto-route.
+    """
     resolved: list[dict[str, Any]] = []
     for provider in providers:
         if not provider.enabled or not provider.api_key:
             continue
+        provider_name = str(getattr(provider, "name", "") or "")
+        provider_api_key = str(getattr(provider, "api_key", "") or "") or None
         for m in provider.get_models():
-            if not m.get("enabled", True):
+            if not is_chat_eligible_model(
+                m, provider_name=provider_name, provider_api_key=provider_api_key
+            ):
                 continue
             # Catalogs may store either name; both feed the chat context ring.
             window = m.get("max_input_tokens") or m.get("context_window")

@@ -645,6 +645,12 @@
   border-radius: var(--fn-radius-sm);
   overflow: hidden;
   border: 1px solid var(--fn-border-secondary);
+  line-height: 0;
+
+  :global(.ant-image) {
+    display: block;
+    line-height: 0;
+  }
 }
 
 .attachmentPreviewCard {
@@ -682,8 +688,8 @@
 }
 
 .imagePreviewThumb {
-  width: 100%;
-  height: 100%;
+  width: 64px;
+  height: 64px;
   object-fit: cover;
   display: block;
 }

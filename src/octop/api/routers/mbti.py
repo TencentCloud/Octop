@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from octop.api.common.agent import assert_agent_owner
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.mbti_profiles import (
     MBTIProfile,
@@ -38,6 +39,7 @@ def _resolve_agent_row(server: Any, user: Any, agent_id: str) -> Any:
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id} not found")
+    assert_agent_owner(row, user)
     return row
 
 

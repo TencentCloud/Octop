@@ -11,7 +11,8 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from octop.api.deps import current_admin, current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
     fetch_openai_compatible_models,
@@ -75,6 +76,7 @@ def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
 
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
+    embedding: bool = False
 
 
 class ProviderTestDraftBody(BaseModel):
@@ -84,6 +86,7 @@ class ProviderTestDraftBody(BaseModel):
     base_url: str | None = None
     model_id: str
     extra_json: str | None = None
+    embedding: bool = False
 
 
 class ProviderFetchModelsBody(BaseModel):
@@ -170,7 +173,7 @@ async def get_active_model(
 @router.put("/active-model")
 async def set_active_model(
     body: ActiveModelBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
     """Set the globally preferred model used when no agent override applies."""
@@ -196,7 +199,7 @@ admin_router = APIRouter()
 
 @admin_router.get("")
 async def admin_list_providers(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
@@ -205,7 +208,7 @@ async def admin_list_providers(
 @admin_router.post("", status_code=201)
 async def admin_create_provider(
     body: ProviderCreateBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     import json as _json
@@ -229,7 +232,7 @@ async def admin_create_provider(
 async def admin_patch_provider(
     provider_id: int,
     body: ProviderPatchBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     row = server.services.provider_repo.get(provider_id)
@@ -263,12 +266,21 @@ async def admin_patch_provider(
 @admin_router.delete("/{provider_id}", status_code=204)
 async def admin_delete_provider(
     provider_id: int,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> None:
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
+    if is_local_runtime_provider(
+        row.name,
+        provider_api_key=row.api_key,
+        provider_base_url=row.base_url,
+    ):
+        raise OctopError(
+            ErrorCode.PROVIDER_LOCAL_PROTECTED,
+            "local runtime providers cannot be deleted",
+        )
     refs = server.app_runtime.agent_registry.find_agents_using_provider(row.name)
     if refs:
         raise OctopError(
@@ -285,7 +297,7 @@ async def admin_delete_provider(
 @admin_router.post("/test-draft", summary="Test unsaved provider draft")
 async def admin_test_provider_draft(
     body: ProviderTestDraftBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
     """Probe connectivity for a provider draft before it is saved."""
     api_key = (body.api_key or "").strip()
@@ -301,14 +313,15 @@ async def admin_test_provider_draft(
         base_url=(body.base_url or "").strip() or None,
         model_id=model_id,
         extra_json=body.extra_json,
+        embedding=body.embedding,
     )
-    return await probe_provider_row(row, model_id=model_id)
+    return await probe_provider_row(row, model_id=model_id, embedding=body.embedding)
 
 
 @admin_router.post("/fetch-models", summary="List models from an OpenAI-compatible draft")
 async def admin_fetch_provider_models(
     body: ProviderFetchModelsBody,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
     """Fetch remote model ids via OpenAI-compatible ``GET /models`` (openai kind only)."""
     if body.kind != "openai":
@@ -378,7 +391,7 @@ async def _run_codex_device_poll(
 
 @admin_router.post("/codex-oauth/start", summary="Start ChatGPT OAuth device login")
 async def codex_oauth_start(
-    user: Any = Depends(current_admin),
+    user: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     info = await asyncio.to_thread(request_device_code)
@@ -407,7 +420,7 @@ async def codex_oauth_start(
 @admin_router.get("/codex-oauth/pending/{state_id}", summary="Poll ChatGPT OAuth result")
 async def codex_oauth_pending(
     state_id: str,
-    user: Any = Depends(current_admin),
+    user: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     raw = server.services.settings_repo.get(f"codex_oauth.pending.{state_id}")
@@ -425,7 +438,7 @@ async def codex_oauth_pending(
 
 @admin_router.delete("/codex-oauth", status_code=204, summary="Clear ChatGPT OAuth login")
 async def codex_oauth_logout(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> None:
     from octop.infra.providers.codex_oauth import delete_codex_token
@@ -444,13 +457,14 @@ async def codex_oauth_logout(
 async def admin_test_provider(
     provider_id: int,
     body: ProviderTestBody | None = None,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Probe a provider by sending a one-token ping and timing it."""
+    """Probe a provider: chat ping, or ``POST /embeddings`` for embedding models."""
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
-    return await probe_provider_row(row, model_id=model_id)
+    embedding = body.embedding if body else None
+    return await probe_provider_row(row, model_id=model_id, embedding=embedding)

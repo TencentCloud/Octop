@@ -28,6 +28,9 @@ interface StreamSetupGuideProps {
   secondaryAction?: SetupGuideAction;
   /** Optional third action (e.g. uninstall) rendered after the main pair. */
   extraAction?: SetupGuideAction;
+  className?: string;
+  /** Widen the card for longer explanatory copy. */
+  wide?: boolean;
 }
 
 function ActionButton({ action }: { action: SetupGuideAction }) {
@@ -55,11 +58,16 @@ export default function StreamSetupGuide({
   primaryAction,
   secondaryAction,
   extraAction,
+  className,
+  wide,
 }: StreamSetupGuideProps) {
   const hasActions = primaryAction || secondaryAction || extraAction;
+  const wrapClass = [styles.wrap, wide ? styles.wide : "", className ?? ""]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className={styles.wrap}>
+    <div className={wrapClass}>
       <div className={styles.card}>
         <div className={styles.icon}>{icon}</div>
         <h3 className={styles.title}>{title}</h3>

@@ -1,7 +1,7 @@
 """Integration tests for the 4-step wizard backend.
 
 Covers: verify-password, token-protected initial-admin, finish endpoint,
-and the 410-with-cleanup behavior on completed setups.
+and the 410 behavior on completed setups.
 """
 
 from __future__ import annotations
@@ -76,7 +76,8 @@ async def test_initial_admin_succeeds_with_token(env: Any) -> None:
     assert r.status_code == 201
     body = r.json()
     assert isinstance(body["access_token"], str)
-    assert not (Path.home() / WIZARD_FILE_NAME).exists()
+    # The wizard password file is kept permanently, even after setup completes.
+    assert (Path.home() / WIZARD_FILE_NAME).exists()
 
 
 async def test_initial_admin_rejects_weak_password(env: Any) -> None:
@@ -355,7 +356,7 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
     assert last_state == "running"
 
 
-# ─── 410 cleanup ───────────────────────────────────────────────────
+# ─── 410 guard ─────────────────────────────────────────────────────
 
 
 async def test_setup_410_after_admin_exists(env: Any) -> None:
@@ -367,11 +368,12 @@ async def test_setup_410_after_admin_exists(env: Any) -> None:
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
-    # Plant a stale file to verify the cleanup branch.
+    # Plant a stale file to verify the 410 guard does not touch it.
     (Path.home() / WIZARD_FILE_NAME).write_text("stale\n", encoding="utf-8")
     r = await c.post("/api/setup/verify-password", json={"password": "stale"})
     assert r.status_code == 410
-    assert not (Path.home() / WIZARD_FILE_NAME).exists()
+    # The wizard password file is never deleted by the app, even on the 410 path.
+    assert (Path.home() / WIZARD_FILE_NAME).exists()
 
 
 # ─── lockdown middleware ───────────────────────────────────────────

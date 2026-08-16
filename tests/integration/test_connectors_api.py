@@ -251,7 +251,7 @@ async def test_catalog_cli_connectors_last(env):
 
 async def test_install_cli_forbidden_for_non_admin(env):
     c, _, admin_auth, _ = env
-    user_auth = await create_user(c, admin_auth, username="cli_user")
+    user_auth = await create_user(c, admin_auth, username="cli_user", permissions=[])
     r = await c.post("/api/connectors/feishu-cli/install-cli", headers=user_auth)
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "FORBIDDEN"

@@ -11,12 +11,14 @@ import {
   Modal,
   Select,
   Spin,
+  Switch,
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
@@ -28,6 +30,11 @@ import {
   defaultModelFromForm,
   defaultModelToForm,
 } from "../../../utils/modelOptions";
+import {
+  expertPaletteColor,
+  resolveExpertPalette,
+} from "../../../utils/expertColor";
+import type { ThemePalette } from "../../../styles/themePalettes";
 import { metaForFile } from "./iconForName";
 import {
   buildAgentRuntimeRequest,
@@ -59,6 +66,7 @@ interface AgentDetail {
   name: string;
   description: string | null;
   default_model: string | null;
+  color?: string | null;
   max_iters?: number | null;
   max_input_length?: number | null;
   temperature?: number | null;
@@ -94,6 +102,7 @@ function subagentFilePath(path: string): string {
 interface EditFormValues {
   name: string;
   description: string;
+  is_shared?: boolean;
   default_model: string;
   backend_choice: string;
   composite_default: string;
@@ -112,7 +121,12 @@ interface EditAgentDrawerProps {
   onSaved: (
     updated: Pick<
       OctopAgent,
-      "agent_id" | "name" | "description" | "default_model"
+      | "agent_id"
+      | "name"
+      | "description"
+      | "default_model"
+      | "is_shared"
+      | "color"
     >,
   ) => void;
 }
@@ -143,6 +157,9 @@ function EditAgentDrawerBody({
     useAgentFormResources(true);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
+  const [colorPalette, setColorPalette] = useState<ThemePalette>(() =>
+    resolveExpertPalette(agent.color),
+  );
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -178,12 +195,18 @@ function EditAgentDrawerBody({
 
         const cfg = ag.config ?? {};
         setAgentConfig(cfg);
+        const colorFromCfg =
+          typeof cfg.color === "string"
+            ? cfg.color
+            : ag.color ?? agent.color ?? null;
+        setColorPalette(resolveExpertPalette(colorFromCfg));
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
 
         form.setFieldsValue({
           name: ag.name,
           description: ag.description ?? "",
+          is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
@@ -278,9 +301,11 @@ function EditAgentDrawerBody({
         values.root_dir,
       );
 
+      const nextColor = expertPaletteColor(colorPalette);
       const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
         backend: backendSpec,
+        color: nextColor,
       });
 
       await request(`/agents/${agent.agent_id}`, {
@@ -288,6 +313,7 @@ function EditAgentDrawerBody({
         body: JSON.stringify({
           name: values.name,
           description: values.description || null,
+          is_shared: values.is_shared ?? false,
           default_model: defaultModelFromForm(values.default_model),
           config: nextConfig,
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
@@ -305,6 +331,8 @@ function EditAgentDrawerBody({
         name: values.name,
         description: values.description || null,
         default_model: defaultModel,
+        is_shared: values.is_shared ?? false,
+        color: nextColor,
       });
       onClose();
     } catch (err) {
@@ -312,7 +340,16 @@ function EditAgentDrawerBody({
     } finally {
       setSaving(false);
     }
-  }, [agent.agent_id, agentConfig, form, onClose, onSaved, pathMappings, t]);
+  }, [
+    agent.agent_id,
+    agentConfig,
+    colorPalette,
+    form,
+    onClose,
+    onSaved,
+    pathMappings,
+    t,
+  ]);
 
   useEffect(() => {
     onSaveReady(handleSave);
@@ -504,6 +541,22 @@ function EditAgentDrawerBody({
                 label={t("experts.agentDescription")}
               >
                 <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item
+                label={t("experts.color")}
+                extra={t("experts.colorHint")}
+              >
+                <ExpertColorPicker
+                  value={colorPalette}
+                  onChange={setColorPalette}
+                />
+              </Form.Item>
+              <Form.Item
+                name="is_shared"
+                label={t("experts.share.toggle")}
+                valuePropName="checked"
+              >
+                <Switch />
               </Form.Item>
               <Form.Item
                 name="default_model"

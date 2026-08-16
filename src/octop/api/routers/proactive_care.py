@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator, model_validator
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import current_user, get_server
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig
 
@@ -104,7 +104,7 @@ async def get_proactive_care_config(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Read the agent's proactive care push configuration, returning defaults if not configured."""
-    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
     cfg = server.services.repos.proactive_care_config_repo.get(agent_id)
     return _config_to_dict(cfg)
 
@@ -126,7 +126,7 @@ async def put_proactive_care_config(
     - min_interval_hours <= max_interval_hours
     - min_interval_hours >= 1
     """
-    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
 
     cfg = ProactiveCareConfig(
         agent_id=agent_id,

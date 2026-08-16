@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user
+from octop.api.deps import get_server, require_permission
 from octop.api.routers.ollama_download_store import (
     DownloadTask,
     DownloadTaskStatus,
@@ -76,11 +76,17 @@ def _task_to_response(task: DownloadTask) -> OllamaDownloadTaskResponse:
     summary="List Ollama models",
 )
 async def list_ollama_models(
-    _: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> list[OllamaModelResponse]:
     """Return the current Ollama model list via the SDK."""
+    if not _ollama_service_enabled(server):
+        raise HTTPException(
+            status_code=503,
+            detail="Ollama service is disabled. Enable it from the provider card.",
+        )
     try:
-        from octop.infra.ollama_manager import OllamaModelManager
+        from octop.infra.utils.ollama_manager import OllamaModelManager
 
         models = OllamaModelManager.list_models()
     except (OSError, ImportError) as exc:
@@ -115,7 +121,7 @@ async def list_ollama_models(
 )
 async def download_ollama_model(
     body: OllamaDownloadRequest,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> OllamaDownloadTaskResponse:
     """Start a background pull via Ollama SDK.
 
@@ -146,7 +152,7 @@ async def _run_pull_in_background(
     loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Execute the Ollama pull in a thread and update task status."""
-    from octop.infra.ollama_manager import OllamaModelInfo, OllamaModelManager
+    from octop.infra.utils.ollama_manager import OllamaModelInfo, OllamaModelManager
 
     await update_status(task_id, DownloadTaskStatus.DOWNLOADING)
 
@@ -176,7 +182,7 @@ async def _run_pull_in_background(
     summary="Get Ollama download tasks",
 )
 async def get_ollama_download_status(
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> list[OllamaDownloadTaskResponse]:
     """Return all Ollama-related download tasks."""
     tasks = await get_tasks(backend="ollama")
@@ -189,7 +195,7 @@ async def get_ollama_download_status(
 )
 async def cancel_ollama_download(
     task_id: str,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> dict[str, Any]:
     """Cancel a pending or downloading Ollama model pull."""
     success = await cancel_task(task_id)
@@ -207,11 +213,11 @@ async def cancel_ollama_download(
 )
 async def delete_ollama_model(
     name: str,
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_permission("ollama_models")),
 ) -> dict[str, Any]:
     """Delete an Ollama model via the SDK."""
     try:
-        from octop.infra.ollama_manager import OllamaModelManager
+        from octop.infra.utils.ollama_manager import OllamaModelManager
     except (OSError, ImportError) as exc:
         raise HTTPException(
             status_code=503,
@@ -225,3 +231,75 @@ async def delete_ollama_model(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "deleted", "name": name}
+
+
+_SETTINGS_KEY_OLLAMA_SERVICE = "ollama_service_enabled"
+
+
+class OllamaServiceBody(BaseModel):
+    enabled: bool = Field(..., description="Whether Octop should keep the Ollama service running")
+
+
+class OllamaServiceStatus(BaseModel):
+    enabled: bool
+    running: bool
+
+
+def _ollama_service_enabled(server: Any) -> bool:
+    raw = server.services.settings_repo.get(_SETTINGS_KEY_OLLAMA_SERVICE)
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@router.get(
+    "/service",
+    response_model=OllamaServiceStatus,
+    summary="Get Ollama local service status",
+)
+async def get_ollama_service(
+    server: Any = Depends(get_server),
+    _: Any = Depends(require_permission("ollama_models")),
+) -> OllamaServiceStatus:
+    from octop.infra.utils.ollama_manager import is_ollama_reachable
+
+    enabled = _ollama_service_enabled(server)
+    running = False
+    try:
+        running = is_ollama_reachable()
+    except Exception:
+        running = False
+    return OllamaServiceStatus(enabled=enabled, running=running)
+
+
+@router.put(
+    "/service",
+    response_model=OllamaServiceStatus,
+    summary="Enable/disable Ollama local service",
+)
+async def put_ollama_service(
+    body: OllamaServiceBody,
+    server: Any = Depends(get_server),
+    _: Any = Depends(require_permission("ollama_models")),
+) -> OllamaServiceStatus:
+    from octop.infra.utils.ollama_manager import (
+        is_ollama_reachable,
+        start_ollama_service,
+        stop_ollama_service,
+    )
+
+    server.services.settings_repo.set(
+        _SETTINGS_KEY_OLLAMA_SERVICE,
+        "true" if body.enabled else "false",
+    )
+    if body.enabled:
+        try:
+            start_ollama_service()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    else:
+        stop_ollama_service()
+    return OllamaServiceStatus(
+        enabled=body.enabled,
+        running=is_ollama_reachable(),
+    )

@@ -14,7 +14,6 @@ import styles from "../index.module.less";
 import {
   CHANNEL_ICONS,
   CHANNEL_LABEL_KEYS,
-  getChannelColor,
 } from "../../../Agent/Channels/components/constants";
 import {
   channelFromSessionKey,
@@ -68,18 +67,10 @@ export function CronJobCard({
     typeof meta.octop_last_run_at === "number" ? meta.octop_last_run_at : null;
 
   const accent = job.enabled ? ENABLED_ACCENT : DISABLED_ACCENT;
-  const channelColor = getChannelColor(channel);
 
   const taskType = job.task_type === "text" ? "text" : "agent";
 
   const moreMenuItems: MenuProps["items"] = [
-    {
-      key: "edit",
-      label: t("common.edit"),
-      icon: <Pencil size={13} />,
-      disabled: job.enabled,
-      onClick: () => onEdit(job),
-    },
     {
       key: "delete",
       label: t("common.delete"),
@@ -95,15 +86,6 @@ export function CronJobCard({
       className={styles.cronCard}
       style={{ "--cron-accent": accent } as React.CSSProperties}
     >
-      {/* Accent top bar — channel brand color */}
-      <div
-        className={styles.cronCardAccent}
-        style={{
-          background: channelColor,
-          opacity: job.enabled ? 1 : 0.4,
-        }}
-      />
-
       {/* Header */}
       <div className={styles.cronCardHeader}>
         {/* Channel icon box */}

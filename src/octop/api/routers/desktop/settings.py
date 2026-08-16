@@ -8,7 +8,7 @@ from functools import partial
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from octop.api.deps import current_admin
+from octop.api.deps import require_permission
 from octop.infra.desktop.setup import apply_geometry, desktop_status, parse_geometry, read_geometry
 from octop.infra.users.identity import User
 
@@ -28,7 +28,7 @@ class DesktopGeometryRequest(BaseModel):
 @router.post("/desktop/geometry")
 async def set_desktop_geometry(
     body: DesktopGeometryRequest,
-    _user: User = Depends(current_admin),
+    _user: User = Depends(require_permission("desktop")),
 ) -> dict[str, object]:
     """Resize the Linux virtual desktop (restarts Xvnc). Admin only."""
     if desktop_status().platform != "linux":
@@ -41,7 +41,9 @@ async def set_desktop_geometry(
 
 
 @router.get("/desktop/geometry")
-async def get_desktop_geometry(_user: User = Depends(current_admin)) -> dict[str, object]:
+async def get_desktop_geometry(
+    _user: User = Depends(require_permission("desktop")),
+) -> dict[str, object]:
     geometry = read_geometry()
     w, h = parse_geometry(geometry)
     return {"geometry": geometry, "width": w, "height": h}

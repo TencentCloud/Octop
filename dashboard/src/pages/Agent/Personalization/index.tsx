@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Empty } from "antd";
 import { Bot, Brain, Notebook, Sparkles, Waypoints } from "lucide-react";
@@ -6,6 +6,8 @@ import PageShell, { pageShellStyles } from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { usePathTabs } from "../../../hooks/usePathTabs";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { userCan } from "../../../utils/permissions";
 import SkillsTabs from "../Skills/components/SkillsTabs";
 import SubagentManager from "../../Experts/components/SubagentManager";
 import MBTISelector from "./components/MBTISelector";
@@ -39,30 +41,39 @@ const TAB_ICONS = {
 export default function PersonalizationPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const user = useCurrentUser();
   const { activeAgentId, agents } = useAgent();
   const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
+  const isAllowed = useCallback(
+    (tab: PersonalizationTab) =>
+      tab !== "channels" || userCan(user, "channels"),
+    [user],
+  );
 
   const { activeTab, handleTabChange, isMounted } = usePathTabs({
     basePath: "/personalization",
     tabs: PERSONALIZATION_TABS,
     storageKey: "octop:personalization:tab",
     defaultTab: "skills",
+    isAllowed,
   });
 
   const pathTabs = useMemo(
     () => ({
       value: activeTab,
       onChange: handleTabChange,
-      options: PERSONALIZATION_TABS.map((value) => {
-        const Icon = TAB_ICONS[value];
-        return {
-          value,
-          label: t(`personalization.tabs.${value}`),
-          icon: <Icon size={14} strokeWidth={2} />,
-        };
-      }),
+      options: PERSONALIZATION_TABS.filter((value) => isAllowed(value)).map(
+        (value) => {
+          const Icon = TAB_ICONS[value];
+          return {
+            value,
+            label: t(`personalization.tabs.${value}`),
+            icon: <Icon size={14} strokeWidth={2} />,
+          };
+        },
+      ),
     }),
-    [activeTab, handleTabChange, t],
+    [activeTab, handleTabChange, isAllowed, t],
   );
 
   const pageTitle = `${t("personalization.title")} / ${t(

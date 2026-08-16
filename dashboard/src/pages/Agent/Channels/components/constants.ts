@@ -362,14 +362,16 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   // dashboard & agentchat: no required credentials.
 };
 
-/** Config keys stored as booleans — excluded from credential string mapping. */
-export const CHANNEL_BOOLEAN_CONFIG_KEYS = [
+/** Display-only config keys — excluded from credential field mapping. */
+export const CHANNEL_DISPLAY_CONFIG_KEYS = [
   "show_thinking",
   "show_tool_hints",
+  "response_mode",
 ] as const;
 
 /** Default per-channel display settings (harness-gateway ChannelConfig). */
 export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
+  response_mode: "invoke" as const,
   show_thinking: false,
   show_tool_hints: false,
 } as const;

@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 _FETCH_MODELS_TIMEOUT_S = 30.0
+_EMBEDDING_PROBE_TEXT = "ping"
 
 
 def provider_headers(row: Any) -> dict[str, str]:
@@ -83,23 +84,113 @@ def make_probe_provider_row(
     base_url: str | None,
     model_id: str,
     extra_json: str | None = None,
+    embedding: bool = False,
 ) -> Any:
     """Build a ProviderRow-like object for connectivity probes."""
+    model: dict[str, Any] = {"id": model_id, "name": model_id}
+    if embedding:
+        model["embedding"] = True
+        model["task"] = "embedding"
     return SimpleNamespace(
         name=name,
         kind=kind,
         base_url=base_url,
         api_key=api_key,
         extra_json=extra_json,
-        get_models=lambda: [{"id": model_id, "name": model_id}],
+        get_models=lambda: [model],
     )
 
 
-async def probe_provider_row(row: Any, *, model_id: str | None = None) -> dict[str, Any]:
-    """Probe a provider by sending a one-token ping and timing it."""
+def _probe_model_id(row: Any, model_id: str | None) -> str:
+    models = row.get_models() if hasattr(row, "get_models") else []
+    if model_id:
+        return model_id
+    if models:
+        return str(models[0].get("id") or "gpt-4o-mini")
+    return "gpt-4o-mini"
+
+
+def _probe_model_entry(row: Any, model_id: str) -> dict[str, Any]:
+    models = row.get_models() if hasattr(row, "get_models") else []
+    entry = next((m for m in models if isinstance(m, dict) and m.get("id") == model_id), None)
+    return entry if isinstance(entry, dict) else {}
+
+
+def _should_probe_embedding(row: Any, *, model_id: str, embedding: bool | None) -> bool:
+    if embedding is True:
+        return True
+    from octop.infra.agents.providers.model_flags import is_embedding_model
+
+    return is_embedding_model(
+        _probe_model_entry(row, model_id),
+        provider_name=getattr(row, "name", None),
+        provider_api_key=getattr(row, "api_key", None),
+    )
+
+
+def _embeddings_url(base_url: str | None) -> str:
+    root = (base_url or "").strip().rstrip("/") or _DEFAULT_OPENAI_BASE_URL
+    return f"{root}/embeddings"
+
+
+async def _probe_embedding_endpoint(row: Any, *, model_id: str) -> dict[str, Any]:
+    """POST OpenAI-compatible ``{base}/embeddings`` and time the round-trip."""
+    started = time.perf_counter()
+    url = _embeddings_url(getattr(row, "base_url", None))
+    headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
+    extra = provider_headers(row)
+    if extra:
+        headers.update(extra)
+    try:
+        async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
+            response = await client.post(
+                url,
+                headers=headers,
+                json={"model": model_id, "input": [_EMBEDDING_PROBE_TEXT]},
+            )
+    except Exception as exc:
+        logger.info("embedding probe failed for %s: %s", getattr(row, "name", "?"), exc)
+        return {"ok": False, "error": str(exc)}
+
+    if response.status_code >= 400:
+        detail = response.text.strip()
+        if len(detail) > 300:
+            detail = detail[:300] + "…"
+        error = f"HTTP {response.status_code} POST {url}"
+        if detail:
+            error = f"{error}: {detail}"
+        return {"ok": False, "error": error}
+
+    try:
+        payload = response.json()
+    except Exception:
+        return {
+            "ok": False,
+            "error": "response is not valid JSON (expected OpenAI-compatible /embeddings)",
+        }
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    first = data[0] if isinstance(data, list) and data else None
+    vector = first.get("embedding") if isinstance(first, dict) else None
+    if not isinstance(vector, list) or not vector:
+        return {
+            "ok": False,
+            "error": "response is not OpenAI-compatible (expected {data: [{embedding, …}]})",
+        }
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    return {"ok": True, "latency_ms": latency_ms}
+
+
+async def probe_provider_row(
+    row: Any, *, model_id: str | None = None, embedding: bool | None = None
+) -> dict[str, Any]:
+    """Probe a provider: chat models get a one-token ping; embedding models POST /embeddings."""
+    mid = _probe_model_id(row, model_id)
+    if _should_probe_embedding(row, model_id=mid, embedding=embedding):
+        return await _probe_embedding_endpoint(row, model_id=mid)
     started = time.perf_counter()
     try:
-        chat = build_probe_chat_model(row, model_id=model_id)
+        chat = build_probe_chat_model(row, model_id=mid)
         result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
     except Exception as exc:
         logger.info("provider probe failed for %s: %s", getattr(row, "name", "?"), exc)

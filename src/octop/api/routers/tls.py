@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_admin, get_server
+from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup.tls.manager import get_tls_manager
 from octop.infra.setup.tls.modes import is_issue_eligible, validate_issue_domain
@@ -54,7 +54,7 @@ def _preflight_response(result: PreflightResult) -> PreflightResponse:
 
 @router.get("/status", summary="TLS and issuance task status")
 async def tls_status(
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("tls")),
     server: Any = Depends(get_server),
 ) -> TlsStatusResponse:
     assert server.services is not None
@@ -67,7 +67,7 @@ async def tls_status(
 async def tls_preflight(
     body: PreflightBody,
     request: Request,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("tls")),
     server: Any = Depends(get_server),
 ) -> PreflightResponse:
     assert server.services is not None
@@ -81,7 +81,7 @@ async def tls_preflight(
 async def tls_issue(
     body: IssueBody,
     request: Request,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("tls")),
     server: Any = Depends(get_server),
 ) -> PreflightResponse:
     assert server.services is not None

@@ -32,6 +32,7 @@ def store(tmp_path: Path, db: SqlitePool) -> SkillPackageStore:
 def test_create_package_makes_skills_dir(store: SkillPackageStore) -> None:
     row = store.create(name="P", description="", created_by="42")
 
+    assert len(row.id) == 6
     assert (store.root / row.id / "skills").is_dir()
 
 

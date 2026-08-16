@@ -16,6 +16,7 @@ import {
   Waypoints,
   Link2,
   Database,
+  Cpu,
   Users as UsersIcon,
   Activity,
   Share2,
@@ -30,9 +31,10 @@ import {
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useUserRole } from "../hooks/useUserRole";
+import { useCurrentUser, useSetCurrentUser } from "../hooks/useCurrentUser";
 import { useUpdateStatus } from "../hooks/useUpdateStatus";
-import { authApi } from "../api/modules/auth";
 import type { OctopUser } from "../api/modules/auth";
+import { navAllowed } from "../utils/permissions";
 import { prefetchRoute } from "../routes/prefetch";
 import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/components/ChatSidebarPanel";
@@ -124,7 +126,7 @@ interface NavSection {
 const iconSize = 16;
 const iconStroke = 1.8;
 
-function buildNavSections(role: "admin" | "user" | null): NavSection[] {
+function buildNavSections(user: OctopUser | null): NavSection[] {
   const sections: NavSection[] = [
     {
       items: [
@@ -154,102 +156,134 @@ function buildNavSections(role: "admin" | "user" | null): NavSection[] {
         },
       ],
     },
-    {
-      groupKey: "nav.settings",
-      items: [
-        {
-          key: "personalization",
-          path: "/personalization/skills",
-          icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.personalization",
-        },
-        {
-          key: "channels",
-          path: "/personalization/channels",
-          icon: <Waypoints size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.channels",
-        },
-        {
-          key: "connectors",
-          path: "/connectors",
-          icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.connectors",
-        },
-        {
-          key: "skill-packages",
-          path: "/skill-packages",
-          icon: <Package size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.skillPackages",
-        },
-      ],
-    },
   ];
 
-  if (role === "admin") {
-    sections.push({
-      groupKey: "nav.control",
-      items: [
-        {
-          key: "workbench",
-          path: "/workbench",
-          icon: <PanelsTopLeft size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.workbench",
-        },
-        {
-          key: "remote-desktop",
-          path: "/remote-desktop",
-          icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.remoteDesktop",
-        },
-        {
-          key: "acp",
-          path: "/acp",
-          icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.acp",
-        },
-      ],
+  const settingsItems: NavItem[] = [
+    {
+      key: "personalization",
+      path: "/personalization/skills",
+      icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.personalization",
+    },
+  ];
+  if (navAllowed(user, "channels")) {
+    settingsItems.push({
+      key: "channels",
+      path: "/personalization/channels",
+      icon: <Waypoints size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.channels",
     });
-    sections.push({
-      groupKey: "nav.admin",
-      items: [
-        {
-          key: "admin-users",
-          path: "/admin/users",
-          icon: <UsersIcon size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.adminUsers",
-        },
-        {
-          key: "models",
-          path: "/admin/models",
-          icon: <Database size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.models",
-        },
-        {
-          key: "admin-storage",
-          path: "/admin/backend",
-          icon: <FolderOpen size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.adminStorage",
-        },
-        {
-          key: "admin-plugins",
-          path: "/admin/plugins",
-          icon: <Puzzle size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.adminPlugins",
-        },
-        {
-          key: "admin-security",
-          path: "/admin/security",
-          icon: <Shield size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.security",
-        },
-        {
-          key: "admin-advanced",
-          path: "/admin/advanced",
-          icon: <SlidersHorizontal size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.adminAdvanced",
-        },
-      ],
+  }
+  if (navAllowed(user, "connectors")) {
+    settingsItems.push({
+      key: "connectors",
+      path: "/connectors",
+      icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.connectors",
     });
+  }
+  if (navAllowed(user, "skill-packages")) {
+    settingsItems.push({
+      key: "skill-packages",
+      path: "/skill-packages",
+      icon: <Package size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.skillPackages",
+    });
+  }
+  if (navAllowed(user, "knowledge-bases")) {
+    settingsItems.push({
+      key: "knowledge-bases",
+      path: "/knowledge-bases",
+      icon: <Database size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.knowledgeBases",
+      badge: "BETA",
+    });
+  }
+  if (settingsItems.length > 0) {
+    sections.push({ groupKey: "nav.settings", items: settingsItems });
+  }
+
+  const controlItems: NavItem[] = [];
+  if (navAllowed(user, "workbench")) {
+    controlItems.push({
+      key: "workbench",
+      path: "/workbench",
+      icon: <PanelsTopLeft size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.workbench",
+    });
+  }
+  if (navAllowed(user, "remote-desktop")) {
+    controlItems.push({
+      key: "remote-desktop",
+      path: "/remote-desktop",
+      icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.remoteDesktop",
+    });
+  }
+  // ACP: no module key this round — admin role only.
+  if (navAllowed(user, "acp")) {
+    controlItems.push({
+      key: "acp",
+      path: "/acp",
+      icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.acp",
+    });
+  }
+  if (controlItems.length > 0) {
+    sections.push({ groupKey: "nav.control", items: controlItems });
+  }
+
+  const adminItems: NavItem[] = [];
+  if (navAllowed(user, "admin-users")) {
+    adminItems.push({
+      key: "admin-users",
+      path: "/admin/users",
+      icon: <UsersIcon size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.adminUsers",
+    });
+  }
+  if (navAllowed(user, "models")) {
+    adminItems.push({
+      key: "models",
+      path: "/admin/models",
+      icon: <Cpu size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.models",
+    });
+  }
+  if (navAllowed(user, "admin-storage")) {
+    adminItems.push({
+      key: "admin-storage",
+      path: "/admin/backend",
+      icon: <FolderOpen size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.adminStorage",
+    });
+  }
+  if (navAllowed(user, "admin-plugins")) {
+    adminItems.push({
+      key: "admin-plugins",
+      path: "/admin/plugins",
+      icon: <Puzzle size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.adminPlugins",
+    });
+  }
+  if (navAllowed(user, "admin-security")) {
+    adminItems.push({
+      key: "admin-security",
+      path: "/admin/security",
+      icon: <Shield size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.security",
+    });
+  }
+  if (navAllowed(user, "admin-advanced")) {
+    adminItems.push({
+      key: "admin-advanced",
+      path: "/admin/advanced",
+      icon: <SlidersHorizontal size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.adminAdvanced",
+    });
+  }
+  if (adminItems.length > 0) {
+    sections.push({ groupKey: "nav.admin", items: adminItems });
   }
   return sections;
 }
@@ -405,8 +439,9 @@ function NavList({
 }) {
   const { t } = useTranslation();
   const role = useUserRole();
+  const user = useCurrentUser();
   const { hasUpdate } = useUpdateStatus();
-  const navSections = buildNavSections(role);
+  const navSections = buildNavSections(user);
 
   const MOBILE_HIDDEN_KEYS = new Set<string>();
 
@@ -503,22 +538,16 @@ export default function Sidebar({
   const { t } = useTranslation();
   const { isDark } = useTheme();
   const role = useUserRole();
+  const user = useCurrentUser();
+  const setUser = useSetCurrentUser();
   const { hasUpdate } = useUpdateStatus();
-  const navSections = buildNavSections(role);
+  const navSections = buildNavSections(user);
   const { toggleGroup, isGroupCollapsed } = useNavGroupCollapse(
     navSections,
     selectedKey,
   );
-  const [user, setUser] = useState<OctopUser | null>(null);
   const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
   const showChatRailExpand = !chatSidebarOpen;
-
-  useEffect(() => {
-    authApi
-      .me()
-      .then(setUser)
-      .catch(() => {});
-  }, []);
 
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";

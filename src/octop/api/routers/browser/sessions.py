@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 
@@ -319,7 +319,7 @@ def _verify_browser_binary(exe: str) -> tuple[bool, str]:
 
 
 @router.post("/browser/install")
-async def install(_: Any = Depends(current_user)) -> StreamingResponse:
+async def install(_: Any = Depends(require_permission("browser"))) -> StreamingResponse:
     """Stream Chromium install progress as SSE.
 
     Each event is a JSON line conforming to ``harness_browser.InstallEvent``:

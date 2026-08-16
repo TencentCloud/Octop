@@ -6,6 +6,9 @@ export interface ChatAgentOption {
   name: string;
   icon_name?: string | null;
   color?: string | null;
+  is_shared?: boolean;
+  is_owner?: boolean;
+  owner_username?: string | null;
 }
 
 interface ExpertAgentAvatarProps {

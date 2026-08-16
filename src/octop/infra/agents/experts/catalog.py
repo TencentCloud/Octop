@@ -84,10 +84,53 @@ def discover_seed_paths(expert_dir: Path) -> list[str]:
 
 
 def preview_file_paths(expert: Expert) -> list[str]:
-    """Paths shown in the create-from-expert drawer: ``prompt_files`` + ``skills/``."""
-    paths = list(expert.prompt_files)
-    paths.extend(f for f in expert.files if f.startswith("skills/"))
+    """Paths shown in the create-from-expert drawer: persona md, skills/, agents/."""
+    return preview_paths_from_inventory(expert.prompt_files, expert.files)
+
+
+def preview_paths_from_inventory(
+    prompt_files: list[str],
+    seed_paths: list[str],
+) -> list[str]:
+    """Build dashboard preview paths from manifest ``prompt_files`` + skills/agents."""
+    paths: list[str] = []
+    seen: set[str] = set()
+    for rel in prompt_files:
+        if rel in seen or rel == MANIFEST_FILENAME or not _is_prompt_md_path(rel):
+            continue
+        paths.append(rel)
+        seen.add(rel)
+    for rel in sorted(seed_paths):
+        if rel.startswith("skills/") and rel not in seen:
+            paths.append(rel)
+            seen.add(rel)
+    for rel in sorted(seed_paths):
+        if _is_subagent_path(rel) and rel not in seen:
+            paths.append(rel)
+            seen.add(rel)
     return paths
+
+
+def preview_paths_from_expert_dir(expert_dir: Path) -> list[str]:
+    """Preview paths for a snapshot directory (published experts)."""
+    manifest_path = expert_dir / MANIFEST_FILENAME
+    prompt_files: list[str] = []
+    if manifest_path.is_file():
+        data = _read_manifest(manifest_path)
+        if isinstance(data, dict):
+            raw = data.get("prompt_files")
+            if isinstance(raw, list):
+                prompt_files = [str(item) for item in raw if str(item).strip()]
+    return preview_paths_from_inventory(prompt_files, discover_seed_paths(expert_dir))
+
+
+def _is_subagent_path(rel: str) -> bool:
+    return rel.startswith("agents/") and rel.endswith(".md")
+
+
+def _is_prompt_md_path(rel: str) -> bool:
+    """Workspace-root persona markdown listed in ``prompt_files``."""
+    return "/" not in rel and rel.endswith(".md")
 
 
 async def seed_expert_directory(

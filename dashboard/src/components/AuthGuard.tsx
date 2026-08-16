@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Spin } from "antd";
 import { getAuthToken } from "../api/request";
-import { authApi } from "../api/modules/auth";
+import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
+import { CurrentUserProvider } from "../hooks/useCurrentUser";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -24,6 +25,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const hadToken = Boolean(getAuthToken());
   const [checking, setChecking] = useState(!hadToken);
   const [authed, setAuthed] = useState(hadToken);
+  const [user, setUser] = useState<OctopUser | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +58,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           const me = await authApi.me();
           await applyUserLocale(me.locale);
           if (!cancelled) {
+            setUser(me);
             setAuthed(true);
             setChecking(false);
           }
@@ -98,5 +101,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <CurrentUserProvider user={user} setUser={setUser}>
+      {children}
+    </CurrentUserProvider>
+  );
 }

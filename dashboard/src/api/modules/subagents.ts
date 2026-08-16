@@ -31,6 +31,7 @@ export interface AgentSubagentSummary {
   description?: string;
   path: string;
   emoji?: string;
+  color?: string | null;
 }
 
 export function listSubagentDivisions(): Promise<SubagentCatalogDivision[]> {

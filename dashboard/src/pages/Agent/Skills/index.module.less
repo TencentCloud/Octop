@@ -965,10 +965,55 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  margin-top: 16px;
 }
 
 .zipFileName {
   color: var(--fn-text-secondary);
   font-size: 13px;
   word-break: break-all;
+}
+
+.zipDragDrop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px;
+  border: 2px dashed var(--fn-border-input);
+  border-radius: var(--fn-radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: var(--fn-bg-tertiary);
+
+  &:hover {
+    border-color: var(--fn-color-brand);
+    background-color: color-mix(in srgb, var(--fn-color-brand) 5%, var(--fn-bg-tertiary));
+  }
+}
+
+.zipDragDropActive {
+  border-color: var(--fn-color-brand);
+  background-color: color-mix(in srgb, var(--fn-color-brand) 10%, var(--fn-bg-tertiary));
+  transform: scale(1.01);
+}
+
+.zipDragDropHasFile {
+  border-style: solid;
+  border-color: var(--fn-color-brand);
+}
+
+.zipDragDropIcon {
+  color: var(--fn-text-tertiary);
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zipDragDropText {
+  color: var(--fn-text-secondary);
+  font-size: 14px;
+  text-align: center;
 }

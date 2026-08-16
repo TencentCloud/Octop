@@ -64,6 +64,8 @@ class FakeHarnessAgent:
         )
         self._mcp_tools: list[Any] = []
         self._mcp_tool_name_set: frozenset[str] = frozenset()
+        self._thread_messages: dict[str, list[Any]] = {}
+        self.graph = _FakeHarnessGraph(self._thread_messages)
 
     def use_workspace_dir(self, workspace_dir: Path, *, virtual_mode: bool = False) -> None:
         """Bind workspace I/O to a real ``local_shell`` backend on disk.
@@ -171,6 +173,8 @@ description: General-purpose agent
             }
             if meta.get("emoji"):
                 row["emoji"] = meta["emoji"]
+            if meta.get("color"):
+                row["color"] = str(meta["color"]).strip()
             out.append(row)
         return out
 
@@ -297,6 +301,34 @@ description: General-purpose agent
                 str(row["slug"]),
             ),
         )
+
+    async def aget_history(
+        self, thread_id: str, *, limit: int = 50, before: str | None = None
+    ) -> list[Any]:
+        del before
+        return list(self._thread_messages.get(thread_id, []))[-limit:]
+
+    def seed_thread_messages(self, thread_id: str, messages: list[Any]) -> None:
+        self._thread_messages[thread_id] = list(messages)
+
+
+class _FakeHarnessGraph:
+    """In-memory LangGraph stand-in for checkpoint read/write in tests."""
+
+    def __init__(self, store: dict[str, list[Any]]) -> None:
+        self._store = store
+
+    async def aget_state(self, config: dict[str, Any]) -> SimpleNamespace:
+        thread_id = str((config.get("configurable") or {}).get("thread_id") or "")
+        return SimpleNamespace(values={"messages": list(self._store.get(thread_id, []))})
+
+    async def aupdate_state(
+        self, config: dict[str, Any], values: dict[str, Any], **_kwargs: Any
+    ) -> None:
+        thread_id = str((config.get("configurable") or {}).get("thread_id") or "")
+        incoming = values.get("messages") or []
+        bucket = self._store.setdefault(thread_id, [])
+        bucket.extend(list(incoming))
 
 
 class _FakeBackend:

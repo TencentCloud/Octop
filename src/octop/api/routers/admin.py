@@ -6,14 +6,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from octop.api.deps import current_admin, get_server
+from octop.api.deps import get_server, require_permission
 
 router = APIRouter()
 
 
 @router.get("/overview")
 async def overview(
-    _: Any = Depends(current_admin), server: Any = Depends(get_server)
+    _: Any = Depends(require_permission("admin_console")), server: Any = Depends(get_server)
 ) -> dict[str, Any]:
     assert server.app_runtime is not None
     users = []
@@ -50,7 +50,7 @@ async def audit_log(
     actor: str | None = None,
     action: str | None = None,
     limit: int = 100,
-    _: Any = Depends(current_admin),
+    _: Any = Depends(require_permission("admin_console")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     rows = server.services.audit_repo.query(since=since, actor=actor, action=action, limit=limit)
@@ -69,7 +69,7 @@ async def audit_log(
 
 @router.get("/metrics")
 async def metrics(
-    _: Any = Depends(current_admin), server: Any = Depends(get_server)
+    _: Any = Depends(require_permission("admin_console")), server: Any = Depends(get_server)
 ) -> dict[str, Any]:
     from octop.infra.metrics import METRICS
 

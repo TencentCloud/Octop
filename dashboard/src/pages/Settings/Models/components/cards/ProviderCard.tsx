@@ -1,15 +1,18 @@
 /**
  * ProviderCard — admin card for one ProviderRow.
  *
- * All providers are admin-managed. Delete and edit are always available.
+ * All providers are admin-managed. Local runtimes cannot be deleted.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Card, Modal, Switch, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
+import { onnxModelApi } from "../../../../../api/modules/onnxModel";
+import { isOllamaProviderRow, isOnnxProviderRow } from "../../presetUtils";
 import type { ProviderRow } from "../../useProviders";
 import { ProviderConfigModal } from "../modals/ProviderConfigModal";
 import {
@@ -40,6 +43,13 @@ export function ProviderCard({
   const [modalOpen, setModalOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [serviceEnabled, setServiceEnabled] = useState(false);
+  const [serviceRunning, setServiceRunning] = useState(false);
+  const [serviceBusy, setServiceBusy] = useState(false);
+
+  const isOllama = isOllamaProviderRow(provider);
+  const isOnnx = isOnnxProviderRow(provider);
+  const isLocalRuntime = isOllama || isOnnx;
 
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
   const statusReady = hasApiKey;
@@ -145,6 +155,64 @@ export function ProviderCard({
     customProviderLogo;
   const models = provider.models ?? [];
 
+  useEffect(() => {
+    if (!isLocalRuntime) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (isOllama) {
+          const st = await ollamaModelApi.getService();
+          if (!cancelled) {
+            setServiceEnabled(st.enabled);
+            setServiceRunning(st.running);
+          }
+        } else if (isOnnx) {
+          const st = await onnxModelApi.getStatus();
+          if (!cancelled) {
+            setServiceEnabled(st.enabled);
+            setServiceRunning(st.ready || st.enabled);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setServiceEnabled(false);
+          setServiceRunning(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalRuntime, isOllama, isOnnx, provider.id]);
+
+  const handleServiceToggle = async (next: boolean) => {
+    setServiceBusy(true);
+    try {
+      if (isOllama) {
+        const st = await ollamaModelApi.setService(next);
+        setServiceEnabled(st.enabled);
+        setServiceRunning(st.running);
+      } else if (isOnnx) {
+        const st = await onnxModelApi.setService(next);
+        setServiceEnabled(st.enabled);
+        setServiceRunning(st.ready || st.enabled);
+      }
+      message.success(
+        next
+          ? t("models.localServiceStarted")
+          : t("models.localServiceStopped"),
+      );
+    } catch (err) {
+      message.error(
+        err instanceof Error
+          ? err.message
+          : t("models.localServiceToggleFailed"),
+      );
+    } finally {
+      setServiceBusy(false);
+    }
+  };
+
   return (
     <>
       <Card
@@ -232,6 +300,27 @@ export function ProviderCard({
 
         <div className={styles.cardActions}>
           <div className={styles.cardActionsLeft}>
+            {isLocalRuntime && (
+              <>
+                <Tooltip title={t("models.localServiceHint")}>
+                  <Switch
+                    size="small"
+                    checked={serviceEnabled}
+                    loading={serviceBusy}
+                    onChange={(c) => void handleServiceToggle(c)}
+                    onClick={(_, e) => e.stopPropagation()}
+                  />
+                </Tooltip>
+                <span className={styles.cardActionsStatus}>
+                  {serviceEnabled
+                    ? serviceRunning
+                      ? t("models.localServiceRunning")
+                      : t("models.localServiceOn")
+                    : t("models.localServiceOff")}
+                </span>
+                <span style={{ width: 8 }} />
+              </>
+            )}
             <Switch
               size="small"
               checked={provider.enabled}
@@ -244,7 +333,7 @@ export function ProviderCard({
             </span>
           </div>
           <div className={styles.cardActionsRight}>
-            {hasApiKey && (
+            {hasApiKey && !isOnnx && (
               <Tooltip title={t("models.test")}>
                 <Button
                   type="text"
@@ -268,16 +357,18 @@ export function ProviderCard({
                 icon={<Pencil size={14} />}
               />
             </Tooltip>
-            <Tooltip title={t("common.delete")}>
-              <Button
-                type="text"
-                size="small"
-                danger
-                onClick={handleDelete}
-                className={styles.cardActionBtn}
-                icon={<Trash2 size={14} />}
-              />
-            </Tooltip>
+            {isLocalRuntime ? null : (
+              <Tooltip title={t("common.delete")}>
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  onClick={handleDelete}
+                  className={styles.cardActionBtn}
+                  icon={<Trash2 size={14} />}
+                />
+              </Tooltip>
+            )}
           </div>
         </div>
       </Card>

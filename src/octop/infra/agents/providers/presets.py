@@ -230,6 +230,33 @@ def load_provider_presets() -> list[dict[str, Any]]:
                 "logo_id": "openai",
             },
         )
+    if not any(p.get("id") == "onnx" for p in out):
+        from octop.infra.agents.providers.onnx_catalog import ONNX_PRESET_MODEL_IDS
+
+        onnx_preset = {
+            "id": "onnx",
+            "name": "ONNX (Local)",
+            "base_url": "",
+            "protocol": "openai",
+            "api_key_prefix": "",
+            "models": [
+                {
+                    "id": mid,
+                    "name": mid,
+                    "enabled": False,
+                    "embedding": True,
+                    "task": "embedding",
+                    "input": ["text"],
+                }
+                for mid in ONNX_PRESET_MODEL_IDS
+            ],
+            "logo_id": "onnx",
+        }
+        insert_at = next(
+            (i + 1 for i, p in enumerate(out) if p.get("id") == "ollama"),
+            len(out),
+        )
+        out.insert(insert_at, onnx_preset)
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:

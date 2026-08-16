@@ -16,7 +16,8 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
-import { useUserRole } from "../../../hooks/useUserRole";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { userCan } from "../../../utils/permissions";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   clearFormDraft,
@@ -239,8 +240,8 @@ function ConnectorConfigDrawer({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
-  const role = useUserRole();
-  const isAdmin = role === "admin";
+  const user = useCurrentUser();
+  const canInstallCli = userCan(user, "connectors");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -922,7 +923,7 @@ function ConnectorConfigDrawer({
         <div className={styles.quickAuthBar}>
           {entry && isHostCliConnector(entry.kind) && (
             <>
-              {isAdmin && (
+              {canInstallCli && (
                 <Button
                   type={cliInfo?.installed ? "default" : "primary"}
                   icon={
@@ -940,7 +941,7 @@ function ConnectorConfigDrawer({
                     : t("connectors.installCli", "安装 CLI")}
                 </Button>
               )}
-              {!isAdmin && cliInfo?.installed && (
+              {!canInstallCli && cliInfo?.installed && (
                 <Button
                   type="default"
                   icon={<CheckCircle2 size={14} />}
@@ -949,7 +950,7 @@ function ConnectorConfigDrawer({
                   {t("connectors.cliReady", "CLI 已就绪")}
                 </Button>
               )}
-              {!isAdmin && !cliInfo?.installed && (
+              {!canInstallCli && !cliInfo?.installed && (
                 <span className={styles.feishuUserAuthHint}>
                   {t(
                     "connectors.cliInstallAdminOnly",

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path, memory_namespace
@@ -128,7 +128,7 @@ async def pack_agent_memory(
     as_user: int | None = Query(default=None),
 ) -> StreamingResponse:
     """Package the agent's memory into a .hmpkg file and serve it as a download attachment."""
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     _refuse_postgres_portable(server, agent_id)
 
     try:
@@ -209,7 +209,7 @@ async def adopt_agent_memory(
     as_user: int | None = Query(default=None),
 ) -> JSONResponse:
     """Upload a .hmpkg file and import it into the target host."""
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     _refuse_postgres_portable(server, agent_id)
 
     try:
@@ -260,7 +260,7 @@ async def doctor_agent_memory(
     as_user: int | None = Query(default=None),
 ) -> JSONResponse:
     """Run a health check against the target db."""
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     _refuse_postgres_portable(server, agent_id)
 
     try:

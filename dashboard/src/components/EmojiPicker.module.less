@@ -1,0 +1,110 @@
+.overlay {
+  :global(.ant-popover-inner) {
+    padding: 0;
+  }
+}
+
+.panel {
+  width: min(320px, 72vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.search {
+  flex-shrink: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.option {
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--fn-radius-md, 8px);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--fn-transition-fast, 0.15s ease),
+    border-color var(--fn-transition-fast, 0.15s ease);
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-border-focus);
+    outline-offset: 1px;
+  }
+}
+
+.active {
+  border-color: var(--fn-text-primary);
+  background: var(--fn-color-brand-bg, rgba(79, 110, 247, 0.12));
+}
+
+.empty {
+  grid-column: 1 / -1;
+  padding: 16px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 12px 4px 8px;
+  border: 1px solid var(--fn-border-input);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-primary);
+  cursor: pointer;
+  transition:
+    border-color var(--fn-transition-fast),
+    box-shadow var(--fn-transition-fast);
+
+  &:hover {
+    border-color: var(--fn-border-focus);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--fn-border-focus);
+    box-shadow: 0 0 0 2px var(--fn-color-brand-shadow);
+  }
+}
+
+.triggerEmoji {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--fn-bg-secondary);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.triggerHint {
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+}

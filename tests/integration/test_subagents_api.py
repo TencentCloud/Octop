@@ -10,6 +10,7 @@ CUSTOM_SUBAGENT = """---
 name: Code Reviewer
 id: code-reviewer
 description: Review code changes for bugs and style issues
+color: "#4B74FA"
 ---
 
 # Code Reviewer
@@ -51,8 +52,11 @@ async def test_list_includes_workspace_subagent(env: Any) -> None:
 
     r = await c.get(f"/api/agents/{aid}/subagents", headers=auth)
     assert r.status_code == 200, r.text
-    slugs = {row["slug"] for row in r.json()}
+    rows = r.json()
+    slugs = {row["slug"] for row in rows}
     assert "code-reviewer" in slugs
+    reviewer = next(row for row in rows if row["slug"] == "code-reviewer")
+    assert reviewer["color"] == "#4B74FA"
 
 
 async def test_list_requires_auth(env: Any) -> None:

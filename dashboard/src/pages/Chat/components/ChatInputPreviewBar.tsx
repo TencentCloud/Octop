@@ -1,10 +1,14 @@
+import { Image } from "antd";
 import { X, FileText, Cpu } from "lucide-react";
-import AuthImage from "../../../components/AuthImage";
+import { useTranslation } from "react-i18next";
+import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
+import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import ContextChip from "./ContextChip";
 import { skillChipLabel } from "../utils/skillChipLabel";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
@@ -16,6 +20,7 @@ interface ChatInputPreviewBarProps {
   uploading: boolean;
   selectedSkills: string[];
   selectedConnectors: string[];
+  selectedKnowledgeBaseIds: string[];
   selectedTargetAgents: string[];
   selectedModel?: string | null;
   availableSkills?: SkillSpec[];
@@ -25,12 +30,70 @@ interface ChatInputPreviewBarProps {
     kind: string;
     default_open?: boolean;
   }[];
+  availableKnowledgeBases?: KnowledgeBase[];
   availableAgents: ChatAgentOption[];
   onRemoveAttachment: (index: number) => void;
   onSkillsChange?: (names: string[]) => void;
   onConnectorsChange?: (names: string[]) => void;
+  onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   onTargetAgentsChange?: (ids: string[]) => void;
   onModelChange?: (model: string | null) => void;
+}
+
+function ComposerImagePreview({
+  url,
+  alt,
+  className,
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const { src, loadState } = useAuthImageSrc(url, alt);
+
+  if (loadState === "loading") {
+    return (
+      <div
+        aria-hidden
+        className={className}
+        style={{ background: "var(--fn-bg-secondary)" }}
+      />
+    );
+  }
+
+  if (loadState === "error" || !src) {
+    return (
+      <div
+        className={className}
+        role="img"
+        aria-label={alt || t("chat.imageLoadFailed")}
+        style={{
+          background: "#fff1f0",
+          color: "#cf1322",
+          fontSize: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: 4,
+        }}
+      >
+        {t("chat.imageLoadFailed")}
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={64}
+      height={64}
+      style={{ objectFit: "cover", display: "block" }}
+      preview={{ mask: false }}
+    />
+  );
 }
 
 export default function ChatInputPreviewBar({
@@ -38,13 +101,16 @@ export default function ChatInputPreviewBar({
   uploading,
   selectedSkills,
   selectedConnectors,
+  selectedKnowledgeBaseIds,
   selectedTargetAgents,
   availableSkills,
   availableConnectors,
+  availableKnowledgeBases,
   availableAgents,
   onRemoveAttachment,
   onSkillsChange,
   onConnectorsChange,
+  onKnowledgeBaseIdsChange,
   onTargetAgentsChange,
   selectedModel,
   onModelChange,
@@ -60,34 +126,46 @@ export default function ChatInputPreviewBar({
     attachments.length > 0 ||
     uploading ||
     selectedConnectors.length > 0 ||
+    selectedKnowledgeBaseIds.length > 0 ||
     selectedSkills.length > 0 ||
     selectedTargetAgents.length > 0 ||
     showModelChip;
 
   if (!hasContent) return null;
 
+  const imageAttachments = attachments.filter(
+    (attachment) => attachment.kind === "image",
+  );
+
   return (
     <div className={styles.imagePreviewBar}>
+      {imageAttachments.length > 0 ? (
+        <Image.PreviewGroup>
+          {attachments.map((attachment, idx) =>
+            attachment.kind === "image" ? (
+              <div
+                key={`${attachment.url}-${idx}`}
+                className={styles.imagePreviewItem}
+              >
+                <ComposerImagePreview
+                  url={attachment.url}
+                  alt={attachment.filename || "preview"}
+                  className={styles.imagePreviewThumb}
+                />
+                <button
+                  className={styles.imagePreviewRemove}
+                  onClick={() => onRemoveAttachment(idx)}
+                  type="button"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : null,
+          )}
+        </Image.PreviewGroup>
+      ) : null}
       {attachments.map((attachment, idx) =>
-        attachment.kind === "image" ? (
-          <div
-            key={`${attachment.url}-${idx}`}
-            className={styles.imagePreviewItem}
-          >
-            <AuthImage
-              url={attachment.url}
-              alt={attachment.filename || "preview"}
-              className={styles.imagePreviewThumb}
-            />
-            <button
-              className={styles.imagePreviewRemove}
-              onClick={() => onRemoveAttachment(idx)}
-              type="button"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        ) : (
+        attachment.kind === "image" ? null : (
           <div
             key={`${attachment.url}-${idx}`}
             className={styles.attachmentPreviewCard}
@@ -145,6 +223,27 @@ export default function ChatInputPreviewBar({
               label={c.label}
               onRemove={() =>
                 onConnectorsChange(selectedConnectors.filter((n) => n !== name))
+              }
+            />
+          );
+        })}
+      {availableKnowledgeBases &&
+        onKnowledgeBaseIdsChange &&
+        selectedKnowledgeBaseIds.map((id) => {
+          const knowledgeBase = availableKnowledgeBases.find(
+            (base) => base.id === id,
+          );
+          if (!knowledgeBase) return null;
+          return (
+            <ContextChip
+              key={id}
+              variant="knowledge"
+              icon={knowledgeIconForName(knowledgeBase.icon_name, 12)}
+              label={knowledgeBase.name}
+              onRemove={() =>
+                onKnowledgeBaseIdsChange(
+                  selectedKnowledgeBaseIds.filter((baseId) => baseId !== id),
+                )
               }
             />
           );
