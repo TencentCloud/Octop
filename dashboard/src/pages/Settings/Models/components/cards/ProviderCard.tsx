@@ -1,7 +1,7 @@
 /**
  * ProviderCard — admin card for one ProviderRow.
  *
- * All providers are admin-managed. Delete and edit are always available.
+ * All providers are admin-managed. Local runtimes cannot be deleted.
  */
 import { useEffect, useState } from "react";
 import { Button, Card, Modal, Switch, Tooltip } from "antd";
@@ -357,16 +357,18 @@ export function ProviderCard({
                 icon={<Pencil size={14} />}
               />
             </Tooltip>
-            <Tooltip title={t("common.delete")}>
-              <Button
-                type="text"
-                size="small"
-                danger
-                onClick={handleDelete}
-                className={styles.cardActionBtn}
-                icon={<Trash2 size={14} />}
-              />
-            </Tooltip>
+            {isLocalRuntime ? null : (
+              <Tooltip title={t("common.delete")}>
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  onClick={handleDelete}
+                  className={styles.cardActionBtn}
+                  icon={<Trash2 size={14} />}
+                />
+              </Tooltip>
+            )}
           </div>
         </div>
       </Card>

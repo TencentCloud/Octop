@@ -7,6 +7,7 @@ export interface TestProviderDraftParams {
   base_url?: string | null;
   model_id: string;
   extra_json?: string | null;
+  embedding?: boolean;
 }
 
 export interface TestProviderResult {
@@ -27,6 +28,7 @@ export async function testProviderDraft(
       base_url: params.base_url?.trim() || null,
       model_id: params.model_id,
       extra_json: params.extra_json ?? null,
+      embedding: params.embedding === true,
     }),
   });
 }

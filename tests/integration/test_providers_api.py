@@ -70,3 +70,23 @@ async def test_admin_delete_provider(env):
     r = await c.get("/api/admin/providers", headers=auth)
     ids = [p["id"] for p in r.json()]
     assert pid not in ids
+
+
+async def test_admin_cannot_delete_local_runtime_provider(env):
+    """DELETE /admin/providers/{id} keeps ONNX / Ollama local rows."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "ONNX (Local)", "kind": "openai", "api_key": "onnx"},
+    )
+    assert r.status_code == 201
+    pid = r.json()["id"]
+
+    r = await c.delete(f"/api/admin/providers/{pid}", headers=auth)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "PROVIDER_LOCAL_PROTECTED"
+
+    r = await c.get("/api/admin/providers", headers=auth)
+    ids = [p["id"] for p in r.json()]
+    assert pid in ids

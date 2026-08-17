@@ -13,6 +13,8 @@ export const PERM = {
   connectors: ["connectors"],
   skillPackages: ["skill_packages"],
   knowledgeBases: ["knowledge_bases"],
+  knowledgeSettings: ["knowledge_settings"],
+  knowledgeBasesPage: ["knowledge_bases", "knowledge_settings"],
   workbench: ["browser", "terminal"],
   browser: ["browser"],
   terminal: ["terminal"],
@@ -38,7 +40,7 @@ export const NAV_PERMISSIONS = {
   channels: PERM.channels,
   connectors: PERM.connectors,
   "skill-packages": PERM.skillPackages,
-  "knowledge-bases": PERM.knowledgeBases,
+  "knowledge-bases": PERM.knowledgeBasesPage,
   workbench: PERM.workbench,
   "remote-desktop": PERM.desktop,
   acp: "admin",
@@ -177,7 +179,7 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     pathname === "/knowledge-bases" ||
     pathname.startsWith("/knowledge-bases/")
   ) {
-    return PERM.knowledgeBases;
+    return PERM.knowledgeBasesPage;
   }
   if (
     pathname === "/remote-desktop" ||

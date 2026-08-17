@@ -14,6 +14,7 @@ import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
+import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
@@ -769,6 +770,9 @@ export function ProviderConfigModal({
         return;
       }
 
+      const embedding = isEmbeddingModel(
+        draftModels.find((m) => m.id === modelId),
+      );
       const result =
         useDraft || !hasApiKey
           ? await testProviderDraft({
@@ -777,6 +781,7 @@ export function ProviderConfigModal({
               api_key: draftApiKey || provider.api_key || undefined,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
+              embedding,
             })
           : await request<{
               ok: boolean;
@@ -784,7 +789,7 @@ export function ProviderConfigModal({
               error?: string;
             }>(`${apiPrefix}/${provider.id}/test`, {
               method: "POST",
-              body: JSON.stringify({ model_id: modelId }),
+              body: JSON.stringify({ model_id: modelId, embedding }),
             });
 
       if (result.ok) {

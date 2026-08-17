@@ -14,6 +14,7 @@ from octop.cli.support.db import (
     resolve_username,
 )
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
+from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
@@ -327,6 +328,15 @@ def delete_provider_offline(provider_id: int, *, home: Path | None = None) -> No
         row = svc.provider_repo.get(provider_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
+        if is_local_runtime_provider(
+            row.name,
+            provider_api_key=row.api_key,
+            provider_base_url=row.base_url,
+        ):
+            raise OctopError(
+                ErrorCode.PROVIDER_LOCAL_PROTECTED,
+                "local runtime providers cannot be deleted",
+            )
         refs = svc.provider_repo.find_referencing_agent_ids(svc.agent_repo, row.name)
         if refs:
             raise OctopError(

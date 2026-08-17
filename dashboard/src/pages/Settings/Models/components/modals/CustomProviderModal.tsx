@@ -9,6 +9,7 @@ import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
+import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { ModelListEditor } from "./ModelListEditor";
 import styles from "../../index.module.less";
@@ -88,6 +89,7 @@ export function CustomProviderModal({
       api_key: key,
       base_url: values.base_url?.trim() || null,
       model_id: modelId,
+      embedding: isEmbeddingModel(models.find((m) => m.id === modelId)),
     });
   };
 
@@ -164,6 +166,10 @@ export function CustomProviderModal({
         if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
         if (m.context_window != null) entry.context_window = m.context_window;
         if (m.reasoning) entry.reasoning = true;
+        if (isEmbeddingModel(m)) {
+          entry.embedding = true;
+          entry.task = "embedding";
+        }
         return entry;
       });
 

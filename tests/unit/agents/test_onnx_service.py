@@ -8,6 +8,7 @@ import pytest
 
 from octop.infra.agents.providers.onnx_catalog import (
     ONNX_PRESET_MODEL_IDS,
+    get_onnx_model_meta,
     list_onnx_catalog_models,
 )
 from octop.infra.agents.providers.onnx_service import (
@@ -28,6 +29,19 @@ def test_catalog_includes_finnie_presets() -> None:
         assert mid in ids
     recommended = {m["id"] for m in list_onnx_catalog_models() if m.get("recommended")}
     assert set(ONNX_PRESET_MODEL_IDS) <= recommended
+
+
+def test_catalog_models_have_approximate_sizes() -> None:
+    for model_id in (
+        *ONNX_PRESET_MODEL_IDS,
+        "thenlper/gte-base",
+        "thenlper/gte-large",
+        "jinaai/jina-embeddings-v2-base-en",
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    ):
+        size = get_onnx_model_meta(model_id).get("size_gb")
+        assert size is not None, model_id
+        assert float(size) > 0
 
 
 def test_config_roundtrip_via_settings_dict(tmp_path, monkeypatch) -> None:

@@ -15,6 +15,7 @@ import type {
   ProviderPreset,
   ProviderRow,
 } from "../../useProviders";
+import { isEmbeddingModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { ModelListEditor } from "./ModelListEditor";
@@ -162,6 +163,7 @@ export function PresetProviderModal({
       api_key: key,
       base_url: values.base_url?.trim() || preset.base_url,
       model_id: modelId,
+      embedding: isEmbeddingModel(draftModels.find((m) => m.id === modelId)),
     });
   };
 

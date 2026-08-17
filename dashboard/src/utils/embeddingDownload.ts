@@ -21,6 +21,18 @@ export function formatBytes(value?: number): string {
   return `${current.toFixed(digits)} ${units[unitIndex]}`;
 }
 
+/** Approximate ONNX catalog size from gigabytes (fastembed `size_in_GB`). */
+export function formatSizeGb(sizeGb?: number | null): string | null {
+  if (sizeGb == null || Number.isNaN(sizeGb) || sizeGb < 0) {
+    return null;
+  }
+  if (sizeGb < 1) {
+    const mb = sizeGb * 1024;
+    return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)} MB`;
+  }
+  return `${sizeGb < 10 ? sizeGb.toFixed(1) : sizeGb.toFixed(0)} GB`;
+}
+
 export function formatDuration(seconds?: number): string {
   if (seconds === undefined || seconds === null || Number.isNaN(seconds)) {
     return "0s";
