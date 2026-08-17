@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 A4 鉴权操作日志诊断脚本
 读取并解密 huisheng_auth.log，按接口分类展示最新一条记录。
 加密方式与 auth.py 完全一致：sha256(device_token + aiScene)，降级 sha256(aiScene)
 """
+
 import hashlib
 import json
-import sys
+import os
 import tempfile
 from pathlib import Path
 
-import os
-
 AUTH_KEY = "meituan-c-user-auth"
 LOG_FILE = Path(tempfile.gettempdir()) / "huisheng" / "huisheng_auth.log"
-TOKEN_FILE = (Path(os.environ.get("OCTOP_AUTH_DIR") or Path.home() / ".workbuddy" / "credentials" / "meituan-living-deals-assistant") / "token.json")
+TOKEN_FILE = (
+    Path(
+        os.environ.get("OCTOP_AUTH_DIR")
+        or Path.home() / ".workbuddy" / "credentials" / "meituan-living-deals-assistant"
+    )
+    / "token.json"
+)
 CONFIG_FILE = Path(__file__).parent / "config.json"
 
 
@@ -38,12 +42,9 @@ def _load_device_token() -> str:
 def decrypt(line: str, device_token: str, ai_scene: str) -> dict:
     """解密一行日志，key 与 auth.py 的 _xor_encrypt 完全一致"""
     flag, hex_data = line.split(":", 1)
-    if flag == "1" and device_token:
-        seed = device_token + ai_scene
-    else:
-        seed = ai_scene
+    seed = device_token + ai_scene if flag == "1" and device_token else ai_scene
     key = hashlib.sha256(seed.encode()).digest()
-    raw = bytes(int(hex_data[i:i+2], 16) ^ key[i // 2 % 32] for i in range(0, len(hex_data), 2))
+    raw = bytes(int(hex_data[i : i + 2], 16) ^ key[i // 2 % 32] for i in range(0, len(hex_data), 2))
     return json.loads(raw.decode("utf-8"))
 
 
@@ -52,7 +53,7 @@ def main():
         print("鉴权日志不存在，尚无操作记录")
         return
 
-    lines = [l for l in LOG_FILE.read_text(encoding="utf-8").strip().splitlines() if l.strip()]
+    lines = [ln for ln in LOG_FILE.read_text(encoding="utf-8").strip().splitlines() if ln.strip()]
     if not lines:
         print("鉴权日志为空")
         return

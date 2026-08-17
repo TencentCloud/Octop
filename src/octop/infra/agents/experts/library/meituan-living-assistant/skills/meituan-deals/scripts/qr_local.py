@@ -20,6 +20,7 @@ import sys
 
 def generate_data_uri(url: str) -> dict:
     import qrcode
+
     img = qrcode.make(url, box_size=8, border=2)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -29,6 +30,7 @@ def generate_data_uri(url: str) -> dict:
 
 def generate_ascii(url: str) -> dict:
     import qrcode
+
     qr = qrcode.QRCode(border=1)
     qr.add_data(url)
     qr.make(fit=True)
@@ -47,11 +49,15 @@ def main():
     try:
         result = generate_ascii(url) if use_ascii else generate_data_uri(url)
     except ImportError:
-        print(json.dumps({
-            "ok": False,
-            "error": "QRCODE_LIB_MISSING",
-            "message": "qrcode library not installed. Run: pip install qrcode"
-        }))
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": "QRCODE_LIB_MISSING",
+                    "message": "qrcode library not installed. Run: pip install qrcode",
+                }
+            )
+        )
         sys.exit(1)
     except Exception as e:
         print(json.dumps({"ok": False, "error": "GENERATE_FAILED", "message": str(e)}))

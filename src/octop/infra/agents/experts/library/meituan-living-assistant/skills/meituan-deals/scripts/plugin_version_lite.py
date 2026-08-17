@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """plugin_version_lite.py — 插件版本探测精简版（行为同 plugin_version.py，去注释/调试/明细）。"""
+
 from __future__ import annotations
 
 import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 _CB_VER_REL = Path(".codebuddy-plugin", "plugin.json")
-_CB_MARKETS = ("local-dev", "wechataimarketplace",
-               "codebuddy-plugins-official", "codebuddy-builtin")
+_CB_MARKETS = (
+    "local-dev",
+    "wechataimarketplace",
+    "codebuddy-plugins-official",
+    "codebuddy-builtin",
+)
 _CB_BUILTIN_MARKETPLACE = "codebuddy-builtin"  # Linux 内置插件所在 marketplace
 # qclaw 版本号优先看 package.json，再回退 openclaw.plugin.json / plugin.json
 _OC_MANIFESTS = ("package.json", "openclaw.plugin.json", "plugin.json")
@@ -44,15 +48,14 @@ def _home() -> Path:
     return Path(os.environ.get("HOME") or os.path.expanduser("~"))
 
 
-def _read_json(path: Path) -> Optional[dict]:
+def _read_json(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, NotADirectoryError, json.JSONDecodeError,
-            PermissionError, OSError):
+    except (FileNotFoundError, NotADirectoryError, json.JSONDecodeError, PermissionError, OSError):
         return None
 
 
-def _ver_from(path: Path, rel: Path = _CB_VER_REL) -> Optional[str]:
+def _ver_from(path: Path, rel: Path = _CB_VER_REL) -> str | None:
     data = _read_json(path / rel)
     v = data.get("version") if data else None
     return str(v) if v else None
@@ -60,17 +63,19 @@ def _ver_from(path: Path, rel: Path = _CB_VER_REL) -> Optional[str]:
 
 def detect_agent() -> str:
     # ① 身份环境变量（最可靠）。Qclaw 大小写存在版本差异，两种写法都认（env 名大小写敏感）
-    if os.environ.get("Qclaw_USER_ID") or os.environ.get("QCLAW_USER_ID"):
+    if os.environ.get("Qclaw_USER_ID") or os.environ.get("QCLAW_USER_ID"):  # noqa: SIM112
         return "qclaw"
     if os.environ.get("CODEBUDDY_SESSION_ID"):
         return "workbuddy"
     # ② 平台专属环境变量线索（不看配置目录存在性：删应用后配置残留会误判，导致跨 Agent）
     if os.environ.get("OPENCLAW_CONFIG_PATH"):
         return "qclaw"
-    if (os.environ.get("WORKBUDDY_CONFIG_DIR")
-            or os.environ.get("CODEBUDDY_CONFIG_DIR")
-            or os.environ.get("CODEBUDDY_BUILTIN_SKILLS_DIR")
-            or os.environ.get("CODEBUDDY_PLUGIN_DIRS")):
+    if (
+        os.environ.get("WORKBUDDY_CONFIG_DIR")
+        or os.environ.get("CODEBUDDY_CONFIG_DIR")
+        or os.environ.get("CODEBUDDY_BUILTIN_SKILLS_DIR")
+        or os.environ.get("CODEBUDDY_PLUGIN_DIRS")
+    ):
         return "workbuddy"
     return "unknown"
 
@@ -87,16 +92,31 @@ def _cb_builtin_plugins_roots_by_platform() -> list[Path]:
     # 仅桌面端(win/mac)有 builtin-plugins 应用资源目录；Linux 无（走 codebuddy-builtin marketplace）
     name = _platform()
     if name == "macos":
-        return [Path("/Applications/WorkBuddy.app/Contents/Resources/"
-                     "app.asar.unpacked/resources/builtin-plugins")]
+        return [
+            Path(
+                "/Applications/WorkBuddy.app/Contents/Resources/"
+                "app.asar.unpacked/resources/builtin-plugins"
+            )
+        ]
     if name == "windows":
         roots = []
         local = os.environ.get("LOCALAPPDATA")
         if local:
-            roots.append(Path(local) / "Programs" / "WorkBuddy" / "resources"
-                         / "app.asar.unpacked" / "resources" / "builtin-plugins")
-        roots.append(Path(r"C:\Program Files\WorkBuddy\resources"
-                          r"\app.asar.unpacked\resources\builtin-plugins"))
+            roots.append(
+                Path(local)
+                / "Programs"
+                / "WorkBuddy"
+                / "resources"
+                / "app.asar.unpacked"
+                / "resources"
+                / "builtin-plugins"
+            )
+        roots.append(
+            Path(
+                r"C:\Program Files\WorkBuddy\resources"
+                r"\app.asar.unpacked\resources\builtin-plugins"
+            )
+        )
         return roots
     return []
 
@@ -104,20 +124,24 @@ def _cb_builtin_plugins_roots_by_platform() -> list[Path]:
 def _builtin_roots() -> list[Path]:
     # 桌面端与 Linux 内置插件命名不同，按平台区分
     if _platform() == "linux":
-        return [Path(_resolve_config_dir()) / "plugins" / "marketplaces"
-                / _CB_BUILTIN_MARKETPLACE / "plugins"]
+        return [
+            Path(_resolve_config_dir())
+            / "plugins"
+            / "marketplaces"
+            / _CB_BUILTIN_MARKETPLACE
+            / "plugins"
+        ]
     roots: list[Path] = []
     skills = os.environ.get("CODEBUDDY_BUILTIN_SKILLS_DIR")
     if skills:
         sp = Path(skills)
-        roots.append(sp.with_name("builtin-plugins") if sp.name
-                     else sp.parent / "builtin-plugins")
+        roots.append(sp.with_name("builtin-plugins") if sp.name else sp.parent / "builtin-plugins")
     roots.extend(_cb_builtin_plugins_roots_by_platform())
     seen: set[str] = set()
     return [r for r in roots if not (str(r) in seen or seen.add(str(r)))]
 
 
-def _oc_ver(root: Path) -> Optional[str]:
+def _oc_ver(root: Path) -> str | None:
     for manifest in _OC_MANIFESTS:
         data = _read_json(root / manifest)
         v = data.get("version") if data else None
@@ -141,8 +165,7 @@ def detect_workbuddy(name: str = DEFAULT_PLUGIN) -> str:
             if v:
                 return v
     # ③④⑤ 配置目录 + marketplace / flat
-    cfg = (os.environ.get("WORKBUDDY_CONFIG_DIR")
-           or os.environ.get("CODEBUDDY_CONFIG_DIR"))
+    cfg = os.environ.get("WORKBUDDY_CONFIG_DIR") or os.environ.get("CODEBUDDY_CONFIG_DIR")
     if not cfg:
         wb = _home() / ".workbuddy"
         cfg = str(wb if wb.exists() else _home() / ".codebuddy")
@@ -232,7 +255,7 @@ def get_plugin_version(name: str = DEFAULT_PLUGIN, system: str = "auto") -> str:
     return detect_workbuddy(name)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     name, system, as_json = DEFAULT_PLUGIN, "auto", False
     mode = "installed"  # 默认：返回是否支持微信插件
@@ -258,12 +281,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     v = get_plugin_version(name, system)
     inst, x402 = weixinpay_installed(v), weixinpay_support_x402(v)
     if as_json:
-        print(json.dumps({"plugin": name, "system": system,
-                          "platform": _platform(), "version": v,
-                          "weixinpay_installed": inst,
-                          "weixinpay_support_x402": x402,
-                          "weixinpay_x402_threshold": X402_THRESHOLD},
-                         ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "plugin": name,
+                    "system": system,
+                    "platform": _platform(),
+                    "version": v,
+                    "weixinpay_installed": inst,
+                    "weixinpay_support_x402": x402,
+                    "weixinpay_x402_threshold": X402_THRESHOLD,
+                },
+                ensure_ascii=False,
+            )
+        )
     elif mode == "version":
         print(v)
     elif mode == "x402":

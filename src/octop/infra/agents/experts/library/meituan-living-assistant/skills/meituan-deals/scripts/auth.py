@@ -10,10 +10,10 @@ huisheng-coupon-tool 认证模块
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import random
-import sys
 import time
 from pathlib import Path
 
@@ -41,13 +41,16 @@ def _resolve_auth_file() -> Path:
     if octop_dir:
         return Path(octop_dir) / "token.json"
 
-    return Path.home() / ".workbuddy" / "credentials" / "meituan-living-deals-assistant" / "token.json"
+    return (
+        Path.home() / ".workbuddy" / "credentials" / "meituan-living-deals-assistant" / "token.json"
+    )
 
 
 AUTH_FILE = _resolve_auth_file()
 
 
 # ── 设备ID生成 ────────────────────────────────────────────────────────
+
 
 def generate_device_token(seed: str) -> str:
     """
@@ -63,6 +66,7 @@ def generate_device_token(seed: str) -> str:
 
 # ── 存储操作 ──────────────────────────────────────────────────────────
 
+
 def load_auth() -> dict:
     if AUTH_FILE.exists():
         with open(AUTH_FILE, encoding="utf-8") as f:
@@ -71,14 +75,14 @@ def load_auth() -> dict:
 
 
 def save_auth(data: dict):
-    import os, stat
+    import os
+    import stat
+
     AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(AUTH_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(AUTH_FILE, stat.S_IRUSR | stat.S_IWUSR)
-    except OSError:
-        pass
 
 
 def get_token_data() -> dict:
@@ -103,17 +107,16 @@ def _ensure_device_token(token_data: dict) -> str:
 
 # ── 命令：get-device-token ───────────────────────────────────────────
 
+
 def cmd_get_device_token():
     """获取 device_token，不存在则自动生成"""
     token_data = get_token_data()
     device_token = _ensure_device_token(token_data)
-    print(json.dumps({
-        "success": True,
-        "device_token": device_token
-    }, ensure_ascii=False))
+    print(json.dumps({"success": True, "device_token": device_token}, ensure_ascii=False))
 
 
 # ── 命令：logout ─────────────────────────────────────────────────────
+
 
 def cmd_logout():
     """退出登录：清除 pt-passport CLI 缓存，保留 device_token"""
@@ -122,6 +125,7 @@ def cmd_logout():
     # 清除 pt-passport CLI 本地缓存的 Token
     cli_cleared = False
     import os
+
     env = os.environ.copy()
     # 清空 NODE_OPTIONS：pt-passport 是 node CLI，避免宿主注入的选项污染输出或引发异常
     env["NODE_OPTIONS"] = ""
@@ -129,7 +133,10 @@ def cmd_logout():
     try:
         result = subprocess.run(
             ["pt-passport", "logout", "--client_id", CLIENT_ID],
-            capture_output=True, text=True, timeout=10, env=env
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
         )
         cli_cleared = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -138,15 +145,21 @@ def cmd_logout():
     token_data = get_token_data()
     device_token = token_data.get("device_token", "")
 
-    print(json.dumps({
-        "success": True,
-        "message": "已退出登录，下次需重新授权",
-        "device_token_preserved": bool(device_token),
-        "cli_cache_cleared": cli_cleared
-    }, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "success": True,
+                "message": "已退出登录，下次需重新授权",
+                "device_token_preserved": bool(device_token),
+                "cli_cache_cleared": cli_cleared,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 # ── 命令：clear-device-token ─────────────────────────────────────────
+
 
 def cmd_clear_device_token():
     """清除设备标识，仅在用户明确要求时调用"""
@@ -161,36 +174,41 @@ def cmd_clear_device_token():
 
     # 同时清除 pt-passport CLI 缓存
     import os
+
     env = os.environ.copy()
     # 清空 NODE_OPTIONS：pt-passport 是 node CLI，避免宿主注入的选项污染输出或引发异常
     env["NODE_OPTIONS"] = ""
-    try:
+    with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired, OSError):
         subprocess.run(
             ["pt-passport", "logout", "--client_id", CLIENT_ID],
-            capture_output=True, text=True, timeout=10, env=env
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        pass
 
-    print(json.dumps({
-        "success": True,
-        "message": "设备标识已清除，下次登录将生成新的 device_token",
-        "device_token_cleared": had_device_token
-    }, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "success": True,
+                "message": "设备标识已清除，下次登录将生成新的 device_token",
+                "device_token_cleared": had_device_token,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 # ── 入口 ─────────────────────────────────────────────────────────────
+
 
 def main():
     parser = argparse.ArgumentParser(description="huisheng-coupon-tool 认证模块")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("get-device-token",
-                          help="获取/生成 device_token（下单需要）")
-    subparsers.add_parser("logout",
-                          help="退出登录，清除 pt-passport CLI 缓存（保留 device_token）")
-    subparsers.add_parser("clear-device-token",
-                          help="清除设备标识，仅在用户明确要求时调用")
+    subparsers.add_parser("get-device-token", help="获取/生成 device_token（下单需要）")
+    subparsers.add_parser("logout", help="退出登录，清除 pt-passport CLI 缓存（保留 device_token）")
+    subparsers.add_parser("clear-device-token", help="清除设备标识，仅在用户明确要求时调用")
 
     args = parser.parse_args()
 
