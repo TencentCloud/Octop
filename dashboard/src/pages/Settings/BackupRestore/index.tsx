@@ -2,10 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Button,
   Checkbox,
+  Divider,
   Empty,
+  Input,
+  InputNumber,
   Modal,
   Progress,
+  Select,
   Spin,
+  Switch,
   Table,
   Upload,
 } from "antd";
@@ -14,6 +19,7 @@ import { message } from "@/utils/antdMessage";
 import type { ColumnsType } from "antd/es/table";
 import {
   Archive,
+  CalendarClock,
   Download,
   Plus,
   RefreshCw,
@@ -23,7 +29,11 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { backupApi, type BackupFileItem } from "../../../api/modules/backup";
+import {
+  backupApi,
+  type AutoBackupSettings,
+  type BackupFileItem,
+} from "../../../api/modules/backup";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
@@ -31,6 +41,16 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
+
+const SCHEDULE_DAILY = "cron:0 4 * * *";
+const SCHEDULE_WEEKLY = "cron:0 4 * * 0";
+const SCHEDULE_12H = "interval:43200";
+
+const PRESET_SCHEDULES = new Set([
+  SCHEDULE_DAILY,
+  SCHEDULE_WEEKLY,
+  SCHEDULE_12H,
+]);
 
 function triggerDownload(blob: Blob, filename: string) {
   const a = document.createElement("a");
@@ -44,6 +64,12 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Seconds when the spec is `interval:<n>`, otherwise null. */
+function parseIntervalSeconds(spec: string): number | null {
+  const matched = /^interval:(\d+)$/.exec(spec.trim());
+  return matched ? Number(matched[1]) : null;
 }
 
 interface BackupFileCardProps {
@@ -134,7 +160,34 @@ export default function BackupRestorePanel() {
   );
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  const busy = creating || restoring || uploadPercent !== null || isRestarting;
+  const [autoEnabled, setAutoEnabled] = useState(false);
+  const [autoSchedule, setAutoSchedule] = useState(SCHEDULE_DAILY);
+  const [schedulePreset, setSchedulePreset] = useState<string>(SCHEDULE_DAILY);
+  const [autoRetention, setAutoRetention] = useState(7);
+  const [autoScheduled, setAutoScheduled] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+
+  const busy =
+    creating ||
+    restoring ||
+    uploadPercent !== null ||
+    isRestarting ||
+    autoSaving ||
+    autoRunning;
+
+  const customIntervalSeconds = parseIntervalSeconds(autoSchedule);
+
+  const applyAutoSettings = useCallback((data: AutoBackupSettings) => {
+    setAutoEnabled(data.auto_enabled);
+    setAutoSchedule(data.schedule);
+    setAutoRetention(data.retention_count);
+    setAutoScheduled(Boolean(data.scheduled));
+    setSchedulePreset(
+      PRESET_SCHEDULES.has(data.schedule) ? data.schedule : "custom",
+    );
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -150,9 +203,22 @@ export default function BackupRestorePanel() {
     }
   }, [t]);
 
+  const refreshAuto = useCallback(async () => {
+    setAutoLoading(true);
+    try {
+      const data = await backupApi.getAutoSettings();
+      applyAutoSettings(data);
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("backup.autoLoadFailed"), t));
+    } finally {
+      setAutoLoading(false);
+    }
+  }, [applyAutoSettings, t]);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshAuto();
+  }, [refresh, refreshAuto]);
 
   const onCreate = async () => {
     setCreating(true);
@@ -161,10 +227,39 @@ export default function BackupRestorePanel() {
       message.success(t("backup.createSuccess"));
       await refresh();
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : String(err);
-      message.error(detail || t("backup.createFailed"));
+      message.error(apiErrorMessage(err, t("backup.createFailed"), t));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const onSaveAuto = async () => {
+    setAutoSaving(true);
+    try {
+      const data = await backupApi.updateAutoSettings({
+        auto_enabled: autoEnabled,
+        schedule: autoSchedule.trim() || SCHEDULE_DAILY,
+        retention_count: autoRetention,
+      });
+      applyAutoSettings(data);
+      message.success(t("backup.autoSaveSuccess"));
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("backup.autoSaveFailed"), t));
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  const onRunAuto = async () => {
+    setAutoRunning(true);
+    try {
+      await backupApi.runAutoBackup();
+      message.success(t("backup.autoRunSuccess"));
+      await refresh();
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("backup.autoRunFailed"), t));
+    } finally {
+      setAutoRunning(false);
     }
   };
 
@@ -430,6 +525,120 @@ export default function BackupRestorePanel() {
           />
           {t("backup.importWarning")}
         </div>
+      </section>
+
+      <Divider style={{ margin: "40px 0" }} />
+
+      <TabPanelHeader
+        icon={<CalendarClock size={22} />}
+        title={t("backup.autoTitle")}
+        description={t("backup.autoDesc")}
+      />
+      <section className={styles.section}>
+        <Spin spinning={autoLoading}>
+          <div className={styles.autoForm}>
+            <label className={styles.autoRow}>
+              <span>{t("backup.autoEnabled")}</span>
+              <Switch
+                className={styles.autoSwitch}
+                checked={autoEnabled}
+                disabled={busy}
+                onChange={setAutoEnabled}
+              />
+            </label>
+            <label className={styles.autoRow}>
+              <span>{t("backup.autoSchedule")}</span>
+              <Select
+                className={styles.autoControl}
+                value={schedulePreset}
+                disabled={busy}
+                options={[
+                  {
+                    value: SCHEDULE_DAILY,
+                    label: t("backup.autoScheduleDaily"),
+                  },
+                  {
+                    value: SCHEDULE_WEEKLY,
+                    label: t("backup.autoScheduleWeekly"),
+                  },
+                  {
+                    value: SCHEDULE_12H,
+                    label: t("backup.autoSchedule12h"),
+                  },
+                  {
+                    value: "custom",
+                    label: t("backup.autoScheduleCustom"),
+                  },
+                ]}
+                onChange={(value) => {
+                  setSchedulePreset(value);
+                  if (value !== "custom") {
+                    setAutoSchedule(value);
+                  }
+                }}
+              />
+            </label>
+            {schedulePreset === "custom" ? (
+              <label className={styles.autoRow}>
+                <span />
+                <div className={styles.autoControlStack}>
+                  <Input
+                    value={autoSchedule}
+                    disabled={busy}
+                    onChange={(e) => setAutoSchedule(e.target.value)}
+                    placeholder={SCHEDULE_DAILY}
+                  />
+                  <span className={styles.autoHint}>
+                    {t("backup.autoScheduleHint")}
+                  </span>
+                  {customIntervalSeconds !== null ? (
+                    <span className={styles.autoHint}>
+                      {t("backup.autoIntervalPreview", {
+                        seconds: customIntervalSeconds,
+                        hours: (customIntervalSeconds / 3600).toFixed(1),
+                      })}
+                    </span>
+                  ) : null}
+                </div>
+              </label>
+            ) : null}
+            <label className={styles.autoRow}>
+              <span>{t("backup.autoRetention")}</span>
+              <InputNumber
+                className={styles.autoControl}
+                min={1}
+                max={365}
+                value={autoRetention}
+                disabled={busy}
+                onChange={(v) =>
+                  setAutoRetention(typeof v === "number" ? v : 7)
+                }
+              />
+            </label>
+            <div className={styles.autoStatus}>
+              {autoScheduled
+                ? t("backup.autoScheduled")
+                : t("backup.autoNotScheduled")}
+            </div>
+            <div className={styles.actions}>
+              <Button
+                type="primary"
+                loading={autoSaving}
+                disabled={busy && !autoSaving}
+                onClick={() => void onSaveAuto()}
+              >
+                {t("backup.autoSave")}
+              </Button>
+              <Button
+                loading={autoRunning}
+                disabled={busy && !autoRunning}
+                onClick={() => void onRunAuto()}
+              >
+                {t("backup.autoRunNow")}
+              </Button>
+            </div>
+          </div>
+        </Spin>
       </section>
 
       <Modal

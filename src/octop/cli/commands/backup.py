@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 
 from octop.config import load_config
+from octop.infra.backup.auto import create_and_store_auto_backup
 from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
 from octop.infra.db.factory import open_database
 from octop.infra.db.migrate import run_migrations
@@ -53,6 +54,53 @@ def create(output: Path | None, home: Path | None) -> None:
         dest = output
     dest.write_bytes(data)
     click.echo(f"wrote {dest} ({len(data)} bytes)")
+
+
+@backup.group("auto")
+def auto() -> None:
+    """Automatic backup status and one-shot run (schedule requires ``octop run``)."""
+
+
+@auto.command("status")
+@click.option(
+    "--home", type=click.Path(path_type=Path), default=None, help="Octop home (default ~/.octop)."
+)
+def auto_status(home: Path | None) -> None:
+    """Print automatic backup settings from config.json."""
+    paths = _paths(home)
+    config = load_config(paths.config)
+    backup_cfg = config.backup
+    click.echo(f"auto_enabled: {backup_cfg.auto_enabled}")
+    click.echo(f"schedule: {backup_cfg.schedule}")
+    click.echo(f"retention_count: {backup_cfg.retention_count}")
+    click.echo("note: the scheduler only runs inside an active `octop run` process")
+
+
+@auto.command("run")
+@click.option(
+    "--home", type=click.Path(path_type=Path), default=None, help="Octop home (default ~/.octop)."
+)
+def auto_run(home: Path | None) -> None:
+    """Create one automatic backup now and apply retention pruning."""
+    paths = _paths(home)
+    config = load_config(paths.config)
+    db = open_database(config, paths)
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=paths, config=config)
+    rows = services.agent_repo.list_all()
+    try:
+        entry, deleted = create_and_store_auto_backup(
+            paths=paths,
+            agent_rows=rows,
+            pool=db,
+            db_config=config.database,
+            retention_count=config.backup.retention_count,
+        )
+    finally:
+        db.close()
+    click.echo(f"wrote {paths.backup_file(entry.name)} ({entry.size} bytes)")
+    if deleted:
+        click.echo(f"pruned: {', '.join(deleted)}")
 
 
 @backup.command("restore")

@@ -7,9 +7,18 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import get_server, require_permission
+from octop.config import load_config
+from octop.infra.backup.auto import (
+    AUTO_BACKUP_JOB_ID,
+    BACKUP_LOCK,
+    backup_config_from_payload,
+    run_auto_backup,
+    update_server_backup_config,
+)
 from octop.infra.backup.store import (
     delete_backup_file,
     list_backup_files,
@@ -28,9 +37,30 @@ router = APIRouter()
 _MAX_IMPORT_BYTES = 512 * 1024 * 1024
 
 
+class AutoBackupSettingsBody(BaseModel):
+    auto_enabled: bool = False
+    schedule: str = Field(default="cron:0 4 * * *", min_length=1)
+    retention_count: int = Field(default=7, ge=1, le=365)
+
+
 def _agent_rows(server: Any) -> list[Any]:
     assert server.app_runtime is not None
     return cast(list[Any], server.app_runtime.agent_registry.list_rows())
+
+
+def _auto_settings_payload(server: Any) -> dict[str, Any]:
+    config = load_config(server.paths.config)
+    backup = config.backup
+    scheduled = False
+    runtime = getattr(server, "app_runtime", None)
+    if runtime is not None and runtime.cron_manager is not None:
+        scheduled = runtime.cron_manager.has_system_job(AUTO_BACKUP_JOB_ID)
+    return {
+        "auto_enabled": backup.auto_enabled,
+        "schedule": backup.schedule,
+        "retention_count": backup.retention_count,
+        "scheduled": scheduled,
+    }
 
 
 async def _rehydrate_runtime_after_restore(server: Any) -> None:
@@ -71,6 +101,47 @@ async def list_backups(
     }
 
 
+@router.get("/backup/auto", summary="Get automatic backup settings")
+async def get_auto_backup_settings(
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Return auto-backup config and whether the system job is currently scheduled."""
+    return _auto_settings_payload(server)
+
+
+@router.put("/backup/auto", summary="Update automatic backup settings")
+async def put_auto_backup_settings(
+    body: AutoBackupSettingsBody,
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Persist auto-backup settings and reschedule the in-process system job."""
+    backup = backup_config_from_payload(body.model_dump())
+    update_server_backup_config(server, backup)
+    return {"ok": True, **_auto_settings_payload(server)}
+
+
+@router.post("/backup/auto/run", summary="Run automatic backup now")
+async def run_auto_backup_now(
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Create one automatic backup immediately (same path as the scheduled job)."""
+    if BACKUP_LOCK.locked():
+        raise OctopError(
+            ErrorCode.BACKUP_IN_PROGRESS,
+            "a backup is already in progress",
+        )
+    entry = await run_auto_backup(server)
+    if entry is None:
+        raise OctopError(
+            ErrorCode.BACKUP_IN_PROGRESS,
+            "auto backup skipped (busy or runtime not ready)",
+        )
+    return {"ok": True, "item": entry.to_dict()}
+
+
 @router.post("/backup/create", summary="Create backup and save to backups dir")
 async def create_backup(
     _: Any = Depends(require_permission("backup")),
@@ -78,13 +149,19 @@ async def create_backup(
 ) -> dict[str, Any]:
     """Create a full backup archive and persist it under ``backups_dir``."""
     assert server.services is not None
-    data, filename = create_system_backup(
-        paths=server.paths,
-        agent_rows=_agent_rows(server),
-        pool=server.services.db,
-        db_config=server.services.config.database,
-    )
-    entry = write_backup_file(server.paths, filename, data)
+    if BACKUP_LOCK.locked():
+        raise OctopError(
+            ErrorCode.BACKUP_IN_PROGRESS,
+            "a backup is already in progress",
+        )
+    async with BACKUP_LOCK:
+        data, filename = create_system_backup(
+            paths=server.paths,
+            agent_rows=_agent_rows(server),
+            pool=server.services.db,
+            db_config=server.services.config.database,
+        )
+        entry = write_backup_file(server.paths, filename, data)
     return {"ok": True, "item": entry.to_dict()}
 
 

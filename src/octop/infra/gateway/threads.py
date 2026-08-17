@@ -352,6 +352,30 @@ class ThreadRegistry:
     def list_threads_for_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         return self._threads.list_by_session(session_key=session_key, limit=limit)
 
+    def create_thread(
+        self,
+        *,
+        agent_id: str,
+        user_id: int,
+        channel_type: str,
+        session_key: str,
+        title: str | None = None,
+        last_active: int = 0,
+        thread_id: str | None = None,
+    ) -> str:
+        """Insert a thread row without rebinding the active session."""
+        tid = thread_id or _new_thread_id()
+        self._threads.insert(
+            thread_id=tid,
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type=channel_type,
+            session_key=session_key,
+            title=title,
+            last_active=last_active,
+        )
+        return tid
+
     def delete_thread(self, thread_id: str) -> None:
         self._threads.delete(thread_id)
 

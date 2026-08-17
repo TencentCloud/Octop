@@ -8,6 +8,9 @@ from typing import Any
 _ONNX_PRESET_API_KEY = "onnx"
 # Exact display / id names from the onnx preset — never substring "local"/"onnx".
 _ONNX_PRESET_NAMES = frozenset({"onnx", "onnx (local)"})
+# Same pattern for Ollama (placeholder api_key + exact preset names).
+_OLLAMA_PRESET_API_KEY = "ollama"
+_OLLAMA_PRESET_NAMES = frozenset({"ollama", "ollama (local)"})
 
 
 def is_onnx_local_provider(
@@ -25,6 +28,44 @@ def is_onnx_local_provider(
     if not provider_name:
         return False
     return provider_name.strip().lower() in _ONNX_PRESET_NAMES
+
+
+def is_ollama_local_provider(
+    provider_name: str | None = None,
+    *,
+    provider_api_key: str | None = None,
+    provider_base_url: str | None = None,
+) -> bool:
+    """True when this row is the local Ollama preset.
+
+    Prefer the stable placeholder API key, then exact preset names. Base URL
+    hints match the dashboard (port 11434 / host ``ollama``) so delete
+    protection stays aligned with the hidden UI button.
+    """
+    if is_onnx_local_provider(provider_name, provider_api_key=provider_api_key):
+        return False
+    if provider_api_key is not None and provider_api_key.strip().lower() == _OLLAMA_PRESET_API_KEY:
+        return True
+    if provider_name and provider_name.strip().lower() in _OLLAMA_PRESET_NAMES:
+        return True
+    url = (provider_base_url or "").strip().lower()
+    return "11434" in url or "ollama" in url
+
+
+def is_local_runtime_provider(
+    provider_name: str | None = None,
+    *,
+    provider_api_key: str | None = None,
+    provider_base_url: str | None = None,
+) -> bool:
+    """True for onboard local runtimes (ONNX / Ollama) that must not be deleted."""
+    return is_onnx_local_provider(
+        provider_name, provider_api_key=provider_api_key
+    ) or is_ollama_local_provider(
+        provider_name,
+        provider_api_key=provider_api_key,
+        provider_base_url=provider_base_url,
+    )
 
 
 def is_embedding_model(

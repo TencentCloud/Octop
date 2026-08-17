@@ -284,6 +284,7 @@
     "SETUP_REQUIRED": "需要完成初始设置。",
     "DATABASE_NOT_EMPTY": "目标数据库已有用户。请改用空库，或直接登录现有管理员账户。",
     "BACKUP_DRIVER_MISMATCH": "该备份与当前数据库引擎不一致（SQLite 与 PostgreSQL 不能互恢）。请将运行时切回备份所用引擎后再恢复，或在当前引擎上重新备份。暂不支持跨引擎恢复。",
+    "BACKUP_IN_PROGRESS": "已有备份任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
@@ -302,6 +303,7 @@
     "PROVIDER_NAME_TAKEN": "提供商名称已被占用。",
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
+    "PROVIDER_LOCAL_PROTECTED": "本地提供商无法删除。",
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
@@ -498,6 +500,10 @@
         "host": "Broker Host"
       }
     }
+  },
+  "threads": {
+    "fork_title_suffix": "（分叉）",
+    "fork_default_title": "分叉对话"
   },
   "agents": {
     "state": {

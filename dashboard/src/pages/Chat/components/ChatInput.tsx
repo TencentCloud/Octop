@@ -28,7 +28,11 @@ import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
-import { readInputDraft, writeInputDraft } from "../hooks/chatStore";
+import {
+  consumePendingPrefillAttachments,
+  readInputDraft,
+  writeInputDraft,
+} from "../hooks/chatStore";
 import {
   buildComposerContext,
   resolveTurnModelRef,
@@ -42,6 +46,7 @@ import styles from "../index.module.less";
 /** Imperative handle exposed via ref for programmatic text injection. */
 export interface ChatInputHandle {
   setPrefillText: (text: string) => void;
+  setPrefillComposer: (text: string, attachments?: ChatAttachment[]) => void;
 }
 
 interface ChatInputProps {
@@ -174,24 +179,70 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       transcribing,
       toggle: toggleVoice,
     } = useVoiceInput(handleVoiceText);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const {
+      attachments,
+      uploading,
+      dragOver,
+      fileInputRef,
+      acceptAttr,
+      handleFileSelect,
+      handleFileChange,
+      removeAttachment,
+      clearAttachments,
+      restoreAttachments,
+      handlePaste,
+      handleDragEnter,
+      handleDragLeave,
+      handleDragOver,
+      handleDrop,
+    } = useChatAttachments(agentId);
 
     // Expose an imperative handle so the parent can push a new prefill without
     // triggering a prop change that would cause a re-render cascade.
-    useImperativeHandle(ref, () => ({
-      setPrefillText: (newText: string) => {
-        userHasEditedRef.current = false;
-        ignoreInitialTextRef.current = null;
-        prevInitialTextRef.current = newText;
-        setText(newText);
-        setTimeout(() => {
-          const el = textareaRef.current;
-          if (el) {
-            el.focus();
-            el.setSelectionRange(el.value.length, el.value.length);
+    useImperativeHandle(
+      ref,
+      () => ({
+        setPrefillText: (newText: string) => {
+          userHasEditedRef.current = false;
+          ignoreInitialTextRef.current = null;
+          prevInitialTextRef.current = newText;
+          setText(newText);
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        },
+        setPrefillComposer: (
+          newText: string,
+          nextAttachments?: ChatAttachment[],
+        ) => {
+          userHasEditedRef.current = false;
+          ignoreInitialTextRef.current = null;
+          prevInitialTextRef.current = newText;
+          setText(newText);
+          if (nextAttachments && nextAttachments.length > 0) {
+            restoreAttachments(
+              nextAttachments.map((attachment) => ({ ...attachment })),
+            );
+          } else {
+            clearAttachments();
           }
-        }, 50);
-      },
-    }));
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        },
+      }),
+      [clearAttachments, restoreAttachments],
+    );
+
     // When the parent passes a non-empty initialText after mount (e.g. navigated
     // from cron-jobs), update the input value and move the cursor to the end.
     // Only fires when initialText actually changes AND the user hasn't started
@@ -239,7 +290,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       ignoreInitialTextRef.current = null;
       prevInitialTextRef.current = "";
       setText(initialText || readInputDraft(agentId, threadId));
-    }, [agentId, threadId, initialText]);
+      const pendingAttachments = consumePendingPrefillAttachments();
+      if (pendingAttachments.length > 0) {
+        restoreAttachments(pendingAttachments);
+      } else {
+        clearAttachments();
+      }
+    }, [agentId, threadId, initialText, clearAttachments, restoreAttachments]);
 
     // Persist draft while typing so leaving /chat and returning keeps content.
     useEffect(() => {
@@ -249,24 +306,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }, 250);
       return () => window.clearTimeout(timer);
     }, [text, agentId, threadId]);
-    const {
-      attachments,
-      uploading,
-      dragOver,
-      fileInputRef,
-      acceptAttr,
-      handleFileSelect,
-      handleFileChange,
-      removeAttachment,
-      clearAttachments,
-      restoreAttachments,
-      handlePaste,
-      handleDragEnter,
-      handleDragLeave,
-      handleDragOver,
-      handleDrop,
-    } = useChatAttachments(agentId);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const submitRef = useRef<() => void>(() => {});
 
     const MIN_TEXTAREA_HEIGHT = isMobile ? 42 : 78;
@@ -483,31 +522,44 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }
     }, [text, onUserInput]);
 
-    const adjustHeight = useCallback(
-      (animate = false) => {
+    const adjustHeight = useCallback(() => {
         const ta = textareaRef.current;
         if (!ta) return;
-        // Disable transition during measurement to avoid visual glitches
+        // Measure the content height on a detached clone instead of collapsing
+        // the live textarea to height:"auto". That transient shrink reflows the
+        // flex layout and makes the message list viewport (a sibling above the
+        // composer) grow for a moment; browsers clamp the list scrollTop to the
+        // larger viewport and the clamp STICKS after the height is restored —
+        // while a reply streams, follow-pins then snap the list back down, i.e.
+        // the per-keystroke up/down jitter. A clone never touches live layout.
+        const target = (() => {
+          const clone = ta.cloneNode(false) as HTMLTextAreaElement;
+          clone.value = ta.value;
+          const rect = ta.getBoundingClientRect();
+          clone.style.cssText = [
+            "position:fixed",
+            "left:-9999px",
+            "top:0",
+            "visibility:hidden",
+            "height:auto",
+            "min-height:0",
+            "max-height:none",
+            "transition:none",
+            `width:${rect.width}px`,
+          ].join(";");
+          document.body.appendChild(clone);
+          const h = clone.scrollHeight;
+          document.body.removeChild(clone);
+          return Math.max(Math.min(h, 160), MIN_TEXTAREA_HEIGHT);
+        })();
+        const current = ta.getBoundingClientRect().height;
+        if (Math.abs(target - current) < 0.5) return; // height unchanged
+        // Disable transition during the write so the resize is instant.
         ta.style.transition = "none";
-        ta.style.height = "auto";
-        const target = Math.max(
-          Math.min(ta.scrollHeight, 160),
-          MIN_TEXTAREA_HEIGHT,
-        );
-        if (animate) {
-          // Snap to current rendered height first (no transition), then animate to target
-          const current = ta.getBoundingClientRect().height;
-          ta.style.height = `${current}px`;
-          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-          ta.offsetHeight; // force reflow
-          ta.style.transition = "";
-          ta.style.height = `${target}px`;
-        } else {
-          ta.style.height = `${target}px`;
-          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-          ta.offsetHeight;
-          ta.style.transition = "";
-        }
+        ta.style.height = `${target}px`;
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        ta.offsetHeight; // force reflow
+        ta.style.transition = "";
       },
       [MIN_TEXTAREA_HEIGHT],
     );

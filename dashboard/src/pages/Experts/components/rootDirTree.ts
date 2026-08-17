@@ -38,7 +38,26 @@ export function ensurePathInTree(
 /** Keep a single `/` tree — root-level orphans duplicate keys and break expand. */
 export function sanitizeTree(nodes: DirTreeNode[]): DirTreeNode[] {
   const root = nodes.find((node) => node.value === "/");
-  return root ? [root] : nodes;
+  if (!root) return nodes;
+
+  // Ant Design TreeSelect virtual scroll renders duplicate rows when the same
+  // value appears more than once anywhere in treeData (antd#37228).
+  const seen = new Set<string>();
+
+  const walk = (node: DirTreeNode): DirTreeNode | null => {
+    if (seen.has(node.value)) return null;
+    seen.add(node.value);
+    const children = (node.children ?? [])
+      .map(walk)
+      .filter((child): child is DirTreeNode => child != null);
+    return {
+      ...node,
+      children: children.length > 0 ? children : undefined,
+    };
+  };
+
+  const cleaned = walk(root);
+  return cleaned ? [cleaned] : [root];
 }
 
 /**

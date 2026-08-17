@@ -1,0 +1,303 @@
+name: Anti-spam issue guard
+
+"on":
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to check manually, for example 19 or #19"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  anti-spam:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Close suspicious issues
+        uses: actions/github-script@v7
+        env:
+          LABEL_NAME: "pending-maintainer-review"
+          LABEL_COLOR: "cfd3d7"
+          AUTO_CLOSE: "true"
+          NEW_ACCOUNT_DAYS: "180"
+
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            let issue = context.payload.issue;
+
+            if (context.eventName === "workflow_dispatch") {
+              const rawIssueNumber = (
+                core.getInput("issue_number") ||
+                context.payload.inputs?.issue_number ||
+                ""
+              ).trim();
+
+              core.info(`Manual issue_number raw input: "${rawIssueNumber}"`);
+              core.info(`Workflow inputs payload: ${JSON.stringify(context.payload.inputs || {})}`);
+
+              const issueNumber = Number(rawIssueNumber.replace(/^#/, ""));
+
+              if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+                core.setFailed(`Invalid issue_number: "${rawIssueNumber}"`);
+                return;
+              }
+
+              const issueResponse = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issueNumber
+              });
+
+              issue = issueResponse.data;
+            }
+
+            if (!issue || issue.pull_request) {
+              core.info("Not a normal issue, skipping.");
+              return;
+            }
+
+            const author = issue.user.login;
+            const association = issue.author_association || "NONE";
+
+            const trustedAssociations = new Set([
+              "OWNER",
+              "MEMBER",
+              "COLLABORATOR",
+              "CONTRIBUTOR"
+            ]);
+
+            if (trustedAssociations.has(association)) {
+              core.info(`Trusted author association: ${association}. Skipping.`);
+              return;
+            }
+
+            if (issue.user.type === "Bot") {
+              core.info("Issue author is a bot. Skipping.");
+              return;
+            }
+
+            const userInfo = await github.rest.users.getByUsername({
+              username: author
+            });
+
+            const createdAt = new Date(userInfo.data.created_at);
+            const accountAgeDays = Math.floor((Date.now() - createdAt.getTime()) / 86400000);
+            const newAccountDays = Number(process.env.NEW_ACCOUNT_DAYS || 180);
+            const isNewAccount = accountAgeDays <= newAccountDays;
+
+            const issueText = `${issue.title || ""}\n${issue.body || ""}`;
+            const normalizedIssueText = issueText.replace(/\s+/g, " ");
+
+            function hit(patterns) {
+              return patterns.some(pattern => pattern.test(normalizedIssueText));
+            }
+
+            const strongStarFarmPatterns = [
+              /刷\s*星|买\s*星|假\s*星|增\s*星|刷\s*star|假\s*star/i,
+              /star\s*造假|star\s*作弊|star\s*作假|star\s*异常/i,
+              /star\s*farming|artificial\s*stars?|fake\s*stars?|bot\s*stars?/i,
+              /star\s*boost|star\s*boosting|boosting\s*service/i,
+              /bought\s*stars?|purchased\s*stars?|paid\s*stars?/i
+            ];
+
+            const starContextPatterns = [
+              /\bstars?\b|starred|stargazers?/i,
+              /Star\s*数|Star\s*数量|Star\s*数据|Star\s*列表/i,
+              /星标|颗星|个星|这么多\s*Star/i,
+              /人气|热度/
+            ];
+
+            const abnormalGrowthPatterns = [
+              /异常增长|突然增长|爆发式增长|快速增长|增长异常/i,
+              /暴增|飙升|猛增|激增|疯涨|刷到|涨到/i,
+              /过去\s*48\s*小时|48\s*小时|仅用了?\s*\d+\s*天|两天|2\s*天/i,
+              /新增了?\s*\d+|增加了?\s*\d+|从\s*\d+\s*飙升到\s*\d+/i,
+              /\d+\s*(颗|个)?\s*(Star|stars?|星)/i,
+              /创建时间集中|创建时间高度集中|注册时间高度集中/i
+            ];
+
+            const suspiciousAccountPatterns = [
+              /注册日期集中|注册时间集中|创建日期集中|创建时间集中/i,
+              /集中在最近|最近\s*(两|2)\s*周|最近\s*\d+\s*天|7\s*天内|一周内/i,
+              /用户名像随机|随机字符串|随机生成/i,
+              /个人主页空空如也|主页空空如也|主页空|个人主页空/i,
+              /没有头像|无头像|没有仓库|无公开仓库|没有公开仓库/i,
+              /没有\s*followers?|没有\s*follower|无粉丝|零粉丝|no\s*followers?/i,
+              /空壳号|僵尸号|机器人账号|bot\s*accounts?/i,
+              /只\s*Star|只\s*star\s*不超过|Stargazer\s*列表|抽查了?\s*\d+\s*个账号/i
+            ];
+
+            const reportThreatPatterns = [
+              /违规|举报|上报|报告给\s*GitHub|发往\s*GitHub/i,
+              /违规举报|举报到位|举报已递|举报已提交|举报交官方/i,
+              /违规流量|违规人气|清理人气|清除流量|流量清除/i,
+              /清零|清空|封禁|封禁项目|关闭项目|项目关停|项目关闭|项目下线/i,
+              /关停下线|入口关闭|归档备查|违规已定/i
+            ];
+
+            const metricMismatchPatterns = [
+              /(npm|pip|下载量).{0,80}(Star|stars?|星)/i,
+              /(Star|stars?|星).{0,80}(npm|pip|下载量)/i,
+              /(Issue|PR|Fork|贡献者|社区活跃|活跃指标|月均).{0,80}(不匹配|太低|很低|对比|同类项目)/i,
+              /(同类项目|类似项目|对比关键指标|关键指标|指标).{0,80}(Star|stars?|星)/i,
+              /只有\s*Star\s*高|其他指标都远低于同类/i,
+              /真实用户|真实反馈|真实内容|真实评价/i
+            ];
+
+            const reputationAttackPatterns = [
+              /诚信问题|诚信有问题|信任崩塌|失望|反面教材/i,
+              /简历|面试|候选人|找工作|pass\s*的|直接\s*pass/i,
+              /技术分享|教学案例|识别刷星项目/i,
+              /真实口碑|虚假热度|虚假的数字|真实用户的认可/i
+            ];
+
+            const strongKeywordHit = hit(strongStarFarmPatterns);
+            const hasStarContext = hit(starContextPatterns);
+            const abnormalGrowthHit = hit(abnormalGrowthPatterns);
+            const suspiciousAccountHit = hit(suspiciousAccountPatterns);
+            const reportThreatHit = hit(reportThreatPatterns);
+            const metricMismatchHit = hit(metricMismatchPatterns);
+            const reputationAttackHit = hit(reputationAttackPatterns);
+
+            const starAccusationScore = [
+              abnormalGrowthHit,
+              suspiciousAccountHit,
+              reportThreatHit,
+              metricMismatchHit,
+              reputationAttackHit
+            ].filter(Boolean).length;
+
+            const coordinatedThreatWithoutStarHit =
+              suspiciousAccountHit &&
+              reportThreatHit &&
+              /注册日期集中|注册时间集中|创建时间集中|最近\s*(两|2)\s*周|随机字符串|空壳号|无公开仓库|没有仓库|无粉丝|没有\s*followers?/i.test(normalizedIssueText);
+
+            const keywordHit =
+              strongKeywordHit ||
+              (hasStarContext && starAccusationScore >= 2) ||
+              coordinatedThreatWithoutStarHit;
+
+            let priorActivity = false;
+
+            try {
+              const authoredSearch = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${owner}/${repo} author:${author}`,
+                per_page: 20
+              });
+
+              const priorAuthoredItems = authoredSearch.data.items.filter(
+                item => item.number !== issue.number
+              );
+
+              if (priorAuthoredItems.length > 0) {
+                priorActivity = true;
+              }
+            } catch (error) {
+              core.warning(`Failed to search authored issues/PRs: ${error.message}`);
+            }
+
+            try {
+              const commentedSearch = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${owner}/${repo} commenter:${author}`,
+                per_page: 20
+              });
+
+              const priorCommentedItems = commentedSearch.data.items.filter(
+                item => item.number !== issue.number
+              );
+
+              if (priorCommentedItems.length > 0) {
+                priorActivity = true;
+              }
+            } catch (error) {
+              core.warning(`Failed to search commented issues/PRs: ${error.message}`);
+            }
+
+            const suspicious =
+              priorActivity === false &&
+              isNewAccount === true &&
+              keywordHit === true;
+
+            core.info(`Issue number: ${issue.number}`);
+            core.info(`Issue title: ${issue.title}`);
+            core.info(`Author: ${author}`);
+            core.info(`Association: ${association}`);
+            core.info(`Account age days: ${accountAgeDays}`);
+            core.info(`Is new account within ${newAccountDays} days: ${isNewAccount}`);
+            core.info(`Prior activity in repo: ${priorActivity}`);
+            core.info(`Strong keyword hit: ${strongKeywordHit}`);
+            core.info(`Has star context: ${hasStarContext}`);
+            core.info(`Abnormal growth hit: ${abnormalGrowthHit}`);
+            core.info(`Suspicious account hit: ${suspiciousAccountHit}`);
+            core.info(`Report/threat hit: ${reportThreatHit}`);
+            core.info(`Metric mismatch hit: ${metricMismatchHit}`);
+            core.info(`Reputation attack hit: ${reputationAttackHit}`);
+            core.info(`Star accusation score: ${starAccusationScore}`);
+            core.info(`Coordinated threat without star hit: ${coordinatedThreatWithoutStarHit}`);
+            core.info(`Final keyword hit: ${keywordHit}`);
+            core.info(`Suspicious: ${suspicious}`);
+
+            if (!suspicious) {
+              return;
+            }
+
+            const labelName = process.env.LABEL_NAME || "pending-maintainer-review";
+            const labelColor = process.env.LABEL_COLOR || "cfd3d7";
+            const autoClose = process.env.AUTO_CLOSE === "true";
+
+            try {
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: labelName,
+                color: labelColor,
+                description: "Automatically closed by anti-spam guard; pending maintainer review"
+              });
+            } catch (error) {
+              if (error.status !== 422) {
+                core.warning(`Failed to create label: ${error.message}`);
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: issue.number,
+              labels: [labelName]
+            });
+
+            const commentBody = [
+              "👋 This issue was automatically closed by an anti-spam guard because it was opened by a recently created GitHub account with **no prior activity in this repository**, and the issue content matches a recent pattern of repetitive star-farming accusations.",
+              "",
+              "If you are a real user with a genuine report, sorry for the friction — just **leave a comment below** explaining your situation and a maintainer will reopen it.",
+              "",
+              "---",
+              "",
+              "本 Issue 由反刷屏自动规则关闭：提交账号为近期注册账号，且**从未与本仓库互动**，同时 Issue 内容匹配近期重复出现的刷星举报模式。如果你是真实用户，请在下方留言说明，维护者会重新开启。"
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issue.number,
+              body: commentBody
+            });
+
+            if (autoClose) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: "closed",
+                state_reason: "not_planned"
+              });
+            }

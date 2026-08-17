@@ -37,7 +37,6 @@ import type { ThemePalette } from "../../../styles/themePalettes";
 import type { ExpertSummary } from "./ExpertCard";
 import { groupExpertFiles, type NamedFileContent } from "./expertFileGroups";
 import { metaForFile } from "./iconForName";
-import { useSkillSlugDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
   buildBackendSpec,
   DEFAULT_BACKEND,
@@ -118,7 +117,6 @@ export default function CreateFromExpertDrawer({
   onCreated,
 }: CreateFromExpertDrawerProps) {
   const { t } = useTranslation();
-  const skillSlugDisplayName = useSkillSlugDisplayName();
   const [form] = Form.useForm<
     {
       name: string;
@@ -331,7 +329,8 @@ export default function CreateFromExpertDrawer({
   );
   const createBlocked = submitting || hasNoModels;
 
-  const { configFiles, skillGroups } = groupExpertFiles(fileContents);
+  const { configFiles, skillGroups, subagentFiles } =
+    groupExpertFiles(fileContents);
   const showFilePreview = source?.kind !== "market";
 
   const title = source
@@ -549,60 +548,182 @@ export default function CreateFromExpertDrawer({
                   size="small"
                   items={skillGroups.map((group) => ({
                     key: group.name,
-                    label: skillSlugDisplayName(group.name),
+                    label: (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "baseline",
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontWeight: 500 }}>
+                          {group.emoji} {group.displayName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color:
+                              "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                          }}
+                        >
+                          skills/{group.name}/
+                        </span>
+                      </span>
+                    ),
                     children: (
-                      <Collapse
-                        size="small"
-                        items={group.files.map((f) => {
-                          const skillBasename = f.name.replace(
-                            `skills/${group.name}/`,
-                            "",
-                          );
-                          const skillMeta = metaForFile(skillBasename, t);
-                          return {
-                            key: f.name,
-                            label: (
-                              <span
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "baseline",
-                                  gap: 8,
-                                }}
-                              >
-                                <span style={{ fontWeight: 500 }}>
-                                  {skillMeta.label}
-                                </span>
+                      <>
+                        {group.description ? (
+                          <p
+                            style={{
+                              fontSize: 12,
+                              color: "var(--fn-text-secondary)",
+                              margin: "0 0 8px",
+                            }}
+                          >
+                            {group.description}
+                          </p>
+                        ) : null}
+                        <Collapse
+                          size="small"
+                          items={group.files.map((f) => {
+                            const skillBasename = f.name.replace(
+                              `skills/${group.name}/`,
+                              "",
+                            );
+                            const skillMeta = metaForFile(skillBasename, t);
+                            return {
+                              key: f.name,
+                              label: (
                                 <span
                                   style={{
-                                    fontSize: 11,
-                                    color:
-                                      "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                    display: "inline-flex",
+                                    alignItems: "baseline",
+                                    gap: 8,
                                   }}
                                 >
-                                  {skillBasename}
+                                  <span style={{ fontWeight: 500 }}>
+                                    {skillMeta.label}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      color:
+                                        "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                    }}
+                                  >
+                                    {skillBasename}
+                                  </span>
                                 </span>
-                              </span>
-                            ),
-                            children: (
-                              <pre
-                                style={{
-                                  fontSize: 12,
-                                  maxHeight: 200,
-                                  overflowY: "auto",
-                                  background: "var(--fn-bg-secondary, #f5f5f5)",
-                                  padding: 8,
-                                  borderRadius: 4,
-                                  margin: 0,
-                                  whiteSpace: "pre-wrap",
-                                  wordBreak: "break-word",
-                                }}
-                              >
-                                {f.content}
-                              </pre>
-                            ),
-                          };
-                        })}
-                      />
+                              ),
+                              children: (
+                                <pre
+                                  style={{
+                                    fontSize: 12,
+                                    maxHeight: 200,
+                                    overflowY: "auto",
+                                    background:
+                                      "var(--fn-bg-secondary, #f5f5f5)",
+                                    padding: 8,
+                                    borderRadius: 4,
+                                    margin: 0,
+                                    whiteSpace: "pre-wrap",
+                                    wordBreak: "break-word",
+                                  }}
+                                >
+                                  {f.content}
+                                </pre>
+                              ),
+                            };
+                          })}
+                        />
+                      </>
+                    ),
+                  }))}
+                />
+              )}
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+                {t("experts.subagentFilesTitle", {
+                  count: subagentFiles.length,
+                })}
+              </div>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--fn-text-tertiary)",
+                  margin: "0 0 8px",
+                }}
+              >
+                {t("experts.subagentTemplateHint")}
+              </p>
+              {subagentFiles.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--fn-text-tertiary)",
+                    padding: "4px 0",
+                  }}
+                >
+                  {t("experts.noSubagentFiles")}
+                </div>
+              ) : (
+                <Collapse
+                  size="small"
+                  items={subagentFiles.map((subagent) => ({
+                    key: subagent.slug,
+                    label: (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "baseline",
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontWeight: 500 }}>
+                          {subagent.emoji} {subagent.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color:
+                              "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                          }}
+                        >
+                          agents/{subagent.slug}.md
+                        </span>
+                      </span>
+                    ),
+                    children: (
+                      <>
+                        {subagent.description ? (
+                          <p
+                            style={{
+                              fontSize: 12,
+                              color: "var(--fn-text-secondary)",
+                              margin: "0 0 8px",
+                            }}
+                          >
+                            {subagent.description}
+                          </p>
+                        ) : null}
+                        <pre
+                          style={{
+                            fontSize: 12,
+                            maxHeight: 200,
+                            overflowY: "auto",
+                            background: "var(--fn-bg-secondary, #f5f5f5)",
+                            padding: 8,
+                            borderRadius: 4,
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {subagent.file.content}
+                        </pre>
+                      </>
                     ),
                   }))}
                 />

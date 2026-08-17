@@ -198,10 +198,88 @@
   color: #8b5cf6;
 }
 
-.iconOption {
+.packageModal :global(.ant-modal-body) {
+  padding-top: 12px;
+}
+
+.packageForm :global(.ant-form-item) {
+  margin-bottom: 16px;
+}
+
+.packageForm :global(.ant-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.packageForm :global(.ant-form-item-label) {
+  padding-bottom: 6px !important;
+}
+
+.packageForm :global(.ant-form-item-label > label) {
+  height: auto;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+}
+
+.iconPicker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-height: min(320px, 45vh);
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.iconPickerItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 6px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 40%,
+      var(--fn-border-secondary)
+    );
+    color: var(--fn-text-primary);
+  }
+}
+
+.iconPickerItemActive {
+  border-color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+  color: var(--fn-color-brand);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--fn-color-brand) 25%, transparent);
+}
+
+.iconPickerGlyph {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.iconPickerLabel {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listDescription {
@@ -444,12 +522,34 @@
   color: var(--fn-text-tertiary);
 }
 
-.emptyDetailActions {
+.emptyLayout {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-bg-container);
+}
+
+.emptyLayoutMobile {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.emptyGuide {
+  flex: 1;
+}
+
+.setupMascot {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .layoutMobile {

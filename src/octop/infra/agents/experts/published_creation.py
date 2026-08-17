@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any, cast
 
 from psycopg import IntegrityError as PsycopgIntegrityError
 
-from octop.infra.agents.experts.catalog import seed_expert_directory
+from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, seed_expert_directory
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
     assert_can_mutate_published,
@@ -41,6 +42,41 @@ def _snapshot_dir(services: Any, expert_id: str) -> Path:
     return Path(services.paths.published_experts_dir) / expert_id
 
 
+def _read_snapshot_manifest(snapshot_dir: Path) -> dict[str, Any]:
+    manifest_path = snapshot_dir / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return {}
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _localized_text(node: Any, *, lang: str) -> str:
+    if isinstance(node, dict):
+        return str(node.get(lang) or node.get("zh" if lang == "zh" else "en") or "")
+    if isinstance(node, str):
+        return node
+    return ""
+
+
+def _manifest_welcome(manifest: dict[str, Any]) -> tuple[str, str]:
+    welcome = manifest.get("welcome_message")
+    return _localized_text(welcome, lang="zh"), _localized_text(welcome, lang="en")
+
+
+def _manifest_quick_prompts(manifest: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    raw = manifest.get("quick_prompts")
+    if not isinstance(raw, list):
+        return ()
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if isinstance(item, dict):
+            out.append(item)
+    return tuple(out)
+
+
 def _agent_color(registry: Any, agent_id: str) -> str | None:
     cfg = registry.get_config(agent_id)
     color = cfg.get("color")
@@ -53,6 +89,9 @@ def _snapshot_meta(
     name: str,
     description: str,
     color: str | None,
+    welcome_message_zh: str = "",
+    welcome_message_en: str = "",
+    quick_prompts: tuple[dict[str, Any], ...] = (),
 ) -> PublishedExpertSnapshotMeta:
     return PublishedExpertSnapshotMeta(
         name=name,
@@ -61,8 +100,9 @@ def _snapshot_meta(
         color=color,
         label_zh=name,
         label_en=name,
-        welcome_message_zh="",
-        welcome_message_en="",
+        welcome_message_zh=welcome_message_zh,
+        welcome_message_en=welcome_message_en,
+        quick_prompts=quick_prompts,
     )
 
 
@@ -83,6 +123,9 @@ async def publish_agent_expert(
     name: str,
     description: str = "",
     slug: str | None = None,
+    welcome_message_zh: str = "",
+    welcome_message_en: str = "",
+    quick_prompts: tuple[dict[str, Any], ...] = (),
 ) -> PublishedExpertRow:
     """Snapshot an owned agent workspace into a globally installable expert template."""
     repo = services.published_expert_repo
@@ -109,7 +152,11 @@ async def publish_agent_expert(
                 name=name,
                 description=resolved_description,
                 color=color or None,
+                welcome_message_zh=welcome_message_zh,
+                welcome_message_en=welcome_message_en,
+                quick_prompts=quick_prompts,
             ),
+            manifest_id=resolved_slug,
         )
         return cast(
             PublishedExpertRow,
@@ -144,6 +191,11 @@ async def refresh_published_expert(
     expert_id: str,
     source: Any,
     workspace: Any,
+    name: str | None = None,
+    description: str | None = None,
+    welcome_message_zh: str | None = None,
+    welcome_message_en: str | None = None,
+    quick_prompts: tuple[dict[str, Any], ...] | None = None,
 ) -> PublishedExpertRow:
     """Replace a published snapshot using its still-owned source agent workspace."""
     row = require_published_expert(services, expert_id)
@@ -154,15 +206,31 @@ async def refresh_published_expert(
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = source.icon or ""
     snapshot_dir = _snapshot_dir(services, row.id)
+    existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
+    existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
+    existing_quick_prompts = _manifest_quick_prompts(existing_manifest)
+    resolved_name = name if name is not None else row.name
+    resolved_description = description if description is not None else row.description
+    resolved_welcome_zh = (
+        welcome_message_zh if welcome_message_zh is not None else existing_welcome_zh
+    )
+    resolved_welcome_en = (
+        welcome_message_en if welcome_message_en is not None else existing_welcome_en
+    )
+    resolved_quick_prompts = quick_prompts if quick_prompts is not None else existing_quick_prompts
     await export_agent_workspace_to_dir(
         workspace=workspace,
         dest=snapshot_dir,
         metadata=_snapshot_meta(
             source,
-            name=row.name,
-            description=row.description,
+            name=resolved_name,
+            description=resolved_description,
             color=color or None,
+            welcome_message_zh=resolved_welcome_zh,
+            welcome_message_en=resolved_welcome_en,
+            quick_prompts=resolved_quick_prompts,
         ),
+        manifest_id=row.slug,
     )
     return cast(
         PublishedExpertRow,
@@ -170,6 +238,8 @@ async def refresh_published_expert(
             row.id,
             icon_name=icon_name,
             color=color,
+            name=resolved_name,
+            description=resolved_description,
         ),
     )
 

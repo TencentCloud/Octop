@@ -96,6 +96,9 @@ interface MessageListProps {
   onCancel?: () => void;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onForkUserMessage?: (messageId: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
@@ -117,6 +120,9 @@ interface GroupRenderContext {
   lastUserGroupIndex: number;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onForkUserMessage?: (messageId: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
@@ -185,6 +191,9 @@ function renderMessageGroup(
           composerLookups={ctx.composerLookups}
           onRegenerate={ctx.onRegenerate}
           onEditUserMessage={ctx.onEditUserMessage}
+          onForkUserMessage={ctx.onForkUserMessage}
+          forkDisabled={ctx.forkDisabled}
+          forkDisabledHint={ctx.forkDisabledHint}
         />
       </div>
     );
@@ -236,6 +245,9 @@ export default function MessageList(props: MessageListProps) {
     onCancel,
     onRegenerate,
     onEditUserMessage,
+    onForkUserMessage,
+    forkDisabled,
+    forkDisabledHint,
     onAcpPermissionSelect,
     onHitlDecision,
     onOpenBrowser,
@@ -661,6 +673,9 @@ export default function MessageList(props: MessageListProps) {
       lastUserGroupIndex,
       onRegenerate,
       onEditUserMessage,
+      onForkUserMessage,
+      forkDisabled,
+      forkDisabledHint,
       onAcpPermissionSelect,
       onHitlDecision,
       onOpenBrowser,
@@ -680,6 +695,9 @@ export default function MessageList(props: MessageListProps) {
       lastUserGroupIndex,
       onRegenerate,
       onEditUserMessage,
+      onForkUserMessage,
+      forkDisabled,
+      forkDisabledHint,
       onAcpPermissionSelect,
       onHitlDecision,
       onOpenBrowser,

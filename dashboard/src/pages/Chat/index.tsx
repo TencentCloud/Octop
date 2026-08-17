@@ -18,7 +18,7 @@ import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
-import { formatRunUsage } from "./utils/chatMessages";
+import { formatRunUsage, userTurnsFromEnd } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
 import { useChatHistoryRail } from "./hooks/useChatHistoryRail";
 import { useChatDockPanel } from "./hooks/useChatDockPanel";
@@ -38,6 +38,7 @@ import { useChatFileDetection } from "./hooks/useChatFileDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { dedupeDockFilePaths } from "./utils/dockFilePath";
 import { browserApi } from "../../api/modules/browser";
+import { octopThreadsApi } from "../../api/modules/octopThreads";
 import type { TokenUsage } from "../../api/types";
 import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
@@ -59,6 +60,7 @@ import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
 import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
+import { apiErrorMessage } from "../../utils/apiError";
 import PwaInstallPrompt from "../../components/PwaInstallPrompt";
 import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
 import styles from "./index.module.less";
@@ -596,6 +598,87 @@ function ChatPageInner() {
     [activeThreadId, editAndResend, resolvedAgentId],
   );
 
+  const [forking, setForking] = useState(false);
+  const hasPendingHitl = useMemo(
+    () => messages.some((message) => message.hitlData?.status === "pending"),
+    [messages],
+  );
+  const forkDisabled = forking || isStreaming || hasPendingHitl;
+  const forkDisabledHint =
+    !forking && (isStreaming || hasPendingHitl)
+      ? t("chat.forkDisabledWhileBusy")
+      : undefined;
+  const handleForkUserMessage = useCallback(
+    async (messageId: string) => {
+      const agent = resolvedAgentId;
+      if (!agent || !activeThreadId || forkDisabled) return;
+      const idx = messages.findIndex((message) => message.id === messageId);
+      if (idx < 0) return;
+      const userMsg = messages[idx];
+      if (userMsg.role !== "user") return;
+      const turnsFromEnd = userTurnsFromEnd(messages, messageId);
+      if (turnsFromEnd < 1) return;
+      setForking(true);
+      try {
+        const created = await octopThreadsApi.fork(agent, activeThreadId, {
+          message_id: messageId,
+          content: userMsg.content,
+          user_turns_from_end: turnsFromEnd,
+        });
+        const ctx = userMsg.composerContext;
+        if (ctx?.skills) handleSkillsChange(ctx.skills);
+        if (ctx?.connectors) handleConnectorsChange(ctx.connectors);
+        if (ctx?.knowledgeBaseIds) {
+          handleKnowledgeBaseIdsChange(ctx.knowledgeBaseIds);
+        }
+        if (ctx?.targetAgents) setSelectedTargetAgents(ctx.targetAgents);
+        if (ctx?.model) setSelectedModel(ctx.model);
+        if (ctx?.reasoningMode) {
+          handleReasoningChange(ctx.reasoningMode, ctx.reasoningEffort ?? null);
+        }
+        const forkAttachments = userMsg.attachments?.map((attachment) => ({
+          ...attachment,
+        }));
+        prefillInputRef.current = userMsg.content;
+        if (forkAttachments && forkAttachments.length > 0) {
+          chatStore.setPendingPrefillAttachments(forkAttachments);
+        }
+        chatInputRef.current?.setPrefillComposer(
+          userMsg.content,
+          forkAttachments,
+        );
+        await ensureThreadInList(created.thread_id);
+        navigate(`/chat/${agent}/${created.thread_id}`, {
+          state: { prefillInput: userMsg.content },
+        });
+        antMessage.success(
+          created.copied_messages > 0
+            ? t("chat.forkSuccess")
+            : t("chat.forkSuccessEmpty"),
+        );
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("chat.forkFailed"), t));
+      } finally {
+        setForking(false);
+      }
+    },
+    [
+      activeThreadId,
+      forkDisabled,
+      handleConnectorsChange,
+      handleKnowledgeBaseIdsChange,
+      handleReasoningChange,
+      handleSkillsChange,
+      messages,
+      navigate,
+      resolvedAgentId,
+      setSelectedModel,
+      setSelectedTargetAgents,
+      t,
+      ensureThreadInList,
+    ],
+  );
+
   const hasMessages = messages.length > 0;
   // On hard refresh / deep-link into a thread, messages start empty. Showing
   // Welcome until history returns looks like a full page flash. Keep the list
@@ -746,6 +829,9 @@ function ChatPageInner() {
                 onCancel={cancelStream}
                 onRegenerate={handleRegenerate}
                 onEditUserMessage={handleEditUserMessage}
+                onForkUserMessage={handleForkUserMessage}
+                forkDisabled={forkDisabled}
+                forkDisabledHint={forkDisabledHint}
                 onAcpPermissionSelect={handleAcpPermissionSelect}
                 onHitlDecision={handleHitlDecision}
                 onOpenBrowser={

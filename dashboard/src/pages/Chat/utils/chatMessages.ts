@@ -145,6 +145,17 @@ export function formatRunUsage(
   return parts.length > 0 ? parts.join(" / ") : null;
 }
 
+/** Count user turns from *messageId* through the latest (inclusive). */
+export function userTurnsFromEnd(
+  messages: Array<{ id: string; role: string }>,
+  messageId: string,
+): number {
+  const idx = messages.findIndex((message) => message.id === messageId);
+  if (idx < 0) return 0;
+  return messages.slice(idx).filter((message) => message.role === "user")
+    .length;
+}
+
 export function buildUserMessage(
   text: string,
   attachments?: ChatAttachment[],

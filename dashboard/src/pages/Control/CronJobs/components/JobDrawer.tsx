@@ -107,8 +107,6 @@ export function JobDrawer({
     [t],
   );
 
-  const quickCronOptions = presetOptions;
-
   useEffect(() => {
     if (!open) return;
     if (editingJob) {
@@ -274,7 +272,7 @@ export function JobDrawer({
               <Select
                 allowClear
                 placeholder={t("cronJobs.form.cronQuickPickPlaceholder")}
-                options={quickCronOptions}
+                options={presetOptions}
                 onChange={(value) => {
                   if (!value) return;
                   const cron = presetToCron(value);

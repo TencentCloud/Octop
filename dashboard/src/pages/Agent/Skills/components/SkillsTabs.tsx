@@ -83,6 +83,7 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
           agentId ? (
             <InstalledSkillsTab
               key={agentId}
+              agentId={agentId}
               kind={activeTab === "builtin" ? "builtin" : "custom"}
               {...installedSkills}
             />

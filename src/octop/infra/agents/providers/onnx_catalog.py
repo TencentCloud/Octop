@@ -35,9 +35,14 @@ _FALLBACK_SIZE_GB: dict[str, float] = {
     "BAAI/bge-base-en-v1.5": 0.21,
     "BAAI/bge-large-en-v1.5": 0.53,
     "BAAI/bge-base-zh-v1.5": 0.4,
+    "jinaai/jina-embeddings-v2-base-en": 0.32,
+    "jinaai/jina-embeddings-v2-small-en": 0.13,
     "intfloat/multilingual-e5-base": 0.44,
     "intfloat/multilingual-e5-small": 0.13,
     "sentence-transformers/all-MiniLM-L6-v2": 0.09,
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": 0.12,
+    "thenlper/gte-base": 0.22,
+    "thenlper/gte-large": 0.67,
 }
 
 # When fastembed is not installed, still recognize HF cache dirs it would create.

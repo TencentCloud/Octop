@@ -1,14 +1,99 @@
-.settingsEnableRow {
+.settingsBody {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
 }
 
-.settingsSection {
+.settingsFieldLabel {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+}
+
+.settingsHint {
   display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.onnxModelList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onnxModelItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-primary);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 40%,
+      var(--fn-border-secondary)
+    );
+  }
+}
+
+.onnxModelItemActive {
+  border-color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--fn-color-brand) 25%, transparent);
+}
+
+.onnxModelInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.onnxModelName {
+  overflow: hidden;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onnxModelMeta {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.showMoreOnnx {
+  height: 36px;
+  padding: 0;
+  color: var(--fn-text-secondary);
+}
+
+.drawerFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.downloadProgressLabel {
   margin-bottom: 8px;
+  font-size: 13px;
 }
 
 .helpIcon {
@@ -127,7 +212,7 @@
 
 .formOptionRow {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
@@ -136,6 +221,25 @@
   & + & {
     border-top: 1px solid var(--fn-border-secondary);
   }
+
+  :global(.ant-switch) {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.formOptionHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .layout {
@@ -441,21 +545,6 @@
   pointer-events: none;
 }
 
-.disabledOverlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--fn-bg-container) 84%, transparent);
-}
-
-.disabledOverlay :global(.ant-alert) {
-  max-width: 520px;
-}
-
 .detailHeader {
   display: flex;
   flex-direction: column;
@@ -573,6 +662,36 @@
   font-size: 14px;
   line-height: 1.6;
   color: var(--fn-text-tertiary);
+}
+
+.emptyLayout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-bg-container);
+}
+
+.emptyLayoutMobile {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.emptyGuide {
+  flex: 1;
+}
+
+.setupMascot {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .docCardGrid {
@@ -760,10 +879,6 @@
 
 .limitAlert {
   margin: 0 0 12px;
-}
-
-.modalChecks {
-  margin: 16px 0;
 }
 
 .featureBackend {

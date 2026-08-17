@@ -18,7 +18,10 @@ export interface PublishExpertBody {
   name: string;
   description?: string;
   slug?: string;
+  welcome_message?: { zh?: string; en?: string };
 }
+
+export type RefreshPublishedExpertBody = PublishExpertBody;
 
 export interface InstallPublishedExpertBody {
   name: string;
@@ -57,9 +60,10 @@ export const publishedExpertsApi = {
       },
     ),
 
-  refresh: (expertId: string) =>
+  refresh: (expertId: string, body?: RefreshPublishedExpertBody) =>
     request<PublishedExpert>(`${publishedPath(expertId)}/refresh`, {
       method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
     }),
 
   unpublish: (expertId: string) =>

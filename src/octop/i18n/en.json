@@ -284,6 +284,7 @@
     "SETUP_REQUIRED": "Initial setup is required.",
     "DATABASE_NOT_EMPTY": "The target database already has users. Use an empty database, or log in with the existing admin.",
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
+    "BACKUP_IN_PROGRESS": "A backup is already in progress. Try again shortly.",
     "FORBIDDEN": "Permission denied.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
@@ -302,6 +303,7 @@
     "PROVIDER_NAME_TAKEN": "Provider name is already in use.",
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
+    "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
@@ -498,6 +500,10 @@
         "host": "Broker Host"
       }
     }
+  },
+  "threads": {
+    "fork_title_suffix": " (fork)",
+    "fork_default_title": "Forked chat"
   },
   "agents": {
     "state": {

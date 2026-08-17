@@ -318,19 +318,39 @@ Commands:
 
 ## `octop backup`
 
-Export and restore Octop backups. Works fully offline — the wheel
-includes a `octop-backup` entrypoint that the dashboard can also
-invoke.
+Export and restore Octop backups. Works fully offline.
 
 ```
 Usage: octop backup [OPTIONS] COMMAND [ARGS]...
 
-  Export and restore Octop backups.
+  Backup and restore database + local agent workspaces.
 
 Commands:
   create     Create a backup archive (DB + workspaces + config).
   restore    Restore a backup archive into ~/.octop.
+  auto       Automatic backup status and one-shot run.
 ```
+
+### `octop backup auto`
+
+Automatic backups are scheduled **inside** a running `octop run` process
+(via the same system-job mechanism as TLS renewal). Configure in
+`config.json` under `backup`, with env overrides
+`OCTOP_BACKUP_AUTO_ENABLED`, `OCTOP_BACKUP_SCHEDULE`,
+`OCTOP_BACKUP_RETENTION_COUNT`, or via the dashboard Backup settings.
+
+```
+Usage: octop backup auto [OPTIONS] COMMAND [ARGS]...
+
+Commands:
+  status  Print automatic backup settings from config.json.
+  run     Create one automatic backup now and prune by retention.
+```
+
+Default schedule when enabled: `cron:0 4 * * *` (daily 04:00, server
+timezone). Automatic archives are named `octop-auto-backup-*.tar.gz`;
+retention only deletes those files and never touches manual
+`octop-backup-*.tar.gz` archives.
 
 ## `octop update`
 

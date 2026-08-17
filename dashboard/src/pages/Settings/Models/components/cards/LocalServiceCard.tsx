@@ -5,9 +5,9 @@
  * Opening settings auto-provisions the provider row when missing, then opens config.
  */
 import { useEffect, useState } from "react";
-import { Button, Card, Modal, Switch, Tooltip } from "antd";
+import { Button, Card, Switch, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
@@ -177,35 +177,6 @@ export function LocalServiceCard({
     }
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!row) return;
-    Modal.confirm({
-      title: t("models.deleteProviderTitle"),
-      content: t("models.deleteProviderConfirmSimple", { name: row.name }),
-      okText: t("common.delete"),
-      okButtonProps: { danger: true },
-      cancelText: t("common.cancel"),
-      onOk: async () => {
-        try {
-          await request(`/admin/providers/${row.id}`, { method: "DELETE" });
-          setRow(null);
-          setModalOpen(false);
-          message.success(
-            t("models.providerDeletedSimple", { name: row.name }),
-          );
-          await onSaved();
-        } catch (err) {
-          message.error(
-            err instanceof Error
-              ? err.message
-              : t("models.deleteProviderFailedSimple"),
-          );
-        }
-      },
-    });
-  };
-
   const logo = getProviderLogo(presetLogoId(preset)) ?? customProviderLogo;
   const models = row?.models ?? preset.models;
   const baseUrl = row?.base_url ?? preset.base_url;
@@ -320,18 +291,6 @@ export function LocalServiceCard({
                 icon={<Pencil size={14} />}
               />
             </Tooltip>
-            {row && (
-              <Tooltip title={t("common.delete")}>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  onClick={handleDelete}
-                  className={styles.cardActionBtn}
-                  icon={<Trash2 size={14} />}
-                />
-              </Tooltip>
-            )}
           </div>
         </div>
       </Card>
