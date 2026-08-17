@@ -507,6 +507,7 @@ def test_backend_spec_for_row_neutralizes_host_root_on_windows(
         "type": "local_shell",
         "root_dir": str(ws.resolve()),
         "virtual_mode": True,
+        "inherit_env": True,
     }
 
 
@@ -523,7 +524,13 @@ def test_build_harness_config_keeps_fs_permissions_for_local_shell_guard(
     cfg = manager._build_harness_config(
         _row(config_json=json.dumps({"backend": {"type": "local_shell", "virtual_mode": True}})),
     )
-    assert cfg.backend == {"type": "local_shell", "virtual_mode": True}
+    # Windows injects inherit_env so local_shell subprocesses see the host PATH;
+    # on POSIX sh already supplies a default PATH from the empty env, so the
+    # resolved backend keeps exactly the configured spec with no extra key.
+    expected = {"type": "local_shell", "virtual_mode": True}
+    if os.name == "nt":
+        expected["inherit_env"] = True
+    assert cfg.backend == expected
     assert cfg.permissions is not None
     middleware = cfg.middleware or []
     assert not any(isinstance(item, FilesystemGuardMiddleware) for item in middleware)

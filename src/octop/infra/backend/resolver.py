@@ -19,6 +19,13 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
     ``root_dir='/'`` resolves to the process current-drive root, which often
     differs from the drive hosting ``workspace_dir`` — scope the default to
     the agent workspace instead.
+
+    Windows also sets ``inherit_env=True``: deepagents ``LocalShellBackend``
+    defaults to an *empty* subprocess environment (no ``PATH``/``SystemRoot``),
+    which makes every external tool — python/curl/ffmpeg/edge-tts — unfindable
+    from the agent's ``execute`` tool. This is the path a brand-new agent (no
+    explicit ``backend`` config) takes, so it is where the new-user default
+    must already work.
     """
     from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
 
@@ -27,41 +34,61 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
             "type": "local_shell",
             "root_dir": str(workspace_dir.resolve()),
             "virtual_mode": True,
+            # Without this every execute() subprocess starts with an empty env
+            # (no PATH/SystemRoot), so python/curl/ffmpeg/edge-tts are unfindable.
+            "inherit_env": True,
         }
     return dict(DEFAULT_BACKEND_SPEC)
 
 
 def windows_neutralize_host_root(spec: Any, *, workspace_dir: Path) -> Any:
-    """Windows: rewrite local backends rooted at ``/`` to the agent workspace.
+    """Windows: normalize local host backends so they actually work on the host.
 
-    ``root_dir: "/"`` is the dashboard's default for local backends. On Windows
-    it resolves to the *current drive root* (often a different drive than the
-    agent workspace), so deepagents virtual-path checks reject every workspace
-    path with ``Path ... outside root directory``. Only ``root_dir`` is rewritten
-    so ``type`` / ``virtual_mode`` and other fields stay intact.
+    This is the single normalization point for Windows ``local_shell`` /
+    ``filesystem`` agent backends, correcting two defaults that are broken on
+    Windows. Applies to top-level specs, composite ``default`` subspecs, and
+    the agent-config path that doesn't go through ``default_agent_backend_spec``.
+    Route sub-backends are user-pinned and left untouched — a route root of
+    ``/`` is the caller's explicit choice and harmless to loading.
 
-    Applies to top-level ``local_shell`` / ``filesystem`` specs and to the
-    ``default`` of composite specs (the default is what anchors the agent
-    workspace). Route sub-backends are user-pinned and left untouched — a route
-    root of ``/`` is the caller's explicit choice and harmless to loading.
+    1. Host-root rewrite: ``root_dir: "/"`` is the dashboard's default for local
+    backends. On Windows it resolves to the *current drive root* (often a
+    different drive than the agent workspace), so deepagents virtual-path checks
+    reject every workspace path with ``Path ... outside root directory``. Only
+    ``root_dir`` is rewritten; ``type`` / ``virtual_mode`` stay intact.
+
+    2. Empty subprocess env: deepagents ``LocalShellBackend`` defaults
+    ``inherit_env=False``, so without intervention every subprocess starts with
+    an empty environment (no ``PATH``/``SystemRoot``) and common tools
+    (python/curl/ffmpeg/edge-tts) are unfindable. On POSIX ``sh`` fills in a
+    default ``PATH``, so the breakage is effectively Windows-specific. Inject
+    ``inherit_env`` so the parent server environment is visible to agent shell
+    commands — but only as a *default*: an explicitly pinned ``inherit_env`` is
+    preserved, so a user who deliberately wants an empty-env sandbox can still
+    set it to ``False``. (``filesystem`` never gets this: it has no execute tool
+    and its constructor rejects the kwarg.)
     """
     if os.name != "nt":
         return spec
     if not isinstance(spec, dict):
         return spec
     kind = spec.get("type")
-    if kind in ("local_shell", "filesystem") and _is_host_root(spec.get("root_dir")):
-        return {**spec, "root_dir": str(workspace_dir.resolve())}
-    if (
-        kind == "composite"
-        and isinstance(spec.get("default"), dict)
-        and _is_host_root(spec["default"].get("root_dir"))
-    ):
-        default = spec["default"]
-        return {
-            **spec,
-            "default": {**default, "root_dir": str(workspace_dir.resolve())},
-        }
+    if kind in ("local_shell", "filesystem"):
+        out = dict(spec)
+        if _is_host_root(spec.get("root_dir")):
+            out["root_dir"] = str(workspace_dir.resolve())
+        # local_shell runs shell commands on the host; deepagents defaults
+        # inherit_env=False, so without this every subprocess has an empty env
+        # (no PATH/SystemRoot) and python/curl/ffmpeg/edge-tts are unfindable.
+        # filesystem has no execute tool and its constructor rejects this kwarg.
+        # setdefault keeps an explicit user override (inherit_env: false).
+        if kind == "local_shell":
+            out.setdefault("inherit_env", True)
+        return out
+    if kind == "composite" and isinstance(spec.get("default"), dict):
+        new_default = windows_neutralize_host_root(spec["default"], workspace_dir=workspace_dir)
+        if new_default is not spec["default"]:
+            return {**spec, "default": new_default}
     return spec
 
 

@@ -7,9 +7,10 @@
 ## [Unreleased]
 
 ### 修复
-
 - 插件工具使用中文等非 ASCII 名称时 LLM 调用失败：主流 API 要求工具名匹配 `^[a-zA-Z0-9_-]{1,64}$`，现自动将非法名称转写为合法拼音名（`pypinyin` 缺失时退回下划线替换），冲突追加 `_2`/`_3` 后缀，并在工具描述前缀 `[原名: …]` 保留原名映射；`config_json.plugins` 配置键与插件内部仍使用原始名称，路由不受影响
 - 修复聊天页在"生成中"时于输入框持续打字导致消息列表上下轻微抖动的问题：输入框高度测量改为在离屏克隆节点上进行，不再瞬态改变页面布局
+- Windows 下本地 agent 的 `execute` 工具无法运行任何外部命令（python/curl/ffmpeg/edge-tts 均报"找不到"）：deepagents `LocalShellBackend` 默认 `inherit_env=False`，子进程继承空环境（无 `PATH`/`SystemRoot`）。现于 Windows 默认 backend spec（`default_agent_backend_spec`）与 `windows_neutralize_host_root` 归一化中注入 `inherit_env`（`setdefault`，显式配置 `inherit_env: false` 的沙箱选择仍被保留；仅 `local_shell`，`filesystem` 不接受该参数）
+- Windows 下 agent `execute` 输出丢失导致模型陷入自诊循环：deepagents 以 `text=True` 严格按 UTF-8 解码子进程管道，中文 Windows 原生工具（`dir`/git/ffmpeg/curl）输出 GBK/CP936，读取线程抛 `UnicodeDecodeError` 后整段输出被丢弃、并附赠错误退出码；且 harness 的虚拟路径改写会把 `C:/…` 盘符路径当成虚拟根路径改写坏。现以 bytes 模式读取 + `errors="replace"` 宽容解码（Python 子进程继承 `PYTHONUTF8=1` 输出 UTF-8，仍干净解码），并收紧改写正则的 bare-token 前瞻（排除 `:`/`\`），`C:\…`/`C:/…` 原样保留、`/AGENTS.md` 等虚拟路径仍映射到工作区。新增 `octop.infra.backend.windows_execute`（导入时幂等打补丁，仅 Windows）
 
 ## [0.9.24] - 2026-08-15
 
