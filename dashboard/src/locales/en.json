@@ -668,6 +668,7 @@
     "fileSaved": "{{filename}} saved",
     "fileSaveFailed": "Failed to save {{filename}}",
     "createDrawerTitle": "Create from \"{{name}}\"",
+    "memorySlimming": "Slimming memory",
     "agentStarted": "Agent \"{{name}}\" started",
     "agentStopped": "Agent \"{{name}}\" stopped",
     "agentStartFailed": "Failed to start agent",
@@ -886,6 +887,14 @@
   "chat": {
     "sharedExpert": {
       "banner": "Shared expert · provided by {{name}}"
+    },
+    "memoryMaintenance": {
+      "queued": "Waiting to slim the memory database…",
+      "pruning": "Cleaning expired memory…",
+      "compacting": "Compacting the memory database…",
+      "hintQueued": "Another agent is compacting disk. This one can still chat; sending pauses when its turn starts.",
+      "hintBlocking": "Sending is paused for this agent until slimming finishes.",
+      "elapsed": "{{seconds}}s elapsed"
     },
     "thinking": "Thinking",
     "continuing": "Continuing",

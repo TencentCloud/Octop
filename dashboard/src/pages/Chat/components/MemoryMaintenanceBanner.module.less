@@ -1,0 +1,37 @@
+.banner {
+  flex: 0 0 auto;
+  margin: 8px var(--chat-column-pad-x, 24px) 0;
+  padding: 10px 14px 8px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, #f5f5f7);
+  border: 1px solid var(--fn-border, #e8e8ed);
+
+  @media (max-width: 767px) {
+    margin: 8px var(--chat-column-pad-x-narrow, 12px) 0;
+  }
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.hint {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+}

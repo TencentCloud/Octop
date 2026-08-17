@@ -100,6 +100,8 @@ export const AgentCard = memo(function AgentCard({
     Set<string>
   >(() => new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [memorySlimming, setMemorySlimming] = useState(false);
+  const maintPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setLocalState(agent.state);
@@ -135,6 +137,51 @@ export const AgentCard = memo(function AgentCard({
       pollRef.current = null;
     };
   }, [localState, agent.agent_id, onStateChange, onPollSettled, refreshAgents]);
+
+  useEffect(() => {
+    if (localState !== "running") {
+      setMemorySlimming(false);
+      if (maintPollRef.current) {
+        clearInterval(maintPollRef.current);
+        maintPollRef.current = null;
+      }
+      return;
+    }
+    let cancelled = false;
+    const startedAt = Date.now();
+    const pull = () =>
+      request<{
+        memory_maintenance?: { phase?: string } | null;
+      }>(`/agents/${agent.agent_id}/status`)
+        .then((s) => {
+          if (cancelled) return;
+          const phase = s.memory_maintenance?.phase;
+          const active =
+            phase === "queued" || phase === "pruning" || phase === "compacting";
+          setMemorySlimming(!!active);
+          // First tick is ~1s after start; don't drop the poll on the
+          // idle snapshot before compact begins. Keep going while active.
+          if (
+            !active &&
+            Date.now() - startedAt > 15_000 &&
+            maintPollRef.current
+          ) {
+            clearInterval(maintPollRef.current);
+            maintPollRef.current = null;
+          }
+        })
+        .catch(() => {});
+    const start = setTimeout(pull, 800);
+    maintPollRef.current = setInterval(pull, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(start);
+      if (maintPollRef.current) {
+        clearInterval(maintPollRef.current);
+        maintPollRef.current = null;
+      }
+    };
+  }, [localState, agent.agent_id]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
@@ -332,6 +379,9 @@ export const AgentCard = memo(function AgentCard({
                 />
                 {formatAgentState(localState, t)}
               </div>
+              {memorySlimming && (
+                <Tag color="processing">{t("experts.memorySlimming")}</Tag>
+              )}
               <MbtiPersonaTag
                 value={agent.persona_mbti}
                 onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}

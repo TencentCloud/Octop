@@ -61,6 +61,25 @@ def _bootstrap_pending_for(server: Any, agent_id: str) -> bool:
     return not server.app_runtime.agent_registry.is_bootstrapped(agent_id)
 
 
+def _memory_maintenance_status(server: Any, agent_id: str) -> dict[str, Any] | None:
+    """Phase snapshot while this agent's SQLite is being slimmed. None if idle/unloaded."""
+    try:
+        agent = server.app_runtime.agent_registry.get_agent(agent_id)
+    except OctopError:
+        return None
+    except Exception:
+        logger.debug("memory_maintenance status unavailable for %s", agent_id, exc_info=True)
+        return None
+    fn = getattr(agent, "memory_maintenance_status", None)
+    if not callable(fn):
+        return None
+    try:
+        return fn()
+    except Exception:
+        logger.debug("memory_maintenance status failed for %s", agent_id, exc_info=True)
+        return None
+
+
 def _owner_username(server: Any, row: Any) -> str | None:
     if row.user_id is None:
         return None
@@ -361,4 +380,5 @@ async def agent_status(
         "cron_jobs": [
             {"id": j.cron_id, "prompt": j.prompt, "trigger": j.trigger} for j in cron_jobs
         ],
+        "memory_maintenance": _memory_maintenance_status(server, agent_id),
     }

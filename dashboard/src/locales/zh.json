@@ -668,6 +668,7 @@
     "fileSaved": "{{filename}} 已保存",
     "fileSaveFailed": "保存 {{filename}} 失败",
     "createDrawerTitle": "从「{{name}}」新建",
+    "memorySlimming": "整理记忆",
     "agentStarted": "专家「{{name}}」已启动",
     "agentStopped": "专家「{{name}}」已停止",
     "agentStartFailed": "启动失败",
@@ -885,6 +886,14 @@
   "chat": {
     "sharedExpert": {
       "banner": "共享专家 · 由 {{name}} 提供"
+    },
+    "memoryMaintenance": {
+      "queued": "正在排队整理记忆库…",
+      "pruning": "正在清理过期记忆…",
+      "compacting": "正在压缩记忆库…",
+      "hintQueued": "其他智能体正在整理磁盘，本库排队中。现在仍可对话；轮到本库时会暂停发送。",
+      "hintBlocking": "整理期间此智能体暂时无法发送消息，完成后会自动恢复。",
+      "elapsed": "已进行 {{seconds}}s"
     },
     "thinking": "正在思考",
     "continuing": "继续生成中",

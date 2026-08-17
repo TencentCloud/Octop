@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 智能体状态接口返回 `memory_maintenance`（queued / pruning / compacting）。聊天页显示阶段进度条，整理本库时暂停发送；专家卡片显示「整理记忆」标签。
+
 ## [0.9.23] - 2026-08-13
 
 ### 修复
