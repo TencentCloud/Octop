@@ -1,0 +1,42 @@
+{
+  "name": "@mtuser/pt-passport",
+  "version": "0.1.4",
+  "description": "美团 Passport 用户授权登录 CLI 工具",
+  "main": "dist/index.js",
+  "bin": {
+    "pt-passport": "dist/index.js"
+  },
+  "files": [
+    "dist/index.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "clihub-build": "bash clihub-build.sh",
+    "pack": "npm run build && npm pack",
+    "publish:inner": "npm run build && npm publish --registry=http://r.npm.sankuai.com",
+    "dev": "node_modules/.bin/tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "publishConfig": {
+    "registry": "http://r.npm.sankuai.com"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "commander": "^12.1.0",
+    "esbuild": "^0.28.0",
+    "javascript-obfuscator": "^5.4.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@sec/cliguard": "^1.3.0"
+  },
+  "bundleDependencies": [
+    "@sec/cliguard"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

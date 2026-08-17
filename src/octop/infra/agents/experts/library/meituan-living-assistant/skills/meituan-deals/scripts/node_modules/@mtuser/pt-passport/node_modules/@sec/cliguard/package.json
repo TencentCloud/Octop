@@ -1,0 +1,30 @@
+{
+  "name": "@sec/cliguard",
+  "version": "1.3.0",
+  "description": "OpenClaw Skill HTTP Request Guardian — 拦截所有 HTTP 请求并附加签名，维护设备指纹守护进程持续上报",
+  "files": [
+    "index.js",
+    "core/",
+    "readme.md"
+  ],
+  "main": "index.js",
+  "bin": {
+    "cliguard": "./index.js"
+  },
+  "keywords": [
+    "cliguard",
+    "openclaw",
+    "skill",
+    "security",
+    "fingerprint",
+    "http-interceptor",
+    "signature",
+    "mtgsig"
+  ],
+  "author": "CLIGuard",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {}
+}
