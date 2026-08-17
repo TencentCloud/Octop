@@ -42,6 +42,7 @@ import {
   Network,
   ShieldCheck,
   RefreshCw,
+  Utensils,
 } from "lucide-react";
 
 const iconMap: Record<string, (size: number) => ReactNode> = {
@@ -75,6 +76,8 @@ const iconMap: Record<string, (size: number) => ReactNode> = {
   network: (size) => <Network size={size} />,
   "shield-check": (size) => <ShieldCheck size={size} />,
   "refresh-cw": (size) => <RefreshCw size={size} />,
+  utensils: (size) => <Utensils size={size} />,
+  bell: (size) => <Bell size={size} />,
 };
 
 export const EXPERT_ICON_NAMES = Object.keys(iconMap);
