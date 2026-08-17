@@ -1073,6 +1073,8 @@
     "dockFileListCount": "{{count}} files",
     "dockFileListHint": "This list only shows files produced during execution. They are not guaranteed to be kept, and the model may delete them after processing finishes.",
     "dockFileMaybeDeleted": "This file may have been a temporary artifact during processing and has already been deleted.",
+    "dockFileDelete": "Delete file",
+    "dockFileDeleteConfirm": "Delete this file? This cannot be undone.",
     "remoteBrowserTitle": "Remote Browser",
     "dockTerminalTitle": "Terminal",
     "loadEarlierMessages": "Load earlier messages"

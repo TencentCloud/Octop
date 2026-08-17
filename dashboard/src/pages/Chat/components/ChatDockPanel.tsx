@@ -25,7 +25,7 @@ import ChatDockPanelShell from "../../../components/BrowserWorkspace/ChatDockPan
 import type { DisplayEnvironment } from "../../../api/types/browser";
 import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import type { DockTab, DockTabId } from "../hooks/useChatDockPanel";
-import { dockFileBasename } from "../utils/dockFilePath";
+import { dockFileBasename, dockFileTabId } from "../utils/dockFilePath";
 import styles from "../index.module.less";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
@@ -127,6 +127,14 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const handleBrowserRefreshReady = useCallback((refresh: () => void) => {
     browserRefreshRef.current = refresh;
   }, []);
+
+  /** Close the viewer tab of a deleted file (canonical key matches tab id). */
+  const handleCloseFile = useCallback(
+    (path: string) => {
+      onCloseTab(dockFileTabId(path, agentId));
+    },
+    [agentId, onCloseTab],
+  );
 
   const getFileActionsHandler = useCallback((path: string) => {
     const existing = fileActionsHandlersRef.current[path];
@@ -254,6 +262,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               agentId={agentId}
               filePaths={filePaths}
               onOpenFile={onOpenFile}
+              onCloseFile={handleCloseFile}
             />
           </div>
         )}
