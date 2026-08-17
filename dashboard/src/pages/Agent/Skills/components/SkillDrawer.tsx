@@ -44,6 +44,17 @@ export interface SkillFormValues {
 
 export const OCTOP_EMOJI_META_KEY = "octop.emoji";
 
+/**
+ * The skill name doubles as the workspace directory slug, so only
+ * filesystem-hostile characters are rejected - CJK and other Unicode
+ * letters are allowed.
+ */
+const SKILL_NAME_PATTERN = /^(?!\.)[^\\/:*?"<>|\x00-\x1f]{1,64}$/;
+
+export function isValidSkillName(name: string): boolean {
+  return SKILL_NAME_PATTERN.test(name.trim());
+}
+
 function yamlQuote(value: string): string {
   if (!value) return '""';
   if (/[:#\n"'{}[\],&*?|>!%@`]/.test(value) || value.trim() !== value) {
@@ -401,9 +412,16 @@ export function SkillDrawer({
       }
       const { body } = splitMarkdownFrontmatter(content);
       const fm = splitMarkdownFrontmatter(content).raw ?? "";
+      const name = yamlTopLevel(fm, "name") || values.name;
+      // Edits keep the existing slug (updateSkill ignores the name), so only
+      // creation needs the slug check - legacy skills with odd names stay editable.
+      if (isCreate && !isValidSkillName(name)) {
+        message.warning(t("skills.namePattern"));
+        return;
+      }
       onSubmit({
         ...values,
-        name: yamlTopLevel(fm, "name") || values.name,
+        name,
         description: yamlTopLevel(fm, "description") || values.description,
         body,
         content,
@@ -431,8 +449,13 @@ export function SkillDrawer({
           ? [
               { required: true, message: t("skills.pleaseInputName") },
               {
-                pattern: /^[a-zA-Z0-9._-]+$/,
-                message: t("skills.namePattern"),
+                validator: (_: unknown, value: string) => {
+                  // Empty is reported by the required rule above.
+                  if (!String(value ?? "").trim()) return Promise.resolve();
+                  return isValidSkillName(String(value))
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(t("skills.namePattern")));
+                },
               },
             ]
           : undefined
