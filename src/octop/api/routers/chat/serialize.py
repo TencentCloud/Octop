@@ -11,16 +11,33 @@ from pathlib import Path
 from typing import Any
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
+from octop.i18n.domains.attachment import attachment_empty_image
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
+from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
 
 _THINKING_CAPTURE_RE = re.compile(
     r"<think>([\s\S]*?)</think>\s*",
+    re.IGNORECASE,
+)
+
+# Matches the lightweight placeholder that ``MediaOffloadMiddleware`` writes
+# into LangGraph state for already-offloaded inline images / audio. Format
+# (see harness_agent.middleware.media_offload._placeholder_text_block):
+#   [<btype> offloaded: sha=<short_sha> path=<path> size=<n>B mime=<m>;
+#   use read_file to retrieve bytes]
+# We strip these on history serialization because the original bytes are
+# still available via ``inbound_attachments`` and the dashboard renders the
+# thumbnail from there — leaving the placeholder visible made the chat show
+# a "[image offloaded: sha=… path=…]" line under every user image after the
+# second turn (when the middleware first re-encountered the block).
+_OFFLOAD_PLACEHOLDER_RE = re.compile(
+    r"^\s*\[\s*(?:image|audio)\s+offloaded\s*:",
     re.IGNORECASE,
 )
 
@@ -33,6 +50,73 @@ HISTORY_MAX_LIMIT = 200
 
 def _clamp_history_limit(limit: int) -> int:
     return max(1, min(limit, HISTORY_MAX_LIMIT))
+
+
+def _is_offload_placeholder_block(block: Any) -> bool:
+    """True when *block* is a ``MediaOffloadMiddleware`` placeholder.
+
+    The middleware rewrites an inline image/audio block into a single text
+    block of the form ``[image offloaded: sha=… path=… size=…B mime=…; use
+    read_file to retrieve bytes]`` on every turn after the first one. We
+    must not surface that text in the dashboard: the original attachment
+    is still available via ``inbound_attachments`` and the UI renders the
+    image from there. Showing the placeholder underneath is a UX bug.
+    """
+    if not isinstance(block, dict):
+        return False
+    if str(block.get("type") or "").lower() != "text":
+        return False
+    text = str(block.get("text") or "")
+    return bool(_OFFLOAD_PLACEHOLDER_RE.match(text))
+
+
+def _user_message_has_image_attachment(additional_kwargs: Any) -> bool:
+    """True if the persisted ``INBOUND_ATTACHMENTS_KEY`` carries any image."""
+    if not isinstance(additional_kwargs, dict):
+        return False
+    raw = additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
+    if not isinstance(raw, list):
+        return False
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").lower()
+        media_type = str(item.get("media_type") or item.get("mediaType") or "")
+        if kind == "image" or media_type.lower().startswith("image/"):
+            return True
+    return False
+
+
+def _strip_image_only_text_blocks(
+    blocks: list[dict[str, Any]],
+    *,
+    locale: str,
+) -> list[dict[str, Any]]:
+    """Drop placeholders + the LLM-facing "User sent an image." sentinel.
+
+    Only safe when the original image is also being delivered to the
+    dashboard via ``inbound_attachments``; if not, removing the text
+    would make a pure-image turn look empty in the UI.
+    """
+    empty_image = attachment_empty_image(normalize_locale(locale)).strip()
+    out: list[dict[str, Any]] = []
+    for block in blocks:
+        if _is_offload_placeholder_block(block):
+            continue
+        if (
+            empty_image
+            and isinstance(block, dict)
+            and str(block.get("type") or "").lower() == "text"
+            and str(block.get("text") or "").strip() == empty_image
+        ):
+            continue
+        out.append(block)
+    return out
+
+
+def _user_locale(user: Any) -> str:
+    raw = getattr(user, "locale", None) if user is not None else None
+    return normalize_locale(str(raw) if raw else None)
 
 
 def _slice_message_page(
@@ -112,7 +196,7 @@ async def _load_thread_messages(
             offset,
         )
         for m in raw_messages:
-            entry = _serialize_history_message(m)
+            entry = _serialize_history_message(m, user=user)
             if entry is not None:
                 out.append(entry)
     except Exception:
@@ -474,7 +558,7 @@ def _split_string_thinking(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def _serialize_history_message(msg: Any) -> dict[str, Any] | None:
+def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] | None:
     """Project a LangGraph checkpoint message into dashboard history shape."""
     role = _message_role(msg)
     if role in ("system", ""):
@@ -512,7 +596,19 @@ def _serialize_history_message(msg: Any) -> dict[str, Any] | None:
     if role == "assistant":
         blocks.extend(_tool_use_blocks(_msg_attr(msg, "tool_calls")))
 
-    if not blocks:
+    raw_att = (
+        additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
+        if isinstance(additional_kwargs, dict)
+        else None
+    )
+    has_user_attachments = isinstance(raw_att, list) and bool(raw_att)
+    if role == "user" and _user_message_has_image_attachment(additional_kwargs):
+        # The original image is being delivered through inbound_attachments;
+        # the image/audio offload placeholders and the LLM-only "User sent
+        # an image." sentinel are redundant noise on the dashboard.
+        blocks = _strip_image_only_text_blocks(blocks, locale=_user_locale(user))
+
+    if not blocks and not (role == "user" and has_user_attachments):
         return None
 
     entry = {"role": role, "content": blocks}
@@ -524,8 +620,7 @@ def _serialize_history_message(msg: Any) -> dict[str, Any] | None:
         raw_ctx = additional_kwargs.get(COMPOSER_CTX_KEY)
         if isinstance(raw_ctx, dict) and raw_ctx:
             entry["composer_context"] = raw_ctx
-        raw_att = additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
-        if isinstance(raw_att, list) and raw_att:
+        if has_user_attachments:
             entry["inbound_attachments"] = raw_att
     ts_ms = _extract_message_timestamp_ms(msg)
     if ts_ms is not None:
