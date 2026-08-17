@@ -32,6 +32,7 @@ import { preferencesApi } from "../api/modules/preferences";
 import { clearAuthToken } from "../api/request";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { apiErrorMessage } from "../utils/apiError";
+import { userCan } from "../utils/permissions";
 import {
   MIN_PASSWORD_LENGTH,
   passwordPolicyIssue,
@@ -256,17 +257,19 @@ export default function AvatarDropdown({
         <span>{t("account.changePassword")}</span>
       </button>
 
-      <button
-        type="button"
-        className={styles.menuItem}
-        onClick={() => {
-          setMenuOpen(false);
-          navigate("/admin/advanced?tab=updates");
-        }}
-      >
-        <RefreshCw size={16} strokeWidth={1.8} />
-        <span>{t("account.checkUpdates")}</span>
-      </button>
+      {userCan(user, "update") && (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => {
+            setMenuOpen(false);
+            navigate("/admin/advanced?tab=updates");
+          }}
+        >
+          <RefreshCw size={16} strokeWidth={1.8} />
+          <span>{t("account.checkUpdates")}</span>
+        </button>
+      )}
 
       <Divider className={styles.menuDivider} />
 
