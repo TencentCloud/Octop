@@ -103,7 +103,7 @@ node "$RUN_JS" init
 | `get-token [--env test\|prod]` | 获取缓存的用户 Token |
 | `auth-get-code [--env test\|prod]` | 获取授权链接 |
 | `auth-poll-token` | 获取用户授权结果 |
-| `qrcode <url>` | 获取二维码图片URL（服务端生成） |
+| `qrcode <url>` | 获取二维码图片（服务端优先，本地兜底） |
 | `issue` | 领券 |
 | `hotword --city-id <id>` | 热搜词查询 |
 | `search --keyword <kw> --lat <lat> --lng <lng> --city-id <id> [--page N] [--query-id Q] [--request-id R] [--max-distance-km D]` | 商品搜索 |
@@ -199,16 +199,17 @@ node "$RUN_JS" auth-get-code
 node "$RUN_JS" get-client-type
 ```
 
-2. **非小程序客户端**（`clientType` 为 `mac`、`windows` 等）：调用 `qrcode` 生成二维码：
+2. **所有客户端**（含 `miniprogram`）：调用 `qrcode` 生成二维码（Octop Web 控制台等环境用户可扫码）：
 
 ```bash
 node "$RUN_JS" qrcode "<auth_url>"
 ```
 
-- `ok: true, type: "image"` → 二维码生成成功，记为 `imageUrl`
+- `ok: true, type: "image"` → 二维码生成成功，记为 `imageUrl`（本地生成时为 `data:image/png` data URI，展示方式相同）
+- `ok: true, type: "ascii"` → 本地字符画二维码，将 `ascii` 字段内容放入 ``` ``` 代码块原样展示
 - `ok: false` → 二维码生成失败，无 `imageUrl`
 
-3. **小程序客户端**（`clientType` 为 `miniprogram`）：不生成二维码，无 `imageUrl`。
+3. ~~小程序客户端不生成二维码~~（已废弃：Octop Web 控制台跑在 Linux 上会被误判为 miniprogram，实际用户可正常扫码，故统一生成）。
 
 4. 将以下内容**作为一整条消息**输出给用户。根据是否有 `imageUrl` 替换 `{二维码行}` 和 `{提示语}`，其余内容固定不变：
 
@@ -221,6 +222,8 @@ node "$RUN_JS" qrcode "<auth_url>"
                               ← 无二维码时：请点击下方链接，使用美团 App 完成登录：
 
 👉 [点击登录](<url>)
+
+<url>                        ← 原始登录链接单独占一行（纯文本），方便用户复制
 
 > ⏱ 链接有效期 **10 分钟**，登录完成后将自动继续。
 

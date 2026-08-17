@@ -11,8 +11,7 @@
  *   get-token [--env test|prod]   获取缓存的用户Token
  *   auth-get-code [--env test|prod]  获取授权链接
  *   auth-poll-token               获取用户授权结果
- *   qrcode <url>                  获取二维码图片URL（服务端生成）
- *   qrcode <url> [client_id]      生成二维码PNG
+ *   qrcode <url>                  获取二维码（服务端优先，本地PNG/ASCII兜底）
  *   issue                         领券
  *   hotword --city-id <id>        热搜词查询
  *   search --keyword <kw> --lat <lat> --lng <lng> --city-id <id> [--page N] [--page-size N] [--query-id Q] [--request-id R] [--max-distance-km D]
@@ -506,10 +505,30 @@ function httpsGet(urlStr, extraHeaders) {
 }
 
 /**
- * qrcode — 通过服务端接口获取二维码图片 URL
+ * qrcode — 获取登录二维码，三级策略：
+ *   1. 美团服务端接口生成图片 URL（首选，点击统计有效）
+ *   2. 本地 qrcode 库生成 PNG data URI（服务端失败兜底）
+ *   3. 本地生成 ASCII 字符画（qrcode 库缺失时最终兜底）
  * 用法: node run.js qrcode <url>
- * 调用 https://click.meituan.com/cps/ai/product/getQrCodeImage
  */
+function qrcodeLocalFallback(url) {
+  // 先尝试 PNG data URI，库缺失时退化为 ASCII 字符画
+  const pngRes = runPython('qr_local.py', [url]);
+  if (pngRes.ok) return pngRes;
+  if (pngRes.error === 'QRCODE_LIB_MISSING') {
+    const asciiRes = runPython('qr_local.py', [url, '--ascii']);
+    if (asciiRes.ok) return asciiRes;
+    // qrcode 库缺失连 ASCII 也失败 → 现场安装后重试一次
+    try {
+      execSync(`"${PYTHON}" -m pip install --quiet qrcode pillow`, { encoding: 'utf-8', timeout: 60000, stdio: 'pipe' });
+      return runPython('qr_local.py', [url]);
+    } catch (_) {
+      return pngRes;
+    }
+  }
+  return pngRes;
+}
+
 commands.qrcode = function (argv) {
   const url = (argv || [])[0] || '';
 
@@ -533,11 +552,23 @@ commands.qrcode = function (argv) {
         if (data && data.data) {
           out({ ok: true, type: 'image', imageUrl: data.data });
         } else {
-          out({ ok: false, type: 'skip', message: 'No image returned', raw: data });
+          // 服务端未返回图片 → 本地兜底
+          const local = qrcodeLocalFallback(url);
+          if (local.ok) {
+            out(Object.assign({ source: 'local' }, local));
+          } else {
+            out({ ok: false, type: 'skip', message: 'No image returned', raw: data });
+          }
         }
       })
       .catch(function (e) {
-        out({ ok: false, type: 'skip', message: e.message });
+        // 服务端请求失败（网络/超时）→ 本地兜底
+        const local = qrcodeLocalFallback(url);
+        if (local.ok) {
+          out(Object.assign({ source: 'local' }, local));
+        } else {
+          out({ ok: false, type: 'skip', message: e.message });
+        }
       });
 };
 
@@ -1223,7 +1254,7 @@ Commands:
   get-token [--env test|prod]   Get cached user token
   auth-get-code [--env test|prod]  Get auth link
   auth-poll-token               Poll auth result
-  qrcode <url>                  Get QR code image URL (server-side)
+  qrcode <url>                  Get QR code (server-side first, local PNG/ASCII fallback)
   issue                         Issue coupons
   hotword --city-id <id>        Hot search words
   search --keyword <kw> --lat <lat> --lng <lng> --city-id <id>
