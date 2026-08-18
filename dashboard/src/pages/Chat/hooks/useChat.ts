@@ -26,7 +26,10 @@ import {
 import { normalizeComposerContext } from "../utils/chatMessages";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { isImageAttachment } from "../utils/chatAttachments";
-import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
+import {
+  agentAttachmentAccessUrl,
+  parseToolExecutionFeedback,
+} from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
 import type {
   ChatAttachment,
@@ -267,6 +270,8 @@ function enrichAttachmentPreviewUrls(
 function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   const raw: InternalChatMessage[] = entries.map((entry, index) => {
     const tool = extractToolData(entry.content);
+    const toolFeedback = parseToolExecutionFeedback(tool?.data.output);
+    const toolErrorCode = toolFeedback?.code || tool?.data.errorCode;
     const fromMeta =
       entry.role === "user"
         ? attachmentsFromInboundMeta(
@@ -329,8 +334,20 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
       toolData: tool?.data,
       usage: normalizeTokenUsage(entry.usage ?? undefined) ?? undefined,
       metadata: normalizeMessageMetadata(entry.metadata ?? undefined),
+      errorInfo:
+        tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
+          ? {
+              message: toolFeedback?.message || tool?.data.output,
+              code: toolErrorCode || "tool_error",
+              source: "tool_result",
+              retryable: toolFeedback?.retryable,
+            }
+          : undefined,
       _toolKind: tool?.kind,
-      status: "done",
+      status:
+        tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
+          ? "error"
+          : "done",
       timestamp: resolveEntryTimestamp(entry),
     };
   });
@@ -358,7 +375,8 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
           },
-          status: "done",
+          status: current.status,
+          errorInfo: current.errorInfo,
         };
         continue;
       }

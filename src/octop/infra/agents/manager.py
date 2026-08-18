@@ -17,6 +17,10 @@ from harness_agent.security.models import SecurityPolicy
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
+from octop.infra.agents.media_generation import (
+    MediaGenerationSettings,
+    MediaGenerationSettingsStore,
+)
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
 from octop.infra.agents.runtime_limits import (
@@ -264,6 +268,10 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
+        self._media_generation = MediaGenerationSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
         self._security = SecuritySettingsStore(settings_repo=repos.settings_repo)
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
@@ -289,6 +297,10 @@ class AgentManager:
         self._repos = repos
         self._config = config
         self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._media_generation = MediaGenerationSettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
@@ -362,6 +374,10 @@ class AgentManager:
     @property
     def langfuse(self) -> LangfuseSettingsStore:
         return self._langfuse
+
+    @property
+    def media_generation(self) -> MediaGenerationSettingsStore:
+        return self._media_generation
 
     @property
     def paths(self) -> PathLayout:
@@ -1155,6 +1171,28 @@ class AgentManager:
         )
         if self._harness_manager is not None:
             self._harness_manager.set_langfuse(self._langfuse.harness_config())
+        return view
+
+    async def save_media_generation(
+        self,
+        *,
+        enabled: bool,
+        image_enabled: bool,
+        video_enabled: bool,
+        image_model: str,
+        video_model: str,
+        api_key: str | None = None,
+    ) -> MediaGenerationSettings:
+        """Persist media settings and rebuild running harness agents."""
+        view = self._media_generation.save(
+            enabled=enabled,
+            image_enabled=image_enabled,
+            video_enabled=video_enabled,
+            image_model=image_model,
+            video_model=video_model,
+            api_key=api_key,
+        )
+        await self.reload_all()
         return view
 
     def save_security(self, policy: SecurityPolicy | dict[str, Any]) -> SecurityPolicy:
@@ -1990,6 +2028,7 @@ class AgentManager:
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
             log_dir=str(self.paths.logs_dir),
+            media_generation=self._media_generation.harness_config(),
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )

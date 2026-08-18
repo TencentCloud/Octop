@@ -456,7 +456,9 @@
     "acp_runner": "ACP 外部 Agent",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
-    "send_file_to_user": "发送文件"
+    "send_file_to_user": "发送文件",
+    "generate_image": "生成图片",
+    "generate_video": "生成视频"
   },
   "skills": {
     "pdf": "PDF 处理",

@@ -456,7 +456,9 @@
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
-    "send_file_to_user": "Send file"
+    "send_file_to_user": "Send file",
+    "generate_image": "Generate image",
+    "generate_video": "Generate video"
   },
   "skills": {
     "pdf": "PDF",

@@ -11,8 +11,9 @@
  */
 import { useMemo, useState } from "react";
 import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
-import { Plus, RefreshCw } from "lucide-react";
+import { Images, MessageSquareText, Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import PageShell from "../../../layouts/PageShell";
 import { useProviders, type ProviderRow } from "./useProviders";
 import { groupPresets, isLocalPreset, isPresetProvider } from "./presetUtils";
@@ -27,6 +28,7 @@ import {
   ProviderCard,
 } from "./components";
 import styles from "./index.module.less";
+import { MediaGenerationSettingsPanel } from "../MediaGeneration";
 
 const { Title } = Typography;
 
@@ -44,6 +46,15 @@ export default function ModelsPage() {
   } = useProviders();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modelCategory =
+    searchParams.get("tab") === "generation" ? "generation" : "chat";
+  const setModelCategory = (next: string) => {
+    const updated = new URLSearchParams(searchParams);
+    if (next === "generation") updated.set("tab", "generation");
+    else updated.delete("tab");
+    setSearchParams(updated, { replace: true });
+  };
 
   const cloudPresets = useMemo(
     () => groupPresets(presets.filter((p) => !isLocalPreset(p))),
@@ -111,117 +122,152 @@ export default function ModelsPage() {
       title={t("pageShell.models.title")}
       subtitle={t("pageShell.models.subtitle")}
       actions={
-        <Space>
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={() => void fetchAll()}
-          >
-            {t("common.refresh")}
-          </Button>
-        </Space>
+        modelCategory === "chat" ? (
+          <Space>
+            <Button
+              icon={<RefreshCw size={14} />}
+              onClick={() => void fetchAll()}
+            >
+              {t("common.refresh")}
+            </Button>
+          </Space>
+        ) : null
       }
     >
-      {loading ? (
-        <LoadingState message={t("models.loadingProviders")} />
-      ) : error ? (
-        <LoadingState message={error} error onRetry={() => void fetchAll()} />
-      ) : !hasContent ? (
-        <Empty description={t("models.noProvidersHint")} />
-      ) : (
-        <>
-          <ActiveModelPool
-            resolvedModels={resolvedModels}
-            activeModel={activeModel}
-            modelReasoning={modelReasoning}
-            providers={providers}
-            onSaved={fetchAll}
-          />
-
-          <Divider style={{ margin: "24px 0" }} />
-
-          {/* Preset providers section */}
-          {presets.length > 0 && (
-            <>
-              <Title level={5} style={{ marginBottom: 12 }}>
-                {t("models.presetProviders")}
-              </Title>
-              <Tabs
-                items={[
-                  {
-                    key: "cloud",
-                    label: t("models.presetCloud"),
-                    children: renderPresetGrid(
-                      cloudPresets.grouped,
-                      cloudPresets.ungrouped,
-                    ),
-                  },
-                  {
-                    key: "local",
-                    label: t("models.presetLocal"),
-                    children: renderPresetGrid(
-                      localPresets.grouped,
-                      localPresets.ungrouped,
-                    ),
-                  },
-                ]}
-              />
-            </>
-          )}
-
-          {/* Custom providers section — title row with inline "+ add" button */}
-          <>
-            {(presets.length > 0 || customProviders.length > 0) && (
-              <Divider style={{ margin: "20px 0" }} />
-            )}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 12,
-              }}
-            >
-              <Title level={5} style={{ margin: 0 }}>
-                {t("models.customProviders")}
-              </Title>
-              <Button
-                type="primary"
-                size="small"
-                icon={<Plus size={13} />}
-                onClick={() => setAddOpen(true)}
-              >
-                {t("models.addCustomProvider")}
-              </Button>
-            </div>
-            {customProviders.length > 0 ? (
-              <div className={styles.providerCards}>
-                {customProviders.map((p) => (
-                  <ProviderCard
-                    key={p.id}
-                    provider={p}
-                    onSaved={fetchAll}
-                    isHover={hoveredCard === String(p.id)}
-                    onMouseEnter={() => setHoveredCard(String(p.id))}
-                    onMouseLeave={() => setHoveredCard(null)}
-                    apiPrefix="/admin/providers"
+      <Tabs
+        activeKey={modelCategory}
+        onChange={setModelCategory}
+        items={[
+          {
+            key: "chat",
+            label: (
+              <Space size={6}>
+                <MessageSquareText size={15} />
+                {t("models.chatModelsTab")}
+              </Space>
+            ),
+            children: (
+              <>
+                {loading ? (
+                  <LoadingState message={t("models.loadingProviders")} />
+                ) : error ? (
+                  <LoadingState
+                    message={error}
+                    error
+                    onRetry={() => void fetchAll()}
                   />
-                ))}
-              </div>
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t("models.noCustomProvidersHint")}
-              />
-            )}
-          </>
-        </>
-      )}
+                ) : !hasContent ? (
+                  <Empty description={t("models.noProvidersHint")} />
+                ) : (
+                  <>
+                    <ActiveModelPool
+                      resolvedModels={resolvedModels}
+                      activeModel={activeModel}
+                      modelReasoning={modelReasoning}
+                      providers={providers}
+                      onSaved={fetchAll}
+                    />
 
-      <CustomProviderModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSaved={fetchAll}
-        apiPrefix="/admin/providers"
+                    <Divider style={{ margin: "24px 0" }} />
+
+                    {/* Preset providers section */}
+                    {presets.length > 0 && (
+                      <>
+                        <Title level={5} style={{ marginBottom: 12 }}>
+                          {t("models.presetProviders")}
+                        </Title>
+                        <Tabs
+                          items={[
+                            {
+                              key: "cloud",
+                              label: t("models.presetCloud"),
+                              children: renderPresetGrid(
+                                cloudPresets.grouped,
+                                cloudPresets.ungrouped,
+                              ),
+                            },
+                            {
+                              key: "local",
+                              label: t("models.presetLocal"),
+                              children: renderPresetGrid(
+                                localPresets.grouped,
+                                localPresets.ungrouped,
+                              ),
+                            },
+                          ]}
+                        />
+                      </>
+                    )}
+
+                    {/* Custom providers section — title row with inline "+ add" button */}
+                    <>
+                      {(presets.length > 0 || customProviders.length > 0) && (
+                        <Divider style={{ margin: "20px 0" }} />
+                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Title level={5} style={{ margin: 0 }}>
+                          {t("models.customProviders")}
+                        </Title>
+                        <Button
+                          type="primary"
+                          size="small"
+                          icon={<Plus size={13} />}
+                          onClick={() => setAddOpen(true)}
+                        >
+                          {t("models.addCustomProvider")}
+                        </Button>
+                      </div>
+                      {customProviders.length > 0 ? (
+                        <div className={styles.providerCards}>
+                          {customProviders.map((p) => (
+                            <ProviderCard
+                              key={p.id}
+                              provider={p}
+                              onSaved={fetchAll}
+                              isHover={hoveredCard === String(p.id)}
+                              onMouseEnter={() => setHoveredCard(String(p.id))}
+                              onMouseLeave={() => setHoveredCard(null)}
+                              apiPrefix="/admin/providers"
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t("models.noCustomProvidersHint")}
+                        />
+                      )}
+                    </>
+                  </>
+                )}
+
+                <CustomProviderModal
+                  open={addOpen}
+                  onClose={() => setAddOpen(false)}
+                  onSaved={fetchAll}
+                  apiPrefix="/admin/providers"
+                />
+              </>
+            ),
+          },
+          {
+            key: "generation",
+            label: (
+              <Space size={6}>
+                <Images size={15} />
+                {t("models.generationModelsTab")}
+              </Space>
+            ),
+            children: <MediaGenerationSettingsPanel />,
+          },
+        ]}
       />
     </PageShell>
   );

@@ -9,6 +9,7 @@ import pytest
 
 from octop.config import OctopConfig
 from octop.infra.connectors.builder import (
+    _redact_mcp_configs_for_log,
     build_http_mcp_spec,
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -32,6 +33,34 @@ def db(tmp_path: Path) -> SqlitePool:
 def test_mcp_server_name_format():
     iid = new_ulid()
     assert mcp_server_name("tencent-docs", iid) == f"tencent-docs__{iid}"
+
+
+def test_redact_mcp_configs_hides_non_public_headers():
+    configs = {
+        "meeting": {
+            "headers": {
+                "X-Tencent-Meeting-Token": "meeting-secret",
+                "X-Skill-Version": "v1.0.1",
+            }
+        },
+        "weiyun": {
+            "headers": {
+                "Accept": "application/json, text/event-stream",
+                "WyHeader": "mcp_token=weiyun-secret",
+            }
+        },
+    }
+
+    redacted = _redact_mcp_configs_for_log(configs)
+
+    assert redacted["meeting"]["headers"] == {
+        "X-Tencent-Meeting-Token": "***",
+        "X-Skill-Version": "v1.0.1",
+    }
+    assert redacted["weiyun"]["headers"] == {
+        "Accept": "application/json, text/event-stream",
+        "WyHeader": "***",
+    }
 
 
 def test_validate_tencent_token():

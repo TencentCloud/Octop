@@ -321,6 +321,7 @@ export function ToolDetailsInline({
   agentId?: string | null;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const displayName = useToolDisplayNames();
 
@@ -332,6 +333,7 @@ export function ToolDetailsInline({
       videos: media.videos,
       files: parsed.files,
       textOutput: parsed.textOutput,
+      feedback: parsed.feedback,
     };
   }, [toolData, agentId]);
 
@@ -340,7 +342,23 @@ export function ToolDetailsInline({
     [toolData.arguments],
   );
 
-  let formattedOutput = structuredOutput.textOutput;
+  const feedbackMessage = structuredOutput.feedback?.code
+    ? t(
+        `toolFeedback.errors.${structuredOutput.feedback.code}`,
+        structuredOutput.feedback.message,
+      )
+    : structuredOutput.feedback?.message;
+  const feedbackAction = structuredOutput.feedback?.action
+    ? t(`toolFeedback.actions.${structuredOutput.feedback.action}`, "")
+    : "";
+  const opensGenerationSettings = [
+    "configure_credentials",
+    "configure_model",
+  ].includes(structuredOutput.feedback?.action || "");
+  const isToolError =
+    structuredOutput.feedback?.isError || Boolean(toolData.errorCode);
+
+  let formattedOutput = feedbackMessage || structuredOutput.textOutput;
   if (!formattedOutput && toolData.output) {
     formattedOutput = toolData.output;
     try {
@@ -366,7 +384,9 @@ export function ToolDetailsInline({
         : null,
     [toolData.arguments, toolData.name, toolData.output],
   );
-  const statusLabel = completed
+  const statusLabel = isToolError
+    ? t("toolFeedback.failed", "Failed")
+    : completed
     ? t("common.done", "Done")
     : isStreaming
     ? t("common.running", "Running")
@@ -394,6 +414,33 @@ export function ToolDetailsInline({
           }`}
         />
       </button>
+
+      {isToolError && (
+        <div className={styles.inlineToolFeedback} role="alert">
+          <div className={styles.inlineToolFeedbackMessage}>
+            {feedbackMessage ||
+              formattedOutput ||
+              t("toolFeedback.genericError")}
+          </div>
+          {feedbackAction && (
+            <div className={styles.inlineToolFeedbackAction}>
+              {feedbackAction}
+            </div>
+          )}
+          {opensGenerationSettings && (
+            <Button
+              size="small"
+              icon={<Settings size={13} />}
+              onClick={() => navigate("/admin/models?tab=generation")}
+            >
+              {t(
+                "toolFeedback.openGenerationSettings",
+                "Open generation settings",
+              )}
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Media previews stay outside the collapsible details (unless shown on turn strip). */}
       {!hideMediaPreview && structuredOutput.images.length > 0 && (

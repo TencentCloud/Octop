@@ -560,6 +560,31 @@
   transform: rotate(90deg);
 }
 
+.inlineToolFeedback {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--fn-color-error) 24%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fn-color-error) 6%, transparent);
+}
+
+.inlineToolFeedbackMessage {
+  color: var(--fn-color-error);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.inlineToolFeedbackAction {
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .inlineToolDetails {
   display: flex;
   flex-direction: column;

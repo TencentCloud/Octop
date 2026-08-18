@@ -37,7 +37,7 @@ def test_reasoning_middleware_updates_native_anthropic_fields(monkeypatch) -> No
                 reasoning.CONFIG_KEY: {
                     "model_fields": {
                         "thinking": {"type": "adaptive"},
-                        "effort": "high",
+                        "reasoning_effort": "high",
                     }
                 }
             }
@@ -49,4 +49,4 @@ def test_reasoning_middleware_updates_native_anthropic_fields(monkeypatch) -> No
     configured = reasoning._configured_request(request)
 
     assert configured.model.thinking == {"type": "adaptive"}
-    assert configured.model.effort == "high"
+    assert configured.model.reasoning_effort == "high"

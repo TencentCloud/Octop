@@ -14,6 +14,14 @@ from octop.infra.utils.ulid import new_ulid
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
+_SAFE_LOG_HEADER_NAMES = frozenset(
+    {
+        "accept",
+        "content-type",
+        "user-agent",
+        "x-skill-version",
+    }
+)
 
 
 def _mcp_http_headers() -> dict[str, str]:
@@ -366,10 +374,10 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
             entry["url"] = url.split("token=", 1)[0] + "token=***"
         headers = entry.get("headers")
         if isinstance(headers, dict):
-            redacted = dict(headers)
-            for key in ("Authorization", "authorization"):
-                if key in redacted:
-                    redacted[key] = "***"
+            redacted = {
+                key: value if str(key).lower() in _SAFE_LOG_HEADER_NAMES else "***"
+                for key, value in headers.items()
+            }
             entry["headers"] = redacted
         out[name] = entry
     return out

@@ -3,6 +3,8 @@ import {
   agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
   isHostAbsoluteMediaPath,
+  parseStructuredToolOutput,
+  parseToolExecutionFeedback,
   toMediaPreviewSource,
   workspaceDownloadUrl,
 } from "./toolMediaBlocks";
@@ -82,5 +84,81 @@ describe("toMediaPreviewSource", () => {
     );
     expect(url).toContain("source=file");
     expect(url).toContain("octop-logo.png");
+  });
+});
+
+describe("parseStructuredToolOutput", () => {
+  it("renders WorkBuddy image generation envelopes from workspace paths", () => {
+    const parsed = parseStructuredToolOutput(
+      JSON.stringify({
+        type: "image_gen_tool_result",
+        images: [
+          {
+            path: "generated/images/a.png",
+            localPath: "/private/a.png",
+            mediaType: "image/png",
+          },
+        ],
+      }),
+      "agent-1",
+    );
+
+    expect(parsed.images).toHaveLength(1);
+    expect(parsed.images[0].url).toContain("/api/agents/agent-1/media/preview");
+    expect(parsed.images[0].url).toContain("generated%2Fimages%2Fa.png");
+  });
+
+  it("keeps actionable feedback when a generation envelope has no media", () => {
+    const output = JSON.stringify({
+      schema_version: 1,
+      type: "image_gen_tool_result",
+      status: "failed",
+      is_error: true,
+      message: "The configured image model is not enabled.",
+      error: {
+        code: "model_access_required",
+        retryable: false,
+        safe_to_resubmit: false,
+      },
+      remediation: { action: "configure_model" },
+      execution: { provider: "volcengine_ark", model: "seedream" },
+      images: [],
+    });
+
+    const parsed = parseStructuredToolOutput(output, "agent-1");
+    expect(parsed.images).toEqual([]);
+    expect(parsed.textOutput).toBe(
+      "The configured image model is not enabled.",
+    );
+    expect(parsed.feedback).toMatchObject({
+      isError: true,
+      code: "model_access_required",
+      action: "configure_model",
+      retryable: false,
+      safeToResubmit: false,
+      provider: "volcengine_ark",
+      model: "seedream",
+    });
+  });
+
+  it("parses deferred tool activation feedback for the model and UI", () => {
+    const feedback = parseToolExecutionFeedback(
+      JSON.stringify({
+        schema_version: 1,
+        type: "tool_activation_error",
+        status: "failed",
+        is_error: true,
+        message: "Tool schema was not loaded.",
+        error: { code: "tool_schema_not_loaded", retryable: true },
+        remediation: { action: "retry_with_loaded_schema" },
+      }),
+    );
+
+    expect(feedback).toMatchObject({
+      isError: true,
+      code: "tool_schema_not_loaded",
+      action: "retry_with_loaded_schema",
+      retryable: true,
+    });
   });
 });
