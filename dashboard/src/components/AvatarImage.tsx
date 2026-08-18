@@ -64,7 +64,6 @@ export function AvatarImage({
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
         objectFit: "cover",
         ...style,
       }}

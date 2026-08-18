@@ -12,6 +12,7 @@ from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import PERMISSIONS
+from octop.infra.users.preferences import get_avatar_reference_from_json
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
@@ -41,6 +42,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     locked_until = int(getattr(r, "login_locked_until", 0) or 0)
     locked = locked_until > now and not bool(r.disabled)
     retry_after = max(0, locked_until - now) if locked else 0
+    avatar_ref = get_avatar_reference_from_json(getattr(r, "preferences_json", None))
     return {
         "id": r.id,
         "username": r.username,
@@ -50,6 +52,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "has_password": r.password_hash is not None,
         "sso_linked": r.sso_provider_id is not None and r.sso_subject is not None,
         "disabled": bool(r.disabled),
+        "avatar_url": f"/api/avatars/users/{r.id}" if avatar_ref else None,
         "login_failed_count": int(getattr(r, "login_failed_count", 0) or 0),
         "login_locked": locked,
         "login_locked_until": locked_until if locked else 0,

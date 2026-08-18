@@ -65,6 +65,7 @@ import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
+import { AvatarImage } from "../../../components/AvatarImage";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
 
@@ -76,6 +77,7 @@ interface UserRow {
   role: "admin" | "user";
   display_name: string | null;
   email?: string | null;
+  avatar_url?: string | null;
   has_password?: boolean;
   sso_linked?: boolean;
   disabled: boolean;
@@ -519,6 +521,7 @@ function UserCardGrid({
                   )}`}
                   aria-hidden="true"
                 >
+                  <AvatarImage avatarUrl={row.avatar_url} size={48} />
                   {userInitials(displayName, row.username)}
                 </div>
 
@@ -1176,6 +1179,7 @@ export default function UsersListPanel() {
                         row.role,
                       )}`}
                     >
+                      <AvatarImage avatarUrl={row.avatar_url} size={32} />
                       {userInitials(displayName, row.username)}
                     </span>
                     <span className={styles.userCellText}>
