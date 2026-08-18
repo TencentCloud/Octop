@@ -388,6 +388,10 @@ export function resolveToolMediaUrl(
     return agentMediaPreviewUrl(mediaAgent, source, options?.mimeType);
   }
 
+  if (agentId && !url.startsWith("/") && !url.includes("://")) {
+    return agentMediaPreviewUrl(agentId, url, options?.mimeType);
+  }
+
   return preview || url;
 }
 
@@ -396,6 +400,89 @@ export interface StructuredToolMedia {
   videos: ToolMediaItem[];
   files: Array<{ url: string; filename?: string }>;
   textOutput: string;
+  feedback?: ToolExecutionFeedback;
+}
+
+export interface ToolExecutionFeedback {
+  status: string;
+  isError: boolean;
+  message: string;
+  code?: string;
+  action?: string;
+  retryable?: boolean;
+  safeToResubmit?: boolean;
+  provider?: string;
+  model?: string;
+}
+
+/** Parse the stable tool-result envelope used for actionable execution feedback. */
+export function parseToolExecutionFeedback(
+  rawOutput: string | undefined,
+): ToolExecutionFeedback | undefined {
+  if (!rawOutput?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(rawOutput) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const obj = parsed as Record<string, unknown>;
+    const status = typeof obj.status === "string" ? obj.status : "";
+    const isError = obj.is_error === true || status === "failed";
+    if (!status && !isError) return undefined;
+
+    const error =
+      obj.error && typeof obj.error === "object" && !Array.isArray(obj.error)
+        ? (obj.error as Record<string, unknown>)
+        : undefined;
+    const remediation =
+      obj.remediation &&
+      typeof obj.remediation === "object" &&
+      !Array.isArray(obj.remediation)
+        ? (obj.remediation as Record<string, unknown>)
+        : undefined;
+    const execution =
+      obj.execution &&
+      typeof obj.execution === "object" &&
+      !Array.isArray(obj.execution)
+        ? (obj.execution as Record<string, unknown>)
+        : undefined;
+
+    return {
+      status: status || (isError ? "failed" : "completed"),
+      isError,
+      message:
+        typeof obj.message === "string" && obj.message.trim()
+          ? obj.message.trim()
+          : isError
+          ? "Tool execution failed."
+          : "Tool execution completed.",
+      code: typeof error?.code === "string" ? error.code : undefined,
+      action:
+        typeof remediation?.action === "string"
+          ? remediation.action
+          : undefined,
+      retryable:
+        typeof error?.retryable === "boolean" ? error.retryable : undefined,
+      safeToResubmit:
+        typeof error?.safe_to_resubmit === "boolean"
+          ? error.safe_to_resubmit
+          : undefined,
+      provider:
+        typeof execution?.provider === "string"
+          ? execution.provider
+          : typeof obj.provider === "string"
+          ? obj.provider
+          : undefined,
+      model:
+        typeof execution?.model === "string"
+          ? execution.model
+          : typeof obj.model === "string"
+          ? obj.model
+          : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function mediaBlocksFromParsed(parsed: unknown): Record<string, unknown>[] {
@@ -406,6 +493,33 @@ function mediaBlocksFromParsed(parsed: unknown): Record<string, unknown>[] {
   }
   if (parsed && typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
+    const resultType = String(obj.type || "");
+    const field =
+      resultType === "image_gen_tool_result"
+        ? "images"
+        : resultType === "video_gen_tool_result"
+        ? "videos"
+        : null;
+    if (field) {
+      const kind = field === "images" ? "image" : "video";
+      const rows = Array.isArray(obj[field]) ? obj[field] : [];
+      return rows.flatMap((row) => {
+        if (!row || typeof row !== "object") return [];
+        const media = row as Record<string, unknown>;
+        const path = typeof media.path === "string" ? media.path : "";
+        if (!path) return [];
+        return [
+          {
+            type: kind,
+            path,
+            filename: path.split("/").filter(Boolean).pop(),
+            media_type:
+              typeof media.mediaType === "string" ? media.mediaType : undefined,
+            source: { type: "url", url: path },
+          },
+        ];
+      });
+    }
     if (typeof obj.type === "string") {
       return [obj];
     }
@@ -423,8 +537,18 @@ export function parseStructuredToolOutput(
 
   try {
     const parsed = JSON.parse(rawOutput);
+    const feedback = parseToolExecutionFeedback(rawOutput);
     const blocks = mediaBlocksFromParsed(parsed);
     if (blocks.length === 0) {
+      if (feedback) {
+        return {
+          images: [],
+          videos: [],
+          files: [],
+          textOutput: feedback.message,
+          feedback,
+        };
+      }
       return fallbackTextToolMedia(rawOutput, agentId);
     }
 
@@ -540,7 +664,8 @@ export function parseStructuredToolOutput(
       images,
       videos,
       files,
-      textOutput,
+      textOutput: textOutput || (feedback?.isError ? feedback.message : ""),
+      feedback,
     };
   } catch {
     return fallbackTextToolMedia(rawOutput, agentId);

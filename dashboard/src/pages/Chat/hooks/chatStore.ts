@@ -25,6 +25,7 @@ import {
   type UsageChunk,
 } from "../../../utils/parseHarnessChunk";
 import { isChatStreamError } from "../../../utils/chatStreamError";
+import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import { turnStatusAction } from "./turnStatusGate";
@@ -1344,14 +1345,32 @@ function closeToolCall(
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
   const output = extractToolResultOutput(messages);
+  const explicitToolError = messages.some(
+    (raw) =>
+      raw !== null &&
+      typeof raw === "object" &&
+      (raw as Record<string, unknown>).status === "error",
+  );
+  const feedback = parseToolExecutionFeedback(output);
+  const isToolError = explicitToolError || feedback?.isError === true;
+  const errorCode = feedback?.code || (isToolError ? "tool_error" : undefined);
   state.messages = [
     ...state.messages.slice(0, toolIdx),
     {
       ...target,
-      status: "done",
+      status: isToolError ? "error" : "done",
+      errorInfo: isToolError
+        ? {
+            message: feedback?.message || output,
+            code: errorCode,
+            source: "tool_result",
+            retryable: feedback?.retryable,
+          }
+        : undefined,
       toolData: {
         ...(target.toolData ?? {}),
         output,
+        errorCode,
       },
     },
     ...state.messages.slice(toolIdx + 1),

@@ -8,11 +8,13 @@
 
 ### 新增
 
+- 模型管理页新增生成模型分区，支持配置与测试火山方舟 Seedream / Seedance；聊天工具卡片可展示生成结果，并针对凭证、模型权限、限流、内容安全与延迟加载失败给出结构化原因和下一步操作。
 - 工具设置：单工具 `PATCH /agents/{id}/tool-settings/{name}`；插件工具开关热更新（不再 reload）；列表标注能力未挂载工具；harness `tools_disabled`（需 orcakit-harness-agent >=0.9.25）
 - ACP 内置 Runner：新增 Kimi Code（`kimi acp`）、Cursor CLI（`agent acp`）、Pi（`npx -y pi-acp`）卡片与默认启动命令
 
 ### 修复
 
+- 工具的预期运行错误不再统一显示为前端 `stream_error`；失败状态会在实时聊天与历史记录中保留，缺少凭证或模型权限时可直接跳转到生成模型设置。
 - 界面国际化：为 antd 组件补充 `ConfigProvider` locale（跟随界面语言切换），OK/Cancel、Refresh、Create 等此前在英文界面下仍显示英文的组件文案现随语言切换；并全球化 `Settings/octop/Providers.tsx` 全部按钮与文案（该文件当前未接入路由）
 
 ## [0.9.26] - 2026-08-23
