@@ -1,5 +1,6 @@
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "antd";
 import { useTranslation } from "react-i18next";
 import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -17,6 +18,8 @@ import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
+import { uploadAgentAvatar } from "../../../api/modules/avatars";
+import { ImagePlus, Trash2 } from "lucide-react";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   expertPaletteColor,
@@ -140,6 +143,31 @@ export default function CreateFromExpertDrawer({
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
   const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
   const [colorPalette, setColorPalette] = useState<ThemePalette>("rose");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  const pickAvatar = (file: File | null) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      message.error(t("account.avatarTooLarge"));
+      return;
+    }
+    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+      message.error(t("account.avatarInvalidType"));
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const clearAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  };
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
@@ -300,7 +328,17 @@ export default function CreateFromExpertDrawer({
       } else if (bwrapToast?.kind === "warning") {
         message.warning(bwrapToast.text);
       }
+      if (avatarFile) {
+        // Best-effort upload right after creation; failures keep the
+        // agent usable (icon+color fallback) without blocking the flow.
+        try {
+          await uploadAgentAvatar(body.agent_id, avatarFile);
+        } catch {
+          /* non-fatal: avatar can be added later from the edit drawer */
+        }
+      }
       form.resetFields();
+      clearAvatar();
       onCreated(body.agent_id, body.name);
     } catch (err) {
       message.error(apiErrorMessage(err, t("experts.createFailed"), t));
@@ -391,6 +429,64 @@ export default function CreateFromExpertDrawer({
 
         <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
           <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
+        </Form.Item>
+
+        <Form.Item label={t("experts.avatar")} extra={t("experts.avatarHint")}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span
+              style={{
+                position: "relative",
+                display: "inline-flex",
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                background: avatarPreview
+                  ? "transparent"
+                  : `${expertPaletteColor(colorPalette)}1a`,
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                flexShrink: 0,
+              }}
+            >
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <ImagePlus size={16} style={{ opacity: 0.6 }} />
+              )}
+            </span>
+            <Button
+              size="small"
+              icon={<ImagePlus size={14} />}
+              onClick={() => avatarInputRef.current?.click()}
+            >
+              {t("experts.avatarUpload")}
+            </Button>
+            {avatarFile && (
+              <Button
+                size="small"
+                danger
+                icon={<Trash2 size={14} />}
+                onClick={clearAvatar}
+              >
+                {t("experts.avatarRemove")}
+              </Button>
+            )}
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                pickAvatar(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </div>
         </Form.Item>
 
         <Form.Item
