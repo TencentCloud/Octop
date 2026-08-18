@@ -128,6 +128,7 @@ def build_app(server: OctopServer) -> FastAPI:
         agents,
         auth,
         auth_oidc,
+        avatars,
         backup,
         browser,
         channels,
@@ -165,7 +166,6 @@ def build_app(server: OctopServer) -> FastAPI:
         voice,
         workspace,
     )
-    from octop.api.routers import avatars
     from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
