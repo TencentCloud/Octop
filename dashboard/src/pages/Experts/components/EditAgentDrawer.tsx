@@ -32,11 +32,11 @@ import {
 } from "../../../utils/modelOptions";
 import {
   expertPaletteColor,
-  resolveExpertPalette,
+  parseStoredColor,
 } from "../../../utils/expertColor";
 import {
+  DEFAULT_PALETTE,
   isCuratedPalette,
-  normalizeHexColor,
 } from "../../../styles/themePalettes";
 import { metaForFile } from "./iconForName";
 import {
@@ -200,7 +200,7 @@ function EditAgentDrawerBody({
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
   const [colorPalette, setColorPalette] = useState<string>(
-    () => normalizeHexColor(agent.color) ?? resolveExpertPalette(agent.color),
+    () => parseStoredColor(agent.color) ?? DEFAULT_PALETTE,
   );
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -242,7 +242,7 @@ function EditAgentDrawerBody({
           typeof cfg.color === "string"
             ? cfg.color
             : ag.color ?? agent.color ?? null;
-        setColorPalette(resolveExpertPalette(colorFromCfg));
+        setColorPalette(parseStoredColor(colorFromCfg) ?? DEFAULT_PALETTE);
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
 

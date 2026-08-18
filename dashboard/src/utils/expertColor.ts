@@ -2,6 +2,7 @@ import {
   DEFAULT_PALETTE,
   PALETTE_SWATCH,
   VALID_PALETTES,
+  normalizeHexColor,
   type ThemePalette,
 } from "../styles/themePalettes";
 
@@ -60,6 +61,23 @@ export function resolveExpertPalette(
     }
   }
   return best;
+}
+
+/**
+ * Parse a stored color for the color-picker state: returns the curated
+ * palette key when the hex matches a swatch exactly, the normalized hex
+ * for any other valid color, and null when nothing usable is stored.
+ */
+export function parseStoredColor(
+  color: string | null | undefined,
+): ThemePalette | string | null {
+  if (!color) return null;
+  const normalized = normalizeHexColor(color);
+  if (!normalized) return null;
+  for (const key of VALID_PALETTES) {
+    if (PALETTE_SWATCH[key].toLowerCase() === normalized) return key;
+  }
+  return normalized;
 }
 
 export function expertPaletteColor(palette: ThemePalette): string {

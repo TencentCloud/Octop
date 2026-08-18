@@ -20,11 +20,11 @@ import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   expertPaletteColor,
-  resolveExpertPalette,
+  parseStoredColor,
 } from "../../../utils/expertColor";
 import {
+  DEFAULT_PALETTE,
   isCuratedPalette,
-  normalizeHexColor,
 } from "../../../styles/themePalettes";
 import {
   buildAgentRuntimeRequest,
@@ -160,12 +160,7 @@ export default function CreateFromExpertDrawer({
 
     setPathMappings([]);
     const defaults = sourceDefaults(source, lang);
-    setColorPalette(
-      defaults.color?.trim()
-        ? normalizeHexColor(defaults.color) ??
-            resolveExpertPalette(defaults.color)
-        : "rose",
-    );
+    setColorPalette(parseStoredColor(defaults.color) ?? DEFAULT_PALETTE);
     form.setFieldsValue({
       name: defaults.name,
       description: defaults.description,
