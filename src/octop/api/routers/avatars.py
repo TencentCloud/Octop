@@ -103,7 +103,7 @@ async def upload_avatar(
         row = repo.get(key)
         cfg = _agent_config(row)
         cfg["avatar"] = layout.avatar_reference(kind, key)
-        repo.update(key, config_json=json.dumps(cfg, ensure_ascii=False))
+        repo.update_config(key, config_json=json.dumps(cfg, ensure_ascii=False))
 
     return {
         "avatar_url": f"/api/avatars/{layout.avatar_reference(kind, key)}",
@@ -152,7 +152,7 @@ async def delete_avatar(
         if row is not None:
             cfg = _agent_config(row)
             cfg.pop("avatar", None)
-            repo.update(key, config_json=json.dumps(cfg, ensure_ascii=False))
+            repo.update_config(key, config_json=json.dumps(cfg, ensure_ascii=False))
     return Response(status_code=204)
 
 
