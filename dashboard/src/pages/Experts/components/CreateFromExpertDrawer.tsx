@@ -121,6 +121,7 @@ export default function CreateFromExpertDrawer({
     {
       name: string;
       description: string;
+      agent_id?: string;
       default_model: string;
       backend_choice: string;
       composite_default: string;
@@ -161,6 +162,7 @@ export default function CreateFromExpertDrawer({
     form.setFieldsValue({
       name: defaults.name,
       description: defaults.description,
+      agent_id: undefined,
       default_model: MODEL_AUTO_VALUE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
@@ -256,6 +258,7 @@ export default function CreateFromExpertDrawer({
       const payload = {
         name: values.name,
         description: values.description || undefined,
+        agent_id: values.agent_id?.trim() || undefined,
         default_model: defaultModelFromForm(values.default_model) ?? undefined,
         backend: backendSpec,
         skill_package_ids: values.skill_package_ids ?? [],
@@ -383,6 +386,37 @@ export default function CreateFromExpertDrawer({
           rules={[{ required: true, message: t("experts.pleaseEnterName") }]}
         >
           <Input />
+        </Form.Item>
+
+        <Form.Item
+          name="agent_id"
+          label={t("experts.customIdLabel")}
+          extra={t("experts.customIdHint")}
+          rules={[
+            {
+              validator: (_: unknown, value: string | undefined) => {
+                const v = value?.trim() ?? "";
+                if (!v) return Promise.resolve();
+                if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$/.test(v)) {
+                  return Promise.reject(
+                    new Error(t("experts.customIdInvalid")),
+                  );
+                }
+                if (
+                  ["api", "admin", "agents", "experts"].includes(
+                    v.toLowerCase(),
+                  )
+                ) {
+                  return Promise.reject(
+                    new Error(t("experts.customIdReserved", { id: v })),
+                  );
+                }
+                return Promise.resolve();
+              },
+            },
+          ]}
+        >
+          <Input placeholder={t("experts.customIdPlaceholder")} allowClear />
         </Form.Item>
 
         <Form.Item name="description" label={t("experts.agentDescription")}>

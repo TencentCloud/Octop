@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field, fields, replace
@@ -213,6 +214,30 @@ async def _fill_missing_subagent_colors(agent: Any, rows: list[dict[str, Any]]) 
 # Data types
 # ---------------------------------------------------------------------------
 
+# Custom agent ids become workspace directory names (~/.octop/agents/<id>/),
+# so restrict to a conservative slug charset — no separators, dots, or
+# unicode — to keep every downstream path/URL usage safe.
+_CUSTOM_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$")
+
+
+def validate_custom_agent_id(agent_id: str) -> str:
+    """Validate a user-supplied agent id; raise ``OctopError`` when invalid."""
+    if not _CUSTOM_AGENT_ID_RE.fullmatch(agent_id):
+        raise OctopError(
+            ErrorCode.AGENT_ID_INVALID,
+            "agent id must be 3-64 chars of letters/digits/underscore/hyphen, "
+            "starting and ending with a letter or digit",
+        )
+    lowered = agent_id.lower()
+    if lowered in _RESERVED_AGENT_IDS:
+        raise OctopError(ErrorCode.AGENT_ID_INVALID, f"agent id {agent_id!r} is reserved")
+    return agent_id
+
+
+# Lowercase names that would collide with workspace-adjacent directories or
+# well-known URL/route segments.
+_RESERVED_AGENT_IDS = frozenset({"api", "admin", "agents", "experts"})
+
 
 @dataclass
 class AgentCreateSpec:
@@ -405,9 +430,10 @@ class AgentManager:
         async with self._lock:
             self._assert_agent_name_available(spec.user_id, spec.name)
             if spec.agent_id:
+                validate_custom_agent_id(spec.agent_id)
                 if self._repos.agent_repo.get(spec.agent_id) is not None:
                     raise OctopError(
-                        ErrorCode.AGENT_BUSY,
+                        ErrorCode.AGENT_ID_TAKEN,
                         f"agent_id {spec.agent_id!r} already exists",
                     )
                 agent_id = spec.agent_id

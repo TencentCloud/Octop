@@ -44,6 +44,7 @@ class SkillHubMarketAgentCreateOptions:
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     color: str | None = None
+    agent_id: str | None = None
     max_iters: int | None = None
     max_input_length: int | None = None
     temperature: float | None = None
@@ -296,6 +297,7 @@ async def create_agent_from_skillhub_skillset(
         locale=locale,
         default_model=options.default_model,
         config_extra=config_extra,
+        agent_id=options.agent_id,
         runtime_config={
             key: value
             for key, value in {

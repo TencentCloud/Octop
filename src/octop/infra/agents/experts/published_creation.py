@@ -35,6 +35,7 @@ class PublishedExpertInstallOptions:
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
     color: str | None = None
+    agent_id: str | None = None
     runtime_config: dict[str, Any] | None = None
 
 
@@ -285,6 +286,7 @@ async def install_published_expert(
     created = await registry.create(
         AgentCreateSpec(
             name=options.name,
+            agent_id=options.agent_id,
             user_id=user.id,
             description=options.description or row.description,
             default_model=options.default_model,

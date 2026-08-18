@@ -81,6 +81,11 @@ class FromExpertBody(AgentRuntimeFields):
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
     color: str | None = None
+    agent_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional custom agent id; auto-generated when omitted",
+    )
 
 
 class PublishExpertBody(BaseModel):
@@ -108,6 +113,11 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
     color: str | None = None
+    agent_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional custom agent id; auto-generated when omitted",
+    )
 
 
 class LocalizedTextResponse(BaseModel):
@@ -447,6 +457,7 @@ async def install_published_expert(
             backend=body.backend,
             skill_package_ids=body.skill_package_ids,
             color=body.color,
+            agent_id=body.agent_id,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
         ),
     )
@@ -534,6 +545,7 @@ async def install_expert_hub_item(
                 default_model=body.default_model,
                 backend=body.backend,
                 color=body.color,
+                agent_id=body.agent_id,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -620,6 +632,7 @@ async def create_agent_from_expert(
         default_model=body.default_model,
         config_extra=config_extra or None,
         runtime_config=runtime_field_updates(body, exclude_unset=True),
+        agent_id=body.agent_id,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
     if package_ids is not None:
