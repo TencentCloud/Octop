@@ -165,6 +165,7 @@ def build_app(server: OctopServer) -> FastAPI:
         voice,
         workspace,
     )
+    from octop.api.routers import avatars
     from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
@@ -224,6 +225,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(subagents.router, "/api", ["subagents"]),
             _RouterMount(terminal.router, "/api", ["terminal"]),
             _RouterMount(uploads.router, "/api", ["chat"]),
+            _RouterMount(avatars.router, "/api/avatars", ["avatars"]),
             _RouterMount(update.router, "/api", ["update"]),
             _RouterMount(browser.router, "/api", ["browser"]),
             _RouterMount(desktop.router, "/api", ["desktop"]),

@@ -44,6 +44,10 @@ export interface OctopAgent {
   icon: string | null;
   icon_name: string | null;
   color: string | null;
+  /** Uploaded avatar reference (``agents/<id>``) when set. */
+  avatar?: string | null;
+  /** JWT-protected avatar URL derived from ``avatar``; null when unset. */
+  avatar_url?: string | null;
   max_iters?: number | null;
   max_input_length?: number | null;
   temperature?: number | null;
@@ -155,7 +159,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
                 a.name === b.name &&
                 a.icon === b.icon &&
                 a.icon_name === b.icon_name &&
-                a.color === b.color
+                a.color === b.color &&
+                a.avatar === b.avatar
               );
             })
           ) {

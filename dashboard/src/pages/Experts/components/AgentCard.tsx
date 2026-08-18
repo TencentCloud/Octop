@@ -30,6 +30,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import { iconForName } from "./iconForName";
+import { AvatarImage } from "../../../components/AvatarImage";
 import {
   formatAgentError,
   formatAgentState,
@@ -246,6 +247,7 @@ export const AgentCard = memo(function AgentCard({
             style={{ color: accent, background: `${accent}1a` }}
           >
             {iconForName(iconName, 22)}
+            <AvatarImage avatarUrl={agent.avatar_url} size={44} />
           </div>
 
           <div className={styles.agentCard2TitleBlock}>

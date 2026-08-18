@@ -98,6 +98,10 @@ def _row_dict(
         "template_name": row.template_name,
         "icon_name": cfg.get("icon_name"),
         "color": cfg.get("color"),
+        "avatar": cfg.get("avatar"),
+        "avatar_url": (
+            f"/api/avatars/{cfg['avatar']}" if isinstance(cfg.get("avatar"), str) else None
+        ),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
         "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
         "owner_username": owner_username,

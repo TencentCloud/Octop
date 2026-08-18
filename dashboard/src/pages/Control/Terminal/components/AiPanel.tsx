@@ -248,6 +248,8 @@ export default function AiPanel({
         icon: null,
         icon_name: "terminal",
         color: null,
+        avatar: null,
+        avatar_url: null,
         config: { expert_id: "ops-engineer" },
       });
       onAgentCreated();

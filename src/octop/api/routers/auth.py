@@ -15,8 +15,18 @@ from octop.infra.utils.locale import normalize_locale
 router = APIRouter()
 
 
-def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
+def _user_json(
+    user: Any,
+    *,
+    locale: str | None = None,
+    server: Any = None,
+) -> dict[str, Any]:
     loc = normalize_locale(locale)
+    avatar_url: str | None = None
+    if server is not None:
+        avatar_ref = server.user_manager.get_avatar_reference(user.id)
+        if avatar_ref:
+            avatar_url = f"/api/avatars/{avatar_ref}"
     return {
         "id": user.id,
         "username": user.username,
@@ -24,6 +34,7 @@ def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
         "display_name": user.display_name,
         "locale": loc,
         "permissions": effective_permissions(user),
+        "avatar_url": avatar_url,
     }
 
 
@@ -54,7 +65,7 @@ async def login(body: LoginBody, server: Any = Depends(get_server)) -> dict[str,
         "access_token": token,
         "token_type": "Bearer",
         "expires_in": ttl,
-        "user": _user_json(user, locale=user.locale),
+        "user": _user_json(user, locale=user.locale, server=server),
     }
 
 
@@ -66,9 +77,12 @@ async def logout(user: Any = Depends(current_user), server: Any = Depends(get_se
 
 
 @router.get("/me", summary="Current user profile")
-async def me(user: Any = Depends(current_user)) -> dict[str, Any]:
+async def me(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
     """Return the authenticated user's id, username, role, display name, and locale."""
-    return _user_json(user, locale=user.locale)
+    return _user_json(user, locale=user.locale, server=server)
 
 
 @router.post("/change-password", status_code=204, summary="Change password")
@@ -106,4 +120,4 @@ async def update_me(
         await server.user_manager.set_locale(user.username, body.locale)
     updated = server.user_manager.get(user.username)
     assert updated is not None
-    return _user_json(updated, locale=updated.locale)
+    return _user_json(updated, locale=updated.locale, server=server)

@@ -67,6 +67,8 @@ export default function ExpertPickerPopover({
             <ExpertAgentAvatar
               iconName={agent.icon_name}
               color={agent.color}
+              avatarUrl={agent.avatar_url}
+              name={agent.name}
               size={32}
               iconSize={18}
             />

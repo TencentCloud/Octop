@@ -15,7 +15,7 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { MoreHorizontal } from "lucide-react";
+import { ImagePlus, MoreHorizontal, Trash2 } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
@@ -60,6 +60,11 @@ import {
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
+import { AvatarImage } from "../../../components/AvatarImage";
+import {
+  deleteAgentAvatar,
+  uploadAgentAvatar,
+} from "../../../api/modules/avatars";
 import styles from "../index.module.less";
 
 interface AgentDetail {
@@ -128,6 +133,7 @@ interface EditAgentDrawerProps {
       | "default_model"
       | "is_shared"
       | "color"
+      | "avatar_url"
     >,
   ) => void;
 }
@@ -199,6 +205,11 @@ function EditAgentDrawerBody({
   const [colorPalette, setColorPalette] = useState<ThemePalette>(() =>
     resolveExpertPalette(agent.color),
   );
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    () => (agent as { avatar_url?: string | null }).avatar_url ?? null,
+  );
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -240,6 +251,8 @@ function EditAgentDrawerBody({
             ? cfg.color
             : ag.color ?? agent.color ?? null;
         setColorPalette(resolveExpertPalette(colorFromCfg));
+        const detail = ag as AgentDetail & { avatar_url?: string | null };
+        setAvatarUrl(detail.avatar_url ?? null);
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
 
@@ -302,6 +315,50 @@ function EditAgentDrawerBody({
       cancelled = true;
     };
   }, [agent.agent_id, agent.state, form, t]);
+
+  const handleAvatarChange = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        message.error(t("account.avatarTooLarge"));
+        return;
+      }
+      if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+        message.error(t("account.avatarInvalidType"));
+        return;
+      }
+      setAvatarUploading(true);
+      try {
+        const result = await uploadAgentAvatar(agent.agent_id, file);
+        setAvatarUrl(result.avatar_url);
+        onSaved({
+          ...agent,
+          avatar_url: result.avatar_url,
+        });
+        message.success(t("account.avatarUpdated"));
+      } catch (e) {
+        message.error(apiErrorMessage(e, t("account.avatarUpdateFailed"), t));
+      } finally {
+        setAvatarUploading(false);
+        if (avatarInputRef.current) avatarInputRef.current.value = "";
+      }
+    },
+    [agent, onSaved, t],
+  );
+
+  const handleAvatarRemove = useCallback(async () => {
+    setAvatarUploading(true);
+    try {
+      await deleteAgentAvatar(agent.agent_id);
+      setAvatarUrl(null);
+      onSaved({ ...agent, avatar_url: null });
+      message.success(t("account.avatarRemoved"));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t("account.avatarUpdateFailed"), t));
+    } finally {
+      setAvatarUploading(false);
+    }
+  }, [agent, onSaved, t]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();
@@ -368,12 +425,16 @@ function EditAgentDrawerBody({
         const manifest = {
           welcome_message: data.welcome_message,
           quick_prompts: data.quick_prompts.filter(
-            (p) => p.title?.zh || p.title?.en || p.prompt?.zh || p.prompt?.en
+            (p) => p.title?.zh || p.title?.en || p.prompt?.zh || p.prompt?.en,
           ),
         };
         const manifestJson = JSON.stringify(manifest, null, 2);
         try {
-          await writeManifestWithRetry(agent.agent_id, "/manifest.json", manifestJson);
+          await writeManifestWithRetry(
+            agent.agent_id,
+            "/manifest.json",
+            manifestJson,
+          );
         } catch (manifestErr) {
           // Manifest is best-effort: the agent's main config (PATCH) is the
           // important part. Surface a warning so the user knows, but never
@@ -410,6 +471,7 @@ function EditAgentDrawerBody({
         default_model: defaultModel,
         is_shared: values.is_shared ?? false,
         color: nextColor,
+        avatar_url: avatarUrl,
       });
       onClose();
     } catch (err) {
@@ -630,6 +692,59 @@ function EditAgentDrawerBody({
                 />
               </Form.Item>
               <Form.Item
+                label={t("experts.avatar")}
+                extra={t("experts.avatarHint")}
+              >
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span
+                    style={{
+                      position: "relative",
+                      display: "inline-flex",
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      background: `${expertPaletteColor(
+                        resolveExpertPalette(agent.color),
+                      )}1a`,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <AvatarImage avatarUrl={avatarUrl} size={40} />
+                  </span>
+                  <Button
+                    size="small"
+                    icon={<ImagePlus size={14} />}
+                    loading={avatarUploading}
+                    onClick={() => avatarInputRef.current?.click()}
+                  >
+                    {t("experts.avatarUpload")}
+                  </Button>
+                  {avatarUrl && (
+                    <Button
+                      size="small"
+                      danger
+                      icon={<Trash2 size={14} />}
+                      disabled={avatarUploading}
+                      onClick={handleAvatarRemove}
+                    >
+                      {t("experts.avatarRemove")}
+                    </Button>
+                  )}
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      void handleAvatarChange(e.target.files?.[0] ?? null);
+                    }}
+                  />
+                </div>
+              </Form.Item>
+              <Form.Item
                 name="is_shared"
                 label={t("experts.share.toggle")}
                 valuePropName="checked"
@@ -682,18 +797,22 @@ function EditAgentDrawerBody({
                     </Form>
                   ),
                 },
-                ...(isAgentChatReady(agent.state) ? [{
-                  key: "pageConfig",
-                  label: t("experts.pageConfigTitle"),
-                  children: (
-                    <div style={{ padding: 0 }}>
-                      <WelcomeConfig
-                        ref={welcomeConfigRef}
-                        agentId={agent.agent_id}
-                      />
-                    </div>
-                  ),
-                }] : []),
+                ...(isAgentChatReady(agent.state)
+                  ? [
+                      {
+                        key: "pageConfig",
+                        label: t("experts.pageConfigTitle"),
+                        children: (
+                          <div style={{ padding: 0 }}>
+                            <WelcomeConfig
+                              ref={welcomeConfigRef}
+                              agentId={agent.agent_id}
+                            />
+                          </div>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>

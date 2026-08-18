@@ -200,6 +200,39 @@
   padding: 4px 0 16px;
 }
 
+.settingsIdentityAvatarWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Small floating delete affordance on the settings identity avatar. */
+.avatarRemoveBtn {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fn-bg-elevated, #fff);
+  color: var(--fn-text-tertiary, #94a3b8);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  padding: 0;
+
+  &:hover {
+    color: #ef4444;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .settingsIdentityText {
   min-width: 0;
   flex: 1;

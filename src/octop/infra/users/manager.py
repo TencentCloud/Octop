@@ -27,7 +27,9 @@ from octop.infra.users.permissions import validate_permission_keys
 from octop.infra.users.preferences import (
     ModelReasoningPreference,
     RemoteBrowserBookmark,
+    get_avatar_reference_from_json,
     get_remote_browser_bookmarks_from_json,
+    merge_avatar_preferences_json,
     merge_model_preferences_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
@@ -417,6 +419,19 @@ class UserManager:
         merged = merge_preferences_json(row.preferences_json, bookmarks)
         self._services.user_repo.set_preferences_json(row.id, merged)
         return bookmarks
+
+    def get_avatar_reference(self, user_id: int) -> str | None:
+        row = self._services.user_repo.get(user_id)
+        if row is None:
+            return None
+        return get_avatar_reference_from_json(row.preferences_json)
+
+    async def set_avatar_reference(self, user_id: int, avatar: str | None) -> None:
+        row = self._services.user_repo.get(user_id)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        merged = merge_avatar_preferences_json(row.preferences_json, avatar=avatar)
+        self._services.user_repo.set_preferences_json(row.id, merged)
 
     async def set_model_preferences(
         self,

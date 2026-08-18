@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Avatar,
   Modal,
@@ -24,6 +24,8 @@ import {
   Github,
   RefreshCw,
   KeyRound,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -40,6 +42,8 @@ import { useUserRole } from "../hooks/useUserRole";
 import { useIsMobile } from "../hooks/useIsMobile";
 import ThemeSwitcher from "./ThemeSwitcher";
 import PaletteSwitcher from "./PaletteSwitcher";
+import { useAvatarObjectUrl } from "./AvatarImage";
+import { deleteUserAvatar, uploadUserAvatar } from "../api/modules/avatars";
 import type { OctopUser } from "../api/modules/auth";
 import styles from "./AvatarDropdown.module.less";
 
@@ -75,6 +79,8 @@ export default function AvatarDropdown({
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [profileForm] = Form.useForm<{ display_name: string }>();
   const [pwForm] = Form.useForm<{
     old_password: string;
@@ -89,6 +95,51 @@ export default function AvatarDropdown({
     await applyGuestLocale();
     navigate("/login", { replace: true });
   }, [navigate]);
+
+  const refreshMe = useCallback(async () => {
+    try {
+      const me = await authApi.me();
+      onUserChange?.(me);
+    } catch {
+      /* keep the stale profile — avatar refresh is best-effort */
+    }
+  }, [onUserChange]);
+
+  const handleAvatarChange = async (file: File | null) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      message.error(t("account.avatarTooLarge"));
+      return;
+    }
+    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+      message.error(t("account.avatarInvalidType"));
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      await uploadUserAvatar(file);
+      await refreshMe();
+      message.success(t("account.avatarUpdated"));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t("account.avatarUpdateFailed"), t));
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarUploading(true);
+    try {
+      await deleteUserAvatar();
+      await refreshMe();
+      message.success(t("account.avatarRemoved"));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t("account.avatarUpdateFailed"), t));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const handleSaveProfile = async (values: { display_name: string }) => {
     setSaving(true);
@@ -183,11 +234,13 @@ export default function AvatarDropdown({
   const closeSettings = () => setSettingsOpen(false);
   const closePassword = () => setPasswordOpen(false);
 
+  const avatarSrc = useAvatarObjectUrl(user?.avatar_url ?? null);
   const avatar = (
     <Avatar
       size={32}
+      src={avatarSrc ?? undefined}
       style={{
-        background: "var(--fn-color-brand)",
+        background: avatarSrc ? "transparent" : "var(--fn-color-brand)",
         fontSize: 14,
         userSelect: "none",
         flexShrink: 0,
@@ -324,16 +377,31 @@ export default function AvatarDropdown({
   const settingsBody = (
     <div className={styles.settingsBody}>
       <div className={styles.settingsIdentity}>
-        <Avatar
-          size={44}
-          style={{
-            background: "var(--fn-color-brand)",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </Avatar>
+        <div className={styles.settingsIdentityAvatarWrap}>
+          <Avatar
+            size={44}
+            src={avatarSrc ?? undefined}
+            style={{
+              background: avatarSrc ? "transparent" : "var(--fn-color-brand)",
+              fontSize: 18,
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </Avatar>
+          {user?.avatar_url && (
+            <button
+              type="button"
+              className={styles.avatarRemoveBtn}
+              aria-label={t("account.avatarRemove")}
+              title={t("account.avatarRemove")}
+              onClick={handleAvatarRemove}
+              disabled={avatarUploading}
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
         <div className={styles.settingsIdentityText}>
           <div className={styles.settingsIdentityName}>
             <span>{displayName}</span>
@@ -351,6 +419,45 @@ export default function AvatarDropdown({
           )}
         </div>
       </div>
+
+      <section className={styles.settingsSection}>
+        <div className={styles.settingsSectionHead}>
+          <h3 className={styles.settingsSectionTitle}>{t("account.avatar")}</h3>
+          <p className={styles.settingsSectionDesc}>
+            {t("account.avatarHint")}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button
+            icon={<Upload size={14} />}
+            loading={avatarUploading}
+            onClick={() => avatarInputRef.current?.click()}
+          >
+            {t("account.avatarUpload")}
+          </Button>
+          {user?.avatar_url && (
+            <Button
+              icon={<Trash2 size={14} />}
+              danger
+              onClick={handleAvatarRemove}
+              disabled={avatarUploading}
+            >
+              {t("account.avatarRemove")}
+            </Button>
+          )}
+        </div>
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            void handleAvatarChange(e.target.files?.[0] ?? null);
+          }}
+        />
+      </section>
+
+      <Divider className={styles.settingsDivider} />
 
       <section className={styles.settingsSection}>
         <div className={styles.settingsSectionHead}>

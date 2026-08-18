@@ -73,9 +73,20 @@
   flex-shrink: 0;
   color: var(--chip-accent, #2563eb);
   line-height: 0;
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
 
   svg {
     display: block;
+  }
+
+  img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 }
 
@@ -132,9 +143,20 @@
   height: 14px;
   flex-shrink: 0;
   line-height: 0;
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
 
   svg {
     display: block;
+  }
+
+  img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 }
 

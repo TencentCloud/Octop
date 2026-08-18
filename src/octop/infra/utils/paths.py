@@ -74,6 +74,27 @@ class PathLayout:
         """Global knowledge base files: ``~/.octop/knowledge/``."""
         return self.root / "knowledge"
 
+    @property
+    def avatars_dir(self) -> Path:
+        """Uploaded user/agent avatars: ``~/.octop/avatars/``."""
+        return self.root / "avatars"
+
+    def avatar_file(self, kind: str, key: str) -> Path:
+        """Avatar path for ``users/<id>`` or ``agents/<agent_id>`` (validated)."""
+        safe_kind = kind if kind in {"users", "agents"} else "_"
+        safe_key = (
+            "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in key)[:80] or "default"
+        )
+        return self.avatars_dir / safe_kind / f"{safe_key}.png"
+
+    def avatar_reference(self, kind: str, key: str) -> str:
+        """Stable reference string stored in config (kind/key, no extension)."""
+        safe_kind = kind if kind in {"users", "agents"} else "_"
+        safe_key = (
+            "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in key)[:80] or "default"
+        )
+        return f"{safe_kind}/{safe_key}"
+
     def agent_workspace(self, agent_id: str) -> Path:
         """Global agent workspace: ~/.octop/agents/<agent_id>/"""
         return self.agents_dir / agent_id

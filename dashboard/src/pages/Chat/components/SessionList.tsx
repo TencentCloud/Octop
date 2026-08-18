@@ -18,6 +18,7 @@ import { isAgentChatReady } from "../../../utils/agentError";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { iconForName } from "../../Experts/components/iconForName";
+import { AvatarImage } from "../../../components/AvatarImage";
 import SessionChannelIcon from "./SessionChannelIcon";
 import styles from "../index.module.less";
 
@@ -274,6 +275,7 @@ function ActiveAgentCard({
           }}
         >
           {iconForName(agent.icon_name, 16)}
+          <AvatarImage avatarUrl={agent.avatar_url} size={32} />
         </div>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
@@ -351,6 +353,7 @@ function InactiveAgentRow({ agent, onSelect }: AgentRowProps) {
         style={{ color: accent, background: `${accent}12` }}
       >
         {iconForName(agent.icon_name, 14)}
+        <AvatarImage avatarUrl={agent.avatar_url} size={28} />
       </div>
       <div className={styles.agentRowInfo}>
         <div className={styles.agentRowNameRow}>

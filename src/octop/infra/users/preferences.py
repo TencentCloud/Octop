@@ -14,6 +14,7 @@ MAX_REMOTE_BROWSER_BOOKMARKS = 12
 PREFERENCES_KEY_REMOTE_BROWSER_BOOKMARKS = "remote_browser_bookmarks"
 PREFERENCES_KEY_PREFERRED_MODEL = "preferred_model"
 PREFERENCES_KEY_MODEL_REASONING = "model_reasoning"
+PREFERENCES_KEY_AVATAR = "avatar"
 MAX_BOOKMARK_TITLE_LEN = 80
 
 REASONING_MODES = frozenset({"auto", "enabled", "disabled"})
@@ -141,4 +142,37 @@ def merge_model_preferences_json(
         data[PREFERENCES_KEY_MODEL_REASONING] = {
             ref: {"mode": pref.mode, "effort": pref.effort} for ref, pref in model_reasoning.items()
         }
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def normalize_avatar_reference(value: Any) -> str | None:
+    """Avatar references look like ``users/<id>`` or ``agents/<agent_id>``."""
+    if not isinstance(value, str):
+        return None
+    ref = value.strip()
+    if not ref or "/" not in ref:
+        return None
+    kind, _, key = ref.partition("/")
+    if kind not in {"users", "agents"} or not key or len(ref) > 180:
+        return None
+    return ref
+
+
+def get_avatar_reference_from_json(raw: str | None) -> str | None:
+    return normalize_avatar_reference(parse_preferences_json(raw).get(PREFERENCES_KEY_AVATAR))
+
+
+def merge_avatar_preferences_json(
+    current_raw: str | None,
+    *,
+    avatar: str | None,
+) -> str:
+    data = parse_preferences_json(current_raw)
+    if avatar is None:
+        data.pop(PREFERENCES_KEY_AVATAR, None)
+    else:
+        ref = normalize_avatar_reference(avatar)
+        if ref is None:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "invalid avatar reference")
+        data[PREFERENCES_KEY_AVATAR] = ref
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))

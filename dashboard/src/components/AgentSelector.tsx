@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
 import { ownedExperts } from "../utils/sharedExpert";
 import { iconForName } from "../pages/Experts/components/iconForName";
+import { AvatarImage } from "./AvatarImage";
 import styles from "./AgentSelector.module.less";
 
 interface AgentSelectorProps {
@@ -40,6 +41,7 @@ function AgentChip({
     >
       <span className={styles.chipIcon}>
         {iconForName(agent.icon_name, 12)}
+        <AvatarImage avatarUrl={agent.avatar_url} size={16} />
       </span>
       <span className={styles.chipName}>{agent.name}</span>
       <span className={styles.stateDot} data-state={agent.state} />
@@ -122,6 +124,7 @@ export default function AgentSelector({
                 <span className={styles.optionRow}>
                   <span className={styles.optionIcon} style={{ color: accent }}>
                     {iconForName(agent.icon_name, 12)}
+                    <AvatarImage avatarUrl={agent.avatar_url} size={14} />
                   </span>
                   <span className={styles.chipName}>{agent.name}</span>
                 </span>
@@ -137,6 +140,7 @@ export default function AgentSelector({
               <div className={styles.optionRowMulti}>
                 <span className={styles.optionIcon} style={{ color: accent }}>
                   {iconForName(agent.icon_name, 12)}
+                  <AvatarImage avatarUrl={agent.avatar_url} size={14} />
                 </span>
                 <div className={styles.optionMeta}>
                   <div className={styles.optionName}>{agent.name}</div>

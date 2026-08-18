@@ -46,6 +46,8 @@ export interface OctopUser {
   locale: string;
   /** Module permission keys; admin responses include the full catalog. */
   permissions?: string[];
+  /** JWT-protected avatar URL; null when no avatar uploaded. */
+  avatar_url?: string | null;
 }
 
 export interface LoginResponse {
