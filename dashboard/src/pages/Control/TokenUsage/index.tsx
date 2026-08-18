@@ -263,8 +263,8 @@ function DailyTrendCharts({
   outputLabel: string;
   turnsLabel: string;
 }) {
-  const { palette, isDark } = useTheme();
-  const turnsColor = brandPrimary(palette, isDark);
+  const { palette, isDark, customColor } = useTheme();
+  const turnsColor = brandPrimary(palette, isDark, customColor);
   const empty = data.length === 0;
 
   return (

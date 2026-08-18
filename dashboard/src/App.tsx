@@ -15,7 +15,7 @@ import { AgentProvider } from "./context/AgentContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
-import { ANTD_BRAND_TOKENS } from "./styles/themePalettes";
+import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
 import "./styles/form-override.css";
@@ -28,10 +28,10 @@ const GlobalStyle = createGlobalStyle`
 `;
 
 function ThemedApp() {
-  const { isDark, palette } = useTheme();
+  const { isDark, palette, customColor } = useTheme();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
-  const brandTokens = ANTD_BRAND_TOKENS[palette][isDark ? "dark" : "light"];
+  const brandTokens = brandTokensFor(palette, isDark, customColor);
 
   useUnauthorizedRedirect();
 

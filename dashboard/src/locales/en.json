@@ -2679,7 +2679,9 @@
       "violet": "Violet",
       "emerald": "Emerald",
       "amber": "Amber",
-      "slate": "Slate"
+      "slate": "Slate",
+      "custom": "Custom",
+      "customPicker": "Pick a custom brand color"
     },
     "currentVersion": "Current version v{{version}}",
     "currentVersionAdmin": "Current version v{{version}}. Click to open Updates.",
