@@ -10,6 +10,7 @@ import {
 import { prepareSpeechText } from "../utils/plainTextForSpeech";
 import { speakBrowserText, stopBrowserSpeech } from "../utils/browserSpeech";
 import { isMobileUserAgent } from "../utils/mobileDevice";
+import { WavStreamPlayer } from "../utils/wavStreamPlayer";
 
 import { message as antMessage } from "@/utils/antdMessage";
 
@@ -17,6 +18,7 @@ export function useVoiceOutput() {
   const { t } = useTranslation();
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamPlayerRef = useRef<WavStreamPlayer | null>(null);
   const speakingIdRef = useRef<string | null>(null);
   const playGenerationRef = useRef(0);
 
@@ -28,6 +30,8 @@ export function useVoiceOutput() {
   const abortPlayback = useCallback(() => {
     playGenerationRef.current += 1;
     stopBrowserSpeech();
+    streamPlayerRef.current?.stop();
+    streamPlayerRef.current = null;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.onended = null;
@@ -46,8 +50,81 @@ export function useVoiceOutput() {
     primeAudioElement(audio);
   }, []);
 
+  /**
+   * Stream the MiMo WAV response and schedule chunks as they arrive.
+   * Returns false when streaming is unsupported or the response is not a
+   * WAV — the caller then falls back to the buffered blob path.
+   */
+  const speakMimoStream = useCallback(
+    async (plain: string, gen: number) => {
+      const player = new WavStreamPlayer();
+      streamPlayerRef.current = player;
+      try {
+        if (!player.ensureContext()) return false;
+        const { contentType, body } = await voiceApi.synthesizeStream(plain);
+        if (
+          !contentType.includes("audio/wav") &&
+          !contentType.includes("audio/wave")
+        ) {
+          try {
+            await body.cancel();
+          } catch {
+            /* ignore */
+          }
+          return false;
+        }
+        const reader = body.getReader();
+        // Read until the WAV header plus first audio chunk are scheduled —
+        // malformed streams can still fall back to the blob path here.
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          if (!player.push(value)) {
+            player.stop();
+            return false;
+          }
+          if (player.hasAudio) break;
+        }
+        // Feed remaining chunks in the background until the stream ends.
+        void (async () => {
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value) player.push(value);
+            }
+          } catch {
+            /* network hiccup — keep whatever was scheduled */
+          } finally {
+            const wait = Math.max(player.msRemaining(), 0);
+            window.setTimeout(() => {
+              player.stop();
+              if (playGenerationRef.current === gen) finishSpeaking();
+            }, wait);
+          }
+        })();
+        if (playGenerationRef.current !== gen) {
+          player.stop();
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [finishSpeaking],
+  );
+
   const speakWithServer = useCallback(
     async (plain: string, gen: number, provider?: string) => {
+      // MiMo streams a live WAV — play it chunk-by-chunk for low latency.
+      // Other providers stream MP3, which needs the buffered blob path.
+      const active = cachedActiveVoice();
+      const ttsProvider = provider ?? active?.tts;
+      if (ttsProvider === "mimo-tts" || ttsProvider === "mimo") {
+        if (await speakMimoStream(plain, gen)) return;
+      }
+
       try {
         const blob = await voiceApi.synthesize(plain, provider);
         if (playGenerationRef.current !== gen) return;
@@ -86,7 +163,7 @@ export function useVoiceOutput() {
         finishSpeaking();
       }
     },
-    [finishSpeaking, t],
+    [finishSpeaking, speakMimoStream, t],
   );
 
   const speakWithBrowser = useCallback(

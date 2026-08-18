@@ -1,4 +1,4 @@
-import { request, requestBlob, requestUpload } from "../request";
+import { request, requestBlob, requestStream, requestUpload } from "../request";
 
 export interface VoicePreset {
   id: string;
@@ -59,6 +59,23 @@ export const voiceApi = {
   },
   synthesize: (text: string, provider?: string) =>
     requestBlob("/voice/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        ...(provider ? { provider } : {}),
+      }),
+    }),
+  /**
+   * Streamed variant for low-latency playback. The server flushes chunks as
+   * they arrive (MiMo streams live WAV); other providers stream MP3, in
+   * which case the buffered `synthesize` path is used instead.
+   */
+  synthesizeStream: (
+    text: string,
+    provider?: string,
+  ): Promise<{ contentType: string; body: ReadableStream<Uint8Array> }> =>
+    requestStream("/voice/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import json
+import struct
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -243,6 +245,52 @@ async def _guard_mimo_base_url(base_url: str) -> None:
     await validate_https_url_resolved(base_url)
 
 
+# Mimo preset voices (docs: preset voice names; "mimo_default" is not one).
+MIMO_PRESET_VOICES = ("冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean")
+
+# WAV header for raw Mimo streaming output: 24kHz PCM16LE mono.
+_MIMO_WAV_SAMPLE_RATE = 24000
+
+
+def _wav_header(data_len: int, sample_rate: int = _MIMO_WAV_SAMPLE_RATE) -> bytes:
+    """Minimal canonical WAV header for PCM16LE mono audio.
+
+    ``data_len`` is clamped to uint32 range; streaming callers pass a max-size
+    sentinel (players that trust it simply read until the body ends).
+    """
+    data = min(data_len, 0xFFFF_FFFF)
+    riff = min(36 + data, 0xFFFF_FFFF)
+    byte_rate = sample_rate * 2
+    return struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        riff,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,  # PCM
+        1,  # mono
+        sample_rate,
+        byte_rate,
+        2,  # block align
+        16,  # bits per sample
+        b"data",
+        data,
+    )
+
+
+def _normalize_mimo_voice(voice: str | None) -> str:
+    """Map config values onto Mimo preset voice names.
+
+    "mimo_default" (a legacy default from an earlier docs revision) is not a
+    valid preset voice; fall back to 冰糖 (the documented default for the
+    China cluster) so existing configs keep working.
+    """
+    if not voice or voice == "mimo_default":
+        return "冰糖"
+    return voice
+
+
 def _mimo_audio_mime(mime: str) -> str:
     """Normalize incoming mime to a Mimo-supported format (wav or mp3)."""
     lowered = mime.lower()
@@ -320,7 +368,7 @@ async def synthesize_mimo(
     base_url = (row.base_url or "https://api.xiaomimimo.com/v1").rstrip("/")
     await _guard_mimo_base_url(base_url)
     extra = row.get_extra()
-    voice = voice_id or str(extra.get("voice_id") or "mimo_default")
+    voice = _normalize_mimo_voice(voice_id or str(extra.get("voice_id") or "") or None)
     # Mimo TTS: text goes in assistant message, optional style in user message.
     # Speed is not a direct API parameter; ignored for stability.
     payload: dict[str, Any] = {
@@ -329,26 +377,54 @@ async def synthesize_mimo(
             {"role": "user", "content": "Speak naturally."},
             {"role": "assistant", "content": text},
         ],
-        "audio": {"format": "wav", "voice": voice},
+        "audio": {"format": "pcm16", "voice": voice},
+        "stream": True,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
+    # Low-latency streaming: request pcm16 chunks (24kHz PCM16LE mono) and
+    # wrap them in a WAV container on the fly so standard players work.
+    yield _wav_header(0xFFFF_FFFF)  # unknown length → max data size sentinel
+    async with (
+        httpx.AsyncClient(timeout=120.0) as client,
+        client.stream(
+            "POST",
             f"{base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "Accept": "text/event-stream",
             },
             json=payload,
-        )
+        ) as resp,
+    ):
         resp.raise_for_status()
-        body = resp.json()
-    choices = body.get("choices") or []
-    if not choices:
-        raise RuntimeError("Mimo TTS returned no choices")
-    audio_data = choices[0].get("message", {}).get("audio", {}).get("data")
-    if not audio_data:
-        raise RuntimeError("Mimo TTS returned no audio data")
-    yield base64.b64decode(audio_data)
+        buf = ""
+        async for line in resp.aiter_lines():
+            if not line.startswith("data:"):
+                # Blank line terminates an SSE event; other lines are ignored.
+                if not line.strip():
+                    buf = ""
+                continue
+            buf += line[len("data:") :]
+            if buf.strip() == "[DONE]":
+                break
+            try:
+                event = json.loads(buf)
+            except json.JSONDecodeError:
+                continue  # JSON event may span multiple data lines.
+            buf = ""
+            choices = event.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            audio = delta.get("audio")
+            if not audio:
+                continue
+            data = audio.get("data")
+            if not data:
+                continue
+            pcm = base64.b64decode(data)
+            if pcm:
+                yield pcm
 
 
 async def test_stt(row: VoiceProviderRow | None, kind: str) -> dict[str, Any]:

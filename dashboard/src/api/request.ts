@@ -357,6 +357,47 @@ export async function probeAuthResource(
   }
 }
 
+/**
+ * POST JSON and hand back the response body as a byte stream (chunked TTS).
+ * Mirrors requestBlob()'s auth/setup/401 handling but never buffers.
+ */
+export async function requestStream(
+  path: string,
+  options: RequestInit = {},
+): Promise<{ contentType: string; body: ReadableStream<Uint8Array> }> {
+  const url = getApiUrl(path);
+  const headers = buildAuthHeaders(path);
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...headers, ...(options.headers as Record<string, string>) },
+  });
+
+  if (await check503ForSetupRequired(path, response)) {
+    throw new Error("Setup required — redirecting to /setup");
+  }
+
+  await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Request failed: ${response.status} ${response.statusText}${
+        text ? ` - ${text}` : ""
+      }`,
+    );
+  }
+
+  if (!response.body) {
+    throw new Error("Empty stream from server");
+  }
+
+  return {
+    contentType: response.headers.get("content-type") || "",
+    body: response.body,
+  };
+}
+
 export type UploadProgressHandler = (percent: number) => void;
 
 /**

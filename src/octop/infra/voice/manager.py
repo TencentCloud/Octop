@@ -83,6 +83,12 @@ class VoiceManager:
             )
         return ResolvedVoiceProvider(name=row.name, kind=row.kind, row=row)
 
+    def media_type(self, provider_name: str | None) -> str:
+        """HTTP content type of the synthesize() stream for the given provider."""
+        name = provider_name or self.get_active()["tts"]
+        kind = self.resolve(name).kind
+        return "audio/wav" if kind == "mimo" else "audio/mpeg"
+
     async def transcribe(
         self,
         audio: bytes,
