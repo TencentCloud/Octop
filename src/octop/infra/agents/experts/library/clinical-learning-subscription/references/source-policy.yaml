@@ -55,10 +55,27 @@ allowed_final_evidence_content_types:
   - official_guideline_or_consensus
   - official_standard_pathway_or_quality_control_document
   - official_policy_or_regulatory_document_and_attachment
-  - formal_journal_full_text
 
 # 即使来自白名单网站，以下内容也不得作为最终依据；如果页面链接正式原文，应继续回溯原文。
 excluded_final_evidence_content_types:
+  # 证据综述可以帮助发现正式指南或理解证据背景，但不能成为本指南学习产品的最终来源。
+  - systematic_review
+  - meta_analysis
+  - systematic_review_and_meta_analysis
+  - narrative_review
+  - scoping_review
+  - umbrella_review
+  - rapid_review
+  - expert_review
+  - literature_review
+  # 原始研究和学术讨论同样不是规范性文件，不得替代指南/共识/规范/政策原文。
+  - randomized_controlled_trial
+  - observational_study
+  - case_report_or_case_series
+  - editorial_commentary_or_letter
+  - conference_abstract
+  - preprint
+  - retracted_or_expression_of_concern
   - science_popularization
   - repost_or_excerpt
   - interview_or_media_report

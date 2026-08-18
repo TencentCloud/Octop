@@ -64,7 +64,7 @@
 
 1. 取今天日期（Asia/Shanghai，YYYY-MM-DD），运行 `python3 scripts/clinical_profile.py delivery-check --logical-date <今天>`。`already_sent` 为 true 时回复"今日学习内容已推送"并停止，不得重复生成。
 2. 运行 `python3 scripts/clinical_profile.py learning-next-lesson` 读取下一固定单元。无已启用轨道或无下一单元时如实说明并停止，不得编造内容。
-3. 按 daily-learning-template.md 生成该单元（恰好 3 个编号要点、下一单元预告、来源行），再运行 `python3 scripts/validate_output.py --module daily_guideline_learning` 校验；不通过先修正再校验一次，仍不通过则停止并说明原因。
+3. 按 daily-learning-template.md 生成该单元（恰好 3 个编号要点、来源行）。用 `lesson.ordinal` 与 `track.progress.planned_units` 判断是否为最后一个单元：非最后单元预告下一固定单元主题与学习目标；最后单元给出 2-3 个已核验的正式指南/共识/规范候选，等待用户确认下一阶段。再运行 `python3 scripts/validate_output.py --module daily_guideline_learning` 校验；不通过先修正再校验一次，仍不通过则停止并说明原因。
 4. 校验通过后运行 `python3 scripts/clinical_profile.py delivery-record --logical-date <今天> --confirm true` 记账（同时标记该单元已投、推进到下一单元），然后输出正文。正文首行 `【每日指南学习｜{主题}】（第 {ordinal}/{total} 单元）`。
 
 诚实口径：账本只防重复，不代表通道真的受理——不得对用户说"已确认送达"。创建任务时用 cron-presets.json 中"每日指南连续学习"预设的 prompt（已内嵌以上规程）。
@@ -80,6 +80,15 @@
 - 已确认送达只表示内容被通道受理，不表示用户已阅读/掌握/具备临床胜任力。
 
 当前弱投递模式只防重复、不代表送达回执，是强回执上线前的过渡方案。
+
+### 周期末下一阶段推荐
+
+最后一个固定单元应在同一条正文中给出下一阶段建议，避免单元推进后下一次 cron 因“无下一单元”而无法再推荐：
+
+1. 静默检索并核验 2-3 个与当前轨道有明确衔接的正式指南/共识/规范，写完整名称、年份/版本、发布机构、权威原文链接和推荐衔接。
+2. 所有综述（含系统综述、Meta 分析、叙述性、范围、伞状、快速、专家和其他文献综述）以及研究论文，只能用于内部发现正式指南，不得成为当前单元来源、下一阶段候选或新轨道来源。
+3. 候选只标记“待确认”。用户回复 A/B/C 或提出其他方向后，仍须按“轨道创建”流程展示候选章节并取得确认；不得在最后单元中自动创建或启用轨道。
+4. 没有至少 2 个可核验正式指南时，如实说明“未取得足够的可核验正式指南”，询问用户希望继续的学习方向，不用综述或研究论文凑数。
 
 ## 重复/漏发排查与新版本迁移
 

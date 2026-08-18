@@ -41,10 +41,12 @@ description: 学习订阅任务创建与启用。医生完成 5 项登记后，�
 
 1. `delivery-check` 按逻辑日期查重——已记录则当天停发；
 2. `learning-next-lesson` 读取下一固定单元——无已启用轨道或无下一单元时如实说明并停止，不得编造内容；
-3. 按 `references/daily-learning-template.md` 生成单元（3 个编号要点 + 下一单元预告 + 来源行），用 `scripts/validate_output.py --module daily_guideline_learning` 校验；
+3. 按 `references/daily-learning-template.md` 生成单元（3 个编号要点 + 来源行）：非最后单元预告下一固定单元；最后单元给出 2-3 个已核验的正式指南候选并等待用户确认。综述与研究论文不得作为最终来源或下一阶段候选。用 `scripts/validate_output.py --module daily_guideline_learning` 校验；
 4. 校验通过后 `delivery-record` 记账，再输出正文。
 
 该账本只防重复、**不代表送达回执**——不得对用户宣称"已确认送达"。在用户选定权威指南轨道前，cron 运行会如实报告"暂无已启用轨道"并停止，不随机推送。等具备通道回执的平台适配器上线后，每日指南学习应迁移到强回执投递。
+
+最后单元的候选只用于让用户选择，不得自动创建或启用下一条轨道。用户确认候选后，仍按指南核验、章节计划展示、明确确认和轨道创建的既有流程执行；没有足够的可核验正式指南时询问方向，不用综述补位。
 
 ## 禁止项
 

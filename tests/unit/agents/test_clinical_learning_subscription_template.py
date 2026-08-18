@@ -142,8 +142,117 @@ def test_daily_learning_validator_requires_fixed_unit_structure() -> None:
 2. 关注概念之间的关系和质量意识，不把它写成处置命令。
 3. 医院制度和本地执行口径需要以正式文件确认。
 下一单元预告：
-风险分层框架。
+风险分层框架 — 学习识别风险分层的核心概念。
 来源：示例页面：[链接](https://www.nhc.gov.cn/example)
+说明：本内容用于医生继续学习，不提供个体诊疗、处方剂量或急诊处置建议。
+"""
+    result = validator.validate(
+        text,
+        module="daily_guideline_learning",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is True
+
+
+def test_daily_learning_final_unit_requires_confirmed_next_stage_choices() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_final_daily_validator_test"
+    )
+    text = """【指南学习单元｜全科】
+轨道：儿童合理用药学习轨道
+依据：关于进一步加强儿童临床用药管理工作的通知（2023，国家卫生健康委）
+学习单元：6 / 6
+章节：健康宣教与随访
+主题：家长指导与用药随访
+1. 学习家长沟通中的核心信息与安全边界。
+2. 关注随访制度与用药连续性管理的衔接。
+3. 本地执行口径仍需以医疗机构正式制度为准。
+
+下一阶段可选指南（待确认）：
+A. 《基层儿童健康管理指南》（2025，国家卫生健康委）：[链接](https://www.nhc.gov.cn/next-a)
+   推荐衔接：继续学习儿童健康管理与随访框架。
+B. 《儿童用药质量控制规范》（2024，中华医学会）：[链接](https://www.cma.org.cn/next-b)
+   推荐衔接：从健康宣教延伸到机构用药质量控制。
+回复 A/B，或告诉我其他学习方向。确认前不会创建或启用新轨道。
+
+来源：儿童临床用药管理通知：[链接](https://www.nhc.gov.cn/example)
+说明：本内容用于医生继续学习，不提供个体诊疗、处方剂量或急诊处置建议。
+"""
+    result = validator.validate(
+        text,
+        module="daily_guideline_learning",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is True
+
+
+def test_daily_learning_final_unit_rejects_canned_waiting_preview() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_canned_final_validator_test"
+    )
+    text = """【指南学习单元｜全科】
+轨道：儿童合理用药学习轨道
+依据：关于进一步加强儿童临床用药管理工作的通知（2023，国家卫生健康委）
+学习单元：6 / 6
+章节：健康宣教与随访
+主题：家长指导与用药随访
+1. 学习家长沟通中的核心信息。
+2. 关注随访制度与用药连续性。
+3. 本地执行口径以正式制度为准。
+下一单元预告：
+本轨道单元已全部送达，等待用户复盘或确认新轨道。
+来源：儿童临床用药管理通知：[链接](https://www.nhc.gov.cn/example)
+说明：本内容用于医生继续学习，不提供个体诊疗、处方剂量或急诊处置建议。
+"""
+    result = validator.validate(
+        text,
+        module="daily_guideline_learning",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is False
+    assert "最后单元不得继续使用下一单元预告" in result["errors"]
+
+
+def test_source_validator_rejects_review_as_final_evidence() -> None:
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "review_source_test")
+    text = """【指南学习诊断｜仅评估学习状态】
+学习目标：继续学习
+学习信号：建议巩固
+优先补齐：核心概念
+建议起点：从规范性文件开始
+下一步：确认学习方向
+来源：儿童合理用药系统综述：[链接](https://www.medjournals.cn/review)
+边界：本结果只反映本次学习信号，不是患者诊断、临床胜任力认证或诊疗建议。
+"""
+    result = validator.validate(
+        text,
+        module="guideline_learning_diagnosis",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is False
+    assert "最终依据不得使用非规范性文档类型：systematic_review" in result["errors"]
+
+
+def test_daily_learning_final_unit_can_ask_for_direction_without_review_fallback() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_final_direction_validator_test"
+    )
+    text = """【指南学习单元｜全科】
+轨道：儿童合理用药学习轨道
+依据：关于进一步加强儿童临床用药管理工作的通知（2023，国家卫生健康委）
+学习单元：6 / 6
+章节：健康宣教与随访
+主题：家长指导与用药随访
+1. 学习家长沟通中的核心信息。
+2. 关注随访制度与用药连续性。
+3. 本地执行口径以正式制度为准。
+下一阶段规划（待你选择）：
+未取得足够的可核验正式指南，因此不使用综述或研究论文补位。请告诉我希望继续的学习方向。确认前不会创建或启用新轨道。
+来源：儿童临床用药管理通知：[链接](https://www.nhc.gov.cn/example)
 说明：本内容用于医生继续学习，不提供个体诊疗、处方剂量或急诊处置建议。
 """
     result = validator.validate(
@@ -160,15 +269,22 @@ def test_source_policy_filters_content_type_and_prefers_current_version() -> Non
     policy = validator._load_list_yaml(_ROOT / "references" / "source-policy.yaml")
 
     assert {
+        "systematic_review",
+        "meta_analysis",
+        "narrative_review",
+        "scoping_review",
+        "umbrella_review",
         "science_popularization",
         "repost_or_excerpt",
         "interview_or_media_report",
         "public_health_check_education_or_interpretation",
     } <= set(policy["excluded_final_evidence_content_types"])
+    assert "formal_journal_full_text" not in policy["allowed_final_evidence_content_types"]
 
     source_verify = (_ROOT / "skills" / "source-verify" / "SKILL.md").read_text(encoding="utf-8")
     assert "权威网站不等于" in source_verify
     assert "科普、转载/摘编、访谈/媒体报道" in source_verify
+    assert "不得出现在最终“来源”、下一阶段指南候选或正式学习轨道来源中" in source_verify
     assert "最新且当前有效的正式版本" in source_verify
     assert "网页更新时间" in source_verify
 
