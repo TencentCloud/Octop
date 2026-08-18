@@ -74,10 +74,13 @@ def _memory_maintenance_status(server: Any, agent_id: str) -> dict[str, Any] | N
     if not callable(fn):
         return None
     try:
-        return fn()
+        status = fn()
     except Exception:
         logger.debug("memory_maintenance status failed for %s", agent_id, exc_info=True)
         return None
+    # ``fn`` is reached through getattr, so its result is untyped: only hand a
+    # real mapping to the JSON response, never whatever the duck-typed call returned.
+    return status if isinstance(status, dict) else None
 
 
 def _owner_username(server: Any, row: Any) -> str | None:
