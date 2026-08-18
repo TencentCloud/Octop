@@ -21,6 +21,7 @@ import MessageBubble from "./MessageBubble";
 import { ToolMediaStrip } from "./ToolMediaStrip";
 import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
 import styles from "../index.module.less";
+import type { UserQuestionAnswer } from "../../../api/types/userQuestions";
 
 interface AssistantTurnViewProps {
   messages: ChatMessage[];
@@ -34,6 +35,7 @@ interface AssistantTurnViewProps {
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
+  onQuestionAnswer?: (pendingId: string, answers: UserQuestionAnswer[]) => void;
   onOpenBrowser?: () => void;
   onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
@@ -58,6 +60,7 @@ export default function AssistantTurnView({
   onEditUserMessage,
   onAcpPermissionSelect,
   onHitlDecision,
+  onQuestionAnswer,
   onOpenBrowser,
   onEditFile,
   onRunShellCommand,
@@ -73,7 +76,10 @@ export default function AssistantTurnView({
     () => layoutAssistantTurnHitl(messages),
     [messages],
   );
-  const hasPendingHitl = messages.some((m) => m.hitlData?.status === "pending");
+  const hasPendingHitl = messages.some(
+    (m) =>
+      m.hitlData?.status === "pending" || m.questionData?.status === "pending",
+  );
 
   const segmentProcess = useMemo(
     () =>
@@ -164,6 +170,7 @@ export default function AssistantTurnView({
             <MessageBubble
               message={hitl}
               onHitlDecision={onHitlDecision}
+              onQuestionAnswer={onQuestionAnswer}
               groupPosition="only"
             />
           </div>

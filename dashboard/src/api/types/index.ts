@@ -1,4 +1,5 @@
 export * from "./hitl";
+export * from "./userQuestions";
 export * from "./agent";
 export * from "./channel";
 export * from "./chat";

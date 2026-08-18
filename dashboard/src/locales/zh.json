@@ -1042,6 +1042,14 @@
       "rejectedLabel": "已拒绝",
       "rejected": "用户已拒绝"
     },
+    "questions": {
+      "recommended": "推荐",
+      "customPlaceholder": "输入其他答案…",
+      "skip": "跳过",
+      "next": "继续",
+      "submit": "提交",
+      "skipped": "已跳过"
+    },
     "modifiedFiles": "已修改文件（{{count}}）",
     "openBrowser": "查看浏览器",
     "openBrowserHint": "Agent 正在网页中操作",
@@ -1068,6 +1076,7 @@
     "bash": "Shell 命令 (bash)",
     "current_time": "当前时间",
     "write_todos": "编写计划",
+    "ask_user_question": "询问用户",
     "task": "子智能体任务",
     "ls": "列出目录",
     "glob": "查找文件",

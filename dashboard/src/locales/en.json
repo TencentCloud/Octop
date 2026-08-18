@@ -1043,6 +1043,14 @@
       "rejectedLabel": "Rejected",
       "rejected": "Rejected by user"
     },
+    "questions": {
+      "recommended": "Recommended",
+      "customPlaceholder": "Type another answer…",
+      "skip": "Skip",
+      "next": "Next",
+      "submit": "Submit",
+      "skipped": "Skipped"
+    },
     "modifiedFiles": "Modified files ({{count}})",
     "openBrowser": "View browser",
     "openBrowserHint": "Agent is browsing the web",
@@ -1069,6 +1077,7 @@
     "bash": "Shell (bash)",
     "current_time": "Current time",
     "write_todos": "Write plan",
+    "ask_user_question": "Ask user",
     "task": "Sub-agent task",
     "ls": "List directory",
     "glob": "Find files",

@@ -26,6 +26,7 @@ from octop.infra.gateway.process.response_mode import (
     normalize_channel_response_mode,
     processor_for_response_mode,
 )
+from octop.infra.gateway.questions import UserQuestionCoordinator
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
@@ -112,6 +113,7 @@ class Gateway:
         self._ws_channel: WebSocketChannel | None = None
         self._cli_channel: CliChannel | None = None
         self._runtime_status: dict[str, ChannelRuntimeStatus] = {}
+        self._questions = UserQuestionCoordinator(repos.pending_user_question_repo)
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point channel/thread persistence at a rebound control-plane pool."""
@@ -120,6 +122,9 @@ class Gateway:
             session_repo=repos.session_repo,
             thread_repo=repos.thread_repo,
         )
+        self._questions = UserQuestionCoordinator(repos.pending_user_question_repo)
+        if self._processor is not None:
+            self._processor.replace_question_coordinator(self._questions)
 
     @property
     def ws_hub(self) -> WebSocketHub:
@@ -150,6 +155,10 @@ class Gateway:
         if self._processor is None:
             raise RuntimeError("gateway not booted")
         return self._processor
+
+    @property
+    def question_coordinator(self) -> UserQuestionCoordinator:
+        return self._questions
 
     @property
     def slash_meta(self) -> SlashRuntimeMeta | None:
@@ -196,6 +205,7 @@ class Gateway:
             dispatcher=self._dispatcher,
             usage_repo=self._repos.usage_repo,
             gateway=self,
+            questions=self._questions,
         )
 
         self._channel_manager = ChannelManager(channels={})

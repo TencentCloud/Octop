@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -262,6 +263,62 @@ async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
     )
     assert pending is not None
     assert pending.action_requests[0]["name"] == "execute"
+
+
+@pytest.mark.asyncio
+async def test_global_processor_persists_and_enriches_user_question(tmp_path: Path) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.user_questions import PendingUserQuestionRepo
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.questions import UserQuestionCoordinator
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    async def _stream(*_args: object, **_kwargs: object):
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "kind": "ask_user_question",
+                "questions": [{"id": "name", "question": "What name?", "options": []}],
+            },
+        }
+
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    questions = UserQuestionCoordinator(PendingUserQuestionRepo(pool))
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-question")
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        questions=questions,
+    )
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="start")],
+        metadata={"session_key": "sk", "thread_id": "thread-question"},
+    )
+
+    chunks = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+    request = next(chunk["request"] for chunk in chunks if chunk.get("type") == "hitl_required")
+    assert request["pending_id"]
+    pending = questions.pending_payload(thread_id="thread-question", agent_id="agent-1", user_id=1)
+    assert pending is not None
+    assert pending["pending_id"] == request["pending_id"]
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,144 @@
   background: var(--fn-bg-elevated, #fff);
 }
 
+// Structured question card. It intentionally lives with the assistant turn in
+// this MR; the Todo panel's broader visual refresh is kept separate.
+.askUserCard {
+  width: min(620px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 8px 30px rgb(15 23 42 / 8%);
+}
+
+.askUserHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.askUserEyebrow {
+  margin-bottom: 4px;
+  color: var(--text-tertiary, #64748b);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.askUserTitle {
+  color: var(--text-primary, #111827);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.askUserProgress {
+  flex: none;
+  padding-top: 2px;
+  color: var(--text-tertiary, #64748b);
+  font-size: 12px;
+}
+
+.askUserBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(52vh, 440px);
+  overflow-y: auto;
+  padding: 14px 18px;
+}
+
+.askUserOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+
+  &:hover,
+  &Selected {
+    border-color: #4f7cff;
+    background: rgb(79 124 255 / 7%);
+  }
+}
+
+.askUserOptionMarker {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--fill-secondary, #f1f5f9);
+  color: var(--text-secondary, #475569);
+  font-size: 11px;
+}
+
+.askUserOptionCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 20px;
+
+  small {
+    color: var(--text-tertiary, #64748b);
+    font-size: 12px;
+  }
+}
+
+.askUserRecommended {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(79 124 255 / 12%);
+  color: #4f7cff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.askUserCustom {
+  margin-top: 2px;
+}
+
+.askUserFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.askUserPager,
+.askUserActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.askUserResolved {
+  padding: 14px 18px;
+  color: var(--text-secondary, #475569);
+  font-size: 13px;
+}
+
 /* ---------- Main chat area ---------- */
 .chatMain {
   flex: 1;

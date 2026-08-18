@@ -25,4 +25,5 @@ HITL_HANDLERS: dict[str, GatewayHandler] = {
     "approve": _dashboard_hint,
     "reject": _dashboard_hint,
     "pending": _dashboard_hint,
+    "answer": _dashboard_hint,
 }

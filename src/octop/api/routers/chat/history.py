@@ -173,6 +173,11 @@ async def get_thread_history(
         agent_id=agent_id,
         user_id=effective_uid,
     )
+    question_pending = server.app_runtime.gateway.question_coordinator.pending_payload(
+        thread_id=thread_id,
+        agent_id=agent_id,
+        user_id=effective_uid,
+    )
     return {
         "thread_id": thread_id,
         "messages": messages,
@@ -181,6 +186,7 @@ async def get_thread_history(
         "offset": page_offset,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
+        "question_pending": question_pending,
     }
 
 

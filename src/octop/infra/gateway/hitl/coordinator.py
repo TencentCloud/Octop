@@ -105,6 +105,7 @@ class HitlChannelCoordinator:
         locale: str,
         usage_tracker: UsageTracker | None = None,
         outcome: HitlSlashOutcome | None = None,
+        question_coordinator: Any | None = None,
     ) -> AsyncIterator[MessageEvent]:
         lang = normalize_locale(locale)
         if cmd.name == "pending":
@@ -160,6 +161,7 @@ class HitlChannelCoordinator:
                 projection_state=projection_state,
                 hitl_coordinator=self,
                 hitl_ctx=hitl_ctx,
+                question_coordinator=question_coordinator,
             ):
                 if record is not None and not ack_sent:
                     ack = (

@@ -1,4 +1,5 @@
 import type { HitlPendingPayload } from "../types/hitl";
+import type { UserQuestionPendingPayload } from "../types/userQuestions";
 import { request } from "../request";
 
 export interface OctopThread {
@@ -37,6 +38,8 @@ export interface OctopThreadHistory {
   turn_active?: boolean;
   /** Pending tool approval for this thread (survives page reload). */
   hitl_pending?: HitlPendingPayload | null;
+  /** Pending structured question for this thread (durable across server restart). */
+  question_pending?: UserQuestionPendingPayload | null;
 }
 
 export interface OctopThreadPatch {

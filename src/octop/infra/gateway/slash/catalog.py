@@ -175,6 +175,14 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
         origins=frozenset({"im", "cli"}),
     ),
     SlashCommandSpec(
+        name="answer",
+        usage="/answer [pending_id] <answer>",
+        icon="MessageCircleQuestion",
+        tone="blue",
+        category="session",
+        origins=frozenset({"im", "cli"}),
+    ),
+    SlashCommandSpec(
         name="title",
         usage="/title <text>",
         icon="Type",

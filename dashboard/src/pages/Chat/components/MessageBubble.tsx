@@ -46,6 +46,8 @@ import {
   isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
+import AskUserQuestionCard from "./AskUserQuestionCard";
+import type { UserQuestionAnswer } from "../../../api/types/userQuestions";
 import styles from "../index.module.less";
 
 interface MessageBubbleProps {
@@ -60,6 +62,7 @@ interface MessageBubbleProps {
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
+  onQuestionAnswer?: (pendingId: string, answers: UserQuestionAnswer[]) => void;
 
   /** When true, the outer bubble uses reduced spacing (part of a group). */
   compact?: boolean;
@@ -501,6 +504,7 @@ function MessageBubble({
   forkDisabled,
   forkDisabledHint,
   onHitlDecision,
+  onQuestionAnswer,
   compact,
   groupPosition = "only",
   onRunShellCommand,
@@ -621,6 +625,21 @@ function MessageBubble({
             </div>
           ) : null}
         </div>
+      </div>
+    );
+  }
+
+  if (message.questionData) {
+    return (
+      <div
+        className={`${styles.bubble} ${styles.assistantBubble} ${
+          compact ? styles.compact : ""
+        }`}
+      >
+        <AskUserQuestionCard
+          data={message.questionData}
+          onSubmit={onQuestionAnswer}
+        />
       </div>
     );
   }

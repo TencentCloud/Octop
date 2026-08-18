@@ -24,6 +24,7 @@ from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.db.repos.sso import SsoRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.usage import UsageRepo
+from octop.infra.db.repos.user_questions import PendingUserQuestionRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo
 from octop.infra.utils.paths import PathLayout
@@ -53,6 +54,7 @@ class RepoBundle:
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
     sso_repo: SsoRepo
+    pending_user_question_repo: PendingUserQuestionRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -78,6 +80,7 @@ class RepoBundle:
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
             sso_repo=SsoRepo(db),
+            pending_user_question_repo=PendingUserQuestionRepo(db),
         )
 
 
@@ -170,6 +173,10 @@ class SharedServices:
     @property
     def sso_repo(self) -> SsoRepo:
         return self.repos.sso_repo
+
+    @property
+    def pending_user_question_repo(self) -> PendingUserQuestionRepo:
+        return self.repos.pending_user_question_repo
 
 
 def build_shared_services(

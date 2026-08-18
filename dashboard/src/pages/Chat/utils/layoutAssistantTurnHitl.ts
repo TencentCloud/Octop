@@ -22,7 +22,7 @@ export function layoutAssistantTurnHitl(
   const segments: AssistantTurnHitlSegment[] = [];
   let buf: ChatMessage[] = [];
   for (const m of messages) {
-    if (m.hitlData) {
+    if (m.hitlData || m.questionData) {
       segments.push({ processMessages: buf, hitlMessage: m });
       buf = [];
     } else {

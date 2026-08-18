@@ -51,7 +51,7 @@ def test_knowledge_tables_migrated(db: SqlitePool) -> None:
         "knowledge_base_members",
         "knowledge_documents",
     }.issubset(names)
-    assert v == 6
+    assert v == 7
 
 
 def test_path_layout_knowledge_dir(tmp_path: Path) -> None:

@@ -26,6 +26,10 @@ import { isChatStreamError } from "../../../utils/chatStreamError";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import { turnStatusAction } from "./turnStatusGate";
+import type {
+  UserQuestion,
+  UserQuestionAnswer,
+} from "../../../api/types/userQuestions";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
   STREAM_STALE_WITHOUT_SOCKET_MS,
@@ -1372,12 +1376,77 @@ function resolveHitlPending(
   );
 }
 
+function parseUserQuestions(raw: Record<string, unknown>): UserQuestion[] {
+  if (!Array.isArray(raw.questions)) return [];
+  return raw.questions
+    .filter((item): item is Record<string, unknown> => {
+      return Boolean(item && typeof item === "object");
+    })
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : "question",
+      question: typeof item.question === "string" ? item.question : "",
+      header: typeof item.header === "string" ? item.header : undefined,
+      options: Array.isArray(item.options)
+        ? item.options
+            .filter((option): option is Record<string, unknown> => {
+              return Boolean(option && typeof option === "object");
+            })
+            .map((option) => ({
+              label: typeof option.label === "string" ? option.label : "",
+              description:
+                typeof option.description === "string"
+                  ? option.description
+                  : undefined,
+            }))
+            .filter((option) => option.label)
+        : [],
+      multi_select: item.multi_select === true,
+    }))
+    .filter((question) => question.question);
+}
+
+function resolveQuestionPending(
+  state: SessionStreamState,
+  pendingId: string,
+  status: "pending" | "answered" | "cancelled",
+  answers?: UserQuestionAnswer[],
+): void {
+  state.messages = state.messages.map((message) =>
+    message.questionData?.pendingId === pendingId
+      ? {
+          ...message,
+          questionData: { ...message.questionData, status, answers },
+        }
+      : message,
+  );
+}
+
 function handleHitlRequired(
   state: SessionStreamState,
   request: Record<string, unknown>,
 ): void {
   finalizeStreamingMessages(state);
   clearStreamingFlags(state);
+  if (request.kind === "ask_user_question") {
+    const pendingId =
+      typeof request.pending_id === "string" ? request.pending_id : "";
+    state.messages = [
+      ...state.messages,
+      {
+        id: pendingId ? `question-${pendingId}` : generateId(),
+        role: "assistant",
+        content: "",
+        questionData: {
+          pendingId,
+          questions: parseUserQuestions(request),
+          status: "pending",
+        },
+        status: "done",
+        timestamp: Date.now(),
+      },
+    ];
+    return;
+  }
   state.messages = [
     ...state.messages,
     {
@@ -2070,6 +2139,71 @@ export async function resumeHitl(
   } catch (err: unknown) {
     if ((err as Error).name === "AbortError") return;
     appendErrorBubble(state, (err as Error).message || "HITL resume error");
+    finish();
+  }
+}
+
+export async function answerUserQuestion(
+  sessionId: string,
+  agentId: string,
+  threadId: string,
+  pendingId: string,
+  answers: UserQuestionAnswer[],
+): Promise<void> {
+  const state = getOrCreate(sessionId);
+  state.abortController?.abort();
+  resolveQuestionPending(state, pendingId, "answered", answers);
+  beginStream(state, sessionId);
+  notify(state);
+  emitStreamEvent({ kind: "streamStart", sessionId });
+
+  const controller = new AbortController();
+  state.abortController = controller;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  const token = getAuthToken();
+  if (token) {
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+  const finish = () => {
+    clearStreamingFlags(state);
+    clearStreamActivity(sessionId);
+    pendingResumeBySession.delete(sessionId);
+    state.abortController = null;
+    state.streamMsg = "";
+    state.streamId = "";
+    state.streamBlockType = "";
+    sealInFlightAssistantMessages(state);
+    notify(state);
+    emitStreamEvent({ kind: "streamEnd", sessionId });
+  };
+  try {
+    const res = await fetch(
+      getApiUrl(
+        `/agents/${agentId}/chat/questions/${encodeURIComponent(
+          pendingId,
+        )}/answer`,
+      ),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ thread_id: threadId, answers }),
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok) {
+      resolveQuestionPending(state, pendingId, "pending");
+      appendErrorBubble(state, `Question resume failed (${res.status})`);
+      finish();
+      return;
+    }
+    await consumeSseResponse(state, sessionId, res, controller, finish);
+  } catch (err: unknown) {
+    if ((err as Error).name === "AbortError") return;
+    resolveQuestionPending(state, pendingId, "pending");
+    appendErrorBubble(state, (err as Error).message || "Question resume error");
     finish();
   }
 }

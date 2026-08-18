@@ -11,8 +11,9 @@ from fastapi.responses import StreamingResponse
 
 from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import HitlResumeBody, PolishBody
+from octop.api.routers.chat.models import HitlResumeBody, PolishBody, UserQuestionAnswerBody
 from octop.api.routers.chat.sse import format_sse
+from octop.i18n import tr
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
@@ -23,6 +24,11 @@ from octop.infra.agents.experts.catalog import (
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
 from octop.infra.gateway.hitl.store import HitlPendingRecord
+from octop.infra.gateway.questions.coordinator import (
+    UserQuestionCoordinator,
+    is_user_question_request,
+    validate_answers,
+)
 from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -93,6 +99,7 @@ async def iter_dashboard_hitl_resume_sse(
     channel_type: str,
     locale: str,
     is_disconnected: Callable[[], Awaitable[bool]],
+    question_coordinator: UserQuestionCoordinator | None = None,
 ) -> AsyncIterator[str]:
     """Stream dashboard HITL resume chunks and persist any nested ``hitl_required``.
 
@@ -114,7 +121,24 @@ async def iter_dashboard_hitl_resume_sse(
             if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
-                    hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    if (
+                        is_user_question_request(request_payload)
+                        and question_coordinator is not None
+                    ):
+                        record = question_coordinator.register_from_request(
+                            request_payload,
+                            thread_id=thread_id,
+                            agent_id=agent_id,
+                            user_id=user_id,
+                            session_key=session_key,
+                            channel_type=channel_type,
+                        )
+                        chunk = {
+                            **chunk,
+                            "request": {**request_payload, "pending_id": record.pending_id},
+                        }
+                    else:
+                        hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
             yield format_sse("chunk", chunk)
         if pending is not None:
             hitl_coordinator.store.mark_resolved(
@@ -183,8 +207,102 @@ async def resume_hitl(
             channel_type=channel_type,
             locale=resolve_request_locale(request),
             is_disconnected=request.is_disconnected,
+            question_coordinator=server.app_runtime.gateway.question_coordinator,
         ):
             yield frame
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post(
+    "/agents/{agent_id}/chat/questions/{pending_id}/answer",
+    summary="Answer a pending agent question (SSE)",
+)
+async def answer_user_question(
+    agent_id: str,
+    pending_id: str,
+    body: UserQuestionAnswerBody,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StreamingResponse:
+    """Resume a durable ``ask_user_question`` interrupt and stream the result."""
+    assert_agent_access(server, agent_id, user)
+    coordinator = server.app_runtime.gateway.question_coordinator
+    row = coordinator.repo.get(pending_id)
+    if (
+        row is None
+        or row.status != "pending"
+        or row.agent_id != agent_id
+        or row.user_id != user.id
+        or row.thread_id != body.thread_id
+    ):
+        raise OctopError(ErrorCode.FORBIDDEN, "pending question is unavailable")
+    try:
+        answers = validate_answers(row, body.answers)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+
+    async def gen() -> AsyncIterator[str]:
+        if not coordinator.repo.claim(pending_id, agent_id=agent_id, user_id=user.id):
+            yield format_sse(
+                "chunk",
+                {
+                    "type": "error",
+                    "message": tr("slash.questions.none_pending", resolve_request_locale(request)),
+                },
+            )
+            return
+        completed = False
+        try:
+            hitl = server.app_runtime.gateway.processor.hitl_coordinator
+            hitl_ctx = HitlStreamContext(
+                thread_id=row.thread_id,
+                agent_id=row.agent_id,
+                user_id=row.user_id,
+                session_key=row.session_key,
+                channel_type=row.channel_type,
+            )
+            async for chunk in server.app_runtime.agent_registry.resume_hitl(
+                agent_id,
+                row.thread_id,
+                [{"type": "answer", "answers": answers}],
+            ):
+                if await request.is_disconnected():
+                    return
+                if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                    nested = chunk.get("request")
+                    if isinstance(nested, dict):
+                        if is_user_question_request(nested):
+                            nested_row = coordinator.register_from_request(
+                                nested,
+                                thread_id=row.thread_id,
+                                agent_id=row.agent_id,
+                                user_id=row.user_id,
+                                session_key=row.session_key,
+                                channel_type=row.channel_type,
+                            )
+                            chunk = {
+                                **chunk,
+                                "request": {**nested, "pending_id": nested_row.pending_id},
+                            }
+                        else:
+                            hitl.register_from_request(nested, ctx=hitl_ctx)
+                yield format_sse("chunk", chunk)
+            coordinator.repo.mark_answered(pending_id, answers)
+            completed = True
+            yield format_sse("chunk", {"type": "done"})
+        except Exception as exc:
+            yield format_sse(
+                "chunk",
+                {
+                    "type": "error",
+                    "message": format_stream_error(exc, resolve_request_locale(request)),
+                },
+            )
+        finally:
+            if not completed:
+                coordinator.repo.release(pending_id)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

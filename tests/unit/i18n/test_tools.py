@@ -32,6 +32,7 @@ def test_hitl_tool_catalog_excludes_must_use_tools():
     assert "unknown" not in names
     assert "current_time" not in names
     assert "write_todos" not in names
+    assert "ask_user_question" not in names
     assert "memory_search" not in names
     assert "search_knowledge" not in names
     assert "cronjob_create" not in names

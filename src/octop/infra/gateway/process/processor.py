@@ -17,6 +17,7 @@ from harness_gateway.models import (
     TextContent,
 )
 
+from octop.i18n import tr
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.gateway.hitl.coordinator import (
@@ -49,6 +50,11 @@ from octop.infra.gateway.process.stream_project import (
     project_stream,
 )
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
+from octop.infra.gateway.questions.coordinator import (
+    QuestionResumeOutcome,
+    UserQuestionCoordinator,
+    is_user_question_request,
+)
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
 from octop.infra.knowledge.default_open import merge_knowledge_base_ids
@@ -104,6 +110,7 @@ class GlobalProcessor:
         usage_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
+        questions: UserQuestionCoordinator | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -124,10 +131,20 @@ class GlobalProcessor:
         self._usage_repo = usage_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
+        self._questions = questions
 
     @property
     def hitl_coordinator(self) -> HitlChannelCoordinator:
         return self._hitl
+
+    @property
+    def question_coordinator(self) -> UserQuestionCoordinator:
+        if self._questions is None:
+            raise RuntimeError("user-question coordinator is unavailable")
+        return self._questions
+
+    def replace_question_coordinator(self, coordinator: UserQuestionCoordinator) -> None:
+        self._questions = coordinator
 
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
 
@@ -359,6 +376,7 @@ class GlobalProcessor:
                 locale=locale,
                 usage_tracker=usage_tracker,
                 outcome=slash_outcome,
+                question_coordinator=self._questions,
             ):
                 yield ev
             if slash_outcome.completed_turn:
@@ -384,6 +402,56 @@ class GlobalProcessor:
             yield MessageEvent.completed()
             return
 
+        if cmd is not None and cmd.name == "answer":
+            if self._questions is None:
+                yield MessageEvent.text(tr("slash.questions.none_pending", locale))
+                yield MessageEvent.completed()
+                return
+            bound_thread_id = self._thread_registry.get_bound_thread_id(session_key)
+            record = (
+                self._questions.repo.pending_for_thread(
+                    bound_thread_id,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                )
+                if bound_thread_id is not None
+                else None
+            )
+            answer_text = cmd.args.strip()
+            if record is not None and answer_text.startswith(record.pending_id):
+                answer_text = answer_text[len(record.pending_id) :].strip()
+            if record is None or record.user_id != user_id or record.thread_id != bound_thread_id:
+                yield MessageEvent.text(tr("slash.questions.none_pending", locale))
+                yield MessageEvent.completed()
+                return
+            usage_tracker = UsageTracker()
+            outcome = QuestionResumeOutcome()
+            try:
+                async for event in self._questions.iter_channel_answer(
+                    record=record,
+                    answer_text=answer_text,
+                    agent_manager=self._agent_manager,
+                    hitl_coordinator=self._hitl,
+                    locale=locale,
+                    usage_tracker=usage_tracker,
+                    outcome=outcome,
+                ):
+                    yield event
+            except Exception as exc:
+                yield MessageEvent.error_event(
+                    tr("slash.questions.resume_failed", locale, error=str(exc))
+                )
+            if outcome.completed_turn:
+                self._touch_thread_after_turn(record.thread_id, msg.text)
+                self._record_turn_usage(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    thread_id=record.thread_id,
+                    usage=usage_tracker.usage,
+                )
+            yield MessageEvent.completed()
+            return
+
         if cmd is not None:
             sink = _MessageEventSink()
             handled = await self._dispatcher.handle(
@@ -400,6 +468,50 @@ class GlobalProcessor:
             for ev in sink.events:
                 yield ev
             if handled:
+                yield MessageEvent.completed()
+                return
+
+        if self._questions is not None and msg.text and not msg.content[1:]:
+            bound_thread_id = self._thread_registry.get_bound_thread_id(session_key)
+            record = (
+                self._questions.auto_answer_for_thread(
+                    thread_id=bound_thread_id,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                )
+                if bound_thread_id is not None
+                else None
+            )
+            if (
+                record is not None
+                and record.user_id == user_id
+                and record.thread_id == bound_thread_id
+            ):
+                usage_tracker = UsageTracker()
+                outcome = QuestionResumeOutcome()
+                try:
+                    async for event in self._questions.iter_channel_answer(
+                        record=record,
+                        answer_text=msg.text,
+                        agent_manager=self._agent_manager,
+                        hitl_coordinator=self._hitl,
+                        locale=locale,
+                        usage_tracker=usage_tracker,
+                        outcome=outcome,
+                    ):
+                        yield event
+                except Exception as exc:
+                    yield MessageEvent.error_event(
+                        tr("slash.questions.resume_failed", locale, error=str(exc))
+                    )
+                if outcome.completed_turn:
+                    self._touch_thread_after_turn(record.thread_id, msg.text)
+                    self._record_turn_usage(
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        thread_id=record.thread_id,
+                        usage=usage_tracker.usage,
+                    )
                 yield MessageEvent.completed()
                 return
 
@@ -492,6 +604,7 @@ class GlobalProcessor:
                     session_key=session_key,
                     channel_type=channel_type,
                 ),
+                question_coordinator=self._questions,
             ):
                 yield ev
             stream_ok = True
@@ -600,16 +713,33 @@ class GlobalProcessor:
                     if isinstance(request_payload, dict):
                         from octop.infra.gateway.hitl.coordinator import HitlStreamContext
 
-                        self._hitl.register_from_request(
-                            request_payload,
-                            ctx=HitlStreamContext(
+                        if (
+                            is_user_question_request(request_payload)
+                            and self._questions is not None
+                        ):
+                            record = self._questions.register_from_request(
+                                request_payload,
                                 thread_id=thread_id,
                                 agent_id=agent_id,
                                 user_id=user_id,
                                 session_key=session_key,
                                 channel_type=channel_type,
-                            ),
-                        )
+                            )
+                            chunk = {
+                                **chunk,
+                                "request": {**request_payload, "pending_id": record.pending_id},
+                            }
+                        else:
+                            self._hitl.register_from_request(
+                                request_payload,
+                                ctx=HitlStreamContext(
+                                    thread_id=thread_id,
+                                    agent_id=agent_id,
+                                    user_id=user_id,
+                                    session_key=session_key,
+                                    channel_type=channel_type,
+                                ),
+                            )
                 if chunk.get("type") == "tool_result":
                     if harness_workspace is not None:
                         chunk = await enrich_tool_result_with_backend(

@@ -147,3 +147,11 @@ class HitlResumeBody(BaseModel):
         ...,
         description='Human decisions, e.g. [{"type": "approve"}] or [{"type": "reject", "message": "..."}].',
     )
+
+
+class UserQuestionAnswerBody(BaseModel):
+    thread_id: str = Field(..., description="Conversation thread awaiting an answer.")
+    answers: list[dict[str, Any]] = Field(
+        ...,
+        description="One structured answer for every question in the pending request.",
+    )

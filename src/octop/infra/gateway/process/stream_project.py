@@ -19,6 +19,7 @@ from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
+    from octop.infra.gateway.questions.coordinator import UserQuestionCoordinator
 
 
 @dataclass
@@ -101,6 +102,7 @@ async def _project_chunks(
     projection_state: StreamProjectionState | None,
     hitl_coordinator: HitlChannelCoordinator | None,
     hitl_ctx: HitlStreamContext | None,
+    question_coordinator: UserQuestionCoordinator | None,
 ) -> AsyncIterator[MessageEvent]:
     loc = normalize_locale(str(locale))
     tool_state = _ToolProjectionState()
@@ -190,16 +192,36 @@ async def _project_chunks(
             request = chunk.get("request")
             if not isinstance(request, dict):
                 request = {}
-            if hitl_coordinator is not None and hitl_ctx is not None:
-                record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
+            from octop.infra.gateway.questions.coordinator import is_user_question_request
+
+            if (
+                is_user_question_request(request)
+                and question_coordinator is not None
+                and hitl_ctx is not None
+            ):
+                question_record = question_coordinator.register_from_request(
+                    request,
+                    thread_id=hitl_ctx.thread_id,
+                    agent_id=hitl_ctx.agent_id,
+                    user_id=hitl_ctx.user_id,
+                    session_key=hitl_ctx.session_key,
+                    channel_type=hitl_ctx.channel_type,
+                )
+                if projection_state is not None:
+                    projection_state.hitl_paused = True
+                yield MessageEvent.text(
+                    question_coordinator.channel_card(question_record, str(loc))
+                )
+            elif hitl_coordinator is not None and hitl_ctx is not None:
+                hitl_record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
                 card = format_hitl_card(
-                    record.action_requests,
-                    pending_id=record.pending_id,
+                    hitl_record.action_requests,
+                    pending_id=hitl_record.pending_id,
                     locale=loc,
                 )
                 if projection_state is not None:
                     projection_state.hitl_paused = True
-                    projection_state.hitl_pending_id = record.pending_id
+                    projection_state.hitl_pending_id = hitl_record.pending_id
                 yield MessageEvent.text(card)
             return
 
@@ -220,6 +242,7 @@ async def project_stream(
     projection_state: StreamProjectionState | None = None,
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
+    question_coordinator: UserQuestionCoordinator | None = None,
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
     async for ev in _project_chunks(
@@ -231,6 +254,7 @@ async def project_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
+        question_coordinator=question_coordinator,
     ):
         yield ev
 
@@ -246,6 +270,7 @@ async def project_resume_stream(
     projection_state: StreamProjectionState | None = None,
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
+    question_coordinator: UserQuestionCoordinator | None = None,
 ) -> AsyncIterator[MessageEvent]:
     async for ev in _project_chunks(
         agent_manager.resume_hitl(agent_id, thread_id, decisions),
@@ -256,5 +281,6 @@ async def project_resume_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
+        question_coordinator=question_coordinator,
     ):
         yield ev

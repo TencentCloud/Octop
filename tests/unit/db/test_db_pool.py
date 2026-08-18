@@ -65,6 +65,7 @@ def test_run_migrations_creates_tables(db: SqlitePool):
         "knowledge_documents",
         "sso_providers",
         "sso_login_states",
+        "pending_user_questions",
     }
     assert expected.issubset(names)
 
@@ -76,7 +77,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
         thread_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
-    assert v == 6
+    assert v == 7
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
@@ -126,7 +127,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 6
+    assert v == 7
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -263,7 +264,7 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
     with pool.connect() as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
-    assert version == 6
+    assert version == 7
     assert "permissions" in cols
 
 
@@ -300,7 +301,7 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    assert version == 6
+    assert version == 7
     assert "permissions" in user_cols
     assert {
         "published_experts",

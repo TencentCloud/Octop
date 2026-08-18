@@ -28,6 +28,7 @@ import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { isImageAttachment } from "../utils/chatAttachments";
 import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
+import { injectPendingUserQuestion } from "../../../utils/injectPendingUserQuestion";
 import type {
   ChatAttachment,
   ChatMessage,
@@ -550,17 +551,20 @@ async function loadThreadHistory(
       limit,
       offset,
     });
-    const messages = injectPendingHitlMessage(
-      convertHistoryMessages(
-        history.messages.filter(
-          (message) =>
-            message.role === "user" ||
-            message.role === "assistant" ||
-            message.role === "tool",
+    const messages = injectPendingUserQuestion(
+      injectPendingHitlMessage(
+        convertHistoryMessages(
+          history.messages.filter(
+            (message) =>
+              message.role === "user" ||
+              message.role === "assistant" ||
+              message.role === "tool",
+          ),
+          agentId,
         ),
-        agentId,
+        history.hitl_pending,
       ),
-      history.hitl_pending,
+      history.question_pending,
     );
     return {
       messages,
@@ -880,6 +884,28 @@ export function useChat(
     [agentId, stableSessionId],
   );
 
+  const answerUserQuestion = useCallback(
+    (
+      pendingId: string,
+      answers: import("../../../api/types/userQuestions").UserQuestionAnswer[],
+      storeKey?: string,
+    ) => {
+      if (!agentId) return;
+      const key = storeKey || stableSessionId;
+      const threadId =
+        storeKey || (stableSessionId !== "__empty__" ? stableSessionId : "");
+      if (!threadId || threadId === "__empty__") return;
+      void chatStore.answerUserQuestion(
+        key,
+        agentId,
+        threadId,
+        pendingId,
+        answers,
+      );
+    },
+    [agentId, stableSessionId],
+  );
+
   return {
     messages,
     isStreaming,
@@ -899,5 +925,6 @@ export function useChat(
     refreshHistory,
     clearMessages,
     resumeHitl,
+    answerUserQuestion,
   };
 }

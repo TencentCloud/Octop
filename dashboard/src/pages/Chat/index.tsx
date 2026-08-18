@@ -235,6 +235,7 @@ function ChatPageInner() {
     refreshHistory,
     clearMessages,
     resumeHitl,
+    answerUserQuestion,
   } = useChat(activeThreadId, resolvedAgentId);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
@@ -544,6 +545,16 @@ function ChatPageInner() {
     [resumeHitl, activeThreadId],
   );
 
+  const handleQuestionAnswer = useCallback(
+    (
+      pendingId: string,
+      answers: import("../../api/types/userQuestions").UserQuestionAnswer[],
+    ) => {
+      answerUserQuestion(pendingId, answers, activeThreadId ?? undefined);
+    },
+    [answerUserQuestion, activeThreadId],
+  );
+
   useEffect(() => {
     let cancelled = false;
     browserApi
@@ -593,7 +604,12 @@ function ChatPageInner() {
 
   const [forking, setForking] = useState(false);
   const hasPendingHitl = useMemo(
-    () => messages.some((message) => message.hitlData?.status === "pending"),
+    () =>
+      messages.some(
+        (message) =>
+          message.hitlData?.status === "pending" ||
+          message.questionData?.status === "pending",
+      ),
     [messages],
   );
   const forkDisabled = forking || isStreaming || hasPendingHitl;
@@ -820,6 +836,7 @@ function ChatPageInner() {
                 forkDisabledHint={forkDisabledHint}
                 onAcpPermissionSelect={handleAcpPermissionSelect}
                 onHitlDecision={handleHitlDecision}
+                onQuestionAnswer={handleQuestionAnswer}
                 onOpenBrowser={
                   hasBrowserTool && !isMobile ? openBrowserTab : undefined
                 }
@@ -962,7 +979,7 @@ function ChatPageInner() {
             onCancel={cancelStream}
             onNewChat={handleNewChat}
             isStreaming={isStreaming}
-            disabled={!agentChatReady || noAgents}
+            disabled={!agentChatReady || noAgents || hasPendingHitl}
             initialText={prefillInputRef.current}
             onComposerCleared={() => {
               prefillInputRef.current = "";

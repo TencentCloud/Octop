@@ -71,6 +71,17 @@
       "pending_line": "`{pending_id}` — {count} tool(s)",
       "dashboard_hint": "Tool approval in chat uses the approval card in the dashboard, or `/approve` / `/reject` in IM channels."
     },
+    "questions": {
+      "card_title": "❓ The agent needs your input",
+      "card_footer_single": "Reply with `/answer <answer>`. For options, use the number or label.",
+      "card_footer_multiple": "Reply with `/answer 1=answer; 2=answer`.",
+      "card_pending_id": "Question ID: `{pending_id}`",
+      "none_pending": "There is no pending question in this conversation.",
+      "invalid_answer": "Could not use that answer: {error}",
+      "answer_ack": "Answer received. Continuing…",
+      "resume_failed": "Failed to continue after the answer: {error}",
+      "dashboard_hint": "Use the interactive question card in the dashboard. `/answer` is available in IM channels."
+    },
     "title": {
       "usage": "Usage: /title <text>",
       "done": "Title set: {title}"
@@ -239,6 +250,10 @@
       "pending": {
         "label": "Pending approvals",
         "description": "List tool approvals waiting for your decision"
+      },
+      "answer": {
+        "label": "Answer question",
+        "description": "Answer a structured question waiting in this conversation"
       },
       "title": {
         "label": "Set title",
@@ -430,6 +445,7 @@
     "execute": "Execute",
     "current_time": "Current time",
     "write_todos": "Write plan",
+    "ask_user_question": "Ask user",
     "task": "Sub-agent task",
     "ls": "List directory",
     "glob": "Find files",

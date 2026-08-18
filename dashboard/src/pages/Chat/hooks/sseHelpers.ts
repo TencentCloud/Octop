@@ -11,6 +11,10 @@ import type {
   TokenUsage,
 } from "../../../api/types";
 import type { ContentBlockItem } from "../../../utils/messageParser";
+import type {
+  UserQuestion,
+  UserQuestionAnswer,
+} from "../../../api/types/userQuestions";
 
 export interface ToolCallData {
   name?: string;
@@ -32,6 +36,13 @@ export interface HitlRequestData {
   action_requests: HitlActionRequest[];
   review_configs?: Array<{ action_name: string; allowed_decisions: string[] }>;
   status?: "pending" | "approved" | "rejected";
+}
+
+export interface UserQuestionRequestData {
+  pendingId: string;
+  questions: UserQuestion[];
+  answers?: UserQuestionAnswer[];
+  status?: "pending" | "answered" | "cancelled";
 }
 
 export interface ChatAttachment {
@@ -64,6 +75,7 @@ export interface ChatMessage {
   composerContext?: UserComposerContext;
   toolData?: ToolCallData;
   hitlData?: HitlRequestData;
+  questionData?: UserQuestionRequestData;
   usage?: TokenUsage;
   metadata?: MessageMetadata;
   errorInfo?: ProcessErrorInfo;

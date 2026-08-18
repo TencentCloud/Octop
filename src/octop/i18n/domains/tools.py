@@ -15,6 +15,7 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "unknown",
         "current_time",
         "write_todos",
+        "ask_user_question",
         # Memory
         "memory_search",
         "memory_get",

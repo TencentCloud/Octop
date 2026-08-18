@@ -1955,6 +1955,9 @@ class AgentManager:
         ]
 
         merged_tools: list[Any] = []
+        from octop.infra.agents.ask_user_question import build_ask_user_question_tool
+
+        merged_tools.append(build_ask_user_question_tool())
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)

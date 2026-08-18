@@ -71,6 +71,17 @@
       "pending_line": "`{pending_id}` — {count} 个工具",
       "dashboard_hint": "控制台聊天请使用审批卡片；IM 通道请使用 `/approve` 或 `/reject`。"
     },
+    "questions": {
+      "card_title": "❓ Agent 需要你的回答",
+      "card_footer_single": "回复 `/answer <答案>`；选择题可填写序号或选项文字。",
+      "card_footer_multiple": "回复 `/answer 1=答案; 2=答案`。",
+      "card_pending_id": "问题 ID：`{pending_id}`",
+      "none_pending": "当前会话没有待回答问题。",
+      "invalid_answer": "无法使用这个回答：{error}",
+      "answer_ack": "已收到回答，继续执行…",
+      "resume_failed": "回答后恢复执行失败：{error}",
+      "dashboard_hint": "控制台请使用交互式问题卡片；IM 通道可使用 `/answer`。"
+    },
     "title": {
       "usage": "用法：/title <标题>",
       "done": "标题已设置：{title}"
@@ -239,6 +250,10 @@
       "pending": {
         "label": "待审批",
         "description": "列出等待您决定的工具审批"
+      },
+      "answer": {
+        "label": "回答问题",
+        "description": "回答当前会话中等待处理的结构化问题"
       },
       "title": {
         "label": "设置标题",
@@ -430,6 +445,7 @@
     "execute": "执行指令",
     "current_time": "当前时间",
     "write_todos": "编写计划",
+    "ask_user_question": "询问用户",
     "task": "子智能体任务",
     "ls": "列出目录",
     "glob": "查找文件",

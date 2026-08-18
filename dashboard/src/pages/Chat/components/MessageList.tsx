@@ -13,6 +13,7 @@ import { Spin, Button } from "antd";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
+import type { UserQuestionAnswer } from "../../../api/types/userQuestions";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
 import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
@@ -103,6 +104,7 @@ interface MessageListProps {
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
+  onQuestionAnswer?: (pendingId: string, answers: UserQuestionAnswer[]) => void;
   onOpenBrowser?: () => void;
   onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
@@ -127,6 +129,7 @@ interface GroupRenderContext {
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
+  onQuestionAnswer?: (pendingId: string, answers: UserQuestionAnswer[]) => void;
   onOpenBrowser?: () => void;
   onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
@@ -169,6 +172,7 @@ function renderMessageGroup(
             onEditUserMessage={ctx.onEditUserMessage}
             onAcpPermissionSelect={ctx.onAcpPermissionSelect}
             onHitlDecision={ctx.onHitlDecision}
+            onQuestionAnswer={ctx.onQuestionAnswer}
             onOpenBrowser={openBrowserHandler}
             onEditFile={ctx.onEditFile}
             onRunShellCommand={ctx.onRunShellCommand}
@@ -217,6 +221,7 @@ function renderMessageGroup(
         onEditUserMessage={ctx.onEditUserMessage}
         onAcpPermissionSelect={ctx.onAcpPermissionSelect}
         onHitlDecision={ctx.onHitlDecision}
+        onQuestionAnswer={ctx.onQuestionAnswer}
         onOpenBrowser={openBrowserHandler}
         onEditFile={ctx.onEditFile}
         onRunShellCommand={ctx.onRunShellCommand}
@@ -250,6 +255,7 @@ export default function MessageList(props: MessageListProps) {
     forkDisabledHint,
     onAcpPermissionSelect,
     onHitlDecision,
+    onQuestionAnswer,
     onOpenBrowser,
     onEditFile,
     onRunShellCommand,
@@ -678,6 +684,7 @@ export default function MessageList(props: MessageListProps) {
       forkDisabledHint,
       onAcpPermissionSelect,
       onHitlDecision,
+      onQuestionAnswer,
       onOpenBrowser,
       onEditFile,
       onRunShellCommand,
@@ -700,6 +707,7 @@ export default function MessageList(props: MessageListProps) {
       forkDisabledHint,
       onAcpPermissionSelect,
       onHitlDecision,
+      onQuestionAnswer,
       onOpenBrowser,
       onEditFile,
       onRunShellCommand,
