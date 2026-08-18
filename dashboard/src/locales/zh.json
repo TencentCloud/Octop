@@ -696,6 +696,7 @@
     "agentDescription": "描述",
     "color": "配色",
     "colorHint": "选择专家卡片配色，用于列表与聊天头像等展示。",
+    "customColor": "自定义颜色",
     "defaultModel": "默认模型",
     "defaultModelAuto": "Auto（使用 Provider 默认模型）",
     "editFile": "编辑 →",
@@ -2677,8 +2678,7 @@
       "emerald": "翠绿",
       "amber": "琥珀",
       "slate": "石墨",
-      "custom": "自定义",
-      "customPicker": "自选主题色"
+      "custom": "自定义颜色"
     },
     "currentVersion": "当前版本 v{{version}}",
     "currentVersionAdmin": "当前版本 v{{version}}，点击查看更新",

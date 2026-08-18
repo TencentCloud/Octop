@@ -28,6 +28,11 @@ export const CURATED_PALETTES: ThemePalette[] = [...VALID_PALETTES];
 export const DEFAULT_PALETTE: ThemePalette = "rose";
 export const DEFAULT_CUSTOM_COLOR = "#4B74FA";
 
+/** True when the value is one of the curated palette keys (not "custom"/hex). */
+export function isCuratedPalette(value: string): value is ThemePalette {
+  return (VALID_PALETTES as string[]).includes(value);
+}
+
 /** Shared localStorage key for light/dark preference + brand palette. */
 export const THEME_STORAGE_KEY = "theme";
 

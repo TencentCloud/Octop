@@ -696,6 +696,7 @@
     "agentDescription": "Description",
     "color": "Color",
     "colorHint": "Choose the accent color for list cards and chat avatars.",
+    "customColor": "Custom color",
     "defaultModel": "Default Model",
     "defaultModelAuto": "Auto (use provider default)",
     "editFile": "Edit →",
@@ -2680,8 +2681,7 @@
       "emerald": "Emerald",
       "amber": "Amber",
       "slate": "Slate",
-      "custom": "Custom",
-      "customPicker": "Pick a custom brand color"
+      "custom": "Custom color"
     },
     "currentVersion": "Current version v{{version}}",
     "currentVersionAdmin": "Current version v{{version}}. Click to open Updates.",

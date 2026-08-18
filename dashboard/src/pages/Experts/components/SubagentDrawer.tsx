@@ -5,12 +5,12 @@ import type { FormInstance } from "antd";
 import { useTranslation } from "react-i18next";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import EmojiPicker from "../../../components/EmojiPicker";
-import {
-  expertPaletteColor,
-  resolveExpertPalette,
-} from "../../../utils/expertColor";
+import { expertPaletteColor } from "../../../utils/expertColor";
 import { splitMarkdownFrontmatter } from "../../../utils/markdown";
-import { DEFAULT_PALETTE } from "../../../styles/themePalettes";
+import {
+  DEFAULT_PALETTE,
+  isCuratedPalette,
+} from "../../../styles/themePalettes";
 import styles from "./SubagentDrawer.module.less";
 
 export interface SubagentFormValues {
@@ -33,7 +33,7 @@ type EditorTab = "form" | "source";
 
 export const SUBAGENT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-/** Form-bound adapter: stores hex in the form, shows curated swatches. */
+/** Form-bound adapter: form stores hex; picker passes key or hex through. */
 function SubagentColorField({
   value,
   onChange,
@@ -43,8 +43,12 @@ function SubagentColorField({
 }) {
   return (
     <ExpertColorPicker
-      value={resolveExpertPalette(value)}
-      onChange={(palette) => onChange?.(expertPaletteColor(palette))}
+      value={value ?? DEFAULT_PALETTE}
+      onChange={(next) => {
+        // Curated keys map to their swatch hex; custom hex passes through.
+        const hex = isCuratedPalette(next) ? expertPaletteColor(next) : next;
+        onChange?.(hex);
+      }}
     />
   );
 }

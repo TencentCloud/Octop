@@ -34,7 +34,10 @@ import {
   expertPaletteColor,
   resolveExpertPalette,
 } from "../../../utils/expertColor";
-import type { ThemePalette } from "../../../styles/themePalettes";
+import {
+  isCuratedPalette,
+  normalizeHexColor,
+} from "../../../styles/themePalettes";
 import { metaForFile } from "./iconForName";
 import {
   buildAgentRuntimeRequest,
@@ -196,8 +199,8 @@ function EditAgentDrawerBody({
     useAgentFormResources(true);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
-  const [colorPalette, setColorPalette] = useState<ThemePalette>(() =>
-    resolveExpertPalette(agent.color),
+  const [colorPalette, setColorPalette] = useState<string>(
+    () => normalizeHexColor(agent.color) ?? resolveExpertPalette(agent.color),
   );
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -341,7 +344,9 @@ function EditAgentDrawerBody({
         values.root_dir,
       );
 
-      const nextColor = expertPaletteColor(colorPalette);
+      const nextColor = isCuratedPalette(colorPalette)
+        ? expertPaletteColor(colorPalette)
+        : colorPalette;
       const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
         backend: backendSpec,
@@ -368,12 +373,16 @@ function EditAgentDrawerBody({
         const manifest = {
           welcome_message: data.welcome_message,
           quick_prompts: data.quick_prompts.filter(
-            (p) => p.title?.zh || p.title?.en || p.prompt?.zh || p.prompt?.en
+            (p) => p.title?.zh || p.title?.en || p.prompt?.zh || p.prompt?.en,
           ),
         };
         const manifestJson = JSON.stringify(manifest, null, 2);
         try {
-          await writeManifestWithRetry(agent.agent_id, "/manifest.json", manifestJson);
+          await writeManifestWithRetry(
+            agent.agent_id,
+            "/manifest.json",
+            manifestJson,
+          );
         } catch (manifestErr) {
           // Manifest is best-effort: the agent's main config (PATCH) is the
           // important part. Surface a warning so the user knows, but never
@@ -682,18 +691,22 @@ function EditAgentDrawerBody({
                     </Form>
                   ),
                 },
-                ...(isAgentChatReady(agent.state) ? [{
-                  key: "pageConfig",
-                  label: t("experts.pageConfigTitle"),
-                  children: (
-                    <div style={{ padding: 0 }}>
-                      <WelcomeConfig
-                        ref={welcomeConfigRef}
-                        agentId={agent.agent_id}
-                      />
-                    </div>
-                  ),
-                }] : []),
+                ...(isAgentChatReady(agent.state)
+                  ? [
+                      {
+                        key: "pageConfig",
+                        label: t("experts.pageConfigTitle"),
+                        children: (
+                          <div style={{ padding: 0 }}>
+                            <WelcomeConfig
+                              ref={welcomeConfigRef}
+                              agentId={agent.agent_id}
+                            />
+                          </div>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>

@@ -57,39 +57,31 @@
     0 0 0 4px var(--fn-text-primary);
 }
 
-/* Native color input styled as a round swatch with a "+" affordance. */
-.customPickerWrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  cursor: pointer;
+/* Custom color swatch: a rainbow conic gradient hints "pick any color".
+   When the custom palette is active the gradient is dropped so the inline
+   background-color (the chosen hex) shows through. */
+.customSwatch {
+  background-image: conic-gradient(
+    #f59e0b,
+    #ef4444,
+    #ec4899,
+    #8b5cf6,
+    #3b82f6,
+    #06b6d4,
+    #10b981,
+    #f59e0b
+  );
 }
 
-.customPickerInput {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  cursor: pointer;
-  box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
-    0 1px 2px rgba(0, 0, 0, 0.08);
+.active .customSwatch {
+  background-image: none;
+}
 
-  &::-webkit-color-swatch-wrapper {
-    padding: 0;
-  }
-
-  &::-webkit-color-swatch {
-    border: none;
-    border-radius: 50%;
-  }
-
-  &::-moz-color-swatch {
-    border: none;
-    border-radius: 50%;
-  }
+/* Hex readout next to the custom swatch when a non-curated color is active. */
+.customHex {
+  font-size: 11px;
+  font-family: var(--fn-font-mono, monospace);
+  color: var(--fn-text-tertiary);
+  align-self: center;
+  user-select: text;
 }
