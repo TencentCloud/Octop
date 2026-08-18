@@ -366,20 +366,6 @@ export default function UpdateConfig() {
             )}
           </div>
 
-          {status?.has_update && status.release_notes && (
-            <Collapse
-              className={styles.releaseNotes}
-              defaultActiveKey={["changelog"]}
-              items={[
-                {
-                  key: "changelog",
-                  label: t("advancedSettings.update.releaseNotes"),
-                  children: <Markdown content={status.release_notes} />,
-                },
-              ]}
-            />
-          )}
-
           {progress && (
             <div className={styles.progressSection}>
               {progress.status === "running" && (
@@ -454,6 +440,20 @@ export default function UpdateConfig() {
                 </div>
               )}
             </div>
+          )}
+
+          {status?.has_update && status.release_notes && (
+            <Collapse
+              className={styles.releaseNotes}
+              defaultActiveKey={["changelog"]}
+              items={[
+                {
+                  key: "changelog",
+                  label: t("advancedSettings.update.releaseNotes"),
+                  children: <Markdown content={status.release_notes} />,
+                },
+              ]}
+            />
           )}
         </section>
 
