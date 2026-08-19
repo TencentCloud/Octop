@@ -92,6 +92,24 @@ class BackupConfig:
     retention_count: int = 7
 
 
+_VALID_MOBILE_BACKENDS = frozenset({"physical", "redroid", "emulator", "none"})
+
+
+@dataclass(frozen=True)
+class MobileCapabilities:
+    """Install-time host capability for Remote Android (``capabilities.mobile``)."""
+
+    enabled: bool = False
+    backend: str = "none"
+    probed_at: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class CapabilitiesConfig:
+    mobile: MobileCapabilities = field(default_factory=MobileCapabilities)
+
+
 @dataclass(frozen=True)
 class OctopConfig:
     bind_host: str = "127.0.0.1"
@@ -110,6 +128,7 @@ class OctopConfig:
     database_in_file: bool = False
     tls: TlsConfig = field(default_factory=TlsConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
 
 
 def _defaults_for_file() -> dict[str, Any]:
@@ -143,6 +162,33 @@ def _parse_tls_section(raw: object) -> TlsConfig:
         acme_staging=bool(raw.get("acme_staging", False)),
         http_port=int(raw.get("http_port", 80)),
     )
+
+
+def _parse_mobile_capabilities(raw: object) -> MobileCapabilities:
+    if raw is None:
+        return MobileCapabilities()
+    if not isinstance(raw, dict):
+        raise ValueError("config.capabilities.mobile must be an object")
+    backend = str(raw.get("backend", "none")).strip().lower() or "none"
+    if backend not in _VALID_MOBILE_BACKENDS:
+        allowed = ", ".join(sorted(_VALID_MOBILE_BACKENDS))
+        msg = f"capabilities.mobile.backend must be one of {allowed}, got {backend!r}"
+        raise ValueError(msg)
+    return MobileCapabilities(
+        enabled=bool(raw.get("enabled", False)),
+        backend=backend,
+        probed_at=str(raw.get("probed_at", "")),
+        reason=str(raw.get("reason", "")),
+    )
+
+
+def _parse_capabilities_section(raw: object) -> CapabilitiesConfig:
+    if raw is None:
+        return CapabilitiesConfig()
+    if not isinstance(raw, dict):
+        raise ValueError("config.capabilities must be an object")
+    mobile_raw = raw.get("mobile")
+    return CapabilitiesConfig(mobile=_parse_mobile_capabilities(mobile_raw))
 
 
 def _parse_backup_section(raw: object) -> BackupConfig:
@@ -347,6 +393,30 @@ def load_config(path: Path) -> OctopConfig:
             "OCTOP_REQUIRE_SETUP_PASSWORD", v, bool(merged["require_setup_password"])
         )
 
+    capabilities = _parse_capabilities_section(raw.get("capabilities"))
+    if v := os.environ.get("OCTOP_ENABLE_MOBILE"):
+        forced = _coerce_bool("OCTOP_ENABLE_MOBILE", v, capabilities.mobile.enabled)
+        capabilities = CapabilitiesConfig(
+            mobile=MobileCapabilities(
+                enabled=forced,
+                backend=capabilities.mobile.backend,
+                probed_at=capabilities.mobile.probed_at,
+                reason=capabilities.mobile.reason,
+            )
+        )
+
+    capabilities = _parse_capabilities_section(raw.get("capabilities"))
+    if v := os.environ.get("OCTOP_ENABLE_MOBILE"):
+        forced = _coerce_bool("OCTOP_ENABLE_MOBILE", v, capabilities.mobile.enabled)
+        capabilities = CapabilitiesConfig(
+            mobile=MobileCapabilities(
+                enabled=forced,
+                backend=capabilities.mobile.backend,
+                probed_at=capabilities.mobile.probed_at,
+                reason=capabilities.mobile.reason,
+            )
+        )
+
     backup = _parse_backup_section(raw.get("backup"))
     if v := os.environ.get("OCTOP_BACKUP_AUTO_ENABLED"):
         backup = BackupConfig(
@@ -391,4 +461,5 @@ def load_config(path: Path) -> OctopConfig:
         database_in_file=database_in_file,
         tls=_parse_tls_section(raw.get("tls")),
         backup=backup,
+        capabilities=capabilities,
     )

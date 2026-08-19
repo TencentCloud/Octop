@@ -13,6 +13,7 @@ const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/workbench/browser": () => import("../pages/Control/Workbench"),
   "/workbench/terminal": () => import("../pages/Control/Workbench"),
   "/remote-desktop": () => import("../pages/Control/RemoteDesktop"),
+  "/remote-android": () => import("../pages/Control/RemoteAndroid"),
   "/acp": () => import("../pages/Agent/ACP"),
   "/personalization": () => import("../pages/Agent/Personalization"),
   "/personalization/skills": () => import("../pages/Agent/Personalization"),

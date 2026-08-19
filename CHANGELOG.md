@@ -1,3 +1,10 @@
+## Unreleased
+### Remote Android (experimental)
+
+- Install-time host capability probe (`capabilities.mobile`) with physical / Redroid / KVM backends.
+- `GET /api/settings/capabilities` and gated `/api/mobile/*` routes when enabled.
+- Dashboard **Control → Remote Android** with adb stream and touch input.
+
 # Changelog
 
 本文件记录项目的所有重要变更。

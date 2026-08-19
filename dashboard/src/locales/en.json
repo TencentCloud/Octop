@@ -194,7 +194,8 @@
     "security": "Security",
     "adminPlugins": "Plugins",
     "skillPackages": "Skill Packages",
-    "knowledgeBases": "Knowledge Bases"
+    "knowledgeBases": "Knowledge Bases",
+    "remoteAndroid": "Remote Android"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -1099,8 +1100,8 @@
     "read_file": "Read file",
     "write_file": "Write file",
     "edit_file": "Edit file",
-    "execute": "Execute",
     "bash": "Shell (bash)",
+    "execute": "Execute",
     "current_time": "Current time",
     "write_todos": "Write plan",
     "task": "Sub-agent task",
@@ -1130,7 +1131,13 @@
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
-    "send_file_to_user": "Send file"
+    "send_file_to_user": "Send file",
+    "mobile_screenshot": "Mobile screenshot",
+    "mobile_tap": "Mobile tap",
+    "mobile_swipe": "Mobile swipe",
+    "mobile_launch_app": "Launch mobile app",
+    "mobile_ui_dump": "Mobile UI dump",
+    "mobile_handoff_to_user": "Hand off to user (mobile)"
   },
   "chatUsage": {
     "latestRun": "Latest run",
@@ -4349,6 +4356,26 @@
     "terminal": {
       "title": "Terminal AI+",
       "subtitle": "Run an interactive shell terminal in the browser"
+    },
+    "mobile": {
+      "title": "Remote Android",
+      "subtitle": "View and control a connected Android device or emulator"
     }
+  },
+  "remoteAndroid": {
+    "refresh": "Refresh",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "connecting": "Connecting…",
+    "pickDevice": "Select a device first",
+    "devicePlaceholder": "Select device",
+    "needsInstall": "Container install required",
+    "needsInstallDesc": "This host uses a container Android backend. Install it from the server before connecting.",
+    "needsDevice": "No device connected",
+    "needsDeviceDesc": "Start an Android emulator or connect a phone via USB, then refresh.",
+    "idleTitle": "Not connected",
+    "idleDesc": "Connect to stream and control the Android screen.",
+    "adminOnlyTitle": "Remote Android",
+    "adminOnlyDesc": "Remote Android requires the mobile permission."
   }
 }

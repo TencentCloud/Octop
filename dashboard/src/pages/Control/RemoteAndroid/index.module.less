@@ -1,0 +1,24 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.viewport {
+  position: relative;
+  min-height: 480px;
+  border: 1px solid var(--octop-border, #e8e8e8);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  overflow: hidden;
+}
+
+.canvas {
+  max-width: 100%;
+  max-height: min(70vh, 800px);
+  touch-action: none;
+}

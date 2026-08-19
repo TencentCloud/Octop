@@ -57,6 +57,7 @@ PERMISSIONS: dict[str, PermissionDef] = {
     "terminal": _p("terminal", "control", "工作台/终端", "Workbench / Terminal"),
     "browser": _p("browser", "control", "工作台/浏览器", "Workbench / Browser"),
     "desktop": _p("desktop", "control", "远程桌面", "Remote Desktop"),
+    "mobile": _p("mobile", "control", "远程 Android", "Remote Android"),
     # --- admin: grouped by page, chip = tab title ---
     "users": _p(
         "users",

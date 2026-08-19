@@ -1090,6 +1090,16 @@ esac
 
 export PATH="$OCTOP_BIN:$PATH"
 
+
+# Probe mobile host capability into config.json
+if [ -f "$OCTOP_VENV/bin/python" ] && [ -d "$OCTOP_HOME" ]; then
+  CONFIG_PATH="$OCTOP_HOME/config.json"
+  if [ ! -f "$CONFIG_PATH" ]; then
+    echo "{}" > "$CONFIG_PATH"
+  fi
+  "$OCTOP_VENV/bin/python" -m octop.infra.mobile "$CONFIG_PATH" || true
+fi
+
 # ── 完成 ──────────────────────────────────────────────────────────────────────
 echo ""
 printf "${GREEN}${BOLD}Octop installed successfully!${RESET}\n"

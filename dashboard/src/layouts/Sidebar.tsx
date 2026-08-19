@@ -8,6 +8,7 @@ import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import {
   Monitor,
+  Smartphone,
   MessageSquareText,
   Timer,
   ArrowRightLeft,
@@ -36,6 +37,7 @@ import { useUpdateStatus } from "../hooks/useUpdateStatus";
 import type { OctopUser } from "../api/modules/auth";
 import { navAllowed } from "../utils/permissions";
 import { prefetchRoute } from "../routes/prefetch";
+import { useServerCapabilities } from "../hooks/useServerCapabilities";
 import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/components/ChatSidebarPanel";
 import styles from "./Sidebar.module.less";
@@ -126,7 +128,10 @@ interface NavSection {
 const iconSize = 16;
 const iconStroke = 1.8;
 
-function buildNavSections(user: OctopUser | null): NavSection[] {
+function buildNavSections(
+  user: OctopUser | null,
+  opts?: { mobileEnabled?: boolean },
+): NavSection[] {
   const sections: NavSection[] = [
     {
       items: [
@@ -218,6 +223,14 @@ function buildNavSections(user: OctopUser | null): NavSection[] {
       path: "/remote-desktop",
       icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.remoteDesktop",
+    });
+  }
+  if (opts?.mobileEnabled && navAllowed(user, "remote-android")) {
+    controlItems.push({
+      key: "remote-android",
+      path: "/remote-android",
+      icon: <Smartphone size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.remoteAndroid",
     });
   }
   // ACP: no module key this round — admin role only.
@@ -441,7 +454,8 @@ function NavList({
   const role = useUserRole();
   const user = useCurrentUser();
   const { hasUpdate } = useUpdateStatus();
-  const navSections = buildNavSections(user);
+  const { mobileEnabled } = useServerCapabilities();
+  const navSections = buildNavSections(user, { mobileEnabled });
 
   const MOBILE_HIDDEN_KEYS = new Set<string>();
 
@@ -541,7 +555,8 @@ export default function Sidebar({
   const user = useCurrentUser();
   const setUser = useSetCurrentUser();
   const { hasUpdate } = useUpdateStatus();
-  const navSections = buildNavSections(user);
+  const { mobileEnabled } = useServerCapabilities();
+  const navSections = buildNavSections(user, { mobileEnabled });
   const { toggleGroup, isGroupCollapsed } = useNavGroupCollapse(
     navSections,
     selectedKey,

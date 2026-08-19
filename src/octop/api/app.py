@@ -85,6 +85,9 @@ def build_app(server: OctopServer) -> FastAPI:
     cfg = server.services.config if server.services else getattr(server, "config", None)
     enable_dashboard = cfg.enable_dashboard if cfg else True
     enable_api_docs = cfg.enable_api_docs if cfg else False
+    enable_mobile = (
+        cfg.capabilities.mobile.enabled if cfg and cfg.capabilities.mobile.enabled else False
+    )
 
     app = FastAPI(
         title="Octop API",
@@ -144,6 +147,7 @@ def build_app(server: OctopServer) -> FastAPI:
         mbti,
         memory,
         memory_portable,
+        mobile,
         ollama_models,
         onnx_models,
         plugins,
@@ -232,6 +236,14 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(plugins.router, "/api", ["plugins"]),
         ],
     )
+
+    if enable_mobile:
+        _mount_routers(
+            app,
+            [
+                _RouterMount(mobile.router, "/api", ["mobile"]),
+            ],
+        )
 
     if enable_api_docs:
 

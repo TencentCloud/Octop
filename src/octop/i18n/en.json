@@ -459,7 +459,13 @@
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
-    "send_file_to_user": "Send file"
+    "send_file_to_user": "Send file",
+    "mobile_screenshot": "Mobile screenshot",
+    "mobile_tap": "Mobile tap",
+    "mobile_swipe": "Mobile swipe",
+    "mobile_launch_app": "Launch mobile app",
+    "mobile_ui_dump": "Mobile UI dump",
+    "mobile_handoff_to_user": "Hand off to user (mobile)"
   },
   "skills": {
     "pdf": "PDF",
@@ -520,13 +526,13 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "No models are configured. Go to Settings \u2192 Models to add a Provider, then enable this expert again.",
-    "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings \u2192 Models or update this expert's default model, then try again."
+    "no_models_configured": "No models are configured. Go to Settings → Models to add a Provider, then enable this expert again.",
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings → Models or update this expert's default model, then try again."
   },
   "stream_errors": {
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
-    "auth": "Model authentication failed. Check that the API key under Settings \u2192 Models is correct and still valid.",
+    "auth": "Model authentication failed. Check that the API key under Settings → Models is correct and still valid.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
@@ -549,7 +555,18 @@
     }
   },
   "proactive_care": {
-    "system_prompt": "Today is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred \u2014 do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly.",
-    "system_prompt_with_soul": "{soul_md}\n\n---\n\nToday is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred \u2014 do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly."
+    "system_prompt": "Today is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred — do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly.",
+    "system_prompt_with_soul": "{soul_md}\n\n---\n\nToday is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred — do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly."
+  },
+  "mobile": {
+    "unsupported_reason": "Remote Android is not supported on this host.",
+    "adb_not_found": "adb was not found. Install Android platform-tools or Android Studio SDK.",
+    "no_device": "No adb device connected. Start an emulator or connect a phone via USB.",
+    "container_no_adb": "Android container is running but adb cannot see a device yet.",
+    "install_log_start": "Starting Android container install…",
+    "install_log_ready": "Android environment is ready.",
+    "error_script_missing": "Mobile install script is missing from the Octop package.",
+    "error_docker_missing": "Docker is required to install the Android container backend.",
+    "error_command_failed": "Command failed (exit {exit_code})."
   }
 }

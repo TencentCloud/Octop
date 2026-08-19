@@ -194,7 +194,8 @@
     "security": "安全防护",
     "knowledgeBases": "知识库",
     "adminPlugins": "插件",
-    "skillPackages": "技能包"
+    "skillPackages": "技能包",
+    "remoteAndroid": "远程 Android"
   },
   "skillPackages": {
     "title": "技能包",
@@ -1099,8 +1100,8 @@
     "read_file": "读取文件",
     "write_file": "写入文件",
     "edit_file": "编辑文件",
-    "execute": "执行指令",
     "bash": "Shell 命令 (bash)",
+    "execute": "执行指令",
     "current_time": "当前时间",
     "write_todos": "编写计划",
     "task": "子智能体任务",
@@ -1130,7 +1131,13 @@
     "acp_runner": "ACP 外部 Agent",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
-    "send_file_to_user": "发送文件"
+    "send_file_to_user": "发送文件",
+    "mobile_screenshot": "手机截图",
+    "mobile_tap": "手机点击",
+    "mobile_swipe": "手机滑动",
+    "mobile_launch_app": "启动手机应用",
+    "mobile_ui_dump": "手机界面结构",
+    "mobile_handoff_to_user": "交给用户操作（手机）"
   },
   "chatUsage": {
     "latestRun": "最近一次请求",
@@ -4494,6 +4501,26 @@
     "terminal": {
       "title": "终端 AI+",
       "subtitle": "在浏览器中运行交互式 Shell 终端"
+    },
+    "mobile": {
+      "title": "远程 Android",
+      "subtitle": "查看并控制已连接的 Android 设备或模拟器"
     }
+  },
+  "remoteAndroid": {
+    "refresh": "刷新",
+    "connect": "连接",
+    "disconnect": "断开",
+    "connecting": "连接中…",
+    "pickDevice": "请先选择设备",
+    "devicePlaceholder": "选择设备",
+    "needsInstall": "需要安装容器",
+    "needsInstallDesc": "此主机使用容器 Android 后端，请先在服务器上完成安装。",
+    "needsDevice": "未连接设备",
+    "needsDeviceDesc": "请启动 Android 模拟器或通过 USB 连接手机，然后刷新。",
+    "idleTitle": "未连接",
+    "idleDesc": "连接后即可查看并控制 Android 屏幕。",
+    "adminOnlyTitle": "远程 Android",
+    "adminOnlyDesc": "远程 Android 需要 mobile 权限。"
   }
 }

@@ -318,3 +318,24 @@ def test_new_timezone_env_wins_over_legacy_env(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setenv("OCTOP_CRON_TIMEZONE", "Asia/Tokyo")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.default_timezone == "UTC"
+
+
+def test_loads_mobile_capabilities(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "capabilities": {
+                    "mobile": {
+                        "enabled": True,
+                        "backend": "physical",
+                        "probed_at": "2026-01-01T00:00:00Z",
+                        "reason": "",
+                    }
+                }
+            }
+        )
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.capabilities.mobile.enabled is True
+    assert cfg.capabilities.mobile.backend == "physical"
