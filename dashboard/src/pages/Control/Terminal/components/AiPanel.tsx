@@ -247,6 +247,7 @@ export default function AiPanel({
         last_error: null,
         icon: null,
         icon_name: "terminal",
+        icon_url: null,
         color: null,
         config: { expert_id: "ops-engineer" },
       });

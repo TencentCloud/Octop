@@ -12,6 +12,7 @@ from typing import Any
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
+from octop.infra.agents.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
@@ -565,7 +566,7 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
         return None
 
     mid = _msg_attr(msg, "id")
-    usage = _msg_attr(msg, "usage_metadata")
+    usage = usage_dict_from_message(msg)
     additional_kwargs = _msg_attr(msg, "additional_kwargs")
     if not isinstance(additional_kwargs, dict):
         additional_kwargs = {}

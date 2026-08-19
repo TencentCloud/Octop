@@ -11,6 +11,7 @@ from octop.infra.db.repos._base import DbRow, map_rows, now_ts
 @dataclass(frozen=True)
 class PublishedExpertRow:
     id: str
+    pk: int
     slug: str
     name: str
     description: str
@@ -24,7 +25,8 @@ class PublishedExpertRow:
     @classmethod
     def from_row(cls, r: DbRow) -> PublishedExpertRow:
         return cls(
-            id=r["id"],
+            id=str(r["published_expert_id"]),
+            pk=int(r["id"]),
             slug=r["slug"],
             name=r["name"],
             description=r["description"],
@@ -49,7 +51,7 @@ class PublishedExpertRepo:
     def get(self, expert_id: str) -> PublishedExpertRow | None:
         with self._db.connect() as conn:
             r = conn.execute(
-                "SELECT * FROM published_experts WHERE id = ?",
+                "SELECT * FROM published_experts WHERE published_expert_id = ?",
                 (expert_id,),
             ).fetchone()
         return PublishedExpertRow.from_row(r) if r else None
@@ -65,7 +67,8 @@ class PublishedExpertRepo:
     def get_by_source_agent_id(self, source_agent_id: str) -> PublishedExpertRow | None:
         with self._db.connect() as conn:
             r = conn.execute(
-                "SELECT * FROM published_experts WHERE source_agent_id = ? ORDER BY created_at LIMIT 1",
+                "SELECT * FROM published_experts WHERE source_agent_id = ? "
+                "ORDER BY created_at LIMIT 1",
                 (source_agent_id,),
             ).fetchone()
         return PublishedExpertRow.from_row(r) if r else None
@@ -86,8 +89,8 @@ class PublishedExpertRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO published_experts("
-                "id, slug, name, description, created_by, source_agent_id, "
-                "icon_name, color, created_at, updated_at"
+                "published_expert_id, slug, name, description, created_by, "
+                "source_agent_id, icon_name, color, created_at, updated_at"
                 ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     id,
@@ -134,7 +137,7 @@ class PublishedExpertRepo:
         values.append(expert_id)
         with self._db.transaction() as conn:
             conn.execute(
-                f"UPDATE published_experts SET {', '.join(fields)} WHERE id = ?",
+                f"UPDATE published_experts SET {', '.join(fields)} WHERE published_expert_id = ?",
                 tuple(values),
             )
         row = self.get(expert_id)
@@ -144,4 +147,7 @@ class PublishedExpertRepo:
 
     def delete(self, expert_id: str) -> None:
         with self._db.transaction() as conn:
-            conn.execute("DELETE FROM published_experts WHERE id = ?", (expert_id,))
+            conn.execute(
+                "DELETE FROM published_experts WHERE published_expert_id = ?",
+                (expert_id,),
+            )

@@ -16,6 +16,7 @@ export interface Session {
   modelRef?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
+  artifacts?: string[];
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -33,6 +34,7 @@ export function toSession(row: {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  artifacts?: string[] | null;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -55,6 +57,12 @@ export function toSession(row: {
     modelRef: row.model_ref ?? null,
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,
+    artifacts: Array.isArray(row.artifacts)
+      ? row.artifacts.filter(
+          (path): path is string =>
+            typeof path === "string" && path.trim().length > 0,
+        )
+      : [],
   };
 }
 

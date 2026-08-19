@@ -3,6 +3,7 @@ import {
   agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
   isHostAbsoluteMediaPath,
+  needsAuthBlobFetch,
   toMediaPreviewSource,
   workspaceDownloadUrl,
 } from "./toolMediaBlocks";
@@ -82,5 +83,13 @@ describe("toMediaPreviewSource", () => {
     );
     expect(url).toContain("source=file");
     expect(url).toContain("octop-logo.png");
+  });
+});
+
+describe("needsAuthBlobFetch", () => {
+  it("requires auth for uploaded expert avatars", () => {
+    expect(needsAuthBlobFetch("/api/agents/agt_1/avatar")).toBe(true);
+    expect(needsAuthBlobFetch("/api/agents/agt_1/avatar?v=9")).toBe(true);
+    expect(needsAuthBlobFetch("https://cdn.example.com/icon.png")).toBe(false);
   });
 });

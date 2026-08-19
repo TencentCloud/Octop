@@ -96,7 +96,7 @@ interface MessageListProps {
   onCancel?: () => void;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
-  onForkUserMessage?: (messageId: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
@@ -120,7 +120,7 @@ interface GroupRenderContext {
   lastUserGroupIndex: number;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
-  onForkUserMessage?: (messageId: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
@@ -167,6 +167,9 @@ function renderMessageGroup(
             isTurnInProgress={isTurnInProgress}
             onRegenerate={ctx.onRegenerate}
             onEditUserMessage={ctx.onEditUserMessage}
+            onForkAssistantMessage={ctx.onForkAssistantMessage}
+            forkDisabled={ctx.forkDisabled}
+            forkDisabledHint={ctx.forkDisabledHint}
             onAcpPermissionSelect={ctx.onAcpPermissionSelect}
             onHitlDecision={ctx.onHitlDecision}
             onOpenBrowser={openBrowserHandler}
@@ -191,9 +194,6 @@ function renderMessageGroup(
           composerLookups={ctx.composerLookups}
           onRegenerate={ctx.onRegenerate}
           onEditUserMessage={ctx.onEditUserMessage}
-          onForkUserMessage={ctx.onForkUserMessage}
-          forkDisabled={ctx.forkDisabled}
-          forkDisabledHint={ctx.forkDisabledHint}
         />
       </div>
     );
@@ -215,6 +215,9 @@ function renderMessageGroup(
         isTurnInProgress={isTurnInProgress}
         onRegenerate={ctx.onRegenerate}
         onEditUserMessage={ctx.onEditUserMessage}
+        onForkAssistantMessage={ctx.onForkAssistantMessage}
+        forkDisabled={ctx.forkDisabled}
+        forkDisabledHint={ctx.forkDisabledHint}
         onAcpPermissionSelect={ctx.onAcpPermissionSelect}
         onHitlDecision={ctx.onHitlDecision}
         onOpenBrowser={openBrowserHandler}
@@ -245,7 +248,7 @@ export default function MessageList(props: MessageListProps) {
     onCancel,
     onRegenerate,
     onEditUserMessage,
-    onForkUserMessage,
+    onForkAssistantMessage,
     forkDisabled,
     forkDisabledHint,
     onAcpPermissionSelect,
@@ -673,7 +676,7 @@ export default function MessageList(props: MessageListProps) {
       lastUserGroupIndex,
       onRegenerate,
       onEditUserMessage,
-      onForkUserMessage,
+      onForkAssistantMessage,
       forkDisabled,
       forkDisabledHint,
       onAcpPermissionSelect,
@@ -695,7 +698,7 @@ export default function MessageList(props: MessageListProps) {
       lastUserGroupIndex,
       onRegenerate,
       onEditUserMessage,
-      onForkUserMessage,
+      onForkAssistantMessage,
       forkDisabled,
       forkDisabledHint,
       onAcpPermissionSelect,

@@ -29,6 +29,9 @@ interface ChatSidebarPanelProps {
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
+  onForkSession: (id: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
   onSidebarOpenChange: (open: boolean) => void;
   onSidebarResizeStart: (e: React.PointerEvent) => void;
   /** Mounted in MainLayout left rail (between app nav and content). */
@@ -54,6 +57,9 @@ export default function ChatSidebarPanel({
   onDeleteSession,
   onRenameSession,
   onPinSession,
+  onForkSession,
+  forkDisabled,
+  forkDisabledHint,
   onSidebarOpenChange,
   onSidebarResizeStart,
   layoutRail = false,
@@ -108,6 +114,9 @@ export default function ChatSidebarPanel({
           onDelete={onDeleteSession}
           onRename={onRenameSession}
           onPin={onPinSession}
+          onFork={onForkSession}
+          activeForkDisabled={forkDisabled}
+          activeForkDisabledHint={forkDisabledHint}
         />
         {!isMobile && sidebarOpen && (
           <div

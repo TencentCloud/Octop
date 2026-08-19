@@ -223,6 +223,29 @@ def test_build_harness_config_includes_existing_skill_package_dirs(manager: Agen
 
     expected = str((manager.paths.skill_packages_dir / package_id / "skills").resolve())
     assert expected in list(cfg.skills_dir or [])
+    persisted = manager.get_row(agent_id)
+    assert persisted is not None
+    assert json.loads(persisted.skill_package_ids or "[]") == ["PACK01", "MISSING"]
+    assert "skill_package_ids" not in json.loads(persisted.config_json or "{}")
+
+
+def test_persist_harness_config_lifts_legacy_skill_package_ids(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(
+        agent_id="AGENT01",
+        user_id=None,
+        name="agent",
+        config_json='{"skill_package_ids":["PACK01"],"backend":{"type":"local_shell"}}',
+    )
+    cfg = manager.get_config("AGENT01")
+    cfg["workspace_dir"] = "/tmp/ws"
+    manager.persist_harness_config("AGENT01", cfg)
+    row = manager.get_row("AGENT01")
+    assert row is not None
+    assert json.loads(row.skill_package_ids or "[]") == ["PACK01"]
+    stored = json.loads(row.config_json or "{}")
+    assert "skill_package_ids" not in stored
+    assert stored["workspace_dir"] == "/tmp/ws"
+    assert manager.get_config("AGENT01")["skill_package_ids"] == ["PACK01"]
 
 
 @pytest.mark.asyncio

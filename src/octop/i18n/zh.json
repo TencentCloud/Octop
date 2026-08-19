@@ -354,7 +354,9 @@
     "KNOWLEDGE_DOC_TOO_LARGE": "文档超过 20 MB 大小限制。",
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
-    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。"
+    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
+    "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
+    "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

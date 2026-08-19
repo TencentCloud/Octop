@@ -26,6 +26,7 @@ import { isChatStreamError } from "../../../utils/chatStreamError";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import { turnStatusAction } from "./turnStatusGate";
+import { frameBelongsToThread } from "./frameThread";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
   STREAM_STALE_WITHOUT_SOCKET_MS,
@@ -1522,6 +1523,7 @@ export async function attachThread(
       try {
         const data = JSON.parse(String(event.data)) as Record<string, unknown>;
         if (!data || typeof data !== "object") return;
+        if (!frameBelongsToThread(data, live.threadId)) return;
 
         if (data.type === "turn_status") {
           if (turnStatusAction(Boolean(data.active)) === "expect_stream") {
@@ -1771,6 +1773,7 @@ async function sendTurnWebSocket(
       try {
         const data = JSON.parse(String(event.data)) as HarnessChunk;
         if (!data || typeof data !== "object") return;
+        if (!frameBelongsToThread(data, live.threadId)) return;
         if ((data as { type?: string }).type === "turn_status") return;
         handleHarnessChunk(state, data, sessionId);
         if (

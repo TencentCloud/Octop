@@ -9,6 +9,8 @@ import {
   turnUsedBrowserTool,
   turnUsedFileTool,
 } from "../utils/messageContent";
+import { isWriteToolName } from "../constants";
+import { collectChatFilePaths } from "../hooks/useChatFileDetection";
 import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
 import { useAgent } from "../../../context/AgentContext";
 import { TodoProgressPanel } from "../../../components/TodoProgressPanel";
@@ -20,6 +22,8 @@ import AssistantProcessSummary from "./AssistantProcessSummary";
 import MessageBubble from "./MessageBubble";
 import { ToolMediaStrip } from "./ToolMediaStrip";
 import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
+import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowledgeCitations";
+import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
 import styles from "../index.module.less";
 
 interface AssistantTurnViewProps {
@@ -30,6 +34,9 @@ interface AssistantTurnViewProps {
   isTurnInProgress?: boolean;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
   onHitlDecision?: (
     decisions: Array<{ type: string; message?: string }>,
@@ -56,6 +63,9 @@ export default function AssistantTurnView({
   isTurnInProgress = false,
   onRegenerate,
   onEditUserMessage,
+  onForkAssistantMessage,
+  forkDisabled,
+  forkDisabledHint,
   onAcpPermissionSelect,
   onHitlDecision,
   onOpenBrowser,
@@ -94,6 +104,10 @@ export default function AssistantTurnView({
     () => collectTurnToolMedia(fullSplit, agentId),
     [fullSplit, agentId],
   );
+  const knowledgeCitations = useMemo(
+    () => collectTurnKnowledgeCitations(fullSplit),
+    [fullSplit],
+  );
 
   const turnStreaming =
     isTurnInProgress ||
@@ -102,6 +116,13 @@ export default function AssistantTurnView({
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
   const usedFileTool = turnUsedFileTool(fullSplit);
   const showEditFile = usedFileTool && !!onEditFile;
+  const turnFileCount = useMemo(() => {
+    const fromPaths = collectChatFilePaths(messages, agentId).length;
+    if (fromPaths > 0) return fromPaths;
+    return (fullSplit.tools ?? []).filter((msg) =>
+      isWriteToolName(msg.toolData?.name),
+    ).length;
+  }, [messages, agentId, fullSplit.tools]);
   const hasToolMedia =
     toolMedia.images.length > 0 ||
     toolMedia.videos.length > 0 ||
@@ -197,6 +218,9 @@ export default function AssistantTurnView({
             message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
             onRegenerate={onRegenerate}
             onEditUserMessage={onEditUserMessage}
+            onForkAssistantMessage={onForkAssistantMessage}
+            forkDisabled={forkDisabled}
+            forkDisabledHint={forkDisabledHint}
             groupPosition="only"
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
@@ -204,6 +228,7 @@ export default function AssistantTurnView({
           />
         </div>
       ) : null}
+      <KnowledgeCitationsStrip citations={knowledgeCitations} />
       {showOpenBrowser && (
         <button
           type="button"
@@ -234,7 +259,10 @@ export default function AssistantTurnView({
             turnStreaming ? styles.openBrowserPromptActive : ""
           }`}
           onClick={onEditFile}
-          aria-label={t("chat.editFileCard", "编辑文件")}
+          aria-label={t("chat.editFileCard", {
+            count: Math.max(turnFileCount, 1),
+            defaultValue: "编辑了{{count}}个文件",
+          })}
         >
           <FilePen
             size={16}
@@ -242,7 +270,12 @@ export default function AssistantTurnView({
             className={styles.openBrowserPromptIcon}
             aria-hidden="true"
           />
-          <span>{t("chat.editFileCard", "编辑文件")}</span>
+          <span>
+            {t("chat.editFileCard", {
+              count: Math.max(turnFileCount, 1),
+              defaultValue: "编辑了{{count}}个文件",
+            })}
+          </span>
           <ChevronRight
             size={14}
             className={styles.openBrowserPromptArrow}

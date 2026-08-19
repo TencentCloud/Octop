@@ -87,6 +87,7 @@ export default function UserMessageComposerTags({
         icon: (
           <ExpertAgentAvatar
             iconName={agent?.icon_name}
+            iconUrl={agent?.icon_url}
             color={agent?.color}
             size={16}
             iconSize={9}

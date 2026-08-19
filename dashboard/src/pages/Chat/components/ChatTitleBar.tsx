@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
-import { MoreVertical, Pin, PinOff, Pencil, Trash2 } from "lucide-react";
+import {
+  MoreVertical,
+  Pin,
+  PinOff,
+  Pencil,
+  Trash2,
+  GitFork,
+} from "lucide-react";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
@@ -13,7 +20,10 @@ interface ChatTitleBarProps {
   title: string;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onFork: (id: string) => void;
   onDelete: (id: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
 }
 
 export default function ChatTitleBar({
@@ -21,7 +31,10 @@ export default function ChatTitleBar({
   title,
   onRename,
   onPin,
+  onFork,
   onDelete,
+  forkDisabled,
+  forkDisabledHint,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -60,6 +73,14 @@ export default function ChatTitleBar({
         onClick: () => onPin(session.id, !session.pinned),
       },
       {
+        key: "fork",
+        label: t("chat.fork", "分叉"),
+        icon: <GitFork size={14} />,
+        disabled: forkDisabled,
+        title: forkDisabled && forkDisabledHint ? forkDisabledHint : undefined,
+        onClick: () => onFork(session.id),
+      },
+      {
         key: "delete",
         label: t("common.delete"),
         icon: <Trash2 size={14} />,
@@ -77,7 +98,16 @@ export default function ChatTitleBar({
         },
       },
     ],
-    [session.id, session.pinned, onPin, onDelete, t],
+    [
+      session.id,
+      session.pinned,
+      onPin,
+      onFork,
+      onDelete,
+      forkDisabled,
+      forkDisabledHint,
+      t,
+    ],
   );
 
   return (

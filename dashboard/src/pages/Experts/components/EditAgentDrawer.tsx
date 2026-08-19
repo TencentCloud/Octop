@@ -20,10 +20,12 @@ import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { workspaceApi } from "../../../api/modules/workspace";
-import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
+import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
-import type { OctopAgent } from "../../../context/AgentContext";
+import { octopAgentsApi } from "../../../api/modules/octopAgents";
+import { useAgent, type OctopAgent } from "../../../context/AgentContext";
+import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import {
   buildModelSelectOptions,
@@ -47,6 +49,12 @@ import {
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import FileEditModal from "./FileEditModal";
 import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
+import {
+  mergeWelcomeIntoManifest,
+  parseManifestObject,
+  shouldWriteWelcomeManifest,
+  type WelcomeConfigData,
+} from "./welcomeManifest";
 import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
   buildBackendSpec,
@@ -71,11 +79,13 @@ interface AgentDetail {
   description: string | null;
   default_model: string | null;
   color?: string | null;
+  icon_url?: string | null;
   max_iters?: number | null;
   max_input_length?: number | null;
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  welcome_message?: string | null;
   config?: Record<string, unknown>;
 }
 
@@ -106,6 +116,7 @@ function subagentFilePath(path: string): string {
 interface EditFormValues {
   name: string;
   description: string;
+  welcome_message?: string;
   is_shared?: boolean;
   default_model: string;
   backend_choice: string;
@@ -131,6 +142,7 @@ interface EditAgentDrawerProps {
       | "default_model"
       | "is_shared"
       | "color"
+      | "icon_url"
     >,
   ) => void;
 }
@@ -144,41 +156,33 @@ interface EditAgentDrawerBodyProps {
 }
 
 /**
- * Write a workspace file, retrying briefly when the agent's harness is mid-reload.
- *
- * The PATCH /agents/{aid} endpoint schedules a background ``arebuild_agent``
- * that briefly removes the agent from the registry and then re-creates it
- * (slow graph compile, often 2-5s on Windows). Workspace writes go through
- * ``require_running_workspace`` which raises ``AGENT_NOT_RUNNING`` during
- * that absence window. The very first save in a session usually lands
- * before the reload starts, but a follow-up save (the user re-opens the
- * drawer, edits 页面配置, and clicks save again) hits the reload window.
- * Backing off 500ms up to 10 times (~5s) is enough for typical agents; the
- * manifest is best-effort so we let the caller's catch surface a warning
- * rather than block the save.
+ * Merge page-config fields into the existing workspace manifest.json.
+ * Missing file → start from {}. Invalid JSON is refused so we do not
+ * clobber a hand-edited manifest.
  */
-async function writeManifestWithRetry(
+async function persistWelcomeManifest(
   agentId: string,
-  path: string,
-  content: string,
-): Promise<void> {
-  const maxAttempts = 10;
-  const delayMs = 500;
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      await workspaceApi.createWorkspaceFile(agentId, path, content);
-      return;
-    } catch (err) {
-      lastErr = err;
-      const code = parseApiError(err)?.code;
-      if (code !== "AGENT_NOT_RUNNING") throw err;
-      if (attempt < maxAttempts - 1) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
+  data: WelcomeConfigData,
+): Promise<"ok" | "invalid-json"> {
+  let existing: Record<string, unknown> = {};
+  try {
+    const file = await workspaceApi.readWorkspaceFile(
+      agentId,
+      "/manifest.json",
+    );
+    const parsed = parseManifestObject(file.content ?? "");
+    if (!parsed.ok) return "invalid-json";
+    existing = parsed.value;
+  } catch (err) {
+    if (!isNotFoundApiError(err)) throw err;
   }
-  throw lastErr;
+  const merged = mergeWelcomeIntoManifest(existing, data);
+  await workspaceApi.createWorkspaceFile(
+    agentId,
+    "/manifest.json",
+    JSON.stringify(merged, null, 2),
+  );
+  return "ok";
 }
 
 function EditAgentDrawerBody({
@@ -189,6 +193,7 @@ function EditAgentDrawerBody({
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
   const { t } = useTranslation();
+  const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [form] = Form.useForm<EditFormValues>();
@@ -202,6 +207,8 @@ function EditAgentDrawerBody({
   const [colorPalette, setColorPalette] = useState<string>(
     () => parseStoredColor(agent.color) ?? DEFAULT_PALETTE,
   );
+  const [iconUrl, setIconUrl] = useState<string | null>(agent.icon_url);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -238,17 +245,26 @@ function EditAgentDrawerBody({
 
         const cfg = ag.config ?? {};
         setAgentConfig(cfg);
-        const colorFromCfg =
-          typeof cfg.color === "string"
+        const colorFromRow =
+          typeof ag.color === "string"
+            ? ag.color
+            : typeof cfg.color === "string"
             ? cfg.color
-            : ag.color ?? agent.color ?? null;
-        setColorPalette(parseStoredColor(colorFromCfg) ?? DEFAULT_PALETTE);
+            : agent.color ?? null;
+        setColorPalette(parseStoredColor(colorFromRow) ?? DEFAULT_PALETTE);
+        setIconUrl(
+          typeof ag.icon_url === "string" && ag.icon_url.trim()
+            ? ag.icon_url
+            : null,
+        );
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
 
         form.setFieldsValue({
           name: ag.name,
           description: ag.description ?? "",
+          welcome_message:
+            typeof ag.welcome_message === "string" ? ag.welcome_message : "",
           is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
           backend_choice: parsedBackend.backendChoice,
@@ -350,49 +366,41 @@ function EditAgentDrawerBody({
       const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
         backend: backendSpec,
-        color: nextColor,
       });
+      delete nextConfig.color;
+      delete nextConfig.icon_name;
+      delete nextConfig.icon_url;
+      delete nextConfig.expert_id;
+      delete nextConfig.skill_package_ids;
+      delete nextConfig.published_expert_id;
+      delete nextConfig.welcome_message;
 
-      // Save welcome config to manifest.json BEFORE patching the agent.
-      // The PATCH triggers a background harness reload which briefly removes
-      // the agent from the runtime; writing the workspace file after the
-      // PATCH can race with that reload and fail with "agent not running".
-      //
-      // The PATCH itself never returns AGENT_NOT_RUNNING (it reads the row,
-      // not the harness entry). The first save usually works because the
-      // agent is still loaded when we get here. But once a previous save's
-      // reload is still in flight (the harness arebuild_agent takes a few
-      // seconds to re-compile the graph), the manifest write below can land
-      // inside the "agent briefly absent from the registry" window and fail
-      // with AGENT_NOT_RUNNING — exactly when the user re-opens the drawer,
-      // expands 页面配置, edits, and saves again. So: retry briefly so the
-      // in-flight reload can re-register the agent, and fall back to a
-      // warning (not an error) so the agent's main config still saves.
-      if (welcomeConfigRef.current && isAgentChatReady(agent.state)) {
-        const data = welcomeConfigRef.current.getData();
-        const manifest = {
-          welcome_message: data.welcome_message,
-          quick_prompts: data.quick_prompts.filter(
-            (p) => p.title?.zh || p.title?.en || p.prompt?.zh || p.prompt?.en,
-          ),
-        };
-        const manifestJson = JSON.stringify(manifest, null, 2);
+      // Persist page config before PATCH. Workspace I/O survives the
+      // background harness reload; skip when the editor is still loading
+      // or the user never touched 页面配置, so a name/model save cannot
+      // clobber bilingual copy or extra manifest keys.
+      const welcomeSnap = welcomeConfigRef.current?.getSnapshot();
+      if (
+        welcomeSnap &&
+        isAgentChatReady(agent.state) &&
+        shouldWriteWelcomeManifest(welcomeSnap.status, welcomeSnap.dirty)
+      ) {
         try {
-          await writeManifestWithRetry(
+          const result = await persistWelcomeManifest(
             agent.agent_id,
-            "/manifest.json",
-            manifestJson,
+            welcomeSnap.data,
           );
+          if (result === "invalid-json") {
+            message.warning(t("experts.manifestInvalidJson"));
+          }
         } catch (manifestErr) {
-          // Manifest is best-effort: the agent's main config (PATCH) is the
-          // important part. Surface a warning so the user knows, but never
-          // block the save because of a brief reload race.
           message.warning(
             apiErrorMessage(manifestErr, t("experts.manifestWriteFailed"), t),
           );
         }
       }
 
+      const stored = form.getFieldsValue(true) as EditFormValues;
       await request(`/agents/${agent.agent_id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -400,12 +408,14 @@ function EditAgentDrawerBody({
           description: values.description || null,
           is_shared: values.is_shared ?? false,
           default_model: defaultModelFromForm(values.default_model),
+          color: nextColor,
           config: nextConfig,
+          welcome_message: stored.welcome_message ?? "",
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
 
-      message.success(t("common.save") + " ✓");
+      message.success(t("common.saveSuccess"));
       if (bwrapToast?.kind === "success") {
         message.success(bwrapToast.text);
       } else if (bwrapToast?.kind === "warning") {
@@ -419,6 +429,7 @@ function EditAgentDrawerBody({
         default_model: defaultModel,
         is_shared: values.is_shared ?? false,
         color: nextColor,
+        icon_url: iconUrl,
       });
       onClose();
     } catch (err) {
@@ -432,6 +443,7 @@ function EditAgentDrawerBody({
     agentConfig,
     colorPalette,
     form,
+    iconUrl,
     onClose,
     onSaved,
     pathMappings,
@@ -628,6 +640,72 @@ function EditAgentDrawerBody({
                 label={t("experts.agentDescription")}
               >
                 <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item
+                name="welcome_message"
+                label={t("experts.welcomeMessageTitle")}
+                extra={t("experts.editWelcomeHint")}
+              >
+                <Input.TextArea
+                  rows={2}
+                  placeholder={t("experts.welcomeMessagePlaceholder")}
+                />
+              </Form.Item>
+              <Form.Item label={t("experts.avatar")}>
+                <ExpertAvatarPicker
+                  iconUrl={iconUrl}
+                  iconName={agent.icon_name}
+                  color={
+                    isCuratedPalette(colorPalette)
+                      ? expertPaletteColor(colorPalette)
+                      : colorPalette
+                  }
+                  disabled={avatarBusy}
+                  onPick={(file) => {
+                    void (async () => {
+                      setAvatarBusy(true);
+                      try {
+                        const result = await octopAgentsApi.uploadAvatar(
+                          agent.agent_id,
+                          file,
+                        );
+                        setIconUrl(result.icon_url);
+                        await refresh({ silent: true });
+                      } catch (err) {
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarUploadFailed"),
+                            t,
+                          ),
+                        );
+                        throw err;
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    })();
+                  }}
+                  onRemove={() => {
+                    void (async () => {
+                      setAvatarBusy(true);
+                      try {
+                        await octopAgentsApi.deleteAvatar(agent.agent_id);
+                        setIconUrl(null);
+                        await refresh({ silent: true });
+                      } catch (err) {
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarRemoveFailed"),
+                            t,
+                          ),
+                        );
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    })();
+                  }}
+                />
               </Form.Item>
               <Form.Item
                 label={t("experts.color")}

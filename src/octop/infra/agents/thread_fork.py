@@ -1,9 +1,8 @@
-"""Fork a conversation thread from a selected user message.
+"""Fork a conversation thread from a selected assistant reply.
 
-Copies LangGraph checkpoint messages *strictly before* that user turn into a
-new thread, leaving the source transcript unchanged. The selected question is
-intentionally omitted so the dashboard can prefill the composer and send a
-different follow-up — the non-destructive counterpart of "edit message".
+Copies LangGraph checkpoint messages *through* that assistant turn into a new
+thread, leaving the source transcript unchanged. The client continues in the
+forked thread without prefilling the previous user question.
 """
 
 from __future__ import annotations
@@ -35,21 +34,21 @@ def _msg_id(msg: Any) -> str:
     return str(raw).strip() if raw else ""
 
 
-def _is_user_message(msg: Any) -> bool:
+def _is_assistant_message(msg: Any) -> bool:
     if isinstance(msg, dict):
         role = str(msg.get("role") or "")
         if role:
-            return role == "user"
+            return role == "assistant"
         msg_type = str(msg.get("type") or "")
-        return msg_type in ("human", "user")
+        return msg_type in ("ai", "assistant")
     type_name = type(msg).__name__
-    if "HumanMessage" in type_name:
+    if "AIMessage" in type_name:
         return True
     role = str(getattr(msg, "role", None) or getattr(msg, "type", "") or "")
-    return role in ("user", "human")
+    return role in ("assistant", "ai")
 
 
-def _user_text(msg: Any) -> str:
+def _message_text(msg: Any) -> str:
     content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
     if isinstance(content, str):
         return content.strip()
@@ -67,47 +66,72 @@ def _user_text(msg: Any) -> str:
     return str(content or "").strip()
 
 
-def find_user_fork_index(
+def _has_tool_calls(msg: Any) -> bool:
+    if isinstance(msg, dict):
+        calls = msg.get("tool_calls") or msg.get("tool_call_chunks")
+        return bool(calls)
+    calls = getattr(msg, "tool_calls", None)
+    return bool(calls)
+
+
+def _assistant_answer_indices(messages: list[Any]) -> list[int]:
+    """Indices of final assistant answers (skip tool-calling shells).
+
+    Aligns with the dashboard: one answer bubble per turn, not intermediate
+    AIMessages that only request tools (even if they also carry short text).
+    """
+    indices: list[int] = []
+    for i, msg in enumerate(messages):
+        if not _is_assistant_message(msg):
+            continue
+        if _has_tool_calls(msg):
+            continue
+        indices.append(i)
+    return indices
+
+
+def find_assistant_fork_index(
     messages: list[Any],
     *,
-    message_id: str,
+    message_id: str | None = None,
     content: str | None = None,
-    user_turns_from_end: int | None = None,
+    assistant_turns_from_end: int | None = None,
 ) -> int:
-    """Return the index of the selected user message in *messages*.
+    """Return the index of the selected assistant answer in *messages*.
 
-    Prefers a suffix count of user turns (stable across client-generated UI
-    ids), then checkpoint ``id``, then exact text content.
+    Prefers a suffix count of answer turns (stable across client-generated UI
+    ids). When that locator is present it is authoritative — content/id are
+    only used as fallbacks when the suffix count is absent or out of range.
     """
-    humans = [i for i, msg in enumerate(messages) if _is_user_message(msg)]
-    if not humans:
-        raise OctopError(ErrorCode.NOT_FOUND, "no user message to fork from")
+    answers = _assistant_answer_indices(messages)
+    if not answers:
+        raise OctopError(ErrorCode.NOT_FOUND, "no assistant message to fork from")
 
     wanted_id = (message_id or "").strip()
     wanted_text = (content or "").strip()
 
     if (
-        user_turns_from_end is not None
-        and user_turns_from_end >= 1
-        and user_turns_from_end <= len(humans)
+        assistant_turns_from_end is not None
+        and assistant_turns_from_end >= 1
+        and assistant_turns_from_end <= len(answers)
     ):
-        idx = humans[-user_turns_from_end]
-        if not wanted_text or _user_text(messages[idx]) == wanted_text:
-            return idx
-        if wanted_id and _msg_id(messages[idx]) == wanted_id:
-            return idx
+        return answers[-assistant_turns_from_end]
 
     if wanted_id:
-        for idx in humans:
+        for idx in answers:
             if _msg_id(messages[idx]) == wanted_id:
                 return idx
+        # Client id may point at a non-answer AIMessage; still allow exact id match.
+        for i, msg in enumerate(messages):
+            if _is_assistant_message(msg) and _msg_id(msg) == wanted_id:
+                return i
 
     if wanted_text:
-        matches = [idx for idx in humans if _user_text(messages[idx]) == wanted_text]
+        matches = [idx for idx in answers if _message_text(messages[idx]) == wanted_text]
         if matches:
             return matches[-1]
 
-    raise OctopError(ErrorCode.NOT_FOUND, "user message not found in thread")
+    raise OctopError(ErrorCode.NOT_FOUND, "assistant message not found in thread")
 
 
 async def load_checkpoint_messages(harness: Any, thread_id: str) -> list[Any]:
@@ -159,24 +183,21 @@ async def fork_dashboard_thread(
     harness: Any,
     source: ThreadRow,
     user_id: int,
-    message_id: str,
+    message_id: str | None = None,
     content: str | None = None,
-    user_turns_from_end: int | None = None,
+    assistant_turns_from_end: int | None = None,
     locale: str = "en",
 ) -> dict[str, Any]:
-    """Create a dashboard thread seeded with the source prefix before *message_id*."""
-    wanted_id = (message_id or "").strip()
-    if not wanted_id:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "message_id is required")
-
+    """Create a dashboard thread seeded through the selected assistant reply."""
     messages = await load_checkpoint_messages(harness, source.thread_id)
-    idx = find_user_fork_index(
+    idx = find_assistant_fork_index(
         messages,
-        message_id=wanted_id,
+        message_id=message_id,
         content=content,
-        user_turns_from_end=user_turns_from_end,
+        assistant_turns_from_end=assistant_turns_from_end,
     )
-    prefix = messages[:idx]
+    # Include the selected assistant message (and any tool traffic before it).
+    prefix = messages[: idx + 1]
 
     session_key = ThreadRegistry.dashboard_key(agent_id=source.agent_id, user_id=user_id)
     dest_id = thread_registry.create_thread(

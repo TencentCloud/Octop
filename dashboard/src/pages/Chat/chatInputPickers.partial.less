@@ -372,6 +372,30 @@
   }
 }
 
+.expertPickerItemText {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.expertSharedBadge {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--fn-color-brand, #1677ff);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand, #1677ff) 12%,
+    transparent
+  );
+  white-space: nowrap;
+}
+
 .expertAgentAvatar {
   flex-shrink: 0;
   border-radius: 50%;
@@ -379,6 +403,7 @@
   align-items: center;
   justify-content: center;
   line-height: 0;
+  overflow: hidden;
 }
 
 .connectorPickerItem {

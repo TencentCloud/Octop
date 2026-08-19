@@ -90,7 +90,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "settings",
         "description": "Process-level settings (e.g. default timezone from config.json).",
     },
-    {"name": "envs", "description": "Environment variable presets for agents and workspaces."},
+    {
+        "name": "envs",
+        "description": "Global environment variables (~/.octop/env) inherited by every agent.",
+    },
     {
         "name": "search",
         "description": "Web-search provider API key probes (Tavily, Brave, Google, Kimi).",

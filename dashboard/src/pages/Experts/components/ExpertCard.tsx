@@ -10,6 +10,7 @@ export interface ExpertSummary {
   id: string;
   label: { zh?: string; en?: string };
   description: { zh?: string; en?: string };
+  welcome_message?: { zh?: string; en?: string };
   icon_name?: string | null;
   color?: string | null;
   files?: string[];

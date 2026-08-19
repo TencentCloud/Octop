@@ -82,3 +82,26 @@
     color: var(--fn-text-tertiary);
   }
 }
+
+.workspaceOpenBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, transparent);
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}

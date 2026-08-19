@@ -30,7 +30,8 @@ def test_bootstrap_main_spec_has_no_custom_backend() -> None:
         locale="zh",
     )
     assert "backend" not in spec.config
-    assert spec.config.get("expert_id") == "general-assistant"
+    assert spec.template_name == "general-assistant"
+    assert "expert_id" not in spec.config
 
 
 def test_bootstrap_main_spec_en_locale_uses_english_label() -> None:
