@@ -114,6 +114,7 @@
     "TLS_DOMAIN_MISMATCH": "域名与现有证书不一致。",
     "WORKSPACE_OP_UNSUPPORTED": "当前工作区后端不支持该文件操作。",
     "SKILL_IMPORT_UNSUPPORTED_URL": "不支持该技能 URL 来源。",
+    "SKILL_DETAILS_PROTECTED": "该专家的发布者未开放技能内容的查看与修改权限。",
     "SKILL_IMPORT_FAILED": "技能导入失败：{{reason}}",
     "SKILL_ALREADY_EXISTS": "技能 {{name}} 已存在，如需覆盖请启用 overwrite。",
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
@@ -594,7 +595,10 @@
       "fieldDescription": "模板描述",
       "fieldWelcomeZh": "中文引导语",
       "fieldWelcomeEn": "英文引导语",
-      "fieldWelcomePlaceholder": "聊天欢迎页展示的一行引导语"
+      "fieldWelcomePlaceholder": "聊天欢迎页展示的一行引导语",
+      "fieldAllowSkillDetails": "允许安装者查看技能详情",
+      "allowSkillDetailsHint": "关闭后，安装该模板的用户只能使用其中的技能，无法查看或修改技能内容。",
+      "skillsProtected": "安装后技能详情不可查看"
     },
     "noExperts": "暂无可用专家",
     "selectExpertHint": "请从左侧选择一个专家以查看详情",
@@ -1074,6 +1078,8 @@
     "dockFileListCount": "{{count}} 个文件",
     "dockFileListHint": "当前仅列出执行过程中生成的文件，不代表最终一定存储，可能在处理结束后被大模型删除。",
     "dockFileMaybeDeleted": "该文件可能为处理过程中的临时文件，当前已经被删除。",
+    "dockFileDelete": "删除文件",
+    "dockFileDeleteConfirm": "确定删除该文件吗？删除后不可恢复。",
     "remoteBrowserTitle": "远程浏览器",
     "dockTerminalTitle": "终端",
     "loadEarlierMessages": "加载更早的消息"
@@ -1322,6 +1328,8 @@
     "importFailed": "技能导入失败",
     "loadFailed": "加载技能失败",
     "loadDetailFailed": "加载技能详情失败",
+    "protectedTag": "已保护",
+    "protectedHint": "该技能由专家模板发布者保护，仅可使用，无法查看或修改内容。",
     "enabledSuccess": "技能已启用",
     "disabledSuccess": "技能已禁用",
     "operationFailed": "操作失败",

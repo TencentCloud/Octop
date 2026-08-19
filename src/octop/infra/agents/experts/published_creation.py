@@ -19,6 +19,11 @@ from octop.infra.agents.experts.publish import (
     export_agent_workspace_to_dir,
     resolve_published_expert_slug,
 )
+from octop.infra.agents.experts.skill_protection import (
+    PROTECTED_SKILLS_KEY,
+    RESTRICTED_CONFIG_KEY,
+    snapshot_protected_skill_slugs,
+)
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
@@ -92,6 +97,7 @@ def _snapshot_meta(
     welcome_message_zh: str = "",
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
+    allow_skill_details: bool = True,
 ) -> PublishedExpertSnapshotMeta:
     return PublishedExpertSnapshotMeta(
         name=name,
@@ -103,6 +109,7 @@ def _snapshot_meta(
         welcome_message_zh=welcome_message_zh,
         welcome_message_en=welcome_message_en,
         quick_prompts=quick_prompts,
+        allow_skill_details=allow_skill_details,
     )
 
 
@@ -126,6 +133,7 @@ async def publish_agent_expert(
     welcome_message_zh: str = "",
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
+    allow_skill_details: bool = True,
 ) -> PublishedExpertRow:
     """Snapshot an owned agent workspace into a globally installable expert template."""
     repo = services.published_expert_repo
@@ -155,6 +163,7 @@ async def publish_agent_expert(
                 welcome_message_zh=welcome_message_zh,
                 welcome_message_en=welcome_message_en,
                 quick_prompts=quick_prompts,
+                allow_skill_details=allow_skill_details,
             ),
             manifest_id=resolved_slug,
         )
@@ -169,6 +178,7 @@ async def publish_agent_expert(
                 source_agent_id=source.agent_id,
                 icon_name=icon_name,
                 color=color,
+                allow_skill_details=allow_skill_details,
             ),
         )
     except (SqliteIntegrityError, PsycopgIntegrityError) as exc:
@@ -196,6 +206,7 @@ async def refresh_published_expert(
     welcome_message_zh: str | None = None,
     welcome_message_en: str | None = None,
     quick_prompts: tuple[dict[str, Any], ...] | None = None,
+    allow_skill_details: bool | None = None,
 ) -> PublishedExpertRow:
     """Replace a published snapshot using its still-owned source agent workspace."""
     row = require_published_expert(services, expert_id)
@@ -218,6 +229,9 @@ async def refresh_published_expert(
         welcome_message_en if welcome_message_en is not None else existing_welcome_en
     )
     resolved_quick_prompts = quick_prompts if quick_prompts is not None else existing_quick_prompts
+    resolved_allow_skill_details = (
+        allow_skill_details if allow_skill_details is not None else row.allow_skill_details
+    )
     await export_agent_workspace_to_dir(
         workspace=workspace,
         dest=snapshot_dir,
@@ -229,6 +243,7 @@ async def refresh_published_expert(
             welcome_message_zh=resolved_welcome_zh,
             welcome_message_en=resolved_welcome_en,
             quick_prompts=resolved_quick_prompts,
+            allow_skill_details=resolved_allow_skill_details,
         ),
         manifest_id=row.slug,
     )
@@ -240,6 +255,7 @@ async def refresh_published_expert(
             color=color,
             name=resolved_name,
             description=resolved_description,
+            allow_skill_details=resolved_allow_skill_details,
         ),
     )
 
@@ -275,6 +291,13 @@ async def install_published_expert(
         registry.assert_backend_supports_skill_packages(options.backend)
 
     config_extra: dict[str, Any] = {"published_expert_id": row.id}
+    if not row.allow_skill_details:
+        # Stamp the restriction into the fork's config so skill detail APIs can
+        # enforce it even after the expert is later refreshed or unpublished.
+        config_extra[RESTRICTED_CONFIG_KEY] = True
+        config_extra[PROTECTED_SKILLS_KEY] = await asyncio.to_thread(
+            snapshot_protected_skill_slugs, snapshot_dir
+        )
     if options.providers:
         config_extra["providers"] = list(options.providers)
     if options.backend:

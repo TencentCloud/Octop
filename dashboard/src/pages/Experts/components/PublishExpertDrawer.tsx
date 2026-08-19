@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Drawer, Form, Input, Spin } from "antd";
+import { Alert, Button, Drawer, Form, Input, Spin, Switch } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { agentChatApi } from "../../../api/modules/agentChat";
@@ -28,6 +28,7 @@ interface PublishFormValues {
   description?: string;
   welcome_zh?: string;
   welcome_en?: string;
+  allow_skill_details?: boolean;
 }
 
 export default function PublishExpertDrawer({
@@ -64,6 +65,10 @@ export default function PublishExpertDrawer({
           description: baseDescription,
           welcome_zh: pickLocale(welcome.welcome_message, "zh"),
           welcome_en: pickLocale(welcome.welcome_message, "en"),
+          allow_skill_details:
+            mode === "refresh" && published
+              ? published.allow_skill_details !== false
+              : true,
         });
       } catch {
         if (cancelled) return;
@@ -72,6 +77,10 @@ export default function PublishExpertDrawer({
           description: baseDescription,
           welcome_zh: "",
           welcome_en: "",
+          allow_skill_details:
+            mode === "refresh" && published
+              ? published.allow_skill_details !== false
+              : true,
         });
       } finally {
         if (!cancelled) setPrefillLoading(false);
@@ -91,6 +100,7 @@ export default function PublishExpertDrawer({
       zh: values.welcome_zh?.trim() || "",
       en: values.welcome_en?.trim() || "",
     },
+    allow_skill_details: values.allow_skill_details !== false,
   });
 
   const handleSubmit = async () => {
@@ -220,6 +230,14 @@ export default function PublishExpertDrawer({
               rows={2}
               placeholder={t("experts.published.fieldWelcomePlaceholder")}
             />
+          </Form.Item>
+          <Form.Item
+            name="allow_skill_details"
+            label={t("experts.published.fieldAllowSkillDetails")}
+            valuePropName="checked"
+            extra={t("experts.published.allowSkillDetailsHint")}
+          >
+            <Switch />
           </Form.Item>
         </Form>
       </div>

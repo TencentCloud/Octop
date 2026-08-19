@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import { Form, Segmented, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
 import { Download, LayoutGrid, List, Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAgent } from "../../../../context/AgentContext";
@@ -117,6 +118,10 @@ export default function InstalledSkillsTab({
   };
 
   const handleEdit = async (skill: SkillSpec) => {
+    if (skill.protected) {
+      message.warning(t("skills.protectedHint"));
+      return;
+    }
     const detail = await getDetail(skill.slug);
     if (detail) {
       setEditingSkill(detail);
@@ -180,7 +185,9 @@ export default function InstalledSkillsTab({
             onMouseLeave={() => setHoverKey(null)}
             onToggleEnabled={(e) => void handleToggleEnabled(skill, e)}
             onDelete={
-              kind === "custom" ? (e) => void handleDelete(skill, e) : undefined
+              kind === "custom" && !skill.protected
+                ? (e) => void handleDelete(skill, e)
+                : undefined
             }
           />
         ))}
@@ -192,7 +199,12 @@ export default function InstalledSkillsTab({
         onView={(skill) => void handleEdit(skill)}
         onToggleEnabled={(skill) => void handleToggleEnabled(skill)}
         onDelete={
-          kind === "custom" ? (skill) => void handleDelete(skill) : undefined
+          kind === "custom"
+            ? (skill) => {
+                if (skill.protected) return;
+                void handleDelete(skill);
+              }
+            : undefined
         }
       />
     );

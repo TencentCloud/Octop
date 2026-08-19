@@ -20,9 +20,13 @@ class PublishedExpertRow:
     color: str
     created_at: int
     updated_at: int
+    allow_skill_details: bool = True
 
     @classmethod
     def from_row(cls, r: DbRow) -> PublishedExpertRow:
+        # sqlite3.Row's ``in`` checks values, not column names - use ``.keys()``.
+        keys = frozenset(r.keys()) if hasattr(r, "keys") else frozenset()
+        allow = r["allow_skill_details"] if "allow_skill_details" in keys else 1
         return cls(
             id=r["id"],
             slug=r["slug"],
@@ -34,6 +38,7 @@ class PublishedExpertRow:
             color=r["color"],
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
+            allow_skill_details=bool(allow),
         )
 
 
@@ -81,14 +86,15 @@ class PublishedExpertRepo:
         source_agent_id: str | None = None,
         icon_name: str = "",
         color: str = "",
+        allow_skill_details: bool = True,
     ) -> PublishedExpertRow:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO published_experts("
                 "id, slug, name, description, created_by, source_agent_id, "
-                "icon_name, color, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "icon_name, color, allow_skill_details, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     id,
                     slug,
@@ -98,6 +104,7 @@ class PublishedExpertRepo:
                     source_agent_id,
                     icon_name,
                     color,
+                    1 if allow_skill_details else 0,
                     ts,
                     ts,
                 ),
@@ -115,6 +122,7 @@ class PublishedExpertRepo:
         color: str | None = None,
         description: str | None = None,
         name: str | None = None,
+        allow_skill_details: bool | None = None,
     ) -> PublishedExpertRow:
         """Refresh listing metadata and bump ``updated_at`` after a snapshot rewrite."""
         fields: list[str] = ["updated_at = ?"]
@@ -131,6 +139,9 @@ class PublishedExpertRepo:
         if name is not None:
             fields.append("name = ?")
             values.append(name)
+        if allow_skill_details is not None:
+            fields.append("allow_skill_details = ?")
+            values.append(1 if allow_skill_details else 0)
         values.append(expert_id)
         with self._db.transaction() as conn:
             conn.execute(

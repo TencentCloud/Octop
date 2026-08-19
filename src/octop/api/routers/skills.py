@@ -46,6 +46,10 @@ from pydantic import BaseModel
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.experts.skill_protection import (
+    assert_skill_details_visible,
+    skill_details_protected,
+)
 from octop.infra.agents.manager import (
     skill_package_ids_list,
 )
@@ -480,12 +484,21 @@ async def list_skills(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
-    return cast(
+    summaries = cast(
         list[dict[str, Any]],
         await server.app_runtime.agent_registry.list_skill_summaries(agent_id),
     )
+    # Flag skills installed from a restricted published expert so the UI can
+    # hide detail/edit affordances; enforcement itself lives in get/update/delete.
+    for summary in summaries:
+        slug = str(summary.get("slug") or summary.get("name") or "")
+        if slug:
+            summary["protected"] = skill_details_protected(
+                ctx.config, user=user, services=server.services, slug=slug
+            )
+    return summaries
 
 
 class SkillPackageMountBody(BaseModel):
@@ -553,6 +566,7 @@ async def get_skill(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    assert_skill_details_visible(ctx.config, user=user, services=server.services, slug=name)
     resolved = await _resolve_skill(ctx.workspace, name)
     if resolved is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")
@@ -653,6 +667,7 @@ async def create_skill(
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    assert_skill_details_visible(ctx.config, user=user, services=server.services, slug=name)
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
     # Conflict check must use SKILL.md — ZIP payloads often list siblings first,
     # and soft-delete only marks the manifest (leaving sibling files behind).
@@ -701,6 +716,7 @@ async def update_skill(
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
 
+    assert_skill_details_visible(ctx.config, user=user, services=server.services, slug=slug)
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
     existing = await _aread_text(ctx.workspace, f"skills/{slug}/SKILL.md")
     if existing is None:
@@ -799,6 +815,9 @@ async def import_skill_from_url(
             bundle_url=bundle_url,
             version=body.version,
         )
+        assert_skill_details_visible(
+            ctx.config, user=user, services=server.services, slug=package.slug
+        )
         await commit_skill_install(
             target,
             package,
@@ -863,6 +882,7 @@ async def delete_skill(
         slug = validate_skill_slug(name)
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    assert_skill_details_visible(ctx.config, user=user, services=server.services, slug=slug)
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
     resolved = await _resolve_skill(ctx.workspace, slug)
     if resolved is None:
@@ -1224,6 +1244,7 @@ async def hub_install_skill(
         raise HTTPException(status_code=400, detail="icon_url must be an HTTP(S) URL")
 
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    assert_skill_details_visible(ctx.config, user=user, services=server.services, slug=skill_name)
     target = _AgentWorkspaceInstallTarget(
         workspace=ctx.workspace,
         config=ctx.config,

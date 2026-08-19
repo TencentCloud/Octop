@@ -356,6 +356,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_skill_packages_name_unique_index(db)
     _ensure_published_experts_table(db)
     _ensure_published_experts_indexes(db)
+    _ensure_column(db, "published_experts", "allow_skill_details", "INTEGER NOT NULL DEFAULT 1")
     # Cover pre-squash develop DBs that already recorded version ≥5 but only
     # applied a subset of the former 005–009 files (or the old thin 005).
     # Require ``users`` first — SSO rebuild and knowledge FKs need it, and a
@@ -416,6 +417,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     bases idempotently after legacy schema repair.
     Version 6 adds ``users.permissions`` idempotently (also covered by
     ``_repair_legacy_schema`` for DBs whose version was clamped past 006).
+    Version 7 adds ``published_experts.allow_skill_details`` idempotently
+    (``_repair_legacy_schema`` may have added it before 007 runs).
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -467,6 +470,17 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     if version == 6:
         if _table_exists(db, "users"):
             _ensure_column(db, "users", "permissions", "TEXT NOT NULL DEFAULT '[]'")
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 7:
+        if _table_exists(db, "published_experts"):
+            _ensure_column(
+                db,
+                "published_experts",
+                "allow_skill_details",
+                "INTEGER NOT NULL DEFAULT 1",
+            )
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return

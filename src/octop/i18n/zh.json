@@ -329,6 +329,7 @@
     "TLS_DOMAIN_MISMATCH": "域名与现有证书不一致。",
     "WORKSPACE_OP_UNSUPPORTED": "当前工作区后端不支持该文件操作。",
     "SKILL_IMPORT_UNSUPPORTED_URL": "不支持该技能 URL 来源。",
+    "SKILL_DETAILS_PROTECTED": "该专家的发布者未开放技能内容的查看与修改权限。",
     "SKILL_IMPORT_FAILED": "技能导入失败：{reason}",
     "SKILL_ALREADY_EXISTS": "技能 {name} 已存在，如需覆盖请启用 overwrite。",
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",

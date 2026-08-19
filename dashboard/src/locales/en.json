@@ -114,6 +114,7 @@
     "TLS_DOMAIN_MISMATCH": "The domain does not match the existing certificate.",
     "WORKSPACE_OP_UNSUPPORTED": "This workspace backend does not support that file operation.",
     "SKILL_IMPORT_UNSUPPORTED_URL": "This skill URL source is not supported.",
+    "SKILL_DETAILS_PROTECTED": "The publisher of this expert has disabled viewing or editing its skill contents.",
     "SKILL_IMPORT_FAILED": "Skill import failed: {{reason}}",
     "SKILL_ALREADY_EXISTS": "Skill {{name}} already exists. Enable overwrite to replace it.",
     "SKILL_PACKAGE_NOT_FOUND": "Skill package not found.",
@@ -594,7 +595,10 @@
       "fieldDescription": "Description",
       "fieldWelcomeZh": "Welcome message (Chinese)",
       "fieldWelcomeEn": "Welcome message (English)",
-      "fieldWelcomePlaceholder": "One-line greeting shown on the chat welcome screen"
+      "fieldWelcomePlaceholder": "One-line greeting shown on the chat welcome screen",
+      "fieldAllowSkillDetails": "Allow installers to view skill details",
+      "allowSkillDetailsHint": "When off, users who install this template can use its skills but cannot view or edit skill contents.",
+      "skillsProtected": "Skill details locked after install"
     },
     "noExperts": "No experts available",
     "selectExpertHint": "Pick an expert on the left to view details",
@@ -1074,6 +1078,8 @@
     "dockFileListCount": "{{count}} files",
     "dockFileListHint": "This list only shows files produced during execution. They are not guaranteed to be kept, and the model may delete them after processing finishes.",
     "dockFileMaybeDeleted": "This file may have been a temporary artifact during processing and has already been deleted.",
+    "dockFileDelete": "Delete file",
+    "dockFileDeleteConfirm": "Delete this file? This cannot be undone.",
     "remoteBrowserTitle": "Remote Browser",
     "dockTerminalTitle": "Terminal",
     "loadEarlierMessages": "Load earlier messages"
@@ -1323,6 +1329,8 @@
     "importFailed": "Failed to import skill",
     "loadFailed": "Failed to load skills",
     "loadDetailFailed": "Failed to load skill details",
+    "protectedTag": "Protected",
+    "protectedHint": "This skill is protected by the expert publisher. It can be used but its contents cannot be viewed or edited.",
     "enabledSuccess": "Skill enabled",
     "disabledSuccess": "Skill disabled",
     "operationFailed": "Operation failed",

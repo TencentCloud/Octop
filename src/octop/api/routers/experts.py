@@ -89,6 +89,7 @@ class PublishExpertBody(BaseModel):
     slug: str | None = None
     welcome_message: LocalizedTextResponse | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
+    allow_skill_details: bool = True
 
 
 class RefreshPublishedExpertBody(BaseModel):
@@ -96,6 +97,7 @@ class RefreshPublishedExpertBody(BaseModel):
     description: str | None = None
     welcome_message: LocalizedTextResponse | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
+    allow_skill_details: bool | None = None
 
 
 class InstallPublishedExpertBody(AgentRuntimeFields):
@@ -279,6 +281,7 @@ def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
         "color": row.color or None,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
+        "allow_skill_details": bool(getattr(row, "allow_skill_details", True)),
     }
 
 
@@ -302,7 +305,7 @@ async def list_published_experts(
 @router.get("/experts/published/{expert_id}", summary="Get published expert template detail")
 async def get_published_expert(
     expert_id: str,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return published-expert metadata and a previewable snapshot file inventory."""
@@ -312,6 +315,12 @@ async def get_published_expert(
     files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
     if (snapshot_dir / MANIFEST_FILENAME).is_file():
         files.insert(0, MANIFEST_FILENAME)
+    hide_skill_details = not bool(
+        getattr(row, "allow_skill_details", True)
+    ) and not _user_can_view_published_skill_details(row, user)
+    if hide_skill_details:
+        preview_paths = [p for p in preview_paths if not p.startswith("skills/")]
+        files = [p for p in files if not p.startswith("skills/")]
     return {
         **_published_summary_dict(row, server),
         "files": files,
@@ -321,6 +330,11 @@ async def get_published_expert(
             preview_paths,
         ),
     }
+
+
+def _user_can_view_published_skill_details(row: Any, user: Any) -> bool:
+    """Publishers and admins may always preview a snapshot's skill files."""
+    return bool(user.is_admin) or str(user.id) == row.created_by
 
 
 @router.post(
@@ -356,6 +370,7 @@ async def publish_agent_expert(
         welcome_message_zh=welcome_zh,
         welcome_message_en=welcome_en,
         quick_prompts=tuple(_quick_prompt_body_dict(p) for p in (body.quick_prompts or [])),
+        allow_skill_details=body.allow_skill_details,
     )
     return _published_summary_dict(row, server)
 
@@ -400,6 +415,7 @@ async def refresh_published_expert(
         welcome_message_zh=welcome_zh,
         welcome_message_en=welcome_en,
         quick_prompts=quick_prompts,
+        allow_skill_details=(body.allow_skill_details if body is not None else None),
     )
     return _published_summary_dict(updated, server)
 

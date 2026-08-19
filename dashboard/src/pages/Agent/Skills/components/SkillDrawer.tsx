@@ -814,7 +814,9 @@ export function SkillDrawer({
           ) : (
             <>
               <Button onClick={onClose}>{t("common.close")}</Button>
-              {editingSkill?.kind === "workspace" && viewingSkillMd ? (
+              {editingSkill?.kind === "workspace" &&
+              viewingSkillMd &&
+              !editingSkill?.protected ? (
                 <Button
                   type="primary"
                   onClick={() => {
