@@ -567,6 +567,8 @@
     "install_log_ready": "Android environment is ready.",
     "error_script_missing": "Mobile install script is missing from the Octop package.",
     "error_docker_missing": "Docker is required to install the Android container backend.",
-    "error_command_failed": "Command failed (exit {exit_code})."
+    "error_command_failed": "Command failed (exit {exit_code}).",
+    "handoff_message": "Please complete this step on the device: {reason}",
+    "handoff_default": "manual action required on the device"
   }
 }

@@ -567,6 +567,8 @@
     "install_log_ready": "Android 环境已就绪。",
     "error_script_missing": "Octop 包中缺少移动设备安装脚本。",
     "error_docker_missing": "安装 Android 容器后端需要 Docker。",
-    "error_command_failed": "命令失败（退出码 {exit_code}）。"
+    "error_command_failed": "命令失败（退出码 {exit_code}）。",
+    "handoff_message": "请在设备上完成此步骤：{reason}",
+    "handoff_default": "需要在设备上手动操作"
   }
 }

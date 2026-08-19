@@ -10,3 +10,4 @@ def test_mobile_keys_parity() -> None:
     zh_keys = {k for k in all_keys_for_locale("zh") if k.startswith("mobile.")}
     assert en_keys == zh_keys
     assert "mobile.no_device" in en_keys
+    assert "mobile.handoff_message" in en_keys
