@@ -156,6 +156,18 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     [agentId, openDock, openFileList],
   );
 
+  /**
+   * Edit-file card: open the file list tab alongside the generated file tab so
+   * the tree stays reachable while landing directly on the file itself.
+   */
+  const openFileListAt = useCallback(
+    (path?: string | null) => {
+      openFileList();
+      openFileAt(path);
+    },
+    [openFileList, openFileAt],
+  );
+
   const openBrowserTab = useCallback(() => {
     setOpenTabs((prev) => {
       if (prev.some((t) => t.id === "browser")) return prev;
@@ -259,6 +271,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     handleModeChange,
     openFileAt,
     openFileList,
+    openFileListAt,
     openBrowserTab,
     toggleBrowserPanel,
     openTerminalTab,

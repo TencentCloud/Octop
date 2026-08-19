@@ -32,6 +32,26 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current.openTabs.map((t) => t.id)).toEqual([fileId]);
   });
 
+  it("openFileListAt opens the files tab together with the focused file tab", () => {
+    const { result } = renderHook(() => useChatDockPanel(false, "main"));
+    act(() => {
+      result.current.openFileListAt("/outbound/a.txt");
+    });
+    const fileId = dockFileTabId("/outbound/a.txt", "main");
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["files", fileId]);
+    expect(result.current.activeTabId).toBe(fileId);
+  });
+
+  it("openFileListAt without a path falls back to the files tab", () => {
+    const { result } = renderHook(() => useChatDockPanel(false, "main"));
+    act(() => {
+      result.current.openFileListAt(null);
+    });
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["files"]);
+    expect(result.current.activeTabId).toBe("files");
+  });
+
   it("toggleBrowserPanel opens browser tab then closes dock when active", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     act(() => {

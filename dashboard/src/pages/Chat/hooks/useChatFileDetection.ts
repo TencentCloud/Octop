@@ -129,6 +129,24 @@ function addPath(
 }
 
 /**
+ * Path of the most recent workspace write/edit tool call in this turn, so the
+ * "edit file" card can jump straight to the generated file (falls back to the
+ * file list when no listable path is found).
+ */
+export function lastWriteToolPath(
+  messages: ChatMessage[],
+  agentId?: string | null,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const raw = extractWriteToolPath(messages[i]);
+    if (!raw) continue;
+    const key = canonicalizeDockFilePath(raw, agentId);
+    if (key && isDockListablePath(key)) return raw;
+  }
+  return null;
+}
+
+/**
  * Collect workspace file paths from the active thread so the docked file
  * panel can switch among written / previewable / attached files together.
  */

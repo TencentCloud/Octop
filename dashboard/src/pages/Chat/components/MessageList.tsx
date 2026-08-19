@@ -104,7 +104,7 @@ interface MessageListProps {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
-  onEditFile?: () => void;
+  onEditFile?: (path?: string | null) => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -128,7 +128,7 @@ interface GroupRenderContext {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
-  onEditFile?: () => void;
+  onEditFile?: (path?: string | null) => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
