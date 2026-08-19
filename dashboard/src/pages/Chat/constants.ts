@@ -1,7 +1,7 @@
 /** Harness browser tools that activate the in-chat browser workspace. */
 export const BROWSER_TOOL_NAMES = ["browser_use", "browser_control"] as const;
 
-/** Harness tools that write into the agent workspace and produce files. */
+/** Harness tools that write into the agent workspace and open the edit-file card. */
 export const FILE_TOOL_NAMES = [
   "write_file",
   "edit_file",
@@ -23,7 +23,7 @@ export function isBrowserToolName(name: string | undefined): boolean {
 
 /** Match ``write_file`` / ``edit_file`` / ``send_file`` (and ``ns/…``), not ``write_todos``. */
 export function isFileToolName(name: string | undefined): boolean {
-  const base = toolNameBase((name ?? "").trim());
+  const base = toolNameBase((name ?? "").trim()).toLowerCase();
   return (FILE_TOOL_NAMES as readonly string[]).includes(base);
 }
 

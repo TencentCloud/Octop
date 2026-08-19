@@ -44,6 +44,8 @@ import {
   RefreshCw,
   Utensils,
 } from "lucide-react";
+import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
+import { needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
 
 const iconMap: Record<string, (size: number) => ReactNode> = {
   sparkles: (size) => <Sparkles size={size} />,
@@ -89,6 +91,64 @@ export function iconForName(
   if (!name) return <Layers size={size} />;
   const fn = iconMap[name];
   return fn ? fn(size) : <Layers size={size} />;
+}
+
+/** Prefer a remote ``icon_url`` (SkillHub / market) or uploaded avatar over Lucide. */
+export function ExpertIcon({
+  iconUrl,
+  iconName,
+  size = 22,
+  className,
+}: {
+  iconUrl?: string | null;
+  iconName?: string | null;
+  size?: number;
+  className?: string;
+}): ReactNode {
+  const url = iconUrl?.trim();
+  if (url) {
+    return (
+      <ExpertIconImage
+        url={url}
+        iconName={iconName}
+        size={size}
+        className={className}
+      />
+    );
+  }
+  return iconForName(iconName, size);
+}
+
+function ExpertIconImage({
+  url,
+  iconName,
+  size,
+  className,
+}: {
+  url: string;
+  iconName?: string | null;
+  size: number;
+  className?: string;
+}) {
+  const { src, loadState } = useAuthImageSrc(url);
+  if (!src || loadState !== "ready") {
+    return iconForName(iconName, size);
+  }
+  const cover = needsAuthBlobFetch(url) || url.startsWith("blob:");
+  return (
+    <img
+      src={src}
+      alt=""
+      className={className}
+      style={{
+        width: size,
+        height: size,
+        objectFit: cover ? "cover" : "contain",
+        display: "block",
+        borderRadius: "inherit",
+      }}
+    />
+  );
 }
 
 /**

@@ -11,13 +11,14 @@ import {
   PinOff,
   Search,
   Users,
+  GitFork,
 } from "lucide-react";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import { showConfirmModal } from "../../../utils/confirmModal";
-import { iconForName } from "../../Experts/components/iconForName";
+import { ExpertIcon } from "../../Experts/components/iconForName";
 import SessionChannelIcon from "./SessionChannelIcon";
 import styles from "../index.module.less";
 
@@ -60,6 +61,9 @@ interface SessionItemProps {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onFork: (id: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
 }
 
 const SessionItem = memo(function SessionItem({
@@ -69,6 +73,9 @@ const SessionItem = memo(function SessionItem({
   onDelete,
   onRename,
   onPin,
+  onFork,
+  forkDisabled,
+  forkDisabledHint,
 }: SessionItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -96,6 +103,11 @@ const SessionItem = memo(function SessionItem({
     setIsEditing(false);
   }, [editValue, session.name, session.id, onRename]);
 
+  const itemForkDisabled = Boolean(forkDisabled) || !session.hasActivity;
+  const itemForkHint = !session.hasActivity
+    ? t("chat.forkNoAssistant")
+    : forkDisabledHint;
+
   const menuItems: MenuProps["items"] = [
     {
       key: "pin",
@@ -106,6 +118,17 @@ const SessionItem = memo(function SessionItem({
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
         onPin(session.id, !session.pinned);
+      },
+    },
+    {
+      key: "fork",
+      label: t("chat.fork", "分叉"),
+      icon: <GitFork size={14} />,
+      disabled: itemForkDisabled,
+      title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onFork(session.id);
       },
     },
     {
@@ -216,6 +239,9 @@ interface AgentCardProps {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onFork: (id: string) => void;
+  activeForkDisabled?: boolean;
+  activeForkDisabledHint?: string;
 }
 
 function ActiveAgentCard({
@@ -231,6 +257,9 @@ function ActiveAgentCard({
   onDelete,
   onRename,
   onPin,
+  onFork,
+  activeForkDisabled,
+  activeForkDisabledHint,
 }: AgentCardProps) {
   const { t } = useTranslation();
   const accent = agent.color || "#6366f1";
@@ -273,7 +302,11 @@ function ActiveAgentCard({
             boxShadow: `0 0 0 1px ${accent}22`,
           }}
         >
-          {iconForName(agent.icon_name, 16)}
+          <ExpertIcon
+            iconUrl={agent.icon_url}
+            iconName={agent.icon_name}
+            size={16}
+          />
         </div>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
@@ -315,6 +348,13 @@ function ActiveAgentCard({
                 onDelete={onDelete}
                 onRename={onRename}
                 onPin={onPin}
+                onFork={onFork}
+                forkDisabled={
+                  activeId === s.id ? activeForkDisabled : undefined
+                }
+                forkDisabledHint={
+                  activeId === s.id ? activeForkDisabledHint : undefined
+                }
               />
             ))}
             {showExpandMore ? (
@@ -350,7 +390,11 @@ function InactiveAgentRow({ agent, onSelect }: AgentRowProps) {
         className={styles.agentRowAvatar}
         style={{ color: accent, background: `${accent}12` }}
       >
-        {iconForName(agent.icon_name, 14)}
+        <ExpertIcon
+          iconUrl={agent.icon_url}
+          iconName={agent.icon_name}
+          size={14}
+        />
       </div>
       <div className={styles.agentRowInfo}>
         <div className={styles.agentRowNameRow}>
@@ -378,6 +422,9 @@ interface SessionListProps {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onFork: (id: string) => void;
+  activeForkDisabled?: boolean;
+  activeForkDisabledHint?: string;
 }
 
 export default function SessionList({
@@ -394,6 +441,9 @@ export default function SessionList({
   onDelete,
   onRename,
   onPin,
+  onFork,
+  activeForkDisabled,
+  activeForkDisabledHint,
 }: SessionListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -467,6 +517,9 @@ export default function SessionList({
                   onDelete={onDelete}
                   onRename={onRename}
                   onPin={onPin}
+                  onFork={onFork}
+                  activeForkDisabled={activeForkDisabled}
+                  activeForkDisabledHint={activeForkDisabledHint}
                 />
               );
             }

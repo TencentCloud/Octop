@@ -139,47 +139,7 @@ export function useChatFileDetection(
 ) {
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const collect = useCallback(
-    (msgs: ChatMessage[]): string[] => {
-      const paths: string[] = [];
-
-      for (const m of msgs) {
-        // Write / edit / send tools only — avoid listing every read_file skill doc.
-        addPath(paths, extractWriteToolPath(m), agentId);
-
-        for (const att of m.attachments ?? []) {
-          if (att.workspacePath) {
-            addPath(paths, att.workspacePath, agentId);
-          } else if (att.url) {
-            addPath(
-              paths,
-              workspacePathFromAccessUrl(att.url) ?? null,
-              agentId,
-            );
-          }
-        }
-
-        const media = collectToolMediaFromToolData(
-          m.toolData,
-          agentId,
-          m.attachments,
-        );
-        for (const file of media.files) {
-          addPath(paths, workspacePathFromAccessUrl(file.url) ?? null, agentId);
-        }
-        for (const img of media.images) {
-          addPath(paths, workspacePathFromAccessUrl(img.url) ?? null, agentId);
-        }
-        for (const video of media.videos) {
-          addPath(
-            paths,
-            workspacePathFromAccessUrl(video.url) ?? null,
-            agentId,
-          );
-        }
-      }
-
-      return dedupeDockFilePaths(paths, agentId);
-    },
+    (msgs: ChatMessage[]): string[] => collectChatFilePaths(msgs, agentId),
     [agentId],
   );
 
@@ -188,4 +148,37 @@ export function useChatFileDetection(
   }, [messages, collect]);
 
   return { filePaths };
+}
+
+/** Collect unique workspace file paths from a slice of chat messages. */
+export function collectChatFilePaths(
+  messages: ChatMessage[],
+  agentId?: string | null,
+): string[] {
+  const paths: string[] = [];
+  for (const m of messages) {
+    addPath(paths, extractWriteToolPath(m), agentId);
+    for (const att of m.attachments ?? []) {
+      if (att.workspacePath) {
+        addPath(paths, att.workspacePath, agentId);
+      } else if (att.url) {
+        addPath(paths, workspacePathFromAccessUrl(att.url) ?? null, agentId);
+      }
+    }
+    const media = collectToolMediaFromToolData(
+      m.toolData,
+      agentId,
+      m.attachments,
+    );
+    for (const file of media.files) {
+      addPath(paths, workspacePathFromAccessUrl(file.url) ?? null, agentId);
+    }
+    for (const img of media.images) {
+      addPath(paths, workspacePathFromAccessUrl(img.url) ?? null, agentId);
+    }
+    for (const video of media.videos) {
+      addPath(paths, workspacePathFromAccessUrl(video.url) ?? null, agentId);
+    }
+  }
+  return dedupeDockFilePaths(paths, agentId);
 }

@@ -6,11 +6,26 @@ import json
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import Response
 
 from octop.api.common.agent import assert_agent_access_row, assert_agent_owner
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.avatar import (
+    agent_avatar_api_path,
+    delete_workspace_avatar,
+    display_agent_icon_url,
+    read_workspace_avatar,
+    write_workspace_avatar,
+)
+from octop.infra.agents.profile import (
+    parse_config_json,
+    parse_skill_package_ids_json,
+    strip_profile_config,
+    welcome_from_row,
+)
 from octop.infra.agents.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     agent_runtime_values,
@@ -33,6 +48,11 @@ class AgentCreateBody(AgentRuntimeFields):
     icon: str | None = None
     template_name: str | None = None
     is_shared: bool = False
+    color: str | None = None
+    icon_name: str | None = None
+    icon_url: str | None = None
+    welcome_message: str | None = None
+    skill_package_ids: list[str] | None = None
 
 
 class AgentPatchBody(AgentRuntimeFields):
@@ -45,6 +65,11 @@ class AgentPatchBody(AgentRuntimeFields):
     icon: str | None = None
     template_name: str | None = None
     is_shared: bool | None = None
+    color: str | None = None
+    icon_name: str | None = None
+    icon_url: str | None = None
+    welcome_message: str | None = None
+    skill_package_ids: list[str] | None = None
 
 
 def _attach_unread_counts(
@@ -97,13 +122,20 @@ def _row_dict(
     owner_username: str | None = None,
     bootstrap_pending: bool | None = None,
 ) -> dict[str, Any]:
-    try:
-        cfg = json.loads(row.config_json or "{}")
-    except (json.JSONDecodeError, AttributeError):
-        cfg = {}
-    if not isinstance(cfg, dict):
-        cfg = {}
-    public_cfg = {key: value for key, value in cfg.items() if key not in AGENT_RUNTIME_CONFIG_KEYS}
+    cfg = parse_config_json(row.config_json)
+    public_cfg = {
+        key: value
+        for key, value in strip_profile_config(cfg).items()
+        if key not in AGENT_RUNTIME_CONFIG_KEYS
+    }
+    packages = parse_skill_package_ids_json(row.skill_package_ids)
+    if packages is None:
+        raw_packages = cfg.get("skill_package_ids")
+        packages = (
+            [str(item) for item in raw_packages if str(item).strip()]
+            if isinstance(raw_packages, list)
+            else []
+        )
     payload: dict[str, Any] = {
         "id": row.id,
         "agent_id": row.agent_id,
@@ -118,8 +150,16 @@ def _row_dict(
         "config": public_cfg,
         "icon": row.icon,
         "template_name": row.template_name,
-        "icon_name": cfg.get("icon_name"),
-        "color": cfg.get("color"),
+        "icon_name": row.icon_name or cfg.get("icon_name"),
+        "icon_url": display_agent_icon_url(
+            agent_id=row.agent_id,
+            stored=row.icon_url or cfg.get("icon_url"),
+            updated_at=getattr(row, "updated_at", None),
+        ),
+        "color": row.color or cfg.get("color"),
+        "skill_package_ids": packages,
+        "published_expert_id": row.published_expert_id,
+        "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
         "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
         "owner_username": owner_username,
@@ -222,6 +262,11 @@ async def create_agent(
         icon=body.icon,
         template_name=body.template_name,
         is_shared=body.is_shared,
+        color=body.color,
+        icon_name=body.icon_name,
+        icon_url=body.icon_url,
+        skill_package_ids=body.skill_package_ids,
+        welcome_message=body.welcome_message,
     )
     row = await server.app_runtime.agent_registry.create(spec)
     return _row_dict(
@@ -286,12 +331,27 @@ async def patch_agent(
     updates = {
         key: value
         for key, value in body.model_dump(exclude_unset=True).items()
-        if key not in {"config", "is_shared"}
+        if key
+        not in {
+            "config",
+            "is_shared",
+            "welcome_message",
+            "skill_package_ids",
+        }
     }
     if body.config is not None:
         updates["config_json"] = json.dumps(body.config)
+    if body.welcome_message is not None:
+        updates["welcome_message"] = body.welcome_message
     if updates:
         row = await server.app_runtime.agent_registry.update(agent_id, **updates)
+    if body.skill_package_ids is not None:
+        await server.app_runtime.agent_registry.persist_skill_package_ids(
+            agent_id, body.skill_package_ids
+        )
+        refreshed = server.app_runtime.agent_registry.get_row(agent_id)
+        if refreshed is not None:
+            row = refreshed
     if body.is_shared is not None:
         row = await server.app_runtime.agent_registry.set_shared(agent_id, body.is_shared)
     return _row_dict(
@@ -315,6 +375,63 @@ async def delete_agent(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     await server.app_runtime.agent_registry.delete(agent_id)
+
+
+@router.post("/{agent_id}/avatar", status_code=201, summary="Upload expert avatar")
+async def upload_agent_avatar(
+    agent_id: str,
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, str]:
+    """Store an uploaded image in the agent workspace and set ``icon_url``."""
+    data = await file.read()
+    workspace = await require_agent_workspace(agent_id, user=user, server=server, owner_only=True)
+    await write_workspace_avatar(workspace, data)
+    icon_url = agent_avatar_api_path(agent_id)
+    assert server.app_runtime is not None
+    row = server.app_runtime.agent_registry.set_icon_url(agent_id, icon_url)
+    return {
+        "icon_url": display_agent_icon_url(
+            agent_id=agent_id,
+            stored=row.icon_url,
+            updated_at=row.updated_at,
+        )
+        or icon_url
+    }
+
+
+@router.get("/{agent_id}/avatar", summary="Fetch expert avatar")
+async def get_agent_avatar(
+    agent_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Return the uploaded avatar bytes. Owner or shared-agent viewers."""
+    workspace = await require_agent_workspace(agent_id, user=user, server=server, owner_only=False)
+    found = await read_workspace_avatar(workspace)
+    if found is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "avatar not uploaded")
+    data, media_type = found
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=60"},
+    )
+
+
+@router.delete("/{agent_id}/avatar", status_code=204, summary="Delete expert avatar")
+async def delete_agent_avatar(
+    agent_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Remove the workspace avatar file and clear ``icon_url``."""
+    workspace = await require_agent_workspace(agent_id, user=user, server=server, owner_only=True)
+    await delete_workspace_avatar(workspace)
+    assert server.app_runtime is not None
+    server.app_runtime.agent_registry.set_icon_url(agent_id, None)
+    return Response(status_code=204)
 
 
 @router.post("/{agent_id}/start", status_code=204, summary="Start agent")

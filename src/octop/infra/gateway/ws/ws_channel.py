@@ -63,7 +63,16 @@ class WebSocketChannel(BaseChannel):
         raise TypeError(f"websocket channel expects InboundMessage, got {type(raw_payload)!r}")
 
     def get_debounce_key(self, message: InboundMessage) -> str:
+        """Lock and batch per thread so concurrent WS turns cannot interleave.
+
+        Dashboard ``session_key`` is per user+agent; using it as the worker lock
+        would serialize unrelated threads and let ``_drain_same_session`` merge
+        turns from different conversations.
+        """
         meta = message.metadata or {}
+        thread_id = meta.get("thread_id")
+        if isinstance(thread_id, str) and thread_id.strip():
+            return f"thread:{thread_id.strip()}"
         session_key = meta.get("session_key")
         if isinstance(session_key, str) and session_key.strip():
             return session_key.strip()
@@ -74,21 +83,16 @@ class WebSocketChannel(BaseChannel):
             subject_id = message.channel_subject.subject_id
         return f"{message.tenant_id or ''}:{subject_id}"
 
+    def should_batch_inbound(self, message: InboundMessage) -> bool:  # noqa: ARG002
+        # Never concatenate two dashboard user_turns (would look like 串流).
+        return False
+
     async def handle_inbound(self, raw_payload: Any) -> None:
-        """Stream harness chunks to the current thread subscriber (no delta batching)."""
+        """Stream harness chunks to all thread subscribers (no delta batching)."""
         message = self.parse_inbound(raw_payload)
 
         if self._media_backend:
             await self._persist_media(message)
-
-        self._track_subject(message)
-        subject_id = message.channel_subject.subject_id if message.channel_subject else ""
-        subject = self._known_subjects.get(subject_id) or ChannelSubject(
-            subject_id=subject_id,
-            first_seen=message.timestamp,
-            last_seen=message.timestamp,
-        )
-        message.channel_subject = subject
 
         msg_meta = message.metadata or {}
         conn_id = str(msg_meta.get("ws_connection_id") or "")
@@ -103,13 +107,31 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push(conn_id, {"type": "done"})
             return
 
-        meta = dict(subject.metadata or {})
-        meta["ws_connection_id"] = conn_id
-        meta["thread_id"] = thread_id
-        subject.metadata = meta
+        self._track_subject(message)
+        # Per-turn routing copy: do not write thread_id onto the shared
+        # ChannelSubject (keyed by user), or concurrent threads 串流 via _send_*.
+        subject_id = message.channel_subject.subject_id if message.channel_subject else ""
+        tracked = self._known_subjects.get(subject_id) or ChannelSubject(
+            subject_id=subject_id,
+            first_seen=message.timestamp,
+            last_seen=message.timestamp,
+        )
+        message.channel_subject = ChannelSubject(
+            subject_id=tracked.subject_id,
+            first_seen=tracked.first_seen,
+            last_seen=tracked.last_seen,
+            display_name=tracked.display_name,
+            chat_type=tracked.chat_type,
+            metadata={
+                **(tracked.metadata or {}),
+                "ws_connection_id": conn_id,
+                "thread_id": thread_id,
+            },
+        )
 
-        # Bind the originating connection so early chunks are delivered; reconnect
-        # clients may replace this subscription via hub.subscribe.
+        # Bind the originating connection so early chunks are delivered; extra
+        # browsers / reconnects add subscribers via hub.subscribe without kicking
+        # existing connections.
         self._hub.subscribe(thread_id, conn_id)
 
         processor = self._processor

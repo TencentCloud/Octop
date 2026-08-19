@@ -29,7 +29,7 @@ import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
-import { iconForName } from "./iconForName";
+import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
   formatAgentState,
@@ -62,6 +62,7 @@ const TRANSIENT = new Set(["starting", "stopping"]);
 export interface AgentCardProps {
   agent: OctopAgent;
   iconName?: string | null;
+  iconUrl?: string | null;
   accentColor?: string | null;
   publishedExpert?: PublishedExpert | null;
   onPublishedChange?: () => void;
@@ -75,6 +76,7 @@ export interface AgentCardProps {
 export const AgentCard = memo(function AgentCard({
   agent,
   iconName,
+  iconUrl,
   accentColor,
   publishedExpert = null,
   onPublishedChange,
@@ -292,7 +294,11 @@ export const AgentCard = memo(function AgentCard({
             className={styles.agentCard2Icon}
             style={{ color: accent, background: `${accent}1a` }}
           >
-            {iconForName(iconName, 22)}
+            <ExpertIcon
+              iconUrl={iconUrl ?? agent.icon_url}
+              iconName={iconName ?? agent.icon_name}
+              size={iconUrl ?? agent.icon_url ? 42 : 22}
+            />
           </div>
 
           <div className={styles.agentCard2TitleBlock}>
@@ -307,6 +313,23 @@ export const AgentCard = memo(function AgentCard({
                     : t("experts.share.badge")}
                 </Tag>
               )}
+            </div>
+            <div className={styles.agentCardIdRow}>
+              <Tooltip title={t("experts.copyAgentId")}>
+                <button
+                  type="button"
+                  className={styles.agentCardId}
+                  onClick={() => void copyAgentId()}
+                >
+                  <span className={styles.agentCardIdLabel}>
+                    {t("experts.agentId")}
+                  </span>
+                  <span className={styles.agentCardIdValue}>
+                    {agent.agent_id}
+                  </span>
+                  <Copy size={11} className={styles.agentCardIdIcon} />
+                </button>
+              </Tooltip>
               {isOwner && (
                 <div className={styles.agentCard2NameActions}>
                   <Tooltip
@@ -353,21 +376,6 @@ export const AgentCard = memo(function AgentCard({
                 </div>
               )}
             </div>
-            <Tooltip title={t("experts.copyAgentId")}>
-              <button
-                type="button"
-                className={styles.agentCardId}
-                onClick={() => void copyAgentId()}
-              >
-                <span className={styles.agentCardIdLabel}>
-                  {t("experts.agentId")}
-                </span>
-                <span className={styles.agentCardIdValue}>
-                  {agent.agent_id}
-                </span>
-                <Copy size={11} className={styles.agentCardIdIcon} />
-              </button>
-            </Tooltip>
             <div className={styles.agentCard2Meta}>
               <div
                 className={styles.agentCard2State}

@@ -8,6 +8,17 @@ from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import UNSET, DbRow, bool_int, map_rows, now_ts, optional_updates
 
 
+def _opt_str(r: DbRow, key: str) -> str | None:
+    try:
+        value = r[key]
+    except (KeyError, IndexError):
+        return None
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
+
+
 @dataclass(frozen=True)
 class AgentRow:
     id: int
@@ -27,6 +38,12 @@ class AgentRow:
     icon: str | None = None
     template_name: str | None = None
     is_shared: int = 0
+    color: str | None = None
+    icon_name: str | None = None
+    icon_url: str | None = None
+    skill_package_ids: str | None = None
+    published_expert_id: str | None = None
+    welcome_message: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> AgentRow:
@@ -52,6 +69,12 @@ class AgentRow:
             icon=r["icon"],
             template_name=r["template_name"],
             is_shared=is_shared,
+            color=_opt_str(r, "color"),
+            icon_name=_opt_str(r, "icon_name"),
+            icon_url=_opt_str(r, "icon_url"),
+            skill_package_ids=_opt_str(r, "skill_package_ids"),
+            published_expert_id=_opt_str(r, "published_expert_id"),
+            welcome_message=_opt_str(r, "welcome_message"),
         )
 
 
@@ -72,14 +95,22 @@ class AgentRepo:
         config_json: str | None = None,
         icon: str | None = None,
         template_name: str | None = None,
+        color: str | None = None,
+        icon_name: str | None = None,
+        icon_url: str | None = None,
+        skill_package_ids: str | None = None,
+        published_expert_id: str | None = None,
+        welcome_message: str | None = None,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agents(agent_id, user_id, name, description, "
                 "persona_mbti, default_model, system_prompt, enabled, config_json, icon, "
-                "template_name, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
+                "template_name, color, icon_name, icon_url, skill_package_ids, "
+                "published_expert_id, welcome_message, "
+                "created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     agent_id,
                     user_id,
@@ -91,6 +122,12 @@ class AgentRepo:
                     config_json,
                     icon,
                     template_name,
+                    color,
+                    icon_name,
+                    icon_url,
+                    skill_package_ids,
+                    published_expert_id,
+                    welcome_message,
                     ts,
                     ts,
                 ),
@@ -165,6 +202,12 @@ class AgentRepo:
         config_json: str | None | object = UNSET,
         icon: str | None | object = UNSET,
         template_name: str | None | object = UNSET,
+        color: str | None | object = UNSET,
+        icon_name: str | None | object = UNSET,
+        icon_url: str | None | object = UNSET,
+        skill_package_ids: str | None | object = UNSET,
+        published_expert_id: str | None | object = UNSET,
+        welcome_message: str | None | object = UNSET,
     ) -> None:
         fields, params = optional_updates(
             [
@@ -176,6 +219,12 @@ class AgentRepo:
                 ("config_json", config_json),
                 ("icon", icon),
                 ("template_name", template_name),
+                ("color", color),
+                ("icon_name", icon_name),
+                ("icon_url", icon_url),
+                ("skill_package_ids", skill_package_ids),
+                ("published_expert_id", published_expert_id),
+                ("welcome_message", welcome_message),
             ]
         )
         if not fields:

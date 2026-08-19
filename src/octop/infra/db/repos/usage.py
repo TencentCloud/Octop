@@ -277,3 +277,19 @@ class UsageRepo:
             "total_tokens": int(row["total_tokens"]),
             "turns": int(row["turns"]),
         }
+
+    def last_thread_input_tokens(self, *, agent_id: str, thread_id: str) -> int:
+        """Most recent turn's prompt tokens for *thread_id* (context-ring fallback)."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT input_tokens FROM usage_log
+                WHERE agent_id = ? AND thread_id = ?
+                ORDER BY ts DESC, id DESC
+                LIMIT 1
+                """,
+                (agent_id, thread_id),
+            ).fetchone()
+        if row is None:
+            return 0
+        return int(row["input_tokens"] or 0)

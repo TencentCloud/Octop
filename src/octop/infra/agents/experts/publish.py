@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from harness_agent.backends.workspace import BackendWorkspace
 
+from octop.infra.agents.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
 from octop.infra.agents.experts.catalog import MANIFEST_FILENAME
 from octop.infra.agents.subagents.catalog import slugify
@@ -145,6 +146,10 @@ async def _write_workspace_snapshot(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
         exported.append(rel)
+
+    avatar_rel = await copy_workspace_avatar_to_dir(workspace, dest)
+    if avatar_rel:
+        exported.append(avatar_rel)
 
     prompt_files = sorted(rel for rel in exported if "/" not in rel and rel.endswith(".md"))
     if metadata is not None:

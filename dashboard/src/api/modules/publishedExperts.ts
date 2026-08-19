@@ -12,6 +12,7 @@ export interface PublishedExpert {
   color: string | null;
   created_at: string;
   updated_at: string;
+  welcome_message?: { zh?: string; en?: string };
 }
 
 export interface PublishExpertBody {
@@ -31,6 +32,7 @@ export interface InstallPublishedExpertBody {
   backend?: Record<string, unknown>;
   skill_package_ids?: string[];
   color?: string;
+  welcome_message?: string;
   max_iters?: number | null;
   max_input_length?: number | null;
   temperature?: number | null;

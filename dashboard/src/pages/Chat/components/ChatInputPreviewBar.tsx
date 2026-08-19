@@ -259,6 +259,7 @@ export default function ChatInputPreviewBar({
               icon={
                 <ExpertAgentAvatar
                   iconName={a.icon_name}
+                  iconUrl={a.icon_url}
                   color={a.color}
                   size={18}
                   iconSize={10}

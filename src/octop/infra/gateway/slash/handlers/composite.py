@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from harness_agent.slash import SlashCommand, SlashSink, thread_message_count
@@ -213,6 +214,15 @@ async def cmd_status(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
     workspace_line = tr("unknown", lang)
     if ctx.paths is not None:
         workspace_line = str(ctx.paths.agent_workspace(ctx.agent_id))
+    if ctx.agent_manager is not None:
+        resolve = getattr(ctx.agent_manager, "resolve_workspace_dir", None)
+        if callable(resolve):
+            try:
+                resolved = resolve(ctx.agent_id, persist_if_missing=False)
+            except Exception:
+                resolved = None
+            if isinstance(resolved, Path):
+                workspace_line = str(resolved)
 
     chat_user_line = _format_slash_user(
         ctx.user_repo,

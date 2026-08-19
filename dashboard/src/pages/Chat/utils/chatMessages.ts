@@ -156,6 +156,19 @@ export function userTurnsFromEnd(
     .length;
 }
 
+/** Count assistant answer turns from *messageId* through the latest (inclusive). */
+export function assistantTurnsFromEnd(
+  messages: Array<{ id: string; role: string; toolData?: unknown }>,
+  messageId: string,
+): number {
+  const idx = messages.findIndex((message) => message.id === messageId);
+  if (idx < 0) return 0;
+  return messages
+    .slice(idx)
+    .filter((message) => message.role === "assistant" && !message.toolData)
+    .length;
+}
+
 export function buildUserMessage(
   text: string,
   attachments?: ChatAttachment[],

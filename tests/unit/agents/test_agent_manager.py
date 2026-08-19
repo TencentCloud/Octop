@@ -444,6 +444,30 @@ async def test_delete_removes_workspace_directory(manager: AgentManager) -> None
 
 
 @pytest.mark.asyncio
+async def test_delete_removes_persisted_workspace_dir(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    agent_id = "AGT_DELETE_CUSTOM"
+    custom = tmp_path / "custom-ws"
+    custom.mkdir()
+    (custom / "SOUL.md").write_text("keep", encoding="utf-8")
+    manager._repos.agent_repo.create(
+        agent_id=agent_id,
+        user_id=None,
+        name="delete-custom",
+        config_json=json.dumps({"workspace_dir": str(custom)}),
+    )
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    await manager.delete(agent_id)
+
+    assert manager.get_row(agent_id) is None
+    assert not custom.exists()
+
+
+@pytest.mark.asyncio
 async def test_delete_still_removes_db_row_when_workspace_rmtree_fails(
     manager: AgentManager, monkeypatch: Any
 ) -> None:

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Collapse, Drawer, Spin, Tag } from "antd";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FolderOpen } from "lucide-react";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
@@ -251,6 +251,23 @@ export default function AgentProfileDrawer({
             </span>
             <MbtiPersonaTag value={agent.persona_mbti} />
           </div>
+          <button
+            type="button"
+            className={styles.workspaceOpenBtn}
+            disabled={!isAgentChatReady(agent.state)}
+            title={
+              isAgentChatReady(agent.state)
+                ? undefined
+                : t("workspace.requiresRunning")
+            }
+            onClick={() => {
+              if (!isAgentChatReady(agent.state)) return;
+              setWorkspaceDrawerOpen(true);
+            }}
+          >
+            <FolderOpen size={14} strokeWidth={2} />
+            {t("chat.openWorkspace", "工作区")}
+          </button>
         </div>
 
         <div className={expertStyles.drawerSection}>

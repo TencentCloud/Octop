@@ -1,30 +1,30 @@
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useImperativeHandle,
+  forwardRef,
+  useMemo,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { agentChatApi } from "@/api/modules/agentChat";
-import type { LocalizedText } from "@/utils/localizedText";
 import { iconForName } from "./iconForName";
 import { pastelIconBackground } from "@/utils/pastelIconBackground";
 import styles from "../index.module.less";
+import type {
+  QuickPrompt,
+  WelcomeConfigData,
+  WelcomeManifestSnapshot,
+  WelcomeManifestStatus,
+} from "./welcomeManifest";
 
-export interface QuickPrompt {
-  title: LocalizedText;
-  description: LocalizedText;
-  prompt: LocalizedText;
-  color: string;
-  icon_name: string | null;
-}
-
-export interface WelcomeConfigData {
-  welcome_message?: LocalizedText;
-  quick_prompts: QuickPrompt[];
-}
+export type { QuickPrompt, WelcomeConfigData };
 
 interface WelcomeConfigProps {
   agentId: string;
 }
-
 
 const defaultQuickPrompt: QuickPrompt = {
   title: { zh: "", en: "" },
@@ -66,34 +66,42 @@ const presetIcons = [
 ];
 
 export interface WelcomeConfigRef {
-  getData: () => WelcomeConfigData;
+  getSnapshot: () => WelcomeManifestSnapshot;
 }
 
 const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
   ({ agentId }, ref) => {
     const { t, i18n } = useTranslation();
-    const [loading, setLoading] = useState(false);
-    const [welcomeMessage, setWelcomeMessage] = useState("");
+    const [status, setStatus] = useState<WelcomeManifestStatus>("loading");
+    const [dirty, setDirty] = useState(false);
     const [quickPrompts, setQuickPrompts] = useState<QuickPrompt[]>([]);
+    const currentLang = i18n.language.startsWith("zh") ? "zh" : "en";
+    const markDirty = () => setDirty(true);
 
-    useImperativeHandle(ref, () => ({
-      getData: () => ({
-        welcome_message: welcomeMessage ? {
-          zh: welcomeMessage,
-          en: welcomeMessage,
-        } : undefined,
+    const snapshotData = useMemo(
+      (): WelcomeConfigData => ({
         quick_prompts: quickPrompts,
       }),
-    }));
+      [quickPrompts],
+    );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        getSnapshot: () => ({
+          status,
+          dirty,
+          data: snapshotData,
+        }),
+      }),
+      [status, dirty, snapshotData],
+    );
 
     const loadConfig = useCallback(async () => {
-      setLoading(true);
+      setStatus("loading");
+      setDirty(false);
       try {
         const data = await agentChatApi.welcome(agentId);
-        const currentLang = i18n.language.startsWith("zh") ? "zh" : "en";
-        const wm = data.welcome_message;
-        const msg = wm ? (wm[currentLang] || wm.zh || wm.en || "") : "";
-        setWelcomeMessage(msg || "");
         setQuickPrompts(
           (data.quick_prompts || []).map((p) => ({
             title: {
@@ -110,33 +118,35 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
             },
             color: p.color || "#e8f4ff",
             icon_name: p.icon_name ?? null,
-          }))
+          })),
         );
+        setStatus("ready");
       } catch {
-        setWelcomeMessage("");
         setQuickPrompts([]);
-      } finally {
-        setLoading(false);
+        setStatus("error");
       }
-    }, [agentId, i18n.language]);
+    }, [agentId]);
 
     useEffect(() => {
       loadConfig();
     }, [loadConfig]);
 
     const addQuickPrompt = () => {
+      markDirty();
       setQuickPrompts([...quickPrompts, { ...defaultQuickPrompt }]);
     };
 
     const removeQuickPrompt = (index: number) => {
+      markDirty();
       setQuickPrompts(quickPrompts.filter((_, i) => i !== index));
     };
 
     const updateQuickPrompt = (
       index: number,
       field: keyof QuickPrompt,
-      value: any
+      value: any,
     ) => {
+      markDirty();
       const newPrompts = [...quickPrompts];
       newPrompts[index] = { ...newPrompts[index], [field]: value };
       setQuickPrompts(newPrompts);
@@ -146,8 +156,9 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
       index: number,
       field: "title" | "description" | "prompt",
       lang: "zh" | "en",
-      value: string
+      value: string,
     ) => {
+      markDirty();
       const newPrompts = [...quickPrompts];
       const currentField = newPrompts[index][field];
       newPrompts[index] = {
@@ -161,30 +172,22 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
       setQuickPrompts(newPrompts);
     };
 
-    const currentLang = i18n.language.startsWith("zh") ? "zh" : "en";
-
     return (
       <div className={styles.welcomeConfig}>
-        {loading ? (
-          <div className={styles.welcomeConfigLoading}>{t("common.loading")}</div>
+        {status === "loading" ? (
+          <div className={styles.welcomeConfigLoading}>
+            {t("common.loading")}
+          </div>
         ) : (
           <>
             <div className={styles.welcomeConfigSection}>
-              <h4>{t("experts.welcomeMessageTitle")}</h4>
-              <div className={styles.welcomeMessageField}>
-                <Input.TextArea
-                  value={welcomeMessage}
-                  onChange={(e) => setWelcomeMessage(e.target.value)}
-                  placeholder={t("experts.welcomeMessagePlaceholder")}
-                  rows={2}
-                />
-              </div>
-            </div>
-
-            <div className={styles.welcomeConfigSection}>
               <div className={styles.quickPromptsHeader}>
                 <h4>{t("experts.quickPromptsTitle")}</h4>
-                <Button type="dashed" icon={<PlusOutlined />} onClick={addQuickPrompt}>
+                <Button
+                  type="dashed"
+                  icon={<PlusOutlined />}
+                  onClick={addQuickPrompt}
+                >
                   {t("experts.addQuickPrompt")}
                 </Button>
               </div>
@@ -193,7 +196,9 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                 {quickPrompts.map((prompt, index) => (
                   <div key={index} className={styles.quickPromptItem}>
                     <div className={styles.quickPromptHeader}>
-                      <span className={styles.quickPromptIndex}>{index + 1}</span>
+                      <span className={styles.quickPromptIndex}>
+                        {index + 1}
+                      </span>
                       <Button
                         type="text"
                         danger
@@ -209,9 +214,16 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                           <Input
                             value={prompt.title[currentLang]}
                             onChange={(e) =>
-                              updateLocalizedField(index, "title", currentLang, e.target.value)
+                              updateLocalizedField(
+                                index,
+                                "title",
+                                currentLang,
+                                e.target.value,
+                              )
                             }
-                            placeholder={t("experts.quickPromptTitlePlaceholder")}
+                            placeholder={t(
+                              "experts.quickPromptTitlePlaceholder",
+                            )}
                           />
                         </div>
                         <div className={styles.quickPromptField}>
@@ -223,10 +235,12 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                                 index,
                                 "description",
                                 currentLang,
-                                e.target.value
+                                e.target.value,
                               )
                             }
-                            placeholder={t("experts.quickPromptDescriptionPlaceholder")}
+                            placeholder={t(
+                              "experts.quickPromptDescriptionPlaceholder",
+                            )}
                           />
                         </div>
                       </div>
@@ -237,9 +251,16 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                           <Input.TextArea
                             value={prompt.prompt[currentLang]}
                             onChange={(e) =>
-                              updateLocalizedField(index, "prompt", currentLang, e.target.value)
+                              updateLocalizedField(
+                                index,
+                                "prompt",
+                                currentLang,
+                                e.target.value,
+                              )
                             }
-                            placeholder={t("experts.quickPromptContentPlaceholder")}
+                            placeholder={t(
+                              "experts.quickPromptContentPlaceholder",
+                            )}
                             rows={2}
                           />
                         </div>
@@ -255,10 +276,14 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                                 type="button"
                                 className={
                                   styles.colorOption +
-                                  (prompt.color === color ? " " + styles.colorOptionActive : "")
+                                  (prompt.color === color
+                                    ? " " + styles.colorOptionActive
+                                    : "")
                                 }
                                 style={{ backgroundColor: color }}
-                                onClick={() => updateQuickPrompt(index, "color", color)}
+                                onClick={() =>
+                                  updateQuickPrompt(index, "color", color)
+                                }
                               />
                             ))}
                           </div>
@@ -272,9 +297,13 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                                 styles.iconOption +
                                 " " +
                                 styles.iconOptionNoIcon +
-                                (!prompt.icon_name ? " " + styles.iconOptionActive : "")
+                                (!prompt.icon_name
+                                  ? " " + styles.iconOptionActive
+                                  : "")
                               }
-                              onClick={() => updateQuickPrompt(index, "icon_name", null)}
+                              onClick={() =>
+                                updateQuickPrompt(index, "icon_name", null)
+                              }
                             >
                               {t("experts.noIcon")}
                             </button>
@@ -284,9 +313,13 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                                 type="button"
                                 className={
                                   styles.iconOption +
-                                  (prompt.icon_name === icon ? " " + styles.iconOptionActive : "")
+                                  (prompt.icon_name === icon
+                                    ? " " + styles.iconOptionActive
+                                    : "")
                                 }
-                                onClick={() => updateQuickPrompt(index, "icon_name", icon)}
+                                onClick={() =>
+                                  updateQuickPrompt(index, "icon_name", icon)
+                                }
                               >
                                 {iconForName(icon, 16)}
                               </button>
@@ -304,7 +337,10 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                             <div
                               className={styles.quickCardIcon}
                               style={{
-                                background: pastelIconBackground(prompt.color, index),
+                                background: pastelIconBackground(
+                                  prompt.color,
+                                  index,
+                                ),
                                 color: "rgba(15,23,42,0.55)",
                               }}
                             >
@@ -317,7 +353,9 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                               </span>
                               <span className={styles.quickCardDesc}>
                                 {prompt.description[currentLang] ||
-                                  t("experts.quickPromptDescriptionPlaceholder")}
+                                  t(
+                                    "experts.quickPromptDescriptionPlaceholder",
+                                  )}
                               </span>
                             </div>
                           </div>
@@ -338,7 +376,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 WelcomeConfig.displayName = "WelcomeConfig";

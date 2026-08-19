@@ -10,6 +10,7 @@ from octop.infra.knowledge.embed import embed_knowledge_texts
 from octop.infra.knowledge.files import document_path
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.index import KnowledgeIndex
+from octop.infra.knowledge.params import get_advanced_settings
 from octop.infra.knowledge.parse import parse_document
 
 INDEX_CONCURRENCY = 2
@@ -37,10 +38,13 @@ def process_document(services: Any, kb_id: str, doc_id: str) -> None:
     base = repo.get_base(kb_id)
     if document is None or document.kb_id != kb_id or base is None:
         raise LookupError("knowledge document or base not found")
+    if document.is_dir:
+        return
     repo.update_document(doc_id, status="processing", error_message="")
     try:
         text = parse_document(document_path(kb_id, doc_id, document.filename))
-        chunks = chunk_text(text)
+        knobs = get_advanced_settings(services.settings_repo.get)
+        chunks = chunk_text(text, size=knobs["chunk_size"], overlap=knobs["chunk_overlap"])
         if not (text or "").strip() or not chunks:
             raise ValueError("knowledge document has no extractable text")
         embeddings = embed_knowledge_texts(services, chunks)

@@ -698,6 +698,63 @@
   min-width: 0;
 }
 
+.knowledgeCitations {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.knowledgeCitationsLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+}
+
+.knowledgeCitationsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.knowledgeCitationChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 999px;
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-color-brand);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 38%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.knowledgeCitationName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledgeCitationKb {
+  color: var(--fn-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .openBrowserPrompt {
   display: inline-flex;
   align-items: center;

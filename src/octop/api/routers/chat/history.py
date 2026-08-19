@@ -67,6 +67,7 @@ async def list_threads(
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
+            "artifacts": list(r.artifacts),
         }
         for r in rows
     ]
@@ -127,6 +128,7 @@ async def get_thread_context_usage(
         input_tokens=input_tokens,
         mcp_servers=_parse_csv_query(mcp_servers),
         skills=_parse_csv_query(skills),
+        usage_repo=server.services.usage_repo,
     )
     return {
         "max_tokens": breakdown.max_tokens,
@@ -155,7 +157,7 @@ async def get_thread_history(
     client that reloaded (or navigated away) can re-subscribe over the chat
     WebSocket instead of inferring liveness from the message list.
     """
-    _require_thread(server, agent_id, thread_id, user, as_user)
+    row = _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
     page_offset = max(0, offset)
     messages, has_more = await _load_thread_messages(
@@ -181,6 +183,7 @@ async def get_thread_history(
         "offset": page_offset,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
+        "artifacts": list(row.artifacts),
     }
 
 
@@ -204,7 +207,7 @@ async def mark_thread_read(
 @router.post(
     "/agents/{agent_id}/threads/{thread_id}/fork",
     status_code=201,
-    summary="Fork thread from a user message",
+    summary="Fork thread from an assistant message",
 )
 async def fork_thread(
     agent_id: str,
@@ -215,12 +218,16 @@ async def fork_thread(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Create a new dashboard thread with history strictly before *message_id*.
+    """Create a new dashboard thread with history through *message_id*.
 
-    The original thread is left unchanged. The selected user question is not
-    copied — the client should prefill the composer so the user can edit and
-    send a different follow-up.
+    The original thread is left unchanged. History includes the selected
+    assistant reply so the user can continue from that point.
     """
+    if not (body.message_id or "").strip() and body.assistant_turns_from_end is None:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            "message_id or assistant_turns_from_end is required",
+        )
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     effective_uid = as_user if as_user is not None else user.id
     harness = server.app_runtime.agent_registry.get_agent(agent_id)
@@ -231,7 +238,7 @@ async def fork_thread(
         user_id=effective_uid,
         message_id=body.message_id,
         content=body.content,
-        user_turns_from_end=body.user_turns_from_end,
+        assistant_turns_from_end=body.assistant_turns_from_end,
         locale=resolve_request_locale(request),
     )
 

@@ -121,6 +121,16 @@ export const workspaceApi = {
       { method: "POST" },
     ),
 
+  readWorkspaceFile: (
+    agentId: string,
+    path: string,
+  ): Promise<{ path: string; content: string }> =>
+    request<{ path: string; content: string }>(
+      withFromWorkspace(
+        `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
+      ),
+    ),
+
   createWorkspaceFile: (
     agentId: string,
     path: string,

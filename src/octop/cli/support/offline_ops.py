@@ -216,10 +216,15 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.workspace_dir import workspace_dir_from_config_json
+
     with open_cli_services(home) as svc:
-        if svc.agent_repo.get(agent_id) is None:
+        row = svc.agent_repo.get(agent_id)
+        if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        workspace_dir = svc.paths.agent_workspace(agent_id)
+        workspace_dir = workspace_dir_from_config_json(
+            row.config_json, paths=svc.paths, agent_id=agent_id
+        )
         try:
             if workspace_dir.exists():
                 shutil.rmtree(workspace_dir)
