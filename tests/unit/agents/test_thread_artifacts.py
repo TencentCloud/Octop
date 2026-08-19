@@ -65,6 +65,15 @@ def test_extract_from_write_file_args() -> None:
     assert extract_artifact_paths(tool_name="read_file", args={"path": "a.md"}) == []
 
 
+def test_extract_prefers_args_over_result_text() -> None:
+    paths = extract_artifact_paths(
+        tool_name="write_file",
+        args={"path": "generated/report.pptx"},
+        result="Also mentioned outbound/screenshots/harness.png in the log",
+    )
+    assert paths == ["generated/report.pptx"]
+
+
 def test_extract_screenshot_from_tool_result_text() -> None:
     paths = extract_artifact_paths(
         tool_name="desktop_screenshot",

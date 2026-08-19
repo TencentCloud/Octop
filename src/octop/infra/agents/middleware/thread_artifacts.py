@@ -96,13 +96,17 @@ def extract_artifact_paths(
     args: str | Mapping[str, Any] | None = None,
     result: Any = None,
 ) -> list[str]:
-    """Return listable workspace paths from a completed write/edit/send/screenshot tool."""
+    """Return workspace paths from a write/edit/send/screenshot tool.
+
+    Prefer structured path keys on tool *args*. Scan the tool result text only
+    when args did not yield a path (screenshots, send_file without a path key).
+    """
     if not is_artifact_tool_name(tool_name):
         return []
-    found: list[str] = []
-    found.extend(_paths_from_args(args))
-    found.extend(_paths_from_content(result))
-    return _dedupe_paths(found)
+    from_args = _dedupe_paths(_paths_from_args(args))
+    if from_args:
+        return from_args
+    return _dedupe_paths(_paths_from_content(result))
 
 
 def current_thread_id() -> str:

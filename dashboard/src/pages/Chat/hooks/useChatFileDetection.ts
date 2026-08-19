@@ -49,10 +49,10 @@ function isDockListablePath(path: string): boolean {
 }
 
 /**
- * Parse a tool argument value that may be a JSON *string* or an already
- * decoded object, then read a path-like value out of it.
+ * Read a path-like key from tool arguments (object or JSON string).
+ * Does not scan free text — that is a last-resort fallback.
  */
-function pathFromArgs(raw: unknown): string {
+function pathFromStructuredArgs(raw: unknown): string {
   if (raw === null || raw === undefined) return "";
   if (typeof raw === "object") {
     return pickPathFromObject(raw as Record<string, unknown>);
@@ -66,9 +66,8 @@ function pathFromArgs(raw: unknown): string {
         return pickPathFromObject(parsed);
       }
     } catch {
-      // Not JSON — fall through to text scanning below.
+      return "";
     }
-    return pathFromText(s);
   }
   return "";
 }
@@ -102,7 +101,10 @@ function extractWriteToolPath(message: ChatMessage): string | null {
   const name = message.toolData?.name ?? "";
   if (!isWriteToolName(name)) return null;
 
-  const candidates = [
+  const fromArgs = pathFromStructuredArgs(message.toolData?.arguments);
+  if (fromArgs) return fromArgs;
+
+  const fallbacks = [
     message.toolData?.arguments,
     message.toolData?.output,
     message.content,
@@ -110,8 +112,8 @@ function extractWriteToolPath(message: ChatMessage): string | null {
     (value): value is string =>
       typeof value === "string" && value.trim().length > 0,
   );
-  for (const raw of candidates) {
-    const found = pathFromArgs(raw);
+  for (const raw of fallbacks) {
+    const found = pathFromText(raw);
     if (found) return found;
   }
   return null;
