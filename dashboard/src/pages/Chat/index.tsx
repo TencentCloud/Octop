@@ -278,6 +278,7 @@ function ChatPageInner() {
     handleClose: handleDockClose,
     handleModeChange: handleDockModeChange,
     openFileList,
+    openFileListAt,
     openFileAt,
     openBrowserTab,
     toggleBrowserPanel,
@@ -839,7 +840,7 @@ function ChatPageInner() {
                 }
                 onEditFile={
                   !sharedExpertViewer && panelFilePaths.length > 0 && !isMobile
-                    ? openFileList
+                    ? openFileListAt
                     : undefined
                 }
               />

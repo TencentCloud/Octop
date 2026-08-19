@@ -11,6 +11,7 @@ import {
 } from "../utils/messageContent";
 import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
 import { useAgent } from "../../../context/AgentContext";
+import { lastWriteToolPath } from "../hooks/useChatFileDetection";
 import { TodoProgressPanel } from "../../../components/TodoProgressPanel";
 import {
   collectWriteTodosFromMessages,
@@ -35,7 +36,7 @@ interface AssistantTurnViewProps {
     decisions: Array<{ type: string; message?: string }>,
   ) => void;
   onOpenBrowser?: () => void;
-  onEditFile?: () => void;
+  onEditFile?: (path?: string | null) => void;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -102,6 +103,10 @@ export default function AssistantTurnView({
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
   const usedFileTool = turnUsedFileTool(fullSplit);
   const showEditFile = usedFileTool && !!onEditFile;
+  const lastFilePath = useMemo(
+    () => lastWriteToolPath(messages, agentId),
+    [messages, agentId],
+  );
   const hasToolMedia =
     toolMedia.images.length > 0 ||
     toolMedia.videos.length > 0 ||
@@ -233,7 +238,7 @@ export default function AssistantTurnView({
           className={`${styles.openBrowserPrompt} ${
             turnStreaming ? styles.openBrowserPromptActive : ""
           }`}
-          onClick={onEditFile}
+          onClick={() => onEditFile(lastFilePath)}
           aria-label={t("chat.editFileCard", "编辑文件")}
         >
           <FilePen
