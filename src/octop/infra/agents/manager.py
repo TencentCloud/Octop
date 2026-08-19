@@ -29,7 +29,10 @@ from octop.infra.agents.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
 )
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
-from octop.infra.backend.docker_spec import enrich_docker_backend_spec
+from octop.infra.backend.docker_spec import (
+    enrich_docker_backend_spec,
+    inject_docker_global_environment,
+)
 from octop.infra.backend.resolver import (
     default_agent_backend_spec,
     resolve_agent_backend_spec,
@@ -1004,7 +1007,14 @@ class AgentManager:
             cached = self._mcp_tool_cache.get(cache_key)
             if cached is not None:
                 return cached
-            raw = await aload_mcp_tools({server_name: spec})
+            from octop.infra.utils.env_file import (  # noqa: PLC0415
+                env_file_path,
+                load_env_file,
+                overlay_stdio_spec_env,
+            )
+
+            load_spec = overlay_stdio_spec_env(spec, load_env_file(env_file_path(self.paths.root)))
+            raw = await aload_mcp_tools({server_name: load_spec})
             server_lock = await self._server_lock(user_id, server_name)
             wrapped = wrap_tools_for_shared_use(raw, server_lock)
             self._mcp_tool_cache[cache_key] = wrapped
@@ -1737,11 +1747,14 @@ class AgentManager:
         """Inject Octop docker defaults (prefix / agent_id / username) without overwrite."""
         if not isinstance(backend, dict) or backend.get("type") != "docker":
             return backend
-        return enrich_docker_backend_spec(
+        from octop.infra.utils.env_file import env_file_path  # noqa: PLC0415
+
+        enriched = enrich_docker_backend_spec(
             backend,
             agent_id=row.agent_id,
             username=self._owner_username(row),
         )
+        return inject_docker_global_environment(enriched, env_file_path(self.paths.root))
 
     def _backend_workspace_for_row(self, row: AgentRow) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""

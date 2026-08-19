@@ -4,9 +4,32 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PROTECTED_EXACT = frozenset(
+    {
+        "HOME",
+        "USER",
+        "USERNAME",
+        "LOGNAME",
+        "SHELL",
+        "PWD",
+    }
+)
+
+# Web-search tools register at agent construction from these keys.
+SEARCH_ENV_KEYS = frozenset(
+    {
+        "TAVILY_API_KEY",
+        "BRAVE_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_CSE_ID",
+        "MOONSHOT_API_KEY",
+    }
+)
 
 
 def env_file_path(root: Path) -> Path:
@@ -67,6 +90,38 @@ def apply_env_file(path: Path) -> dict[str, str]:
     for key, value in values.items():
         os.environ[key] = value
     return values
+
+
+def apply_env_file_replace(path: Path, *, previous: Mapping[str, str]) -> dict[str, str]:
+    """Apply the file to ``os.environ`` and drop keys that left the file."""
+    values = load_env_file(path)
+    for key in previous:
+        if key not in values:
+            os.environ.pop(key, None)
+    for key, value in values.items():
+        os.environ[key] = value
+    return values
+
+
+def search_env_changed(previous: Mapping[str, str], new: Mapping[str, str]) -> bool:
+    return any(previous.get(key, "") != new.get(key, "") for key in SEARCH_ENV_KEYS)
+
+
+def _is_protected_env_key(key: str) -> bool:
+    return key in _PROTECTED_EXACT or key.startswith("OCTOP_")
+
+
+def overlay_stdio_spec_env(spec: dict[str, Any], global_env: Mapping[str, str]) -> dict[str, Any]:
+    """Fold Admin env into an MCP stdio spec (spec env wins; skip protected keys)."""
+    if str(spec.get("transport") or "").lower() != "stdio":
+        return spec
+    raw_env = spec.get("env")
+    existing: dict[str, Any] = raw_env if isinstance(raw_env, dict) else {}
+    merged = {str(k): str(v) for k, v in global_env.items() if not _is_protected_env_key(str(k))}
+    merged.update({str(k): str(v) for k, v in existing.items()})
+    out = dict(spec)
+    out["env"] = merged
+    return out
 
 
 def list_env_items(path: Path) -> list[dict[str, str]]:

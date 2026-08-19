@@ -12,6 +12,9 @@
 
 ### 修复
 
+- Admin 环境变量未进入正在运行的 Agent：本地 shell 默认不继承进程 env，Docker exec 也不传 env，工作区 `.env` 只落盘不注入。现本地 shell 每次 execute 继承当前进程环境（含 `~/.octop/env`）并 overlay 工作区 `.env`；Docker 热读全局文件 + 工作区 `.env` + 最小 PATH（不含完整宿主机环境）。保存 Admin 列表会从进程环境删除已去掉的键；仅搜索类 key 变化时后台 reload Agent。MCP stdio 只注入 SDK 安全子集 + 全局/连接器 env，不再灌入整份 `os.environ`。
+- Token 用量账本每轮只记下最后一次模型调用，工具循环中前面若干次调用被丢弃，页面合计会远低于聊天里看到的用量；现按该轮全部 AI 调用的 `usage_metadata` 累加，以 `state_snapshot` 为权威终值（snapshot 之后的增量不再相加），畸形 usage 字段跳过以免打断对话
+- 工作区读写在 harness 后台重建窗口（DB 仍为 running）回退到 `workspace_for_agent`，避免误报 `AGENT_NOT_RUNNING`
 - 插件工具使用中文等非 ASCII 名称时 LLM 调用失败：主流 API 要求工具名匹配 `^[a-zA-Z0-9_-]{1,64}$`，现自动将非法名称转写为合法拼音名（`pypinyin` 缺失时退回下划线替换），冲突追加 `_2`/`_3` 后缀，并在工具描述前缀 `[原名: …]` 保留原名映射；`config_json.plugins` 配置键与插件内部仍使用原始名称，路由不受影响
 - 修复聊天页在"生成中"时于输入框持续打字导致消息列表上下轻微抖动的问题：输入框高度测量改为在离屏克隆节点上进行，不再瞬态改变页面布局
 

@@ -207,6 +207,33 @@ def test_extract_usage_from_state_snapshot_dict_message() -> None:
     assert out["model"] == "openai:gpt-4o-mini"
 
 
+def test_extract_usage_from_state_snapshot_sums_turn_calls() -> None:
+    from octop.api.routers.chat.turn import extract_usage_from_chunk as _extract_usage_from_chunk
+
+    chunk = {
+        "type": "state_snapshot",
+        "data": {
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "assistant",
+                    "usage_metadata": {"input_tokens": 100, "output_tokens": 10},
+                },
+                {
+                    "role": "assistant",
+                    "usage_metadata": {"input_tokens": 200, "output_tokens": 20},
+                    "response_metadata": {"model_name": "openai:gpt-4o-mini"},
+                },
+            ],
+        },
+    }
+    out = _extract_usage_from_chunk(chunk)
+    assert out is not None
+    assert out["input_tokens"] == 300
+    assert out["output_tokens"] == 30
+    assert out["model"] == "openai:gpt-4o-mini"
+
+
 def test_extract_usage_returns_none_when_absent() -> None:
     from octop.api.routers.chat.turn import extract_usage_from_chunk as _extract_usage_from_chunk
 
