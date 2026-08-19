@@ -81,6 +81,38 @@
       },
       "color": "#fdf4e7",
       "icon_name": "bell"
+    },
+    {
+      "title": {
+        "zh": "附近好喝的",
+        "en": "Good drinks nearby"
+      },
+      "description": {
+        "zh": "搜索附近咖啡、奶茶等饮品，选好直接下单",
+        "en": "Find nearby coffee, milk tea and drinks, then order"
+      },
+      "prompt": {
+        "zh": "附近有什么好喝的？",
+        "en": "What's good to drink nearby?"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "coffee"
+    },
+    {
+      "title": {
+        "zh": "团购下单",
+        "en": "Place an order"
+      },
+      "description": {
+        "zh": "选好附近团购美食，直接帮你下单支付",
+        "en": "Pick nearby group-buy deals and place an order"
+      },
+      "prompt": {
+        "zh": "帮我下单一份附近的美食团购",
+        "en": "Help me order a nearby group-buy deal"
+      },
+      "color": "#ffe8f0",
+      "icon_name": "shopping-bag"
     }
   ]
 }
