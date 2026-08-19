@@ -3,11 +3,39 @@
 from __future__ import annotations
 
 import importlib
-from typing import ClassVar
+import sys
+from typing import Any, ClassVar
 
 import click
 
 from octop.cli.registry import COMMANDS
+
+
+def _ensure_utf8_stdio(
+    streams: tuple[Any, ...] | None = None,
+) -> None:
+    """Force UTF-8 output so emoji (✅/❌/QR art) can never crash the CLI.
+
+    On Windows the ANSI code page is often GBK (cp936); Python then encodes
+    piped/redirected stdout and stderr with it, so any non-GBK character
+    (e.g. the success checkmark printed by ``octop init``) raises
+    ``UnicodeEncodeError`` and kills the process after the work was already
+    done. Output is re-encoded to UTF-8 (``errors="replace"`` as a last
+    resort) instead.
+
+    ``streams`` is overridable for tests; the CLI entry uses ``sys.stdout``
+    and ``sys.stderr``.
+    """
+    for stream in (sys.stdout, sys.stderr) if streams is None else streams:
+        if stream is None:
+            continue
+        encoding = getattr(stream, "encoding", None) or ""
+        if encoding.lower().replace("_", "-") == "utf-8":
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError, UnicodeError):
+            continue
 
 
 def _get_version() -> str:
@@ -91,6 +119,7 @@ def cli(
     json_out: bool,
 ) -> None:
     """Octop command-line interface."""
+    _ensure_utf8_stdio()
     ctx.ensure_object(dict)
     ctx.obj["as_user"] = as_user
     ctx.obj["agent_id"] = agent_id
