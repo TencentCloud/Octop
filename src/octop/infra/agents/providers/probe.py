@@ -85,12 +85,15 @@ def make_probe_provider_row(
     model_id: str,
     extra_json: str | None = None,
     embedding: bool = False,
+    reasoning: bool = False,
 ) -> Any:
     """Build a ProviderRow-like object for connectivity probes."""
     model: dict[str, Any] = {"id": model_id, "name": model_id}
     if embedding:
         model["embedding"] = True
         model["task"] = "embedding"
+    if reasoning:
+        model["reasoning"] = True
     return SimpleNamespace(
         name=name,
         kind=kind,
@@ -191,13 +194,28 @@ async def probe_provider_row(
     started = time.perf_counter()
     try:
         chat = build_probe_chat_model(row, model_id=mid)
-        result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
+        if _is_reasoning_model(row, model_id=mid):
+            # Reasoning-capable models (e.g. DeepSeek thinking, OpenAI o-series)
+            # often reject non-streaming requests; stream to exercise the same
+            # code path used for real reasoning calls.
+            async for _chunk in chat.astream("ping"):
+                pass
+        else:
+            await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
     except Exception as exc:
         logger.info("provider probe failed for %s: %s", getattr(row, "name", "?"), exc)
         return {"ok": False, "error": str(exc)}
     latency_ms = int((time.perf_counter() - started) * 1000)
-    _ = getattr(result, "content", None)
     return {"ok": True, "latency_ms": latency_ms}
+
+
+def _is_reasoning_model(row: Any, *, model_id: str) -> bool:
+    """Whether the probed model is reasoning-capable (and should be streamed)."""
+    from octop.infra.agents.providers.reasoning import reasoning_capability
+
+    entry = _probe_model_entry(row, model_id)
+    capability = reasoning_capability(entry, base_url=getattr(row, "base_url", None))
+    return capability is not None
 
 
 def _models_list_url(base_url: str | None) -> str:

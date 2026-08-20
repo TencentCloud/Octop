@@ -180,6 +180,7 @@ export const wizardApi = {
       api_key: string;
       base_url?: string;
       model_id: string;
+      reasoning?: boolean;
     },
     wizardToken: string,
   ) =>
@@ -191,6 +192,25 @@ export const wizardApi = {
         headers: bearer(wizardToken),
       },
     ),
+
+  fetchSetupModels: (
+    body: {
+      kind: string;
+      api_key: string;
+      base_url?: string;
+      extra_json?: string;
+    },
+    wizardToken: string,
+  ) =>
+    request<{
+      ok: boolean;
+      models?: { id: string; name: string }[];
+      error?: string;
+    }>("/setup/fetch-models", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: bearer(wizardToken),
+    }),
 };
 
 /**

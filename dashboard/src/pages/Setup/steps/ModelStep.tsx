@@ -17,7 +17,7 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Plus, Trash2, Zap } from "lucide-react";
+import { Download, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
 import {
@@ -159,14 +159,30 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
   const [customModels, setCustomModels] = useState<CustomModelEntry[]>([]);
   const [addingCustomModel, setAddingCustomModel] = useState(false);
   const [addingPresetModel, setAddingPresetModel] = useState(false);
+  const [editingPresetModel, setEditingPresetModel] =
+    useState<CustomModelEntry | null>(null);
+  const [editingCustomModel, setEditingCustomModel] =
+    useState<CustomModelEntry | null>(null);
   const [extraPresetModels, setExtraPresetModels] = useState<
     CustomModelEntry[]
   >([]);
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [variantGroup, setVariantGroup] = useState<PresetGroup | null>(null);
   const apiKeySectionRef = useRef<HTMLDivElement>(null);
+
+  const customKind = Form.useWatch("kind", customForm) as string | undefined;
+  const customApiKey = Form.useWatch("api_key", customForm) as
+    | string
+    | undefined;
+  const customBaseUrl = Form.useWatch("base_url", customForm) as
+    | string
+    | undefined;
+  const presetApiKey = Form.useWatch("api_key", presetForm) as
+    | string
+    | undefined;
 
   const resetTest = () => setTestPassed(false);
 
@@ -515,6 +531,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
           api_key: draft.api_key,
           base_url: draft.base_url,
           model_id: draft.models[0].id,
+          reasoning: draft.models[0].reasoning,
         },
         probeToken,
       );
@@ -539,6 +556,112 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       );
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleFetchModels = async (target: "preset" | "custom") => {
+    if (fetchingModels) return;
+    if (target === "custom") {
+      if (String(customKind ?? "").trim() !== "openai") {
+        message.warning(t("models.fetchModelsUnsupportedKind"));
+        return;
+      }
+      if (
+        !String(customApiKey ?? "").trim() ||
+        !String(customBaseUrl ?? "").trim()
+      ) {
+        message.warning(t("models.fetchModelsIncomplete"));
+        return;
+      }
+    } else if (isOllama) {
+      return;
+    } else if (!String(presetApiKey ?? "").trim()) {
+      message.warning(t("models.fetchModelsIncomplete"));
+      return;
+    }
+
+    const probeToken = await resolveSetupProbeToken();
+    if (!probeToken) {
+      message.error(t("wizard.sessionExpired"));
+      return;
+    }
+
+    let body: Parameters<typeof wizardApi.fetchSetupModels>[0];
+    if (target === "custom") {
+      const values = customForm.getFieldsValue(true) as CustomFormValues;
+      body = {
+        kind: "openai",
+        api_key: String(values.api_key ?? "").trim(),
+        base_url: String(values.base_url ?? "").trim() || undefined,
+      };
+    } else {
+      const values = presetForm.getFieldsValue(true) as PresetFormValues;
+      body = {
+        kind: preset?.protocol ?? "openai",
+        api_key: String(values.api_key ?? "").trim(),
+        base_url: String(values.base_url ?? "").trim() || undefined,
+      };
+    }
+
+    setFetchingModels(true);
+    try {
+      const result = await wizardApi.fetchSetupModels(body, probeToken);
+      if (!result.ok || !result.models) {
+        message.error(
+          t("models.fetchModelsFailed", { error: result.error ?? "unknown" }),
+        );
+        return;
+      }
+      const entries: CustomModelEntry[] = result.models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        input: ["text"],
+      }));
+      if (target === "custom") {
+        setCustomModels((prev) => {
+          const seen = new Set(prev.map((m) => m.id));
+          const merged = [...prev];
+          for (const e of entries) {
+            if (!seen.has(e.id)) {
+              seen.add(e.id);
+              merged.push(e);
+            }
+          }
+          return merged;
+        });
+      } else {
+        const merged = [...extraPresetModels];
+        const seen = new Set(
+          extraPresetModels
+            .map((m) => m.id)
+            .concat(preset?.models.map((m) => m.id) ?? []),
+        );
+        for (const e of entries) {
+          if (!seen.has(e.id)) {
+            seen.add(e.id);
+            merged.push(e);
+          }
+        }
+        setExtraPresetModels(merged);
+        const nextSelected = [...selectedModelIds];
+        for (const e of entries) {
+          if (!nextSelected.includes(e.id)) nextSelected.push(e.id);
+        }
+        setSelectedModelIds(nextSelected);
+        presetForm.setFieldsValue({ selectedModels: nextSelected });
+      }
+      resetTest();
+      message.success(
+        t("models.fetchModelsSuccess", { count: entries.length }),
+      );
+    } catch (err) {
+      message.error(
+        t("models.fetchModelsFailed", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -644,17 +767,93 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
     setAddingCustomModel(false);
   };
 
-  const renderAddModelForm = (onAdd: () => void, onCancel: () => void) => (
+  const handleSavePresetModel = async () => {
+    if (!editingPresetModel) return;
+    const values = await modelForm.validateFields();
+    const name =
+      (values.model_display_name as string | undefined)?.trim() ||
+      editingPresetModel.id;
+    const input: string[] = (values.input as string[] | undefined) || ["text"];
+    const updated: CustomModelEntry = {
+      ...editingPresetModel,
+      name,
+      input,
+    };
+    if (values.context_window != null) {
+      updated.context_window = values.context_window as number;
+    } else {
+      delete updated.context_window;
+    }
+    if (values.max_tokens != null) {
+      updated.max_tokens = values.max_tokens as number;
+    } else {
+      delete updated.max_tokens;
+    }
+    if (values.reasoning) {
+      updated.reasoning = true;
+    } else {
+      delete updated.reasoning;
+    }
+    setExtraPresetModels((prev) =>
+      prev.map((m) => (m.id === editingPresetModel.id ? updated : m)),
+    );
+    resetTest();
+    modelForm.resetFields();
+    setEditingPresetModel(null);
+  };
+
+  const handleSaveCustomModel = async () => {
+    if (!editingCustomModel) return;
+    const values = await modelForm.validateFields();
+    const name =
+      (values.model_display_name as string | undefined)?.trim() ||
+      editingCustomModel.id;
+    const input: string[] = (values.input as string[] | undefined) || ["text"];
+    const updated: CustomModelEntry = {
+      ...editingCustomModel,
+      name,
+      input,
+    };
+    if (values.context_window != null) {
+      updated.context_window = values.context_window as number;
+    } else {
+      delete updated.context_window;
+    }
+    if (values.max_tokens != null) {
+      updated.max_tokens = values.max_tokens as number;
+    } else {
+      delete updated.max_tokens;
+    }
+    if (values.reasoning) {
+      updated.reasoning = true;
+    } else {
+      delete updated.reasoning;
+    }
+    setCustomModels((prev) =>
+      prev.map((m) => (m.id === editingCustomModel.id ? updated : m)),
+    );
+    resetTest();
+    modelForm.resetFields();
+    setEditingCustomModel(null);
+  };
+
+  const renderModelForm = (
+    isEdit: boolean,
+    onSubmit: () => void,
+    onCancel: () => void,
+  ) => (
     <div className={modelStyles.modelAddForm}>
       <Form form={modelForm} layout="vertical" style={{ marginBottom: 0 }}>
-        <Form.Item
-          name="id"
-          label={t("models.modelIdLabel")}
-          rules={[{ required: true, message: t("models.modelIdLabel") }]}
-          style={{ marginBottom: 12 }}
-        >
-          <Input placeholder={t("models.modelIdPlaceholder")} />
-        </Form.Item>
+        {!isEdit && (
+          <Form.Item
+            name="id"
+            label={t("models.modelIdLabel")}
+            rules={[{ required: true, message: t("models.modelIdLabel") }]}
+            style={{ marginBottom: 12 }}
+          >
+            <Input placeholder={t("models.modelIdPlaceholder")} />
+          </Form.Item>
+        )}
         <Form.Item
           name="model_display_name"
           label={t("models.modelNameLabel")}
@@ -714,13 +913,16 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
           <Button size="small" onClick={onCancel}>
             {t("common.cancel")}
           </Button>
-          <Button type="primary" size="small" onClick={() => void onAdd()}>
-            {t("models.addModel")}
+          <Button type="primary" size="small" onClick={() => void onSubmit()}>
+            {isEdit ? t("models.saveModel") : t("models.addModel")}
           </Button>
         </div>
       </Form>
     </div>
   );
+
+  const renderAddModelForm = (onAdd: () => void, onCancel: () => void) =>
+    renderModelForm(false, onAdd, onCancel);
 
   const renderModelTileBody = (m: {
     id: string;
@@ -1016,6 +1218,26 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
                   <Button
                     type="text"
                     size="small"
+                    className={setupStyles.wizardModelEditFab}
+                    icon={<Pencil size={14} />}
+                    title={t("models.editModel")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      modelForm.setFieldsValue({
+                        model_display_name:
+                          m.name === m.id ? undefined : m.name,
+                        input: m.input ?? ["text"],
+                        context_window: m.context_window,
+                        max_tokens: m.max_tokens,
+                        reasoning: m.reasoning,
+                      });
+                      setEditingPresetModel(m);
+                    }}
+                  />
+                  <Button
+                    type="text"
+                    size="small"
                     danger
                     className={setupStyles.wizardModelDeleteFab}
                     icon={<Trash2 size={14} />}
@@ -1045,15 +1267,27 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
             </Checkbox.Group>
           </div>
 
-          <Button
-            type="dashed"
-            block
-            icon={<Plus size={14} />}
-            onClick={() => setAddingPresetModel(true)}
-            style={{ display: addingPresetModel ? "none" : undefined }}
-          >
-            {t("models.addModel")}
-          </Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              type="dashed"
+              block
+              icon={<Download size={14} />}
+              loading={fetchingModels}
+              disabled={isOllama || !String(presetApiKey ?? "").trim()}
+              onClick={() => void handleFetchModels("preset")}
+            >
+              {t("models.fetchModels")}
+            </Button>
+            <Button
+              type="dashed"
+              block
+              icon={<Plus size={14} />}
+              onClick={() => setAddingPresetModel(true)}
+              style={{ display: addingPresetModel ? "none" : undefined }}
+            >
+              {t("models.addModel")}
+            </Button>
+          </div>
         </Form>
         {addingPresetModel &&
           renderAddModelForm(
@@ -1063,6 +1297,26 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
               modelForm.resetFields();
             },
           )}
+        <Modal
+          title={t("models.editModel")}
+          open={!!editingPresetModel}
+          footer={null}
+          destroyOnHidden
+          onCancel={() => {
+            setEditingPresetModel(null);
+            modelForm.resetFields();
+          }}
+        >
+          {editingPresetModel &&
+            renderModelForm(
+              true,
+              () => void handleSavePresetModel(),
+              () => {
+                setEditingPresetModel(null);
+                modelForm.resetFields();
+              },
+            )}
+        </Modal>
       </>
     );
   };
@@ -1150,6 +1404,23 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
                 <Button
                   type="text"
                   size="small"
+                  className={setupStyles.wizardModelEditFab}
+                  icon={<Pencil size={14} />}
+                  title={t("models.editModel")}
+                  onClick={() => {
+                    modelForm.setFieldsValue({
+                      model_display_name: m.name === m.id ? undefined : m.name,
+                      input: m.input ?? ["text"],
+                      context_window: m.context_window,
+                      max_tokens: m.max_tokens,
+                      reasoning: m.reasoning,
+                    });
+                    setEditingCustomModel(m);
+                  }}
+                />
+                <Button
+                  type="text"
+                  size="small"
                   danger
                   className={setupStyles.wizardModelDeleteFab}
                   icon={<Trash2 size={14} />}
@@ -1165,18 +1436,31 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
           )}
         </div>
 
-        <Button
-          type="dashed"
-          block
-          icon={<Plus size={14} />}
-          onClick={() => setAddingCustomModel(true)}
-          style={{
-            marginTop: 12,
-            display: addingCustomModel ? "none" : undefined,
-          }}
-        >
-          {t("models.addModel")}
-        </Button>
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <Button
+            type="dashed"
+            block
+            icon={<Download size={14} />}
+            loading={fetchingModels}
+            disabled={
+              String(customKind ?? "").trim() !== "openai" ||
+              !String(customApiKey ?? "").trim() ||
+              !String(customBaseUrl ?? "").trim()
+            }
+            onClick={() => void handleFetchModels("custom")}
+          >
+            {t("models.fetchModels")}
+          </Button>
+          <Button
+            type="dashed"
+            block
+            icon={<Plus size={14} />}
+            onClick={() => setAddingCustomModel(true)}
+            style={{ display: addingCustomModel ? "none" : undefined }}
+          >
+            {t("models.addModel")}
+          </Button>
+        </div>
       </Form>
       {addingCustomModel &&
         renderAddModelForm(
@@ -1186,6 +1470,26 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
             modelForm.resetFields();
           },
         )}
+      <Modal
+        title={t("models.editModel")}
+        open={!!editingCustomModel}
+        footer={null}
+        destroyOnHidden
+        onCancel={() => {
+          setEditingCustomModel(null);
+          modelForm.resetFields();
+        }}
+      >
+        {editingCustomModel &&
+          renderModelForm(
+            true,
+            () => void handleSaveCustomModel(),
+            () => {
+              setEditingCustomModel(null);
+              modelForm.resetFields();
+            },
+          )}
+      </Modal>
     </>
   );
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -296,6 +297,73 @@ async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> 
     )
     assert r.status_code == 200
     assert r.json()["ok"] is False
+
+
+# ─── /setup/fetch-models ────────────────────────────────────────────
+
+
+async def test_fetch_models_requires_wizard_token(env: Any) -> None:
+    c, _srv, _home = env
+    r = await c.post(
+        "/api/setup/fetch-models",
+        json={"kind": "openai", "api_key": "sk-test"},
+    )
+    assert r.status_code == 401
+
+
+async def test_fetch_models_rejects_non_openai_kind(env: Any) -> None:
+    c, _srv, home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    r = await c.post(
+        "/api/setup/fetch-models",
+        json={"kind": "anthropic", "api_key": "sk-test"},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "openai" in body["error"].lower()
+
+
+async def test_fetch_models_requires_api_key(env: Any) -> None:
+    c, _srv, home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    r = await c.post(
+        "/api/setup/fetch-models",
+        json={"kind": "openai", "api_key": "", "base_url": "https://api.example.com/v1"},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "api_key" in body["error"]
+
+
+async def test_fetch_models_success(env: Any) -> None:
+    c, _srv, home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    fake = {
+        "ok": True,
+        "models": [{"id": "gpt-4o", "name": "gpt-4o"}],
+    }
+    with patch(
+        "octop.api.routers.setup.fetch_openai_compatible_models",
+        new=AsyncMock(return_value=fake),
+    ) as mocked:
+        r = await c.post(
+            "/api/setup/fetch-models",
+            json={"kind": "openai", "api_key": "sk-test", "base_url": "https://api.example.com/v1"},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+    assert r.status_code == 200, r.text
+    assert r.json() == fake
+    mocked.assert_awaited_once()
+    kwargs = mocked.await_args.kwargs
+    assert kwargs["api_key"] == "sk-test"
+    assert kwargs["base_url"] == "https://api.example.com/v1"
 
 
 async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
