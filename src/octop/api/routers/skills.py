@@ -687,7 +687,13 @@ async def update_skill(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Overwrite an installed workspace skill via BackendWorkspace only."""
+    """Overwrite an installed workspace skill via BackendWorkspace only.
+
+    A ``content``-only body (the dashboard editor edits SKILL.md) rewrites just
+    the manifest in place - sibling files and directories are preserved. A
+    ``files`` payload replaces the whole skill directory, matching
+    create-with-overwrite / re-import semantics.
+    """
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     try:
         slug = validate_skill_slug(name)
@@ -709,8 +715,16 @@ async def update_skill(
     if meta_existing.get("removed"):
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
 
-    with contextlib.suppress(Exception):
-        await ctx.workspace.adelete(f"skills/{slug}")
+    # ``content``-only updates (the dashboard editor edits SKILL.md) must keep
+    # the skill's sibling files and directories (README.md, references/, ...)
+    # intact - deleting the whole directory here wiped imported ZIP skills down
+    # to a lone SKILL.md. A full ``files`` payload still replaces the directory
+    # wholesale, matching create-with-overwrite / re-import semantics. The
+    # truthiness check mirrors ``_files_from_skill_body`` so an empty ``files``
+    # list falls back to the content path on both sides.
+    if body.files:
+        with contextlib.suppress(Exception):
+            await ctx.workspace.adelete(f"skills/{slug}")
     await _write_skill_files(ctx.workspace, f"skills/{slug}", package.files)
     skill_md = next(
         (content for path, content in package.files if path == "SKILL.md"),

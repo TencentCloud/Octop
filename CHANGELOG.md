@@ -20,6 +20,7 @@
 
 ### 修复
 
+- 技能：修复编辑已导入技能并保存后，技能内其余文件与文件夹（README.md、references/ 等）被整体清除的问题--内容编辑（仅 SKILL.md）现原地覆盖清单文件、保留全部同级文件；携带完整 `files` 载荷的更新仍整目录替换（与覆盖重装语义一致）
 - Harness usage 事件按稳定调用 ID 去重，避免流重放重复计费；上下文环保留路由模型的真实窗口上限，并将构成拆分明确显示为近似估算。
 
 - Admin 环境变量未进入正在运行的 Agent：本地 shell 默认不继承进程 env，Docker exec 也不传 env，工作区 `.env` 只落盘不注入。现本地 shell 每次 execute 继承当前进程环境（含 `~/.octop/env`）并 overlay 工作区 `.env`；Docker 热读全局文件 + 工作区 `.env` + 最小 PATH（不含完整宿主机环境）。保存 Admin 列表会从进程环境删除已去掉的键；仅搜索类 key 变化时后台 reload Agent。MCP stdio 只注入 SDK 安全子集 + 全局/连接器 env，不再灌入整份 `os.environ`。
