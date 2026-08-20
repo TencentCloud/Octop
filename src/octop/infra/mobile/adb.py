@@ -19,17 +19,23 @@ _DISPLAY_ID = re.compile(r"Display\s+(\d+)")
 
 
 def find_adb() -> str | None:
+    """Locate ``adb`` without guessing OS-specific install layouts.
+
+    Resolution order:
+    1. ``PATH`` via ``shutil.which("adb")`` (covers ``adb.exe`` on Windows).
+    2. ``ANDROID_HOME`` / ``ANDROID_SDK_ROOT`` if the user set them — only
+       ``<root>/platform-tools/adb[.exe]``, never hardcoded SDK paths under
+       ``~/Library``, ``~/Android``, ``%LOCALAPPDATA%``, etc.
+    """
     found = shutil.which("adb")
     if found:
         return found
-    home = Path.home()
-    candidates = (
-        home / "Library/Android/sdk/platform-tools/adb",
-        home / "Android/Sdk/platform-tools/adb",
-        Path(os.environ.get("ANDROID_HOME", "")) / "platform-tools/adb",
-        Path(os.environ.get("ANDROID_SDK_ROOT", "")) / "platform-tools/adb",
-    )
-    for path in candidates:
+    adb_name = "adb.exe" if os.name == "nt" else "adb"
+    for env_key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        root = (os.environ.get(env_key) or "").strip()
+        if not root:
+            continue
+        path = Path(root) / "platform-tools" / adb_name
         if path.is_file():
             return str(path)
     return None
