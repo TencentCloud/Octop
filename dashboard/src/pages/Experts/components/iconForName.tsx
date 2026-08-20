@@ -43,6 +43,8 @@ import {
   ShieldCheck,
   RefreshCw,
   Utensils,
+  Coffee,
+  ShoppingBag,
 } from "lucide-react";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import { needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
@@ -80,6 +82,8 @@ const iconMap: Record<string, (size: number) => ReactNode> = {
   "refresh-cw": (size) => <RefreshCw size={size} />,
   utensils: (size) => <Utensils size={size} />,
   bell: (size) => <Bell size={size} />,
+  coffee: (size) => <Coffee size={size} />,
+  "shopping-bag": (size) => <ShoppingBag size={size} />,
 };
 
 export const EXPERT_ICON_NAMES = Object.keys(iconMap);

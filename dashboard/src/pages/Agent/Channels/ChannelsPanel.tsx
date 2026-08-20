@@ -394,29 +394,33 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       </div>
 
       {loading && channels.length === 0 ? (
-        <CardSkeleton count={10} />
+        <div className={styles.channelsBody}>
+          <CardSkeleton count={10} />
+        </div>
       ) : (
-        <div className={styles.channelsGrid}>
-          {CHANNEL_KEYS.map((key) => {
-            const row = channelByKind.get(key);
-            return (
-              <ChannelCard
-                key={key}
-                channelKey={key}
-                enabled={Boolean(row?.enabled)}
-                hasChannel={Boolean(row)}
-                isHover={hoverId === key}
-                enableLoading={enableLoadingKey === key}
-                testLoading={testState.loadingKey === key}
-                testResult={testState.results[key] ?? null}
-                runtime={row?.runtime}
-                onClick={() => handleCardClick(key)}
-                onMouseEnter={() => setHoverId(key)}
-                onMouseLeave={() => setHoverId(null)}
-                onToggleEnabled={handleToggleEnabled}
-              />
-            );
-          })}
+        <div className={styles.channelsBody}>
+          <div className={styles.channelsGrid}>
+            {CHANNEL_KEYS.map((key) => {
+              const row = channelByKind.get(key);
+              return (
+                <ChannelCard
+                  key={key}
+                  channelKey={key}
+                  enabled={Boolean(row?.enabled)}
+                  hasChannel={Boolean(row)}
+                  isHover={hoverId === key}
+                  enableLoading={enableLoadingKey === key}
+                  testLoading={testState.loadingKey === key}
+                  testResult={testState.results[key] ?? null}
+                  runtime={row?.runtime}
+                  onClick={() => handleCardClick(key)}
+                  onMouseEnter={() => setHoverId(key)}
+                  onMouseLeave={() => setHoverId(null)}
+                  onToggleEnabled={handleToggleEnabled}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 

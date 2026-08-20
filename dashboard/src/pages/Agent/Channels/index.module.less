@@ -10,6 +10,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
   min-height: 0;
 }
 
@@ -19,6 +20,24 @@
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
+}
+
+/* Scrollable body below the pinned toolbar (same pattern as Skills):
+   when the grid outgrows the viewport (page zoom), cards scroll instead
+   of being clipped by the fill layout's overflow:hidden. */
+.channelsBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* Keep card hover translateY(-2px) inside the scrollport. */
+  padding-top: 8px;
+
+  @media (max-width: 767px) {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+    padding-top: 0;
+  }
 }
 
 .channelsStats {
