@@ -61,6 +61,21 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current.openTabs.map((t) => t.id)).toEqual(["terminal"]);
   });
 
+  it("togglePhonePanel opens phone tab then closes dock when active", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.togglePhonePanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.activeTabId).toBe("phone");
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["phone"]);
+    act(() => {
+      result.current.togglePhonePanel();
+    });
+    expect(result.current.dockOpen).toBe(false);
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["phone"]);
+  });
+
   it("reopening terminal does not add another dock tab", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     act(() => {

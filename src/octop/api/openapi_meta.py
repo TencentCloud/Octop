@@ -137,7 +137,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "mobile",
-        "description": "Remote Android stream and adb control (admin only).",
+        "description": "Remote Phone stream and adb control (mobile permission).",
     },
     {
         "name": "desktop",

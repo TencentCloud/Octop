@@ -559,7 +559,7 @@
     "system_prompt_with_soul": "{soul_md}\n\n---\n\nToday is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred — do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly."
   },
   "mobile": {
-    "unsupported_reason": "Remote Android is not supported on this host.",
+    "unsupported_reason": "Remote Phone is not supported on this host.",
     "adb_not_found": "adb was not found. Install Android platform-tools or Android Studio SDK.",
     "no_device": "No adb device connected. Start an emulator or connect a phone via USB.",
     "container_no_adb": "Android container is running but adb cannot see a device yet.",

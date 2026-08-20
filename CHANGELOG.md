@@ -1,9 +1,10 @@
 ## Unreleased
-### Remote Android (experimental)
+### Remote Phone (experimental)
 
 - Install-time host capability probe (`capabilities.mobile`) with physical / Redroid / KVM backends.
 - `GET /api/settings/capabilities` and gated `/api/mobile/*` routes when enabled.
-- Dashboard **Control → Remote Android** with adb stream and touch input.
+- Dashboard **Control → Remote Phone** (`/remote-phone`): adb H.264/JPEG stream, touch input, quality presets, device info, AI assistant panel.
+- Chat dock phone panel; agent mobile tools bind to the active Remote Phone session.
 
 # Changelog
 

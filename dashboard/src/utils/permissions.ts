@@ -44,7 +44,7 @@ export const NAV_PERMISSIONS = {
   "knowledge-bases": PERM.knowledgeBasesPage,
   workbench: PERM.workbench,
   "remote-desktop": PERM.desktop,
-  "remote-android": PERM.mobile,
+  "remote-phone": PERM.mobile,
   acp: "admin",
   "admin-users": PERM.usersPage,
   models: PERM.modelsPage,
@@ -190,6 +190,8 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     return PERM.desktop;
   }
   if (
+    pathname === "/remote-phone" ||
+    pathname.startsWith("/remote-phone/") ||
     pathname === "/remote-android" ||
     pathname.startsWith("/remote-android/")
   ) {

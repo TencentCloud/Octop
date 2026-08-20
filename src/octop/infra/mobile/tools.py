@@ -36,7 +36,7 @@ def _tool_ctx() -> dict[str, Any]:
 
 def _require_mobile_access(config: OctopConfig, ctx: dict[str, Any], user_repo: Any) -> None:
     if not config.capabilities.mobile.enabled:
-        raise ValueError("Remote Android is not enabled on this host")
+        raise ValueError("Remote Phone is not enabled on this host")
     user_raw = ctx.get("user")
     if user_raw is None:
         raise ValueError("missing configurable.user")
@@ -55,15 +55,26 @@ def _require_ready(config: OctopConfig, *, locale: str) -> None:
 
 
 async def _resolve_device(device: str | None) -> str:
+    from octop.infra.mobile.agent_control import get_mobile_agent_control
+
+    control = get_mobile_agent_control()
+    if not control.enabled or not control.device:
+        raise ValueError(
+            "No Remote Phone session is active — open Remote Phone and Connect a device first."
+        )
     picked = (device or "").strip()
     devices = await asyncio.to_thread(list_devices)
-    if picked:
-        if picked not in devices:
-            raise ValueError(f"adb device not found: {picked}")
-        return picked
-    if not devices:
-        raise ValueError("no adb device connected")
-    return devices[0]
+    if control.device not in devices:
+        raise ValueError(
+            f"bound adb device is no longer connected: {control.device}"
+        )
+    if picked and picked != control.device:
+        raise ValueError(
+            f"agent is bound to {control.device}; cannot use {picked} until rebound"
+        )
+    if picked and picked not in devices:
+        raise ValueError(f"adb device not found: {picked}")
+    return control.device
 
 
 def build_mobile_tools(

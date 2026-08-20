@@ -78,22 +78,28 @@ async def test_mobile_tap_requires_permission() -> None:
 
 @pytest.mark.asyncio
 async def test_mobile_tap_success() -> None:
+    from octop.infra.mobile.agent_control import set_mobile_agent_control
+
+    set_mobile_agent_control(enabled=True, device="emulator-5554")
     user_repo = MagicMock()
     user_repo.get.return_value = SimpleNamespace(is_admin=False, permissions=["mobile"])
     with patch("octop.infra.mobile.tools.find_adb", return_value="/adb"):
         tools = build_mobile_tools(_enabled_config(), user_repo=user_repo)
     tap_tool = _tool_by_name(tools, "mobile_tap")
-    with (
-        _configurable(user="1", user_is_admin=False, locale="en", agent_id="agent1"),
-        patch("octop.infra.mobile.tools.mobile_status") as status,
-        patch("octop.infra.mobile.tools.list_devices", return_value=["emulator-5554"]),
-        patch("octop.infra.mobile.tools.tap", return_value=True) as tap_fn,
-    ):
-        status.return_value = MagicMock(setup_state="ready", ok=True)
-        out = await tap_tool.ainvoke({"x": 100, "y": 200})
-    data = json.loads(out)
-    assert data["ok"] is True
-    tap_fn.assert_called_once()
+    try:
+        with (
+            _configurable(user="1", user_is_admin=False, locale="en", agent_id="agent1"),
+            patch("octop.infra.mobile.tools.mobile_status") as status,
+            patch("octop.infra.mobile.tools.list_devices", return_value=["emulator-5554"]),
+            patch("octop.infra.mobile.tools.tap", return_value=True) as tap_fn,
+        ):
+            status.return_value = MagicMock(setup_state="ready", ok=True)
+            out = await tap_tool.ainvoke({"x": 100, "y": 200})
+        data = json.loads(out)
+        assert data["ok"] is True
+        tap_fn.assert_called_once()
+    finally:
+        set_mobile_agent_control(enabled=False, device=None)
 
 
 @pytest.mark.asyncio

@@ -225,10 +225,10 @@ function buildNavSections(
       labelKey: "nav.remoteDesktop",
     });
   }
-  if (opts?.mobileEnabled && navAllowed(user, "remote-android")) {
+  if (opts?.mobileEnabled && navAllowed(user, "remote-phone")) {
     controlItems.push({
-      key: "remote-android",
-      path: "/remote-android",
+      key: "remote-phone",
+      path: "/remote-phone",
       icon: <Smartphone size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.remoteAndroid",
     });

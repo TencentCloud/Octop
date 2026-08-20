@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Globe,
   RefreshCw,
+  Smartphone,
   Terminal,
   X,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
 
 const TerminalPage = lazy(() => import("../../Control/Terminal"));
+const RemoteAndroidPage = lazy(() => import("../../Control/RemoteAndroid"));
 
 interface ChatDockPanelProps {
   mode: PanelMode;
@@ -54,7 +56,7 @@ interface ChatDockPanelProps {
 }
 
 /**
- * Tabbed dock shell: file list + per-file viewers + browser + terminal.
+ * Tabbed dock shell: file list + per-file viewers + browser + terminal + phone.
  * Bodies stay mounted after first open so streams / editors survive tab switches.
  */
 const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
@@ -79,6 +81,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [terminalMounted, setTerminalMounted] = useState(
     openTabs.some((tab) => tab.kind === "terminal"),
   );
+  const [phoneMounted, setPhoneMounted] = useState(
+    openTabs.some((tab) => tab.kind === "phone"),
+  );
   const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
     openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
   );
@@ -93,8 +98,10 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   useEffect(() => {
     const hasBrowser = openTabs.some((tab) => tab.kind === "browser");
     const hasTerminal = openTabs.some((tab) => tab.kind === "terminal");
+    const hasPhone = openTabs.some((tab) => tab.kind === "phone");
     setBrowserMounted(hasBrowser);
     setTerminalMounted(hasTerminal);
+    setPhoneMounted(hasPhone);
     const openFilePaths = new Set(
       openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
     );
@@ -151,6 +158,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const activeTab =
     openTabs.find((tab) => tab.id === activeTabId) ?? openTabs[0] ?? null;
   const terminalVisible = surfaceVisible && activeTab?.kind === "terminal";
+  const phoneVisible = surfaceVisible && activeTab?.kind === "phone";
 
   const tabBar = (
     <div className={styles.dockTabBar} role="tablist">
@@ -171,6 +179,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <>
               <Terminal size={16} strokeWidth={2} aria-hidden />
               <span>{t("chat.dockTerminalTitle", "终端")}</span>
+            </>
+          ) : tab.kind === "phone" ? (
+            <>
+              <Smartphone size={16} strokeWidth={2} aria-hidden />
+              <span>{t("chat.dockPhoneTitle", "远程手机")}</span>
             </>
           ) : (
             <>
@@ -309,6 +322,24 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               }
             >
               <TerminalPage embedded isVisible={terminalVisible} />
+            </Suspense>
+          </div>
+        )}
+
+        {phoneMounted && (
+          <div
+            className={styles.dockTabBody}
+            style={{ display: phoneVisible ? "flex" : "none" }}
+            aria-hidden={!phoneVisible}
+          >
+            <Suspense
+              fallback={
+                <div className={styles.dockTerminalLoading}>
+                  <Spin size="small" />
+                </div>
+              }
+            >
+              <RemoteAndroidPage embedded />
             </Suspense>
           </div>
         )}

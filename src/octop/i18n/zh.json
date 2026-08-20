@@ -559,7 +559,7 @@
     "system_prompt_with_soul": "{soul_md}\n\n---\n\n今天是 {today}。\n\n请根据用户近期的生活事件，用温暖自然的语气写一段关心的话，不超过 150 字。\n注意事件发生的时间，不要把几天前的事说成「今天」。\n不要提及你是 AI，直接表达关心即可。"
   },
   "mobile": {
-    "unsupported_reason": "此主机不支持远程 Android。",
+    "unsupported_reason": "此主机不支持远程手机。",
     "adb_not_found": "未找到 adb。请安装 Android platform-tools 或 Android Studio SDK。",
     "no_device": "没有已连接的 adb 设备。请启动模拟器或通过 USB 连接手机。",
     "container_no_adb": "Android 容器已运行，但 adb 尚未发现设备。",

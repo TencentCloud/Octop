@@ -71,7 +71,8 @@ export const pathToKey: Record<string, string> = {
   "/terminal": "workbench",
   "/remote-browser": "workbench",
   "/remote-desktop": "remote-desktop",
-  "/remote-android": "remote-android",
+  "/remote-phone": "remote-phone",
+  "/remote-android": "remote-phone",
   "/subagents": "personalization",
   "/mbti": "personalization",
   "/memory": "personalization",
@@ -94,7 +95,7 @@ export const FULLSCREEN_PATHS = new Set([
   "/workbench/browser",
   "/chat",
   "/remote-desktop",
-  "/remote-android",
+  "/remote-phone",
 ]);
 
 /**
@@ -161,7 +162,11 @@ export const routeConfigs: RouteConfig[] = [
     element: <RedirectPreserveSearch to="/workbench/browser" />,
   },
   { path: "/remote-desktop", element: <RemoteDesktopPage /> },
-  { path: "/remote-android", element: <RemoteAndroidPage /> },
+  { path: "/remote-phone", element: <RemoteAndroidPage /> },
+  {
+    path: "/remote-android",
+    element: <Navigate to="/remote-phone" replace />,
+  },
   {
     path: "/subagents",
     element: <RedirectPreserveSearch to="/personalization/subagents" />,
