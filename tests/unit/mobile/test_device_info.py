@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from octop.infra.mobile.adb import parse_device_info_payload
 
-
 SAMPLE = """
 model=Pixel 6
 market=Pixel 6
