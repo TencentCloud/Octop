@@ -62,9 +62,15 @@ def test_turn_usage_from_langchain_style_objects() -> None:
     out = turn_usage_from_messages(messages)
     assert out == {
         "input_tokens": 15,
+        "uncached_input_tokens": 15,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
         "output_tokens": 7,
+        "reasoning_tokens": 0,
         "total_tokens": 22,
         "model": "m2",
+        "model_calls": 2,
+        "last_input_tokens": 8,
     }
 
 

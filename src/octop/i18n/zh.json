@@ -155,6 +155,8 @@
       "last_active": "最后活跃",
       "model_override": "模型覆盖",
       "input": "输入",
+      "cache_read": "缓存输入",
+      "cache_hit": "缓存命中率",
       "output": "输出",
       "total": "合计",
       "turns": "轮次",

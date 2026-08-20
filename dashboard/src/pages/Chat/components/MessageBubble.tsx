@@ -73,13 +73,25 @@ interface MessageBubbleProps {
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string },
+  labels: { input: string; output: string; total: string; cacheHit: string },
 ): string[] {
   if (!usage) return [];
 
   const parts: string[] = [];
   if (typeof usage.input_tokens === "number") {
     parts.push(`${usage.input_tokens} ${labels.input}`);
+  }
+  if (
+    typeof usage.cache_read_tokens === "number" &&
+    usage.cache_read_tokens > 0
+  ) {
+    const percent =
+      typeof usage.input_tokens === "number" && usage.input_tokens > 0
+        ? ` (${Math.round(
+            (usage.cache_read_tokens / usage.input_tokens) * 100,
+          )}%)`
+        : "";
+    parts.push(`${usage.cache_read_tokens} ${labels.cacheHit}${percent}`);
   }
   if (typeof usage.output_tokens === "number") {
     parts.push(`${usage.output_tokens} ${labels.output}`);
@@ -546,6 +558,7 @@ function MessageBubble({
         input: t("chatUsage.input"),
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
+        cacheHit: t("chatUsage.cacheHit"),
       }),
     [message.usage, t],
   );

@@ -72,6 +72,7 @@ def _registry(usage: object | None, *, history: list[object] | None = None) -> M
 async def test_prefers_harness_snapshot() -> None:
     usage = _usage(
         used=9_000,
+        max_tokens=1_000_000,
         segments={
             "system_prompt": 1_000,
             "skills": 2_000,
@@ -86,7 +87,7 @@ async def test_prefers_harness_snapshot() -> None:
         max_tokens=100_000,
         input_tokens=9999,
     )
-    assert result.max_tokens == 100_000
+    assert result.max_tokens == 1_000_000
     assert result.used_tokens == 9_000
     assert result.segments["skills"] == 2_000
     assert result.segments["conversation"] == 4_500
@@ -195,6 +196,7 @@ async def test_reads_additional_kwargs_context_usage_without_source() -> None:
         thread_id="t1",
         max_tokens=1_000_000,
     )
+    assert result.max_tokens == 128_000
     assert result.used_tokens == 15_400
     assert result.segments["system_prompt"] == 2_000
     assert result.segments["conversation"] == 13_400

@@ -739,6 +739,32 @@ def _ensure_sso_oidc_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_usage_cache_schema(db: DatabasePool) -> None:
+    """Backfill cache-aware usage columns for upgraded and repaired databases."""
+    if not _table_exists(db, "usage_log"):
+        return
+    token_type = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    for column in (
+        "uncached_input_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "reasoning_tokens",
+    ):
+        _ensure_column(
+            db,
+            "usage_log",
+            column,
+            f"{token_type} NOT NULL DEFAULT 0",
+        )
+    _ensure_column(db, "usage_log", "model_calls", "INTEGER NOT NULL DEFAULT 1")
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE usage_log SET uncached_input_tokens = input_tokens "
+            "WHERE uncached_input_tokens = 0 AND input_tokens > 0 "
+            "AND cache_read_tokens = 0 AND cache_write_tokens = 0"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -776,6 +802,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _backfill_agent_profile_from_config(db)
     _ensure_skill_packages_schema(db)
     _ensure_published_experts_schema(db)
+    _ensure_usage_cache_schema(db)
     # Cover pre-squash develop DBs that already recorded version ≥5 but only
     # applied a subset of the former 005–009 files (or the old thin 005).
     # Require ``users`` first — SSO rebuild and knowledge FKs need it, and a
@@ -815,6 +842,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
             _drop_knowledge_base_members(db)
             _ensure_skill_packages_schema(db)
             _ensure_published_experts_schema(db)
+            if max_version >= 8:
+                _ensure_usage_cache_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -838,6 +867,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _drop_knowledge_base_members(db)
         _ensure_skill_packages_schema(db)
         _ensure_published_experts_schema(db)
+    if max_version >= 8:
+        _ensure_usage_cache_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -865,6 +896,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     (idempotent); PostgreSQL runs the ``.pg.sql`` file then the same helpers
     as a no-op safety net. ``config_json`` profile keys are backfilled in
     Python either way.
+    Version 8 adds cache-aware usage buckets and model call counts.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -926,6 +958,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 8:
+        _ensure_usage_cache_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -957,3 +994,4 @@ def run_migrations(db: DatabasePool) -> None:
     _reconcile_pre_squash_schema_version(db)
     _ensure_skill_packages_schema(db)
     _ensure_published_experts_schema(db)
+    _ensure_usage_cache_schema(db)

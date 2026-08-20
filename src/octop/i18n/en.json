@@ -155,6 +155,8 @@
       "last_active": "last_active",
       "model_override": "model_override",
       "input": "input",
+      "cache_read": "cached input",
+      "cache_hit": "cache hit rate",
       "output": "output",
       "total": "total",
       "turns": "turns",

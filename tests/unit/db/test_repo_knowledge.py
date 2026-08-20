@@ -50,7 +50,7 @@ def test_knowledge_tables_migrated(db: SqlitePool) -> None:
         "knowledge_bases",
         "knowledge_documents",
     }.issubset(names)
-    assert v == 7
+    assert v == 8
     assert "knowledge_base_members" not in names
     assert "knowledge_base_id" in {
         r["name"] for r in conn.execute("PRAGMA table_info(knowledge_bases)").fetchall()

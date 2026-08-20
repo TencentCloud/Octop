@@ -349,6 +349,10 @@ function ChatPageInner() {
       if (typeof u.input_tokens === "number") {
         acc.input_tokens = (acc.input_tokens || 0) + u.input_tokens;
       }
+      if (typeof u.cache_read_tokens === "number") {
+        acc.cache_read_tokens =
+          (acc.cache_read_tokens || 0) + u.cache_read_tokens;
+      }
       if (typeof u.output_tokens === "number") {
         acc.output_tokens = (acc.output_tokens || 0) + u.output_tokens;
       }
@@ -365,6 +369,7 @@ function ChatPageInner() {
     input: t("chatUsage.input"),
     output: t("chatUsage.output"),
     total: t("chatUsage.total"),
+    cacheHit: t("chatUsage.cacheHit"),
   });
 
   const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({
