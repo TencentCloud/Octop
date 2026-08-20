@@ -8,6 +8,16 @@ import {
 
 export type AuthImageLoadState = "loading" | "ready" | "error";
 
+type HeldAuthImage = { url: string; filename?: string };
+
+type AuthImageCacheEntry = {
+  objectUrl?: string;
+  refs: number;
+  inflight?: Promise<string>;
+};
+
+const authImageCache = new Map<string, AuthImageCacheEntry>();
+
 function apiPathFromUrl(url: string): string {
   if (url.startsWith("http")) {
     const parsed = new URL(url);
@@ -24,8 +34,70 @@ export async function fetchAuthImageBlob(
     const res = await fetch(url);
     return asImageBlob(await res.blob(), filename);
   }
-  const blob = await requestBlob(apiPathFromUrl(url));
+  const blob = await requestBlob(apiPathFromUrl(url), { cache: "no-store" });
   return asImageBlob(blob, filename);
+}
+
+function cacheKey(url: string, filename?: string): string {
+  return filename ? `${url}\0${filename}` : url;
+}
+
+export function acquireAuthImageSrc(
+  url: string,
+  filename?: string,
+): Promise<string> {
+  const key = cacheKey(url, filename);
+  let entry = authImageCache.get(key);
+  if (!entry) {
+    entry = { refs: 0 };
+    authImageCache.set(key, entry);
+  }
+  entry.refs += 1;
+  if (entry.objectUrl) {
+    return Promise.resolve(entry.objectUrl);
+  }
+  if (!entry.inflight) {
+    const pending = entry;
+    pending.inflight = fetchAuthImageBlob(url, filename)
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        pending.objectUrl = objectUrl;
+        pending.inflight = undefined;
+        if (pending.refs <= 0) {
+          URL.revokeObjectURL(objectUrl);
+          authImageCache.delete(key);
+        }
+        return objectUrl;
+      })
+      .catch((err: unknown) => {
+        pending.inflight = undefined;
+        if (pending.refs <= 0) {
+          authImageCache.delete(key);
+        }
+        throw err;
+      });
+  }
+  if (!entry.inflight) {
+    throw new Error("auth image cache missing inflight");
+  }
+  return entry.inflight;
+}
+
+export function releaseAuthImageSrc(url: string, filename?: string): void {
+  const key = cacheKey(url, filename);
+  const entry = authImageCache.get(key);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs > 0 || entry.inflight) return;
+  if (entry.objectUrl) {
+    URL.revokeObjectURL(entry.objectUrl);
+  }
+  authImageCache.delete(key);
+}
+
+function releaseHeld(held: HeldAuthImage | undefined): void {
+  if (!held) return;
+  releaseAuthImageSrc(held.url, held.filename);
 }
 
 /** Load JWT-protected or data-URL images into a blob object URL. */
@@ -42,10 +114,12 @@ export function useAuthImageSrc(
   const [loadState, setLoadState] = useState<AuthImageLoadState>(() =>
     needsFetch ? "loading" : "ready",
   );
-  const objectUrlRef = useRef<string | undefined>(undefined);
+  const heldRef = useRef<HeldAuthImage | undefined>(undefined);
 
   useLayoutEffect(() => {
     if (!needsAuthBlobFetch(url) && !isDataUrl(url)) {
+      releaseHeld(heldRef.current);
+      heldRef.current = undefined;
       setSrc(url);
       setLoadState("ready");
       return;
@@ -53,17 +127,25 @@ export function useAuthImageSrc(
 
     let cancelled = false;
     setLoadState("loading");
-    setSrc("");
 
     const load = async () => {
       try {
-        const blob = await fetchAuthImageBlob(url, filename);
-        if (cancelled) return;
-        const objUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = objUrl;
-        setSrc(objUrl);
+        const objectUrl = await acquireAuthImageSrc(url, filename);
+        if (cancelled) {
+          releaseAuthImageSrc(url, filename);
+          return;
+        }
+        if (
+          heldRef.current &&
+          (heldRef.current.url !== url || heldRef.current.filename !== filename)
+        ) {
+          releaseHeld(heldRef.current);
+        }
+        heldRef.current = { url, filename };
+        setSrc(objectUrl);
         setLoadState("ready");
       } catch {
+        releaseAuthImageSrc(url, filename);
         if (!cancelled) {
           setSrc("");
           setLoadState("error");
@@ -75,12 +157,15 @@ export function useAuthImageSrc(
 
     return () => {
       cancelled = true;
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = undefined;
-      }
     };
   }, [url, filename]);
+
+  useLayoutEffect(() => {
+    return () => {
+      releaseHeld(heldRef.current);
+      heldRef.current = undefined;
+    };
+  }, []);
 
   return { src, loadState, setSrc };
 }

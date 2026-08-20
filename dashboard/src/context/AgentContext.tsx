@@ -43,6 +43,7 @@ export interface OctopAgent {
   last_error: string | null;
   icon: string | null;
   icon_name: string | null;
+  icon_url: string | null;
   color: string | null;
   max_iters?: number | null;
   max_input_length?: number | null;

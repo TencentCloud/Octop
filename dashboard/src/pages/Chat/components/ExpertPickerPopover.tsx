@@ -2,12 +2,10 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { GraduationCap } from "lucide-react";
-import { Tag } from "antd";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
 import ExpertAgentAvatar, { type ChatAgentOption } from "./ExpertAgentAvatar";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import styles from "../index.module.less";
 
 export type { ChatAgentOption };
@@ -66,20 +64,17 @@ export default function ExpertPickerPopover({
           >
             <ExpertAgentAvatar
               iconName={agent.icon_name}
+              iconUrl={agent.icon_url}
               color={agent.color}
               size={32}
               iconSize={18}
             />
-            <span className={pickerStyles.itemText}>
+            <span className={styles.expertPickerItemText}>
               <span className={pickerStyles.itemName}>{agent.name}</span>
               {agent.is_shared && (
-                <Tag color="blue">
-                  {isSharedExpertViewer(agent)
-                    ? t("experts.share.fromOwner", {
-                        name: agent.owner_username,
-                      })
-                    : t("experts.share.badge")}
-                </Tag>
+                <span className={styles.expertSharedBadge}>
+                  {t("chat.expertSharedBadge", "共享")}
+                </span>
               )}
             </span>
           </button>

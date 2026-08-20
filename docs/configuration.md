@@ -22,9 +22,27 @@ on first server start (or by `octop init` / `octop run`).
 ```
 
 `env` is dotenv format, applied before `config.json` is loaded
-(`OctopServer.start` → `apply_env_file`). Useful when process env is hard
-to set (e.g. Docker volume) without editing Compose. Dashboard
-**Environments** and some tools also read/write this file.
+(`OctopServer.start` → `apply_env_file`). Dashboard **Advanced → Environment
+variables** writes this file. Saving **replaces** the file and drops removed
+keys from the process environment (host/systemd keys that were never in the
+file are left alone). Every running agent inherits those keys:
+
+- **Local shell** — live process env (including this file) plus the agent's
+  workspace `.env` (workspace wins on the same key; `OCTOP_*` / `HOME` / `USER`
+  cannot be overridden from `.env`). Remote object-store workspaces are not
+  read here — `.env` must be on the host workspace path used for execute.
+- **Docker sandbox** — re-reads `~/.octop/env` on execute, plus workspace `.env`
+  and a minimal `PATH` (not the full host environment). Admin `PATH`/`HOME`
+  cannot override the container toolchain; workspace `.env` may set `PATH`.
+- **Web search tools** (Tavily, Brave, …) register at agent start from process
+  env. Changing those keys rebuilds agents in the background; other keys do not.
+  Put search API keys in the global file, not only in an agent's `.env`.
+- **MCP stdio** inherits the MCP SDK safe subset plus Admin keys (and the
+  connector's own `env`). Already-connected MCP servers keep their spawn env
+  until the agent is reloaded.
+
+Per-agent secrets belong in `{workspace}/.env` (also writable via the
+`write_env_file` tool). That file is excluded from published-expert snapshots.
 
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in

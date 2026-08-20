@@ -142,8 +142,14 @@ def _package_or_404(
     return row
 
 
+def _row_public_dict(row: SkillPackageRow) -> dict[str, Any]:
+    payload = asdict(row)
+    payload.pop("pk", None)
+    return payload
+
+
 def _package_payload(store: SkillPackageStore, row: SkillPackageRow) -> dict[str, Any]:
-    return {**asdict(row), "skills": store.list_skill_summaries(row.id)}
+    return {**_row_public_dict(row), "skills": store.list_skill_summaries(row.id)}
 
 
 def _creator_fields(server: OctopServer, created_by: str) -> dict[str, str | None]:
@@ -228,7 +234,8 @@ async def list_skill_packages(
 ) -> list[dict[str, Any]]:
     store = _store(server)
     return [
-        {**asdict(row), **_creator_fields(server, row.created_by)} for row in store.repo.list_all()
+        {**_row_public_dict(row), **_creator_fields(server, row.created_by)}
+        for row in store.repo.list_all()
     ]
 
 

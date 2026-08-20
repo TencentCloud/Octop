@@ -9,6 +9,7 @@ import {
   FilePen,
   Smartphone,
   Terminal,
+  FolderOpen,
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
@@ -20,7 +21,7 @@ import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
-import { formatRunUsage, userTurnsFromEnd } from "./utils/chatMessages";
+import { formatRunUsage, assistantTurnsFromEnd } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
 import { useChatHistoryRail } from "./hooks/useChatHistoryRail";
 import { useChatDockPanel } from "./hooks/useChatDockPanel";
@@ -48,6 +49,7 @@ import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
+import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
 import { useAgent } from "../../context/AgentContext";
@@ -178,6 +180,7 @@ function ChatPageInner() {
       : null,
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
 
   const {
     sessions,
@@ -217,6 +220,7 @@ function ChatPageInner() {
       return;
     }
     setAgentProfileOpen(false);
+    setWorkspaceDrawerOpen(false);
   }, [resolvedAgentId]);
 
   // Weak stream resume may skip intermediate tokens — hint once after rebind.
@@ -292,17 +296,21 @@ function ChatPageInner() {
     setActiveTab: setDockActiveTab,
   } = useChatDockPanel(isMobile, resolvedAgentId);
 
-  const panelFilePaths = useMemo(() => {
-    const fromTabs = openTabs
-      .filter((tab) => tab.kind === "file")
-      .map((tab) => tab.path);
-    return dedupeDockFilePaths([...filePaths, ...fromTabs], resolvedAgentId);
-  }, [filePaths, openTabs, resolvedAgentId]);
-
   const composerSession = useMemo(
     () => sessions.find((session) => session.id === activeThreadId) ?? null,
     [sessions, activeThreadId],
   );
+
+  const panelFilePaths = useMemo(() => {
+    const fromTabs = openTabs
+      .filter((tab) => tab.kind === "file")
+      .map((tab) => tab.path);
+    const fromThread = composerSession?.artifacts ?? [];
+    return dedupeDockFilePaths(
+      [...fromThread, ...filePaths, ...fromTabs],
+      resolvedAgentId,
+    );
+  }, [filePaths, openTabs, resolvedAgentId, composerSession?.artifacts]);
 
   const {
     selectedModel,
@@ -386,6 +394,7 @@ function ChatPageInner() {
         agent_id: a.agent_id,
         name: a.name,
         icon_name: a.icon_name,
+        icon_url: a.icon_url,
         color: a.color,
         is_shared: a.is_shared,
         is_owner: a.is_owner,
@@ -614,54 +623,58 @@ function ChatPageInner() {
     !forking && (isStreaming || hasPendingHitl)
       ? t("chat.forkDisabledWhileBusy")
       : undefined;
-  const handleForkUserMessage = useCallback(
+  const hasAssistantReply = useMemo(
+    () =>
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          !message.toolData &&
+          Boolean(
+            (message.content && message.content.trim()) ||
+              (message.attachments && message.attachments.length > 0),
+          ),
+      ),
+    [messages],
+  );
+  const sessionForkDisabled = forkDisabled || !hasAssistantReply;
+  const sessionForkDisabledHint = !hasAssistantReply
+    ? t("chat.forkNoAssistant")
+    : forkDisabledHint;
+
+  const navigateToForkedThread = useCallback(
+    async (
+      agent: string,
+      created: { thread_id: string; copied_messages: number },
+    ) => {
+      await ensureThreadInList(created.thread_id);
+      navigate(`/chat/${agent}/${created.thread_id}`);
+      antMessage.success(
+        created.copied_messages > 0
+          ? t("chat.forkSuccess")
+          : t("chat.forkSuccessEmpty"),
+      );
+    },
+    [ensureThreadInList, navigate, t],
+  );
+
+  const handleForkAssistantMessage = useCallback(
     async (messageId: string) => {
       const agent = resolvedAgentId;
       if (!agent || !activeThreadId || forkDisabled) return;
       const idx = messages.findIndex((message) => message.id === messageId);
       if (idx < 0) return;
-      const userMsg = messages[idx];
-      if (userMsg.role !== "user") return;
-      const turnsFromEnd = userTurnsFromEnd(messages, messageId);
+      const assistantMsg = messages[idx];
+      if (assistantMsg.role !== "assistant" || assistantMsg.toolData) return;
+      const turnsFromEnd = assistantTurnsFromEnd(messages, messageId);
       if (turnsFromEnd < 1) return;
       setForking(true);
       try {
         const created = await octopThreadsApi.fork(agent, activeThreadId, {
           message_id: messageId,
-          content: userMsg.content,
-          user_turns_from_end: turnsFromEnd,
+          content: assistantMsg.content,
+          assistant_turns_from_end: turnsFromEnd,
         });
-        const ctx = userMsg.composerContext;
-        if (ctx?.skills) handleSkillsChange(ctx.skills);
-        if (ctx?.connectors) handleConnectorsChange(ctx.connectors);
-        if (ctx?.knowledgeBaseIds) {
-          handleKnowledgeBaseIdsChange(ctx.knowledgeBaseIds);
-        }
-        if (ctx?.targetAgents) setSelectedTargetAgents(ctx.targetAgents);
-        if (ctx?.model) setSelectedModel(ctx.model);
-        if (ctx?.reasoningMode) {
-          handleReasoningChange(ctx.reasoningMode, ctx.reasoningEffort ?? null);
-        }
-        const forkAttachments = userMsg.attachments?.map((attachment) => ({
-          ...attachment,
-        }));
-        prefillInputRef.current = userMsg.content;
-        if (forkAttachments && forkAttachments.length > 0) {
-          chatStore.setPendingPrefillAttachments(forkAttachments);
-        }
-        chatInputRef.current?.setPrefillComposer(
-          userMsg.content,
-          forkAttachments,
-        );
-        await ensureThreadInList(created.thread_id);
-        navigate(`/chat/${agent}/${created.thread_id}`, {
-          state: { prefillInput: userMsg.content },
-        });
-        antMessage.success(
-          created.copied_messages > 0
-            ? t("chat.forkSuccess")
-            : t("chat.forkSuccessEmpty"),
-        );
+        await navigateToForkedThread(agent, created);
       } catch (error) {
         antMessage.error(apiErrorMessage(error, t("chat.forkFailed"), t));
       } finally {
@@ -671,17 +684,46 @@ function ChatPageInner() {
     [
       activeThreadId,
       forkDisabled,
-      handleConnectorsChange,
-      handleKnowledgeBaseIdsChange,
-      handleReasoningChange,
-      handleSkillsChange,
       messages,
-      navigate,
+      navigateToForkedThread,
       resolvedAgentId,
-      setSelectedModel,
-      setSelectedTargetAgents,
       t,
-      ensureThreadInList,
+    ],
+  );
+
+  const handleForkSession = useCallback(
+    async (threadId: string, agentId?: string | null) => {
+      const agent = agentId || resolvedAgentId;
+      if (!agent || !threadId || forking) return;
+      if (threadId === activeThreadId && (isStreaming || hasPendingHitl)) {
+        antMessage.warning(t("chat.forkDisabledWhileBusy"));
+        return;
+      }
+      if (threadId === activeThreadId && !hasAssistantReply) {
+        antMessage.warning(t("chat.forkNoAssistant"));
+        return;
+      }
+      setForking(true);
+      try {
+        const created = await octopThreadsApi.fork(agent, threadId, {
+          assistant_turns_from_end: 1,
+        });
+        await navigateToForkedThread(agent, created);
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("chat.forkFailed"), t));
+      } finally {
+        setForking(false);
+      }
+    },
+    [
+      activeThreadId,
+      forking,
+      hasAssistantReply,
+      hasPendingHitl,
+      isStreaming,
+      navigateToForkedThread,
+      resolvedAgentId,
+      t,
     ],
   );
 
@@ -739,6 +781,9 @@ function ChatPageInner() {
       onDeleteSession={handleDeleteSession}
       onRenameSession={renameSession}
       onPinSession={pinSession}
+      onForkSession={handleForkSession}
+      forkDisabled={sessionForkDisabled}
+      forkDisabledHint={sessionForkDisabledHint}
       onSidebarOpenChange={setSidebarOpen}
       onSidebarResizeStart={handleSidebarResizeStart}
       layoutRail
@@ -782,6 +827,19 @@ function ChatPageInner() {
                   >
                     <GraduationCap size={18} strokeWidth={1.8} />
                   </button>
+                  <button
+                    className={styles.menuBtn}
+                    onClick={() => setWorkspaceDrawerOpen(true)}
+                    disabled={!agentChatReady}
+                    title={
+                      agentChatReady
+                        ? t("chat.openWorkspace", "工作区")
+                        : t("workspace.requiresRunning")
+                    }
+                    aria-label={t("chat.openWorkspace", "工作区")}
+                  >
+                    <FolderOpen size={18} strokeWidth={1.8} />
+                  </button>
                 </div>
               )}
             </div>
@@ -793,7 +851,17 @@ function ChatPageInner() {
               title={activeSessionTitle}
               onRename={renameSession}
               onPin={pinSession}
+              onFork={handleForkSession}
               onDelete={handleDeleteSession}
+              forkDisabled={sessionForkDisabled}
+              forkDisabledHint={sessionForkDisabledHint}
+            />
+          )}
+
+          {memoryMaintVisible && memoryMaint && (
+            <MemoryMaintenanceBanner
+              status={memoryMaint}
+              blocking={memoryMaintBlocking}
             />
           )}
 
@@ -835,7 +903,7 @@ function ChatPageInner() {
                 onCancel={cancelStream}
                 onRegenerate={handleRegenerate}
                 onEditUserMessage={handleEditUserMessage}
-                onForkUserMessage={handleForkUserMessage}
+                onForkAssistantMessage={handleForkAssistantMessage}
                 forkDisabled={forkDisabled}
                 forkDisabledHint={forkDisabledHint}
                 onAcpPermissionSelect={handleAcpPermissionSelect}
@@ -852,142 +920,168 @@ function ChatPageInner() {
             )}
           </div>
 
-          {!isMobile && !dockOpen && !agentProfileOpen && (
-            <div className={styles.chatFloatActions}>
-              {/* PWA install first when available — same column as browser / experts. */}
-              <PwaInstallPrompt appearance="chatFloat" />
-              {resolvedAgentId && !sharedExpertViewer && (
-                <Tooltip
-                  title={t("chat.agentProfile.open")}
-                  mouseEnterDelay={0.35}
-                  placement="left"
-                >
-                  <span className={styles.chatFloatBtnWrap}>
-                    <button
-                      type="button"
-                      className={styles.agentProfileBtn}
-                      onClick={() => setAgentProfileOpen(true)}
-                      aria-label={t("chat.agentProfile.open")}
+          {!isMobile &&
+            !dockOpen &&
+            !agentProfileOpen &&
+            !workspaceDrawerOpen && (
+              <div className={styles.chatFloatActions}>
+                {/* PWA install first when available — same column as browser / experts. */}
+                <PwaInstallPrompt appearance="chatFloat" />
+                {resolvedAgentId && !sharedExpertViewer && (
+                  <>
+                    <Tooltip
+                      title={t("chat.agentProfile.open")}
+                      mouseEnterDelay={0.35}
+                      placement="left"
                     >
-                      <GraduationCap size={20} strokeWidth={2.1} />
-                    </button>
-                  </span>
-                </Tooltip>
-              )}
-              {!sharedExpertViewer && panelFilePaths.length > 0 && (
-                <Tooltip
-                  title={t("chat.modifiedFiles", {
-                    count: panelFilePaths.length,
-                    defaultValue: "已修改文件（{{count}}）",
-                  })}
-                  mouseEnterDelay={0.35}
-                  placement="left"
-                >
-                  <span className={styles.chatFloatBtnWrap}>
-                    <button
-                      type="button"
-                      className={styles.chatFloatBtn}
-                      onClick={() => openFileList()}
-                      aria-label={t("chat.modifiedFiles", {
-                        count: panelFilePaths.length,
-                        defaultValue: "已修改文件（{{count}}）",
-                      })}
-                    >
-                      <FilePen size={20} strokeWidth={2.1} />
-                    </button>
-                    {panelFilePaths.length > 1 && (
-                      <span className={styles.chatFloatBadge}>
-                        {panelFilePaths.length > 99
-                          ? "99+"
-                          : panelFilePaths.length}
+                      <span className={styles.chatFloatBtnWrap}>
+                        <button
+                          type="button"
+                          className={styles.agentProfileBtn}
+                          onClick={() => setAgentProfileOpen(true)}
+                          aria-label={t("chat.agentProfile.open")}
+                        >
+                          <GraduationCap size={20} strokeWidth={2.1} />
+                        </button>
                       </span>
-                    )}
-                  </span>
-                </Tooltip>
-              )}
-              {canTerminal && (
-                <Tooltip
-                  title={t("chat.openTerminal", "打开终端")}
-                  mouseEnterDelay={0.35}
-                  placement="left"
-                >
-                  <span className={styles.chatFloatBtnWrap}>
-                    <button
-                      type="button"
-                      className={styles.terminalFloatBtn}
-                      onClick={toggleTerminalPanel}
-                      aria-label={t("chat.openTerminal", "打开终端")}
+                    </Tooltip>
+                    <Tooltip
+                      title={
+                        agentChatReady
+                          ? t("chat.openWorkspace", "工作区")
+                          : t("workspace.requiresRunning")
+                      }
+                      mouseEnterDelay={0.35}
+                      placement="left"
                     >
-                      <Terminal size={20} strokeWidth={2.1} />
-                    </button>
-                  </span>
-                </Tooltip>
-              )}
-              {showPhoneDock && (
-                <Tooltip
-                  title={t("chat.openPhone", "打开远程手机")}
-                  mouseEnterDelay={0.35}
-                  placement="left"
-                >
-                  <span className={styles.chatFloatBtnWrap}>
-                    <button
-                      type="button"
-                      className={styles.phoneFloatBtn}
-                      onClick={togglePhonePanel}
-                      aria-label={t("chat.openPhone", "打开远程手机")}
-                    >
-                      <Smartphone size={20} strokeWidth={2.1} />
-                    </button>
-                  </span>
-                </Tooltip>
-              )}
-              <Tooltip
-                title={
-                  browserSessionId
-                    ? t("browserWorkspace.browserStatusActive", {
-                        owner:
-                          browserControlOwner === "agent"
-                            ? t("browserWorkspace.agentControl")
-                            : t("browserWorkspace.userTakeover"),
-                      })
-                    : t("browserWorkspace.browserStatusIdle")
-                }
-                mouseEnterDelay={0.35}
-                placement="left"
-              >
-                <span className={styles.chatFloatBtnWrap}>
-                  <button
-                    type="button"
-                    className={[
-                      styles.browserStatusBtn,
-                      browserSessionId ? styles.browserStatusActive : "",
-                      browserSessionId &&
-                      (browserSessionState === "awaiting_user_auth" ||
-                        browserSessionState === "authenticating")
-                        ? styles.browserStatusAuth
-                        : "",
-                      browserSessionId && browserControlOwner === "user"
-                        ? styles.browserStatusTakeover
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onClick={toggleBrowserPanel}
-                    aria-label={t("chat.openBrowser")}
+                      <span className={styles.chatFloatBtnWrap}>
+                        <button
+                          type="button"
+                          className={styles.chatFloatBtn}
+                          disabled={!agentChatReady}
+                          onClick={() => setWorkspaceDrawerOpen(true)}
+                          aria-label={t("chat.openWorkspace", "工作区")}
+                        >
+                          <FolderOpen size={20} strokeWidth={2.1} />
+                        </button>
+                      </span>
+                    </Tooltip>
+                  </>
+                )}
+                {!sharedExpertViewer && panelFilePaths.length > 0 && (
+                  <Tooltip
+                    title={t("chat.modifiedFiles", {
+                      count: panelFilePaths.length,
+                      defaultValue: "已修改文件（{{count}}）",
+                    })}
+                    mouseEnterDelay={0.35}
+                    placement="left"
                   >
-                    <Globe size={20} strokeWidth={2.1} />
-                    {browserSessionId && (
-                      <span
-                        className={`${styles.browserStatusDot} ${
-                          styles[`browserStatus_${browserControlOwner}`]
-                        }`}
-                      />
-                    )}
-                  </button>
-                </span>
-              </Tooltip>
-            </div>
-          )}
+                    <span className={styles.chatFloatBtnWrap}>
+                      <button
+                        type="button"
+                        className={styles.chatFloatBtn}
+                        onClick={() => openFileList()}
+                        aria-label={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                      >
+                        <FilePen size={20} strokeWidth={2.1} />
+                      </button>
+                      {panelFilePaths.length > 1 && (
+                        <span className={styles.chatFloatBadge}>
+                          {panelFilePaths.length > 99
+                            ? "99+"
+                            : panelFilePaths.length}
+                        </span>
+                      )}
+                    </span>
+                  </Tooltip>
+                )}
+                {canTerminal && (
+                  <Tooltip
+                    title={t("chat.openTerminal", "打开终端")}
+                    mouseEnterDelay={0.35}
+                    placement="left"
+                  >
+                    <span className={styles.chatFloatBtnWrap}>
+                      <button
+                        type="button"
+                        className={styles.terminalFloatBtn}
+                        onClick={toggleTerminalPanel}
+                        aria-label={t("chat.openTerminal", "打开终端")}
+                      >
+                        <Terminal size={20} strokeWidth={2.1} />
+                      </button>
+                    </span>
+                  </Tooltip>
+                )}
+                <Tooltip
+                  title={
+                    browserSessionId
+                      ? t("browserWorkspace.browserStatusActive", {
+                          owner:
+                            browserControlOwner === "agent"
+                              ? t("browserWorkspace.agentControl")
+                              : t("browserWorkspace.userTakeover"),
+                        })
+                      : t("browserWorkspace.browserStatusIdle")
+                  }
+                  mouseEnterDelay={0.35}
+                  placement="left"
+                >
+                  <span className={styles.chatFloatBtnWrap}>
+                    <button
+                      type="button"
+                      className={[
+                        styles.browserStatusBtn,
+                        browserSessionId ? styles.browserStatusActive : "",
+                        browserSessionId &&
+                        (browserSessionState === "awaiting_user_auth" ||
+                          browserSessionState === "authenticating")
+                          ? styles.browserStatusAuth
+                          : "",
+                        browserSessionId && browserControlOwner === "user"
+                          ? styles.browserStatusTakeover
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={toggleBrowserPanel}
+                      aria-label={t("chat.openBrowser")}
+                    >
+                      <Globe size={20} strokeWidth={2.1} />
+                      {browserSessionId && (
+                        <span
+                          className={`${styles.browserStatusDot} ${
+                            styles[`browserStatus_${browserControlOwner}`]
+                          }`}
+                        />
+                      )}
+                    </button>
+                  </span>
+                </Tooltip>
+                {showPhoneDock && (
+                  <Tooltip
+                    title={t("chat.openPhone", "打开远程手机")}
+                    mouseEnterDelay={0.35}
+                    placement="left"
+                  >
+                    <span className={styles.chatFloatBtnWrap}>
+                      <button
+                        type="button"
+                        className={styles.phoneFloatBtn}
+                        onClick={togglePhonePanel}
+                        aria-label={t("chat.openPhone", "打开远程手机")}
+                      >
+                        <Smartphone size={20} strokeWidth={2.1} />
+                      </button>
+                    </span>
+                  </Tooltip>
+                )}
+              </div>
+            )}
 
           <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
           <ChatInput
@@ -1051,12 +1145,19 @@ function ChatPageInner() {
         />
 
         {!sharedExpertViewer && (
-          <AgentProfileDrawer
-            open={agentProfileOpen}
-            agent={activeAgent}
-            isMobile={isMobile}
-            onClose={() => setAgentProfileOpen(false)}
-          />
+          <>
+            <AgentProfileDrawer
+              open={agentProfileOpen}
+              agent={activeAgent}
+              isMobile={isMobile}
+              onClose={() => setAgentProfileOpen(false)}
+            />
+            <WorkspaceDrawer
+              agentId={resolvedAgentId ?? ""}
+              open={workspaceDrawerOpen}
+              onClose={() => setWorkspaceDrawerOpen(false)}
+            />
+          </>
         )}
       </div>
     </ChatFilePreviewProvider>

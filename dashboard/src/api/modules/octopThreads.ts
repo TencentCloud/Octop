@@ -15,6 +15,7 @@ export interface OctopThread {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  artifacts?: string[];
 }
 
 export interface OctopThreadHistory {
@@ -37,6 +38,7 @@ export interface OctopThreadHistory {
   turn_active?: boolean;
   /** Pending tool approval for this thread (survives page reload). */
   hitl_pending?: HitlPendingPayload | null;
+  artifacts?: string[];
 }
 
 export interface OctopThreadPatch {
@@ -156,9 +158,9 @@ export const octopThreadsApi = {
     agentId: string,
     threadId: string,
     body: {
-      message_id: string;
+      message_id?: string;
       content?: string;
-      user_turns_from_end?: number;
+      assistant_turns_from_end?: number;
     },
   ) =>
     request<{

@@ -449,10 +449,19 @@ octop plugin uninstall <plugin_id>
 
 ## 八、环境变量
 
-Octop 将持久化环境变量存放在 `~/.octop/env`（dotenv 格式），供 Agent 工具与 Skill 使用。**无** `octop env` 子命令。
+两层，不要混用：
 
-- 查看 / 编辑：Web 控制台 → **Settings → Environments**
-- 或直接编辑 `~/.octop/env`（变更后 `octop agent reload <id>`）
+| 层 | 位置 | 谁继承 |
+|---|---|---|
+| 全局 | `~/.octop/env` | 所有 Agent（shell / Docker 沙箱 / ACP） |
+| Agent | 工作区 `.env` | 仅该 Agent（同名覆盖全局；不可覆盖 `OCTOP_*` / `HOME` / `USER`） |
+
+- 查看 / 编辑全局：Web 控制台 → **Admin → 应用设置 → 环境变量**
+- 或直接编辑 `~/.octop/env`（控制台保存会立刻对齐进程环境；搜索类 key 变化会后台 reload Agent。手改文件后需保存一次或 `octop agent reload`）
+- Agent 专用变量写入工作区 `.env`（也可用 `write_env_file`）；下一句 shell / Docker exec 即生效，不必 reload
+- 搜索 API Key（如 `TAVILY_API_KEY`）请放全局，不要只写在某个 Agent 的 `.env`
+
+**无** `octop env` 子命令。
 
 ---
 

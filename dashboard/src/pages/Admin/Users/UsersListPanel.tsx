@@ -1371,6 +1371,7 @@ export default function UsersListPanel() {
                   key={agent.agent_id}
                   agent={agent}
                   iconName={agent.icon_name}
+                  iconUrl={agent.icon_url}
                   accentColor={agent.color}
                   onEdit={(id) =>
                     setEditAgent(

@@ -168,7 +168,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
           tab.kind === "files" ? (
             <>
               <FolderOpen size={16} strokeWidth={2} aria-hidden />
-              <span>{t("chat.dockFileList", "文件列表")}</span>
+              <span>{t("chat.dockFileList", "文件变更")}</span>
             </>
           ) : tab.kind === "browser" ? (
             <>

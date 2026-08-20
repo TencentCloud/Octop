@@ -24,6 +24,8 @@ export interface KnowledgeCapability {
 
 export interface KnowledgeBase {
   id: string;
+  knowledge_base_id?: string;
+  pk?: number;
   owner_user_id: number;
   owner_username?: string | null;
   owner_display_name?: string | null;
@@ -41,8 +43,11 @@ export interface KnowledgeBase {
 
 export interface KnowledgeDocument {
   id: string;
+  document_id?: string;
   kb_id: string;
+  path?: string;
   filename: string;
+  is_dir?: boolean;
   content_type: string;
   byte_size: number;
   content_hash: string;
@@ -159,12 +164,25 @@ export const knowledgeBasesApi = {
   delete: (id: string) =>
     request<void>(`/knowledge-bases/${id}`, { method: "DELETE" }),
 
-  listDocuments: (id: string) =>
-    request<KnowledgeDocument[]>(`/knowledge-bases/${id}/documents`),
+  listDocuments: (id: string, prefix?: string) =>
+    request<KnowledgeDocument[]>(
+      prefix
+        ? `/knowledge-bases/${id}/documents?prefix=${encodeURIComponent(
+            prefix,
+          )}`
+        : `/knowledge-bases/${id}/documents`,
+    ),
 
-  uploadDocument: (id: string, file: File) => {
+  createFolder: (id: string, path: string) =>
+    request<KnowledgeDocument>(`/knowledge-bases/${id}/folders`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  uploadDocument: (id: string, file: File, relativePath?: string) => {
     const body = new FormData();
     body.append("upload", file);
+    if (relativePath) body.append("path", relativePath);
     return requestUpload<KnowledgeDocument>(
       `/knowledge-bases/${id}/documents`,
       body,

@@ -354,7 +354,9 @@
     "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the 20 MB size limit.",
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
-    "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name."
+    "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
+    "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",

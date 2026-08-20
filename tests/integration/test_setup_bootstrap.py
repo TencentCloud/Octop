@@ -130,7 +130,4 @@ async def test_main_agent_uses_general_assistant_template(patched_app_client: An
     agent = r.json()[0]
     assert agent["agent_id"] == "main"
     assert agent["name"] == "小通 · 通用助手"
-    assert (
-        agent.get("template_name") == "general-assistant"
-        or (agent.get("config") or {}).get("expert_id") == "general-assistant"
-    )
+    assert agent.get("template_name") == "general-assistant"

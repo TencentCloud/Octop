@@ -6,7 +6,7 @@ from contextlib import suppress
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
@@ -66,6 +66,10 @@ class CreateBaseBody(BaseModel):
     icon_name: str = Field(default="", max_length=64)
 
 
+class CreateFolderBody(BaseModel):
+    path: str = Field(min_length=1, max_length=500, description="Relative folder path.")
+
+
 class UpdateBaseBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -81,7 +85,9 @@ def _knowledge_service(server: OctopServer) -> KnowledgeService:
 
 
 def _row_payload(row: Any) -> dict[str, Any]:
-    return asdict(row)
+    payload = asdict(row)
+    payload["document_id"] = row.id
+    return payload
 
 
 def _owner_fields(server: OctopServer, owner_user_id: int) -> dict[str, str | None]:
@@ -100,7 +106,9 @@ def _owner_fields(server: OctopServer, owner_user_id: int) -> dict[str, str | No
 
 
 def _base_payload(server: OctopServer, row: Any) -> dict[str, Any]:
-    return {**asdict(row), **_owner_fields(server, row.owner_user_id)}
+    payload = asdict(row)
+    payload["knowledge_base_id"] = row.id
+    return {**payload, **_owner_fields(server, row.owner_user_id)}
 
 
 def _is_admin(user: User) -> bool:
@@ -425,6 +433,10 @@ async def delete_base(
 async def list_documents(
     kb_id: str,
     request: Request,
+    prefix: str | None = Query(
+        default=None,
+        description="When set, only immediate children of this relative folder path.",
+    ),
     server: OctopServer = Depends(get_server),
     user: User = Depends(current_user),
 ) -> list[dict[str, Any]]:
@@ -432,9 +444,30 @@ async def list_documents(
         return [
             _row_payload(document)
             for document in _knowledge_service(server).list_documents(
-                kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+                kb_id, actor_user_id=user.id, is_admin=_is_admin(user), prefix=prefix
             )
         ]
+    except Exception as exc:
+        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+
+
+@router.post(
+    "/{kb_id}/folders",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a knowledge-base folder",
+)
+async def create_folder(
+    kb_id: str,
+    body: CreateFolderBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    try:
+        folder = _knowledge_service(server).create_folder(
+            kb_id, actor_user_id=user.id, path=body.path, is_admin=_is_admin(user)
+        )
+        return _row_payload(folder)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
 
@@ -446,6 +479,10 @@ async def upload_document(
     kb_id: str,
     request: Request,
     upload: UploadFile = File(..., description="A supported text, PDF, DOCX, or PPTX document."),
+    path: str | None = Form(
+        default=None,
+        description="Optional relative path including filename (for nested folders).",
+    ),
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
@@ -460,6 +497,7 @@ async def upload_document(
             content_type=upload.content_type or "",
             content=content,
             is_admin=_is_admin(user),
+            path=path or upload.filename or "",
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, document.id)
@@ -541,7 +579,13 @@ async def reindex_base(
         _require_usable(server, request)
         service = _knowledge_service(server)
         service.get_writable_base(kb_id, actor_user_id=user.id, is_admin=_is_admin(user))
-        documents = service.list_documents(kb_id, actor_user_id=user.id, is_admin=_is_admin(user))
+        documents = [
+            document
+            for document in service.list_documents(
+                kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+            )
+            if not document.is_dir
+        ]
         assert server.services is not None
         for document in documents:
             service.reindex_document(

@@ -11,6 +11,7 @@ from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.knowledge import retrieve as retrieve_module
+from octop.infra.knowledge.citations import CITATIONS_MARKER_PREFIX
 from octop.infra.knowledge.index import KnowledgeIndex
 
 
@@ -61,6 +62,7 @@ def test_retrieve_context_filters_unreadable_knowledge_base(tmp_path, monkeypatc
 
     assert "allowed fact" in context
     assert "allowed.md" in context
+    assert CITATIONS_MARKER_PREFIX in context
     assert "secret fact" not in context
     assert "hidden.md" not in context
 

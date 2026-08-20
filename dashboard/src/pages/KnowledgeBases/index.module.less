@@ -627,10 +627,22 @@
   margin: 12px 0 8px;
 }
 
+.docsPathRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+
 .uploadHint {
   display: block;
-  margin: 0 0 12px;
+  margin: 0 0 0 auto;
   font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  flex: 1 1 auto;
 }
 
 .docsCount {
@@ -956,4 +968,55 @@
   .layoutMobile .detailBody {
     padding: 0 4px;
   }
+}
+
+.pathBreadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 160px;
+  font-size: 12px;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+}
+
+.pathBreadcrumbSegment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pathBreadcrumbSep {
+  color: var(--fn-text-tertiary);
+  padding: 0 2px;
+  user-select: none;
+}
+
+.pathBreadcrumbLink {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+
+  &:hover {
+    color: var(--fn-primary, #2563eb);
+    background: var(--fn-bg-hover);
+  }
+}
+
+.pathBreadcrumbCurrent {
+  padding: 2px 4px;
+  color: var(--fn-text-primary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

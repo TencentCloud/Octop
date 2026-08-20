@@ -25,6 +25,19 @@ async def test_envs_crud_cycle(env: Any) -> None:
     assert {row["key"] for row in r.json()} == {"TAVILY_API_KEY"}
 
 
+async def test_envs_put_unsets_removed_process_keys(env: Any) -> None:
+    import os
+
+    c, _srv, auth = env
+    r = await c.put("/api/envs", headers=auth, json={"GONE": "1", "KEEP": "2"})
+    assert r.status_code == 200
+    assert os.environ.get("GONE") == "1"
+    r = await c.put("/api/envs", headers=auth, json={"KEEP": "2"})
+    assert r.status_code == 200
+    assert "GONE" not in os.environ
+    assert os.environ.get("KEEP") == "2"
+
+
 async def test_envs_non_admin_forbidden(env: Any) -> None:
     c, _srv, admin_auth = env
     await c.post(

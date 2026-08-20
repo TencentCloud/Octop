@@ -82,6 +82,7 @@ async def test_get_or_load_caches_and_reuses() -> None:
     mgr._mcp_tool_cache = {}
     mgr._mcp_tool_cache_locks = {}
     mgr._mcp_tool_cache_guard = asyncio.Lock()
+    mgr._paths = MagicMock(root=MagicMock())
 
     fake = MagicMock()
     fake.name = "s_tool1"
@@ -110,6 +111,7 @@ async def test_get_or_load_misses_on_fingerprint_change() -> None:
     mgr._mcp_tool_cache = {}
     mgr._mcp_tool_cache_locks = {}
     mgr._mcp_tool_cache_guard = asyncio.Lock()
+    mgr._paths = MagicMock(root=MagicMock())
 
     def _tool(name: str) -> MagicMock:
         t = MagicMock()
@@ -144,6 +146,7 @@ async def test_prepare_chat_mcp_injects_custom_from_cache() -> None:
     mgr._mcp_tool_cache = {}
     mgr._mcp_tool_cache_locks = {}
     mgr._mcp_tool_cache_guard = asyncio.Lock()
+    mgr._paths = MagicMock(root=MagicMock())
 
     tool = MagicMock()
     tool.name = "deepwiki_ask"

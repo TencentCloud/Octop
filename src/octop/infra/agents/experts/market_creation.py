@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, build_create_spec_from_expert
+from octop.infra.agents.experts.catalog import (
+    MANIFEST_FILENAME,
+    build_create_spec_from_expert,
+)
 from octop.infra.agents.experts.manifest_generator import (
     build_skillhub_agent_manifest_bytes,
 )
@@ -45,6 +47,7 @@ class SkillHubMarketAgentCreateOptions:
     backend: dict[str, Any] | None = None
     color: str | None = None
     agent_id: str | None = None
+    welcome_message: str | None = None
     max_iters: int | None = None
     max_input_length: int | None = None
     temperature: float | None = None
@@ -137,10 +140,7 @@ def _set_welcome_enrichment_status(
         cfg["expert_source"] = {**source, "welcome_enrichment": status}
     else:
         cfg["welcome_enrichment"] = status
-    server.services.agent_repo.update_config(
-        agent_id,
-        config_json=json.dumps(cfg, ensure_ascii=False),
-    )
+    registry.persist_harness_config(agent_id, cfg)
 
 
 async def _enrich_agent_welcome_async(
@@ -281,13 +281,12 @@ async def create_agent_from_skillhub_skillset(
         config_extra["providers"] = list(options.providers)
     if options.backend:
         config_extra["backend"] = options.backend
-    if options.color:
-        config_extra["color"] = options.color
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,
         user_id=user.id,
     )
+    customized_welcome = options.welcome_message is not None
     spec = build_create_spec_from_expert(
         expert_id=item.expert_id,
         expert=expert,
@@ -309,6 +308,9 @@ async def create_agent_from_skillhub_skillset(
             }.items()
             if value is not None
         },
+        icon_url=item.icon_url or None,
+        color=options.color,
+        welcome_message=(options.welcome_message if customized_welcome else None),
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
 

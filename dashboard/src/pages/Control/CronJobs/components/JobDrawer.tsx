@@ -86,6 +86,7 @@ export function JobDrawer({
 }: JobDrawerProps) {
   const { t } = useTranslation();
   const scheduleMode = Form.useWatch("_scheduleMode", form);
+  const freshThread = Form.useWatch("fresh_thread", form);
 
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -401,37 +402,47 @@ export function JobDrawer({
           valuePropName="checked"
           tooltip={t("cronJobs.form.freshThreadTooltip")}
         >
-          <Switch />
-        </Form.Item>
-
-        <SectionHeader
-          title={t("cronJobs.form.sectionRouting")}
-          description={t("cronJobs.form.sectionRoutingDesc")}
-        />
-
-        <Form.Item
-          name="session_key"
-          label={t("cronJobs.form.sessionKey")}
-          tooltip={t("cronJobs.form.sessionKeyTooltip")}
-          extra={
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t("cronJobs.form.sessionKeyDefault")}
-            </Text>
-          }
-        >
-          <Select
-            allowClear
-            showSearch
-            loading={sessionsLoading}
-            placeholder={t("cronJobs.form.sessionKeyPlaceholder")}
-            options={sessionOptions}
-            filterOption={(input, option) =>
-              (option?.label?.toString() || "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
+          <Switch
+            onChange={(checked) => {
+              if (checked) {
+                form.setFieldValue("session_key", undefined);
+              }
+            }}
           />
         </Form.Item>
+
+        {!freshThread && (
+          <>
+            <SectionHeader
+              title={t("cronJobs.form.sectionRouting")}
+              description={t("cronJobs.form.sectionRoutingDesc")}
+            />
+
+            <Form.Item
+              name="session_key"
+              label={t("cronJobs.form.sessionKey")}
+              tooltip={t("cronJobs.form.sessionKeyTooltip")}
+              extra={
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {t("cronJobs.form.sessionKeyDefault")}
+                </Text>
+              }
+            >
+              <Select
+                allowClear
+                showSearch
+                loading={sessionsLoading}
+                placeholder={t("cronJobs.form.sessionKeyPlaceholder")}
+                options={sessionOptions}
+                filterOption={(input, option) =>
+                  (option?.label?.toString() || "")
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+              />
+            </Form.Item>
+          </>
+        )}
 
         <Form.Item>
           <div

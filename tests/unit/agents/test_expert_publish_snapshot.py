@@ -35,6 +35,7 @@ def test_published_experts_dir_is_under_instance_root(tmp_path: Path) -> None:
 def test_only_creator_or_admin_can_mutate_published_expert() -> None:
     row = PublishedExpertRow(
         id="01",
+        pk=1,
         slug="researcher",
         name="Researcher",
         description="",
@@ -95,6 +96,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
             ("inbound/note.txt", b"user upload"),
             ("daily/2026-01-01.md", b"journal"),
             ("uploads/tmp.bin", b"binary"),
+            (".octop/avatar.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 8),
         ]
     )
 
@@ -105,6 +107,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
         MANIFEST_FILENAME,
         "SOUL.md",
         "skills/research/SKILL.md",
+        ".octop/avatar.png",
     }
     assert json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8")) == manifest
     assert (destination / "SOUL.md").read_text(encoding="utf-8") == "# Source soul"
@@ -124,12 +127,13 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
         workspace=_workspace(installed_dir),
     )
 
-    assert copied == 3
+    assert copied == 4
     assert (installed_dir / MANIFEST_FILENAME).read_text(encoding="utf-8") == json.dumps(
         manifest,
         ensure_ascii=False,
     )
     assert (installed_dir / "skills" / "research" / "SKILL.md").read_bytes() == b"# Research"
+    assert (installed_dir / ".octop" / "avatar.png").read_bytes().startswith(b"\x89PNG")
     assert not (installed_dir / "MEMORY.md").exists()
 
 

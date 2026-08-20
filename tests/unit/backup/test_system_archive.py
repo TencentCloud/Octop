@@ -104,6 +104,33 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     assert manifest["database_driver"] == "sqlite"
 
 
+def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -> None:
+    db_path = layout.db
+    pool = SqlitePool(db_path)
+    run_migrations(pool)
+    custom = tmp_path / "custom-ws"
+    custom.mkdir()
+    (custom / "SOUL.md").write_text("# custom", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+        config_json = json.dumps({"workspace_dir": str(custom)})
+
+    data, _name = create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+    )
+    pool.close()
+
+    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+        names = tf.getnames()
+    assert "workspaces/agent01/SOUL.md" in names
+    assert not (layout.agent_workspace("agent01") / "SOUL.md").exists()
+
+
 def test_restore_replaces_stale_skill_package_files(layout: PathLayout) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)

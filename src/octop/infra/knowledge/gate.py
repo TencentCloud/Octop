@@ -13,6 +13,7 @@ from octop.infra.agents.providers.onnx_service import (
     local_embedding_deps_available,
     require_embedding_prerequisites_for_model,
 )
+from octop.infra.knowledge.params import get_advanced_settings
 
 _FEATURE_ENABLED_KEY = "knowledge_bases_enabled"
 _EMBEDDING_BACKEND_KEY = "knowledge_embedding_backend"
@@ -88,6 +89,7 @@ def get_capability(settings_get: SettingsGet, provider_repo: Any = None) -> dict
             "deps_available": deps_available,
             "provider_ready": provider_ready,
         },
+        **get_advanced_settings(settings_get),
     }
 
 

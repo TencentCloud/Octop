@@ -36,6 +36,7 @@ def ctx(tmp_path: Path):
     paths = PathLayout(tmp_path)
     paths.ensure_root()
     manager.paths = paths
+    manager.resolve_workspace_dir.return_value = paths.agent_workspace("a1")
     return (
         SlashCtx(
             agent_id="a1",

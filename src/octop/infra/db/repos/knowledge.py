@@ -1,4 +1,4 @@
-"""Knowledge base metadata — bases, ACL members, and document rows."""
+"""Knowledge base metadata — bases and document rows."""
 
 from __future__ import annotations
 
@@ -6,12 +6,21 @@ from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts, partial_updates
+from octop.infra.knowledge.relpath import (
+    ancestor_dirs,
+    normalize_kb_path,
+    path_basename,
+    path_is_direct_child,
+)
 from octop.infra.utils.ulid import new_short_id, new_ulid
+
+_DIR_CONTENT_TYPE = "application/x-directory"
 
 
 @dataclass(frozen=True)
 class KnowledgeBaseRow:
     id: str
+    pk: int
     owner_user_id: int
     name: str
     description: str
@@ -27,7 +36,8 @@ class KnowledgeBaseRow:
     @classmethod
     def from_row(cls, r: DbRow) -> KnowledgeBaseRow:
         return cls(
-            id=r["id"],
+            id=str(r["knowledge_base_id"]),
+            pk=int(r["id"]),
             owner_user_id=r["owner_user_id"],
             name=r["name"],
             description=r["description"],
@@ -43,27 +53,13 @@ class KnowledgeBaseRow:
 
 
 @dataclass(frozen=True)
-class KnowledgeMemberRow:
-    kb_id: str
-    user_id: int
-    role: str
-    created_at: int
-
-    @classmethod
-    def from_row(cls, r: DbRow) -> KnowledgeMemberRow:
-        return cls(
-            kb_id=r["kb_id"],
-            user_id=r["user_id"],
-            role=r["role"],
-            created_at=r["created_at"],
-        )
-
-
-@dataclass(frozen=True)
 class KnowledgeDocumentRow:
     id: str
+    pk: int
     kb_id: str
+    path: str
     filename: str
+    is_dir: bool
     content_type: str
     byte_size: int
     content_hash: str
@@ -76,9 +72,12 @@ class KnowledgeDocumentRow:
     @classmethod
     def from_row(cls, r: DbRow) -> KnowledgeDocumentRow:
         return cls(
-            id=r["id"],
+            id=str(r["document_id"]),
+            pk=int(r["id"]),
             kb_id=r["kb_id"],
-            filename=r["filename"],
+            path=str(r["path"]),
+            filename=str(r["filename"] or path_basename(str(r["path"]))),
+            is_dir=bool(int(r["is_dir"])),
             content_type=r["content_type"],
             byte_size=r["byte_size"],
             content_hash=r["content_hash"],
@@ -118,8 +117,8 @@ class KnowledgeRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO knowledge_bases("
-                "id, owner_user_id, name, description, default_open, shared, icon_name, "
-                "embedding_model, embedding_dim, doc_count, created_at, updated_at"
+                "knowledge_base_id, owner_user_id, name, description, default_open, shared, "
+                "icon_name, embedding_model, embedding_dim, doc_count, created_at, updated_at"
                 ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
                 (
                     kb_id,
@@ -165,7 +164,10 @@ class KnowledgeRepo:
 
     def get_base(self, kb_id: str) -> KnowledgeBaseRow | None:
         with self._db.connect() as conn:
-            r = conn.execute("SELECT * FROM knowledge_bases WHERE id = ?", (kb_id,)).fetchone()
+            r = conn.execute(
+                "SELECT * FROM knowledge_bases WHERE knowledge_base_id = ?",
+                (kb_id,),
+            ).fetchone()
         return KnowledgeBaseRow.from_row(r) if r else None
 
     def update_base(
@@ -200,38 +202,46 @@ class KnowledgeRepo:
         params.append(kb_id)
         with self._db.transaction() as conn:
             conn.execute(
-                f"UPDATE knowledge_bases SET {', '.join(fields)} WHERE id = ?",
+                f"UPDATE knowledge_bases SET {', '.join(fields)} WHERE knowledge_base_id = ?",
                 params,
             )
 
     def delete_base(self, kb_id: str) -> None:
         with self._db.transaction() as conn:
-            conn.execute("DELETE FROM knowledge_bases WHERE id = ?", (kb_id,))
+            conn.execute("DELETE FROM knowledge_bases WHERE knowledge_base_id = ?", (kb_id,))
 
-    def set_member(self, kb_id: str, *, user_id: int, role: str) -> None:
+    def _get_document_by_path(
+        self, conn: object, kb_id: str, path: str
+    ) -> KnowledgeDocumentRow | None:
+        r = conn.execute(  # type: ignore[attr-defined]
+            "SELECT * FROM knowledge_documents WHERE kb_id = ? AND path = ?",
+            (kb_id, path),
+        ).fetchone()
+        return KnowledgeDocumentRow.from_row(r) if r else None
+
+    def ensure_folder(self, kb_id: str, path: str) -> KnowledgeDocumentRow:
+        rel = normalize_kb_path(path)
+        if not rel:
+            raise ValueError("invalid knowledge folder path")
         ts = now_ts()
         with self._db.transaction() as conn:
-            conn.execute(
-                "INSERT INTO knowledge_base_members(kb_id, user_id, role, created_at) "
-                "VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(kb_id, user_id) DO UPDATE SET role = excluded.role",
-                (kb_id, user_id, role, ts),
-            )
-
-    def list_members(self, kb_id: str) -> list[KnowledgeMemberRow]:
-        with self._db.connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM knowledge_base_members WHERE kb_id = ? ORDER BY user_id",
-                (kb_id,),
-            ).fetchall()
-        return map_rows(rows, KnowledgeMemberRow)
-
-    def remove_member(self, kb_id: str, user_id: int) -> None:
-        with self._db.transaction() as conn:
-            conn.execute(
-                "DELETE FROM knowledge_base_members WHERE kb_id = ? AND user_id = ?",
-                (kb_id, user_id),
-            )
+            for folder in ancestor_dirs(rel) + [rel]:
+                existing = self._get_document_by_path(conn, kb_id, folder)
+                if existing is not None:
+                    if not existing.is_dir:
+                        raise ValueError(f"path exists and is not a folder: {folder}")
+                    continue
+                conn.execute(
+                    "INSERT INTO knowledge_documents("
+                    "document_id, kb_id, path, filename, is_dir, content_type, byte_size, "
+                    "content_hash, status, error_message, chunk_count, created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, 1, ?, 0, '', 'ready', '', 0, ?, ?)",
+                    (new_ulid(), kb_id, folder, path_basename(folder), _DIR_CONTENT_TYPE, ts, ts),
+                )
+        row = self.get_document_by_path(kb_id, rel)
+        if row is None:
+            raise RuntimeError(f"knowledge folder insert failed: {rel}")
+        return row
 
     def create_document(
         self,
@@ -243,28 +253,36 @@ class KnowledgeRepo:
         content_hash: str = "",
         status: str = "pending",
         max_documents: int | None = None,
+        path: str | None = None,
     ) -> KnowledgeDocumentRow:
+        rel = normalize_kb_path(path or filename)
+        if not rel:
+            raise ValueError("invalid knowledge document path")
+        name = path_basename(rel)
+        for folder in ancestor_dirs(rel):
+            self.ensure_folder(kb_id, folder)
         doc_id = new_ulid()
         ts = now_ts()
         with self._db.transaction() as conn:
             if max_documents is not None:
                 cursor = conn.execute(
                     "UPDATE knowledge_bases SET doc_count = doc_count + 1, updated_at = ? "
-                    "WHERE id = ? AND doc_count < ?",
+                    "WHERE knowledge_base_id = ? AND doc_count < ?",
                     (ts, kb_id, max_documents),
                 )
                 if cursor.rowcount != 1:
                     raise ValueError(f"knowledge bases support at most {max_documents} documents")
             conn.execute(
                 "INSERT INTO knowledge_documents("
-                "id, kb_id, filename, content_type, byte_size, content_hash, "
-                "status, error_message, chunk_count, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, '', 0, ?, ?)",
-                (doc_id, kb_id, filename, content_type, byte_size, content_hash, status, ts, ts),
+                "document_id, kb_id, path, filename, is_dir, content_type, byte_size, "
+                "content_hash, status, error_message, chunk_count, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, '', 0, ?, ?)",
+                (doc_id, kb_id, rel, name, content_type, byte_size, content_hash, status, ts, ts),
             )
             if max_documents is None:
                 conn.execute(
-                    "UPDATE knowledge_bases SET doc_count = doc_count + 1, updated_at = ? WHERE id = ?",
+                    "UPDATE knowledge_bases SET doc_count = doc_count + 1, updated_at = ? "
+                    "WHERE knowledge_base_id = ?",
                     (ts, kb_id),
                 )
         row = self.get_document(doc_id)
@@ -275,16 +293,29 @@ class KnowledgeRepo:
     def list_documents(self, kb_id: str) -> list[KnowledgeDocumentRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM knowledge_documents WHERE kb_id = ? ORDER BY filename",
+                "SELECT * FROM knowledge_documents WHERE kb_id = ? ORDER BY is_dir DESC, path",
                 (kb_id,),
             ).fetchall()
         return map_rows(rows, KnowledgeDocumentRow)
 
+    def list_children(self, kb_id: str, prefix: str = "") -> list[KnowledgeDocumentRow]:
+        parent = normalize_kb_path(prefix)
+        return [row for row in self.list_documents(kb_id) if path_is_direct_child(row.path, parent)]
+
     def get_document(self, doc_id: str) -> KnowledgeDocumentRow | None:
         with self._db.connect() as conn:
             r = conn.execute(
-                "SELECT * FROM knowledge_documents WHERE id = ?",
+                "SELECT * FROM knowledge_documents WHERE document_id = ?",
                 (doc_id,),
+            ).fetchone()
+        return KnowledgeDocumentRow.from_row(r) if r else None
+
+    def get_document_by_path(self, kb_id: str, path: str) -> KnowledgeDocumentRow | None:
+        rel = normalize_kb_path(path)
+        with self._db.connect() as conn:
+            r = conn.execute(
+                "SELECT * FROM knowledge_documents WHERE kb_id = ? AND path = ?",
+                (kb_id, rel),
             ).fetchone()
         return KnowledgeDocumentRow.from_row(r) if r else None
 
@@ -299,10 +330,12 @@ class KnowledgeRepo:
         status: str | None = None,
         error_message: str | None = None,
         chunk_count: int | None = None,
+        path: str | None = None,
     ) -> None:
         fields, params = partial_updates(
             [
                 ("filename", filename),
+                ("path", normalize_kb_path(path) if path is not None else None),
                 ("content_type", content_type),
                 ("byte_size", byte_size),
                 ("content_hash", content_hash),
@@ -318,30 +351,50 @@ class KnowledgeRepo:
         params.append(doc_id)
         with self._db.transaction() as conn:
             conn.execute(
-                f"UPDATE knowledge_documents SET {', '.join(fields)} WHERE id = ?",
+                f"UPDATE knowledge_documents SET {', '.join(fields)} WHERE document_id = ?",
                 params,
             )
 
-    def delete_document(self, doc_id: str) -> None:
+    def delete_document(self, doc_id: str) -> list[KnowledgeDocumentRow]:
+        """Delete a file or a folder (and its descendants). Return removed rows."""
         ts = now_ts()
+        document = self.get_document(doc_id)
+        if document is None:
+            return []
         with self._db.transaction() as conn:
-            row = conn.execute(
-                "SELECT kb_id FROM knowledge_documents WHERE id = ?",
-                (doc_id,),
-            ).fetchone()
-            if row is None:
-                return
-            kb_id = row["kb_id"]
-            conn.execute("DELETE FROM knowledge_documents WHERE id = ?", (doc_id,))
-            conn.execute(
-                "UPDATE knowledge_bases SET doc_count = doc_count - 1, updated_at = ? WHERE id = ?",
-                (ts, kb_id),
-            )
+            if document.is_dir:
+                rows = conn.execute(
+                    "SELECT * FROM knowledge_documents WHERE kb_id = ? AND "
+                    "(path = ? OR path LIKE ?)",
+                    (document.kb_id, document.path, f"{document.path}/%"),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM knowledge_documents WHERE document_id = ?",
+                    (doc_id,),
+                ).fetchall()
+            removed = map_rows(rows, KnowledgeDocumentRow)
+            file_count = sum(1 for row in removed if not row.is_dir)
+            ids = [row.id for row in removed]
+            if ids:
+                placeholders = ", ".join("?" * len(ids))
+                conn.execute(
+                    f"DELETE FROM knowledge_documents WHERE document_id IN ({placeholders})",
+                    ids,
+                )
+            if file_count:
+                conn.execute(
+                    "UPDATE knowledge_bases SET doc_count = CASE "
+                    "WHEN doc_count > ? THEN doc_count - ? ELSE 0 END, "
+                    "updated_at = ? WHERE knowledge_base_id = ?",
+                    (file_count, file_count, ts, document.kb_id),
+                )
+        return removed
 
     def count_documents(self, kb_id: str) -> int:
         with self._db.connect() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS n FROM knowledge_documents WHERE kb_id = ?",
+                "SELECT COUNT(*) AS n FROM knowledge_documents WHERE kb_id = ? AND is_dir = 0",
                 (kb_id,),
             ).fetchone()
         return int(row["n"]) if row else 0
@@ -356,11 +409,13 @@ class KnowledgeRepo:
             )
             conn.execute(
                 "UPDATE knowledge_documents "
-                "SET status = 'pending', error_message = '', chunk_count = 0, updated_at = ?",
+                "SET status = 'pending', error_message = '', chunk_count = 0, updated_at = ? "
+                "WHERE is_dir = 0",
                 (ts,),
             )
             rows = conn.execute(
-                "SELECT * FROM knowledge_documents WHERE status = 'pending' ORDER BY kb_id, id"
+                "SELECT * FROM knowledge_documents WHERE status = 'pending' AND is_dir = 0 "
+                "ORDER BY kb_id, document_id"
             ).fetchall()
         return map_rows(rows, KnowledgeDocumentRow)
 
@@ -371,10 +426,11 @@ class KnowledgeRepo:
             conn.execute(
                 "UPDATE knowledge_documents "
                 "SET status = 'pending', error_message = '', updated_at = ? "
-                "WHERE status = 'processing'",
+                "WHERE status = 'processing' AND is_dir = 0",
                 (ts,),
             )
             rows = conn.execute(
-                "SELECT * FROM knowledge_documents WHERE status = 'pending' ORDER BY kb_id, id"
+                "SELECT * FROM knowledge_documents WHERE status = 'pending' AND is_dir = 0 "
+                "ORDER BY kb_id, document_id"
             ).fetchall()
         return map_rows(rows, KnowledgeDocumentRow)

@@ -481,7 +481,7 @@ async def glob_files(
     if glob_result is None:
         raise OctopError(ErrorCode.NOT_FOUND, "glob failed")
     matches = getattr(glob_result, "matches", None) or []
-    return [file_info_to_dict(f) for f in matches]
+    return [file_info_to_dict(item) for item in matches]
 
 
 @router.get("/agents/{agent_id}/workspace/grep")

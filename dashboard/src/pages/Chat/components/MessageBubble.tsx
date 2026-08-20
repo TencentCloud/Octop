@@ -11,7 +11,7 @@ import {
   Pencil,
   Volume2,
   Settings,
-  GitBranch,
+  GitFork,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -46,6 +46,7 @@ import {
   isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
+import { parseKnowledgeCitations } from "../../../utils/parseKnowledgeCitations";
 import styles from "../index.module.less";
 
 interface MessageBubbleProps {
@@ -54,7 +55,7 @@ interface MessageBubbleProps {
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
-  onForkUserMessage?: (messageId: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onHitlDecision?: (
@@ -346,12 +347,14 @@ export function ToolDetailsInline({
 
   let formattedOutput = structuredOutput.textOutput;
   if (!formattedOutput && toolData.output) {
-    formattedOutput = toolData.output;
+    formattedOutput = parseKnowledgeCitations(toolData.output).text;
     try {
       formattedOutput = JSON.stringify(JSON.parse(formattedOutput), null, 2);
     } catch {
       // keep as-is
     }
+  } else if (formattedOutput) {
+    formattedOutput = parseKnowledgeCitations(formattedOutput).text;
   }
 
   const hasMediaPreview =
@@ -497,7 +500,7 @@ function MessageBubble({
   composerLookups,
   onRegenerate,
   onEditUserMessage,
-  onForkUserMessage,
+  onForkAssistantMessage,
   forkDisabled,
   forkDisabledHint,
   onHitlDecision,
@@ -731,9 +734,7 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
-                {(message.content ||
-                  onEditUserMessage ||
-                  onForkUserMessage) && (
+                {(message.content || onEditUserMessage) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
                       <CopyButton text={message.content} />
@@ -750,22 +751,6 @@ function MessageBubble({
                         aria-label={t("common.edit")}
                       >
                         <Pencil size={14} />
-                      </button>
-                    ) : null}
-                    {onForkUserMessage ? (
-                      <button
-                        className={styles.msgActionBtn}
-                        onClick={() => onForkUserMessage(message.id)}
-                        disabled={forkDisabled}
-                        title={
-                          forkDisabled && forkDisabledHint
-                            ? forkDisabledHint
-                            : t("chat.forkFromHere")
-                        }
-                        type="button"
-                        aria-label={t("chat.forkFromHere")}
-                      >
-                        <GitBranch size={14} />
                       </button>
                     ) : null}
                   </div>
@@ -888,6 +873,22 @@ function MessageBubble({
                       type="button"
                     >
                       <RotateCcw size={13} />
+                    </button>
+                  )}
+                  {!isUser && !isStreaming && onForkAssistantMessage && (
+                    <button
+                      className={styles.msgActionBtn}
+                      onClick={() => onForkAssistantMessage(message.id)}
+                      disabled={forkDisabled}
+                      title={
+                        forkDisabled && forkDisabledHint
+                          ? forkDisabledHint
+                          : t("chat.forkFromHere")
+                      }
+                      type="button"
+                      aria-label={t("chat.forkFromHere")}
+                    >
+                      <GitFork size={13} />
                     </button>
                   )}
                 </div>

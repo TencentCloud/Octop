@@ -154,6 +154,107 @@ async def test_ws_rebind_after_disconnect_receives_later_chunks(env: Any) -> Non
     assert frames[-1].get("type") == "done"
 
 
+def _turn_with_second_subscriber_sync(
+    app: object,
+    aid: str,
+    token: str,
+    thread_id: str,
+    gate_release: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Keep conn A open, subscribe conn B mid-turn; both receive remaining chunks."""
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+        f"/api/agents/{aid}/chat/ws?token={token}"
+    ) as ws_a:
+        ws_a.send_json(
+            {
+                "type": "user_turn",
+                "text": "slow please",
+                "thread_id": thread_id,
+            }
+        )
+        a_frames.append(json.loads(ws_a.receive_text()))
+        with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+            f"/api/agents/{aid}/chat/ws?token={token}"
+        ) as ws_b:
+            ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
+            b_frames.append(json.loads(ws_b.receive_text()))
+            gate_release.set()
+            for _ in range(50):
+                frame = json.loads(ws_a.receive_text())
+                a_frames.append(frame)
+                if frame.get("type") in ("done", "error"):
+                    break
+            for _ in range(50):
+                frame = json.loads(ws_b.receive_text())
+                b_frames.append(frame)
+                if frame.get("type") in ("done", "error"):
+                    break
+    return a_frames, b_frames
+
+
+async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> None:
+    """Two dashboard sockets on the same thread both get live tokens."""
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+
+    gate = asyncio.Event()
+
+    async def slow_stream(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "node": "agent", "content": "first"}
+        await gate.wait()
+        yield {"type": "token", "node": "agent", "content": "second"}
+
+    agent.stream = slow_stream
+
+    a_frames, b_frames = await asyncio.to_thread(
+        _turn_with_second_subscriber_sync,
+        c._octop_app,  # type: ignore[attr-defined]
+        aid,
+        ws_token(alice_auth),
+        tid,
+        gate,
+    )
+
+    assert a_frames[0].get("content") == "first"
+    assert [f.get("content") for f in a_frames if f.get("type") == "token"] == ["first", "second"]
+    assert a_frames[-1].get("type") == "done"
+    assert b_frames[0] == {"type": "turn_status", "thread_id": tid, "active": True}
+    assert [f.get("content") for f in b_frames if f.get("type") == "token"] == ["second"]
+    assert b_frames[-1].get("type") == "done"
+
+
+async def test_ws_two_threads_do_not_cross_stream(env: Any) -> None:
+    """Two live turns on different threads must not mix tokens across sockets."""
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create_a = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    create_b = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid_a = create_a.json()["thread_id"]
+    tid_b = create_b.json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+
+    async def tagged_stream(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        tid = str(request.get("thread_id") or "")
+        yield {"type": "token", "node": "agent", "content": f"from-{tid}"}
+
+    agent.stream = tagged_stream
+
+    a_frames, b_frames = await asyncio.gather(
+        _consume_ws_turn(c, aid, alice_auth, text="one", thread_id=tid_a),
+        _consume_ws_turn(c, aid, alice_auth, text="two", thread_id=tid_b),
+    )
+
+    a_tokens = [f.get("content") for f in a_frames if f.get("type") == "token"]
+    b_tokens = [f.get("content") for f in b_frames if f.get("type") == "token"]
+    assert a_tokens == [f"from-{tid_a}"]
+    assert b_tokens == [f"from-{tid_b}"]
+    assert all(f.get("thread_id") == tid_a for f in a_frames if f.get("type") in ("token", "done"))
+    assert all(f.get("thread_id") == tid_b for f in b_frames if f.get("type") in ("token", "done"))
+
+
 async def _consume_ws_turn(
     c: httpx.AsyncClient,
     aid: str,
@@ -415,7 +516,7 @@ async def test_create_thread(env: Any) -> None:
     assert "session_key" in body
 
 
-async def test_fork_thread_from_user_message(env: Any) -> None:
+async def test_fork_thread_from_assistant_message(env: Any) -> None:
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
     c, srv, _fake, alice_auth, bob_auth, aid = env
@@ -437,9 +538,9 @@ async def test_fork_thread_from_user_message(env: Any) -> None:
         f"/api/agents/{aid}/threads/{source_id}/fork",
         headers=alice_auth,
         json={
-            "message_id": "h2",
-            "content": "second question",
-            "user_turns_from_end": 1,
+            "message_id": "a1",
+            "content": "first answer",
+            "assistant_turns_from_end": 2,
         },
     )
     assert forked.status_code == 201, forked.text
@@ -447,7 +548,7 @@ async def test_fork_thread_from_user_message(env: Any) -> None:
     dest_id = body["thread_id"]
     assert dest_id != source_id
     assert body["source_thread_id"] == source_id
-    assert body["copied_messages"] == 3
+    assert body["copied_messages"] == 2
 
     history = await c.get(
         f"/api/agents/{aid}/threads/{dest_id}/history",
@@ -467,8 +568,11 @@ async def test_fork_thread_from_user_message(env: Any) -> None:
                 elif isinstance(block, dict) and block.get("type") == "tool_result":
                     texts.append(str(block.get("output") or ""))
     assert "user" in roles
+    assert "assistant" in roles
     assert "first question" in texts
+    assert "first answer" in texts
     assert "second question" not in texts
+    assert "second answer" not in texts
 
     source_history = await c.get(
         f"/api/agents/{aid}/threads/{source_id}/history",
@@ -489,6 +593,6 @@ async def test_fork_thread_from_user_message(env: Any) -> None:
     denied = await c.post(
         f"/api/agents/{aid}/threads/{source_id}/fork",
         headers=bob_auth,
-        json={"message_id": "h2", "user_turns_from_end": 1},
+        json={"message_id": "a1", "assistant_turns_from_end": 2},
     )
     assert denied.status_code in {403, 404}
