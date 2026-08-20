@@ -1,7 +1,7 @@
 ---
 name: tcapi
 display_name: 腾讯云 API 助手
-description: Skill to call Cloud API for Tencent Cloud (腾讯云). Used for cloud automation or resource management. 当用户需要查询、创建、管理腾讯云资源，或执行云 API 自动化操作时触发。
+description: Skill to call Cloud API for Tencent Cloud (腾讯云). Used for cloud automation or resource management. 当用户需要查询、创建、管理腾讯云资源，或执行云 API 自动化操作时触发。优先使用 Octop 自带 venv 中的 tccli，凭证支持全自动 OAuth 登录。
 version: 1.0.0
 tags: [tccli, cloud-api, tencent-cloud, automation]
 keywords: [腾讯云, tccli, cloud api, 云资源, 云管理, 自动化运维]
@@ -42,23 +42,35 @@ examples:
 
 ### Step 0：环境自检（首次任务必做，一次探测串起所有分支）
 
-在真正调用业务接口前，先做一次探测，把环境状态判定清楚，避免中途反复失败：
+**优先使用 Octop 自带的 Python 虚拟环境（venv）中的 tccli**：与 Octop 同环境、版本可控、不污染系统 Python。探测顺序：① Octop venv → ② 系统 PATH → ③ 临时安装进 venv。
 
 ```sh
-# ① 是否安装 & 能否直接跑
-command -v tccli >/dev/null 2>&1 && tccli cvm DescribeRegions >/dev/null 2>&1 && echo "TCCLI_OK" || echo "TCCLI_NEED_CHECK"
+# ① 定位 Octop venv（通过 octop 主进程的工作目录；找不到进程则退回常见路径）
+OCTOP_PID=$(pgrep -f '\.venv/bin/octop run' | head -1)
+OCTOP_ROOT=$([ -n "$OCTOP_PID" ] && readlink -f /proc/$OCTOP_PID/cwd || echo /workspace/octop)
+TCCLI="$OCTOP_ROOT/.venv/bin/tccli"
+
+# ② 逐级探测：venv 内 → PATH → 均无则装进 venv
+if [ -x "$TCCLI" ]; then :
+elif command -v tccli >/dev/null 2>&1; then TCCLI=tccli
+else uv pip install --python "$OCTOP_ROOT/.venv/bin/python3" tccli; fi
+
+# ③ 验证可运行且凭证有效
+"$TCCLI" cvm DescribeRegions >/dev/null 2>&1 && echo "TCCLI_OK" || echo "TCCLI_NEED_CHECK"
 ```
+
+> 若系统无 `uv`：`"$OCTOP_ROOT/.venv/bin/python3" -m ensurepip --upgrade` 后用同路径的 `python3 -m pip install tccli`。
 
 判定分支：
 
 | 探测结果 | 状态 | 处理 |
 |:--------|:-----|:-----|
 | 返回 `TCCLI_OK` | 已安装、可运行、凭证有效 | 直接进入 Step 1 |
-| `command not found` | **未安装** | 引导安装（[references/install.md](references/install.md)）；若已装 Python 也可直接用 Step 5 兼容模式 |
-| `bad interpreter` / `No module named tccli` | **装了但 shebang/环境坏** | 切换 Step 5 兼容模式（动态探测 Python 调用），本会话后续统一使用 |
+| `command not found` / 安装失败 | **未安装** | 按 [references/install.md](references/install.md) 装进 Octop venv（推荐）或系统安装 |
+| `bad interpreter` / `No module named tccli` | **装了但 shebang/环境坏** | 切换 Step 5 兼容模式（改用 venv 的 `python3 -c` 直接调 `tccli.main`），本会话后续统一使用 |
 | 报 `secretId is invalid` / `AuthFailure.SecretIdNotFound` | **凭证缺失** | 进入 Step 2 配置凭证 |
 
-> 探测通过（`TCCLI_OK`）后，本会话无需再重复自检，直接调用即可。
+> 探测通过（`TCCLI_OK`）后，本会话无需再重复自检，直接调用即可。后续所有示例中的 `tccli` 均指探测到的 `$TCCLI`（venv 优先）。
 
 ### Step 1：检索 API 文档
 
@@ -110,24 +122,59 @@ curl -s https://cloudcache.tencentcs.com/capi/refs/service/cvm/action/ResizeInst
 curl -s https://cloudcache.tencentcs.com/capi/refs/service/cvm/model/SystemDisk.md
 ```
 
-### Step 2：凭证配置
+### Step 2：凭证配置（全自动 OAuth，无需用户手动敲命令）
 
-如果已经提供了凭证，tccli 可以正常调用。
+**原则：Agent 全程自动驱动，用户只需在浏览器里点一次「授权」。** 检测到凭证缺失（`AuthFailure.SecretIdNotFound`）时不要让用户手动跑命令，按下面的自动化流程直接执行。
 
-如缺少凭证，执行 tccli 会提示 "secretId is invalid"（错误码 `AuthFailure.SecretIdNotFound`）。此时**不要直接假设 `tccli auth login` 可用**——`auth login`（浏览器 OAuth）是较新版本才有的子命令，**旧版 tccli 没有 `auth` 子命令**，硬跑会报 `invalid choice: 'auth'`。
-
-**必须先探测能力，再选路径：**
+#### 2.1 先探测 `auth login` 能力（必做）
 
 ```sh
 tccli auth login --help >/dev/null 2>&1 && echo "AUTH_LOGIN_OK" || echo "AUTH_LOGIN_UNSUPPORTED"
 ```
 
-- `AUTH_LOGIN_OK`（新版）→ 执行 `tccli auth login` 进行浏览器授权登录，等待回调后继续（命令会起本地端口、阻塞进程，直到浏览器 OAuth 完成并回调）。
-- `AUTH_LOGIN_UNSUPPORTED`（旧版）→ 引导用户二选一：① 升级 `pip install -U tccli` 后即可用浏览器登录；② 由用户在自己终端执行 `tccli configure` 交互式填入密钥。**Agent 不代填、不索要、不打印密钥。**
+#### 2.2 自动 OAuth（`AUTH_LOGIN_OK` 时的标准动作）
 
-完整的能力探测流程、双路径细节与多账户用法，参考 [references/auth.md](references/auth.md)。
+`tccli auth login` 的行为：起本地回调服务（端口 9000–9100）→ 打印授权链接 → 阻塞等待浏览器完成授权回调。自动化的关键在三点：**`BROWSER=echo` 防止无头环境打不开浏览器而报错退出；后台运行不卡死会话；从日志提取链接推给用户**。
 
-**安全红线**：严禁向用户索要 SecretId/SecretKey，也拒绝任何有可能打印凭证的操作（尤其是 `tccli configure list`）。
+```sh
+# ① 后台启动登录（BROWSER=echo 让 webbrowser 静默"成功"，仅打链接不真开浏览器）
+BROWSER=echo nohup tccli auth login > /tmp/tccli_auth.log 2>&1 &
+AUTH_PID=$!
+
+# ② 轮询日志拿授权链接（拿到后立即以可点击形式发给用户）
+for i in $(seq 1 10); do
+  URL=$(grep -m1 -o 'https://cloud.tencent.com/open/authorize[^ ]*' /tmp/tccli_auth.log) && break
+  sleep 1
+done
+echo "请在浏览器打开并完成授权（点一次「授权」即可，命令会自动继续）：$URL"
+
+# ③ 轮询进程退出，等待用户完成授权（默认 5 分钟超时，可按需延长）
+for i in $(seq 1 300); do
+  kill -0 $AUTH_PID 2>/dev/null || break
+  sleep 1
+done
+
+# ④ 验证凭证并回显身份
+tccli cvm DescribeRegions >/dev/null 2>&1 && echo "AUTH_OK" || cat /tmp/tccli_auth.log
+tccli sts GetCallerIdentity
+```
+
+> 环境能打开浏览器时（如桌面版 Octop），去掉 `BROWSER=echo`，第 ② 步直接提示「浏览器已弹出，请完成授权」即可。
+
+#### 2.3 兜底路径（`AUTH_LOGIN_UNSUPPORTED`，旧版 tccli）
+
+旧版没有 `auth` 子命令。**先自动升级再走 2.2**（装进 Octop venv，不需要 sudo）：
+
+```sh
+uv pip install --python "$OCTOP_ROOT/.venv/bin/python3" -U tccli
+# 无 uv 时："$OCTOP_ROOT/.venv/bin/python3" -m ensurepip --upgrade && ... -m pip install -U tccli
+```
+
+升级后重新探测（2.1），一般即可支持 `auth login`。若升级失败（如离线环境），才退化为半手动：引导用户在自己的终端执行 `tccli configure` 交互式填密钥——**Agent 仍不代填、不索要、不打印密钥**。
+
+完整的多账户（--profile）、登出、凭证优先级排查细节见 [references/auth.md](references/auth.md)。
+
+**安全红线**：严禁向用户索要 SecretId/SecretKey，也拒绝任何有可能打印凭证的操作（尤其是 `tccli configure list`）。OAuth 全自动流程中 Agent 接触不到密钥明文，天然满足此红线。
 
 ### Step 3：调用 API
 
@@ -252,7 +299,7 @@ tccli 的 stdout 与 stderr 是两条独立流，解析时必须严格区分，�
 
 | 错误码 | 含义 | 处理方式 |
 |:------|:-----|:---------|
-| `AuthFailure.SecretIdNotFound` | 凭证缺失或无效 | 先探测 `tccli auth login --help`：支持则 `tccli auth login`；不支持（旧版）则升级 `pip install -U tccli` 或引导用户 `tccli configure`（详见 Step 2 / references/auth.md） |
+| `AuthFailure.SecretIdNotFound` | 凭证缺失或无效 | 按 Step 2 全自动 OAuth 流程执行：`BROWSER=echo` 后台 `auth login` → 推送授权链接 → 轮询等待 → 验证回显；旧版则先自动升级（详见 Step 2 / references/auth.md） |
 | `AuthFailure.UnauthorizedOperation` | 无权限 | 检查 CAM 策略，确认子账号有该接口权限 |
 | `InvalidParameterValue` | 参数值不合法 | 查阅接口文档确认参数取值范围 |
 | `ResourceNotFound` | 资源不存在 | 确认资源 ID 和地域是否正确 |
@@ -264,14 +311,22 @@ tccli 的 stdout 与 stderr 是两条独立流，解析时必须严格区分，�
 | `ResourceInsufficient` | 资源不足 | 换可用区或调整规格重试 |
 | 网络超时 / 连接失败 | 网络不通 | 检查网络连通性，确认是否需要代理 |
 | `InternalError`（message 含 `nil pointer` / `nil pointer dereference`） | 接口云端已废弃 / 后端服务已拆除 | **不是服务端随机故障，停止重试**；检索在线文档确认真实情况，改用替代接口 |
-| `AuthFailure.TokenFailure` / `FailedOperation.RefreshTokenError` | OAuth token 已失效（浏览器授权过期或吊销） | 引导用户在浏览器重登：`tccli auth login --profile <name>`；完成后按"身份确认"规范回显当前账号再继续 |
+| `AuthFailure.TokenFailure` / `FailedOperation.RefreshTokenError` | OAuth token 已失效（浏览器授权过期或吊销） | 自动重新走 Step 2 全自动 OAuth（`tccli auth login --profile <name>`）；完成后按"身份确认"规范回显当前账号再继续 |
 
 ### Step 5：tccli 不可用时的兜底方案
 
-当直接执行 `tccli` 报错 `bad interpreter`、`No module named tccli` 或 `command not found` 时，通常是 tccli 的 shebang 指向了已卸载的 Python 解释器（环境问题，并非每个用户都会遇到）。此时**动态探测**一个可用的 Python 解释器及其 site-packages 后再调用，**不要硬编码任何平台特定路径**：
+当直接执行 `tccli` 报错 `bad interpreter`、`No module named tccli` 或 `command not found` 时，通常是 tccli 的 shebang 指向了已卸载的 Python 解释器（环境问题，并非每个用户都会遇到）。此时**优先改用 Octop venv 的 Python 直接调 `tccli.main`**（venv 里 tccli 与 Octop 同源，最可靠）；没有 Octop venv 时才**动态探测**系统 Python 及其 site-packages，**不要硬编码任何平台特定路径**：
 
 ```sh
-# 自动探测可用 python3 及其 site-packages（跨平台、不依赖具体版本号）
+# ① 优先：Octop venv 的 python（Step 0 已定位 $OCTOP_ROOT）
+"$OCTOP_ROOT/.venv/bin/python3" -c "
+import sys
+sys.argv = ['tccli', 'cvm', 'DescribeInstances', '--region', 'ap-guangzhou']
+from tccli.main import main
+main()
+"
+
+# ② 兜底：动态探测系统 python3 及其 site-packages（跨平台、不依赖具体版本号）
 PY=$(command -v python3 || command -v python)
 SITE=$("$PY" -c "import site,sys; print(next((p for p in site.getsitepackages()+[site.getusersitepackages()] ), ''))")
 PYTHONPATH="$SITE" "$PY" -c "
@@ -284,8 +339,8 @@ main()
 
 要点：
 
-- 用 `command -v` 探测当前环境真实可用的解释器，避免写死 `/usr/local/bin/python3`
-- 用 `site.getsitepackages()` 动态获取包目录，避免写死 `python3.12` 等版本号
+- Octop venv 是第一顺位：tccli 装在 venv 里（Step 0），解释器与包同环境，不存在 shebang 漂移问题
+- 用 `command -v` 探测系统解释器，避免写死 `/usr/local/bin/python3`；用 `site.getsitepackages()` 动态获取包目录，避免写死 `python3.12` 等版本号
 - 通过 `sys.argv` 传参，替换示例中的 service / Action / 参数即可
 - 若 shebang 正常（直接 `tccli` 可用），无需本兜底，直接调用即可
 

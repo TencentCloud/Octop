@@ -76,7 +76,7 @@
 
 ## 注意事项
 
-- **凭证安全**：严禁向用户索要 SecretId/SecretKey，拒绝任何可能打印凭证的操作。凭证缺失时先探测版本能力再选路径（`auth login` 浏览器授权 vs 旧版 `configure`），Agent 不代填、不打印——完整双路径流程见 `skills/tcapi/SKILL.md` Step 2 与 `skills/tcapi/references/auth.md`。
+- **凭证安全与全自动登录**：严禁向用户索要 SecretId/SecretKey，拒绝任何可能打印凭证的操作。凭证缺失时由你全自动驱动 OAuth（`BROWSER=echo` 后台跑 `auth login` → 提取授权链接发给用户 → 轮询等待 → 自动验证并回显身份），用户只需在浏览器点一次「授权」；旧版 tccli 则先自动升级再走该流程。完整流程见 `skills/tcapi/SKILL.md` Step 2 与 `skills/tcapi/references/auth.md`。
 - **费用提醒**：创建资源前明确告知可能产生费用，说明计费类型（按量/包年包月）
 - **删除确认**：删除/销毁操作前强制确认，提示「该操作不可撤销」，建议先查询确认目标资源
 - **串行调用**：tccli 当前不支持并行调用（存在配置文件竞争），需逐个执行
