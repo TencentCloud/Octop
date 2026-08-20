@@ -25,6 +25,24 @@ tccli auth login
 
 **Agent 场景**：当 Agent 通过工具执行 `tccli auth login` 时，该命令会**一直阻塞**直到用户完成浏览器登录（或超时）。Agent 应明确告知用户：「请打开终端/工具输出中显示的授权链接，在浏览器中完成登录；完成后该命令会自动结束。」
 
+### Agent 场景的自动化与防误判（实测关键结论）
+
+把 `tccli auth login` 交给 Agent 工具执行时，有四个必守规则：
+
+1. **必须 `BROWSER=echo` + 后台运行**：无头/服务器环境下 `webbrowser.open` 会失败并让 tccli 直接 `sys.exit(1)`。写法：`BROWSER=echo nohup tccli auth login > /tmp/tccli_auth.log 2>&1 &`
+2. **禁止长轮询阻塞等待**：用 `for i in $(seq 1 300); do kill -0 $PID; sleep 1; done` 这类循环盯进程，会占住工具调用直到被单次执行超时杀掉。**工具超时 ≠ 用户没授权**——这是最常见的误判来源。
+3. **成功判据 = 凭证文件更新**：用户点完「授权」后 tccli 把 token 写进 `~/.tccli/<profile>.credential`。探测方式：
+   ```sh
+   BASELINE=$(stat -c %Y ~/.tccli/default.credential 2>/dev/null || echo 0)
+   # ... 发链接给用户、等用户回复 ...
+   NOW=$(stat -c %Y ~/.tccli/default.credential 2>/dev/null || echo 0)
+   [ "$NOW" -gt "$BASELINE" ] && echo "凭证已更新，授权成功" && tccli sts GetCallerIdentity
+   ```
+   日志出现「登录成功, 密钥凭证已被写入」同义。**凭证已更新就绝不再跑 `auth login`**——重复登录会作废旧链接，逼用户再点一次。
+4. **先查凭证再决定重登**：任何「Token 失效/未授权」的表象（包括上一轮被误判超时），先 `stat` 凭证文件 + `tccli sts GetCallerIdentity` 实测；确认凭证真无效后才重新发起登录。
+
+> 远程/容器部署注意：OAuth 回调发往 tccli 进程监听的 `localhost:9000-9100`。若用户浏览器与 tccli 不在同一台机器（如 Octop 部署在服务器、用户在本地电脑点链接），回调到不了 tccli，凭证永远不会写入。此时改用：用户在**自己电脑**上装 tccli 并 `tccli auth login`，再把生成的 `~/.tccli/default.credential`（OAuth 类型，含 refreshToken 可自动续期）复制到 Octop 服务器的同路径；或退回子账号密钥方式（`tccli configure` 由用户自行填写）。
+
 **多账户与登出**
 
 - 默认账户凭证保存在 `default.credential`。指定账户名：`tccli auth login --profile user1`，凭证写入 `user1.credential`。

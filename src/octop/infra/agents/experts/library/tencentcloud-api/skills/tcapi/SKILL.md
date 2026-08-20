@@ -134,12 +134,11 @@ tccli auth login --help >/dev/null 2>&1 && echo "AUTH_LOGIN_OK" || echo "AUTH_LO
 
 #### 2.2 自动 OAuth（`AUTH_LOGIN_OK` 时的标准动作）
 
-`tccli auth login` 的行为：起本地回调服务（端口 9000–9100）→ 打印授权链接 → 阻塞等待浏览器完成授权回调。自动化的关键在三点：**`BROWSER=echo` 防止无头环境打不开浏览器而报错退出；后台运行不卡死会话；从日志提取链接推给用户**。
+`tccli auth login` 的行为：起本地回调服务（端口 9000–9100）→ 打印授权链接 → 阻塞等待浏览器完成授权回调。自动化的关键在四点：**`BROWSER=echo` 防止无头环境打不开浏览器而报错退出；后台运行不卡死会话；从日志提取链接推给用户；以凭证文件落盘作为成功判据（而非进程退出）**。
 
 ```sh
 # ① 后台启动登录（BROWSER=echo 让 webbrowser 静默"成功"，仅打链接不真开浏览器）
 BROWSER=echo nohup tccli auth login > /tmp/tccli_auth.log 2>&1 &
-AUTH_PID=$!
 
 # ② 轮询日志拿授权链接（拿到后立即以可点击形式发给用户）
 for i in $(seq 1 10); do
@@ -148,16 +147,28 @@ for i in $(seq 1 10); do
 done
 echo "请在浏览器打开并完成授权（点一次「授权」即可，命令会自动继续）：$URL"
 
-# ③ 轮询进程退出，等待用户完成授权（默认 5 分钟超时，可按需延长）
-for i in $(seq 1 300); do
-  kill -0 $AUTH_PID 2>/dev/null || break
-  sleep 1
-done
-
-# ④ 验证凭证并回显身份
-tccli cvm DescribeRegions >/dev/null 2>&1 && echo "AUTH_OK" || cat /tmp/tccli_auth.log
-tccli sts GetCallerIdentity
+# ③ 记录凭证文件基线（用于后续检测"授权已成功"）
+CRED="$HOME/.tccli/default.credential"
+BASELINE=$(stat -c %Y "$CRED" 2>/dev/null || echo 0)
 ```
+
+**等待授权的原则（重要，避免误判超时）：**
+
+- **禁止长轮询阻塞等待**：不要用「循环 300 秒 kill -0 盯进程」的方式等待——该命令会一直阻塞，而 Agent 工具的单次执行超时远小于 5 分钟，超时被杀后 Agent 会误判「用户未完成授权」。**工具超时 ≠ 登录失败**。
+- **成功判据是凭证文件，不是进程退出**：用户在浏览器点「授权」后，tccli 回调服务收到 token 并**写盘 `~/.tccli/<profile>.credential`**。进程退出与否、日志打印什么都只是表象。
+- **正确姿势是「短探测、交回合话」**：把链接发给用户后，本轮回答就此结束（或做短间隔探测 ≤30 秒）；用户回复「好了」/「点完了」后，或者下一轮任务开始时，用下面的探测确认：
+  ```sh
+  # ④ 授权完成确认（用户说好了之后执行；也适用于新会话检查上次授权结果）
+  NOW=$(stat -c %Y "$HOME/.tccli/default.credential" 2>/dev/null || echo 0)
+  if [ "$NOW" -gt "$BASELINE" ] 2>/dev/null; then
+    tccli sts GetCallerIdentity   # 凭证已更新 → 直接回显身份
+  else
+    tail -5 /tmp/tccli_auth.log    # 凭证未变 → 看日志判断状态（进程还在等 / 已失败）
+  fi
+  ```
+- **凭证文件更新时间 > 基线时间 → 授权已成功**（无论 auth 进程还在不在）。此时直接 `GetCallerIdentity` 回显身份，**不要重新发起登录**——重复 `auth login` 会让上一个链接失效，逼用户再点一次。
+- 日志尾部出现「登录成功, 密钥凭证已被写入」同样视为成功信号，与凭证文件判据二选一即可。
+- 若凭证未更新且进程已退出，才检查日志定位原因（端口被占、网络不通等），修好后重新走 ①。
 
 > 环境能打开浏览器时（如桌面版 Octop），去掉 `BROWSER=echo`，第 ② 步直接提示「浏览器已弹出，请完成授权」即可。
 
@@ -311,7 +322,7 @@ tccli 的 stdout 与 stderr 是两条独立流，解析时必须严格区分，�
 | `ResourceInsufficient` | 资源不足 | 换可用区或调整规格重试 |
 | 网络超时 / 连接失败 | 网络不通 | 检查网络连通性，确认是否需要代理 |
 | `InternalError`（message 含 `nil pointer` / `nil pointer dereference`） | 接口云端已废弃 / 后端服务已拆除 | **不是服务端随机故障，停止重试**；检索在线文档确认真实情况，改用替代接口 |
-| `AuthFailure.TokenFailure` / `FailedOperation.RefreshTokenError` | OAuth token 已失效（浏览器授权过期或吊销） | 自动重新走 Step 2 全自动 OAuth（`tccli auth login --profile <name>`）；完成后按"身份确认"规范回显当前账号再继续 |
+| `AuthFailure.TokenFailure` / `FailedOperation.RefreshTokenError` | OAuth token 已失效（浏览器授权过期或吊销） | 先按 Step 2 ④ 探测凭证文件是否已更新（可能上次授权其实成功只是被误判）；未更新才重新走 Step 2 全自动 OAuth（`tccli auth login --profile <name>`）；完成后按"身份确认"规范回显当前账号再继续 |
 
 ### Step 5：tccli 不可用时的兜底方案
 
