@@ -20,6 +20,22 @@
   "quick_prompts": [
     {
       "title": {
+        "zh": "账号登录授权",
+        "en": "Sign in to Tencent Cloud"
+      },
+      "description": {
+        "zh": "全自动引导 OAuth 登录并回显当前账号身份",
+        "en": "Fully automated OAuth sign-in with identity echo"
+      },
+      "prompt": {
+        "zh": "帮我登录腾讯云账号，完成后告诉我当前是哪个账号",
+        "en": "Sign me in to Tencent Cloud and tell me which account is active"
+      },
+      "color": "#e0f2fe",
+      "icon_name": "log-in"
+    },
+    {
+      "title": {
         "zh": "查云服务器",
         "en": "List CVM instances"
       },
@@ -97,22 +113,6 @@
       },
       "color": "#ffe8f0",
       "icon_name": "stethoscope"
-    },
-    {
-      "title": {
-        "zh": "账号登录授权",
-        "en": "Sign in to Tencent Cloud"
-      },
-      "description": {
-        "zh": "全自动引导 OAuth 登录并回显当前账号身份",
-        "en": "Fully automated OAuth sign-in with identity echo"
-      },
-      "prompt": {
-        "zh": "帮我登录腾讯云账号，完成后告诉我当前是哪个账号",
-        "en": "Sign me in to Tencent Cloud and tell me which account is active"
-      },
-      "color": "#e0f2fe",
-      "icon_name": "log-in"
     }
   ]
 }
