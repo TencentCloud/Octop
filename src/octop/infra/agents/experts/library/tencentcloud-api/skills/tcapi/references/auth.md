@@ -27,19 +27,22 @@ tccli auth login
 
 ### Agent 场景的自动化与防误判（实测关键结论）
 
-把 `tccli auth login` 交给 Agent 工具执行时，有四个必守规则：
+把 `tccli auth login` 交给 Agent 工具执行时，有五个必守规则：
 
 1. **必须 `BROWSER=echo` + 后台运行**：无头/服务器环境下 `webbrowser.open` 会失败并让 tccli 直接 `sys.exit(1)`。写法：`BROWSER=echo nohup tccli auth login > /tmp/tccli_auth.log 2>&1 &`
-2. **禁止长轮询阻塞等待**：用 `for i in $(seq 1 300); do kill -0 $PID; sleep 1; done` 这类循环盯进程，会占住工具调用直到被单次执行超时杀掉。**工具超时 ≠ 用户没授权**——这是最常见的误判来源。
-3. **成功判据 = 凭证文件更新**：用户点完「授权」后 tccli 把 token 写进 `~/.tccli/<profile>.credential`。探测方式：
-   ```sh
-   BASELINE=$(stat -c %Y ~/.tccli/default.credential 2>/dev/null || echo 0)
-   # ... 发链接给用户、等用户回复 ...
-   NOW=$(stat -c %Y ~/.tccli/default.credential 2>/dev/null || echo 0)
-   [ "$NOW" -gt "$BASELINE" ] && echo "凭证已更新，授权成功" && tccli sts GetCallerIdentity
-   ```
-   日志出现「登录成功, 密钥凭证已被写入」同义。**凭证已更新就绝不再跑 `auth login`**——重复登录会作废旧链接，逼用户再点一次。
-4. **先查凭证再决定重登**：任何「Token 失效/未授权」的表象（包括上一轮被误判超时），先 `stat` 凭证文件 + `tccli sts GetCallerIdentity` 实测；确认凭证真无效后才重新发起登录。
+2. **监听要用有界窗口，禁止无限阻塞**：等待授权的正确姿势是「有界监听凭证文件」——每窗循环最多 60 秒（必须低于工具单次执行超时），每 3 秒比对一次 `~/.tccli/<profile>.credential` 与 `/tmp/tccli_auth.log` 的 mtime。凭证比日志新 → 授权落盘，立即验证。单窗到时未果就再开一窗（连开 3~5 窗），始终不重发链接、不判失败。
+3. **成功判据 = 凭证文件 mtime > 登录日志 mtime**，并最终以 `tccli sts GetCallerIdentity` 实测身份为准。日志出现「登录成功, 密钥凭证已被写入」同义。**凭证已落盘就绝不再跑 `auth login`**——重复登录会作废旧链接，逼用户再点一次。
+4. **工具执行超时 ≠ 登录失败**：监听窗命令若被工具超时杀掉，紧接着单独跑一次验证（比较 mtime + GetCallerIdentity），结论以凭证文件为准，绝不据此重发链接。这是最常见的误判来源。
+5. **先查凭证再决定重登**：任何「Token 失效/未授权/上次超时」的表象，先比对 mtime + `GetCallerIdentity` 实测；确认凭证真无效后才重新发起登录。
+
+验证脚本（所有场景最终统一走这一步）：
+
+```sh
+CRED="$HOME/.tccli/default.credential"; LOG=/tmp/tccli_auth.log
+CRED_TS=$(stat -c %Y "$CRED" 2>/dev/null || echo 0)
+LOG_TS=$(stat -c %Y "$LOG" 2>/dev/null || echo 0)
+if [ "$CRED_TS" -gt "$LOG_TS" ]; then tccli sts GetCallerIdentity; else tail -5 "$LOG"; fi
+```
 
 > 远程/容器部署注意：OAuth 回调发往 tccli 进程监听的 `localhost:9000-9100`。若用户浏览器与 tccli 不在同一台机器（如 Octop 部署在服务器、用户在本地电脑点链接），回调到不了 tccli，凭证永远不会写入。此时改用：用户在**自己电脑**上装 tccli 并 `tccli auth login`，再把生成的 `~/.tccli/default.credential`（OAuth 类型，含 refreshToken 可自动续期）复制到 Octop 服务器的同路径；或退回子账号密钥方式（`tccli configure` 由用户自行填写）。
 
