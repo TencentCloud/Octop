@@ -126,6 +126,10 @@ allowed_final_evidence_exact_domains:
   - "www.cmda.net"
   - "cmda.net"
   - "www.cpma.org.cn"
+  # 中华医学会杂志社旧版全文平台；只放行正式原文子域，不放行整个 yiigle.com。
+  - "rs.yiigle.com"
+  # 高等教育出版社期刊平台的正式原文域。
+  - "cjournal.hep.com.cn"
   # A 正式采集 — 半官方行业组织与出版社
   - "www.cha.org.cn"
   - "www.csco.org.cn"

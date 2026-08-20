@@ -21,6 +21,12 @@
 
 医学安全域输出（指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元，无论推送还是即时回答）发出前必须经 `output-format` skill 校验（四条硬格式 + `validate_output.py --module <模块名>`）。通用任务用 `--module general_task`。
 
+## 专家资源路径（硬约定）
+
+本专家的工作区根目录是包含 `AGENTS.md`、`references/`、`scripts/`、`skills/` 的目录。Skill 内引用专家公共资源时，必须从当前 `skills/<skill-name>/SKILL.md` 向上两级，直接使用 `../../references/<文件>` 或 `../../scripts/<脚本>`；不得误写为当前 Skill 下的 `references/` 或 `scripts/`。
+
+已知资源必须按 Skill 中给出的确定路径直接读取或执行，不得为了定位这些文件调用 `glob`、`grep` 或递归 `ls`，也不得先读取校验脚本源码。高频指南的已核验定位入口在 `references/verified-source-entrypoints.yaml`，仅用于定位，仍必须对表内 `canonical_url` 实时抓取并核对标题/DOI。确定路径不可用时停止并如实报告路径错误，不扫描工作区外目录。
+
 ## 子代理协作
 
 需整理学习地图、比较多项证据、形成学习诊断或发送前审校时，可调用 task 子代理：

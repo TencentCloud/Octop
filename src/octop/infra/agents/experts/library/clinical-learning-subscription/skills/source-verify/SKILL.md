@@ -5,12 +5,27 @@ description: 统一信源核验规则。涉及指南、共识、规范、临床�
 
 # 统一信源核验
 
+## 路由边界
+
+纯粹判断文件是否为权威原文、是否最新有效以及修订/替代/废止关系时，只使用本技能及下方【信源核验】模板，不再调用 `output-format` skill 或 `../../scripts/validate_output.py`。如果用户还要求生成指南学习内容，先完成信源核验，再把已核验来源交给对应医学学习 skill，并只对学习内容执行 `output-format` 校验。
+
 ## 必读文件
 
 起草前必须先读取：
 
 - `../../references/source-policy.yaml`
 - `../../references/compliance-boundary.md`
+- `../../references/verified-source-entrypoints.yaml`
+
+以上是确定路径，直接读取；不得为定位这些文件调用 `glob`、`grep` 或递归 `ls`。
+
+## 已核验入口的使用顺序
+
+1. 先用用户主题匹配 `verified-source-entrypoints.yaml` 的 `aliases`。未命中才进入常规联网检索。
+2. 命中时直接 `web_fetch` 该条目的 `canonical_url`，核对页面标题和 DOI；两者任一不符即不得使用。
+3. 当前日期超过 `recheck_after`，或用户明确询问「最新/现行/替代」时，再加 1 次限定官方域名的时效检索；没有新版正式原文证据时，不得仅凭搜索摘要改写表内版本状态。
+4. `version_relation` 是已核验的表述边界。它写「未取得废止/替代声明」时，必须如实输出「未证实正式废止或替代」，不得自行推断。
+5. 命中条目的最终原文链接必须使用该条目的 `canonical_url`；`official_index_url` 只用于辅助核对卷期/DOI，不得取代原文链接。全文受订阅限制时可以说明可核对范围受限，但仍要给出 `canonical_url`。
 
 ## 信源分级
 

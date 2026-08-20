@@ -7,22 +7,23 @@ description: 把已核验的权威指南按原文结构逐节展开讲解，并�
 
 用户反馈里最常见的两句话是「指南查到了但展不开」和「能不能把指南总结成流程」。本 skill 处理这两件事，并把它们严格限定为**学习产物**。
 
-## 必读边界
+## 最小必读集
 
-起草内容前，必须阅读并遵守：
-
-- ../../references/compliance-boundary.md
-- ../../references/source-policy.yaml
-- ../../references/output-templates.md
+- 用户只要求总结筛查、随访、质控等某一专题时，本 skill 已内嵌学习边界、常用信源规则和输出字段；不再读取 `source-policy.yaml`、`compliance-boundary.md` 或 `output-templates.md`。最终仍由 `validate_output.py` 使用完整策略校验。
+- 用户要求完整章节展开或学习路径图时，再按需读取 `../../references/compliance-boundary.md` 和 `../../references/output-templates.md`。
+- 上述均为确定路径；不得通过 `glob`、`grep` 或递归 `ls` 定位。
 
 ## 先分清用户要哪一种
 
 | 用户说法 | 使用 |
 | --- | --- |
 | 展开这一章、细看、详解、这节讲了什么、看全文 | 章节展开 |
+| 总结指南中某一专题的学习要点，例如筛查、随访、质控 | 章节展开 |
 | 怎么学这份指南、学习顺序、总结成流程、给我路径 | 学习路径图 |
 | 我掌握得怎么样、测一下、薄弱点 | guideline-learning-diagnosis skill |
 | 建立每日连续学习 | guideline-learning skill |
+
+命中「总结某一专题的学习要点」时，直接跳到「专题总结快速路径」；该节已给出完整执行规则，不再另外读取参考文件。
 
 用户说「流程」时**必须先确认他要的是学习顺序**。如果他实际想要的是「遇到这种病人先做什么再做什么」，那是床旁处置请求，按 compliance-boundary.md 的高风险口径拒绝，并说明可以改为学习路径图。
 
@@ -31,12 +32,12 @@ description: 把已核验的权威指南按原文结构逐节展开讲解，并�
 展开和路径图都必须绑定已核验的权威文件：完整名称、发布机构、版本/年份、权威原文链接。
 
 - 取不到权威原文时，**不得凭记忆展开**。只能说明「未取得可核验权威原文」，并给出候选来源方向。
-- 只能使用 source-policy.yaml 白名单内的最终依据。B 级聚合平台只能作线索。
+- 完整章节或路径图只能使用 source-policy.yaml 白名单内的最终依据；专题总结按下方快速路径内嵌的同等规则执行。B 级聚合平台只能作线索。
 - 版本必须写清。指南改版频繁，展开旧版时要标注这是哪一版。
 
 ## 章节展开怎么做
 
-用 output-templates.md 的「指南章节展开」模板。要点：
+完整章节展开使用 output-templates.md 的「指南章节展开」模板；专题总结直接使用下方快速路径的字段清单。要点：
 
 1. **给出原文定位**：章号、节号、条目号或页码范围，让用户能回到原文核对。这是本能力的核心价值。
 2. **按原文结构讲**，不重排成自己的逻辑；说明本节在指南整体结构中的位置和与上下游章节的关系。
@@ -46,6 +47,21 @@ description: 把已核验的权威指南按原文结构逐节展开讲解，并�
 6. 结尾必须声明**不替代原文**，以权威原文为准。
 
 允许展开指南中的定义、诊断标准、鉴别框架、分层概念、检查与随访要求、质控指标、章节间的概念关系。**不得**把这些条款代入某个真实患者得出结论，不得改写成院内可执行文件。
+
+### 专题总结快速路径（性能硬约束）
+
+当用户要求面向基层总结筛查、随访、质控等单一专题时：
+
+1. 直接读取 `../../references/verified-source-entrypoints.yaml`，先按 `aliases` 匹配主题。命中时直接 `web_fetch` 该条目的 `canonical_url`，页面标题和 DOI 均匹配后才可作最终依据；不得用本地表项替代原文核对。
+2. 命中条目且当前日期未超过 `recheck_after` 时，该次原文抓取即是实时核验，不再广泛搜索。只有用户明确询问「最新/现行/替代」，或已超过 `recheck_after`，才再加 1 次限定官方域名的时效检索。
+   最终来源行必须使用命中条目的 `canonical_url`；`official_index_url` 只辅助核对卷期/DOI，不取代原文链接。订阅墙导致只能核对摘要或公开附录时，必须把未能核对的具体条款标为「待核验」，不得用二手内容补全。
+3. 未命中入口表时，**总工具预算**为最多 3 次 `searchfree_search` 和 2 次 `web_fetch`，包括失败、超时、空结果和无关结果；不得换旧版文件或猜测 URL 继续试探。找到能覆盖主题的现行指南正式原文后立即停止搜索。
+4. 预算内未取得现行权威原文时，立即答复「未取得可核验的现行权威原文，本次不生成学习要点」并说明失败原因；这是失败回执，不写医学内容草稿，不运行校验器。不得用已过时或未核验文件凑齐回答。
+5. 最终依据不超过 2 份：1 份现行主指南，必要时补 1 份基层专项指南。只接受正式指南、共识、规范或质控文件；综述、原始研究、科普、转载、会议材料和搜索摘要不得作最终依据。
+6. 常用可用的最终来源域名包括 `.gov.cn`、`.nhc.gov.cn`、`.ndcpa.gov.cn`、`.chinacdc.cn`、`.cma.org.cn`、`.medjournals.cn`、`.cmda.net`、`.cpma.org.cn`、`.pmph.com` 和中华医学会杂志社旧版正式全文域 `rs.yiigle.com`。搜索结果只用于定位原文；起草前先选定原文详情页或正式附件链接。通用列表页只能作候选，不能在无法对应具体文件时当作原文链接。
+7. 未命中入口表时，第 1 次查询必须同时包含主题、「最新/现行」和官方域限定，优先 `site:rs.yiigle.com` 与 `site:cs.medjournals.cn`；第 2 次才查主管部门或学会官网；第 3 次只用于确认版本替代关系。必须先确认现行版本，再摘要内容；新版已发布时不得回退到旧版凑答案。
+8. 草稿中所有 URL（包括正文和来源行）都必须属于最终证据白名单；不得先写入 CDN、搜索结果或其他非白名单 URL，再依赖校验器反复修改。
+9. 直接按以下字段生成一份完整草稿：【指南章节展开｜主题】、依据、章节、原文定位、原文要点、章节关系、易混淆点、学习提示、边界、来源。不先写半成品，不为猜模板再读其他文件。
 
 ## 学习路径图怎么做
 
@@ -67,12 +83,12 @@ description: 把已核验的权威指南按原文结构逐节展开讲解，并�
 
 ## 输出与校验
 
-发送或提供正式草稿前运行：
+发送或提供正式草稿前，按 `output-format` skill 的约定把完整草稿一次写入 `../../outbound/.clinical-output-draft.md`，然后直接运行：
 
-    python ../../scripts/validate_output.py --module guideline_section_expansion
+    python3 ../../scripts/validate_output.py --module guideline_section_expansion --text-file ../../outbound/.clinical-output-draft.md
 
 或：
 
-    python ../../scripts/validate_output.py --module guideline_learning_pathway
+    python3 ../../scripts/validate_output.py --module guideline_learning_pathway --text-file ../../outbound/.clinical-output-draft.md
 
-校验失败时先修正；不得绕过。
+不得无正文试运行校验器，也不得读取或 `grep` 校验器源码。校验失败时只按返回的 `errors` 修正一次；不得绕过。

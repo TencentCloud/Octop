@@ -27,9 +27,9 @@ description: 学习订阅任务创建与启用。医生完成 5 项登记后，�
    - **平台自动路由**：`cronjob_create` 自动绑定当前会话 `session_key`，并按该会话通道（微信/QQ/dashboard/CLI 等）投递。**不要要求微信绑定、不要以"非微信会话"为由拒绝、不要反问用户是否在微信里**。
    - 直接创建，不需要 `:weixin:` 会话标识，不要求 `allow_dashboard` 之类的门禁。
 3. **核对**：创建后调用 `cronjob_list` 核对，回执如实写"已启用，推送至当前会话通道"。
-4. **回执**：按 `references/output-templates.md` 的"登记启用回执"模板输出，列出已启用任务（注明推送至当前会话通道）和未启用任务。
+4. **回执**：按 `../../references/output-templates.md` 的"登记启用回执"模板输出，列出已启用任务（注明推送至当前会话通道）和未启用任务。
 
-任务排程参数（trigger / task_type / prompt）使用 `references/cron-presets.json` 的预设：
+任务排程参数（trigger / task_type / prompt）使用 `../../references/cron-presets.json` 的预设：
 
 - 每日指南学习：`cron:30 7 * * *`，`task_type=agent`，`fresh_thread=true`，prompt 用弱投递防重模板（见下）。
 - 专业指南更新提醒：`cron:0 9 */3 * *`，`task_type=agent`。
@@ -37,11 +37,11 @@ description: 学习订阅任务创建与启用。医生完成 5 项登记后，�
 
 ## 每日指南学习弱投递防重规程
 
-每日指南学习的 cron prompt 必须使用 `references/cron-presets.json` 中"每日指南连续学习"预设的弱投递防重模板，严格按顺序：
+每日指南学习的 cron prompt 必须使用 `../../references/cron-presets.json` 中"每日指南连续学习"预设的弱投递防重模板，严格按顺序：
 
 1. `delivery-check` 按逻辑日期查重——已记录则当天停发；
 2. `learning-next-lesson` 读取下一固定单元——无已启用轨道或无下一单元时如实说明并停止，不得编造内容；
-3. 按 `references/daily-learning-template.md` 生成单元（3 个编号要点 + 来源行）：非最后单元预告下一固定单元；最后单元给出 2-3 个已核验的正式指南候选并等待用户确认。综述与研究论文不得作为最终来源或下一阶段候选。用 `scripts/validate_output.py --module daily_guideline_learning` 校验；
+3. 按 `../../references/daily-learning-template.md` 生成单元（3 个编号要点 + 来源行）：非最后单元预告下一固定单元；最后单元给出 2-3 个已核验的正式指南候选并等待用户确认。综述与研究论文不得作为最终来源或下一阶段候选。用 `../../scripts/validate_output.py --module daily_guideline_learning` 校验；
 4. 校验通过后 `delivery-record` 记账，再输出正文。
 
 该账本只防重复、**不代表送达回执**——不得对用户宣称"已确认送达"。在用户选定权威指南轨道前，cron 运行会如实报告"暂无已启用轨道"并停止，不随机推送。等具备通道回执的平台适配器上线后，每日指南学习应迁移到强回执投递。
