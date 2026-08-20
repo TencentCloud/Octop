@@ -1,10 +1,11 @@
-import { iconForName } from "../../Experts/components/iconForName";
+import { ExpertIcon } from "../../Experts/components/iconForName";
 import styles from "../index.module.less";
 
 export interface ChatAgentOption {
   agent_id: string;
   name: string;
   icon_name?: string | null;
+  icon_url?: string | null;
   color?: string | null;
   is_shared?: boolean;
   is_owner?: boolean;
@@ -13,6 +14,7 @@ export interface ChatAgentOption {
 
 interface ExpertAgentAvatarProps {
   iconName?: string | null;
+  iconUrl?: string | null;
   color?: string | null;
   /** Lucide icon size inside the circle. */
   iconSize?: number;
@@ -25,6 +27,7 @@ interface ExpertAgentAvatarProps {
 
 export default function ExpertAgentAvatar({
   iconName,
+  iconUrl,
   color,
   iconSize,
   size = 32,
@@ -32,7 +35,10 @@ export default function ExpertAgentAvatar({
   muted = false,
 }: ExpertAgentAvatarProps) {
   const accent = muted ? "#94a3b8" : color || "#6366f1";
-  const inner = iconSize ?? Math.max(12, Math.round(size * 0.55));
+  const photo = Boolean(iconUrl?.trim());
+  const inner = photo
+    ? size
+    : iconSize ?? Math.max(12, Math.round(size * 0.55));
 
   return (
     <span
@@ -45,7 +51,7 @@ export default function ExpertAgentAvatar({
       }}
       aria-hidden
     >
-      {iconForName(iconName, inner)}
+      <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={inner} />
     </span>
   );
 }

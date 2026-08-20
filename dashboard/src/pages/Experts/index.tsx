@@ -210,6 +210,7 @@ export default function ExpertsPage() {
         | "default_model"
         | "is_shared"
         | "color"
+        | "icon_url"
       >,
     ) => {
       setEditAgent(null);
@@ -223,6 +224,7 @@ export default function ExpertsPage() {
                 default_model: updated.default_model,
                 is_shared: updated.is_shared,
                 color: updated.color,
+                icon_url: updated.icon_url,
               }
             : a,
         ),
@@ -361,6 +363,7 @@ export default function ExpertsPage() {
                 <AgentCard
                   agent={agent}
                   iconName={agent.icon_name}
+                  iconUrl={agent.icon_url}
                   accentColor={agent.color}
                   publishedExpert={publishedByAgentId[agent.agent_id] ?? null}
                   onPublishedChange={() => {

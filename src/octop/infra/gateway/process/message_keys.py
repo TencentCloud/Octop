@@ -71,17 +71,21 @@ def resolve_user_id_for_message(
 ) -> int:
     """Resolve Octop ``users.id`` for thread/session persistence.
 
-    Dashboard WS uses numeric ``subject_id`` (Octop user id). IM platforms
-    (QQ openid, WeCom userid, …) use opaque strings — those cannot satisfy
-    ``threads.user_id`` FK as ``0``; fall back to the agent owner instead.
+    Dashboard and CLI use numeric ``subject_id`` values as Octop user ids.
+    External IM subject ids belong to a platform-specific identity domain and
+    may also be numeric, so those sessions always belong to the agent owner.
     """
-    sid = subject_id_from_message(msg)
-    try:
-        uid = int(sid)
-        if uid > 0:
-            return uid
-    except (ValueError, TypeError):
-        pass
+    if msg.channel_type in (
+        ThreadRegistry.CHANNEL_DASHBOARD,
+        ThreadRegistry.CHANNEL_CLI,
+    ):
+        sid = subject_id_from_message(msg)
+        try:
+            uid = int(sid)
+            if uid > 0:
+                return uid
+        except (ValueError, TypeError):
+            pass
     if agent_owner_id is not None and agent_owner_id > 0:
         return agent_owner_id
     return 0

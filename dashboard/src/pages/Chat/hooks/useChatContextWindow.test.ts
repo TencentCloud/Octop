@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { renderHook } from "@testing-library/react";
 import type { ResolvedModel } from "../../../api/types";
-import { activeModelToRef, useChatContextWindow } from "./useChatContextWindow";
+import {
+  activeModelToRef,
+  contextUsedPercent,
+  useChatContextWindow,
+} from "./useChatContextWindow";
 
 const models: ResolvedModel[] = [
   {
@@ -56,6 +60,39 @@ describe("useChatContextWindow", () => {
       useChatContextWindow([], null, null, models, null, null),
     );
     expect(result.current.contextMaxTokens).toBe(1_000_000);
+  });
+
+  it("uses last history input_tokens when stream usage is empty", () => {
+    const { result } = renderHook(() =>
+      useChatContextWindow(
+        [
+          {
+            id: "a1",
+            role: "assistant",
+            content: "ok",
+            status: "done",
+            timestamp: 1,
+            usage: { input_tokens: 4200, output_tokens: 9 },
+          },
+        ],
+        null,
+        null,
+        models,
+        null,
+        null,
+      ),
+    );
+    expect(result.current.contextUsedTokens).toBe(4200);
+  });
+});
+
+describe("contextUsedPercent", () => {
+  it("does not round a real occupancy to 0% against a 1M window", () => {
+    expect(contextUsedPercent(4_200, 1_000_000)).toBe(1);
+  });
+
+  it("returns 0 when unused", () => {
+    expect(contextUsedPercent(0, 128_000)).toBe(0);
   });
 });
 

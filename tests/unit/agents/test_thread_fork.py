@@ -1,4 +1,4 @@
-"""Tests for conversation fork-from-user-message."""
+"""Tests for conversation fork-from-assistant-message."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from octop.infra.agents.thread_fork import (
     _fork_title,
-    find_user_fork_index,
+    find_assistant_fork_index,
     fork_dashboard_thread,
     write_checkpoint_messages,
 )
@@ -26,47 +26,67 @@ def test_fork_title_suffix() -> None:
     assert _fork_title("", "zh") == "分叉对话"
 
 
-def test_find_user_fork_index_by_suffix_count() -> None:
+def test_find_assistant_fork_index_by_suffix_count() -> None:
     messages = [
         HumanMessage(content="one", id="h1"),
         AIMessage(content="a1", id="a1"),
         HumanMessage(content="two", id="h2"),
         AIMessage(content="a2", id="a2"),
         HumanMessage(content="three", id="h3"),
+        AIMessage(content="a3", id="a3"),
     ]
-    assert find_user_fork_index(messages, message_id="x", user_turns_from_end=2) == 2
-    assert find_user_fork_index(messages, message_id="x", user_turns_from_end=1) == 4
-    assert find_user_fork_index(messages, message_id="x", user_turns_from_end=3) == 0
+    assert find_assistant_fork_index(messages, message_id="x", assistant_turns_from_end=2) == 3
+    assert find_assistant_fork_index(messages, message_id="x", assistant_turns_from_end=1) == 5
+    assert find_assistant_fork_index(messages, message_id="x", assistant_turns_from_end=3) == 1
 
 
-def test_find_user_fork_index_by_id_when_suffix_mismatches_content() -> None:
+def test_find_assistant_fork_index_skips_tool_call_shells_even_with_text() -> None:
+    messages = [
+        HumanMessage(content="q", id="h1"),
+        AIMessage(
+            content="let me search",
+            id="a-tool",
+            tool_calls=[{"id": "c1", "name": "search", "args": {}}],
+        ),
+        ToolMessage(content="hit", id="t1", tool_call_id="c1"),
+        AIMessage(content="final answer", id="a-final"),
+    ]
+    # Intermediate tool-call AI must not count as an answer turn.
+    assert find_assistant_fork_index(messages, message_id="x", assistant_turns_from_end=1) == 3
+    assert find_assistant_fork_index(messages, assistant_turns_from_end=1) == 3
+
+
+def test_find_assistant_fork_index_trusts_turns_when_content_mismatches() -> None:
     messages = [
         HumanMessage(content="keep", id="h1"),
-        AIMessage(content="a1", id="a1"),
-        HumanMessage(content="fork-me", id="h2"),
+        AIMessage(content="first", id="a1"),
+        HumanMessage(content="next", id="h2"),
+        AIMessage(content="fork-me", id="a2"),
     ]
-    idx = find_user_fork_index(
+    # Client UUID + drifted content must not override the preferred locator.
+    idx = find_assistant_fork_index(
         messages,
-        message_id="h2",
+        message_id="client-uuid",
         content="other text",
-        user_turns_from_end=1,
+        assistant_turns_from_end=1,
     )
-    assert idx == 2
+    assert idx == 3
 
 
-def test_find_user_fork_index_by_content_fallback() -> None:
+def test_find_assistant_fork_index_by_content_fallback() -> None:
     messages = [
         HumanMessage(content="alpha", id="h1"),
-        AIMessage(content="a1", id="a1"),
+        AIMessage(content="reply-a", id="a1"),
         HumanMessage(content="beta", id="h2"),
+        AIMessage(content="reply-b", id="a2"),
     ]
-    assert find_user_fork_index(messages, message_id="missing", content="beta") == 2
+    assert find_assistant_fork_index(messages, message_id="missing", content="reply-b") == 3
 
 
-def test_find_user_fork_index_missing_raises() -> None:
-    messages = [AIMessage(content="only assistant", id="a1")]
+def test_find_assistant_fork_index_missing_raises() -> None:
+    messages = [HumanMessage(content="only user", id="h1")]
     with pytest.raises(OctopError) as exc:
-        find_user_fork_index(messages, message_id="h1")
+        find_assistant_fork_index(messages, message_id="a1")
     assert exc.value.code is ErrorCode.NOT_FOUND
 
 
@@ -79,7 +99,7 @@ async def test_write_checkpoint_messages_skips_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fork_dashboard_thread_copies_prefix_and_rebinds() -> None:
+async def test_fork_dashboard_thread_copies_through_assistant_and_rebinds() -> None:
     source_id = "thr_src"
     messages = [
         HumanMessage(content="first", id="h1"),
@@ -130,15 +150,15 @@ async def test_fork_dashboard_thread_copies_prefix_and_rebinds() -> None:
         harness=harness,
         source=source,
         user_id=7,
-        message_id="h2",
-        content="second",
-        user_turns_from_end=1,
+        message_id="a1",
+        content="ok",
+        assistant_turns_from_end=2,
     )
 
     assert out["thread_id"] == "thr_fork"
     assert out["source_thread_id"] == source_id
-    assert out["copied_messages"] == 3
-    assert [m.id for m in store["thr_fork"]] == ["h1", "a1", "t1"]
+    assert out["copied_messages"] == 2
+    assert [m.id for m in store["thr_fork"]] == ["h1", "a1"]
     registry.update_title.assert_called_once_with("thr_fork", "Original title (fork)")
     registry.touch_last_active.assert_not_called()
     registry.update_composer.assert_called_once()
@@ -149,9 +169,12 @@ async def test_fork_dashboard_thread_copies_prefix_and_rebinds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fork_dashboard_thread_from_first_question_is_empty() -> None:
+async def test_fork_dashboard_thread_from_latest_assistant() -> None:
     source_id = "thr_src"
-    messages = [HumanMessage(content="only", id="h1"), AIMessage(content="a", id="a1")]
+    messages = [
+        HumanMessage(content="only", id="h1"),
+        AIMessage(content="answer", id="a1"),
+    ]
     store: dict[str, list[Any]] = {source_id: list(messages)}
     graph = SimpleNamespace()
 
@@ -159,13 +182,17 @@ async def test_fork_dashboard_thread_from_first_question_is_empty() -> None:
         tid = config["configurable"]["thread_id"]
         return SimpleNamespace(values={"messages": list(store.get(tid, []))})
 
+    async def aupdate_state(config: dict[str, Any], values: dict[str, Any], **_k: Any) -> None:
+        tid = config["configurable"]["thread_id"]
+        store.setdefault(tid, []).extend(list(values.get("messages") or []))
+
     graph.aget_state = aget_state
-    graph.aupdate_state = AsyncMock()
+    graph.aupdate_state = aupdate_state
     harness = SimpleNamespace(graph=graph)
 
     registry = MagicMock()
     registry.create_thread.return_value = "thr_fork"
-    registry.get_thread.return_value = MagicMock(title=None, last_active=0, created_at=1)
+    registry.get_thread.return_value = MagicMock(title="only", last_active=0, created_at=1)
     registry.rebind = AsyncMock()
 
     out = await fork_dashboard_thread(
@@ -180,14 +207,12 @@ async def test_fork_dashboard_thread_from_first_question_is_empty() -> None:
             reasoning_effort=None,
         ),
         user_id=1,
-        message_id="h1",
-        user_turns_from_end=1,
+        assistant_turns_from_end=1,
     )
 
-    assert out["copied_messages"] == 0
-    graph.aupdate_state.assert_not_called()
-    registry.update_title.assert_not_called()
-    registry.touch_last_active.assert_not_called()
+    assert out["copied_messages"] == 2
+    assert [m.id for m in store["thr_fork"]] == ["h1", "a1"]
+    registry.update_title.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -197,6 +222,7 @@ async def test_fork_dashboard_thread_deletes_row_when_write_fails() -> None:
         HumanMessage(content="first", id="h1"),
         AIMessage(content="ok", id="a1"),
         HumanMessage(content="second", id="h2"),
+        AIMessage(content="later", id="a2"),
     ]
     graph = SimpleNamespace()
 
@@ -223,9 +249,8 @@ async def test_fork_dashboard_thread_deletes_row_when_write_fails() -> None:
                 reasoning_effort=None,
             ),
             user_id=1,
-            message_id="h2",
-            user_turns_from_end=1,
+            message_id="a2",
+            assistant_turns_from_end=1,
         )
 
     registry.delete_thread.assert_called_once_with("thr_fork")
-    registry.rebind.assert_not_called()

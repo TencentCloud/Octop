@@ -62,6 +62,44 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatarPicker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatarPickerPreviewBtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.avatarPickerPreviewBody {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 8px;
+}
+
+.avatarPickerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.avatarPickerHint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.4;
 }
 
 .agentCard2TitleBlock {
@@ -101,8 +139,8 @@
     transition: opacity 0.15s;
   }
 
-  .agentCard2NameRow:hover .agentCard2NameActions,
-  .agentCard2NameRow:focus-within .agentCard2NameActions {
+  .agentCardIdRow:hover .agentCard2NameActions,
+  .agentCardIdRow:focus-within .agentCard2NameActions {
     opacity: 1;
   }
 }
@@ -132,16 +170,25 @@
   color: #ff4d4f;
 }
 
+.agentCardIdRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 4px;
+}
+
 .agentCardId {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
   padding: 0;
   border: none;
   background: transparent;
   cursor: pointer;
-  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  flex: 0 1 auto;
   text-align: left;
   color: var(--fn-text-tertiary);
   transition: color 0.15s;
@@ -170,6 +217,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
   color: var(--fn-text-secondary);
   transition: color 0.15s;
 }

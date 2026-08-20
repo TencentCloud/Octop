@@ -150,7 +150,7 @@ function toOctopCreateBody(values: CronJobFormValues) {
     trigger: resolveCronExpression(values),
     prompt: values.prompt.trim(),
     task_type: values.task_type,
-    session_key: values.session_key || null,
+    session_key: values.fresh_thread ? null : values.session_key || null,
     fresh_thread: Boolean(values.fresh_thread),
     model: defaultModelFromForm(values.model),
     mcp_servers: values.mcp_servers ?? [],

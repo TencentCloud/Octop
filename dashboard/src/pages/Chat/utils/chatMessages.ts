@@ -128,13 +128,25 @@ export function buildComposerContext(params: {
 
 export function formatRunUsage(
   usage: TokenUsage | null | undefined,
-  labels: { input: string; output: string; total: string },
+  labels: { input: string; output: string; total: string; cacheHit: string },
 ): string | null {
   if (!usage) return null;
 
   const parts: string[] = [];
   if (typeof usage.input_tokens === "number") {
     parts.push(`${usage.input_tokens} ${labels.input}`);
+  }
+  if (
+    typeof usage.cache_read_tokens === "number" &&
+    usage.cache_read_tokens > 0
+  ) {
+    const percent =
+      typeof usage.input_tokens === "number" && usage.input_tokens > 0
+        ? ` (${Math.round(
+            (usage.cache_read_tokens / usage.input_tokens) * 100,
+          )}%)`
+        : "";
+    parts.push(`${usage.cache_read_tokens} ${labels.cacheHit}${percent}`);
   }
   if (typeof usage.output_tokens === "number") {
     parts.push(`${usage.output_tokens} ${labels.output}`);
@@ -153,6 +165,19 @@ export function userTurnsFromEnd(
   const idx = messages.findIndex((message) => message.id === messageId);
   if (idx < 0) return 0;
   return messages.slice(idx).filter((message) => message.role === "user")
+    .length;
+}
+
+/** Count assistant answer turns from *messageId* through the latest (inclusive). */
+export function assistantTurnsFromEnd(
+  messages: Array<{ id: string; role: string; toolData?: unknown }>,
+  messageId: string,
+): number {
+  const idx = messages.findIndex((message) => message.id === messageId);
+  if (idx < 0) return 0;
+  return messages
+    .slice(idx)
+    .filter((message) => message.role === "assistant" && !message.toolData)
     .length;
 }
 

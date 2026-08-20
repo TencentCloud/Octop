@@ -25,8 +25,10 @@ def test_published_experts_table_exists(db: SqlitePool) -> None:
             r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(published_experts)").fetchall()}
     assert "published_experts" in names
-    assert v == 6
+    assert v == 8
+    assert "published_expert_id" in cols
 
 
 def test_published_expert_repo_create_get_list_delete(db: SqlitePool) -> None:
@@ -42,6 +44,7 @@ def test_published_expert_repo_create_get_list_delete(db: SqlitePool) -> None:
         color="#336699",
     )
     assert row.slug == "office-helper"
+    assert row.pk >= 1
     assert row.name == "Office Helper"
     assert row.source_agent_id == "agent-abc"
     assert row.icon_name == "briefcase"
@@ -105,3 +108,26 @@ def test_published_expert_repo_get_by_source_and_update_meta(db: SqlitePool) -> 
     assert updated.color == "#abcdef"
     assert updated.updated_at >= row.updated_at
     assert updated.updated_at >= row.created_at
+
+
+def test_legacy_text_pk_published_experts_keep_public_id(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    migrations = Path(__file__).resolve().parents[3] / "src/octop/infra/db/migrations"
+    with pool.connect() as conn:
+        conn.executescript((migrations / "001_initial.sql").read_text())
+        conn.executescript((migrations / "005_shared_experts_sso_knowledge.sql").read_text())
+        conn.execute(
+            "INSERT INTO published_experts("
+            "id, slug, name, description, created_by, source_agent_id, "
+            "icon_name, color, created_at, updated_at"
+            ") VALUES (?, ?, ?, '', ?, NULL, '', '', 1, 1)",
+            ("expABC", "office-helper", "Office Helper", "user-1"),
+        )
+        conn.execute("UPDATE _schema_version SET version = 5")
+    run_migrations(pool)
+    repo = PublishedExpertRepo(pool)
+    row = repo.get("expABC")
+    assert row is not None
+    assert row.id == "expABC"
+    assert row.pk >= 1
+    assert row.slug == "office-helper"

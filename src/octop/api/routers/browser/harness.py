@@ -124,12 +124,15 @@ async def resolve_harness_session(
     profile = candidates[0] if candidates else "default"
     harness_settings = None
     if server is not None and agent_id:
+        from octop.api.common.agent_workspace import (  # noqa: PLC0415
+            resolve_agent_workspace_dir,
+        )
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             agent_outbound_screenshots_dir,
             harness_settings_for_screenshots_dir,
         )
 
-        shots = agent_outbound_screenshots_dir(server.paths, agent_id)
+        shots = agent_outbound_screenshots_dir(resolve_agent_workspace_dir(server, agent_id))
         harness_settings = harness_settings_for_screenshots_dir(shots)
 
     from octop.infra.browser.setup import (  # noqa: PLC0415

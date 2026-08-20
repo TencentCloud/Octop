@@ -7,6 +7,7 @@ import {
   type ContextUsageSegmentKey,
 } from "../../../api/modules/octopThreads";
 import { isPendingThread } from "../hooks/useSessions";
+import { contextUsedPercent } from "../hooks/useChatContextWindow";
 import styles from "../index.module.less";
 
 const DEFAULT_MAX = 128_000;
@@ -108,8 +109,14 @@ export default function ContextWindowRing({
           mcpServers: selectedConnectors,
           skills: selectedSkills,
         });
-        cacheRef.current = { key: cacheKey, at: Date.now(), data };
-        setBreakdown(data);
+        if (data.used_tokens > 0) {
+          cacheRef.current = { key: cacheKey, at: Date.now(), data };
+          setBreakdown(data);
+        } else {
+          // Empty harness snapshot (old threads) must not pin the ring at 0%.
+          cacheRef.current = null;
+          setBreakdown(null);
+        }
       } catch {
         if (!opts?.silent) setBreakdown(null);
       } finally {
@@ -127,9 +134,7 @@ export default function ContextWindowRing({
       lastHintRefreshRef.current = null;
       return;
     }
-    // Cover the current hint with this prefetch so the debounce effect
-    // does not immediately force a second request.
-    lastHintRefreshRef.current = hintUsedRef.current || null;
+    lastHintRefreshRef.current = null;
     void loadBreakdown({ silent: true });
   }, [agentId, threadId, cacheKey, loadBreakdown]);
 
@@ -150,7 +155,9 @@ export default function ContextWindowRing({
 
   const ringUsed = useMemo(() => {
     if (breakdown && breakdown.used_tokens > 0) {
-      return Math.min(breakdown.used_tokens, max);
+      const breakdownMax =
+        breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
+      return Math.min(breakdown.used_tokens, breakdownMax);
     }
     // Until prefetch returns, show last-call hint (capped so a stale
     // turn-sum cannot flash a full ring).
@@ -163,7 +170,7 @@ export default function ContextWindowRing({
 
   const { usedPct, strokeColor, dashOffset, circumference } = useMemo(() => {
     const usedRatio = ringMax > 0 ? Math.min(ringUsed / ringMax, 1) : 0;
-    const usedPercent = Math.round(usedRatio * 100);
+    const usedPercent = contextUsedPercent(ringUsed, ringMax);
     const r = 13;
     const circ = 2 * Math.PI * r;
     let color = "var(--fn-color-success, #22c55e)";
@@ -200,11 +207,15 @@ export default function ContextWindowRing({
   };
   const displayUsed = display.used_tokens > 0 ? display.used_tokens : ringUsed;
   const displayMax = display.max_tokens > 0 ? display.max_tokens : ringMax;
-  const displayPct = Math.min(
-    100,
-    Math.round((displayUsed / displayMax) * 100) || usedPct,
-  );
-  const segments = display.segments;
+  const displayPct = contextUsedPercent(displayUsed, displayMax);
+  const segments =
+    display.segments.length > 0
+      ? display.segments
+      : displayUsed > 0
+      ? ([
+          { key: "conversation", tokens: displayUsed },
+        ] as ContextUsageBreakdown["segments"])
+      : display.segments;
   const segmentTotal = segments.reduce((sum, item) => sum + item.tokens, 0);
 
   const popoverContent = (
@@ -235,7 +246,9 @@ export default function ContextWindowRing({
                   key={segment.key}
                   className={styles.contextUsageBarSegment}
                   style={{
-                    flexGrow: segment.tokens,
+                    // Provider input usage owns the total bar width. Segment
+                    // estimates contribute only their relative composition.
+                    flexGrow: (displayUsed * segment.tokens) / segmentTotal,
                     background: SEGMENT_COLORS[segment.key],
                   }}
                 />
@@ -265,7 +278,7 @@ export default function ContextWindowRing({
                   {t(`chat.contextWindow.segments.${segment.key}`)}
                 </span>
                 <span className={styles.contextUsageLegendValue}>
-                  {formatTokenK(segment.tokens)}
+                  ~{formatTokenK(segment.tokens)}
                 </span>
               </li>
             ))}

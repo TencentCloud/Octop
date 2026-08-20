@@ -155,6 +155,8 @@
       "last_active": "last_active",
       "model_override": "model_override",
       "input": "input",
+      "cache_read": "cached input",
+      "cache_hit": "cache hit rate",
       "output": "output",
       "total": "total",
       "turns": "turns",
@@ -300,6 +302,8 @@
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
+    "AGENT_ID_INVALID": "Invalid custom id: use 3-64 letters/digits/underscores/hyphens, starting and ending with a letter or digit.",
+    "AGENT_ID_TAKEN": "This id is already in use. Please choose another.",
     "PROVIDER_NAME_TAKEN": "Provider name is already in use.",
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
@@ -352,7 +356,9 @@
     "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the 20 MB size limit.",
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
-    "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name."
+    "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
+    "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",

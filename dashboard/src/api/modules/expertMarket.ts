@@ -45,6 +45,7 @@ export interface CreateMarketExpertResponse {
   state: string;
   expert_id: string;
   icon_name?: string | null;
+  icon_url?: string | null;
   color?: string | null;
   market: {
     source: string;
@@ -63,6 +64,7 @@ export interface CreateMarketExpertBody {
   backend?: Record<string, unknown>;
   skill_package_ids?: string[];
   color?: string;
+  welcome_message?: string;
   max_iters?: number | null;
   max_input_length?: number | null;
   temperature?: number | null;

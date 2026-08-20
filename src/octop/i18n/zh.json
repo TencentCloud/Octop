@@ -155,6 +155,8 @@
       "last_active": "最后活跃",
       "model_override": "模型覆盖",
       "input": "输入",
+      "cache_read": "缓存输入",
+      "cache_hit": "缓存命中率",
       "output": "输出",
       "total": "合计",
       "turns": "轮次",
@@ -300,6 +302,8 @@
     "AGENT_FAILED": "Agent 启动失败。",
     "AGENT_BUSY": "Agent 正忙。",
     "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",
+    "AGENT_ID_INVALID": "自定义 ID 无效：需 3-64 位字母/数字/下划线/连字符，且以字母或数字开头结尾。",
+    "AGENT_ID_TAKEN": "该 ID 已被使用，请换一个 ID。",
     "PROVIDER_NAME_TAKEN": "提供商名称已被占用。",
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
@@ -352,7 +356,9 @@
     "KNOWLEDGE_DOC_TOO_LARGE": "文档超过 20 MB 大小限制。",
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
-    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。"
+    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
+    "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
+    "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

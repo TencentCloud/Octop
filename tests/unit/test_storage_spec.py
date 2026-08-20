@@ -148,6 +148,19 @@ def test_enrich_docker_backend_spec_defaults() -> None:
     assert "agent_id" not in fixed or fixed.get("agent_id") == "ZE6GR2"
 
 
+def test_inject_docker_global_environment_sets_file() -> None:
+    from octop.infra.backend.docker_spec import inject_docker_global_environment
+
+    spec = inject_docker_global_environment(
+        {"type": "docker", "environment": {"FOO": "from-spec"}},
+        "/data/octop/env",
+    )
+    assert spec["environment_file"] == "/data/octop/env"
+    assert spec["environment"] == {"FOO": "from-spec"}
+    local = inject_docker_global_environment({"type": "local_shell"}, "/data/octop/env")
+    assert "environment_file" not in local
+
+
 def test_collect_named_storage_backend_refs() -> None:
     assert collect_named_storage_backend_refs({"type": "named", "name": "my-cos"}) == {"my-cos"}
     assert collect_named_storage_backend_refs(

@@ -9,7 +9,18 @@ function readPositiveNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return value;
   }
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
   return null;
+}
+
+/** Ring label: never round a real occupancy down to 0% against a large window. */
+export function contextUsedPercent(used: number, max: number): number {
+  if (max <= 0 || used <= 0) return 0;
+  const pct = Math.round(Math.min(used / max, 1) * 100);
+  return pct === 0 ? 1 : pct;
 }
 
 function usageContextInput(
@@ -19,10 +30,9 @@ function usageContextInput(
   // Prefer last model-call size (context fullness), not turn-summed billing.
   const last = usage.last_input_tokens;
   if (typeof last === "number" && last > 0) return last;
-  if (typeof usage.input_tokens === "number" && usage.input_tokens > 0) {
-    return usage.input_tokens;
-  }
-  return null;
+  const input = readPositiveNumber(usage.input_tokens);
+  if (input != null) return input;
+  return readPositiveNumber(usage.prompt_tokens);
 }
 
 function modelContextWindow(m: ResolvedModel | undefined): number | null {

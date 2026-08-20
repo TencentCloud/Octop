@@ -5,6 +5,7 @@ import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
+import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import {
   expertMarketApi,
   type MarketExpert,
@@ -53,12 +54,14 @@ import {
   type PathMapping,
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
+import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import styles from "../index.module.less";
 
 type FileContent = NamedFileContent;
 
 interface ExpertDetail {
   file_contents?: FileContent[];
+  welcome_message?: { zh?: string; en?: string };
 }
 
 export type CreateFromTemplateSource =
@@ -90,12 +93,18 @@ function sourceTitle(
 function sourceDefaults(
   source: CreateFromTemplateSource,
   lang: "zh" | "en",
-): { name: string; description: string; color: string | null } {
+): {
+  name: string;
+  description: string;
+  color: string | null;
+  welcome_message: string;
+} {
   if (source.kind === "builtin") {
     return {
       name: pickLocale(source.expert.label, lang) || source.expert.id,
       description: pickLocale(source.expert.description, lang),
       color: source.expert.color ?? null,
+      welcome_message: pickLocale(source.expert.welcome_message, lang),
     };
   }
   if (source.kind === "published") {
@@ -103,12 +112,31 @@ function sourceDefaults(
       name: source.expert.name,
       description: source.expert.description,
       color: source.expert.color ?? null,
+      welcome_message: pickLocale(source.expert.welcome_message, lang),
     };
   }
   return {
     name: pickLocale(source.expert.label, lang) || source.expert.slug,
     description: pickLocale(source.expert.description, lang),
     color: source.expert.color ?? null,
+    welcome_message: "",
+  };
+}
+
+function sourceIcon(source: CreateFromTemplateSource | null): {
+  iconUrl: string | null;
+  iconName: string | null;
+} {
+  if (!source) return { iconUrl: null, iconName: null };
+  if (source.kind === "builtin") {
+    return { iconUrl: null, iconName: source.expert.icon_name ?? null };
+  }
+  if (source.kind === "published") {
+    return { iconUrl: null, iconName: source.expert.icon_name };
+  }
+  return {
+    iconUrl: source.expert.icon_url ?? null,
+    iconName: source.expert.icon_name ?? null,
   };
 }
 
@@ -124,6 +152,8 @@ export default function CreateFromExpertDrawer({
     {
       name: string;
       description: string;
+      agent_id?: string;
+      welcome_message?: string;
       default_model: string;
       backend_choice: string;
       composite_default: string;
@@ -143,6 +173,8 @@ export default function CreateFromExpertDrawer({
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
   const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
   const [colorPalette, setColorPalette] = useState<string>("rose");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
@@ -161,9 +193,16 @@ export default function CreateFromExpertDrawer({
     setPathMappings([]);
     const defaults = sourceDefaults(source, lang);
     setColorPalette(parseStoredColor(defaults.color) ?? DEFAULT_PALETTE);
+    setAvatarFile(null);
+    setAvatarPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     form.setFieldsValue({
       name: defaults.name,
       description: defaults.description,
+      agent_id: undefined,
+      welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
@@ -183,7 +222,15 @@ export default function CreateFromExpertDrawer({
         : `/experts/published/${encodeURIComponent(source.expert.id)}`;
     request<ExpertDetail>(detailPath)
       .then((data) => {
-        if (!cancelled) setFileContents(data.file_contents ?? []);
+        if (cancelled) return;
+        setFileContents(data.file_contents ?? []);
+        const welcome = data.welcome_message;
+        const welcomeText = pickLocale(welcome, lang);
+        if (welcomeText) {
+          form.setFieldsValue({
+            welcome_message: welcomeText,
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) setFileContents([]);
@@ -220,6 +267,9 @@ export default function CreateFromExpertDrawer({
   const handleCreate = async () => {
     if (!source) return;
     const values = await form.validateFields();
+    const stored = form.getFieldsValue(true) as {
+      welcome_message?: string;
+    };
     if (values.backend_choice === "composite") {
       const pathError = validatePathMappings(pathMappings, t);
       if (pathError) {
@@ -256,15 +306,18 @@ export default function CreateFromExpertDrawer({
         values.root_dir,
       );
 
+      const welcomeText = (stored.welcome_message ?? "").trim();
       const payload = {
         name: values.name,
         description: values.description || undefined,
+        agent_id: values.agent_id?.trim() || undefined,
         default_model: defaultModelFromForm(values.default_model) ?? undefined,
         backend: backendSpec,
         skill_package_ids: values.skill_package_ids ?? [],
         color: isCuratedPalette(colorPalette)
           ? expertPaletteColor(colorPalette)
           : colorPalette,
+        ...(welcomeText ? { welcome_message: welcomeText } : {}),
         ...buildAgentRuntimeRequest(values),
       };
 
@@ -299,6 +352,13 @@ export default function CreateFromExpertDrawer({
 
       if (source.kind !== "market") {
         message.success(t("experts.agentCreated", { name: body.name }));
+      }
+      if (avatarFile) {
+        try {
+          await octopAgentsApi.uploadAvatar(body.agent_id, avatarFile);
+        } catch {
+          message.warning(t("experts.avatarUploadLater"));
+        }
       }
       if (bwrapToast?.kind === "success") {
         message.success(bwrapToast.text);
@@ -390,8 +450,81 @@ export default function CreateFromExpertDrawer({
           <Input />
         </Form.Item>
 
+        <Form.Item
+          name="agent_id"
+          label={t("experts.customIdLabel")}
+          extra={t("experts.customIdHint")}
+          rules={[
+            {
+              validator: (_: unknown, value: string | undefined) => {
+                const v = value?.trim() ?? "";
+                if (!v) return Promise.resolve();
+                if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$/.test(v)) {
+                  return Promise.reject(
+                    new Error(t("experts.customIdInvalid")),
+                  );
+                }
+                if (
+                  ["api", "admin", "agents", "experts"].includes(
+                    v.toLowerCase(),
+                  )
+                ) {
+                  return Promise.reject(
+                    new Error(t("experts.customIdReserved", { id: v })),
+                  );
+                }
+                return Promise.resolve();
+              },
+            },
+          ]}
+        >
+          <Input placeholder={t("experts.customIdPlaceholder")} allowClear />
+        </Form.Item>
+
         <Form.Item name="description" label={t("experts.agentDescription")}>
           <Input.TextArea rows={2} />
+        </Form.Item>
+
+        <Form.Item
+          name="welcome_message"
+          label={t("experts.welcomeMessageTitle")}
+          extra={t("experts.createWelcomeHint")}
+        >
+          <Input.TextArea
+            rows={2}
+            placeholder={t("experts.welcomeMessagePlaceholder")}
+          />
+        </Form.Item>
+
+        <Form.Item label={t("experts.avatar")}>
+          <ExpertAvatarPicker
+            iconUrl={avatarPreview ?? sourceIcon(source).iconUrl}
+            iconName={sourceIcon(source).iconName}
+            color={
+              isCuratedPalette(colorPalette)
+                ? expertPaletteColor(colorPalette)
+                : colorPalette
+            }
+            disabled={submitting}
+            onPick={(file) => {
+              setAvatarFile(file);
+              setAvatarPreview((prev) => {
+                if (prev) URL.revokeObjectURL(prev);
+                return URL.createObjectURL(file);
+              });
+            }}
+            onRemove={
+              avatarPreview
+                ? () => {
+                    setAvatarFile(null);
+                    setAvatarPreview((prev) => {
+                      if (prev) URL.revokeObjectURL(prev);
+                      return null;
+                    });
+                  }
+                : undefined
+            }
+          />
         </Form.Item>
 
         <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>

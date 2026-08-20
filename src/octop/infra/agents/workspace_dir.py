@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,23 @@ def workspace_dir_from_config(
     return default_agent_workspace_dir(paths, agent_id)
 
 
+def workspace_dir_from_config_json(
+    config_json: str | None,
+    *,
+    paths: PathLayout,
+    agent_id: str,
+) -> Path:
+    """Same as :func:`workspace_dir_from_config` from a raw ``config_json`` blob."""
+    try:
+        parsed = json.loads(config_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        parsed = {}
+    cfg = parsed if isinstance(parsed, dict) else {}
+    return workspace_dir_from_config(cfg, paths=paths, agent_id=agent_id)
+
+
 __all__ = [
     "default_agent_workspace_dir",
     "workspace_dir_from_config",
+    "workspace_dir_from_config_json",
 ]

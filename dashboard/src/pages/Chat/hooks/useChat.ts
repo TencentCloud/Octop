@@ -57,7 +57,64 @@ function normalizeTokenUsage(value: unknown): TokenUsage | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
-  return { ...(value as TokenUsage) };
+  const raw = value as TokenUsage;
+  const count = (candidate: unknown): number =>
+    typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0
+      ? Math.floor(candidate)
+      : 0;
+  const detailCount = (details: unknown, names: readonly string[]): number => {
+    if (!details || typeof details !== "object" || Array.isArray(details)) {
+      return 0;
+    }
+    return Object.entries(details as Record<string, unknown>).reduce(
+      (total, [key, candidate]) =>
+        names.some((name) => key === name || key.endsWith(`_${name}`))
+          ? total + count(candidate)
+          : total,
+      0,
+    );
+  };
+
+  let input = count(raw.input_tokens ?? raw.prompt_tokens);
+  const cacheRead =
+    count(raw.cache_read_tokens) ||
+    count(raw.prompt_cache_hit_tokens) ||
+    detailCount(raw.input_token_details ?? raw.prompt_tokens_details, [
+      "cache_read",
+      "cached_tokens",
+    ]);
+  const cacheWrite =
+    count(raw.cache_write_tokens) ||
+    detailCount(raw.input_token_details ?? raw.prompt_tokens_details, [
+      "cache_creation",
+      "cache_write",
+    ]);
+  const explicitUncached = raw.uncached_input_tokens;
+  const uncached =
+    typeof explicitUncached === "number"
+      ? count(explicitUncached)
+      : Math.max(0, input - cacheRead - cacheWrite);
+  if (input === 0) input = uncached + cacheRead + cacheWrite;
+  const output = count(raw.output_tokens ?? raw.completion_tokens);
+  const reasoning =
+    count(raw.reasoning_tokens) ||
+    detailCount(raw.output_token_details ?? raw.completion_tokens_details, [
+      "reasoning",
+      "reasoning_tokens",
+    ]);
+  const hasUsage = input > 0 || output > 0;
+
+  return {
+    ...raw,
+    input_tokens: input,
+    uncached_input_tokens: uncached,
+    cache_read_tokens: cacheRead,
+    cache_write_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_tokens: reasoning,
+    total_tokens: input + output,
+    model_calls: count(raw.model_calls) || (hasUsage ? 1 : 0),
+  };
 }
 
 function normalizeMessageMetadata(value: unknown): MessageMetadata | undefined {
@@ -400,8 +457,13 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   // chat.meta.total_usage accumulation in turn_finalization.py).
   const emptyUsage = (): TokenUsage => ({
     input_tokens: 0,
+    uncached_input_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
     output_tokens: 0,
+    reasoning_tokens: 0,
     total_tokens: 0,
+    model_calls: 0,
   });
   let turnAcc: TokenUsage | null = null;
   let turnLastInputTokens = 0;
@@ -457,10 +519,19 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
       if (callIn > 0) turnLastInputTokens = callIn;
       turnAcc.input_tokens =
         (turnAcc.input_tokens || 0) + (u.input_tokens || 0);
+      turnAcc.uncached_input_tokens =
+        (turnAcc.uncached_input_tokens || 0) + (u.uncached_input_tokens || 0);
+      turnAcc.cache_read_tokens =
+        (turnAcc.cache_read_tokens || 0) + (u.cache_read_tokens || 0);
+      turnAcc.cache_write_tokens =
+        (turnAcc.cache_write_tokens || 0) + (u.cache_write_tokens || 0);
       turnAcc.output_tokens =
         (turnAcc.output_tokens || 0) + (u.output_tokens || 0);
+      turnAcc.reasoning_tokens =
+        (turnAcc.reasoning_tokens || 0) + (u.reasoning_tokens || 0);
       turnAcc.total_tokens =
         (turnAcc.total_tokens || 0) + (u.total_tokens || 0);
+      turnAcc.model_calls = (turnAcc.model_calls || 0) + (u.model_calls || 1);
       // Strip the per-call usage so only the Turn's final bubble shows a total.
       merged[i] = { ...m, usage: undefined };
     }

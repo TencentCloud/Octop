@@ -122,6 +122,7 @@ export default function MentionPickerMenu({
           icon = (
             <ExpertAgentAvatar
               iconName={agent?.icon_name}
+              iconUrl={agent?.icon_url}
               color={agent?.color}
               size={20}
               iconSize={11}

@@ -24,8 +24,13 @@ class UsageRow:
     thread_id: str
     model: str
     input_tokens: int
+    uncached_input_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
     output_tokens: int
+    reasoning_tokens: int
     total_tokens: int
+    model_calls: int
     source: str
 
     @classmethod
@@ -38,8 +43,13 @@ class UsageRow:
             thread_id=r["thread_id"],
             model=r["model"],
             input_tokens=r["input_tokens"],
+            uncached_input_tokens=r["uncached_input_tokens"],
+            cache_read_tokens=r["cache_read_tokens"],
+            cache_write_tokens=r["cache_write_tokens"],
             output_tokens=r["output_tokens"],
+            reasoning_tokens=r["reasoning_tokens"],
             total_tokens=r["total_tokens"],
+            model_calls=r["model_calls"],
             source=r["source"],
         )
 
@@ -85,6 +95,11 @@ class UsageRepo:
         user_id: int,
         input_tokens: int,
         output_tokens: int,
+        uncached_input_tokens: int | None = None,
+        cache_read_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        model_calls: int = 1,
         model: str = "",
         thread_id: str = "",
         source: str = "chat",
@@ -97,8 +112,10 @@ class UsageRepo:
                 """
                 INSERT INTO usage_log (
                     ts, agent_id, user_id, thread_id, model,
-                    input_tokens, output_tokens, total_tokens, source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    input_tokens, uncached_input_tokens,
+                    cache_read_tokens, cache_write_tokens,
+                    output_tokens, reasoning_tokens, total_tokens, model_calls, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ts or now_ts(),
@@ -107,8 +124,15 @@ class UsageRepo:
                     thread_id,
                     model,
                     int(input_tokens),
+                    int(input_tokens)
+                    if uncached_input_tokens is None
+                    else int(uncached_input_tokens),
+                    int(cache_read_tokens),
+                    int(cache_write_tokens),
                     int(output_tokens),
+                    int(reasoning_tokens),
                     int(input_tokens) + int(output_tokens),
+                    int(model_calls),
                     source,
                 ),
             )
@@ -146,8 +170,13 @@ class UsageRepo:
                 f"""
                 SELECT
                     COALESCE(SUM(input_tokens), 0)  AS input_tokens,
+                    COALESCE(SUM(uncached_input_tokens), 0) AS uncached_input_tokens,
+                    COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                    COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
                     COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                    COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                     COALESCE(SUM(total_tokens), 0)  AS total_tokens,
+                    COALESCE(SUM(model_calls), 0) AS model_calls,
                     COUNT(*)                         AS turns
                 FROM usage_log WHERE {where_sql}
                 """,
@@ -155,8 +184,13 @@ class UsageRepo:
             ).fetchone()
             totals = {
                 "input_tokens": int(row["input_tokens"]),
+                "uncached_input_tokens": int(row["uncached_input_tokens"]),
+                "cache_read_tokens": int(row["cache_read_tokens"]),
+                "cache_write_tokens": int(row["cache_write_tokens"]),
                 "output_tokens": int(row["output_tokens"]),
+                "reasoning_tokens": int(row["reasoning_tokens"]),
                 "total_tokens": int(row["total_tokens"]),
+                "model_calls": int(row["model_calls"]),
                 "turns": int(row["turns"]),
             }
 
@@ -168,8 +202,13 @@ class UsageRepo:
                     SELECT
                         {day_expr} AS bucket,
                         SUM(input_tokens)  AS input_tokens,
+                        SUM(uncached_input_tokens) AS uncached_input_tokens,
+                        SUM(cache_read_tokens) AS cache_read_tokens,
+                        SUM(cache_write_tokens) AS cache_write_tokens,
                         SUM(output_tokens) AS output_tokens,
+                        SUM(reasoning_tokens) AS reasoning_tokens,
                         SUM(total_tokens)  AS total_tokens,
+                        SUM(model_calls) AS model_calls,
                         COUNT(*)            AS turns
                     FROM usage_log WHERE {where_sql}
                     GROUP BY bucket
@@ -183,8 +222,13 @@ class UsageRepo:
                         "key": r["bucket"],
                         "label": r["bucket"],
                         "input_tokens": int(r["input_tokens"] or 0),
+                        "uncached_input_tokens": int(r["uncached_input_tokens"] or 0),
+                        "cache_read_tokens": int(r["cache_read_tokens"] or 0),
+                        "cache_write_tokens": int(r["cache_write_tokens"] or 0),
                         "output_tokens": int(r["output_tokens"] or 0),
+                        "reasoning_tokens": int(r["reasoning_tokens"] or 0),
                         "total_tokens": int(r["total_tokens"] or 0),
+                        "model_calls": int(r["model_calls"] or 0),
                         "turns": int(r["turns"] or 0),
                     }
                     for r in bucket_rows
@@ -195,8 +239,13 @@ class UsageRepo:
                     SELECT
                         agent_id           AS bucket,
                         SUM(input_tokens)  AS input_tokens,
+                        SUM(uncached_input_tokens) AS uncached_input_tokens,
+                        SUM(cache_read_tokens) AS cache_read_tokens,
+                        SUM(cache_write_tokens) AS cache_write_tokens,
                         SUM(output_tokens) AS output_tokens,
+                        SUM(reasoning_tokens) AS reasoning_tokens,
                         SUM(total_tokens)  AS total_tokens,
+                        SUM(model_calls) AS model_calls,
                         COUNT(*)            AS turns
                     FROM usage_log WHERE {where_sql}
                     GROUP BY bucket
@@ -210,8 +259,13 @@ class UsageRepo:
                         "key": r["bucket"],
                         "label": r["bucket"],
                         "input_tokens": int(r["input_tokens"] or 0),
+                        "uncached_input_tokens": int(r["uncached_input_tokens"] or 0),
+                        "cache_read_tokens": int(r["cache_read_tokens"] or 0),
+                        "cache_write_tokens": int(r["cache_write_tokens"] or 0),
                         "output_tokens": int(r["output_tokens"] or 0),
+                        "reasoning_tokens": int(r["reasoning_tokens"] or 0),
                         "total_tokens": int(r["total_tokens"] or 0),
+                        "model_calls": int(r["model_calls"] or 0),
                         "turns": int(r["turns"] or 0),
                     }
                     for r in bucket_rows
@@ -222,8 +276,13 @@ class UsageRepo:
                     SELECT
                         COALESCE(NULLIF(model, ''), '(unknown)') AS bucket,
                         SUM(input_tokens)  AS input_tokens,
+                        SUM(uncached_input_tokens) AS uncached_input_tokens,
+                        SUM(cache_read_tokens) AS cache_read_tokens,
+                        SUM(cache_write_tokens) AS cache_write_tokens,
                         SUM(output_tokens) AS output_tokens,
+                        SUM(reasoning_tokens) AS reasoning_tokens,
                         SUM(total_tokens)  AS total_tokens,
+                        SUM(model_calls) AS model_calls,
                         COUNT(*)            AS turns
                     FROM usage_log WHERE {where_sql}
                     GROUP BY bucket
@@ -237,8 +296,13 @@ class UsageRepo:
                         "key": r["bucket"],
                         "label": r["bucket"],
                         "input_tokens": int(r["input_tokens"] or 0),
+                        "uncached_input_tokens": int(r["uncached_input_tokens"] or 0),
+                        "cache_read_tokens": int(r["cache_read_tokens"] or 0),
+                        "cache_write_tokens": int(r["cache_write_tokens"] or 0),
                         "output_tokens": int(r["output_tokens"] or 0),
+                        "reasoning_tokens": int(r["reasoning_tokens"] or 0),
                         "total_tokens": int(r["total_tokens"] or 0),
+                        "model_calls": int(r["model_calls"] or 0),
                         "turns": int(r["turns"] or 0),
                     }
                     for r in bucket_rows
@@ -246,6 +310,11 @@ class UsageRepo:
             # ``total`` granularity → no buckets
 
         avg = totals["total_tokens"] // totals["turns"] if totals["turns"] else 0
+        cache_hit_percent = (
+            round(totals["cache_read_tokens"] / totals["input_tokens"] * 100)
+            if totals["input_tokens"]
+            else 0
+        )
         return {
             "window": window,
             "granularity": granularity,
@@ -253,6 +322,7 @@ class UsageRepo:
             "range_end": end,
             **totals,
             "avg_per_turn": avg,
+            "cache_hit_percent": cache_hit_percent,
             "buckets": buckets,
         }
 
@@ -263,8 +333,13 @@ class UsageRepo:
                 """
                 SELECT
                     COALESCE(SUM(input_tokens), 0)  AS input_tokens,
+                    COALESCE(SUM(uncached_input_tokens), 0) AS uncached_input_tokens,
+                    COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                    COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
                     COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                    COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                     COALESCE(SUM(total_tokens), 0)  AS total_tokens,
+                    COALESCE(SUM(model_calls), 0) AS model_calls,
                     COUNT(*)                         AS turns
                 FROM usage_log
                 WHERE agent_id = ? AND thread_id = ?
@@ -273,7 +348,28 @@ class UsageRepo:
             ).fetchone()
         return {
             "input_tokens": int(row["input_tokens"]),
+            "uncached_input_tokens": int(row["uncached_input_tokens"]),
+            "cache_read_tokens": int(row["cache_read_tokens"]),
+            "cache_write_tokens": int(row["cache_write_tokens"]),
             "output_tokens": int(row["output_tokens"]),
+            "reasoning_tokens": int(row["reasoning_tokens"]),
             "total_tokens": int(row["total_tokens"]),
+            "model_calls": int(row["model_calls"]),
             "turns": int(row["turns"]),
         }
+
+    def last_thread_input_tokens(self, *, agent_id: str, thread_id: str) -> int:
+        """Most recent turn's prompt tokens for *thread_id* (context-ring fallback)."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT input_tokens FROM usage_log
+                WHERE agent_id = ? AND thread_id = ?
+                ORDER BY ts DESC, id DESC
+                LIMIT 1
+                """,
+                (agent_id, thread_id),
+            ).fetchone()
+        if row is None:
+            return 0
+        return int(row["input_tokens"] or 0)

@@ -12,9 +12,9 @@ from octop.infra.gateway.process.message_keys import (
 )
 
 
-def _msg(*, subject_id: str) -> InboundMessage:
+def _msg(*, subject_id: str, channel_type: str = "qq") -> InboundMessage:
     return InboundMessage(
-        channel_type="qq",
+        channel_type=channel_type,
         channel_id="ch1",
         channel_subject=ChannelSubject(subject_id=subject_id),
         content=[TextContent(text="hi")],
@@ -22,9 +22,14 @@ def _msg(*, subject_id: str) -> InboundMessage:
     )
 
 
-def test_user_id_from_numeric_subject() -> None:
-    msg = _msg(subject_id="42")
+def test_user_id_from_numeric_dashboard_subject() -> None:
+    msg = _msg(subject_id="42", channel_type="dashboard")
     assert user_id_from_message(msg) == 42
+
+
+def test_resolve_user_id_uses_owner_for_numeric_external_subject() -> None:
+    msg = _msg(subject_id="42", channel_type="dingtalk")
+    assert resolve_user_id_for_message(msg, agent_owner_id=7) == 7
 
 
 def test_resolve_user_id_falls_back_to_agent_owner_for_openid() -> None:

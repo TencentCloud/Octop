@@ -13,6 +13,10 @@ from octop.infra.gateway.media.tool_media import enrich_media_block_preview
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
 
 
+def _token(content: str, thread_id: str) -> dict[str, Any]:
+    return {"type": "token", "content": content, "thread_id": thread_id}
+
+
 @pytest.mark.asyncio
 async def test_ws_hub_push() -> None:
     hub = WebSocketHub()
@@ -29,7 +33,7 @@ async def test_ws_hub_push() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ws_hub_subscribe_push_to_thread_replaces_subscriber() -> None:
+async def test_ws_hub_subscribe_push_to_thread_fans_out() -> None:
     hub = WebSocketHub()
     a_frames: list[dict[str, Any]] = []
     b_frames: list[dict[str, Any]] = []
@@ -49,8 +53,36 @@ async def test_ws_hub_subscribe_push_to_thread_replaces_subscriber() -> None:
     hub.unregister("b")
     await hub.push_to_thread("thread-1", {"type": "token", "content": "three"})
 
-    assert a_frames == [{"type": "token", "content": "one"}]
-    assert b_frames == [{"type": "token", "content": "two"}]
+    assert a_frames == [
+        _token("one", "thread-1"),
+        _token("two", "thread-1"),
+        _token("three", "thread-1"),
+    ]
+    assert b_frames == [_token("two", "thread-1")]
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_subscribe_switches_thread_without_kicking_others() -> None:
+    hub = WebSocketHub()
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+
+    async def capture_a(frame: dict[str, Any]) -> None:
+        a_frames.append(frame)
+
+    async def capture_b(frame: dict[str, Any]) -> None:
+        b_frames.append(frame)
+
+    hub.register("a", capture_a)
+    hub.register("b", capture_b)
+    hub.subscribe("thread-1", "a")
+    hub.subscribe("thread-1", "b")
+    hub.subscribe("thread-2", "a")
+    await hub.push_to_thread("thread-1", {"type": "token", "content": "t1"})
+    await hub.push_to_thread("thread-2", {"type": "token", "content": "t2"})
+
+    assert a_frames == [_token("t2", "thread-2")]
+    assert b_frames == [_token("t1", "thread-1")]
 
 
 def test_ws_hub_turn_active_flags() -> None:
@@ -93,8 +125,8 @@ async def test_ws_channel_streams_chunks() -> None:
     )
     await channel.handle_inbound(msg)
 
-    assert {"type": "token", "content": "hello"} in frames
-    assert frames[-1] == {"type": "done"}
+    assert {"type": "token", "content": "hello", "thread_id": "thread-1"} in frames
+    assert frames[-1] == {"type": "done", "thread_id": "thread-1"}
     assert hub.is_turn_active("thread-1") is False
 
 
@@ -142,7 +174,7 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert a_frames == [{"type": "token", "content": "first"}]
+    assert a_frames == [_token("first", "thread-1")]
     assert hub.is_turn_active("thread-1") is True
 
     hub.unsubscribe_connection("a")
@@ -151,10 +183,212 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
     await task
 
     assert b_frames == [
-        {"type": "token", "content": "second"},
-        {"type": "done"},
+        _token("second", "thread-1"),
+        {"type": "done", "thread_id": "thread-1"},
     ]
     assert hub.is_turn_active("thread-1") is False
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_fans_out_mid_turn_to_all_subscribers() -> None:
+    import asyncio
+
+    hub = WebSocketHub()
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+    gate = asyncio.Event()
+
+    async def capture_a(frame: dict[str, Any]) -> None:
+        a_frames.append(frame)
+
+    async def capture_b(frame: dict[str, Any]) -> None:
+        b_frames.append(frame)
+
+    class _FakeProcessor:
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            yield {"type": "token", "content": "first"}
+            await gate.wait()
+            yield {"type": "token", "content": "second"}
+            yield {"type": "done"}
+
+    channel = WebSocketChannel(_FakeProcessor(), hub=hub)  # type: ignore[arg-type]
+    hub.register("a", capture_a)
+    hub.register("b", capture_b)
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="7"),
+        content=[TextContent(text="hi")],
+        metadata={
+            "ws_connection_id": "a",
+            "session_key": "sk",
+            "thread_id": "thread-1",
+        },
+    )
+    task = asyncio.create_task(channel.handle_inbound(msg))
+
+    for _ in range(50):
+        if a_frames:
+            break
+        await asyncio.sleep(0.01)
+    assert a_frames == [_token("first", "thread-1")]
+
+    hub.subscribe("thread-1", "b")
+    gate.set()
+    await task
+
+    assert a_frames == [
+        _token("first", "thread-1"),
+        _token("second", "thread-1"),
+        {"type": "done", "thread_id": "thread-1"},
+    ]
+    assert b_frames == [
+        _token("second", "thread-1"),
+        {"type": "done", "thread_id": "thread-1"},
+    ]
+    assert hub.is_turn_active("thread-1") is False
+
+
+def test_ws_channel_debounce_key_is_per_thread() -> None:
+    channel = WebSocketChannel(object(), hub=WebSocketHub())  # type: ignore[arg-type]
+    msg_a = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="7"),
+        content=[TextContent(text="hi")],
+        metadata={"session_key": "shared-sk", "thread_id": "thread-a"},
+    )
+    msg_b = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="7"),
+        content=[TextContent(text="yo")],
+        metadata={"session_key": "shared-sk", "thread_id": "thread-b"},
+    )
+    assert channel.get_debounce_key(msg_a) == "thread:thread-a"
+    assert channel.get_debounce_key(msg_b) == "thread:thread-b"
+    assert channel.get_debounce_key(msg_a) != channel.get_debounce_key(msg_b)
+    assert channel.should_batch_inbound(msg_a) is False
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_three_subscribers_same_thread() -> None:
+    hub = WebSocketHub()
+    buckets: dict[str, list[dict[str, Any]]] = {"a": [], "b": [], "c": []}
+
+    def _capture(name: str):
+        async def capture(frame: dict[str, Any]) -> None:
+            buckets[name].append(frame)
+
+        return capture
+
+    for name in buckets:
+        hub.register(name, _capture(name))
+        hub.subscribe("thread-1", name)
+    await hub.push_to_thread("thread-1", {"type": "token", "content": "hi"})
+    expected = [_token("hi", "thread-1")]
+    assert buckets["a"] == expected
+    assert buckets["b"] == expected
+    assert buckets["c"] == expected
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_push_does_not_block_other_subscribers() -> None:
+    import asyncio
+
+    hub = WebSocketHub()
+    order: list[str] = []
+    released = asyncio.Event()
+
+    async def slow(frame: dict[str, Any]) -> None:
+        order.append("slow-start")
+        await released.wait()
+        order.append("slow-end")
+
+    async def fast(frame: dict[str, Any]) -> None:
+        order.append("fast")
+
+    hub.register("slow", slow)
+    hub.register("fast", fast)
+    hub.subscribe("thread-1", "slow")
+    hub.subscribe("thread-1", "fast")
+    task = asyncio.create_task(hub.push_to_thread("thread-1", {"type": "token", "content": "x"}))
+    for _ in range(50):
+        if "fast" in order:
+            break
+        await asyncio.sleep(0.01)
+    assert "fast" in order
+    assert "slow-end" not in order
+    released.set()
+    await task
+    assert "fast" in order
+    assert "slow-end" in order
+    assert order.index("fast") < order.index("slow-end")
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_concurrent_threads_do_not_cross() -> None:
+    import asyncio
+
+    hub = WebSocketHub()
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+    gate = asyncio.Event()
+    started = asyncio.Event()
+    started_count = 0
+
+    async def capture_a(frame: dict[str, Any]) -> None:
+        a_frames.append(frame)
+
+    async def capture_b(frame: dict[str, Any]) -> None:
+        b_frames.append(frame)
+
+    class _FakeProcessor:
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            nonlocal started_count
+            tid = str((msg.metadata or {}).get("thread_id"))
+            yield {"type": "token", "content": f"{tid}-1"}
+            started_count += 1
+            if started_count >= 2:
+                started.set()
+            await gate.wait()
+            yield {"type": "token", "content": f"{tid}-2"}
+            yield {"type": "done"}
+
+    channel = WebSocketChannel(_FakeProcessor(), hub=hub)  # type: ignore[arg-type]
+    hub.register("a", capture_a)
+    hub.register("b", capture_b)
+
+    def _msg(conn: str, thread_id: str) -> InboundMessage:
+        return InboundMessage(
+            channel_id=WS_CHANNEL_ID,
+            channel_type="dashboard",
+            tenant_id="agent-1",
+            channel_subject=ChannelSubject(subject_id="7"),
+            content=[TextContent(text="hi")],
+            metadata={
+                "ws_connection_id": conn,
+                "session_key": "shared-sk",
+                "thread_id": thread_id,
+            },
+        )
+
+    t1 = asyncio.create_task(channel.handle_inbound(_msg("a", "thread-a")))
+    t2 = asyncio.create_task(channel.handle_inbound(_msg("b", "thread-b")))
+    await asyncio.wait_for(started.wait(), timeout=2)
+    gate.set()
+    await asyncio.gather(t1, t2)
+
+    a_tokens = [f.get("content") for f in a_frames if f.get("type") == "token"]
+    b_tokens = [f.get("content") for f in b_frames if f.get("type") == "token"]
+    assert a_tokens == ["thread-a-1", "thread-a-2"]
+    assert b_tokens == ["thread-b-1", "thread-b-2"]
+    assert all(f.get("thread_id") == "thread-a" for f in a_frames)
+    assert all(f.get("thread_id") == "thread-b" for f in b_frames)
 
 
 @pytest.mark.asyncio

@@ -121,15 +121,18 @@ class RebindSessionBody(BaseModel):
 
 
 class ForkThreadBody(BaseModel):
-    message_id: str = Field(..., description="Selected user message id from the chat UI.")
+    message_id: str | None = Field(
+        default=None,
+        description="Selected assistant message id from the chat UI (optional with turns locator).",
+    )
     content: str | None = Field(
         default=None,
-        description="Plain text of that user message, used to locate it when ids differ.",
+        description="Plain text of that assistant message, used when ids differ.",
     )
-    user_turns_from_end: int | None = Field(
+    assistant_turns_from_end: int | None = Field(
         default=None,
         ge=1,
-        description="1 = latest user turn, 2 = second-to-last, … (preferred locator).",
+        description="1 = latest assistant answer, 2 = second-to-last, … (preferred locator).",
     )
 
 

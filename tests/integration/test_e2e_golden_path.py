@@ -222,7 +222,8 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     rows = (await c.get("/api/agents", headers=bob_auth)).json()
     agent_row = next(a for a in rows if a["agent_id"] == agent_id)
     assert agent_row["default_model"] == default_model_val
-    assert agent_row["config"]["expert_id"] == "general-assistant"
+    assert agent_row["template_name"] == "general-assistant"
+    assert "expert_id" not in (agent_row.get("config") or {})
 
     # 8) start the agent
     r = await c.post(f"/api/agents/{agent_id}/start", headers=bob_auth)

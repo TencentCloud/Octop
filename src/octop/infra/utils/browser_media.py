@@ -18,10 +18,9 @@ OUTBOUND_SCREENSHOTS_REL = "outbound/screenshots"
 BROWSER_PROFILES_REL = "browser-profiles"
 
 
-def agent_outbound_screenshots_dir(paths: PathLayout, agent_id: str) -> Path:
-    """``<agent_workspace>/outbound/screenshots`` — same convention as IM ``outbound/``."""
-    root = paths.ensure_agent_workspace(agent_id)
-    dest = root / OUTBOUND_SCREENSHOTS_REL
+def agent_outbound_screenshots_dir(workspace_dir: Path) -> Path:
+    """``{workspace_dir}/outbound/screenshots`` — same convention as IM ``outbound/``."""
+    dest = Path(workspace_dir) / OUTBOUND_SCREENSHOTS_REL
     dest.mkdir(parents=True, exist_ok=True)
     return dest
 
