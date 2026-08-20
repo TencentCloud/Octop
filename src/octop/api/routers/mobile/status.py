@@ -80,16 +80,10 @@ async def get_mobile_device_info(
         raise HTTPException(status_code=400, detail="device is required")
     # Probe even if briefly missing from ``adb devices`` (USB races while streaming).
     info = await asyncio.to_thread(device_info, serial)
-    if (
-        info.get("model") is None
-        and info.get("width") is None
-        and info.get("mem_total_mb") is None
-    ):
+    if info.get("model") is None and info.get("width") is None and info.get("mem_total_mb") is None:
         connected = list_devices()
         if serial not in connected:
-            raise HTTPException(
-                status_code=404, detail=f"adb device not connected: {serial}"
-            )
+            raise HTTPException(status_code=404, detail=f"adb device not connected: {serial}")
     return info
 
 
@@ -111,9 +105,7 @@ async def put_agent_control(
         if not serial:
             raise HTTPException(status_code=400, detail="device is required when enabling")
         if serial not in devices:
-            raise HTTPException(
-                status_code=400, detail=f"adb device not connected: {serial}"
-            )
+            raise HTTPException(status_code=400, detail=f"adb device not connected: {serial}")
         set_mobile_agent_control(enabled=True, device=serial)
     else:
         set_mobile_agent_control(enabled=False, device=None)

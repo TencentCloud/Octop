@@ -27,9 +27,7 @@ def get_mobile_agent_control() -> MobileAgentControl:
         return _state
 
 
-def set_mobile_agent_control(
-    *, enabled: bool, device: str | None
-) -> MobileAgentControl:
+def set_mobile_agent_control(*, enabled: bool, device: str | None) -> MobileAgentControl:
     """Enable/disable agent control for a concrete adb serial.
 
     Enabling requires a non-empty ``device``. Disabling clears the binding.

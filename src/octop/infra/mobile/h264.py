@@ -35,12 +35,7 @@ def avcc_from_sps_pps(sps: bytes, pps: bytes) -> bytes:
         ]
     )
     return (
-        header
-        + len(sps).to_bytes(2, "big")
-        + sps
-        + bytes([1])
-        + len(pps).to_bytes(2, "big")
-        + pps
+        header + len(sps).to_bytes(2, "big") + sps + bytes([1]) + len(pps).to_bytes(2, "big") + pps
     )
 
 

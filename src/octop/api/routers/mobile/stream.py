@@ -98,9 +98,7 @@ _BROWSER_KEY_TO_ANDROID: dict[str, int] = {
 }
 
 
-def _clamp_stream_params(
-    quality: int, max_fps: float, max_side: int
-) -> tuple[int, float, int]:
+def _clamp_stream_params(quality: int, max_fps: float, max_side: int) -> tuple[int, float, int]:
     q = max(_MIN_QUALITY, min(_MAX_QUALITY, quality))
     fps = max(_MIN_FPS, min(_MAX_FPS, max_fps))
     # 0 = native resolution (no downscale).
@@ -258,9 +256,9 @@ async def _stream_h264(
                         {
                             "type": "video_init",
                             "codec": avc_codec_string(sps),
-                            "description": base64.b64encode(
-                                avcc_from_sps_pps(sps, pps)
-                            ).decode("ascii"),
+                            "description": base64.b64encode(avcc_from_sps_pps(sps, pps)).decode(
+                                "ascii"
+                            ),
                             "width": width,
                             "height": height,
                         },
@@ -350,10 +348,7 @@ async def _handle_input(
         if (
             x0 is not None
             and y0 is not None
-            and (
-                abs(x - x0) >= _SWIPE_THRESHOLD_PX
-                or abs(y - y0) >= _SWIPE_THRESHOLD_PX
-            )
+            and (abs(x - x0) >= _SWIPE_THRESHOLD_PX or abs(y - y0) >= _SWIPE_THRESHOLD_PX)
         ):
             asyncio.create_task(
                 _run_adb_action(
@@ -508,7 +503,11 @@ async def mobile_stream_ws(
         quality, max_fps, max_side = _clamp_stream_params(
             int(start_msg.get("quality") or 80),
             float(start_msg.get("max_fps") or _DEFAULT_FPS),
-            int(start_msg.get("max_side") if start_msg.get("max_side") is not None else _JPEG_MAX_SIDE_DEFAULT),
+            int(
+                start_msg.get("max_side")
+                if start_msg.get("max_side") is not None
+                else _JPEG_MAX_SIDE_DEFAULT
+            ),
         )
         prefer = str(start_msg.get("codec") or "jpeg").lower()
 

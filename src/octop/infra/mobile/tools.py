@@ -65,13 +65,9 @@ async def _resolve_device(device: str | None) -> str:
     picked = (device or "").strip()
     devices = await asyncio.to_thread(list_devices)
     if control.device not in devices:
-        raise ValueError(
-            f"bound adb device is no longer connected: {control.device}"
-        )
+        raise ValueError(f"bound adb device is no longer connected: {control.device}")
     if picked and picked != control.device:
-        raise ValueError(
-            f"agent is bound to {control.device}; cannot use {picked} until rebound"
-        )
+        raise ValueError(f"agent is bound to {control.device}; cannot use {picked} until rebound")
     if picked and picked not in devices:
         raise ValueError(f"adb device not found: {picked}")
     return control.device
