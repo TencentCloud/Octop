@@ -32,7 +32,7 @@ description: 指南学习流程约束。判断请求类型→读取状态→按�
 ## 流程约束
 
 1. **创建轨道**：先核验指南完整名称/机构/版本/来源链接/来源修订；用户确认后才保存目标→草稿轨道→固定章节单元→启用。命令与细则见 learning-operations.md。
-2. **预览**：读下一单元不写状态，首行【格式预览｜不计入学习进度】；不调用投递领取/手动触发/guideline-advance。
+2. **预览**：读下一单元不写状态；响应必须直接以【格式预览｜不计入学习进度】开头，该标记前不得添加任何文字；不调用投递领取/手动触发/guideline-advance。
 3. **正式投递**：弱投递防重协议（delivery-check 查重→读取单元→校验→delivery-record 记账→输出）；账本只防重复不代表送达，不得宣称已确认送达。强回执状态机为迁移目标。细则见 learning-operations.md。
 4. **重复/漏发/迁移**：先读真实状态再处理，不凭印象补发；新版本先给迁移方案，确认前不覆盖旧轨道。细则见 learning-operations.md。
 
@@ -44,4 +44,4 @@ description: 指南学习流程约束。判断请求类型→读取状态→按�
 
 ## 输出校验
 
-发送或提供正式草稿前运行 `python ../../scripts/validate_output.py --module daily_guideline_learning`，失败先修正，不得绕过。四条硬格式与校验流程见 `output-format` skill。
+发送或提供正式草稿前运行 `python ../../scripts/validate_output.py --module daily_guideline_learning`，失败先修正，不得绕过。校验结果仅供内部控制；通过后直接输出正文，不得向用户输出“校验通过”“为您推送预览内容”等过程说明。四条硬格式与校验流程见 `output-format` skill。

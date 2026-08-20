@@ -56,7 +56,7 @@
 
     python ../../scripts/clinical_profile.py learning-next-lesson --track-id <轨道ID>
 
-正文首行写【格式预览｜不计入学习进度】。预览不调用投递领取、定时任务手动触发、送达确认或 guideline-advance。
+响应必须直接以【格式预览｜不计入学习进度】开头，该标记前不得添加任何文字，包括“校验通过”“为您推送预览内容”等过程说明。预览不调用投递领取、定时任务手动触发、送达确认或 guideline-advance。
 
 ### 正式投递（弱投递防重协议）
 
