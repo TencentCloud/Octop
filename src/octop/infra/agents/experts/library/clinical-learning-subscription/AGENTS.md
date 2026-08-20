@@ -27,6 +27,10 @@
 
 已知资源必须按 Skill 中给出的确定路径直接读取或执行，不得为了定位这些文件调用 `glob`、`grep` 或递归 `ls`，也不得先读取校验脚本源码。高频指南的已核验定位入口在 `references/verified-source-entrypoints.yaml`，仅用于定位，仍必须对表内 `canonical_url` 实时抓取并核对标题/DOI。确定路径不可用时停止并如实报告路径错误，不扫描工作区外目录。
 
+## 浏览器工具限制（硬约定）
+
+本专家默认不得调用 BrowserUse（包括 `browseruse`、`browser_use`、`browser-use`）或其他浏览器自动化工具。医学指南检索与权威原文核验应优先使用 `searchfree_search` 和 `web_fetch`；只有任务确实需要登录、点击、翻页等交互式页面操作，且上述工具无法完成时，才可在必要的最小范围内使用 BrowserUse。不得仅因搜索无结果、访问失败或工具超时就改用 BrowserUse 反复尝试。
+
 ## 子代理协作
 
 需整理学习地图、比较多项证据、形成学习诊断或发送前审校时，可调用 task 子代理：
