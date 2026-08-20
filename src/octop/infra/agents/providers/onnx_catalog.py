@@ -11,15 +11,15 @@ ONNX_PRESET_MODEL_IDS: tuple[str, ...] = (
     "intfloat/multilingual-e5-large",
 )
 
+# Shown only while fastembed is unimportable, so every id here must also be
+# loadable by fastembed once the extra installs — otherwise the entry vanishes
+# from the catalog mid-flow and the download fails on an unsupported model.
 _EXTRA_CATALOG_IDS: tuple[str, ...] = (
     "BAAI/bge-small-en-v1.5",
     "BAAI/bge-base-en-v1.5",
     "BAAI/bge-large-en-v1.5",
-    "BAAI/bge-base-zh-v1.5",
     "jinaai/jina-embeddings-v2-base-en",
     "jinaai/jina-embeddings-v2-small-en",
-    "intfloat/multilingual-e5-base",
-    "intfloat/multilingual-e5-small",
     "sentence-transformers/all-MiniLM-L6-v2",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     "thenlper/gte-base",
@@ -34,11 +34,8 @@ _FALLBACK_SIZE_GB: dict[str, float] = {
     "BAAI/bge-small-en-v1.5": 0.13,
     "BAAI/bge-base-en-v1.5": 0.21,
     "BAAI/bge-large-en-v1.5": 0.53,
-    "BAAI/bge-base-zh-v1.5": 0.4,
     "jinaai/jina-embeddings-v2-base-en": 0.32,
     "jinaai/jina-embeddings-v2-small-en": 0.13,
-    "intfloat/multilingual-e5-base": 0.44,
-    "intfloat/multilingual-e5-small": 0.13,
     "sentence-transformers/all-MiniLM-L6-v2": 0.09,
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": 0.12,
     "thenlper/gte-base": 0.22,

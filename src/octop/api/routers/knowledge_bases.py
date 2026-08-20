@@ -21,6 +21,7 @@ from octop.infra.agents.providers.onnx_service import (
     assert_catalog_model,
     ensure_local_embedding_deps_async,
     is_model_downloaded,
+    probe_local_model,
     save_config,
     status_payload,
 )
@@ -305,6 +306,19 @@ async def activate_onnx_service(
         raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
     assert server.services is not None
     return status_payload(server.services.settings_repo.get, DOWNLOAD_MANAGER.state)
+
+
+@router.post("/onnx-test", summary="Probe the selected local ONNX embedding model")
+async def test_onnx_model(
+    body: OnnxDownloadBody,
+    _: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    """Verify the model actually embeds, on-device.
+
+    Mirrors ``/onnx-models/test`` for the knowledge-settings role: that one is
+    gated on ``onnx_models``, which a knowledge-settings admin need not hold.
+    """
+    return await probe_local_model(body.model.strip())
 
 
 @router.get("", summary="List visible knowledge bases")

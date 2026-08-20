@@ -47,6 +47,7 @@ _LOCAL_EMBEDDING_SPEC = PackageInstallSpec(
     extra_fallback="local-embedding",
 )
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
+_LOCAL_PROBE_TEXT = "octop onnx probe"
 
 
 def runtime_pip_allowed() -> bool:
@@ -217,38 +218,29 @@ def _safe_under_cache(path: Path) -> Path | None:
 
 
 def _cache_has_onnx_weights(path: Path) -> bool:
-    """True when *path* looks like a complete ONNX model cache (not a partial download)."""
+    """True when *path* holds at least one complete ONNX weight file.
+
+    Repos lay weights out inconsistently: ``model.onnx`` at the snapshot root,
+    ``onnx/model_optimized.onnx`` on the Qdrant mirrors, or per-tower files such
+    as ``onnx/text_model.onnx`` (``jinaai/jina-clip-v1``). Matching a fixed set
+    of names missed those, so the model downloaded but never counted as present
+    and enabling it kept failing. Search recursively instead.
+
+    ``is_file()`` follows the HuggingFace cache symlink into ``blobs/``, so a
+    snapshot entry whose blob is still downloading still does not count.
+    """
     if not path.is_dir():
         return False
     safe = _safe_under_cache(path)
     if safe is None:
         return False
-    candidates = (
-        "model.onnx",
-        "model_optimized.onnx",
-        "onnx/model.onnx",
-        "onnx/model_optimized.onnx",
-    )
-    for rel in candidates:
-        if (safe / rel).is_file():
-            return True
-    snapshots = safe / "snapshots"
-    if snapshots.is_dir():
-        try:
-            for snap in snapshots.iterdir():
-                if not snap.is_dir():
-                    continue
-                for rel in candidates:
-                    if (snap / rel).is_file():
-                        return True
-                if any(snap.glob("*.onnx")):
-                    return True
-        except OSError:
-            return False
     try:
-        return any(safe.glob("*.onnx"))
+        for weights in safe.rglob("*.onnx"):
+            if weights.is_file():
+                return True
     except OSError:
         return False
+    return False
 
 
 def _alias_cache_names(model_name: str) -> list[str]:
@@ -402,6 +394,38 @@ def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:
     if len(out) != len(texts):
         raise RuntimeError("embedding count mismatch")
     return out
+
+
+async def probe_local_model(model: str) -> dict[str, Any]:
+    """Time a tiny local embedding and report the vector width.
+
+    Shared by the ONNX admin test endpoint and the generic provider probe so
+    the local service is never mistaken for a remote OpenAI-compatible API.
+    Runs entirely on-device: it must not issue any network request.
+    """
+    if not model:
+        return {"ok": False, "error": "no ONNX model selected"}
+    try:
+        model = assert_catalog_model(model)
+        await ensure_local_embedding_deps_async(allow_install=True)
+    except (ValueError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc)}
+    if not is_model_downloaded(model):
+        return {"ok": False, "error": "model is not downloaded yet; download it before testing"}
+
+    def _run() -> int:
+        vectors = embed_texts(model, [_LOCAL_PROBE_TEXT])
+        if not vectors:
+            raise RuntimeError("embedding returned no vectors")
+        return len(vectors[0])
+
+    started = time.perf_counter()
+    try:
+        loop = asyncio.get_running_loop()
+        dim = await loop.run_in_executor(None, _run)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "latency_ms": (time.perf_counter() - started) * 1000.0, "dim": dim}
 
 
 def save_config(settings_set: Any, config: OnnxServiceConfig) -> OnnxServiceConfig:
