@@ -28,6 +28,7 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 import {
+  Check,
   ChevronLeft,
   Download,
   Eye,
@@ -43,6 +44,7 @@ import {
   RefreshCw,
   Settings,
   Trash2,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -184,6 +186,32 @@ function KnowledgeIconPicker({
   );
 }
 
+function ReadinessRow({
+  label,
+  ok,
+  okText,
+  failText,
+}: {
+  label: string;
+  ok: boolean;
+  okText: string;
+  failText: string;
+}) {
+  return (
+    <div className={styles.onnxReadinessRow}>
+      <span className={styles.onnxReadinessLabel}>{label}</span>
+      {ok ? (
+        <Check size={13} color="var(--fn-color-success)" />
+      ) : (
+        <X size={13} color="var(--fn-color-warning)" />
+      )}
+      <Typography.Text type={ok ? "success" : "warning"}>
+        {ok ? okText : failText}
+      </Typography.Text>
+    </div>
+  );
+}
+
 export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -224,6 +252,13 @@ export default function KnowledgeBasesPage() {
   const [baseModalOpen, setBaseModalOpen] = useState(false);
   const [editingBase, setEditingBase] = useState(false);
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
+  const [onnxProbe, setOnnxProbe] = useState<{
+    ok: boolean;
+    latency_ms?: number | null;
+    dim?: number | null;
+    error?: string | null;
+  } | null>(null);
+  const [onnxProbing, setOnnxProbing] = useState(false);
   const [featureEnabledDraft, setFeatureEnabledDraft] = useState(false);
   const [featureModel, setFeatureModel] = useState<string>();
   const [featureBackend, setFeatureBackend] = useState<"onnx" | "remote">(
@@ -605,6 +640,26 @@ export default function KnowledgeBasesPage() {
       message.error(
         apiErrorMessage(error, t("knowledgeBases.deleteFailed"), t),
       );
+    }
+  };
+
+  // A probe describes one model; drop it as soon as the draft points elsewhere.
+  useEffect(() => {
+    setOnnxProbe(null);
+  }, [featureModel, featureBackend]);
+
+  const runOnnxProbe = async () => {
+    if (!featureModel) return;
+    setOnnxProbing(true);
+    try {
+      setOnnxProbe(await knowledgeBasesApi.testOnnx(featureModel));
+    } catch (error) {
+      setOnnxProbe({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setOnnxProbing(false);
     }
   };
 
@@ -1889,6 +1944,54 @@ export default function KnowledgeBasesPage() {
                   ) : null}
                 </div>
               )}
+              {featureBackend === "onnx" && featureModel ? (
+                <div className={styles.onnxReadiness}>
+                  <ReadinessRow
+                    label={t("knowledgeBases.checkRuntime")}
+                    ok={Boolean(capability?.checks.deps_available)}
+                    okText={t("knowledgeBases.checkInstalled")}
+                    failText={t("knowledgeBases.checkRuntimeMissing")}
+                  />
+                  <ReadinessRow
+                    label={t("knowledgeBases.checkWeights")}
+                    ok={Boolean(
+                      catalog.find((model) => model.id === featureModel)
+                        ?.downloaded,
+                    )}
+                    okText={t("knowledgeBases.checkDownloaded")}
+                    failText={t("knowledgeBases.notDownloaded")}
+                  />
+                  <div className={styles.onnxReadinessRow}>
+                    <span className={styles.onnxReadinessLabel}>
+                      {t("knowledgeBases.checkEncode")}
+                    </span>
+                    {onnxProbe ? (
+                      <Typography.Text
+                        type={onnxProbe.ok ? "success" : "danger"}
+                      >
+                        {onnxProbe.ok
+                          ? t("knowledgeBases.probeOk", {
+                              dim: onnxProbe.dim ?? "?",
+                              ms: Math.round(onnxProbe.latency_ms ?? 0),
+                            })
+                          : onnxProbe.error ?? t("knowledgeBases.probeFailed")}
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type="secondary">
+                        {t("knowledgeBases.probeIdle")}
+                      </Typography.Text>
+                    )}
+                    <Button
+                      type="link"
+                      size="small"
+                      loading={onnxProbing}
+                      onClick={() => void runOnnxProbe()}
+                    >
+                      {t("knowledgeBases.probeRun")}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               <Typography.Text type="secondary" className={styles.settingsHint}>
                 {t("knowledgeBases.enableDescription")}
               </Typography.Text>
