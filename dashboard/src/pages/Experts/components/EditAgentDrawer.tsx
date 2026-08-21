@@ -794,8 +794,7 @@ function EditAgentDrawerBody({
                   type="info"
                   showIcon
                   style={{ marginTop: 12 }}
-                  message={t("experts.skillPackagesUnsupportedTitle")}
-                  description={t("experts.skillPackagesUnsupportedHint")}
+                  message={t("experts.skillPackagesUnsupportedHint")}
                 />
               ) : null}
             </Form>

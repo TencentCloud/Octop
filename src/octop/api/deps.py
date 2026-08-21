@@ -77,6 +77,8 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/oidc/start",
     "/api/auth/oidc/callback",
     "/api/auth/oidc/exchange",
+    "/api/auth/invite/validate",
+    "/api/auth/invite/redeem",
     "/api/docs",
     "/api/openapi.json",
 )

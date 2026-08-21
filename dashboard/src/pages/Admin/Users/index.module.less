@@ -904,3 +904,85 @@
     color: var(--fn-text-primary);
   }
 }
+
+/* ── Invite drawer ──────────────────────────────────────────────── */
+
+.inviteDrawer {
+  :global(.ant-drawer-header) {
+    border-bottom: 1px solid var(--fn-border-primary);
+  }
+}
+
+.inviteCreateForm {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--fn-border-primary);
+
+  :global(.ant-form-item) {
+    margin-bottom: 12px;
+  }
+}
+
+.inviteListHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.inviteLoading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.inviteList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inviteCard {
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--fn-bg-container);
+}
+
+.inviteCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inviteUrlRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.inviteUrl {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.inviteNote {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.inviteMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}

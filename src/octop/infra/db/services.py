@@ -13,6 +13,7 @@ from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.cron import CronJobRepo
+from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
 from octop.infra.db.repos.providers import ProviderRepo
@@ -34,6 +35,7 @@ class RepoBundle:
     db: DatabasePool
 
     user_repo: UserRepo
+    invite_repo: InviteRepo
     agent_repo: AgentRepo
     provider_repo: ProviderRepo
     channel_repo: ChannelRepo
@@ -59,6 +61,7 @@ class RepoBundle:
         return cls(
             db=db,
             user_repo=UserRepo(db),
+            invite_repo=InviteRepo(db),
             agent_repo=AgentRepo(db),
             provider_repo=ProviderRepo(db),
             channel_repo=ChannelRepo(db),
@@ -94,6 +97,10 @@ class SharedServices:
     @property
     def user_repo(self) -> UserRepo:
         return self.repos.user_repo
+
+    @property
+    def invite_repo(self) -> InviteRepo:
+        return self.repos.invite_repo
 
     @property
     def agent_repo(self) -> AgentRepo:

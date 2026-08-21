@@ -45,6 +45,7 @@ import {
   IdCard,
   KeyRound,
   LayoutGrid,
+  Link2,
   List,
   Lock,
   LockOpen,
@@ -66,6 +67,7 @@ import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
+import InviteDrawer from "./InviteDrawer";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
 
@@ -762,6 +764,7 @@ export default function UsersListPanel() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
@@ -1127,6 +1130,12 @@ export default function UsersListPanel() {
               {t("common.refresh")}
             </Button>
             <Button
+              icon={<Link2 size={14} />}
+              onClick={() => setInviteOpen(true)}
+            >
+              {t("adminUsers.inviteUsers")}
+            </Button>
+            <Button
               type="primary"
               icon={<Plus size={14} />}
               onClick={openCreate}
@@ -1404,6 +1413,8 @@ export default function UsersListPanel() {
         onClose={() => setEditAgent(null)}
         onSaved={handleEditSaved}
       />
+
+      <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} />
 
       <Drawer
         title={t("adminUsers.modalNewTitle")}

@@ -7,6 +7,7 @@ import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
+import InvitePage from "./pages/Invite";
 import AuthGuard from "./components/AuthGuard";
 import { AntdAppProvider } from "./components/AntdAppProvider";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
@@ -102,6 +103,7 @@ function ThemedApp() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/login/oidc/complete" element={<OidcComplete />} />
           <Route path="/setup" element={<SetupPage />} />
+          <Route path="/invite" element={<InvitePage />} />
           <Route
             path="/*"
             element={
