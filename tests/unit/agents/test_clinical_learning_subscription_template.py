@@ -275,6 +275,7 @@ def test_source_policy_filters_content_type_and_prefers_current_version() -> Non
         "scoping_review",
         "umbrella_review",
         "science_popularization",
+        "guideline_or_consensus_interpretation",
         "repost_or_excerpt",
         "interview_or_media_report",
         "public_health_check_education_or_interpretation",
@@ -287,6 +288,78 @@ def test_source_policy_filters_content_type_and_prefers_current_version() -> Non
     assert "不得出现在最终“来源”、下一阶段指南候选或正式学习轨道来源中" in source_verify
     assert "最新且当前有效的正式版本" in source_verify
     assert "网页更新时间" in source_verify
+    assert "整个用户回合累计" in source_verify
+
+    section_skill = (_ROOT / "skills" / "guideline-section-expansion" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "默认只选 1 份" in section_skill
+    assert "整个用户回合的总工具预算" in section_skill
+    assert "累计预算已耗尽时不得继续搜索补链" in section_skill
+
+
+def _bplus_section_output(*, include_primary: bool = True, label_pair: bool = True) -> str:
+    primary_label = "原始元数据" if label_pair else "正式出处"
+    secondary_label = "正文承载" if label_pair else "参考页面"
+    primary = (
+        f"\n来源：{primary_label}（国家卫生健康委）：[链接](https://www.nhc.gov.cn/example)"
+        if include_primary
+        else ""
+    )
+    return f"""【指南章节展开｜高血压随访】
+依据：高血压正式指南
+章节：随访管理
+原文定位：随访管理相关章节
+原文要点：定期评估诊室外血压与危险因素。
+学习提示：结合原文章节理解随访框架。
+边界：本内容用于指南学习，不替代原文，不提供个体诊疗。{primary}
+来源：{secondary_label}（原始正文访问受限）：[链接](https://guide.medlive.cn/example)
+"""
+
+
+def test_bplus_source_requires_primary_metadata_and_explicit_labels() -> None:
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "bplus_source_test")
+    policy_path = _ROOT / "references" / "source-policy.yaml"
+
+    valid = validator.validate(
+        _bplus_section_output(),
+        module="guideline_section_expansion",
+        policy_path=policy_path,
+        allow_no_source=False,
+    )
+    assert valid["ok"] is True
+
+    missing_primary = validator.validate(
+        _bplus_section_output(include_primary=False),
+        module="guideline_section_expansion",
+        policy_path=policy_path,
+        allow_no_source=False,
+    )
+    assert "B+正文承载链接必须同时提供S/A原始元数据链接" in missing_primary["errors"]
+
+    missing_labels = validator.validate(
+        _bplus_section_output(label_pair=False),
+        module="guideline_section_expansion",
+        policy_path=policy_path,
+        allow_no_source=False,
+    )
+    assert "B+受控降级必须标明：原始元数据" in missing_labels["errors"]
+    assert "B+受控降级必须标明：正文承载" in missing_labels["errors"]
+
+
+def test_bplus_guideline_interpretation_is_not_final_evidence() -> None:
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "bplus_interpretation_test")
+    text = _bplus_section_output().replace("正文承载（原始正文访问受限）", "正文承载（指南解读）")
+    result = validator.validate(
+        text,
+        module="guideline_section_expansion",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert (
+        "最终依据不得使用非规范性文档类型：guideline_or_consensus_interpretation"
+        in result["errors"]
+    )
 
 
 def test_internal_learning_team_members_have_no_tools() -> None:

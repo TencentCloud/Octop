@@ -37,18 +37,48 @@ def _domain(url: str) -> str:
     return parsed.netloc.lower().split("@")[-1].split(":")[0]
 
 
-def _is_allowed_domain(domain: str, policy: dict[str, list[str]]) -> bool:
-    if domain in set(policy.get("blocked_final_evidence_domains", [])):
-        return False
-    if domain in set(policy.get("allowed_final_evidence_exact_domains", [])):
+def _matches_domain_policy(
+    domain: str,
+    policy: dict[str, list[str]],
+    *,
+    exact_key: str,
+    suffix_key: str,
+) -> bool:
+    if domain in set(policy.get(exact_key, [])):
         return True
-    for suffix in policy.get("allowed_final_evidence_domain_suffixes", []):
+    for suffix in policy.get(suffix_key, []):
         normalized = suffix.lower()
         if normalized.startswith(".") and domain.endswith(normalized):
             return True
         if domain == normalized:
             return True
     return False
+
+
+def _is_primary_domain(domain: str, policy: dict[str, list[str]]) -> bool:
+    if domain in set(policy.get("blocked_final_evidence_domains", [])):
+        return False
+    return _matches_domain_policy(
+        domain,
+        policy,
+        exact_key="allowed_final_evidence_exact_domains",
+        suffix_key="allowed_final_evidence_domain_suffixes",
+    )
+
+
+def _is_secondary_domain(domain: str, policy: dict[str, list[str]]) -> bool:
+    if domain in set(policy.get("blocked_final_evidence_domains", [])):
+        return False
+    return _matches_domain_policy(
+        domain,
+        policy,
+        exact_key="allowed_secondary_evidence_exact_domains",
+        suffix_key="allowed_secondary_evidence_domain_suffixes",
+    )
+
+
+def _is_allowed_domain(domain: str, policy: dict[str, list[str]]) -> bool:
+    return _is_primary_domain(domain, policy) or _is_secondary_domain(domain, policy)
 
 
 def _extract_markdown_links(text: str) -> list[tuple[str, str]]:
@@ -90,6 +120,7 @@ _EXCLUDED_CONTENT_TYPE_PATTERNS: dict[str, str] = {
     "preprint": r"预印本|preprint",
     "retracted_or_expression_of_concern": r"撤稿|关注声明|retract(?:ed|ion)|expression\s+of\s+concern",
     "science_popularization": r"科普",
+    "guideline_or_consensus_interpretation": r"指南解读|共识解读|规范解读|政策解读",
     "repost_or_excerpt": r"转载|摘编",
     "interview_or_media_report": r"访谈|媒体报道",
     "public_health_check_education_or_interpretation": r"体检知识|体检解读",
@@ -341,6 +372,16 @@ def validate(text: str, module: str, policy_path: Path, allow_no_source: bool) -
                 continue
             if not _is_allowed_domain(domain, policy):
                 errors.append(f"来源域名不在白名单：{domain}")
+
+        secondary_urls = [url for url in urls if _is_secondary_domain(_domain(url), policy)]
+        if secondary_urls:
+            primary_urls = [url for url in urls if _is_primary_domain(_domain(url), policy)]
+            if not primary_urls:
+                errors.append("B+正文承载链接必须同时提供S/A原始元数据链接")
+            if "原始元数据" not in text:
+                errors.append("B+受控降级必须标明：原始元数据")
+            if "正文承载" not in text:
+                errors.append("B+受控降级必须标明：正文承载")
         _validate_final_evidence_content_types(text, policy, errors)
     else:
         for url in urls:
