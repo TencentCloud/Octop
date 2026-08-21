@@ -78,7 +78,10 @@ async def test_hint_uses_agent_facing_absolute_path() -> None:
         assert f"Workspace path: {resolved}" in hint
         # Agent-facing absolute under the workspace (no rewrite through root_dir).
         assert resolved.replace("\\", "/").endswith(f"/{stored.path}")
-        assert resolved.replace("\\", "/").startswith(ws_dir.replace("\\", "/"))
+        # Canonicalize ws_dir: tempfile may yield an 8.3 short path on Windows
+        # while the resolved attachment path uses the long form.
+        ws_root = str(Path(ws_dir).resolve()).replace("\\", "/")
+        assert resolved.replace("\\", "/").startswith(ws_root)
 
 
 @pytest.mark.asyncio

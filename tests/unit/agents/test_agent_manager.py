@@ -23,6 +23,10 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
+# Rootfs-absolute workspace paths (e.g. /.octop/workspaces/<id>) are a
+# Linux/Docker sandbox concept; on Windows they are not absolute paths.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX rootfs workspace paths")
+
 
 def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, Any]:
     from octop.infra.agents.execute_env import inject_agent_execute_env
@@ -864,6 +868,7 @@ async def test_create_keeps_user_workspace_dir(
 
 
 @pytest.mark.asyncio
+@posix_only
 async def test_create_persists_rootfs_workspace_under_scoped_root(
     manager: AgentManager,
     tmp_path: Path,

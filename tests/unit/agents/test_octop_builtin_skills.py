@@ -56,7 +56,8 @@ async def test_sync_seeds_manager_and_retires_old_installer(tmp_path: Path) -> N
         "_builtin_skills/skill-manager/scripts/manage_skills.py"
     )
     assert manager is not None and "name: skill-manager" in manager
-    assert str(tmp_path) in manager
+    # Rendered workspace path uses forward slashes regardless of platform.
+    assert tmp_path.as_posix() in manager.replace("\\", "/")
     assert "{{OCTOP_WORKSPACE}}" not in manager
     assert script is not None and "def main()" in script
 

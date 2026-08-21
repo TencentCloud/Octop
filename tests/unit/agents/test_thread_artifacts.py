@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
@@ -21,6 +23,10 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
+
+# POSIX/container workspace path semantics (e.g. rootfs-absolute /.octop/...);
+# on Windows Path("/home/wally/...").resolve() gains a drive letter.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX workspace path semantics")
 
 _WS = Path("/home/wally/.octop/agents/ABC123")
 
@@ -49,6 +55,7 @@ def test_is_artifact_tool_name() -> None:
     assert not is_artifact_tool_name("ls")
 
 
+@posix_only
 def test_normalize_artifact_path_absolute_passthrough_relative_joins_workspace() -> None:
     abs_path = "/home/wally/.octop/agents/ABC123/docs/note.md"
     assert normalize_artifact_path(abs_path, _WS) == abs_path
@@ -63,6 +70,7 @@ def test_normalize_artifact_path_absolute_passthrough_relative_joins_workspace()
     assert normalize_artifact_path("_builtin_skills/foo/SKILL.md", _WS) == ""
 
 
+@posix_only
 def test_artifacts_for_response_upgrades_legacy_relative_paths() -> None:
     abs_path = "/home/wally/.octop/agents/ABC123/docs/a.md"
     out = artifacts_for_response(
@@ -76,6 +84,7 @@ def test_artifacts_for_response_upgrades_legacy_relative_paths() -> None:
     ]
 
 
+@posix_only
 def test_extract_from_write_file_args() -> None:
     paths = extract_artifact_paths(
         tool_name="write_file",
@@ -86,6 +95,7 @@ def test_extract_from_write_file_args() -> None:
     assert extract_artifact_paths(tool_name="read_file", args={"path": "a.md"}) == []
 
 
+@posix_only
 def test_extract_prefers_args_over_result_text() -> None:
     paths = extract_artifact_paths(
         tool_name="write_file",
@@ -107,6 +117,7 @@ def test_extract_screenshot_from_tool_result_text() -> None:
     assert paths == [abs_path]
 
 
+@posix_only
 def test_middleware_records_successful_write() -> None:
     store = _FakeThreads()
     mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_WS)

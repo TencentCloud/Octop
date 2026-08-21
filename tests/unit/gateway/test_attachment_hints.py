@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import tempfile
+from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
@@ -97,7 +98,10 @@ async def test_hints_from_file_content_with_workspace_resolve_path() -> None:
         assert f"Workspace path: {resolved}" in hints[0] or f"工作区路径：{resolved}" in hints[0]
         assert resolved.replace("\\", "/").endswith(f"/{stored.path}")
         # Must not invent a host root_dir prefix beyond the workspace itself.
-        assert resolved.replace("\\", "/").startswith(ws_dir.replace("\\", "/"))
+        # Canonicalize ws_dir: tempfile may yield an 8.3 short path on Windows
+        # while the resolved attachment path uses the long form.
+        ws_root = str(Path(ws_dir).resolve()).replace("\\", "/")
+        assert resolved.replace("\\", "/").startswith(ws_root)
 
 
 def test_format_pdf_hint() -> None:
