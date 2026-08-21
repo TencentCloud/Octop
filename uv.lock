@@ -2549,7 +2549,7 @@ requires-dist = [
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "harness-browser", specifier = ">=0.7.5" },
     { name = "harness-gateway", specifier = ">=0.9.3" },
-    { name = "harness-memory", specifier = ">=0.9.5" },
+    { name = "harness-memory", specifier = ">=0.9.7" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },
