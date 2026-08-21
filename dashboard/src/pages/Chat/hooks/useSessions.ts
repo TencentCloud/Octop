@@ -109,6 +109,53 @@ export function clearPendingThread(threadId: string) {
   _pendingThreadIds.delete(threadId);
 }
 
+/** Patch artifacts for one thread in the module session store. */
+export function syncSessionArtifacts(threadId: string, artifacts: string[]) {
+  if (!threadId) return;
+  const normalized = artifacts.filter(
+    (path): path is string =>
+      typeof path === "string" && path.trim().length > 0,
+  );
+  setModuleSessions((prev) => {
+    const idx = prev.findIndex((s) => s.id === threadId);
+    if (idx < 0) return prev;
+    const current = prev[idx].artifacts ?? [];
+    if (
+      current.length === normalized.length &&
+      current.every((p, i) => p === normalized[i])
+    ) {
+      return prev;
+    }
+    const next = [...prev];
+    next[idx] = { ...next[idx], artifacts: normalized };
+    return next;
+  });
+}
+
+/** Fetch thread artifacts from history API and sync into the session store. */
+export async function fetchAndSyncSessionArtifacts(
+  agentId: string,
+  threadId: string,
+): Promise<string[]> {
+  if (!agentId || !threadId) return [];
+  try {
+    const history = await octopThreadsApi.history(agentId, threadId, {
+      limit: 1,
+      offset: 0,
+    });
+    const artifacts = Array.isArray(history.artifacts)
+      ? history.artifacts.filter(
+          (path): path is string =>
+            typeof path === "string" && path.trim().length > 0,
+        )
+      : [];
+    syncSessionArtifacts(threadId, artifacts);
+    return artifacts;
+  } catch {
+    return [];
+  }
+}
+
 export function isPendingThread(threadId: string): boolean {
   return threadId === "__pending__" || _pendingThreadIds.has(threadId);
 }

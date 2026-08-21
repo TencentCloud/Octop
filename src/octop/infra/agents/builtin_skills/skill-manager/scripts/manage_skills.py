@@ -64,12 +64,35 @@ def _default_workspace() -> Path:
     """Infer the workspace only from this deployed built-in's location."""
     script = Path(__file__).resolve()
     try:
-        workspace = script.parents[3]
+        builtin_root = script.parents[2]
+        container = script.parents[3]
     except IndexError as exc:  # pragma: no cover - installed layout always has these parents
         raise SkillManagerError("cannot infer workspace from the manager script path") from exc
-    if script.parents[1].name != "skill-manager" or script.parents[2].name != "_builtin_skills":
+    if script.parents[1].name != "skill-manager" or builtin_root.name != "_builtin_skills":
         raise SkillManagerError("--workspace is required outside a deployed expert workspace")
-    return _workspace(str(workspace))
+    if container.name == ".octop":
+        try:
+            return _workspace(str(script.parents[4]))
+        except IndexError as exc:  # pragma: no cover
+            raise SkillManagerError("cannot infer workspace from the manager script path") from exc
+    return _workspace(str(container))
+
+
+def _skills_dir(workspace: Path) -> Path:
+    """Return the writable skills directory (legacy root or ``.octop/skills``)."""
+    env_dir = os.environ.get("OCTOP_SKILLS_DIR", "").strip()
+    if env_dir:
+        path = _workspace(env_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    nested_builtin = workspace / ".octop" / "_builtin_skills"
+    nested_skills = workspace / ".octop" / "skills"
+    if nested_builtin.is_dir() or nested_skills.exists():
+        nested_skills.mkdir(parents=True, exist_ok=True)
+        return nested_skills
+    skills_dir = workspace / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    return skills_dir
 
 
 def _skillhub_source(source: str) -> tuple[str, str] | None:
@@ -412,7 +435,7 @@ def _copy_skill(source: Path, target: Path) -> None:
 
 
 def _install(workspace: Path, skills: list[dict[str, Any]], *, force: bool) -> list[dict[str, Any]]:
-    skills_dir = workspace / "skills"
+    skills_dir = _skills_dir(workspace)
     skills_dir.mkdir(parents=True, exist_ok=True)
     reserved = [item["slug"] for item in skills if item["slug"] in RESERVED_SKILL_SLUGS]
     if reserved:
@@ -465,7 +488,7 @@ def _install(workspace: Path, skills: list[dict[str, Any]], *, force: bool) -> l
 
 
 def _list(workspace: Path) -> list[dict[str, Any]]:
-    skills_dir = workspace / "skills"
+    skills_dir = _skills_dir(workspace)
     if not skills_dir.is_dir():
         return []
     rows: list[dict[str, Any]] = []
@@ -485,7 +508,7 @@ def _remove(workspace: Path, name: str, *, confirmed: bool) -> dict[str, str]:
     if not confirmed:
         raise SkillManagerError("removal requires --yes after explicit user confirmation")
     slug = _slug(name)
-    skills_dir = workspace / "skills"
+    skills_dir = _skills_dir(workspace)
     source = skills_dir / slug
     if source.is_symlink():
         raise SkillManagerError(f"refusing to remove a symlinked skill: {slug}")
@@ -508,7 +531,7 @@ def _remove(workspace: Path, name: str, *, confirmed: bool) -> dict[str, str]:
 
 def _restore(workspace: Path, trash_name: str) -> dict[str, str]:
     safe_name = _slug(trash_name)
-    skills_dir = workspace / "skills"
+    skills_dir = _skills_dir(workspace)
     source = skills_dir / ".trash" / safe_name
     if source.is_symlink():
         raise SkillManagerError(f"refusing to restore a symlinked trash entry: {safe_name}")

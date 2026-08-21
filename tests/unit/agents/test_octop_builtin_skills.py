@@ -71,6 +71,38 @@ async def test_sync_seeds_manager_and_retires_old_installer(tmp_path: Path) -> N
     assert json.loads(inferred.stdout) == []
 
 
+@pytest.mark.asyncio
+async def test_sync_uses_system_files_path(tmp_path: Path) -> None:
+    agent = FakeHarnessAgent(
+        workspace_dir=tmp_path,
+        virtual_mode=False,
+        system_files_path=".octop",
+    )
+
+    synced = await sync_octop_builtin_skills(agent.workspace)
+
+    assert synced == ["skill-manager"]
+    manager = await agent.workspace.aread_text("_builtin_skills/skill-manager/SKILL.md")
+    assert manager is not None
+    assert "{{OCTOP_SKILLS}}" not in manager
+    assert str(tmp_path / ".octop" / "skills") in manager.replace("\\", "/") or (
+        tmp_path / ".octop" / "skills"
+    ).as_posix() in manager.replace("\\", "/")
+    assert (tmp_path / ".octop" / "_builtin_skills" / "skill-manager" / "SKILL.md").is_file()
+    assert not (tmp_path / "_builtin_skills").exists()
+    assert (tmp_path / "AGENTS.md").exists() is False
+
+    deployed = tmp_path / ".octop/_builtin_skills/skill-manager/scripts/manage_skills.py"
+    inferred = subprocess.run(
+        [sys.executable, str(deployed), "list"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert inferred.returncode == 0, inferred.stderr or inferred.stdout
+    assert json.loads(inferred.stdout) == []
+
+
 def test_manager_script_compiles() -> None:
     script = _manager_script()
     assert script.is_file()

@@ -261,7 +261,9 @@ export function SkillImportModal({
           </div>
 
           <div
-            className={`${styles.zipDragDrop} ${isDragging ? styles.zipDragDropActive : ""} ${zipFile ? styles.zipDragDropHasFile : ""}`}
+            className={`${styles.zipDragDrop} ${
+              isDragging ? styles.zipDragDropActive : ""
+            } ${zipFile ? styles.zipDragDropHasFile : ""}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -269,13 +271,33 @@ export function SkillImportModal({
           >
             <div className={styles.zipDragDropIcon}>
               <svg viewBox="0 0 24 24" width="48" height="48" fill="none">
-                <path d="M20 17V19C20 20.1046 19.1046 21 18 21H6C4.89543 21 4 20.1046 4 19V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 12V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M7 7L12 2L17 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path
+                  d="M20 17V19C20 20.1046 19.1046 21 18 21H6C4.89543 21 4 20.1046 4 19V17"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M12 12V3"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M7 7L12 2L17 7"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </div>
             <div className={styles.zipDragDropText}>
-              {zipFile ? t("skills.zipSelected", { name: zipFile.name }) : t("skills.zipDragDropHint")}
+              {zipFile
+                ? t("skills.zipSelected", { name: zipFile.name })
+                : t("skills.zipDragDropHint")}
             </div>
             {zipFile ? (
               <Button

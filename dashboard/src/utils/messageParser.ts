@@ -251,21 +251,31 @@ export function extractAttachmentsFromContent(
 
       if (type === "image_url") {
         const imageUrlField = anyBlock.image_url;
-        const url =
+        const rawUrl =
           typeof imageUrlField === "string"
             ? imageUrlField
             : typeof imageUrlField === "object" && imageUrlField !== null
             ? String((imageUrlField as { url?: string }).url || "")
             : "";
-        if (!url && !workspacePath) return null;
+        let url = rawUrl;
+        let path: string | undefined = workspacePath;
+        if (rawUrl.startsWith("workspace://")) {
+          path =
+            path ||
+            rawUrl.slice("workspace://".length).replace(/^\/+/, "") ||
+            undefined;
+          url = "";
+        }
+        if (!url && !path) return null;
         const mediaType =
+          (anyBlock.mime_type as string | undefined) ||
           (anyBlock.media_type as string | undefined) ||
           (url.startsWith("data:") ? url.slice(5).split(";")[0] : undefined);
         return {
           url,
           filename: filename || "image",
           mediaType,
-          workspacePath: workspacePath || undefined,
+          workspacePath: path || undefined,
           kind: "image",
         } satisfies ChatAttachment;
       }
@@ -330,7 +340,12 @@ export function mergeAttachments(
       merged[i] = {
         ...item,
         ...attachment,
-        url: attachment.url || item.url,
+        url:
+          attachment.url && !attachment.url.startsWith("workspace://")
+            ? attachment.url
+            : item.url && !item.url.startsWith("workspace://")
+            ? item.url
+            : "",
         workspacePath: attachment.workspacePath || item.workspacePath,
         filename: attachment.filename || item.filename,
         mediaType: attachment.mediaType || item.mediaType,

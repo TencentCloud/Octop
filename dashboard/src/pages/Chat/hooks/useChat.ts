@@ -163,6 +163,33 @@ export function stripInlineImageMarkdown(
   return cleaned;
 }
 
+function isRenderableAttachmentUrl(url: string | undefined): boolean {
+  const trimmed = (url || "").trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("workspace://")) return false;
+  if (trimmed.startsWith("data:")) return true;
+  if (trimmed.startsWith("blob:")) return true;
+  if (trimmed.startsWith("/api/")) return true;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+    return true;
+  return false;
+}
+
+function normalizeExtractedAttachmentUrl(
+  url: string,
+  workspacePath?: string,
+): { url: string; workspacePath?: string } {
+  const trimmed = url.trim();
+  if (trimmed.startsWith("workspace://")) {
+    const fromScheme = trimmed.slice("workspace://".length).replace(/^\/+/, "");
+    return {
+      url: "",
+      workspacePath: workspacePath || fromScheme || undefined,
+    };
+  }
+  return { url: trimmed, workspacePath };
+}
+
 export function extractAttachments(content: unknown): ChatAttachment[] {
   if (!Array.isArray(content)) return [];
   return (content as ContentBlock[])
@@ -173,24 +200,32 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         (anyBlock.filename as string | undefined) ||
         (anyBlock.name as string | undefined) ||
         "";
-      const workspacePath =
+      let workspacePath =
         (anyBlock.workspace_path as string | undefined) ||
         (anyBlock.workspacePath as string | undefined);
 
       if (type === "image_url") {
         const imageUrlField = anyBlock.image_url;
-        const url =
+        const rawUrl =
           typeof imageUrlField === "string"
             ? imageUrlField
             : typeof imageUrlField === "object" && imageUrlField !== null
             ? String((imageUrlField as { url?: string }).url || "")
             : "";
-        if (!url && !workspacePath) return null;
+        const normalized = normalizeExtractedAttachmentUrl(
+          rawUrl,
+          workspacePath,
+        );
+        workspacePath = normalized.workspacePath;
+        if (!normalized.url && !workspacePath) return null;
         const mediaType =
+          (anyBlock.mime_type as string | undefined) ||
           (anyBlock.media_type as string | undefined) ||
-          (url.startsWith("data:") ? url.slice(5).split(";")[0] : undefined);
+          (normalized.url.startsWith("data:")
+            ? normalized.url.slice(5).split(";")[0]
+            : undefined);
         return {
-          url: url || "",
+          url: normalized.url,
           filename: filename || "image",
           mediaType,
           workspacePath,
@@ -246,10 +281,15 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         (anyBlock.file_url as string | undefined) ||
         (anyBlock.url as string | undefined) ||
         sourceUrl;
-      if (!finalUrl && !workspacePath) return null;
+      const normalized = normalizeExtractedAttachmentUrl(
+        finalUrl || "",
+        workspacePath,
+      );
+      workspacePath = normalized.workspacePath;
+      if (!normalized.url && !workspacePath) return null;
 
       return {
-        url: finalUrl || "",
+        url: normalized.url,
         filename,
         mediaType,
         workspacePath,
@@ -307,7 +347,12 @@ function enrichAttachmentPreviewUrls(
   return messages.map((message) => {
     if (!message.attachments?.length) return message;
     const attachments = message.attachments.map((attachment) => {
-      if (attachment.url || !attachment.workspacePath) return attachment;
+      const url = isRenderableAttachmentUrl(attachment.url)
+        ? attachment.url
+        : "";
+      if (url || !attachment.workspacePath) {
+        return url === attachment.url ? attachment : { ...attachment, url };
+      }
       return {
         ...attachment,
         url: agentAttachmentAccessUrl(
@@ -610,17 +655,28 @@ async function loadThreadHistory(
   hasMore: boolean;
   nextOffset: number;
   turnActive: boolean;
+  artifacts: string[];
 }> {
   try {
     const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
       "../../../api/modules/octopThreads"
     );
+    const { syncSessionArtifacts } = await import("./useSessions");
     const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
     const offset = params.offset ?? 0;
     const history = await octopThreadsApi.history(agentId, threadId, {
       limit,
       offset,
     });
+    const artifacts = Array.isArray(history.artifacts)
+      ? history.artifacts.filter(
+          (path): path is string =>
+            typeof path === "string" && path.trim().length > 0,
+        )
+      : [];
+    if (offset === 0) {
+      syncSessionArtifacts(threadId, artifacts);
+    }
     const messages = injectPendingHitlMessage(
       convertHistoryMessages(
         history.messages.filter(
@@ -638,10 +694,17 @@ async function loadThreadHistory(
       hasMore: Boolean(history.has_more),
       nextOffset: offset + limit,
       turnActive: Boolean(history.turn_active),
+      artifacts,
     };
   } catch (err) {
     console.error("loadThreadHistory failed", err);
-    return { messages: [], hasMore: false, nextOffset: 0, turnActive: false };
+    return {
+      messages: [],
+      hasMore: false,
+      nextOffset: 0,
+      turnActive: false,
+      artifacts: [],
+    };
   }
 }
 

@@ -124,5 +124,23 @@ def overlay_stdio_spec_env(spec: dict[str, Any], global_env: Mapping[str, str]) 
     return out
 
 
+def overlay_stdio_mcp_configs(
+    configs: Mapping[str, Any],
+    global_env: Mapping[str, str],
+) -> dict[str, Any]:
+    """Apply :func:`overlay_stdio_spec_env` to every stdio entry in *configs*."""
+    if not configs:
+        return {}
+    if not global_env:
+        return dict(configs)
+    out: dict[str, Any] = {}
+    for name, spec in configs.items():
+        if isinstance(spec, dict):
+            out[name] = overlay_stdio_spec_env(spec, global_env)
+        else:
+            out[name] = spec
+    return out
+
+
 def list_env_items(path: Path) -> list[dict[str, str]]:
     return [{"key": k, "value": v} for k, v in sorted(load_env_file(path).items())]

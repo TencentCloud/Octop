@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
 from octop.api.common.agent import require_agent_row
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
 from octop.api.routers.chat.serialize import (
@@ -15,13 +17,25 @@ from octop.api.routers.chat.serialize import (
     _load_thread_messages,
 )
 from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
+from octop.infra.agents.middleware.thread_artifacts import artifacts_for_response
 from octop.infra.agents.thread_fork import fork_dashboard_thread
+from octop.infra.agents.workspace_dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
+
+
+def _agent_facing_workspace_dir(server: Any, agent_id: str) -> Path:
+    """Agent-visible workspace_dir for artifact path joins (not host root_dir map)."""
+    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+    if registry is not None and hasattr(registry, "get_config"):
+        facing = agent_facing_workspace_dir_from_config(registry.get_config(agent_id))
+        if facing:
+            return Path(facing)
+    return resolve_agent_workspace_dir(server, agent_id)
 
 
 def _require_thread(
@@ -53,6 +67,7 @@ async def list_threads(
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
+    workspace_dir = _agent_facing_workspace_dir(server, agent_id)
     return [
         {
             "thread_id": r.thread_id,
@@ -67,7 +82,7 @@ async def list_threads(
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
-            "artifacts": list(r.artifacts),
+            "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
         }
         for r in rows
     ]
@@ -175,6 +190,7 @@ async def get_thread_history(
         agent_id=agent_id,
         user_id=effective_uid,
     )
+    workspace_dir = _agent_facing_workspace_dir(server, agent_id)
     return {
         "thread_id": thread_id,
         "messages": messages,
@@ -183,7 +199,7 @@ async def get_thread_history(
         "offset": page_offset,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
-        "artifacts": list(row.artifacts),
+        "artifacts": artifacts_for_response(row.artifacts, workspace_dir),
     }
 
 

@@ -9,6 +9,9 @@ import httpx
 from octop.infra.agents.providers.onnx_service import embed_texts
 from octop.infra.agents.providers.probe import provider_headers
 
+# Remote OpenAI-compatible embedding APIs cap the number of inputs per request.
+_KNOWLEDGE_EMBEDDING_BATCH_LIMIT = 20
+
 
 def embed_knowledge_texts(services: Any, texts: list[str]) -> list[list[float]]:
     """Embed texts through the selected knowledge embedding backend."""
@@ -27,13 +30,36 @@ def embed_knowledge_texts(services: Any, texts: list[str]) -> list[list[float]]:
     if extra:
         headers.update(extra)
     with httpx.Client(timeout=60.0) as client:
+        return _embed_remote_batched(client, provider.base_url.rstrip("/"), headers, model, texts)
+
+
+def _embed_remote_batched(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    model: str,
+    texts: list[str],
+) -> list[list[float]]:
+    """Request a remote embedding API in <=batch-limit slices.
+
+    Slices preserve input order so the merged vectors stay aligned with
+    ``texts`` for :meth:`KnowledgeIndex.replace_doc_chunks`.
+    """
+    if not texts:
+        return []
+    out: list[list[float]] = []
+    for start in range(0, len(texts), _KNOWLEDGE_EMBEDDING_BATCH_LIMIT):
+        batch = texts[start : start + _KNOWLEDGE_EMBEDDING_BATCH_LIMIT]
         response = client.post(
-            f"{provider.base_url.rstrip('/')}/embeddings",
+            f"{base}/embeddings",
             headers=headers,
-            json={"model": model, "input": texts},
+            json={"model": model, "input": batch},
         )
         response.raise_for_status()
-    data = response.json().get("data")
-    if not isinstance(data, list):
-        raise RuntimeError("knowledge embedding response has no data")
-    return [list(item["embedding"]) for item in data]
+        data = response.json().get("data")
+        if not isinstance(data, list):
+            raise RuntimeError("knowledge embedding response has no data")
+        out.extend(list(item["embedding"]) for item in data)
+    if len(out) != len(texts):
+        raise RuntimeError("knowledge embedding count mismatch")
+    return out

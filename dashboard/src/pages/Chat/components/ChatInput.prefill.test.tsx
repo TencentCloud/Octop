@@ -31,7 +31,6 @@ vi.mock("../hooks/useChatAttachments", () => ({
     uploading: false,
     dragOver: false,
     fileInputRef: { current: null },
-    acceptAttr: "*",
     handleFileSelect: vi.fn(),
     handleFileChange: vi.fn(),
     removeAttachment: vi.fn(),

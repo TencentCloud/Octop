@@ -79,7 +79,14 @@ def _dedup_tool_result_messages(
     return {**chunk, "messages": new_messages}
 
 
-def enrich_tool_stream_chunk(chunk: dict[str, Any], locale: str | Locale) -> dict[str, Any]:
+def enrich_tool_stream_chunk(
+    chunk: dict[str, Any],
+    locale: str | Locale,
+    *,
+    agent_manager: AgentManager | None = None,
+    agent_id: str | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
     """Add ``display_name`` to harness tool stream chunks for dashboard clients."""
     if chunk.get("type") not in ("tool_call_chunk", "tool_result"):
         return chunk
@@ -87,7 +94,15 @@ def enrich_tool_stream_chunk(chunk: dict[str, Any], locale: str | Locale) -> dic
     if not isinstance(name, str) or not name:
         return chunk
     out = dict(chunk)
-    out["display_name"] = tool_display_name(name, locale)
+    if agent_manager is not None and agent_id:
+        out["display_name"] = agent_manager.resolve_tool_display_name_for_chat(
+            agent_id=agent_id,
+            user_id=user_id,
+            tool_name=name,
+            locale=str(locale),
+        )
+    else:
+        out["display_name"] = tool_display_name(name, locale)
     return out
 
 

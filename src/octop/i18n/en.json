@@ -463,7 +463,9 @@
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
-    "send_file_to_user": "Send file"
+    "send_file_to_user": "Send file",
+    "read_env_file": "Read env file",
+    "write_env_file": "Write env file"
   },
   "skills": {
     "pdf": "PDF",

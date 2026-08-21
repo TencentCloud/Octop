@@ -143,20 +143,33 @@ function RefreshableImage({
   agentId?: string | null;
 }) {
   const { t } = useTranslation();
-  const { src, loadState, setSrc } = useAuthImageSrc(url, filename);
+  const resolvedUrl = useMemo(() => {
+    if (url && !url.startsWith("workspace://")) return url;
+    const path =
+      workspacePath ||
+      (url.startsWith("workspace://")
+        ? url.slice("workspace://".length).replace(/^\/+/, "")
+        : "") ||
+      workspacePathFromAccessUrl(url);
+    if (path && agentId) {
+      return agentAttachmentAccessUrl(agentId, path, mediaType);
+    }
+    return url;
+  }, [url, workspacePath, agentId, mediaType]);
+  const { src, loadState, setSrc } = useAuthImageSrc(resolvedUrl, filename);
   const retried = useRef(false);
 
   const handleError = useCallback(() => {
     if (retried.current) return;
     retried.current = true;
 
-    if (isDataUrl(url)) return;
+    if (isDataUrl(resolvedUrl)) return;
 
-    const path = workspacePath || workspacePathFromAccessUrl(url);
+    const path = workspacePath || workspacePathFromAccessUrl(resolvedUrl);
     if (!path || !agentId) return;
 
     setSrc(agentAttachmentAccessUrl(agentId, path, mediaType));
-  }, [url, agentId, workspacePath, mediaType, setSrc]);
+  }, [resolvedUrl, agentId, workspacePath, mediaType, setSrc]);
 
   if (loadState === "loading") {
     return (

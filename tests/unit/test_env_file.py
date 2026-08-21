@@ -65,6 +65,20 @@ def test_overlay_stdio_spec_env_skips_protected() -> None:
     assert "HOME" not in spec["env"]
 
 
+def test_overlay_stdio_mcp_configs_applies_to_stdio_only() -> None:
+    from octop.infra.utils.env_file import overlay_stdio_mcp_configs
+
+    configs = overlay_stdio_mcp_configs(
+        {
+            "stdio_srv": {"transport": "stdio", "command": "npx"},
+            "http_srv": {"transport": "http", "url": "http://localhost"},
+        },
+        {"MY_KEY": "secret"},
+    )
+    assert configs["stdio_srv"]["env"]["MY_KEY"] == "secret"
+    assert "env" not in configs["http_srv"]
+
+
 def test_search_env_changed_detects_tavily() -> None:
     assert search_env_changed({}, {"TAVILY_API_KEY": "x"}) is True
     assert search_env_changed({"FOO": "1"}, {"FOO": "2"}) is False

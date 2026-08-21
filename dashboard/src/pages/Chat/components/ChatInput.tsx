@@ -185,7 +185,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       uploading,
       dragOver,
       fileInputRef,
-      acceptAttr,
       handleFileSelect,
       handleFileChange,
       removeAttachment,
@@ -523,46 +522,44 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [text, onUserInput]);
 
     const adjustHeight = useCallback(() => {
-        const ta = textareaRef.current;
-        if (!ta) return;
-        // Measure the content height on a detached clone instead of collapsing
-        // the live textarea to height:"auto". That transient shrink reflows the
-        // flex layout and makes the message list viewport (a sibling above the
-        // composer) grow for a moment; browsers clamp the list scrollTop to the
-        // larger viewport and the clamp STICKS after the height is restored —
-        // while a reply streams, follow-pins then snap the list back down, i.e.
-        // the per-keystroke up/down jitter. A clone never touches live layout.
-        const target = (() => {
-          const clone = ta.cloneNode(false) as HTMLTextAreaElement;
-          clone.value = ta.value;
-          const rect = ta.getBoundingClientRect();
-          clone.style.cssText = [
-            "position:fixed",
-            "left:-9999px",
-            "top:0",
-            "visibility:hidden",
-            "height:auto",
-            "min-height:0",
-            "max-height:none",
-            "transition:none",
-            `width:${rect.width}px`,
-          ].join(";");
-          document.body.appendChild(clone);
-          const h = clone.scrollHeight;
-          document.body.removeChild(clone);
-          return Math.max(Math.min(h, 160), MIN_TEXTAREA_HEIGHT);
-        })();
-        const current = ta.getBoundingClientRect().height;
-        if (Math.abs(target - current) < 0.5) return; // height unchanged
-        // Disable transition during the write so the resize is instant.
-        ta.style.transition = "none";
-        ta.style.height = `${target}px`;
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        ta.offsetHeight; // force reflow
-        ta.style.transition = "";
-      },
-      [MIN_TEXTAREA_HEIGHT],
-    );
+      const ta = textareaRef.current;
+      if (!ta) return;
+      // Measure the content height on a detached clone instead of collapsing
+      // the live textarea to height:"auto". That transient shrink reflows the
+      // flex layout and makes the message list viewport (a sibling above the
+      // composer) grow for a moment; browsers clamp the list scrollTop to the
+      // larger viewport and the clamp STICKS after the height is restored —
+      // while a reply streams, follow-pins then snap the list back down, i.e.
+      // the per-keystroke up/down jitter. A clone never touches live layout.
+      const target = (() => {
+        const clone = ta.cloneNode(false) as HTMLTextAreaElement;
+        clone.value = ta.value;
+        const rect = ta.getBoundingClientRect();
+        clone.style.cssText = [
+          "position:fixed",
+          "left:-9999px",
+          "top:0",
+          "visibility:hidden",
+          "height:auto",
+          "min-height:0",
+          "max-height:none",
+          "transition:none",
+          `width:${rect.width}px`,
+        ].join(";");
+        document.body.appendChild(clone);
+        const h = clone.scrollHeight;
+        document.body.removeChild(clone);
+        return Math.max(Math.min(h, 160), MIN_TEXTAREA_HEIGHT);
+      })();
+      const current = ta.getBoundingClientRect().height;
+      if (Math.abs(target - current) < 0.5) return; // height unchanged
+      // Disable transition during the write so the resize is instant.
+      ta.style.transition = "none";
+      ta.style.height = `${target}px`;
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      ta.offsetHeight; // force reflow
+      ta.style.transition = "";
+    }, [MIN_TEXTAREA_HEIGHT]);
 
     useEffect(() => {
       adjustHeight();
@@ -786,7 +783,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <input
             ref={fileInputRef}
             type="file"
-            accept={acceptAttr}
             multiple
             style={{ display: "none" }}
             onChange={handleFileChange}

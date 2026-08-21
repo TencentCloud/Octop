@@ -55,7 +55,7 @@ async def get_chat_welcome(
 
     Resolution order:
     1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
-    2. Agent workspace ``manifest.json`` (seeded at create; quick cards + fallback copy).
+    2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
     3. Bundled expert catalog entry for ``template_name`` (legacy agents).
     4. Default quick cards (``general-assistant`` or a small built-in set).
     """

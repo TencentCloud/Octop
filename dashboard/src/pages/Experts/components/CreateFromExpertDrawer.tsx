@@ -50,6 +50,7 @@ import {
   probeRootDir,
   rootDirProbeMessage,
   shouldProbeRootDir,
+  supportsHostSkillPackages,
   validatePathMappings,
   type PathMapping,
 } from "./agentBackendForm";
@@ -178,6 +179,16 @@ export default function CreateFromExpertDrawer({
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
+  const watchedRootDir = Form.useWatch("root_dir", form);
+  const skillPackagesSupported = supportsHostSkillPackages({
+    backendChoice,
+    rootDir: watchedRootDir,
+  });
+
+  useEffect(() => {
+    if (skillPackagesSupported) return;
+    form.setFieldsValue({ skill_package_ids: [] });
+  }, [skillPackagesSupported, form]);
 
   const sourceKey = useMemo(() => {
     if (!source) return "";
@@ -313,7 +324,9 @@ export default function CreateFromExpertDrawer({
         agent_id: values.agent_id?.trim() || undefined,
         default_model: defaultModelFromForm(values.default_model) ?? undefined,
         backend: backendSpec,
-        skill_package_ids: values.skill_package_ids ?? [],
+        skill_package_ids: skillPackagesSupported
+          ? values.skill_package_ids ?? []
+          : [],
         color: isCuratedPalette(colorPalette)
           ? expertPaletteColor(colorPalette)
           : colorPalette,
@@ -549,14 +562,30 @@ export default function CreateFromExpertDrawer({
           />
         </Form.Item>
 
+        <AgentBackendFields
+          backends={backends}
+          backendsLoading={backendsLoading}
+          backendChoice={backendChoice}
+          pathMappings={pathMappings}
+          rootDirMode="create"
+          onAddPathMapping={addPathMapping}
+          onRemovePathMapping={removePathMapping}
+          onUpdatePathMapping={updatePathMapping}
+        />
+
         <Form.Item
           name="skill_package_ids"
           label={t("experts.skillPackagesLabel")}
-          extra={t("experts.skillPackagesHint")}
+          extra={
+            skillPackagesSupported
+              ? t("experts.skillPackagesHint")
+              : t("experts.skillPackagesUnsupportedHint")
+          }
         >
           <Select
             mode="multiple"
             allowClear
+            disabled={!skillPackagesSupported}
             loading={skillPackagesLoading}
             options={skillPackages.map((pack) => ({
               value: pack.id,
@@ -565,16 +594,6 @@ export default function CreateFromExpertDrawer({
             placeholder={t("experts.skillPackagesPlaceholder")}
           />
         </Form.Item>
-
-        <AgentBackendFields
-          backends={backends}
-          backendsLoading={backendsLoading}
-          backendChoice={backendChoice}
-          pathMappings={pathMappings}
-          onAddPathMapping={addPathMapping}
-          onRemovePathMapping={removePathMapping}
-          onUpdatePathMapping={updatePathMapping}
-        />
 
         <Collapse
           ghost

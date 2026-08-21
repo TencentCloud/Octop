@@ -34,6 +34,22 @@ def _has_image_url(content: Any) -> bool:
     )
 
 
+def _image_ref_path(content: Any) -> str | None:
+    if not isinstance(content, list):
+        return None
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "image_url":
+            continue
+        path = str(block.get("workspace_path") or "").strip()
+        if path:
+            return path
+        url_field = block.get("image_url") or {}
+        url = url_field.get("url") if isinstance(url_field, dict) else None
+        if isinstance(url, str) and url.startswith("workspace://"):
+            return url[len("workspace://") :]
+    return None
+
+
 def _image_bytes(content: Any) -> bytes | None:
     if not isinstance(content, list):
         return None
@@ -49,7 +65,7 @@ def _image_bytes(content: Any) -> bytes | None:
 
 @pytest.mark.asyncio
 async def test_file_in_workspace_with_workspace_path_reaches_llm() -> None:
-    """Upload → turn with workspace_path → harness content has image_url base64."""
+    """Upload → turn with workspace_path → harness content has path-only image_url ref."""
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = BackendWorkspace(
             LocalShellBackend(root_dir=ws_dir, virtual_mode=False),
@@ -97,7 +113,13 @@ async def test_file_in_workspace_with_workspace_path_reaches_llm() -> None:
         content = await build_content_from_message(msg, media_backend=backend)
         assert _has_image_url(content)
         assert content_blocks_need_vision(content)
-        assert _image_bytes(content) == _PNG
+        assert _image_ref_path(content) == stored.data_path
+        assert _image_bytes(content) is None
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        img = next(b for b in content if isinstance(b, dict) and b.get("type") == "image_url")
+        expanded = await expand_workspace_image_ref(img, workspace=workspace)
+        assert base64.b64decode(expanded["image_url"]["url"].split(",", 1)[1]) == _PNG
 
 
 @pytest.mark.asyncio
@@ -150,7 +172,7 @@ async def test_file_in_workspace_preview_only_drops_image_for_llm() -> None:
 
 @pytest.mark.asyncio
 async def test_default_backend_materialize_still_inlines_image() -> None:
-    """Production default backend: vision materialize via BackendWorkspace still works."""
+    """Production default backend: path ref in content; expand yields vision bytes."""
     from harness_agent.backends import resolve_backend
 
     with tempfile.TemporaryDirectory() as ws_dir:
@@ -194,7 +216,13 @@ async def test_default_backend_materialize_still_inlines_image() -> None:
             media_backend=AgentBackedMediaBackend(workspace),
         )
         assert _has_image_url(content)
-        assert _image_bytes(content) == _PNG
+        assert _image_ref_path(content) == stored.data_path
+        assert _image_bytes(content) is None
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        img = next(b for b in content if isinstance(b, dict) and b.get("type") == "image_url")
+        expanded = await expand_workspace_image_ref(img, workspace=workspace)
+        assert base64.b64decode(expanded["image_url"]["url"].split(",", 1)[1]) == _PNG
 
 
 @pytest.mark.asyncio

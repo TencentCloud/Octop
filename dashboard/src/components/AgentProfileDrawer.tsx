@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Collapse, Drawer, Spin, Tag } from "antd";
-import { ChevronLeft, FolderOpen } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
@@ -11,6 +11,7 @@ import {
   type AgentSubagentSummary,
 } from "../api/modules/subagents";
 import MbtiPersonaTag from "./MbtiPersonaTag";
+import { CopyableResourceId } from "./CopyableResourceId";
 import { metaForFile } from "../pages/Experts/components/iconForName";
 import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups";
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
@@ -221,8 +222,14 @@ export default function AgentProfileDrawer({
           <div className={expertStyles.drawerSectionTitle}>
             {t("experts.basicInfo")}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-            {detail?.name ?? agent.name}
+          <div className={styles.nameRow}>
+            <div className={styles.name}>{detail?.name ?? agent.name}</div>
+            <CopyableResourceId
+              label={t("experts.agentId")}
+              value={agent.agent_id}
+              copyTitle={t("experts.copyAgentId")}
+              className={styles.agentId}
+            />
           </div>
           <p
             style={{
@@ -251,23 +258,6 @@ export default function AgentProfileDrawer({
             </span>
             <MbtiPersonaTag value={agent.persona_mbti} />
           </div>
-          <button
-            type="button"
-            className={styles.workspaceOpenBtn}
-            disabled={!isAgentChatReady(agent.state)}
-            title={
-              isAgentChatReady(agent.state)
-                ? undefined
-                : t("workspace.requiresRunning")
-            }
-            onClick={() => {
-              if (!isAgentChatReady(agent.state)) return;
-              setWorkspaceDrawerOpen(true);
-            }}
-          >
-            <FolderOpen size={14} strokeWidth={2} />
-            {t("chat.openWorkspace", "工作区")}
-          </button>
         </div>
 
         <div className={expertStyles.drawerSection}>

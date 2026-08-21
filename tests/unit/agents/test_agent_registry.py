@@ -1025,9 +1025,9 @@ async def test_create_with_template_writes_files(tmp_path: Path) -> None:
         services.repos.agent_repo.list_all()[0].agent_id,
     )
     assert (ws / "SOUL.md").read_text(encoding="utf-8") == "# Soul"
-    assert (ws / "skills").is_dir()
-    assert (ws / "skills" / "my-skill" / "SKILL.md").read_text(encoding="utf-8") == "# Skill"
-    assert (ws / "SOUL.md").read_text(encoding="utf-8") == "# Soul"
+    # New agents use system_files_path=.octop — BackendWorkspace remaps skills/.
+    skill_md = ws / ".octop" / "skills" / "my-skill" / "SKILL.md"
+    assert skill_md.read_text(encoding="utf-8") == "# Skill"
 
 
 @pytest.mark.asyncio
