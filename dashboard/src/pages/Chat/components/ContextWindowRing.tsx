@@ -217,6 +217,12 @@ export default function ContextWindowRing({
         ] as ContextUsageBreakdown["segments"])
       : display.segments;
   const segmentTotal = segments.reduce((sum, item) => sum + item.tokens, 0);
+  // Segments are harness-side estimates and run short of the provider's input
+  // total; the bar already normalizes them onto ``displayUsed``. Scale the
+  // legend by the same factor so the listed parts sum to the header figure
+  // instead of silently falling short of it.
+  const scaleToUsed = (tokens: number) =>
+    segmentTotal > 0 ? Math.round((displayUsed * tokens) / segmentTotal) : tokens;
 
   const popoverContent = (
     <div className={styles.contextUsagePanel}>
@@ -278,7 +284,7 @@ export default function ContextWindowRing({
                   {t(`chat.contextWindow.segments.${segment.key}`)}
                 </span>
                 <span className={styles.contextUsageLegendValue}>
-                  ~{formatTokenK(segment.tokens)}
+                  ~{formatTokenK(scaleToUsed(segment.tokens))}
                 </span>
               </li>
             ))}
