@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, TypeGuard
 
 logger = logging.getLogger(__name__)
 
 TaskItemStatus = Literal["pending", "in_progress", "completed", "cancelled"]
 TaskPlanStatus = Literal["idle", "active", "completed"]
+
+
+def _is_task_item_status(value: str) -> TypeGuard[TaskItemStatus]:
+    return value in {"pending", "in_progress", "completed", "cancelled"}
 
 
 def _normalize_item(raw: Any, index: int) -> dict[str, str] | None:
@@ -32,11 +36,7 @@ def _normalize_item(raw: Any, index: int) -> dict[str, str] | None:
             "canceled": "cancelled",
         }
         normalized = aliases.get(raw_status, raw_status)
-        status = (
-            normalized
-            if normalized in {"pending", "in_progress", "completed", "cancelled"}
-            else "pending"
-        )
+        status = normalized if _is_task_item_status(normalized) else "pending"
     else:
         return None
     if not content:
