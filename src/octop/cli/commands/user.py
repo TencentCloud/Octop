@@ -20,7 +20,10 @@ def user() -> None:
 @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=False)
 @click.option("--role", default="user")
 @click.option("--display-name", default=None)
-def create(username: str, password: str, role: str, display_name: str | None) -> None:
+@click.option("--email", default=None, help="Optional email (also usable for login).")
+def create(
+    username: str, password: str, role: str, display_name: str | None, email: str | None
+) -> None:
     """Create a new user."""
     from octop.cli.support.offline_ops import create_user_offline
 
@@ -31,6 +34,7 @@ def create(username: str, password: str, role: str, display_name: str | None) ->
                 password=password,
                 role=role,
                 display_name=display_name,
+                email=email,
             )
         )
     except OctopError as exc:
@@ -55,11 +59,36 @@ def list_users() -> None:
     table = Table(title="Users")
     table.add_column("id")
     table.add_column("username")
+    table.add_column("email")
     table.add_column("role")
     table.add_column("disabled")
     for u in rows:
-        table.add_row(str(u["id"]), u["username"], u["role"], str(bool(u.get("disabled"))))
+        table.add_row(
+            str(u["id"]),
+            u["username"],
+            u.get("email") or "-",
+            u["role"],
+            str(bool(u.get("disabled"))),
+        )
     Console(file=sys.stdout).print(table)
+
+
+@user.command("set-email")
+@click.argument("username")
+@click.argument("email", required=False, default=None)
+@click.option("--clear", is_flag=True, default=False, help="Remove the user's email.")
+def set_email(username: str, email: str | None, clear: bool) -> None:
+    """Set or clear a user's email."""
+    from octop.cli.support.offline_ops import set_user_email_offline
+
+    if clear:
+        email = None
+    elif email is None:
+        raise click.UsageError("provide EMAIL or --clear")
+    try:
+        click.echo(set_user_email_offline(username, email))
+    except OctopError as exc:
+        fail_octop(exc)
 
 
 @user.command("passwd")

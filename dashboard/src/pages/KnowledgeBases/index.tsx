@@ -21,17 +21,18 @@ import {
   Select,
   Spin,
   Switch,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { ResizableTable } from "@/components/ResizableTable";
 import {
   Check,
   ChevronLeft,
   Download,
   Eye,
+  FilePlus,
   FileUp,
   Folder,
   FolderPlus,
@@ -81,6 +82,10 @@ import {
   knowledgeBasename,
   knowledgeBreadcrumb,
 } from "./knowledgeFolder";
+import TextDocumentEditorModal, {
+  isEditableKnowledgeDocument,
+  type TextDocumentFormat,
+} from "./TextDocumentEditorModal";
 import styles from "./index.module.less";
 
 type BaseFormValues = {
@@ -273,6 +278,17 @@ export default function KnowledgeBasesPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFilename, setPreviewFilename] = useState("");
   const [previewText, setPreviewText] = useState("");
+  const [textEditorOpen, setTextEditorOpen] = useState(false);
+  const [textEditorMode, setTextEditorMode] = useState<"create" | "edit">(
+    "create",
+  );
+  const [textEditorLoading, setTextEditorLoading] = useState(false);
+  const [textEditorSaving, setTextEditorSaving] = useState(false);
+  const [textEditorDocId, setTextEditorDocId] = useState<string | null>(null);
+  const [textEditorName, setTextEditorName] = useState("");
+  const [textEditorFormat, setTextEditorFormat] =
+    useState<TextDocumentFormat>("md");
+  const [textEditorContent, setTextEditorContent] = useState("");
   const [baseForm] = Form.useForm<BaseFormValues>();
   const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
   const [sharedChecked, setSharedChecked] = useState(false);
@@ -892,6 +908,94 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const openCreateTextDocument = () => {
+    setTextEditorMode("create");
+    setTextEditorDocId(null);
+    setTextEditorName("");
+    setTextEditorFormat("md");
+    setTextEditorContent("");
+    setTextEditorLoading(false);
+    setTextEditorOpen(true);
+  };
+
+  const openEditTextDocument = async (document: KnowledgeDocument) => {
+    if (!selected) return;
+    setTextEditorMode("edit");
+    setTextEditorDocId(document.id);
+    setTextEditorName(document.filename);
+    setTextEditorFormat(
+      document.filename.toLowerCase().endsWith(".txt") ||
+        document.content_type === "text/plain"
+        ? "txt"
+        : "md",
+    );
+    setTextEditorContent("");
+    setTextEditorOpen(true);
+    setTextEditorLoading(true);
+    try {
+      const payload = await knowledgeBasesApi.getTextDocument(
+        selected.id,
+        document.id,
+      );
+      setTextEditorContent(payload.text);
+      setTextEditorName(payload.filename);
+      setTextEditorFormat(
+        payload.content_type === "text/plain" ||
+          payload.filename.toLowerCase().endsWith(".txt")
+          ? "txt"
+          : "md",
+      );
+    } catch (error) {
+      setTextEditorOpen(false);
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.editDocumentFailed"), t),
+      );
+    } finally {
+      setTextEditorLoading(false);
+    }
+  };
+
+  const saveTextDocument = async (values: {
+    name: string;
+    format: TextDocumentFormat;
+    content: string;
+  }) => {
+    if (!selected) return;
+    setTextEditorSaving(true);
+    try {
+      if (textEditorMode === "create") {
+        await knowledgeBasesApi.createTextDocument(selected.id, {
+          name: values.name,
+          format: values.format,
+          content: values.content,
+          path: currentFolder || undefined,
+        });
+        message.success(t("knowledgeBases.createFileSuccess"));
+      } else if (textEditorDocId) {
+        await knowledgeBasesApi.updateTextDocument(
+          selected.id,
+          textEditorDocId,
+          values.content,
+        );
+        message.success(t("knowledgeBases.editDocumentSuccess"));
+      }
+      setTextEditorOpen(false);
+      await loadDetail(selected.id);
+    } catch (error) {
+      message.error(
+        apiErrorMessage(
+          error,
+          textEditorMode === "create"
+            ? t("knowledgeBases.createFileFailed")
+            : t("knowledgeBases.editDocumentFailed"),
+          t,
+        ),
+      );
+    } finally {
+      setTextEditorSaving(false);
+    }
+  };
+
   const renderDocumentActions = (document: KnowledgeDocument) => (
     <div className={styles.docCardActions}>
       {document.is_dir ? null : (
@@ -907,6 +1011,17 @@ export default function KnowledgeBasesPage() {
       )}
       {canWriteSelected ? (
         <>
+          {!document.is_dir && isEditableKnowledgeDocument(document) ? (
+            <Tooltip title={t("knowledgeBases.editDocument")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<Pencil size={14} />}
+                aria-label={t("knowledgeBases.editDocument")}
+                onClick={() => void openEditTextDocument(document)}
+              />
+            </Tooltip>
+          ) : null}
           {document.is_dir ? null : (
             <Popconfirm
               title={t("knowledgeBases.rebuildDocumentConfirm")}
@@ -1352,6 +1467,15 @@ export default function KnowledgeBasesPage() {
                         ) : null}
                         {canWriteSelected ? (
                           <Button
+                            icon={<FilePlus size={14} />}
+                            disabled={isAtDocumentLimit}
+                            onClick={openCreateTextDocument}
+                          >
+                            {t("knowledgeBases.createFile")}
+                          </Button>
+                        ) : null}
+                        {canWriteSelected ? (
+                          <Button
                             type="primary"
                             icon={<FileUp size={14} />}
                             disabled={isAtDocumentLimit}
@@ -1528,7 +1652,8 @@ export default function KnowledgeBasesPage() {
                         })}
                       </div>
                     ) : (
-                      <Table
+                      <ResizableTable
+                        storageKey="kb-documents"
                         size="small"
                         rowKey="id"
                         pagination={false}
@@ -1670,6 +1795,18 @@ export default function KnowledgeBasesPage() {
           onPressEnter={() => void createFolder()}
         />
       </Modal>
+
+      <TextDocumentEditorModal
+        open={textEditorOpen}
+        mode={textEditorMode}
+        loading={textEditorLoading}
+        saving={textEditorSaving}
+        initialName={textEditorName}
+        initialFormat={textEditorFormat}
+        initialContent={textEditorContent}
+        onCancel={() => setTextEditorOpen(false)}
+        onSubmit={saveTextDocument}
+      />
 
       <Modal
         title={t(editingBase ? "knowledgeBases.edit" : "knowledgeBases.create")}

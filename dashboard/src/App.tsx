@@ -13,6 +13,7 @@ import { AntdAppProvider } from "./components/AntdAppProvider";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AgentProvider } from "./context/AgentContext";
+import { LayoutModeProvider } from "./context/LayoutModeContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
@@ -109,9 +110,11 @@ function ThemedApp() {
             element={
               <AuthGuard>
                 <AgentProvider>
-                  <VoiceOutputProvider>
-                    <MainLayout />
-                  </VoiceOutputProvider>
+                  <LayoutModeProvider>
+                    <VoiceOutputProvider>
+                      <MainLayout />
+                    </VoiceOutputProvider>
+                  </LayoutModeProvider>
                 </AgentProvider>
               </AuthGuard>
             }

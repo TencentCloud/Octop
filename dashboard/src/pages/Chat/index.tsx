@@ -53,6 +53,7 @@ import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
 import { useAgent } from "../../context/AgentContext";
+import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import { isSharedExpertViewer } from "../../utils/sharedExpert";
@@ -67,6 +68,7 @@ import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
 import { apiErrorMessage } from "../../utils/apiError";
 import PwaInstallPrompt from "../../components/PwaInstallPrompt";
 import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
+import { OPEN_NAV_RECORDS_EVENT } from "../../layouts/chatHistoryRail";
 import styles from "./index.module.less";
 
 export default function ChatPage() {
@@ -84,6 +86,8 @@ function ChatPageInner() {
   }>();
   const isMobile = useIsMobile();
   const user = useCurrentUser();
+  const { layoutMode } = useLayoutMode();
+  const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
   const canMobile = userCan(user, "mobile");
   const { mobileEnabled } = useServerCapabilities();
@@ -796,6 +800,12 @@ function ChatPageInner() {
       onFetchAllSessions={handleFetchAllSessions}
       onSelectSession={(sessionId, agentId) => {
         setActiveAgent(agentId);
+        if (agentId && agentId !== resolvedAgentId) {
+          void octopThreadsApi.rebind(agentId, sessionId).catch(() => {});
+          navigate(`/chat/${agentId}/${sessionId}`);
+          if (isMobile) setSidebarOpen(false);
+          return;
+        }
         handleSelectSession(sessionId);
       }}
       onAgentSelect={navigateToAgent}
@@ -807,7 +817,8 @@ function ChatPageInner() {
       forkDisabledHint={sessionForkDisabledHint}
       onSidebarOpenChange={setSidebarOpen}
       onSidebarResizeStart={handleSidebarResizeStart}
-      layoutRail
+      layoutRail={!isMinimalLayout}
+      navEmbedded={isMinimalLayout}
     />
   );
 
@@ -828,7 +839,13 @@ function ChatPageInner() {
             <div className={styles.mobileToolbar}>
               <button
                 className={styles.menuBtn}
-                onClick={() => setSidebarOpen(!sidebarOpen)}
+                onClick={() => {
+                  if (isMinimalLayout) {
+                    window.dispatchEvent(new Event(OPEN_NAV_RECORDS_EVENT));
+                    return;
+                  }
+                  setSidebarOpen(!sidebarOpen);
+                }}
                 title={t("nav.chatHistory") || "会话列表"}
               >
                 <PanelLeftOpen size={18} strokeWidth={1.8} />

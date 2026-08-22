@@ -1,9 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { getAuthToken } from "../api/request";
-import {
-  H264CanvasDecoder,
-  parseVideoInit,
-} from "../utils/h264CanvasDecoder";
+import { H264CanvasDecoder, parseVideoInit } from "../utils/h264CanvasDecoder";
 
 export type MobileStreamState =
   | "idle"

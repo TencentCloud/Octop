@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   appendChildren,
   ancestorDirPaths,
-  ensurePathInTree,
   insertChild,
   isPathUnderHome,
   pathExistsInTree,
@@ -74,36 +73,6 @@ describe("rootDirTree helpers", () => {
       { value: "/b", title: "b", isLeaf: false },
     ]);
     expect(next[0].children?.map((c) => c.value)).toEqual(["/a", "/b"]);
-  });
-
-  it("ensurePathInTree does not add a root orphan when path already exists nested", () => {
-    const tree: DirTreeNode[] = [
-      {
-        ...root,
-        children: [
-          {
-            value: "/Users",
-            title: "Users",
-            isLeaf: false,
-            children: [
-              {
-                value: "/Users/jubaoliang",
-                title: "jubaoliang",
-                isLeaf: false,
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    const next = ensurePathInTree(tree, "/Users/jubaoliang");
-    expect(next).toHaveLength(1);
-    expect(next[0].value).toBe("/");
-  });
-
-  it("ensurePathInTree does not invent root orphans for unknown paths", () => {
-    const next = ensurePathInTree([root], "/tmp/custom");
-    expect(next).toEqual([root]);
   });
 
   it("sanitizeTree drops root-level duplicates that already exist under /", () => {

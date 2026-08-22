@@ -75,6 +75,8 @@
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {{minutes}} minutes.",
     "USERNAME_TAKEN": "Username is already taken.",
+    "EMAIL_TAKEN": "Email is already taken.",
+    "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
     "PASSWORD_TOO_WEAK": "Password is too weak: at least 8 characters with letters and digits.",
     "SETUP_PASSWORD_WRONG": "Incorrect setup password.",
@@ -149,7 +151,7 @@
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later."
   },
   "nav": {
-    "chat": "Chat",
+    "chat": "Conversation",
     "common": "Common",
     "control": "Control",
     "experts": "Experts",
@@ -202,7 +204,10 @@
     "adminPlugins": "Plugins",
     "skillPackages": "Skill Packages",
     "knowledgeBases": "Knowledge Bases",
-    "remoteAndroid": "Remote Phone"
+    "remoteAndroid": "Remote Phone",
+    "records": "Tasks",
+    "paneSettings": "Settings",
+    "paneRecords": "Tasks"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -347,6 +352,17 @@
     "upload": "Upload documents",
     "createFolder": "New folder",
     "createFolderFailed": "Failed to create folder",
+    "createFile": "New file",
+    "createFileSuccess": "File created; indexing started",
+    "createFileFailed": "Failed to create file",
+    "editDocument": "Edit",
+    "editDocumentSuccess": "Saved; reindex started",
+    "editDocumentFailed": "Failed to save document",
+    "filenameRequired": "Please enter a file name",
+    "filenamePlaceholder": "e.g. notes",
+    "fileFormat": "Format",
+    "fileContent": "Content",
+    "fileContentPlaceholder": "Write document content here…",
     "folder": "Folder",
     "file": "File",
     "entryType": "Type",
@@ -1177,7 +1193,7 @@
     "mobile_swipe": "Mobile swipe",
     "mobile_launch_app": "Launch mobile app",
     "mobile_ui_dump": "Mobile UI dump",
-    "mobile_handoff_to_user": "Hand off to user (mobile)"
+    "mobile_handoff_to_user": "Hand off to user (mobile)",
     "read_env_file": "Read env file",
     "write_env_file": "Write env file"
   },
@@ -2834,7 +2850,11 @@
     "passwordTooCommon": "That password is too common. Choose a stronger one",
     "passwordTooWeak": "Password is too weak. Choose a stronger one",
     "langZh": "中文",
-    "langEn": "English"
+    "langEn": "English",
+    "layoutMode": "Layout",
+    "layoutModeHint": "Classic keeps two rails; Minimal merges navigation and records into the left sidebar.",
+    "layoutClassic": "Classic",
+    "layoutMinimal": "Minimal"
   },
   "user": {
     "title": "User Settings",
@@ -3154,6 +3174,14 @@
     "tabs": {
       "terminal": "Terminal",
       "browser": "Browser"
+    }
+  },
+  "remoteDesktopHub": {
+    "title": "Remote Desktop",
+    "description": "Control the host desktop or a connected phone from the browser",
+    "tabs": {
+      "desktop": "Server desktop",
+      "phone": "Phone desktop"
     }
   },
   "terminal": {
@@ -3612,6 +3640,8 @@
       "username": "Username",
       "usernameRule": "Letters, digits, '_' or '-' only (max 64).",
       "displayName": "Display name (optional)",
+      "email": "Email (optional)",
+      "emailInvalid": "Enter a valid email address",
       "password": "Password",
       "passwordHint": "At least 8 characters with letters and digits.",
       "confirm": "Confirm password",
@@ -3839,7 +3869,7 @@
   "login": {
     "title": "Sign in",
     "subtitle": "Multi-user, multi-Agent AI server",
-    "username": "Username",
+    "username": "Username or email",
     "password": "Password",
     "submit": "Sign in",
     "failed": "Login failed",
@@ -3879,10 +3909,15 @@
     "back": "Back",
     "username": "Username",
     "usernameRequired": "Username is required",
+    "email": "Email (optional)",
+    "emailInvalid": "Enter a valid email address",
     "displayName": "Display name (optional)",
     "password": "Password",
     "passwordRequired": "Password is required",
-    "passwordHint": "At least 8 characters with letters and digits",
+    "passwordHint": "At least 8 characters with letters and digits.",
+    "passwordConfirm": "Confirm password",
+    "passwordConfirmRequired": "Please confirm your password",
+    "passwordMismatch": "Passwords do not match.",
     "createAccount": "Create account",
     "validateFailed": "Invalid invite code",
     "createFailed": "Could not create account",
@@ -3919,7 +3954,7 @@
       "expired": "Expired",
       "revoked": "Revoked"
     },
-    "searchPlaceholder": "Search username or display name",
+    "searchPlaceholder": "Search username, display name, or email",
     "loadFailed": "Load failed",
     "createSuccess": "User \"{{username}}\" created",
     "createFailed": "Create failed",
@@ -3964,6 +3999,8 @@
     "formPassword": "Password",
     "formPasswordConfirm": "Confirm password",
     "formDisplayName": "Display name (optional)",
+    "formEmail": "Email (optional)",
+    "formEmailInvalid": "Enter a valid email address",
     "formRole": "Role",
     "viewTable": "Table",
     "viewCard": "Cards",
@@ -4474,7 +4511,17 @@
     "pickDevice": "Select a device first",
     "devicePlaceholder": "Select device",
     "needsInstall": "Container install required",
-    "needsInstallDesc": "This host uses a container Android backend. Install it from the server before connecting.",
+    "needsInstallDesc": "This host uses a container Android backend. One-click install pulls and starts the container (Docker required on the host).",
+    "install": "Install container",
+    "installing": "Starting install…",
+    "installProgress": "Installing Android container…",
+    "installSuccess": "Android container is ready",
+    "installFailed": "Container install failed. Check the log and retry.",
+    "installRetry": "Retry install",
+    "installCancelHint": "Install request cancelled. The server may still be installing — refresh status later.",
+    "installStep1": "Make sure Docker is installed and usable on this host",
+    "installStep2": "Click Install container to pull and start the Android container",
+    "installStep3": "When install finishes, refresh status, then click Connect",
     "needsDevice": "No device connected",
     "needsDeviceDesc": "Start an Android emulator or connect a phone via USB, then refresh.",
     "readyTitle": "Phone ready",

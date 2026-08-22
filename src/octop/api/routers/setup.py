@@ -32,6 +32,7 @@ class SetupBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
     display_name: str | None = None
+    email: str | None = Field(default=None, max_length=254)
     locale: str | None = Field(
         default=None,
         description="UI locale for the initial admin (zh|en). Defaults to Accept-Language.",
@@ -356,6 +357,7 @@ async def initial_admin(
         password=body.password,
         role=Role.ADMIN,
         display_name=body.display_name,
+        email=body.email,
         locale=locale,
     )
     secret = server.services.secret_repo.get("jwt")

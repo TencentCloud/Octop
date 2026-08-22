@@ -14,12 +14,13 @@ from typing import Literal
 
 from octop.config import OctopConfig
 from octop.i18n import tr
-from octop.infra.mobile.adb import find_adb, list_devices
+from octop.infra.mobile.adb import adb_connect, find_adb, list_devices
 
 SetupState = Literal["needs_device", "needs_install", "ready", "unsupported"]
 MobileBackend = Literal["physical", "redroid", "emulator", "none"]
 
 _CONTAINER_NAME = "octop-mobile-android"
+_CONTAINER_ADB_ENDPOINT = "127.0.0.1:5555"
 
 
 def _mobile_log(locale: str, key: str, **kwargs: object) -> str:
@@ -153,7 +154,26 @@ def mobile_status(config: OctopConfig, *, locale: str = "en") -> MobileStatus:
             selected_device=devices[0] if devices else None,
             container_running=False,
         )
-    if not adb_available or not devices:
+    if not adb_available:
+        return MobileStatus(
+            ok=False,
+            mobile_supported=True,
+            setup_state="needs_device",
+            backend=backend,
+            platform=system,
+            reason=_mobile_log(locale, "adb_not_found"),
+            adb_available=False,
+            adb_path="",
+            devices=(),
+            selected_device=None,
+            container_running=True,
+        )
+    # Redroid exposes adb on the mapped host port; reconnect if the daemon
+    # dropped the session (common after container restart / install restart).
+    if not devices:
+        adb_connect(_CONTAINER_ADB_ENDPOINT, adb=adb_path)
+        devices = tuple(list_devices(adb=adb_path))
+    if not devices:
         return MobileStatus(
             ok=False,
             mobile_supported=True,
@@ -161,9 +181,9 @@ def mobile_status(config: OctopConfig, *, locale: str = "en") -> MobileStatus:
             backend=backend,
             platform=system,
             reason=_mobile_log(locale, "container_no_adb"),
-            adb_available=adb_available,
+            adb_available=True,
             adb_path=adb_path,
-            devices=devices,
+            devices=(),
             selected_device=None,
             container_running=True,
         )

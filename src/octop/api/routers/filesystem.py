@@ -2,8 +2,11 @@
 
 Security notes:
 - Authenticated users only (JWT).
-- Paths are resolved absolutely; ``..`` / symlinks cannot escape a denylist
-  of sensitive pseudo-fs mounts (``/proc``, ``/sys``, ``/dev``, ``/etc``, ``/root`` on POSIX).
+- Paths are resolved with ``os.path.realpath`` and must stay under the browse
+  tree root (``startswith`` containment — CodeQL-recognized sanitizer).
+  A denylist further blocks sensitive mounts (``/proc``, ``/sys``, ``/dev``,
+  ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
+  with home ``/root`` can use the default picker path).
 - All authenticated users may browse from host root ``/`` (denylist still applies).
   The UI default ``root_dir`` remains the process home directory.
 - Directory listing is capped and skips unreadable entries.

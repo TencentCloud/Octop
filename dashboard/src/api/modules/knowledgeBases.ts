@@ -190,6 +190,37 @@ export const knowledgeBasesApi = {
       body: JSON.stringify({ path }),
     }),
 
+  createTextDocument: (
+    id: string,
+    body: {
+      name: string;
+      format: "md" | "txt";
+      content?: string;
+      path?: string;
+    },
+  ) =>
+    request<KnowledgeDocument>(`/knowledge-bases/${id}/documents/text`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getTextDocument: (id: string, documentId: string) =>
+    request<{
+      id: string;
+      filename: string;
+      content_type: string;
+      text: string;
+    }>(`/knowledge-bases/${id}/documents/${documentId}/content`),
+
+  updateTextDocument: (id: string, documentId: string, content: string) =>
+    request<KnowledgeDocument>(
+      `/knowledge-bases/${id}/documents/${documentId}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      },
+    ),
+
   uploadDocument: (id: string, file: File, relativePath?: string) => {
     const body = new FormData();
     body.append("upload", file);

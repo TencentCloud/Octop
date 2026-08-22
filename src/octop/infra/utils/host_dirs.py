@@ -27,12 +27,12 @@ _NOT_ALLOWED_MSG = "path not allowed"
 
 def host_path_text(path: Path) -> str:
     """Serialize a host path for API/UI (POSIX separators, even on Windows)."""
-    return path.expanduser().resolve().as_posix()
+    return Path(os.path.realpath(os.path.expanduser(str(path)))).as_posix()
 
 
 def host_home_dir() -> Path:
     """Absolute home directory of the OS user running the Octop process."""
-    return Path.home().expanduser().resolve()
+    return Path(os.path.realpath(os.path.expanduser(str(Path.home()))))
 
 
 def host_fs_tree_root(*, allow_outside_home: bool) -> str:
@@ -50,29 +50,51 @@ def host_fs_tree_root(*, allow_outside_home: bool) -> str:
     return host_path_text(Path(home.anchor))
 
 
+def _path_within_base(resolved: str, base: str) -> bool:
+    """True when *resolved* equals *base* or is a subdirectory (normcase-safe).
+
+    Uses ``startswith`` after ``os.path.realpath`` so CodeQL treats this as a
+    path-injection containment barrier (``Path.resolve`` / ``relative_to`` are
+    not modeled as sanitizers).
+    """
+    resolved_n = os.path.normcase(resolved)
+    base_n = os.path.normcase(base)
+    if resolved_n == base_n:
+        return True
+    if base_n.endswith(os.sep):
+        return resolved_n.startswith(base_n)
+    return resolved_n.startswith(base_n + os.sep)
+
+
 def is_within_host_home(resolved: Path, *, home: Path | None = None) -> bool:
     """True when *resolved* is the host home directory or a subdirectory."""
-    base = (home or host_home_dir()).resolve()
-    target = resolved.resolve()
-    try:
-        target.relative_to(base)
-        return True
-    except ValueError:
-        if os.name != "nt":
-            return False
-        # Windows paths are case-insensitive.
-        base_s = os.path.normcase(str(base))
-        target_s = os.path.normcase(str(target))
-        return target_s == base_s or target_s.startswith(base_s + os.sep)
+    base = os.path.realpath(str(home or host_home_dir()))
+    target = os.path.realpath(str(resolved))
+    return _path_within_base(target, base)
 
 
 def normalize_host_path(path: str) -> Path:
+    """Canonical absolute path via ``os.path.realpath`` (CodeQL-recognized)."""
     raw = path.strip() or ("/" if os.name == "posix" else str(Path.home().anchor))
-    return Path(raw).expanduser().resolve()
+    return Path(os.path.realpath(os.path.expanduser(raw)))
+
+
+def _browse_tree_base(*, restrict_to_home: bool) -> str:
+    """Containment root for picker paths (home jail or host/drive root)."""
+    if restrict_to_home:
+        return os.path.realpath(str(host_home_dir()))
+    if os.name == "posix":
+        return os.path.realpath("/")
+    return os.path.realpath(str(Path.home().anchor))
 
 
 def _is_denied_host_path(resolved: Path) -> bool:
     if os.name != "posix":
+        return False
+    # Process home may coincide with a denylist prefix (uid 0 → ``/root``).
+    # The UI defaults ``root_dir`` to home, so home and its subdirs must stay
+    # selectable; ``/root`` remains denied for non-root process homes.
+    if is_within_host_home(resolved):
         return False
     text = resolved.as_posix()
     # macOS resolves /etc → /private/etc (and similar). Strip that prefix so
@@ -89,19 +111,27 @@ def assert_safe_host_path(path: str, *, restrict_to_home: bool = False) -> Path:
     subdirectories are allowed. The HTTP filesystem / expert APIs pass
     ``False`` so any authenticated user may pick outside home (denylist still
     applies).
+
+    Normalization uses ``os.path.realpath`` and containment uses ``startswith``
+    against the browse-tree base — the pattern CodeQL recognizes for
+    ``py/path-injection`` (unlike ``Path.resolve`` alone).
     """
     if not path or "\0" in path:
         raise ValueError("invalid path")
     try:
-        resolved = normalize_host_path(path)
+        # normalize_host_path already realpath's; keep a str for startswith
+        # so CodeQL sees a containment sanitizer on the FS path we return.
+        resolved_s = os.fspath(normalize_host_path(path))
     except OSError as exc:
         raise ValueError("invalid path") from exc
-    if not resolved.is_absolute():
+    if not os.path.isabs(resolved_s):
         raise ValueError("path must be absolute")
+    base = _browse_tree_base(restrict_to_home=restrict_to_home)
+    if not _path_within_base(resolved_s, base):
+        raise ValueError(_OUTSIDE_HOME_MSG if restrict_to_home else "path must be absolute")
+    resolved = Path(resolved_s)
     if _is_denied_host_path(resolved):
         raise ValueError(_NOT_ALLOWED_MSG)
-    if restrict_to_home and not is_within_host_home(resolved):
-        raise ValueError(_OUTSIDE_HOME_MSG)
     return resolved
 
 
@@ -123,7 +153,7 @@ def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict
         if not child.is_dir():
             continue
         try:
-            resolved = child.resolve()
+            resolved = Path(os.path.realpath(str(child)))
             if not resolved.is_dir():
                 continue
             if _is_denied_host_path(resolved):

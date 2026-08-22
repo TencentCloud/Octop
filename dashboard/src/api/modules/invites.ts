@@ -27,6 +27,7 @@ export interface InviteRedeemBody {
   username: string;
   password: string;
   display_name?: string | null;
+  email?: string | null;
 }
 
 export interface InviteRedeemResponse {

@@ -4,20 +4,14 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
 } from "react";
-import {
-  Alert,
-  Button,
-  Select,
-  Space,
-  Spin,
-  Tooltip,
-} from "antd";
+import { Alert, Button, Select, Space, Spin, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 import {
   Bot,
   Camera,
   Circle,
   Cpu,
+  Download,
   HardDrive,
   MonitorSmartphone,
   PlugZap,
@@ -80,7 +74,12 @@ const STREAM_QUALITY_PRESETS: Record<
 function loadStreamQuality(): StreamQualityPreset {
   try {
     const saved = localStorage.getItem(STREAM_QUALITY_KEY);
-    if (saved === "low" || saved === "balanced" || saved === "high" || saved === "max") {
+    if (
+      saved === "low" ||
+      saved === "balanced" ||
+      saved === "high" ||
+      saved === "max"
+    ) {
       return saved;
     }
   } catch {
@@ -98,12 +97,15 @@ type RailKey =
   | "recents";
 
 type RemoteAndroidPageProps = {
-  /** Skip PageShell when mounted inside chat dock / workbench. */
+  /** Skip PageShell when mounted inside chat dock / remote-desktop hub. */
   embedded?: boolean;
+  /** When false (hidden hub tab), pause the live stream. */
+  isVisible?: boolean;
 };
 
 export default function RemoteAndroidPage({
   embedded = false,
+  isVisible = true,
 }: RemoteAndroidPageProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -111,6 +113,13 @@ export default function RemoteAndroidPage({
   const user = useCurrentUser();
   const canMobile = userCan(user, "mobile");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamDesiredRef = useRef(false);
+  const installAbortRef = useRef<AbortController | null>(null);
+  const installLogRef = useRef<HTMLDivElement | null>(null);
+  const [installPhase, setInstallPhase] = useState<
+    "idle" | "installing" | "success" | "failed"
+  >("idle");
+  const [installLogs, setInstallLogs] = useState<string[]>([]);
   const [statusData, setStatusData] = useState<MobileStatusResponse | null>(
     null,
   );
@@ -175,7 +184,7 @@ export default function RemoteAndroidPage({
   const effectiveActiveAgent =
     activeAgent ??
     (activeAgentId
-      ? (agents.find((agent) => agent.agent_id === activeAgentId) ?? null)
+      ? agents.find((agent) => agent.agent_id === activeAgentId) ?? null
       : null);
 
   const handleAiPanelToggle = useCallback(() => {
@@ -284,6 +293,52 @@ export default function RemoteAndroidPage({
     }
   }, [device, t]);
 
+  const handleInstall = useCallback(() => {
+    if (installPhase === "installing") return;
+    setInstallPhase("installing");
+    setInstallLogs([]);
+    installAbortRef.current = mobileApi.install(
+      (line) => setInstallLogs((prev) => [...prev, line]),
+      (ok, error) => {
+        installAbortRef.current = null;
+        if (ok) {
+          setInstallPhase("success");
+          message.success(
+            t("remoteAndroid.installSuccess", "Android 容器已就绪"),
+          );
+          void refreshStatus();
+          return;
+        }
+        setInstallPhase("failed");
+        if (error) {
+          setInstallLogs((prev) => [...prev, error]);
+        }
+        message.error(
+          t("remoteAndroid.installFailed", "容器安装失败，请查看日志后重试"),
+        );
+      },
+    );
+  }, [installPhase, refreshStatus, t]);
+
+  const cancelInstall = useCallback(() => {
+    installAbortRef.current?.abort();
+    installAbortRef.current = null;
+    setInstallPhase("idle");
+    setInstallLogs([]);
+    message.info(
+      t(
+        "remoteAndroid.installCancelHint",
+        "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
+      ),
+    );
+  }, [t]);
+
+  useEffect(() => {
+    if (installLogRef.current) {
+      installLogRef.current.scrollTop = installLogRef.current.scrollHeight;
+    }
+  }, [installLogs]);
+
   useEffect(() => {
     if (canMobile) void refreshStatus();
   }, [canMobile, refreshStatus]);
@@ -302,10 +357,7 @@ export default function RemoteAndroidPage({
         setDeviceInfo(null);
         showApiError(
           err,
-          t(
-            "remoteAndroid.deviceInfoFailed",
-            "Failed to load device details",
-          ),
+          t("remoteAndroid.deviceInfoFailed", "Failed to load device details"),
           t,
         );
       } finally {
@@ -379,6 +431,7 @@ export default function RemoteAndroidPage({
     }
     const preset = STREAM_QUALITY_PRESETS[streamQuality];
     setFrameReady(false);
+    streamDesiredRef.current = true;
     connect(
       {
         device,
@@ -420,6 +473,7 @@ export default function RemoteAndroidPage({
         const preset = STREAM_QUALITY_PRESETS[next];
         if (!device) return;
         setFrameReady(false);
+        streamDesiredRef.current = true;
         connect(
           {
             device,
@@ -451,11 +505,27 @@ export default function RemoteAndroidPage({
     [connect, device, streamStatus],
   );
   const handleDisconnect = useCallback(() => {
+    streamDesiredRef.current = false;
     disconnect();
     clearCanvas(canvasRef.current);
     setFrameReady(false);
     setStreamSize({ width: 0, height: 0 });
   }, [disconnect]);
+
+  // Pause/resume when the hub tab is hidden so phone/desktop don't stream at once.
+  useEffect(() => {
+    if (!isVisible) {
+      disconnect();
+      clearCanvas(canvasRef.current);
+      setFrameReady(false);
+      return;
+    }
+    if (streamDesiredRef.current && device) {
+      handleConnect();
+    }
+    // handleConnect identity changes often; only react to visibility/device.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVisible, device, disconnect]);
 
   const sendRailKey = useCallback(
     (key: RailKey) => {
@@ -503,19 +573,18 @@ export default function RemoteAndroidPage({
     streamStatus === "streaming"
       ? `${styles.statusPill} ${styles.statusStreaming}`
       : streamStatus === "connecting"
-        ? `${styles.statusPill} ${styles.statusConnecting}`
-        : `${styles.statusPill} ${styles.statusIdle}`;
+      ? `${styles.statusPill} ${styles.statusConnecting}`
+      : `${styles.statusPill} ${styles.statusIdle}`;
 
   const statusLabel =
     streamStatus === "streaming"
       ? t("remoteAndroid.statusStreaming", "Streaming")
       : streamStatus === "connecting"
-        ? t("remoteAndroid.statusConnecting", "Connecting")
-        : t("remoteAndroid.statusIdle", "Idle");
+      ? t("remoteAndroid.statusConnecting", "Connecting")
+      : t("remoteAndroid.statusIdle", "Idle");
 
   const none = t("remoteAndroid.infoNone", "—");
-  const displayName =
-    deviceInfo?.model || device || none;
+  const displayName = deviceInfo?.model || device || none;
   const hardwareLabel =
     deviceInfo?.cpu_cores != null && deviceInfo?.mem_total_mb != null
       ? t("remoteAndroid.infoHardwareValue", {
@@ -524,16 +593,16 @@ export default function RemoteAndroidPage({
           defaultValue: "{{cores}} cores · {{memGb}} GB RAM",
         })
       : deviceInfo?.cpu_cores != null
-        ? t("remoteAndroid.infoCoresValue", {
-            cores: deviceInfo.cpu_cores,
-            defaultValue: "{{cores}} cores",
-          })
-        : deviceInfo?.mem_total_mb != null
-          ? t("remoteAndroid.infoMemValue", {
-              memGb: (deviceInfo.mem_total_mb / 1024).toFixed(1),
-              defaultValue: "{{memGb}} GB RAM",
-            })
-          : none;
+      ? t("remoteAndroid.infoCoresValue", {
+          cores: deviceInfo.cpu_cores,
+          defaultValue: "{{cores}} cores",
+        })
+      : deviceInfo?.mem_total_mb != null
+      ? t("remoteAndroid.infoMemValue", {
+          memGb: (deviceInfo.mem_total_mb / 1024).toFixed(1),
+          defaultValue: "{{memGb}} GB RAM",
+        })
+      : none;
   const storagePrimary =
     deviceInfo?.storage_total_gb != null
       ? t("remoteAndroid.infoStorageTotal", {
@@ -556,8 +625,8 @@ export default function RemoteAndroidPage({
     deviceInfo?.width && deviceInfo?.height
       ? `${deviceInfo.width} × ${deviceInfo.height}`
       : streamSize.width > 0
-        ? `${streamSize.width} × ${streamSize.height}`
-        : none;
+      ? `${streamSize.width} × ${streamSize.height}`
+      : none;
   const screenSecondary = [
     deviceInfo?.density_dpi != null
       ? t("remoteAndroid.infoDpiValue", {
@@ -657,6 +726,16 @@ export default function RemoteAndroidPage({
   const actions = (
     <Space size={8} wrap>
       {!showTopBar ? aiToggleButton : null}
+      {needsInstall ? (
+        <Button
+          type="primary"
+          icon={<Download size={14} />}
+          loading={installPhase === "installing"}
+          onClick={handleInstall}
+        >
+          {t("remoteAndroid.install", "安装容器")}
+        </Button>
+      ) : null}
       <Button
         icon={<RefreshCw size={14} />}
         onClick={() => void refreshStatus()}
@@ -670,7 +749,7 @@ export default function RemoteAndroidPage({
         </Button>
       ) : (
         <Button
-          type="primary"
+          type={needsInstall ? "default" : "primary"}
           icon={<PlugZap size={14} />}
           disabled={!ready || !device}
           onClick={handleConnect}
@@ -682,434 +761,523 @@ export default function RemoteAndroidPage({
   );
 
   const pageBody = (
-      <div className={styles.remotePhonePage}>
-        {embedded && <div className={styles.embeddedActions}>{actions}</div>}
-        {needsInstall && (
-          <Alert
-            type="info"
-            showIcon
-            message={t(
-              "remoteAndroid.needsInstall",
-              "Container install required",
-            )}
-            description={t(
-              "remoteAndroid.needsInstallDesc",
-              "This host uses a container Android backend. Install it from the server before connecting.",
-            )}
-          />
-        )}
-        {needsDevice && (
-          <Alert
-            type="warning"
-            showIcon
-            message={t("remoteAndroid.needsDevice", "No device connected")}
-            description={
-              statusData?.reason ||
-              t(
-                "remoteAndroid.needsDeviceDesc",
-                "Start an Android emulator or connect a phone via USB, then refresh.",
-              )
-            }
-          />
-        )}
-        {ready && !showStream && (
-          <Alert
-            type="success"
-            showIcon
-            message={t("remoteAndroid.readyTitle", "Phone ready")}
-            description={t(
-              "remoteAndroid.readyDesc",
-              "A connected device was found. Click Connect to stream and control it.",
-            )}
-          />
-        )}
+    <div className={styles.remotePhonePage}>
+      {embedded && <div className={styles.embeddedActions}>{actions}</div>}
+      {needsInstall && installPhase !== "installing" && (
+        <Alert
+          type="info"
+          showIcon
+          message={t(
+            "remoteAndroid.needsInstall",
+            "Container install required",
+          )}
+          description={t(
+            "remoteAndroid.needsInstallDesc",
+            "此主机使用容器 Android 后端。可一键拉取并启动容器（需本机已安装 Docker）。",
+          )}
+          action={
+            <Button
+              size="small"
+              type="primary"
+              icon={<Download size={14} />}
+              onClick={handleInstall}
+            >
+              {t("remoteAndroid.install", "安装容器")}
+            </Button>
+          }
+        />
+      )}
+      {needsDevice && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t("remoteAndroid.needsDevice", "No device connected")}
+          description={
+            statusData?.reason ||
+            t(
+              "remoteAndroid.needsDeviceDesc",
+              "Start an Android emulator or connect a phone via USB, then refresh.",
+            )
+          }
+        />
+      )}
+      {ready && !showStream && (
+        <Alert
+          type="success"
+          showIcon
+          message={t("remoteAndroid.readyTitle", "Phone ready")}
+          description={t(
+            "remoteAndroid.readyDesc",
+            "A connected device was found. Click Connect to stream and control it.",
+          )}
+        />
+      )}
 
-        {showTopBar && (
-          <div className={styles.topBar}>
-            <div className={styles.deviceMeta}>
-              <Smartphone size={16} className={styles.deviceIcon} />
-              <Select
-                style={{ minWidth: 200 }}
-                placeholder={t(
-                  "remoteAndroid.devicePlaceholder",
-                  "Select device",
-                )}
-                value={device || undefined}
-                onChange={(value) => setDevice(value)}
-                options={(statusData?.devices ?? []).map((d) => ({
-                  value: d,
-                  label: d,
-                }))}
-                disabled={showStream}
-              />
-              {streamSize.width > 0 ? (
-                <span className={styles.statusPill}>
-                  {streamSize.width}×{streamSize.height}
-                </span>
-              ) : null}
-              <span className={statusClass}>{statusLabel}</span>
-            </div>
-            <div className={styles.topBarSpacer} />
-            <div className={styles.qualityControl}>
-              <span className={styles.qualityLabel}>
-                {t("remoteAndroid.streamQuality", "画质")}
+      {showTopBar && (
+        <div className={styles.topBar}>
+          <div className={styles.deviceMeta}>
+            <Smartphone size={16} className={styles.deviceIcon} />
+            <Select
+              style={{ minWidth: 200 }}
+              placeholder={t(
+                "remoteAndroid.devicePlaceholder",
+                "Select device",
+              )}
+              value={device || undefined}
+              onChange={(value) => setDevice(value)}
+              options={(statusData?.devices ?? []).map((d) => ({
+                value: d,
+                label: d,
+              }))}
+              disabled={showStream}
+            />
+            {streamSize.width > 0 ? (
+              <span className={styles.statusPill}>
+                {streamSize.width}×{streamSize.height}
               </span>
-              <Select
-                size="small"
-                style={{ minWidth: 120 }}
-                value={streamQuality}
-                onChange={(value) =>
-                  handleStreamQualityChange(value as StreamQualityPreset)
-                }
-                options={[
-                  {
-                    value: "low",
-                    label: t("remoteAndroid.streamQualityLow", "流畅"),
-                  },
-                  {
-                    value: "balanced",
-                    label: t("remoteAndroid.streamQualityBalanced", "均衡"),
-                  },
-                  {
-                    value: "high",
-                    label: t("remoteAndroid.streamQualityHigh", "高清"),
-                  },
-                  {
-                    value: "max",
-                    label: t("remoteAndroid.streamQualityMax", "原画"),
-                  },
-                ]}
-              />
-            </div>
-            {aiToggleButton}
+            ) : null}
+            <span className={statusClass}>{statusLabel}</span>
           </div>
-        )}
+          <div className={styles.topBarSpacer} />
+          <div className={styles.qualityControl}>
+            <span className={styles.qualityLabel}>
+              {t("remoteAndroid.streamQuality", "画质")}
+            </span>
+            <Select
+              size="small"
+              style={{ minWidth: 120 }}
+              value={streamQuality}
+              onChange={(value) =>
+                handleStreamQualityChange(value as StreamQualityPreset)
+              }
+              options={[
+                {
+                  value: "low",
+                  label: t("remoteAndroid.streamQualityLow", "流畅"),
+                },
+                {
+                  value: "balanced",
+                  label: t("remoteAndroid.streamQualityBalanced", "均衡"),
+                },
+                {
+                  value: "high",
+                  label: t("remoteAndroid.streamQualityHigh", "高清"),
+                },
+                {
+                  value: "max",
+                  label: t("remoteAndroid.streamQualityMax", "原画"),
+                },
+              ]}
+            />
+          </div>
+          {aiToggleButton}
+        </div>
+      )}
 
-        <div
-          className={`${styles.workspaceRow}${
-            isMobile && isAiPanelOpen ? ` ${styles.workspaceRowColumn}` : ""
-          }`}
-        >
-          <div className={styles.mainColumn}>
-        <div className={styles.viewport}>
-          {loading && !statusData ? (
-            <div className={styles.idleFill}>
-              <Spin size="large" />
-            </div>
-          ) : (
-            <>
-              {!showStream ? (
-                <div className={styles.idleFill}>
-                  <StreamSetupGuide
-                    icon={setupMascot}
-                    title={
-                      ready
-                        ? t(
-                            "remoteAndroid.connectTitle",
-                            "Connect remote phone",
-                          )
-                        : needsDevice
-                          ? t(
-                              "remoteAndroid.needsDevice",
-                              "No device connected",
-                            )
-                          : t("pageShell.mobile.title", "Remote Phone")
-                    }
-                    description={
-                      ready
-                        ? t(
-                            "remoteAndroid.connectIdleDesc",
-                            "Click Connect below to stream and control the phone in real time.",
-                          )
-                        : needsDevice
-                          ? t(
-                              "remoteAndroid.needsDeviceDesc",
-                              "Start an Android emulator or connect a phone via USB, then refresh.",
-                            )
-                          : t(
-                              "remoteAndroid.setupDesc",
-                              "Connect a phone over USB with debugging enabled, then start streaming.",
-                            )
-                    }
-                    steps={
-                      ready
-                        ? [
-                            {
-                              label: t(
-                                "remoteAndroid.idleStep1",
-                                "Select a device",
-                              ),
-                            },
-                            {
-                              label: t(
-                                "remoteAndroid.idleStep2",
-                                "Click Connect, then tap, swipe, and type on the phone screen; once connected the Agent can use the device too",
-                              ),
-                            },
-                          ]
-                        : [
-                            {
-                              label: t(
-                                "remoteAndroid.setupStep1",
-                                "Enable USB debugging on the phone and plug it in",
-                              ),
-                            },
-                            {
-                              label: t(
-                                "remoteAndroid.setupStep2",
-                                "Click Refresh until the device appears in the list",
-                              ),
-                            },
-                            {
-                              label: t(
-                                "remoteAndroid.setupStep3",
-                                "Click Connect to start live control",
-                              ),
-                            },
-                          ]
-                    }
-                    primaryAction={
-                      ready
-                        ? {
-                            label: t("remoteAndroid.connect", "Connect"),
-                            onClick: handleConnect,
-                            icon: <PlugZap size={14} />,
-                            disabled: !device,
-                          }
-                        : {
-                            label: t("remoteAndroid.refresh", "Refresh"),
-                            onClick: () => void refreshStatus(),
-                            icon: <RefreshCw size={14} />,
-                            loading,
-                          }
-                    }
-                  />
-                </div>
-              ) : null}
-
-              <div
-                className={styles.streamWorkspace}
-                hidden={!showStream}
-                aria-hidden={!showStream}
-              >
-                <div className={styles.stage}>
-                  {showStream && !frameReady ? (
-                    <div className={styles.connectingStage}>
-                      <StreamConnectingIndicator
-                        label={t("remoteAndroid.connecting", "Connecting…")}
-                        hint={t(
-                          "remoteAndroid.connectingHint",
-                          "Waiting for the first frame",
-                        )}
-                      />
-                    </div>
-                  ) : null}
-                  <div
-                    className={`${styles.phoneCluster}${
-                      !frameReady ? ` ${styles.phoneClusterOffstage}` : ""
-                    }`}
-                    aria-hidden={!frameReady}
-                  >
-                    <div className={styles.phoneFrame}>
-                      <canvas
-                        ref={canvasRef}
-                        className={styles.canvas}
-                        tabIndex={0}
-                        onPointerDown={(e) => {
-                          canvasRef.current?.focus();
-                          interaction.onPointerDown(e);
-                        }}
-                        onPointerMove={interaction.onPointerMove}
-                        onPointerLeave={interaction.onPointerLeave}
-                        onContextMenu={interaction.onContextMenu}
-                        onDoubleClick={interaction.onDoubleClick}
-                        onWheel={interaction.onWheel}
-                        onKeyDown={onKeyDown}
-                        style={{
-                          ...interaction.pointerStyle,
-                          cursor:
-                            streamStatus === "streaming"
-                              ? "crosshair"
-                              : undefined,
-                        }}
-                      />
-                    </div>
-                    <aside
-                      className={styles.deviceRail}
-                      aria-label={t(
-                        "remoteAndroid.railLabel",
-                        "Device controls",
-                      )}
-                    >
-                      {railItems.map((item) => (
-                        <Fragment key={item.key}>
-                          <Tooltip title={item.label} placement="right">
-                            <button
-                              type="button"
-                              className={styles.railBtn}
-                              aria-label={item.label}
-                              disabled={
-                                item.key === "screenshot"
-                                  ? !frameReady
-                                  : !railEnabled
+      <div
+        className={`${styles.workspaceRow}${
+          isMobile && isAiPanelOpen ? ` ${styles.workspaceRowColumn}` : ""
+        }`}
+      >
+        <div className={styles.mainColumn}>
+          <div className={styles.viewport}>
+            {loading && !statusData ? (
+              <div className={styles.idleFill}>
+                <Spin size="large" />
+              </div>
+            ) : (
+              <>
+                {!showStream ? (
+                  <div className={styles.idleFill}>
+                    {installPhase === "installing" ? (
+                      <div className={styles.installProgress}>
+                        <RefreshCw
+                          size={32}
+                          className={styles.streamLoadingIcon}
+                        />
+                        <div className={styles.installProgressTitle}>
+                          {t(
+                            "remoteAndroid.installProgress",
+                            "正在安装 Android 容器…",
+                          )}
+                        </div>
+                        <div ref={installLogRef} className={styles.installLog}>
+                          {installLogs.length === 0 ? (
+                            <div>
+                              {t("remoteAndroid.installing", "正在启动安装…")}
+                            </div>
+                          ) : (
+                            installLogs.map((line, i) => (
+                              <div key={i}>{line}</div>
+                            ))
+                          )}
+                        </div>
+                        <div className={styles.installProgressActions}>
+                          <Button onClick={cancelInstall}>
+                            {t("common.cancel", "取消")}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <StreamSetupGuide
+                        icon={setupMascot}
+                        title={
+                          ready
+                            ? t(
+                                "remoteAndroid.connectTitle",
+                                "Connect remote phone",
+                              )
+                            : needsInstall
+                            ? t(
+                                "remoteAndroid.needsInstall",
+                                "Container install required",
+                              )
+                            : needsDevice
+                            ? t(
+                                "remoteAndroid.needsDevice",
+                                "No device connected",
+                              )
+                            : t("pageShell.mobile.title", "Remote Phone")
+                        }
+                        description={
+                          ready
+                            ? t(
+                                "remoteAndroid.connectIdleDesc",
+                                "Click Connect below to stream and control the phone in real time.",
+                              )
+                            : needsInstall
+                            ? t(
+                                "remoteAndroid.needsInstallDesc",
+                                "此主机使用容器 Android 后端。可一键拉取并启动容器（需本机已安装 Docker）。",
+                              )
+                            : needsDevice
+                            ? t(
+                                "remoteAndroid.needsDeviceDesc",
+                                "Start an Android emulator or connect a phone via USB, then refresh.",
+                              )
+                            : t(
+                                "remoteAndroid.setupDesc",
+                                "Connect a phone over USB with debugging enabled, then start streaming.",
+                              )
+                        }
+                        steps={
+                          ready
+                            ? [
+                                {
+                                  label: t(
+                                    "remoteAndroid.idleStep1",
+                                    "Select a device",
+                                  ),
+                                },
+                                {
+                                  label: t(
+                                    "remoteAndroid.idleStep2",
+                                    "Click Connect, then tap, swipe, and type on the phone screen; once connected the Agent can use the device too",
+                                  ),
+                                },
+                              ]
+                            : needsInstall
+                            ? [
+                                {
+                                  label: t(
+                                    "remoteAndroid.installStep1",
+                                    "确认主机已安装并可使用 Docker",
+                                  ),
+                                },
+                                {
+                                  label: t(
+                                    "remoteAndroid.installStep2",
+                                    "点击「安装容器」，拉取并启动 Android 容器",
+                                  ),
+                                },
+                                {
+                                  label: t(
+                                    "remoteAndroid.installStep3",
+                                    "安装完成后刷新状态，再点击「连接」",
+                                  ),
+                                },
+                              ]
+                            : [
+                                {
+                                  label: t(
+                                    "remoteAndroid.setupStep1",
+                                    "Enable USB debugging on the phone and plug it in",
+                                  ),
+                                },
+                                {
+                                  label: t(
+                                    "remoteAndroid.setupStep2",
+                                    "Click Refresh until the device appears in the list",
+                                  ),
+                                },
+                                {
+                                  label: t(
+                                    "remoteAndroid.setupStep3",
+                                    "Click Connect to start live control",
+                                  ),
+                                },
+                              ]
+                        }
+                        primaryAction={
+                          ready
+                            ? {
+                                label: t("remoteAndroid.connect", "Connect"),
+                                onClick: handleConnect,
+                                icon: <PlugZap size={14} />,
+                                disabled: !device,
                               }
-                              onClick={item.onClick}
-                            >
-                              {item.icon}
-                            </button>
-                          </Tooltip>
-                          {item.dividerAfter ? (
-                            <div className={styles.railDivider} aria-hidden />
-                          ) : null}
-                        </Fragment>
-                      ))}
-                    </aside>
+                            : needsInstall
+                            ? {
+                                label:
+                                  installPhase === "failed"
+                                    ? t(
+                                        "remoteAndroid.installRetry",
+                                        "重新安装",
+                                      )
+                                    : t("remoteAndroid.install", "安装容器"),
+                                onClick: handleInstall,
+                                icon: <Download size={14} />,
+                              }
+                            : {
+                                label: t("remoteAndroid.refresh", "Refresh"),
+                                onClick: () => void refreshStatus(),
+                                icon: <RefreshCw size={14} />,
+                                loading,
+                              }
+                        }
+                        secondaryAction={
+                          needsInstall
+                            ? {
+                                label: t("remoteAndroid.refresh", "Refresh"),
+                                onClick: () => void refreshStatus(),
+                                icon: <RefreshCw size={14} />,
+                                loading,
+                                type: "default",
+                              }
+                            : undefined
+                        }
+                      />
+                    )}
                   </div>
-                </div>
+                ) : null}
 
-                <aside className={styles.sidePanel}>
-                  <section className={styles.infoSection}>
-                    <header className={styles.infoSectionHead}>
-                      <Smartphone size={15} strokeWidth={2} aria-hidden />
-                      <h3 className={styles.sidePanelTitle}>
-                        {t("remoteAndroid.infoTitle", "Device info")}
-                      </h3>
-                      {deviceInfoLoading ? <Spin size="small" /> : null}
-                    </header>
-                    <dl className={styles.infoList}>
-                      <div className={styles.infoRow}>
-                        <dt className={styles.infoLabel}>
-                          {t("remoteAndroid.infoName", "Device name")}
-                        </dt>
-                        <dd className={styles.infoValue}>{displayName}</dd>
+                <div
+                  className={styles.streamWorkspace}
+                  hidden={!showStream}
+                  aria-hidden={!showStream}
+                >
+                  <div className={styles.stage}>
+                    {showStream && !frameReady ? (
+                      <div className={styles.connectingStage}>
+                        <StreamConnectingIndicator
+                          label={t("remoteAndroid.connecting", "Connecting…")}
+                          hint={t(
+                            "remoteAndroid.connectingHint",
+                            "Waiting for the first frame",
+                          )}
+                        />
                       </div>
-                      <div className={styles.infoRow}>
-                        <dt className={styles.infoLabel}>
-                          {t("remoteAndroid.infoSerial", "Device ID")}
-                        </dt>
-                        <dd className={styles.infoValue}>
-                          {device || none}
-                        </dd>
+                    ) : null}
+                    <div
+                      className={`${styles.phoneCluster}${
+                        !frameReady ? ` ${styles.phoneClusterOffstage}` : ""
+                      }`}
+                      aria-hidden={!frameReady}
+                    >
+                      <div className={styles.phoneFrame}>
+                        <canvas
+                          ref={canvasRef}
+                          className={styles.canvas}
+                          tabIndex={0}
+                          onPointerDown={(e) => {
+                            canvasRef.current?.focus();
+                            interaction.onPointerDown(e);
+                          }}
+                          onPointerMove={interaction.onPointerMove}
+                          onPointerLeave={interaction.onPointerLeave}
+                          onContextMenu={interaction.onContextMenu}
+                          onDoubleClick={interaction.onDoubleClick}
+                          onWheel={interaction.onWheel}
+                          onKeyDown={onKeyDown}
+                          style={{
+                            ...interaction.pointerStyle,
+                            cursor:
+                              streamStatus === "streaming"
+                                ? "crosshair"
+                                : undefined,
+                          }}
+                        />
                       </div>
-                    </dl>
-                  </section>
+                      <aside
+                        className={styles.deviceRail}
+                        aria-label={t(
+                          "remoteAndroid.railLabel",
+                          "Device controls",
+                        )}
+                      >
+                        {railItems.map((item) => (
+                          <Fragment key={item.key}>
+                            <Tooltip title={item.label} placement="right">
+                              <button
+                                type="button"
+                                className={styles.railBtn}
+                                aria-label={item.label}
+                                disabled={
+                                  item.key === "screenshot"
+                                    ? !frameReady
+                                    : !railEnabled
+                                }
+                                onClick={item.onClick}
+                              >
+                                {item.icon}
+                              </button>
+                            </Tooltip>
+                            {item.dividerAfter ? (
+                              <div className={styles.railDivider} aria-hidden />
+                            ) : null}
+                          </Fragment>
+                        ))}
+                      </aside>
+                    </div>
+                  </div>
 
-                  <section className={styles.infoSection}>
-                    <header className={styles.infoSectionHead}>
-                      <Cpu size={15} strokeWidth={2} aria-hidden />
-                      <h3 className={styles.sidePanelTitle}>
-                        {t("remoteAndroid.infoSpecsTitle", "Specifications")}
-                      </h3>
-                    </header>
-                    <dl className={styles.infoList}>
-                      <div className={styles.infoRow}>
-                        <dt className={styles.infoLabel}>
-                          <span className={styles.infoLabelWithIcon}>
-                            <Cpu size={12} aria-hidden />
-                            {t("remoteAndroid.infoHardware", "Hardware")}
-                          </span>
-                        </dt>
-                        <dd className={styles.infoValue}>{hardwareLabel}</dd>
-                      </div>
-                      <div className={styles.infoRow}>
-                        <dt className={styles.infoLabel}>
-                          <span className={styles.infoLabelWithIcon}>
-                            <HardDrive size={12} aria-hidden />
-                            {t("remoteAndroid.infoStorage", "Storage")}
-                          </span>
-                        </dt>
-                        <dd className={styles.infoValue}>
-                          {storagePrimary}
-                          {storageSecondary ? (
-                            <span className={styles.infoSub}>
-                              {storageSecondary}
-                            </span>
-                          ) : null}
-                        </dd>
-                      </div>
-                      <div className={styles.infoRow}>
-                        <dt className={styles.infoLabel}>
-                          <span className={styles.infoLabelWithIcon}>
-                            <MonitorSmartphone size={12} aria-hidden />
-                            {t("remoteAndroid.infoScreen", "Screen")}
-                          </span>
-                        </dt>
-                        <dd className={styles.infoValue}>
-                          {screenPrimary}
-                          {screenSecondary ? (
-                            <span className={styles.infoSub}>
-                              {screenSecondary}
-                            </span>
-                          ) : null}
-                        </dd>
-                      </div>
-                    </dl>
-                  </section>
-
-                  <section className={styles.infoSection}>
-                    <header className={styles.infoSectionHead}>
-                      <h3 className={styles.sidePanelTitle}>
-                        {t("remoteAndroid.infoStatusTitle", "Current status")}
-                      </h3>
-                      <span className={statusClass}>{statusLabel}</span>
-                    </header>
-                    <dl className={styles.infoList}>
-                      <div className={styles.infoRow}>
-                        <dt className={styles.infoLabel}>
-                          {t("remoteAndroid.infoBackend", "Backend")}
-                        </dt>
-                        <dd className={styles.infoValue}>
-                          {statusData?.backend || none}
-                        </dd>
-                      </div>
-                      {streamSize.width > 0 ? (
+                  <aside className={styles.sidePanel}>
+                    <section className={styles.infoSection}>
+                      <header className={styles.infoSectionHead}>
+                        <Smartphone size={15} strokeWidth={2} aria-hidden />
+                        <h3 className={styles.sidePanelTitle}>
+                          {t("remoteAndroid.infoTitle", "Device info")}
+                        </h3>
+                        {deviceInfoLoading ? <Spin size="small" /> : null}
+                      </header>
+                      <dl className={styles.infoList}>
                         <div className={styles.infoRow}>
                           <dt className={styles.infoLabel}>
-                            {t("remoteAndroid.infoResolution", "Stream size")}
+                            {t("remoteAndroid.infoName", "Device name")}
+                          </dt>
+                          <dd className={styles.infoValue}>{displayName}</dd>
+                        </div>
+                        <div className={styles.infoRow}>
+                          <dt className={styles.infoLabel}>
+                            {t("remoteAndroid.infoSerial", "Device ID")}
+                          </dt>
+                          <dd className={styles.infoValue}>{device || none}</dd>
+                        </div>
+                      </dl>
+                    </section>
+
+                    <section className={styles.infoSection}>
+                      <header className={styles.infoSectionHead}>
+                        <Cpu size={15} strokeWidth={2} aria-hidden />
+                        <h3 className={styles.sidePanelTitle}>
+                          {t("remoteAndroid.infoSpecsTitle", "Specifications")}
+                        </h3>
+                      </header>
+                      <dl className={styles.infoList}>
+                        <div className={styles.infoRow}>
+                          <dt className={styles.infoLabel}>
+                            <span className={styles.infoLabelWithIcon}>
+                              <Cpu size={12} aria-hidden />
+                              {t("remoteAndroid.infoHardware", "Hardware")}
+                            </span>
+                          </dt>
+                          <dd className={styles.infoValue}>{hardwareLabel}</dd>
+                        </div>
+                        <div className={styles.infoRow}>
+                          <dt className={styles.infoLabel}>
+                            <span className={styles.infoLabelWithIcon}>
+                              <HardDrive size={12} aria-hidden />
+                              {t("remoteAndroid.infoStorage", "Storage")}
+                            </span>
                           </dt>
                           <dd className={styles.infoValue}>
-                            {`${streamSize.width} × ${streamSize.height}`}
+                            {storagePrimary}
+                            {storageSecondary ? (
+                              <span className={styles.infoSub}>
+                                {storageSecondary}
+                              </span>
+                            ) : null}
                           </dd>
                         </div>
-                      ) : null}
-                    </dl>
-                  </section>
-                </aside>
-              </div>
-            </>
-          )}
-        </div>
-          </div>
+                        <div className={styles.infoRow}>
+                          <dt className={styles.infoLabel}>
+                            <span className={styles.infoLabelWithIcon}>
+                              <MonitorSmartphone size={12} aria-hidden />
+                              {t("remoteAndroid.infoScreen", "Screen")}
+                            </span>
+                          </dt>
+                          <dd className={styles.infoValue}>
+                            {screenPrimary}
+                            {screenSecondary ? (
+                              <span className={styles.infoSub}>
+                                {screenSecondary}
+                              </span>
+                            ) : null}
+                          </dd>
+                        </div>
+                      </dl>
+                    </section>
 
-          {isAiPanelOpen ? (
+                    <section className={styles.infoSection}>
+                      <header className={styles.infoSectionHead}>
+                        <h3 className={styles.sidePanelTitle}>
+                          {t("remoteAndroid.infoStatusTitle", "Current status")}
+                        </h3>
+                        <span className={statusClass}>{statusLabel}</span>
+                      </header>
+                      <dl className={styles.infoList}>
+                        <div className={styles.infoRow}>
+                          <dt className={styles.infoLabel}>
+                            {t("remoteAndroid.infoBackend", "Backend")}
+                          </dt>
+                          <dd className={styles.infoValue}>
+                            {statusData?.backend || none}
+                          </dd>
+                        </div>
+                        {streamSize.width > 0 ? (
+                          <div className={styles.infoRow}>
+                            <dt className={styles.infoLabel}>
+                              {t("remoteAndroid.infoResolution", "Stream size")}
+                            </dt>
+                            <dd className={styles.infoValue}>
+                              {`${streamSize.width} × ${streamSize.height}`}
+                            </dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                    </section>
+                  </aside>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {isAiPanelOpen ? (
+          <div
+            className={isMobile ? styles.aiPanelBottom : styles.aiPanelRight}
+            style={
+              isMobile ? { height: aiPanelHeight } : { width: aiPanelWidth }
+            }
+          >
             <div
               className={
-                isMobile ? styles.aiPanelBottom : styles.aiPanelRight
+                isMobile ? styles.resizeHandleTop : styles.resizeHandleLeft
               }
-              style={
-                isMobile
-                  ? { height: aiPanelHeight }
-                  : { width: aiPanelWidth }
-              }
-            >
-              <div
-                className={
-                  isMobile ? styles.resizeHandleTop : styles.resizeHandleLeft
-                }
-                onMouseDown={handleAiResizeMouseDown}
-              />
-              <MobileAiPanel
-                activeAgent={effectiveActiveAgent}
-                device={device || null}
-                deviceName={deviceInfo?.model ?? null}
-                streamActive={showStream}
-                layout={isMobile ? "bottom" : "right"}
-                onClose={handleAiPanelClose}
-              />
-            </div>
-          ) : null}
-        </div>
+              onMouseDown={handleAiResizeMouseDown}
+            />
+            <MobileAiPanel
+              activeAgent={effectiveActiveAgent}
+              device={device || null}
+              deviceName={deviceInfo?.model ?? null}
+              streamActive={showStream}
+              layout={isMobile ? "bottom" : "right"}
+              onClose={handleAiPanelClose}
+            />
+          </div>
+        ) : null}
       </div>
+    </div>
   );
 
   if (embedded) {

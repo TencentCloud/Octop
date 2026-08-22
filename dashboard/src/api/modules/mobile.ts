@@ -1,4 +1,5 @@
-import { request } from "../request";
+import { request, getAuthToken } from "../request";
+import { getApiUrl } from "../config";
 
 export type MobileSetupState =
   | "needs_device"
@@ -32,10 +33,13 @@ function streamMobileSse(
   onDone: (ok: boolean, error?: string) => void,
 ): AbortController {
   const controller = new AbortController();
-  const token = localStorage.getItem("octop_token") ?? "";
-  fetch(`/api${path}`, {
+  const url = getApiUrl(path);
+  const token = getAuthToken();
+  fetch(url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     signal: controller.signal,
   })
     .then(async (res) => {

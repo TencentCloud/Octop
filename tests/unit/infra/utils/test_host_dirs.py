@@ -72,9 +72,58 @@ def test_assert_safe_host_path_rejects_private_etc_symlink() -> None:
 
 
 @posix_only
-def test_assert_safe_host_path_rejects_root() -> None:
+def test_assert_safe_host_path_rejects_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Deny /root only when it is not the process home (non-root Octop).
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
     with pytest.raises(ValueError, match="not allowed"):
         assert_safe_host_path("/root")
+
+
+@posix_only
+def test_assert_safe_host_path_allows_root_when_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Octop running as uid 0 uses /root as home; default root_dir must probe OK."""
+    root_home = Path("/root")
+    if not root_home.is_dir():
+        pytest.skip("/root not available")
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: root_home)
+    assert assert_safe_host_path("/root") == root_home.resolve()
+    nested = root_home / ".octop"
+    # Nested path under home is allowed even if the parent is denylisted for others.
+    assert assert_safe_host_path(str(nested)) == nested.resolve()
+
+
+@posix_only
+def test_list_host_subdirs_includes_root_home_when_denied_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Process home ``/root`` must appear when listing ``/`` (uid 0 default)."""
+    root_home = Path("/root")
+    if not root_home.is_dir() or not os.access(root_home, os.R_OK | os.X_OK):
+        pytest.skip("/root not readable")
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: root_home)
+
+    entries = list_host_subdirs("/")
+    paths = {item["path"] for item in entries}
+    assert root_home.resolve().as_posix() in paths
+
+
+@posix_only
+def test_list_host_subdirs_hides_root_when_not_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    entries = list_host_subdirs("/")
+    paths = {item["path"] for item in entries}
+    assert "/root" not in paths
 
 
 @posix_only

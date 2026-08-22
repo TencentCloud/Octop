@@ -21,6 +21,7 @@ import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/components/ChatSidebarPanel";
 import RequirePermission from "../../components/RequirePermission";
 import { routeNeedsPermission } from "../../utils/permissions";
+import { useLayoutMode } from "../../context/LayoutModeContext";
 
 const Chat = lazy(() => import("../../pages/Chat"));
 const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
@@ -53,6 +54,8 @@ export default function MainLayout() {
   const currentPath = location.pathname;
   const selectedKey = resolveSelectedKey(currentPath);
   const isMobile = useIsMobile();
+  const { layoutMode } = useLayoutMode();
+  const isMinimalLayout = layoutMode === "minimal";
   const isFullscreen =
     FULLSCREEN_PATHS.has(currentPath) ||
     [...FULLSCREEN_PATHS].some((p) => currentPath.startsWith(p + "/")) ||
@@ -85,13 +88,13 @@ export default function MainLayout() {
 
   /**
    * Desktop nav rail edge:
-   * - expand: open nav; if chat history is also closed, open both
+   * - expand: open nav; if classic chat history is also closed, open both
    * - collapse: collapse nav only
    */
   const handleNavRailToggle = useCallback(() => {
     if (collapsed) {
       persistNavCollapsed(false);
-      if (isChatPath(currentPath) && !chatSidebarOpen) {
+      if (!isMinimalLayout && isChatPath(currentPath) && !chatSidebarOpen) {
         setChatSidebarOpen(true);
       }
       return;
@@ -101,6 +104,7 @@ export default function MainLayout() {
     collapsed,
     chatSidebarOpen,
     currentPath,
+    isMinimalLayout,
     persistNavCollapsed,
     setChatSidebarOpen,
   ]);
@@ -130,7 +134,9 @@ export default function MainLayout() {
   }, []);
 
   // Chat history rail expand: if nav is also collapsed, open both rails.
+  // Minimal layout has no second rail — Sidebar handles records pane itself.
   useEffect(() => {
+    if (isMinimalLayout) return;
     const handler = () => {
       setChatSidebarOpen(true);
       if (collapsed) {
@@ -139,7 +145,7 @@ export default function MainLayout() {
     };
     window.addEventListener(EXPAND_CHAT_RAIL_EVENT, handler);
     return () => window.removeEventListener(EXPAND_CHAT_RAIL_EVENT, handler);
-  }, [collapsed, persistNavCollapsed, setChatSidebarOpen]);
+  }, [collapsed, isMinimalLayout, persistNavCollapsed, setChatSidebarOpen]);
 
   const routes = (
     <Suspense
@@ -219,7 +225,7 @@ export default function MainLayout() {
           )}
         </div>
 
-        {isChatRoute && (
+        {isChatRoute && !isMinimalLayout && (
           <div
             id={CHAT_HISTORY_RAIL_ID}
             style={{

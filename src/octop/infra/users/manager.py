@@ -21,6 +21,7 @@ from octop.infra.db.repos.audit import ACTOR_ADMIN
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.email import normalize_email, parse_optional_email
 from octop.infra.users.identity import Role, User
 from octop.infra.users.password import hash_password, validate_password_policy, verify_password
 from octop.infra.users.permissions import validate_permission_keys
@@ -63,10 +64,7 @@ def allocate_username(repo: UserRepo, claims: dict[str, Any], subject: str) -> s
 
 
 def _normalized_claim_email(claims: dict[str, Any]) -> str | None:
-    email = claims.get("email")
-    if not isinstance(email, str):
-        return None
-    return email.strip().lower() or None
+    return normalize_email(claims.get("email") if isinstance(claims.get("email"), str) else None)
 
 
 def _claim_display_name(claims: dict[str, Any]) -> str | None:
@@ -129,6 +127,7 @@ class UserManager:
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
+        email: str | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
@@ -138,20 +137,38 @@ class UserManager:
             keys = validate_permission_keys(permissions or [])
         except ValueError as exc:
             raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
+        normalized_email = parse_optional_email(email)
         async with self._lock:
             if self._services.user_repo.get_by_username(username) is not None:
                 raise OctopError(
                     ErrorCode.USERNAME_TAKEN,
                     f"username {username!r} already exists",
                 )
-            uid = self._services.user_repo.create(
-                username=username,
-                password_hash=hash_password(password),
-                role=role.value,
-                display_name=display_name,
-                locale=loc,
-                permissions=keys,
-            )
+            if (
+                normalized_email is not None
+                and self._services.user_repo.get_by_email(normalized_email) is not None
+            ):
+                raise OctopError(
+                    ErrorCode.EMAIL_TAKEN,
+                    f"email {normalized_email!r} already exists",
+                )
+            try:
+                uid = self._services.user_repo.create(
+                    username=username,
+                    password_hash=hash_password(password),
+                    role=role.value,
+                    display_name=display_name,
+                    locale=loc,
+                    email=normalized_email,
+                    permissions=keys,
+                )
+            except Exception as exc:
+                if _is_unique_violation(exc) and normalized_email is not None:
+                    raise OctopError(
+                        ErrorCode.EMAIL_TAKEN,
+                        f"email {normalized_email!r} already exists",
+                    ) from exc
+                raise
             user = User(
                 id=uid,
                 username=username,
@@ -176,6 +193,7 @@ class UserManager:
         password: str,
         display_name: str | None = None,
         locale: str | None = None,
+        email: str | None = None,
     ) -> User:
         from octop.infra.users.invites import InviteService
 
@@ -186,6 +204,7 @@ class UserManager:
                 password=password,
                 display_name=display_name,
                 locale=locale,
+                email=email,
                 register_user=self.register_cached_user,
             )
 
@@ -296,7 +315,14 @@ class UserManager:
             return cached_user
 
     async def authenticate(self, username: str, password: str) -> User | None:
-        row = self._services.user_repo.get_by_username(username)
+        identifier = (username or "").strip()
+        if not identifier:
+            return None
+        row = self._services.user_repo.get_by_username(identifier)
+        if row is None:
+            email = normalize_email(identifier)
+            if email is not None:
+                row = self._services.user_repo.get_by_email(email)
         if row is None:
             return None
         now = int(time.time())
@@ -320,7 +346,9 @@ class UserManager:
                 lockout_seconds=self._login_lockout_seconds,
                 now=now,
             )
-            self._services.audit_repo.write(actor=username, action="auth.failed", target=username)
+            self._services.audit_repo.write(
+                actor=row.username, action="auth.failed", target=row.username
+            )
             if retry_after > 0:
                 minutes = max(1, (retry_after + 59) // 60)
                 raise OctopError(
@@ -330,7 +358,7 @@ class UserManager:
                 )
             return None
         self._services.user_repo.clear_login_lockout(row.id)
-        user = self._users.get(username)
+        user = self._users.get(row.username)
         if user is None:
             user = User(
                 id=row.id,
@@ -340,8 +368,8 @@ class UserManager:
                 locale=normalize_locale(row.locale),
                 permissions=list(row.permissions),
             )
-            self._users[username] = user
-        self._services.audit_repo.write(actor=username, action="auth.login")
+            self._users[row.username] = user
+        self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 
     async def change_password(self, username: str, old: str, new: str) -> None:
@@ -412,6 +440,33 @@ class UserManager:
             current = self._users.get(username)
             if current is not None:
                 current.display_name = display_name
+
+    async def set_email(self, username: str, email: str | None) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        normalized = parse_optional_email(email)
+        if normalized is not None:
+            owner = self._services.user_repo.get_by_email(normalized)
+            if owner is not None and owner.id != row.id:
+                raise OctopError(
+                    ErrorCode.EMAIL_TAKEN,
+                    f"email {normalized!r} already exists",
+                )
+        try:
+            self._services.user_repo.set_email(row.id, normalized)
+        except Exception as exc:
+            if _is_unique_violation(exc) and normalized is not None:
+                raise OctopError(
+                    ErrorCode.EMAIL_TAKEN,
+                    f"email {normalized!r} already exists",
+                ) from exc
+            raise
+        self._services.audit_repo.write(
+            actor=ACTOR_ADMIN,
+            action="user.set_email",
+            target=username,
+        )
 
     async def set_locale(self, username: str, locale: str) -> None:
         row = self._services.user_repo.get_by_username(username)

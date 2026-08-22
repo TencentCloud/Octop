@@ -71,6 +71,23 @@ class CreateFolderBody(BaseModel):
     path: str = Field(min_length=1, max_length=500, description="Relative folder path.")
 
 
+class CreateTextDocumentBody(BaseModel):
+    name: str = Field(
+        min_length=1, max_length=200, description="File name without or with extension."
+    )
+    format: str = Field(pattern="^(md|txt)$", description="Text format: md or txt.")
+    content: str = Field(default="", max_length=MAX_DOCUMENT_BYTES)
+    path: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional parent folder path (without filename).",
+    )
+
+
+class UpdateTextDocumentBody(BaseModel):
+    content: str = Field(max_length=MAX_DOCUMENT_BYTES)
+
+
 class UpdateBaseBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -487,6 +504,37 @@ async def create_folder(
 
 
 @router.post(
+    "/{kb_id}/documents/text",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a markdown or plain-text knowledge document",
+)
+async def create_text_document(
+    kb_id: str,
+    body: CreateTextDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    locale = resolve_request_locale(request)
+    try:
+        _require_usable(server, request)
+        document = _knowledge_service(server).create_text_document(
+            kb_id,
+            actor_user_id=user.id,
+            name=body.name,
+            format=body.format,
+            content=body.content,
+            is_admin=_is_admin(user),
+            path=body.path,
+        )
+        assert server.services is not None
+        enqueue_index_document(server.services, kb_id, document.id)
+        return _row_payload(document)
+    except Exception as exc:
+        raise _map_knowledge_error(exc, locale=locale) from exc
+
+
+@router.post(
     "/{kb_id}/documents", status_code=status.HTTP_201_CREATED, summary="Upload a knowledge document"
 )
 async def upload_document(
@@ -537,6 +585,54 @@ async def preview_document(
         )
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+
+
+@router.get(
+    "/{kb_id}/documents/{doc_id}/content",
+    summary="Read raw editable text for a markdown or plain-text document",
+)
+async def get_text_document(
+    kb_id: str,
+    doc_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    try:
+        return _knowledge_service(server).read_text_document(
+            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+
+
+@router.put(
+    "/{kb_id}/documents/{doc_id}/content",
+    summary="Update markdown or plain-text document content and reindex",
+)
+async def update_text_document(
+    kb_id: str,
+    doc_id: str,
+    body: UpdateTextDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    locale = resolve_request_locale(request)
+    try:
+        _require_usable(server, request)
+        document = _knowledge_service(server).update_text_document(
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            content=body.content,
+            is_admin=_is_admin(user),
+        )
+        assert server.services is not None
+        enqueue_index_document(server.services, kb_id, doc_id)
+        return _row_payload(document)
+    except Exception as exc:
+        raise _map_knowledge_error(exc, locale=locale) from exc
 
 
 @router.delete(

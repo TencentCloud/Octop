@@ -69,6 +69,7 @@ class InviteRedeemBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
     display_name: str | None = Field(default=None, max_length=128)
+    email: str | None = Field(default=None, max_length=254)
 
 
 @admin_router.get("", summary="List user invites")
@@ -138,6 +139,7 @@ async def redeem_invite(
         username=body.username,
         password=body.password,
         display_name=body.display_name,
+        email=body.email,
         locale=locale,
     )
     from octop.infra.agents.default_agent import try_bootstrap_default_agent

@@ -115,12 +115,14 @@ class InviteRepo:
         password_hash: str,
         display_name: str | None,
         locale: str,
+        email: str | None = None,
     ) -> tuple[int, InviteRow]:
         """Create a user and mark the invite used in one transaction.
 
         Returns ``(user_id, invite)``. Caller must hold any in-memory locks.
         Raises ``LookupError`` when the invite is missing, ``ValueError`` with
-        status ``used`` / ``expired`` / ``revoked`` / ``username_taken``.
+        status ``used`` / ``expired`` / ``revoked`` / ``username_taken`` /
+        ``email_taken``.
         """
         ts = now_ts()
         with self._db.transaction() as conn:
@@ -137,18 +139,25 @@ class InviteRepo:
             ).fetchone()
             if existing is not None:
                 raise ValueError("username_taken")
+            if email:
+                email_owner = conn.execute(
+                    "SELECT id FROM users WHERE email = ?", (email,)
+                ).fetchone()
+                if email_owner is not None:
+                    raise ValueError("email_taken")
 
             user_id = insert_returning_id(
                 conn,
                 "INSERT INTO users(username, password_hash, role, display_name, locale, "
                 "email, sso_provider_id, sso_subject, disabled, created_at, permissions) "
-                "VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0, ?, ?)",
                 (
                     username,
                     password_hash,
                     "user",
                     display_name,
                     locale,
+                    email,
                     ts,
                     json.dumps([], ensure_ascii=False),
                 ),

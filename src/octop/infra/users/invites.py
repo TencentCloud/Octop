@@ -155,7 +155,10 @@ class InviteService:
         display_name: str | None,
         locale: str | None,
         register_user: Callable[[User], None],
+        email: str | None = None,
     ) -> User:
+        from octop.infra.users.email import parse_optional_email
+
         cleaned_code = (code or "").strip()
         cleaned_username = (username or "").strip()
         if not cleaned_code:
@@ -167,6 +170,7 @@ class InviteService:
         name = display_name.strip() if isinstance(display_name, str) else None
         if name == "":
             name = None
+        normalized_email = parse_optional_email(email)
         try:
             user_id, _invite = self._repo.redeem_creating_user(
                 code=cleaned_code,
@@ -174,6 +178,7 @@ class InviteService:
                 password_hash=hash_password(password),
                 display_name=name,
                 locale=loc,
+                email=normalized_email,
             )
         except LookupError as exc:
             raise OctopError(ErrorCode.INVITE_INVALID, "invite not found") from exc
@@ -183,6 +188,11 @@ class InviteService:
                 raise OctopError(
                     ErrorCode.USERNAME_TAKEN,
                     f"username {cleaned_username!r} already exists",
+                ) from exc
+            if reason == "email_taken":
+                raise OctopError(
+                    ErrorCode.EMAIL_TAKEN,
+                    f"email {normalized_email!r} already exists",
                 ) from exc
             if reason == "used":
                 raise OctopError(ErrorCode.INVITE_USED, "invite already used") from exc

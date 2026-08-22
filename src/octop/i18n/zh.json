@@ -292,6 +292,8 @@
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {minutes} 分钟后再试。",
     "USERNAME_TAKEN": "用户名已被占用。",
+    "EMAIL_TAKEN": "邮箱已被占用。",
+    "EMAIL_INVALID": "邮箱格式不正确。",
     "PASSWORD_SAME_AS_OLD": "新密码不能与当前密码相同。",
     "PASSWORD_TOO_WEAK": "密码过弱：至少 8 位，且同时包含字母和数字。",
     "SETUP_PASSWORD_WRONG": "启动密码不正确。",
@@ -474,7 +476,7 @@
     "mobile_swipe": "手机滑动",
     "mobile_launch_app": "启动手机应用",
     "mobile_ui_dump": "手机界面结构",
-    "mobile_handoff_to_user": "交给用户操作（手机）"
+    "mobile_handoff_to_user": "交给用户操作（手机）",
     "read_env_file": "读取环境变量",
     "write_env_file": "写入环境变量"
   },
@@ -573,7 +575,7 @@
     "unsupported_reason": "此主机不支持远程手机。",
     "adb_not_found": "未找到 adb。请安装 Android platform-tools 或 Android Studio SDK。",
     "no_device": "没有已连接的 adb 设备。请启动模拟器或通过 USB 连接手机。",
-    "container_no_adb": "Android 容器已运行，但 adb 尚未发现设备。",
+    "container_no_adb": "Android 容器已运行，但 adb 尚未发现设备。可稍等开机后点刷新；或在主机执行：adb connect 127.0.0.1:5555",
     "install_log_start": "正在安装 Android 容器…",
     "install_log_ready": "Android 环境已就绪。",
     "error_script_missing": "Octop 包中缺少移动设备安装脚本。",

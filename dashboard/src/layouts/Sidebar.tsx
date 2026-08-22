@@ -1,51 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Tooltip } from "antd";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import {
-  Monitor,
-  Smartphone,
-  MessageSquareText,
-  Timer,
-  ArrowRightLeft,
-  SlidersHorizontal,
-  X,
-  Waypoints,
-  Link2,
-  Database,
-  Cpu,
-  Users as UsersIcon,
-  Activity,
-  Share2,
-  Sparkles,
-  Puzzle,
-  Package,
-  FolderOpen,
-  GraduationCap,
-  ChevronDown,
-  Shield,
-  PanelsTopLeft,
-} from "lucide-react";
+import { ArrowRightLeft, X, ChevronDown } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { useLayoutMode } from "../context/LayoutModeContext";
 import { useUserRole } from "../hooks/useUserRole";
 import { useCurrentUser, useSetCurrentUser } from "../hooks/useCurrentUser";
 import { useUpdateStatus } from "../hooks/useUpdateStatus";
-import type { OctopUser } from "../api/modules/auth";
-import { navAllowed } from "../utils/permissions";
 import { prefetchRoute } from "../routes/prefetch";
 import { useServerCapabilities } from "../hooks/useServerCapabilities";
 import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/components/ChatSidebarPanel";
+import {
+  CHAT_HISTORY_RAIL_ID,
+  OPEN_NAV_RECORDS_EVENT,
+  isChatPath,
+} from "./chatHistoryRail";
+import type { MinimalNavPane } from "./layoutModeStorage";
+import MinimalRecordsHost from "./MinimalRecordsHost";
+import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
+import SidebarMinimalPaneToggle from "./SidebarMinimalPaneToggle";
+import {
+  COLLAPSED_WIDTH,
+  EXPANDED_WIDTH,
+  buildNavSections,
+  type NavItem,
+  type NavSection,
+} from "./sidebarNav";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
 
-const EXPANDED_WIDTH = 220;
-const COLLAPSED_WIDTH = 56;
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
+/** Minimal settings pane: skip the "设置" group header (duplicates the pane title). */
+const MINIMAL_SETTINGS_HIDDEN_HEADERS = new Set(["nav.settings"]);
 
 function loadCollapsedGroups(): Set<string> {
   try {
@@ -109,196 +100,6 @@ function useNavGroupCollapse(navSections: NavSection[], selectedKey: string) {
   }, [selectedKey, navSections]);
 
   return { toggleGroup, isGroupCollapsed };
-}
-
-interface NavItem {
-  key: string;
-  path: string;
-  icon: React.ReactNode;
-  labelKey: string;
-  badge?: string;
-}
-
-interface NavSection {
-  /** When omitted, items render flat without a group header. */
-  groupKey?: string;
-  items: NavItem[];
-}
-
-const iconSize = 16;
-const iconStroke = 1.8;
-
-function buildNavSections(
-  user: OctopUser | null,
-  opts?: { mobileEnabled?: boolean },
-): NavSection[] {
-  const sections: NavSection[] = [
-    {
-      items: [
-        {
-          key: "chat",
-          path: "/chat",
-          icon: <MessageSquareText size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.chat",
-        },
-        {
-          key: "experts",
-          path: "/experts",
-          icon: <GraduationCap size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.experts",
-        },
-        {
-          key: "tasks",
-          path: "/tasks",
-          icon: <Timer size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.tasks",
-        },
-        {
-          key: "token-usage",
-          path: "/token-usage",
-          icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.tokenUsage",
-        },
-      ],
-    },
-  ];
-
-  const settingsItems: NavItem[] = [
-    {
-      key: "personalization",
-      path: "/personalization/skills",
-      icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.personalization",
-    },
-  ];
-  if (navAllowed(user, "channels")) {
-    settingsItems.push({
-      key: "channels",
-      path: "/personalization/channels",
-      icon: <Waypoints size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.channels",
-    });
-  }
-  if (navAllowed(user, "connectors")) {
-    settingsItems.push({
-      key: "connectors",
-      path: "/connectors",
-      icon: <Link2 size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.connectors",
-    });
-  }
-  if (navAllowed(user, "skill-packages")) {
-    settingsItems.push({
-      key: "skill-packages",
-      path: "/skill-packages",
-      icon: <Package size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.skillPackages",
-    });
-  }
-  if (navAllowed(user, "knowledge-bases")) {
-    settingsItems.push({
-      key: "knowledge-bases",
-      path: "/knowledge-bases",
-      icon: <Database size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.knowledgeBases",
-      badge: "BETA",
-    });
-  }
-  if (settingsItems.length > 0) {
-    sections.push({ groupKey: "nav.settings", items: settingsItems });
-  }
-
-  const controlItems: NavItem[] = [];
-  if (navAllowed(user, "workbench")) {
-    controlItems.push({
-      key: "workbench",
-      path: "/workbench",
-      icon: <PanelsTopLeft size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.workbench",
-    });
-  }
-  if (navAllowed(user, "remote-desktop")) {
-    controlItems.push({
-      key: "remote-desktop",
-      path: "/remote-desktop",
-      icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.remoteDesktop",
-    });
-  }
-  if (opts?.mobileEnabled && navAllowed(user, "remote-phone")) {
-    controlItems.push({
-      key: "remote-phone",
-      path: "/remote-phone",
-      icon: <Smartphone size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.remoteAndroid",
-    });
-  }
-  // ACP: no module key this round — admin role only.
-  if (navAllowed(user, "acp")) {
-    controlItems.push({
-      key: "acp",
-      path: "/acp",
-      icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.acp",
-    });
-  }
-  if (controlItems.length > 0) {
-    sections.push({ groupKey: "nav.control", items: controlItems });
-  }
-
-  const adminItems: NavItem[] = [];
-  if (navAllowed(user, "admin-users")) {
-    adminItems.push({
-      key: "admin-users",
-      path: "/admin/users",
-      icon: <UsersIcon size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.adminUsers",
-    });
-  }
-  if (navAllowed(user, "models")) {
-    adminItems.push({
-      key: "models",
-      path: "/admin/models",
-      icon: <Cpu size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.models",
-    });
-  }
-  if (navAllowed(user, "admin-storage")) {
-    adminItems.push({
-      key: "admin-storage",
-      path: "/admin/backend",
-      icon: <FolderOpen size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.adminStorage",
-    });
-  }
-  if (navAllowed(user, "admin-plugins")) {
-    adminItems.push({
-      key: "admin-plugins",
-      path: "/admin/plugins",
-      icon: <Puzzle size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.adminPlugins",
-    });
-  }
-  if (navAllowed(user, "admin-security")) {
-    adminItems.push({
-      key: "admin-security",
-      path: "/admin/security",
-      icon: <Shield size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.security",
-    });
-  }
-  if (navAllowed(user, "admin-advanced")) {
-    adminItems.push({
-      key: "admin-advanced",
-      path: "/admin/advanced",
-      icon: <SlidersHorizontal size={iconSize} strokeWidth={iconStroke} />,
-      labelKey: "nav.adminAdvanced",
-    });
-  }
-  if (adminItems.length > 0) {
-    sections.push({ groupKey: "nav.admin", items: adminItems });
-  }
-  return sections;
 }
 
 interface SidebarProps {
@@ -441,6 +242,9 @@ function NavList({
   isMobile,
   isGroupCollapsed,
   toggleGroup,
+  sectionFilter = "all",
+  /** Group keys whose section headers are omitted (items still render). */
+  hideGroupHeaderKeys,
 }: {
   selectedKey: string;
   onNavigate: (path: string) => void;
@@ -449,18 +253,36 @@ function NavList({
   isMobile?: boolean;
   isGroupCollapsed: (groupKey: string) => boolean;
   toggleGroup: (groupKey: string) => void;
+  /** all = classic; primary = top flat entries; grouped = settings/control/admin */
+  sectionFilter?: "all" | "primary" | "grouped";
+  hideGroupHeaderKeys?: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const role = useUserRole();
   const user = useCurrentUser();
   const { hasUpdate } = useUpdateStatus();
   const { mobileEnabled } = useServerCapabilities();
-  const navSections = buildNavSections(user, { mobileEnabled });
+  const navSections = buildNavSections(user, { mobileEnabled }).filter(
+    (section) => {
+      if (sectionFilter === "primary") return !section.groupKey;
+      if (sectionFilter === "grouped") return Boolean(section.groupKey);
+      return true;
+    },
+  );
 
   const MOBILE_HIDDEN_KEYS = new Set<string>();
 
   return (
-    <div style={{ padding: "8px 12px" }}>
+    <div
+      style={{
+        padding:
+          sectionFilter === "grouped"
+            ? "0 12px 8px"
+            : sectionFilter === "primary"
+            ? "8px 12px 0"
+            : "8px 12px",
+      }}
+    >
       {navSections.map((section, sectionIndex) => {
         const visibleItems = isMobile
           ? section.items.filter((item) => !MOBILE_HIDDEN_KEYS.has(item.key))
@@ -468,7 +290,10 @@ function NavList({
         if (visibleItems.length === 0) return null;
 
         const sectionKey = section.groupKey ?? `flat-${sectionIndex}`;
-        const isFlat = !section.groupKey;
+        const hideHeader =
+          Boolean(section.groupKey) &&
+          Boolean(hideGroupHeaderKeys?.has(section.groupKey!));
+        const isFlat = !section.groupKey || hideHeader;
         const groupCollapsed = section.groupKey
           ? isGroupCollapsed(section.groupKey)
           : false;
@@ -549,6 +374,7 @@ export default function Sidebar({
   isMobile,
 }: SidebarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const { isDark } = useTheme();
   const role = useUserRole();
@@ -556,16 +382,44 @@ export default function Sidebar({
   const setUser = useSetCurrentUser();
   const { hasUpdate } = useUpdateStatus();
   const { mobileEnabled } = useServerCapabilities();
+  const { layoutMode, minimalPane, setMinimalPane } = useLayoutMode();
+  const isMinimal = layoutMode === "minimal";
+  const onChatPath = isChatPath(location.pathname);
   const navSections = buildNavSections(user, { mobileEnabled });
   const { toggleGroup, isGroupCollapsed } = useNavGroupCollapse(
     navSections,
     selectedKey,
   );
   const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
-  const showChatRailExpand = !chatSidebarOpen;
+  const showChatRailExpand = !isMinimal && !chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
+
+  const selectMinimalPane = useCallback(
+    (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
+      setMinimalPane(pane);
+      if (opts?.expand && collapsed) {
+        onToggle();
+      }
+    },
+    [collapsed, onToggle, setMinimalPane],
+  );
+
+  // Pane choice is user-controlled; do not flip 记录/设置 when the route changes.
+  // Both records-open events map to the same pane switch in minimal mode.
+  useEffect(() => {
+    if (!isMinimal) return;
+    const handler = () => {
+      selectMinimalPane("records", { expand: true });
+    };
+    window.addEventListener(OPEN_NAV_RECORDS_EVENT, handler);
+    window.addEventListener(EXPAND_CHAT_RAIL_EVENT, handler);
+    return () => {
+      window.removeEventListener(OPEN_NAV_RECORDS_EVENT, handler);
+      window.removeEventListener(EXPAND_CHAT_RAIL_EVENT, handler);
+    };
+  }, [isMinimal, selectMinimalPane]);
 
   const handleNavigate = (path: string) => {
     // When navigating to /chat, preserve the current chatId in the URL so the
@@ -580,13 +434,24 @@ export default function Sidebar({
   };
 
   const handleExpandChatRail = useCallback(() => {
+    if (isMinimal) {
+      selectMinimalPane("records", { expand: true });
+      return;
+    }
     window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
     setChatSidebarOpen(true);
     if (!window.location.pathname.startsWith("/chat")) {
       navigate("/chat");
     }
     if (isMobile) onToggle();
-  }, [isMobile, navigate, onToggle, setChatSidebarOpen]);
+  }, [
+    isMinimal,
+    isMobile,
+    navigate,
+    onToggle,
+    selectMinimalPane,
+    setChatSidebarOpen,
+  ]);
 
   const brandInner = (
     <>
@@ -632,6 +497,123 @@ export default function Sidebar({
     </div>
   );
 
+  const primaryItems =
+    navSections.find((section) => !section.groupKey)?.items ?? [];
+  const groupedItems = navSections
+    .filter((section) => section.groupKey)
+    .flatMap((section) =>
+      section.groupKey && isGroupCollapsed(section.groupKey)
+        ? []
+        : section.items,
+    );
+
+  const paneToggle = (
+    <SidebarMinimalPaneToggle
+      minimalPane={minimalPane}
+      collapsed={isRailCollapsed}
+      onSelect={selectMinimalPane}
+    />
+  );
+
+  const classicNavBody = isRailCollapsed ? (
+    <div style={{ padding: "8px 0" }}>
+      <SidebarCollapsedIconNav
+        items={navSections.flatMap((section) => {
+          if (section.groupKey && isGroupCollapsed(section.groupKey)) {
+            return [];
+          }
+          return section.items;
+        })}
+        selectedKey={selectedKey}
+        onNavigate={handleNavigate}
+        role={role}
+        hasUpdate={hasUpdate}
+        t={t}
+      />
+    </div>
+  ) : (
+    <NavList
+      selectedKey={selectedKey}
+      onNavigate={handleNavigate}
+      onExpandChatRail={handleExpandChatRail}
+      showChatRailExpand={showChatRailExpand}
+      isMobile={isMobile}
+      isGroupCollapsed={isGroupCollapsed}
+      toggleGroup={toggleGroup}
+    />
+  );
+
+  const minimalNavBody = (
+    <div className={styles.minimalNavBody}>
+      {isRailCollapsed ? (
+        <div style={{ padding: "8px 0", flexShrink: 0 }}>
+          <SidebarCollapsedIconNav
+            items={primaryItems}
+            selectedKey={selectedKey}
+            onNavigate={handleNavigate}
+            role={role}
+            hasUpdate={hasUpdate}
+            t={t}
+          />
+          {paneToggle}
+          {minimalPane === "settings" ? (
+            <SidebarCollapsedIconNav
+              items={groupedItems}
+              selectedKey={selectedKey}
+              onNavigate={handleNavigate}
+              role={role}
+              hasUpdate={hasUpdate}
+              t={t}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <div className={styles.minimalPrimaryBlock}>
+            <NavList
+              selectedKey={selectedKey}
+              onNavigate={handleNavigate}
+              onExpandChatRail={handleExpandChatRail}
+              showChatRailExpand={false}
+              isMobile={isMobile}
+              isGroupCollapsed={isGroupCollapsed}
+              toggleGroup={toggleGroup}
+              sectionFilter="primary"
+            />
+            {paneToggle}
+          </div>
+          <div
+            className={styles.minimalSettingsPane}
+            hidden={minimalPane !== "settings"}
+          >
+            <NavList
+              selectedKey={selectedKey}
+              onNavigate={handleNavigate}
+              isMobile={isMobile}
+              isGroupCollapsed={isGroupCollapsed}
+              toggleGroup={toggleGroup}
+              sectionFilter="grouped"
+              hideGroupHeaderKeys={MINIMAL_SETTINGS_HIDDEN_HEADERS}
+            />
+          </div>
+        </>
+      )}
+      {/*
+        Chat route: empty mount point — Chat portals live sessions here.
+        Other routes: MinimalRecordsHost keeps expert/session nav available.
+      */}
+      <div
+        id={CHAT_HISTORY_RAIL_ID}
+        className={styles.minimalRecordsPane}
+        hidden={isRailCollapsed || minimalPane !== "records"}
+      >
+        {!onChatPath ? <MinimalRecordsHost /> : null}
+      </div>
+    </div>
+  );
+
+  const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
+
   // Mobile: fixed overlay drawer
   if (isMobile) {
     return (
@@ -652,7 +634,6 @@ export default function Sidebar({
           boxShadow: collapsed ? "none" : "4px 0 20px rgba(0,0,0,0.10)",
         }}
       >
-        {/* Logo + close */}
         <div
           style={{
             height: 56,
@@ -678,12 +659,13 @@ export default function Sidebar({
           <button
             type="button"
             onClick={onToggle}
+            aria-label={t("nav.collapseSidebar")}
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               border: "none",
               borderRadius: "var(--fn-radius-md)",
               background: "transparent",
@@ -696,16 +678,17 @@ export default function Sidebar({
           </button>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <NavList
-            selectedKey={selectedKey}
-            onNavigate={handleNavigate}
-            onExpandChatRail={handleExpandChatRail}
-            showChatRailExpand={showChatRailExpand}
-            isMobile={isMobile}
-            isGroupCollapsed={isGroupCollapsed}
-            toggleGroup={toggleGroup}
-          />
+        <div
+          style={{
+            flex: 1,
+            overflow:
+              isMinimal && minimalPane === "records" ? "hidden" : "auto",
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {navScrollBody}
         </div>
 
         <div
@@ -753,128 +736,17 @@ export default function Sidebar({
         {brandInner}
       </div>
 
-      {/* Nav items */}
       <div
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: "auto",
+          overflowY: isMinimal && minimalPane === "records" ? "hidden" : "auto",
           overflowX: "hidden",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        {isRailCollapsed ? (
-          <div style={{ padding: "8px 0" }}>
-            {navSections.flatMap((section) => {
-              if (section.groupKey && isGroupCollapsed(section.groupKey)) {
-                return [];
-              }
-              return section.items.map((item) => {
-                const active = selectedKey === item.key;
-                const showUpdateBadge =
-                  item.key === "admin-advanced" &&
-                  role === "admin" &&
-                  hasUpdate;
-                return (
-                  <Tooltip
-                    key={item.key}
-                    title={`${t(item.labelKey)}${
-                      showUpdateBadge
-                        ? ` (${t("nav.newVersionBadge", "有新版本")})`
-                        : item.badge
-                        ? ` (${item.badge})`
-                        : ""
-                    }`}
-                    placement="right"
-                    mouseEnterDelay={0.2}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleNavigate(item.path)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: COLLAPSED_WIDTH,
-                        height: 40,
-                        border: "none",
-                        background: active
-                          ? "var(--fn-sidebar-item-active-bg)"
-                          : "transparent",
-                        color: active
-                          ? "var(--fn-sidebar-item-active-text)"
-                          : "var(--fn-text-tertiary)",
-                        cursor: "pointer",
-                        transition: "all var(--fn-transition-fast)",
-                        marginBottom: 2,
-                        position: "relative",
-                      }}
-                      onMouseEnter={(e) => {
-                        prefetchRoute(item.path);
-                        if (!active) {
-                          e.currentTarget.style.background =
-                            "var(--fn-sidebar-item-hover)";
-                          e.currentTarget.style.color =
-                            "var(--fn-text-primary)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = "transparent";
-                          e.currentTarget.style.color =
-                            "var(--fn-text-tertiary)";
-                        }
-                      }}
-                    >
-                      {item.icon}
-                      {showUpdateBadge ? (
-                        <span
-                          className={`${styles.navUpdateBadge} ${styles.navUpdateBadgeCollapsed}`}
-                        >
-                          新
-                        </span>
-                      ) : null}
-                      {item.badge && (
-                        <span
-                          className="nav-badge-new nav-badge-new--collapsed"
-                          style={{
-                            position: "absolute",
-                            top: 4,
-                            right: 6,
-                            zIndex: 2,
-                            fontSize: 7,
-                            fontWeight: 700,
-                            color: "#fff",
-                            backgroundColor: "#ff4d4f",
-                            width: 14,
-                            height: 14,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderRadius: "50%",
-                            lineHeight: 1,
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {item.badge.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </button>
-                  </Tooltip>
-                );
-              });
-            })}
-          </div>
-        ) : (
-          <NavList
-            selectedKey={selectedKey}
-            onNavigate={handleNavigate}
-            onExpandChatRail={handleExpandChatRail}
-            showChatRailExpand={showChatRailExpand}
-            isMobile={isMobile}
-            isGroupCollapsed={isGroupCollapsed}
-            toggleGroup={toggleGroup}
-          />
-        )}
+        {navScrollBody}
       </div>
 
       {userFooter}

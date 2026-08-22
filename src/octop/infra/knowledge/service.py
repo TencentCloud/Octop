@@ -32,6 +32,9 @@ _EXT_TO_CONTENT_TYPE = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 _ALLOWED_CONTENT_TYPES = set(_EXT_TO_CONTENT_TYPE.values())
+_TEXT_CONTENT_TYPES = {"text/plain", "text/markdown"}
+_TEXT_FORMAT_TO_EXT = {"md": ".md", "txt": ".txt"}
+_TEXT_FORMAT_TO_CONTENT_TYPE = {"md": "text/markdown", "txt": "text/plain"}
 
 
 def _resolve_content_type(filename: str, content_type: str) -> str:
@@ -145,6 +148,106 @@ class KnowledgeService:
             "filename": document.filename,
             "text": text,
         }
+
+    def read_text_document(
+        self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
+    ) -> dict[str, str]:
+        """Return raw UTF-8 text for an editable md/txt knowledge document."""
+        self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        if document.is_dir:
+            raise LookupError("knowledge document not found")
+        if document.content_type not in _TEXT_CONTENT_TYPES:
+            raise ValueError("unsupported knowledge document content type: not editable text")
+        raw = document_path(kb_id, doc_id, document.filename).read_bytes()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("knowledge document is not valid UTF-8 text") from exc
+        return {
+            "id": document.id,
+            "filename": document.filename,
+            "content_type": document.content_type,
+            "text": text,
+        }
+
+    def create_text_document(
+        self,
+        kb_id: str,
+        *,
+        actor_user_id: int,
+        name: str,
+        format: str,
+        content: str = "",
+        is_admin: bool = False,
+        path: str | None = None,
+    ) -> KnowledgeDocumentRow:
+        """Create a markdown or plain-text document with optional draft content."""
+        fmt = (format or "").strip().lower().lstrip(".")
+        if fmt not in _TEXT_FORMAT_TO_EXT:
+            raise ValueError(f"unsupported knowledge document content type: {format}")
+        cleaned_name = (name or "").strip()
+        if not cleaned_name:
+            raise ValueError("invalid knowledge document filename")
+        ext = _TEXT_FORMAT_TO_EXT[fmt]
+        stem = Path(cleaned_name).name
+        if Path(stem).suffix.lower() not in {".md", ".txt"}:
+            stem = f"{stem}{ext}"
+        elif Path(stem).suffix.lower() != ext:
+            stem = f"{Path(stem).stem}{ext}"
+        relative = f"{normalize_kb_path(path)}/{stem}" if path else stem
+        relative = normalize_kb_path(relative)
+        encoded = content.encode("utf-8")
+        return self.upload_document(
+            kb_id,
+            actor_user_id=actor_user_id,
+            filename=stem,
+            content_type=_TEXT_FORMAT_TO_CONTENT_TYPE[fmt],
+            content=encoded,
+            is_admin=is_admin,
+            path=relative,
+        )
+
+    def update_text_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        actor_user_id: int,
+        content: str,
+        is_admin: bool = False,
+    ) -> KnowledgeDocumentRow:
+        """Overwrite md/txt content and mark the document pending for reindex."""
+        assert_knowledge_usable(
+            self._services.settings_repo.get, getattr(self._services, "provider_repo", None)
+        )
+        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        if document.is_dir:
+            raise LookupError("knowledge document not found")
+        if document.content_type not in _TEXT_CONTENT_TYPES:
+            raise ValueError("unsupported knowledge document content type: not editable text")
+        encoded = content.encode("utf-8")
+        if len(encoded) > MAX_DOCUMENT_BYTES:
+            raise ValueError(
+                f"knowledge document size exceeds maximum of {MAX_DOCUMENT_BYTES} bytes"
+            )
+        write_document(kb_id, document.id, document.filename, encoded)
+        self._repo.update_document(
+            doc_id,
+            byte_size=len(encoded),
+            status="pending",
+            error_message="",
+            chunk_count=0,
+        )
+        refreshed = self._repo.get_document(doc_id)
+        if refreshed is None:
+            raise LookupError("knowledge document not found")
+        return cast(KnowledgeDocumentRow, refreshed)
 
     def get_readable_base(
         self, kb_id: str, *, actor_user_id: int, is_admin: bool = False

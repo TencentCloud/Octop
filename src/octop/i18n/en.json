@@ -292,6 +292,8 @@
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
     "USERNAME_TAKEN": "Username is already taken.",
+    "EMAIL_TAKEN": "Email is already taken.",
+    "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
     "PASSWORD_TOO_WEAK": "Password is too weak: at least 8 characters with letters and digits.",
     "SETUP_PASSWORD_WRONG": "Incorrect setup password.",
@@ -474,7 +476,7 @@
     "mobile_swipe": "Mobile swipe",
     "mobile_launch_app": "Launch mobile app",
     "mobile_ui_dump": "Mobile UI dump",
-    "mobile_handoff_to_user": "Hand off to user (mobile)"
+    "mobile_handoff_to_user": "Hand off to user (mobile)",
     "read_env_file": "Read env file",
     "write_env_file": "Write env file"
   },
@@ -573,7 +575,7 @@
     "unsupported_reason": "Remote Phone is not supported on this host.",
     "adb_not_found": "adb was not found. Install Android platform-tools or Android Studio SDK.",
     "no_device": "No adb device connected. Start an emulator or connect a phone via USB.",
-    "container_no_adb": "Android container is running but adb cannot see a device yet.",
+    "container_no_adb": "Android container is running but adb cannot see a device yet. Wait for boot, then refresh; or run: adb connect 127.0.0.1:5555",
     "install_log_start": "Starting Android container install…",
     "install_log_ready": "Android environment is ready.",
     "error_script_missing": "Mobile install script is missing from the Octop package.",

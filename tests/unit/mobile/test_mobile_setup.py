@@ -39,3 +39,30 @@ def test_mobile_status_physical_needs_device() -> None:
     ):
         status = mobile_status(_cfg(enabled=True, backend="physical"))
     assert status.setup_state == "needs_device"
+
+
+def test_mobile_status_container_reconnects_adb() -> None:
+    with (
+        patch("octop.infra.mobile.setup.find_adb", return_value="/adb"),
+        patch("octop.infra.mobile.setup._container_running", return_value=True),
+        patch(
+            "octop.infra.mobile.setup.list_devices",
+            side_effect=[[], ["127.0.0.1:5555"]],
+        ),
+        patch("octop.infra.mobile.setup.adb_connect", return_value=True) as connect,
+    ):
+        status = mobile_status(_cfg(enabled=True, backend="redroid"))
+    connect.assert_called_once_with("127.0.0.1:5555", adb="/adb")
+    assert status.setup_state == "ready"
+    assert status.selected_device == "127.0.0.1:5555"
+
+
+def test_mobile_status_container_missing_adb_binary() -> None:
+    with (
+        patch("octop.infra.mobile.setup.find_adb", return_value=None),
+        patch("octop.infra.mobile.setup._container_running", return_value=True),
+        patch("octop.infra.mobile.setup.list_devices", return_value=[]),
+    ):
+        status = mobile_status(_cfg(enabled=True, backend="redroid"), locale="en")
+    assert status.setup_state == "needs_device"
+    assert "adb was not found" in status.reason

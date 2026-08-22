@@ -171,6 +171,59 @@
   justify-content: center;
 }
 
+.installProgress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: min(520px, 92%);
+  padding: 24px 20px;
+}
+
+.installProgressTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  text-align: center;
+}
+
+.installLog {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--fn-text-secondary);
+  box-sizing: border-box;
+}
+
+.installProgressActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.streamLoadingIcon {
+  animation: remotePhoneSpin 1s linear infinite;
+  color: var(--fn-color-brand, #1677ff);
+}
+
+@keyframes remotePhoneSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Coze-like: stage fills left; info docked right */
 .streamWorkspace {
   display: flex;

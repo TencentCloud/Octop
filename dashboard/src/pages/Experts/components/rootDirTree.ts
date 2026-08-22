@@ -66,20 +66,6 @@ export function pathExistsInTree(nodes: DirTreeNode[], path: string): boolean {
   return false;
 }
 
-/**
- * Keep the selected value displayable without inventing root-level orphans.
- * Orphans duplicate nested keys and break Ant Design TreeSelect expand/rename.
- */
-export function ensurePathInTree(
-  nodes: DirTreeNode[],
-  path: string,
-): DirTreeNode[] {
-  if (!path || pathExistsInTree(nodes, path)) {
-    return nodes;
-  }
-  return nodes;
-}
-
 /** Keep a single tree under *treeRoot* — orphans duplicate keys and break expand. */
 export function sanitizeTree(
   nodes: DirTreeNode[],

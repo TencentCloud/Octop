@@ -65,6 +65,41 @@ def list_devices(*, adb: str | None = None) -> list[str]:
     return devices
 
 
+def adb_connect(
+    hostport: str = "127.0.0.1:5555",
+    *,
+    adb: str | None = None,
+) -> bool:
+    """Connect adb to a TCP endpoint (e.g. Redroid ``-p 5555:5555``).
+
+    Returns True when ``adb connect`` exits 0. Callers should re-run
+    ``list_devices`` afterward — connect success does not guarantee the
+    device is already in the ``device`` state.
+    """
+    exe = adb or find_adb()
+    if not exe:
+        return False
+    try:
+        proc = subprocess.run(
+            [exe, "connect", hostport],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if proc.returncode != 0:
+        logger.info(
+            "adb connect %s failed (code=%s): %s",
+            hostport,
+            proc.returncode,
+            (proc.stdout or proc.stderr or "").strip(),
+        )
+        return False
+    return True
+
+
 def extract_png(data: bytes) -> bytes | None:
     """Return a PNG payload, skipping adb/screencap warning text prefixed on stdout."""
     idx = data.find(_PNG_MAGIC)

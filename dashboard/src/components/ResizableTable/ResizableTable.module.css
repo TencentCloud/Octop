@@ -1,0 +1,32 @@
+.cell {
+  position: relative;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  inset-inline-end: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 2;
+}
+
+.handle::after {
+  position: absolute;
+  top: 20%;
+  inset-inline-end: 3px;
+  height: 60%;
+  width: 2px;
+  background-color: var(--ant-color-border, rgba(0, 0, 0, 0.12));
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  content: "";
+}
+
+.cell:hover .handle::after,
+.handle:hover::after {
+  opacity: 1;
+}

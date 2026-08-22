@@ -17,7 +17,6 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Table,
   Button,
   Modal,
   Form,
@@ -35,6 +34,7 @@ import {
   Checkbox,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { ResizableTable } from "@/components/ResizableTable";
 
 import {
   Bot,
@@ -57,6 +57,7 @@ import {
   Trash2,
   User,
   UserRound,
+  Mail,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
@@ -106,6 +107,7 @@ function permFullLabel(item: PermissionCatalogItem): string {
 interface CreateValues {
   username: string;
   display_name?: string;
+  email?: string;
   password: string;
   confirm: string;
   role: "admin" | "user";
@@ -114,6 +116,7 @@ interface CreateValues {
 
 interface EditValues {
   display_name?: string;
+  email?: string;
   role: "admin" | "user";
   permissions?: string[];
 }
@@ -584,6 +587,10 @@ function UserCardGrid({
               </div>
 
               <div className={styles.userCardInfo}>
+                <span className={styles.userCardTime}>
+                  <Mail size={11} />
+                  <span>{row.email?.trim() || "—"}</span>
+                </span>
                 {row.created_at != null && (
                   <Tooltip title={t("adminUsers.colCreatedAt")}>
                     <span className={styles.userCardTime}>
@@ -842,7 +849,12 @@ export default function UsersListPanel() {
     return rows.filter((row) => {
       const username = row.username.toLowerCase();
       const displayName = (row.display_name ?? "").trim().toLowerCase();
-      return username.includes(query) || displayName.includes(query);
+      const email = (row.email ?? "").trim().toLowerCase();
+      return (
+        username.includes(query) ||
+        displayName.includes(query) ||
+        email.includes(query)
+      );
     });
   }, [rows, searchQuery]);
 
@@ -948,6 +960,7 @@ export default function UsersListPanel() {
         body: JSON.stringify({
           username: values.username,
           display_name: values.display_name?.trim() || null,
+          email: values.email?.trim() || null,
           password: values.password,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
@@ -974,6 +987,7 @@ export default function UsersListPanel() {
       permissions: [...baselinePermissions],
       username: undefined,
       display_name: undefined,
+      email: undefined,
       password: undefined,
       confirm: undefined,
     });
@@ -984,6 +998,7 @@ export default function UsersListPanel() {
     setEditTarget(row);
     editForm.setFieldsValue({
       display_name: row.display_name ?? "",
+      email: row.email ?? "",
       role: row.role,
       permissions: [...(row.permissions ?? [])],
     });
@@ -1024,6 +1039,7 @@ export default function UsersListPanel() {
         method: "PATCH",
         body: JSON.stringify({
           display_name: values.display_name?.trim() || null,
+          email: values.email?.trim() || null,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
         }),
@@ -1166,7 +1182,8 @@ export default function UsersListPanel() {
           nowSec={nowSec}
         />
       ) : (
-        <Table<UserRow>
+        <ResizableTable
+          storageKey="admin-users"
           rowKey="id"
           size="middle"
           className={styles.userTable}
@@ -1213,6 +1230,16 @@ export default function UsersListPanel() {
                   </div>
                 );
               },
+            },
+            {
+              title: t("adminUsers.colEmail"),
+              width: 180,
+              ellipsis: true,
+              render: (_, row) => (
+                <span className={styles.userCellMuted}>
+                  {row.email?.trim() || "—"}
+                </span>
+              ),
             },
             {
               title: t("adminUsers.colAuth"),
@@ -1483,6 +1510,22 @@ export default function UsersListPanel() {
               <Input prefix={<IdCard {...FIELD_ICON_PROPS} />} />
             </Form.Item>
             <Form.Item
+              label={t("adminUsers.formEmail")}
+              name="email"
+              rules={[
+                {
+                  type: "email",
+                  message: t("adminUsers.formEmailInvalid"),
+                },
+              ]}
+            >
+              <Input
+                prefix={<Mail {...FIELD_ICON_PROPS} />}
+                type="email"
+                autoComplete="email"
+              />
+            </Form.Item>
+            <Form.Item
               label={t("adminUsers.formPassword")}
               name="password"
               rules={[
@@ -1626,6 +1669,22 @@ export default function UsersListPanel() {
               name="display_name"
             >
               <Input prefix={<IdCard {...FIELD_ICON_PROPS} />} />
+            </Form.Item>
+            <Form.Item
+              label={t("adminUsers.formEmail")}
+              name="email"
+              rules={[
+                {
+                  type: "email",
+                  message: t("adminUsers.formEmailInvalid"),
+                },
+              ]}
+            >
+              <Input
+                prefix={<Mail {...FIELD_ICON_PROPS} />}
+                type="email"
+                autoComplete="email"
+              />
             </Form.Item>
           </div>
 

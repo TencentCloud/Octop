@@ -75,6 +75,8 @@
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {{minutes}} 分钟后再试。",
     "USERNAME_TAKEN": "用户名已被占用。",
+    "EMAIL_TAKEN": "邮箱已被占用。",
+    "EMAIL_INVALID": "邮箱格式不正确。",
     "PASSWORD_SAME_AS_OLD": "新密码不能与当前密码相同。",
     "PASSWORD_TOO_WEAK": "密码过弱：至少 8 位，且同时包含字母和数字。",
     "SETUP_PASSWORD_WRONG": "启动密码不正确。",
@@ -149,7 +151,7 @@
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。"
   },
   "nav": {
-    "chat": "聊天",
+    "chat": "对话",
     "common": "常用",
     "control": "控制",
     "experts": "专家",
@@ -202,7 +204,10 @@
     "knowledgeBases": "知识库",
     "adminPlugins": "插件",
     "skillPackages": "技能包",
-    "remoteAndroid": "远程手机"
+    "remoteAndroid": "远程手机",
+    "records": "任务",
+    "paneSettings": "设置",
+    "paneRecords": "任务"
   },
   "skillPackages": {
     "title": "技能包",
@@ -347,6 +352,17 @@
     "upload": "上传文档",
     "createFolder": "新建文件夹",
     "createFolderFailed": "创建文件夹失败",
+    "createFile": "新建文件",
+    "createFileSuccess": "文件已创建，正在建立索引",
+    "createFileFailed": "创建文件失败",
+    "editDocument": "编辑",
+    "editDocumentSuccess": "已保存，正在重建索引",
+    "editDocumentFailed": "保存文档失败",
+    "filenameRequired": "请输入文件名",
+    "filenamePlaceholder": "例如 notes",
+    "fileFormat": "格式",
+    "fileContent": "内容",
+    "fileContentPlaceholder": "在此编写文档内容…",
     "folder": "文件夹",
     "file": "文件",
     "entryType": "类型",
@@ -819,7 +835,7 @@
     "backendRootDirPlaceholder": "浏览并选择目录",
     "backendRootDirDesc": "默认使用当前系统用户的 home 目录（{{home}}）。也可从文件系统根目录 `/` 起浏览并选择。",
     "backendRootDirDescAdmin": "默认使用当前系统用户的 home 目录（{{home}}）。也可从文件系统根目录 `/` 起浏览并选择。",
-    "backendRootDirJailHint": "保存非根目录时，Octop 会尽力安装 bubblewrap（Linux）：有则 shell/Skill 在目录狱中执行；装不上或其它平台则 execute 使用普通本地 shell（无目录狱），文件工具仍走虚拟文件系统。",
+    "backendRootDirJailHint": "保存非根目录时，Octop 会尽量用 bubblewrap（Linux）把 shell/Skill 限制在目录狱中；安装失败或非 Linux 则退化为普通本地 shell（无目录狱）。文件工具始终走虚拟文件系统。",
     "rootDirOutsideHomeWarning": "当前路径不在你的 home 目录（{{home}}）内。",
     "rootDirListFailed": "无法列出子目录，请检查权限或选择其他路径。",
     "rootDirMkdir": "新建文件夹",
@@ -1177,7 +1193,7 @@
     "mobile_swipe": "手机滑动",
     "mobile_launch_app": "启动手机应用",
     "mobile_ui_dump": "手机界面结构",
-    "mobile_handoff_to_user": "交给用户操作（手机）"
+    "mobile_handoff_to_user": "交给用户操作（手机）",
     "read_env_file": "读取环境变量",
     "write_env_file": "写入环境变量"
   },
@@ -2831,7 +2847,11 @@
     "passwordTooCommon": "密码过于常见，请换一个更安全的密码",
     "passwordTooWeak": "密码过弱，请换一个更安全的密码",
     "langZh": "中文",
-    "langEn": "English"
+    "langEn": "English",
+    "layoutMode": "页面布局",
+    "layoutModeHint": "经典模式保留双栏；极简模式将导航与记录合并到左侧。",
+    "layoutClassic": "经典模式",
+    "layoutMinimal": "极简模式"
   },
   "user": {
     "title": "用户设置",
@@ -3302,6 +3322,14 @@
       "browser": "浏览器"
     }
   },
+  "remoteDesktopHub": {
+    "title": "远程桌面",
+    "description": "在浏览器中操控服务器桌面或已连接的手机",
+    "tabs": {
+      "desktop": "服务器桌面",
+      "phone": "手机桌面"
+    }
+  },
   "terminal": {
     "title": "终端 AI+",
     "description": "在浏览器中运行交互式 Shell 终端",
@@ -3757,6 +3785,8 @@
       "username": "用户名",
       "usernameRule": "仅允许字母、数字、下划线和连字符（最长 64 位）。",
       "displayName": "显示名称（可选）",
+      "email": "邮箱（可选）",
+      "emailInvalid": "请输入有效的邮箱地址",
       "password": "密码",
       "passwordHint": "至少 8 位，需同时包含字母和数字。",
       "confirm": "确认密码",
@@ -3984,7 +4014,7 @@
   "login": {
     "title": "登录",
     "subtitle": "生而为云，懂云更懂你",
-    "username": "用户名",
+    "username": "用户名或邮箱",
     "password": "密码",
     "submit": "登录",
     "failed": "登录失败",
@@ -4024,10 +4054,15 @@
     "back": "返回",
     "username": "用户名",
     "usernameRequired": "请输入用户名",
+    "email": "邮箱（可选）",
+    "emailInvalid": "请输入有效的邮箱地址",
     "displayName": "显示名称（可选）",
     "password": "密码",
     "passwordRequired": "请输入密码",
-    "passwordHint": "至少 8 位，需包含字母和数字",
+    "passwordHint": "至少 8 位，需同时包含字母和数字。",
+    "passwordConfirm": "确认密码",
+    "passwordConfirmRequired": "请再次输入密码",
+    "passwordMismatch": "两次密码不一致。",
     "createAccount": "创建账号",
     "validateFailed": "邀请码无效",
     "createFailed": "创建账号失败",
@@ -4064,7 +4099,7 @@
       "expired": "已过期",
       "revoked": "已撤销"
     },
-    "searchPlaceholder": "搜索用户名或显示名称",
+    "searchPlaceholder": "搜索用户名、显示名称或邮箱",
     "loadFailed": "加载失败",
     "createSuccess": "用户「{{username}}」已创建",
     "createFailed": "创建失败",
@@ -4109,6 +4144,8 @@
     "formPassword": "密码",
     "formPasswordConfirm": "确认密码",
     "formDisplayName": "显示名称（可选）",
+    "formEmail": "邮箱（可选）",
+    "formEmailInvalid": "请输入有效的邮箱地址",
     "formRole": "角色",
     "viewTable": "表格",
     "viewCard": "卡片",
@@ -4619,7 +4656,17 @@
     "pickDevice": "请先选择设备",
     "devicePlaceholder": "选择设备",
     "needsInstall": "需要安装容器",
-    "needsInstallDesc": "此主机使用容器 Android 后端，请先在服务器上完成安装。",
+    "needsInstallDesc": "此主机使用容器 Android 后端。可一键拉取并启动容器（需本机已安装 Docker）。",
+    "install": "安装容器",
+    "installing": "正在启动安装…",
+    "installProgress": "正在安装 Android 容器…",
+    "installSuccess": "Android 容器已就绪",
+    "installFailed": "容器安装失败，请查看日志后重试",
+    "installRetry": "重新安装",
+    "installCancelHint": "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
+    "installStep1": "确认主机已安装并可使用 Docker",
+    "installStep2": "点击「安装容器」，拉取并启动 Android 容器",
+    "installStep3": "安装完成后刷新状态，再点击「连接」",
     "needsDevice": "未连接设备",
     "needsDeviceDesc": "请启动 Android 模拟器或通过 USB 连接手机，然后刷新。",
     "readyTitle": "手机已就绪",
