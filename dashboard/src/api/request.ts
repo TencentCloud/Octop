@@ -52,7 +52,11 @@ function handleSetupRequired(): void {
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
   const path = window.location.pathname;
-  if (path.startsWith("/setup") || path.startsWith("/login")) {
+  if (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite")
+  ) {
     return;
   }
   _redirectingToSetup = true;
@@ -199,7 +203,12 @@ let _redirectingToLogin = false;
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
   const path = window.location.pathname;
-  if (path.startsWith("/setup") || path.startsWith("/login")) return;
+  if (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite")
+  )
+    return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(

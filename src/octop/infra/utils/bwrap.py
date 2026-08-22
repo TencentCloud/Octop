@@ -1,7 +1,9 @@
 """Best-effort bubblewrap (``bwrap``) provisioning for scoped ``root_dir``.
 
 Used when saving agent backends with a non-host-root ``root_dir``. Install
-failure is never fatal — harness execute already degrades to path rewrite.
+failure is never fatal — harness only constructs ``BubbledLocalShellBackend``
+when Linux + ``virtual_mode`` + non-host root + ``bwrap``; otherwise plain
+``local_shell`` (no execute path rewrite).
 """
 
 from __future__ import annotations
@@ -164,7 +166,7 @@ def ensure_bubblewrap() -> dict[str, Any]:
         return {
             "status": "skipped",
             "reason": "not_linux",
-            "detail": "bubblewrap jail is Linux-only; execute will rewrite paths",
+            "detail": "bubblewrap jail is Linux-only; execute uses plain local_shell",
         }
 
     if shutil.which("bwrap"):

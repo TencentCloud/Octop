@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Spin } from "antd";
 import { getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
@@ -8,6 +8,16 @@ import { CurrentUserProvider } from "../hooks/useCurrentUser";
 
 interface AuthGuardProps {
   children: React.ReactNode;
+}
+
+function inviteRedirectTarget(searchParams: URLSearchParams): string | null {
+  const invite = (
+    searchParams.get("invite") ||
+    searchParams.get("code") ||
+    ""
+  ).trim();
+  if (!invite) return null;
+  return `/invite?code=${encodeURIComponent(invite)}`;
 }
 
 /**
@@ -19,9 +29,14 @@ interface AuthGuardProps {
  * is already present we render the shell immediately and validate in the
  * background — a full-page Spin on every hard refresh feels like the app
  * is "reloading" even though routing did not change.
+ *
+ * When unauthenticated we must NOT render children: MainLayout / AgentProvider
+ * would fire authenticated APIs, trip the 401 interceptor, and race the
+ * invite redirect back to ``/login``.
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const hadToken = Boolean(getAuthToken());
   const [checking, setChecking] = useState(!hadToken);
   const [authed, setAuthed] = useState(hadToken);
@@ -45,8 +60,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         if (!token) {
           if (!cancelled) {
             setAuthed(false);
-            setChecking(false);
-            navigate("/login", { replace: true });
+            // Stay on the spinner until navigation away completes — do not
+            // flip ``checking`` off or children would mount and 401→/login.
+            const inviteTo = inviteRedirectTarget(searchParams);
+            navigate(inviteTo ?? "/login", { replace: true });
           }
           return;
         }
@@ -65,7 +82,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         } catch {
           if (!cancelled) {
             setAuthed(false);
-            setChecking(false);
             navigate("/login", { replace: true });
           }
         }
@@ -83,9 +99,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
-  if (checking && !authed) {
+  if (checking || !authed) {
     return (
       <div
         style={{

@@ -27,7 +27,7 @@ def test_published_experts_table_exists(db: SqlitePool) -> None:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(published_experts)").fetchall()}
     assert "published_experts" in names
-    assert v == 8
+    assert v == 9
     assert "published_expert_id" in cols
 
 

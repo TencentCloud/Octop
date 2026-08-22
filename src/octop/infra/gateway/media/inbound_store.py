@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.infra.agents.workspace_dir import (
+    agent_facing_workspace_root,
+    join_agent_facing,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.constants import INBOUND_DIR
 
@@ -75,9 +79,63 @@ def inbound_rel_path(key: str) -> str:
     return f"{INBOUND_DIR}/{raw}"
 
 
+def _backend_mount(workspace: BackendWorkspace) -> tuple[str | None, bool]:
+    backend: object = workspace.backend
+    target = getattr(backend, "default", backend)
+    virtual = bool(getattr(target, "virtual_mode", False)) or bool(
+        getattr(backend, "virtual_mode", False)
+    )
+    root_raw = getattr(target, "root_dir", None) or getattr(target, "cwd", None)
+    if root_raw is None:
+        return None, virtual
+    text = str(root_raw).strip()
+    return (text or None), virtual
+
+
+def agent_facing_workspace_path(workspace: BackendWorkspace, path: str) -> str:
+    """Return an agent-visible path for *path* (no host ``root_dir`` prefix).
+
+    Relative keys are joined under the agent-facing workspace root. Absolute
+    host paths under the on-disk workspace are remapped the same way.
+    """
+    raw = (path or "").strip().replace("\\", "/")
+    root_raw, virtual = _backend_mount(workspace)
+    facing_root = agent_facing_workspace_root(
+        workspace.workspace_dir,
+        root_dir=root_raw,
+        virtual_mode=virtual,
+    )
+    if raw.startswith("/") and facing_root and facing_root != "/":
+        prefix = facing_root.rstrip("/")
+        if raw == prefix or raw.startswith(prefix + "/"):
+            return raw
+    if not raw or raw in {".", "./"}:
+        return facing_root or "."
+    try:
+        host_rel = (
+            Path(raw)
+            .expanduser()
+            .resolve()
+            .relative_to(workspace.workspace_dir.resolve())
+            .as_posix()
+        )
+        if host_rel and host_rel != ".":
+            return join_agent_facing(facing_root, host_rel)
+    except (OSError, ValueError):
+        pass
+    # inbound/outbound keys go through the same normalizer as attachment storage.
+    if (
+        raw.startswith(("inbound/", "outbound/"))
+        or "/inbound/" in f"/{raw}/"
+        or "/outbound/" in f"/{raw}/"
+    ):
+        return join_agent_facing(facing_root, inbound_rel_path(raw))
+    return join_agent_facing(facing_root, raw.lstrip("/"))
+
+
 def resolve_inbound_attachment_path(workspace: BackendWorkspace, path: str) -> str:
-    """Resolve an inbound storage key via :meth:`BackendWorkspace.resolve_path`."""
-    return workspace.resolve_path(inbound_rel_path(path))
+    """Agent-facing path for attachment hints (not a host ``root_dir`` join)."""
+    return agent_facing_workspace_path(workspace, path)
 
 
 def validate_inbound_size(data: bytes) -> None:
@@ -178,6 +236,7 @@ __all__ = [
     "inbound_rel_path",
     "normalize_inbound_media_type",
     "read_inbound_bytes",
+    "agent_facing_workspace_path",
     "resolve_inbound_attachment_path",
     "sanitize_inbound_filename",
     "validate_inbound_media_type",

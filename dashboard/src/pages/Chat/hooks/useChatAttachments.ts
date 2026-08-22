@@ -7,10 +7,8 @@ import type { ChatAttachment } from "./useChat";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import {
-  CHAT_ACCEPT_ATTR,
   CHAT_MAX_ATTACHMENT_BYTES,
   inferAttachmentKind,
-  isAcceptedChatFile,
 } from "../utils/chatAttachments";
 
 export function useChatAttachments(agentId: string | null | undefined) {
@@ -23,14 +21,6 @@ export function useChatAttachments(agentId: string | null | undefined) {
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
       const fileArr = Array.from(files).filter((f) => {
-        if (!isAcceptedChatFile(f)) {
-          antMessage.error(
-            t("upload.unsupportedType", "Unsupported file type: {{type}}", {
-              type: f.type || f.name || "unknown",
-            }),
-          );
-          return false;
-        }
         if (f.size > CHAT_MAX_ATTACHMENT_BYTES) {
           antMessage.error(
             t("upload.tooLarge", "File too large (max 20MB): {{name}}", {
@@ -166,7 +156,6 @@ export function useChatAttachments(agentId: string | null | undefined) {
     uploading,
     dragOver,
     fileInputRef,
-    acceptAttr: CHAT_ACCEPT_ATTR,
     processFiles,
     handleFileSelect,
     handleFileChange,

@@ -628,7 +628,13 @@ class GlobalProcessor:
                             chunk,
                             agent_id=agent_id,
                         )
-                chunk = enrich_tool_stream_chunk(chunk, locale)
+                chunk = enrich_tool_stream_chunk(
+                    chunk,
+                    locale,
+                    agent_manager=self._agent_manager,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                )
                 yield chunk
             stream_ok = True
         except Exception as exc:

@@ -164,6 +164,31 @@ class UserManager:
             self._services.audit_repo.write(actor=username, action="user.create", target=username)
             return user
 
+    def register_cached_user(self, user: User) -> None:
+        """Adopt a user row created outside ``create`` (e.g. invite redeem)."""
+        self._users[user.username] = user
+
+    async def create_from_invite(
+        self,
+        *,
+        code: str,
+        username: str,
+        password: str,
+        display_name: str | None = None,
+        locale: str | None = None,
+    ) -> User:
+        from octop.infra.users.invites import InviteService
+
+        async with self._lock:
+            return InviteService(self._services).redeem(
+                code=code,
+                username=username,
+                password=password,
+                display_name=display_name,
+                locale=locale,
+                register_user=self.register_cached_user,
+            )
+
     def get(self, username: str) -> User | None:
         return self._users.get(username)
 

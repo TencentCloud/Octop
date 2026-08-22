@@ -125,6 +125,16 @@ function preferDisplayPath(current: string, candidate: string): string {
   return score(b) > score(a) ? b : a;
 }
 
+/**
+ * Deduplicate artifact paths for the dock file list, preferring absolute paths.
+ */
+export function listDockFilePathsForTree(
+  paths: string[],
+  agentId?: string | null,
+): string[] {
+  return dedupeDockFilePaths(paths, agentId);
+}
+
 /** Deduplicate by canonical workspace path; keep the richest display path. */
 export function dedupeDockFilePaths(
   paths: string[],
@@ -178,7 +188,7 @@ export function buildDockPathTree(
     children: new Map(),
   };
 
-  for (const raw of dedupeDockFilePaths(paths, agentId)) {
+  for (const raw of listDockFilePathsForTree(paths, agentId)) {
     const parts = raw.replace(/\\/g, "/").split("/").filter(Boolean);
     if (parts.length === 0) continue;
     // Preserve leading slash for absolute paths in the root segment join.

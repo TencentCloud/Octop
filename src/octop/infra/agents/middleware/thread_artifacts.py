@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Protocol
 
 from langchain.agents.middleware import AgentMiddleware
@@ -14,7 +16,11 @@ from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
-from octop.infra.gateway.media.backend_files import extract_workspace_rel
+from octop.infra.gateway.media.backend_files import (
+    extract_workspace_rel,
+    file_url_to_abs_path,
+    is_host_absolute_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,34 +66,64 @@ def is_artifact_tool_name(name: str | None) -> bool:
     return base in ARTIFACT_TOOL_BASES
 
 
-def normalize_artifact_path(path: str) -> str:
+def _artifact_path_allowed(posix: str) -> bool:
+    if not posix or posix in {".", "/"}:
+        return False
+    if "/_builtin_skills/" in f"/{posix}/" or posix.lstrip("/").startswith("_builtin_skills"):
+        return False
+    base = posix.rstrip("/").split("/")[-1] or posix
+    if re.fullmatch(r"[\d.]+", base):
+        return False
+    return bool(_PATH_EXT_RE.search(base))
+
+
+def _coerce_raw_path(path: str) -> str:
     raw = (path or "").strip().replace("\\", "/")
     if not raw:
         return ""
-    rel = extract_workspace_rel(raw)
-    if rel:
-        raw = rel
-    else:
-        marker = "/.octop/agents/"
-        idx = raw.lower().find(marker)
-        if idx >= 0:
-            rest = raw[idx + len(marker) :]
-            slash = rest.find("/")
-            if slash >= 0:
-                raw = rest[slash + 1 :].lstrip("/")
-        else:
-            raw = raw.lstrip("/")
-    if not raw or raw in {".", "/"}:
+    if raw.startswith("file://"):
+        return file_url_to_abs_path(raw).replace("\\", "/")
+    return raw
+
+
+def normalize_artifact_path(path: str, workspace_dir: Path) -> str:
+    """Return a path for ``threads.artifacts``, or ``\"\"``.
+
+    Absolute paths are stored as-is. Relative paths are joined under
+    ``workspace_dir`` (the agent work area — not backend ``root_dir``).
+    """
+    raw = _coerce_raw_path(path)
+    if not raw or not _artifact_path_allowed(raw):
         return ""
-    posix = raw.replace("\\", "/")
-    if "/_builtin_skills/" in f"/{posix}/" or posix.startswith("_builtin_skills"):
+    if is_host_absolute_path(raw):
+        return raw
+    rel = extract_workspace_rel(raw) or raw.lstrip("/")
+    if rel.startswith("workspace/"):
+        rel = rel.removeprefix("workspace/")
+    if not rel or not _artifact_path_allowed(rel):
         return ""
-    base = posix.split("/")[-1] or posix
-    if re.fullmatch(r"[\d.]+", base):
-        return ""
-    if not _PATH_EXT_RE.search(base):
-        return ""
-    return posix
+    ws = workspace_dir.expanduser().resolve()
+    return str((ws / rel).as_posix())
+
+
+def artifacts_for_response(paths: Sequence[str], workspace_dir: Path) -> list[str]:
+    """Normalize stored artifact paths for API responses.
+
+    Absolute entries pass through; legacy relative entries are joined to
+    ``workspace_dir``.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in paths:
+        resolved = normalize_artifact_path(raw, workspace_dir)
+        if not resolved:
+            continue
+        key = resolved.casefold() if os.name == "nt" else resolved
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(resolved)
+    return out
 
 
 def extract_artifact_paths(
@@ -95,6 +131,7 @@ def extract_artifact_paths(
     tool_name: str = "",
     args: str | Mapping[str, Any] | None = None,
     result: Any = None,
+    workspace_dir: Path | None = None,
 ) -> list[str]:
     """Return workspace paths from a write/edit/send/screenshot tool.
 
@@ -103,10 +140,11 @@ def extract_artifact_paths(
     """
     if not is_artifact_tool_name(tool_name):
         return []
-    from_args = _dedupe_paths(_paths_from_args(args))
+    ws = workspace_dir.expanduser().resolve() if workspace_dir is not None else None
+    from_args = _dedupe_paths(_paths_from_args(args), ws)
     if from_args:
         return from_args
-    return _dedupe_paths(_paths_from_content(result))
+    return _dedupe_paths(_paths_from_content(result), ws)
 
 
 def current_thread_id() -> str:
@@ -123,9 +161,15 @@ def current_thread_id() -> str:
 class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
     """Append successful file-producing tool paths onto the current thread row."""
 
-    def __init__(self, *, thread_repo: ArtifactThreadStore) -> None:
+    def __init__(
+        self,
+        *,
+        thread_repo: ArtifactThreadStore,
+        workspace_dir: Path,
+    ) -> None:
         super().__init__()
         self._threads = thread_repo
+        self._workspace_dir = workspace_dir.expanduser().resolve()
 
     def wrap_tool_call(
         self,
@@ -168,6 +212,7 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
             tool_name=name,
             args=raw_args if isinstance(raw_args, (str, Mapping)) else None,
             result=result.content,
+            workspace_dir=self._workspace_dir,
         )
         if not paths:
             return
@@ -181,15 +226,25 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
             )
 
 
-def _dedupe_paths(paths: Sequence[str]) -> list[str]:
+def _dedupe_paths(paths: Sequence[str], workspace_dir: Path | None) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in paths:
-        key = normalize_artifact_path(raw)
-        if not key or key in seen:
+        if workspace_dir is None:
+            key = _coerce_raw_path(raw)
+            if not key or not _artifact_path_allowed(key) or key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
             continue
-        seen.add(key)
-        out.append(key)
+        resolved = normalize_artifact_path(raw, workspace_dir)
+        if not resolved:
+            continue
+        dedupe_key = resolved.casefold() if os.name == "nt" else resolved
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        out.append(resolved)
     return out
 
 
@@ -272,6 +327,7 @@ def _paths_from_text(text: str) -> list[str]:
 __all__ = [
     "ARTIFACT_TOOL_BASES",
     "ThreadArtifactsMiddleware",
+    "artifacts_for_response",
     "current_thread_id",
     "extract_artifact_paths",
     "is_artifact_tool_name",

@@ -18,18 +18,16 @@ def test_load_provider_presets_integration() -> None:
     deepseek_ids = {m["id"] for m in deepseek["models"]}
     assert "deepseek-v4-flash" in deepseek_ids
     assert "deepseek-v4-pro" in deepseek_ids
-    reasoner = next(m for m in deepseek["models"] if m["id"] == "deepseek-reasoner")
-    assert reasoner.get("reasoning") is True
-    assert reasoner["reasoning_config"]["adapter"] == "status_only"
+    flash = next(m for m in deepseek["models"] if m["id"] == "deepseek-v4-flash")
+    assert flash["reasoning_config"]["adapter"] == "thinking"
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
     token_ids = {m["id"] for m in token_plan["models"]}
     # Match by prefix: harness-agent tags token-plan model ids with a release
-    # date suffix (e.g. deepseek-v4-flash-202605) and bumps the Kimi minor
-    # version over time, so assert the model family is present rather than an
-    # exact id that drifts with every upstream release.
+    # date suffix (e.g. deepseek-v4-flash-202605) and bumps catalog entries
+    # over time, so assert the model family is present rather than an exact id.
     assert any(mid.startswith("deepseek-v4-flash") for mid in token_ids)
-    assert any(mid.startswith("kimi-k2") for mid in token_ids)
+    assert any(mid.startswith("deepseek-v4-pro") for mid in token_ids)
     assert token_plan.get("vendor") == "tencent"
     assert token_plan.get("provider_group") == "tencent"
     token_deepseek = next(m for m in token_plan["models"] if m["id"].startswith("deepseek-v4"))

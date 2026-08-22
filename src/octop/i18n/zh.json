@@ -358,7 +358,12 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
-    "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。"
+    "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
+    "INVITE_INVALID": "邀请码无效。",
+    "INVITE_USED": "该邀请码已被使用。",
+    "INVITE_EXPIRED": "该邀请码已过期。",
+    "INVITE_REVOKED": "该邀请码已被撤销。",
+    "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -463,7 +468,9 @@
     "acp_runner": "ACP 外部 Agent",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
-    "send_file_to_user": "发送文件"
+    "send_file_to_user": "发送文件",
+    "read_env_file": "读取环境变量",
+    "write_env_file": "写入环境变量"
   },
   "skills": {
     "pdf": "PDF 处理",

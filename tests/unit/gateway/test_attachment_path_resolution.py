@@ -60,7 +60,7 @@ async def test_upload_stores_timestamped_path_keeps_display_filename() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hint_uses_backend_resolve_path_absolute() -> None:
+async def test_hint_uses_agent_facing_absolute_path() -> None:
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _storage_only_workspace(ws_dir)
         stored = await write_inbound(
@@ -76,7 +76,31 @@ async def test_hint_uses_backend_resolve_path_absolute() -> None:
             media_type="application/pdf",
         )
         assert f"Workspace path: {resolved}" in hint
-        assert resolved == os.path.realpath(os.path.join(ws_dir, stored.path))
+        # Agent-facing absolute under the workspace (no rewrite through root_dir).
+        assert resolved.replace("\\", "/").endswith(f"/{stored.path}")
+        # Canonicalize ws_dir: tempfile may yield an 8.3 short path on Windows
+        # while the resolved attachment path uses the long form.
+        ws_root = str(Path(ws_dir).resolve()).replace("\\", "/")
+        assert resolved.replace("\\", "/").startswith(ws_root)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="Scoped virtual root_dir path mapping")
+async def test_hint_remaps_scoped_root_to_agent_facing() -> None:
+    with tempfile.TemporaryDirectory() as root_dir:
+        host_ws = Path(root_dir) / ".octop" / "workspaces" / "ABC123"
+        host_ws.mkdir(parents=True)
+        backend = LocalShellBackend(root_dir=root_dir, virtual_mode=True)
+        workspace = BackendWorkspace(backend, host_ws)
+        stored = await write_inbound(
+            workspace,
+            b"%PDF-1.4",
+            filename="report.pdf",
+            media_type="application/pdf",
+        )
+        resolved = resolve_inbound_attachment_path(workspace, stored.path)
+        assert resolved == f"/.octop/workspaces/ABC123/{stored.path}"
+        assert not resolved.startswith(root_dir)
 
 
 @pytest.mark.asyncio
@@ -164,6 +188,9 @@ async def test_image_materialize_keeps_workspace_path_for_history() -> None:
         assert isinstance(content, list)
         img = next(b for b in content if b.get("type") == "image_url")
         assert img["workspace_path"] == stored.path
-        assert img["workspace_path"] == stored.path
-        url = img["image_url"]["url"]
+        assert img["image_url"]["url"] == f"workspace://{stored.path}"
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(img, workspace=workspace)
+        url = expanded["image_url"]["url"]
         assert base64.b64decode(url.split(",", 1)[1]) == b"png-bytes"

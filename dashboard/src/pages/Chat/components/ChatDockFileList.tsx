@@ -9,8 +9,8 @@ import { fileTreeIcon } from "../../../utils/fileTreeIcon";
 import {
   buildDockPathTree,
   collectDockFolderPaths,
-  dedupeDockFilePaths,
   dockFileBasename,
+  listDockFilePathsForTree,
   mergeDockExpandedFolders,
   toDockWorkspaceApiPath,
   type DockPathTreeNode,
@@ -34,11 +34,6 @@ function FolderRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const fullPathLabel = node.path
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .join(" / ");
   return (
     <button
       type="button"
@@ -53,9 +48,7 @@ function FolderRow({
       ) : (
         <ChevronRight size={15} strokeWidth={2} aria-hidden />
       )}
-      <span className={styles.dockFileTreeFolderName}>
-        {fullPathLabel || node.name}
-      </span>
+      <span className={styles.dockFileTreeFolderName}>{node.name}</span>
     </button>
   );
 }
@@ -184,7 +177,7 @@ export default function ChatDockFileList({
 }: ChatDockFileListProps) {
   const { t } = useTranslation();
   const paths = useMemo(
-    () => dedupeDockFilePaths(filePaths, agentId),
+    () => listDockFilePathsForTree(filePaths, agentId),
     [filePaths, agentId],
   );
   const tree = useMemo(

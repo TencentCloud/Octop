@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
-from octop.api.common.memory_client import memory_db_path, memory_namespace
+from octop.api.common.memory_client import memory_db_path_for_cfg, memory_namespace
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.memory_backend import open_memory_kwargs
 from octop.infra.errors import ErrorCode, OctopError
@@ -138,7 +138,7 @@ async def pack_agent_memory(
 
         # Resolve the agent's db path and namespace
         workspace = resolve_agent_workspace_dir(server, agent_id)
-        db_path = memory_db_path(workspace)
+        db_path = memory_db_path_for_cfg(workspace, _agent_config_dict(server, agent_id))
         ns = memory_namespace(agent_id)
 
         # Build SourceInfo
@@ -268,7 +268,7 @@ async def doctor_agent_memory(
 
         # Resolve the agent's db path
         workspace = resolve_agent_workspace_dir(server, agent_id)
-        db_path = memory_db_path(workspace)
+        db_path = memory_db_path_for_cfg(workspace, _agent_config_dict(server, agent_id))
 
         # Handle the optional comparison package
         compare_path: Path | None = None

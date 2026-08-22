@@ -5,6 +5,7 @@ import {
   dedupeDockFilePaths,
   dockFileBasename,
   dockFileTabId,
+  listDockFilePathsForTree,
   mergeDockExpandedFolders,
   normalizeDockFilePath,
   toDockWorkspaceApiPath,
@@ -130,7 +131,7 @@ describe("dockFilePath", () => {
     ).toBe("file:generated/a.pptx");
   });
 
-  it("folder tree labels use full collapsed directory paths", () => {
+  it("folder tree uses absolute paths from artifacts", () => {
     const tree = buildDockPathTree(
       [
         "/home/wally/.octop/agents/main/generated/iron-man.pptx",
@@ -144,6 +145,35 @@ describe("dockFilePath", () => {
     );
     expect(tree[0].path).toBe("/home/wally/.octop/agents/main/generated");
     expect(tree[0].children.map((c) => c.name)).toEqual(["iron-man.pptx"]);
+  });
+
+  it("nests system-scoped skill paths under agent home", () => {
+    const tree = buildDockPathTree(
+      [
+        "/home/wally/.octop/agents/0DMHDH/.octop/skills/weather-query/SKILL.md",
+        "/home/wally/.octop/agents/0DMHDH/.octop/skills/weather-query/scripts/weather.py",
+      ],
+      "0DMHDH",
+    );
+    expect(tree).toHaveLength(1);
+    expect(tree[0].name).toBe(
+      "home / wally / .octop / agents / 0DMHDH / .octop / skills / weather-query",
+    );
+    expect(tree[0].children.map((c) => c.name).sort()).toEqual([
+      "SKILL.md",
+      "scripts",
+    ]);
+    const scripts = tree[0].children.find((c) => c.name === "scripts");
+    expect(scripts?.children.map((c) => c.name)).toEqual(["weather.py"]);
+  });
+
+  it("listDockFilePathsForTree dedupes by canonical key and keeps absolute", () => {
+    expect(
+      listDockFilePathsForTree(
+        ["/home/wally/.octop/agents/main/generated/a.pptx", "generated/a.pptx"],
+        "main",
+      ),
+    ).toEqual(["/home/wally/.octop/agents/main/generated/a.pptx"]);
   });
 
   it("maps download APIs; host abs stays file:// for virtual root failback", () => {

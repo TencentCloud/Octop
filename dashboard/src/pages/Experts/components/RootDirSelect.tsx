@@ -14,11 +14,13 @@ import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import { request } from "../../../api/request";
 import {
-  ROOT_NODE,
+  HOST_FS_ROOT,
   ancestorDirPaths,
   appendChildren,
   ensurePathInTree,
   insertChild,
+  makeRootNode,
+  normalizeTreeRoot,
   renameNode,
   sanitizeTree,
   type DirTreeNode,
@@ -33,18 +35,14 @@ interface DirEntry {
 interface RootDirSelectProps {
   value?: string;
   onChange?: (value: string) => void;
+  /** Tree browse root: host ``/`` (or drive root). Default value is still home. */
+  treeRoot?: string;
 }
 
 type DisplayTreeNode = Omit<DirTreeNode, "title" | "children"> & {
   title: ReactNode;
   children?: DisplayTreeNode[];
 };
-
-function withSanitizedTree(
-  updater: (prev: DirTreeNode[]) => DirTreeNode[],
-): (prev: DirTreeNode[]) => DirTreeNode[] {
-  return (prev) => sanitizeTree(updater(prev));
-}
 
 function stopRowEvent(e: SyntheticEvent) {
   e.preventDefault();
@@ -64,9 +62,16 @@ function mapDisplayTitles(
   }));
 }
 
-export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
+export default function RootDirSelect({
+  value,
+  onChange,
+  treeRoot = HOST_FS_ROOT,
+}: RootDirSelectProps) {
   const { t } = useTranslation();
-  const [treeData, setTreeData] = useState<DirTreeNode[]>([ROOT_NODE]);
+  const normalizedRoot = normalizeTreeRoot(treeRoot);
+  const [treeData, setTreeData] = useState<DirTreeNode[]>(() => [
+    makeRootNode(normalizedRoot),
+  ]);
   const [expandedKeys, setExpandedKeys] = useState<string[] | undefined>(
     undefined,
   );
@@ -78,10 +83,28 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
   const [loadedKeys, setLoadedKeys] = useState<string[]>([]);
   const loadingPathsRef = useRef(new Set<string>());
 
+  const withSanitizedTree = useCallback(
+    (
+      updater: (prev: DirTreeNode[]) => DirTreeNode[],
+    ): ((prev: DirTreeNode[]) => DirTreeNode[]) => {
+      return (prev) => sanitizeTree(updater(prev), normalizedRoot);
+    },
+    [normalizedRoot],
+  );
+
+  useEffect(() => {
+    setTreeData([makeRootNode(normalizedRoot)]);
+    setLoadedKeys([]);
+    setExpandedKeys(undefined);
+    loadingPathsRef.current.clear();
+  }, [normalizedRoot]);
+
   useEffect(() => {
     if (!value) return;
-    setTreeData((prev) => sanitizeTree(ensurePathInTree(prev, value)));
-  }, [value]);
+    setTreeData((prev) =>
+      sanitizeTree(ensurePathInTree(prev, value), normalizedRoot),
+    );
+  }, [value, normalizedRoot]);
 
   const loadData = useCallback<NonNullable<TreeSelectProps["loadData"]>>(
     async (node) => {
@@ -114,7 +137,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         loadingPathsRef.current.delete(path);
       }
     },
-    [loadedKeys, t],
+    [loadedKeys, t, withSanitizedTree],
   );
 
   const beginEditing = useCallback((path: string, name: string) => {
@@ -162,7 +185,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         setBusy(false);
       }
     },
-    [beginEditing, onChange, t, treeData, value],
+    [beginEditing, onChange, t, treeData, value, withSanitizedTree],
   );
 
   const handleMkdir = useCallback(
@@ -189,7 +212,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
             }),
           ),
         );
-        const ancestors = ancestorDirPaths(result.path);
+        const ancestors = ancestorDirPaths(result.path, normalizedRoot);
         setExpandedKeys((prev) => {
           const base = prev ?? [];
           return [...new Set([...base, ...ancestors])];
@@ -201,7 +224,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         setBusy(false);
       }
     },
-    [beginEditing, busy, t],
+    [beginEditing, busy, normalizedRoot, t, withSanitizedTree],
   );
 
   const renderTitle = useCallback(
@@ -249,7 +272,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
               flexShrink: 0,
             }}
           >
-            {path !== "/" ? (
+            {path !== normalizedRoot ? (
               <button
                 type="button"
                 className={styles.rootDirActionBtn}
@@ -292,6 +315,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
       editingName,
       editingPath,
       handleMkdir,
+      normalizedRoot,
       t,
     ],
   );

@@ -235,8 +235,54 @@ def hints_from_content_parts(
     return hints
 
 
+WORKSPACE_IMAGE_SCHEME = "workspace://"
+
+
 def make_image_url_block(b64_data: str, mime_type: str) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+
+
+def make_workspace_image_ref(*, workspace_path: str, mime_type: str) -> dict[str, Any]:
+    """Checkpoint-safe vision block: path only; bytes materialize at model-call time."""
+    rel = inbound_rel_path(workspace_path)
+    return {
+        "type": "image_url",
+        "workspace_path": rel,
+        "mime_type": mime_type or "image/png",
+        "image_url": {"url": f"{WORKSPACE_IMAGE_SCHEME}{rel}"},
+    }
+
+
+def is_workspace_image_ref(block: object) -> bool:
+    """True when *block* is a path-only vision ref (not yet a data URI)."""
+    if not isinstance(block, dict) or str(block.get("type") or "") != "image_url":
+        return False
+    url_field = block.get("image_url")
+    url = ""
+    if isinstance(url_field, dict):
+        url = str(url_field.get("url") or "")
+    elif isinstance(url_field, str):
+        url = url_field
+    if url.startswith("data:"):
+        return False
+    if str(block.get("workspace_path") or "").strip():
+        return True
+    return url.startswith(WORKSPACE_IMAGE_SCHEME)
+
+
+def workspace_path_from_image_ref(block: dict[str, Any]) -> str:
+    path = str(block.get("workspace_path") or "").strip()
+    if path:
+        return inbound_rel_path(path)
+    url_field = block.get("image_url")
+    url = ""
+    if isinstance(url_field, dict):
+        url = str(url_field.get("url") or "")
+    elif isinstance(url_field, str):
+        url = url_field
+    if url.startswith(WORKSPACE_IMAGE_SCHEME):
+        return inbound_rel_path(url[len(WORKSPACE_IMAGE_SCHEME) :])
+    return ""
 
 
 def inbound_attachments_from_parts(parts: Sequence[ContentPart]) -> list[dict[str, str]]:
@@ -348,13 +394,42 @@ async def materialize_image_part(
     workspace: BackendWorkspace | None = None,
     locale: str | Locale = "en",
 ) -> dict[str, Any] | None:
-    """Load image bytes into an ``image_url`` block, or degrade to a path hint.
+    """Build a checkpoint-safe vision block, or degrade to a path hint.
 
-    Returns ``None`` when the part has no usable source at all. Images over
-    :data:`VISION_MAX_BYTES` are re-encoded to fit before inlining; only when
-    that fails do they become path hints.
+    Prefer workspace path refs for files already under ``inbound/`` — bytes are
+    inlined only at LLM request time (see ``WorkspaceImageMaterializeMiddleware``).
+    Inline ``part.data`` / remote URL downloads without a rematerializable path
+    still produce ``data:`` URLs here (with size re-encode when needed).
     """
     mime = part.mime_type or "image/png"
+
+    # Path-backed images: store a ref only (plan B). Do not inline base64 into
+    # the checkpoint / history — rematerialize in wrap_model_call.
+    if part.local_path:
+        rel = inbound_rel_path(part.local_path)
+        guessed = part.mime_type or mimetypes.guess_type(part.local_path)[0] or "image/png"
+        # Without a media backend / workspace we cannot rematerialize later —
+        # degrade to a tool path hint instead of a dangling workspace:// ref.
+        if media_backend is None and workspace is None:
+            return _image_as_path_hint(part, workspace=workspace, locale=locale)
+        if media_backend is not None:
+            data: bytes | None = None
+            try:
+                data = await media_backend.read(part.local_path)
+            except (FileNotFoundError, OSError, RuntimeError):
+                data = None
+            if data is None:
+                local = media_backend.get_local_path(part.local_path)
+                if local is not None and Path(local).is_file():
+                    data = Path(local).read_bytes()
+            if data is None and workspace is not None:
+                try:
+                    data = await workspace.adownload_bytes(rel)
+                except Exception:
+                    data = None
+            if data is None:
+                return _image_as_path_hint(part, workspace=workspace, locale=locale)
+        return make_workspace_image_ref(workspace_path=rel, mime_type=guessed)
 
     if part.data:
         try:
@@ -372,38 +447,6 @@ async def materialize_image_part(
                 return make_image_url_block(base64.b64encode(reencoded[0]).decode(), reencoded[1])
             return _image_as_path_hint(part, workspace=workspace, locale=locale)
         return make_image_url_block(part.data, mime)
-
-    data: bytes | None = None
-    if part.local_path and media_backend is not None:
-        try:
-            data = await media_backend.read(part.local_path)
-        except (FileNotFoundError, OSError, RuntimeError):
-            data = None
-        if data is None:
-            local = media_backend.get_local_path(part.local_path)
-            if local is not None and Path(local).is_file():
-                data = Path(local).read_bytes()
-
-    if data is not None:
-        if len(data) > VISION_MAX_BYTES:
-            logger.info(
-                "vision local image %s: %d bytes > %d, re-encoding",
-                part.local_path,
-                len(data),
-                VISION_MAX_BYTES,
-            )
-            reencoded = await asyncio.to_thread(_reencode_image_to_fit, data)
-            if reencoded is not None:
-                out = make_image_url_block(base64.b64encode(reencoded[0]).decode(), reencoded[1])
-                if part.local_path:
-                    out["workspace_path"] = inbound_rel_path(part.local_path)
-                return out
-            return _image_as_path_hint(part, workspace=workspace, locale=locale)
-        mime = part.mime_type or mimetypes.guess_type(part.local_path or "")[0] or "image/png"
-        out = make_image_url_block(base64.b64encode(data).decode(), mime)
-        if part.local_path:
-            out["workspace_path"] = inbound_rel_path(part.local_path)
-        return out
 
     if part.url:
         downloaded = await _download_image_url(part.url)
@@ -426,9 +469,110 @@ async def materialize_image_part(
         if part.url.startswith(("http://", "https://")):
             return {"type": "image_url", "image_url": {"url": part.url}}
 
-    if part.local_path:
-        return _image_as_path_hint(part, workspace=workspace, locale=locale)
     return None
+
+
+async def expand_workspace_image_ref(
+    block: dict[str, Any],
+    *,
+    workspace: BackendWorkspace,
+    locale: str | Locale = "en",
+) -> dict[str, Any]:
+    """Turn a path-only vision ref into an inlined ``data:`` block for the model.
+
+    Used by :class:`WorkspaceImageMaterializeMiddleware` on the ephemeral
+    model request only — never write the result back into checkpoint state.
+    """
+    if not is_workspace_image_ref(block):
+        return block
+    path = workspace_path_from_image_ref(block)
+    if not path:
+        return _image_unavailable_block(locale=locale)
+    try:
+        data = await workspace.adownload_bytes(path)
+    except Exception:
+        logger.warning("vision rematerialize failed for %s", path, exc_info=True)
+        data = None
+    # Re-encode (Pillow) must not block the event loop.
+    return await asyncio.to_thread(
+        _finalize_rematerialized_image,
+        data,
+        path=path,
+        mime_type=str(block.get("mime_type") or ""),
+        workspace=workspace,
+        locale=locale,
+    )
+
+
+def expand_workspace_image_ref_sync(
+    block: dict[str, Any],
+    *,
+    workspace: BackendWorkspace,
+    locale: str | Locale = "en",
+) -> dict[str, Any]:
+    """Sync counterpart of :func:`expand_workspace_image_ref`."""
+    if not is_workspace_image_ref(block):
+        return block
+    path = workspace_path_from_image_ref(block)
+    if not path:
+        return _image_unavailable_block(locale=locale)
+    try:
+        data = workspace.download_bytes(path)
+    except Exception:
+        logger.warning("vision rematerialize failed for %s", path, exc_info=True)
+        data = None
+    return _finalize_rematerialized_image(
+        data,
+        path=path,
+        mime_type=str(block.get("mime_type") or ""),
+        workspace=workspace,
+        locale=locale,
+    )
+
+
+def _finalize_rematerialized_image(
+    data: bytes | None,
+    *,
+    path: str,
+    mime_type: str,
+    workspace: BackendWorkspace,
+    locale: str | Locale,
+) -> dict[str, Any]:
+    if not data:
+        return path_hint_content_block(
+            InboundAttachmentMeta(
+                path=path,
+                filename=Path(path).name or "image",
+                media_type=mime_type or "image/png",
+            ),
+            workspace=workspace,
+            locale=locale,
+        )
+    mime = mime_type or mimetypes.guess_type(path)[0] or "image/png"
+    if len(data) > VISION_MAX_BYTES:
+        logger.info(
+            "vision rematerialize %s: %d bytes > %d, re-encoding",
+            path,
+            len(data),
+            VISION_MAX_BYTES,
+        )
+        reencoded = _reencode_image_to_fit(data)
+        if reencoded is not None:
+            out = make_image_url_block(base64.b64encode(reencoded[0]).decode(), reencoded[1])
+            out["workspace_path"] = path
+            return out
+        return path_hint_content_block(
+            InboundAttachmentMeta(
+                path=path,
+                filename=Path(path).name or "image",
+                media_type=mime,
+            ),
+            workspace=workspace,
+            locale=locale,
+        )
+    out = make_image_url_block(base64.b64encode(data).decode(), mime)
+    out["workspace_path"] = path
+    return out
 
 
 async def _download_image_url(url: str) -> tuple[bytes, str] | None:
@@ -456,16 +600,22 @@ __all__ = [
     "VISION_MAX_BYTES",
     "VISION_MAX_COUNT",
     "VISION_MAX_SIDE",
+    "WORKSPACE_IMAGE_SCHEME",
     "InboundAttachmentMeta",
     "content_blocks_need_vision",
+    "expand_workspace_image_ref",
+    "expand_workspace_image_ref_sync",
     "format_attachment_path_hint",
     "hints_from_content_parts",
     "inbound_attachments_from_parts",
     "is_image_inbound",
     "is_image_media_type",
     "is_vision_attachment",
+    "is_workspace_image_ref",
     "make_image_url_block",
+    "make_workspace_image_ref",
     "materialize_image_part",
     "path_hint_content_block",
     "sniff_image_media_type",
+    "workspace_path_from_image_ref",
 ]

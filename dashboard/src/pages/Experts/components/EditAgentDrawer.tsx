@@ -12,6 +12,7 @@ import {
   Select,
   Spin,
   Switch,
+  Alert,
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
@@ -20,6 +21,7 @@ import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { workspaceApi } from "../../../api/modules/workspace";
+import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
@@ -66,6 +68,7 @@ import {
   probeRootDir,
   rootDirProbeMessage,
   shouldProbeRootDir,
+  supportsHostSkillPackages,
   validatePathMappings,
   type PathMapping,
 } from "./agentBackendForm";
@@ -156,7 +159,7 @@ interface EditAgentDrawerBodyProps {
 }
 
 /**
- * Merge page-config fields into the existing workspace manifest.json.
+ * Merge page-config fields into the existing workspace .octop/manifest.json.
  * Missing file → start from {}. Invalid JSON is refused so we do not
  * clobber a hand-edited manifest.
  */
@@ -168,18 +171,30 @@ async function persistWelcomeManifest(
   try {
     const file = await workspaceApi.readWorkspaceFile(
       agentId,
-      "/manifest.json",
+      "/.octop/manifest.json",
     );
     const parsed = parseManifestObject(file.content ?? "");
     if (!parsed.ok) return "invalid-json";
     existing = parsed.value;
   } catch (err) {
     if (!isNotFoundApiError(err)) throw err;
+    // Legacy agents may still keep welcome metadata at workspace root.
+    try {
+      const legacy = await workspaceApi.readWorkspaceFile(
+        agentId,
+        "/manifest.json",
+      );
+      const parsed = parseManifestObject(legacy.content ?? "");
+      if (!parsed.ok) return "invalid-json";
+      existing = parsed.value;
+    } catch (legacyErr) {
+      if (!isNotFoundApiError(legacyErr)) throw legacyErr;
+    }
   }
   const merged = mergeWelcomeIntoManifest(existing, data);
   await workspaceApi.createWorkspaceFile(
     agentId,
-    "/manifest.json",
+    "/.octop/manifest.json",
     JSON.stringify(merged, null, 2),
   );
   return "ok";
@@ -231,6 +246,16 @@ function EditAgentDrawerBody({
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
+  const watchedRootDir = Form.useWatch("root_dir", form);
+  const workspaceDirFromConfig =
+    typeof agentConfig.workspace_dir === "string"
+      ? agentConfig.workspace_dir
+      : null;
+  const skillPackagesSupported = supportsHostSkillPackages({
+    backendChoice,
+    rootDir: watchedRootDir,
+    workspaceDir: workspaceDirFromConfig,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -415,6 +440,16 @@ function EditAgentDrawerBody({
         }),
       });
 
+      if (!skillPackagesSupported) {
+        try {
+          await skillPackagesApi.replaceMounted(agent.agent_id, []);
+        } catch (pkgErr) {
+          message.warning(
+            apiErrorMessage(pkgErr, t("experts.skillPackagesClearFailed"), t),
+          );
+        }
+      }
+
       message.success(t("common.saveSuccess"));
       if (bwrapToast?.kind === "success") {
         message.success(bwrapToast.text);
@@ -447,6 +482,7 @@ function EditAgentDrawerBody({
     onClose,
     onSaved,
     pathMappings,
+    skillPackagesSupported,
     t,
   ]);
 
@@ -748,10 +784,19 @@ function EditAgentDrawerBody({
                 backendsLoading={backendsLoading}
                 backendChoice={backendChoice}
                 pathMappings={pathMappings}
+                rootDirMode="edit"
                 onAddPathMapping={addPathMapping}
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
+              {!skillPackagesSupported ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 12 }}
+                  message={t("experts.skillPackagesUnsupportedHint")}
+                />
+              ) : null}
             </Form>
 
             <Collapse

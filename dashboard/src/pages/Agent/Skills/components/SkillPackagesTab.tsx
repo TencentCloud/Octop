@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Drawer, Empty, Spin, Switch } from "antd";
+import { Alert, Drawer, Empty, Spin, Switch } from "antd";
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { skillPackagesApi } from "../../../../api/modules/skillPackages";
@@ -8,8 +8,10 @@ import type {
   SkillPackageDetail,
   SkillPackageSkill,
 } from "../../../../api/types/skillPackage";
+import { useAgent } from "../../../../context/AgentContext";
 import { PackageIcon } from "../../../SkillPackages/PackageIcon";
 import { showApiError } from "../../../../utils/showApiToast";
+import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
 import type { SkillSpec } from "../useSkills";
 import { hubInfoBySlugFromCache } from "./skillHubCache";
 import styles from "../index.module.less";
@@ -57,6 +59,14 @@ export default function SkillPackagesTab({
   toggleEnabled,
 }: SkillPackagesTabProps) {
   const { t } = useTranslation();
+  const { agents } = useAgent();
+  const agent = useMemo(
+    () => agents.find((row) => row.agent_id === agentId) ?? null,
+    [agents, agentId],
+  );
+  const packagesSupported = supportsHostSkillPackagesFromConfig(
+    agent?.config ?? null,
+  );
   const [catalog, setCatalog] = useState<SkillPackage[]>([]);
   const [mountedIds, setMountedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +133,7 @@ export default function SkillPackagesTab({
   };
 
   const handleToggleMount = (pack: SkillPackage, enabled: boolean) => {
+    if (enabled && !packagesSupported) return;
     const next = enabled
       ? [...mountedIds, pack.id]
       : mountedIds.filter((id) => id !== pack.id);
@@ -162,7 +173,18 @@ export default function SkillPackagesTab({
 
   return (
     <>
-      <p className={styles.packageMountHint}>{t("skills.mountBackendHint")}</p>
+      {packagesSupported ? (
+        <p className={styles.packageMountHint}>
+          {t("skills.mountBackendHint")}
+        </p>
+      ) : (
+        <Alert
+          type="info"
+          showIcon
+          className={styles.packageMountAlert}
+          message={t("skills.skillPackagesUnsupportedHint")}
+        />
+      )}
       <div className={styles.skillsGrid}>
         {catalog.map((pack) => {
           const mounted = mountedSet.has(pack.id);
@@ -233,6 +255,7 @@ export default function SkillPackagesTab({
                   >
                     <Switch
                       checked={mounted}
+                      disabled={!packagesSupported && !mounted}
                       loading={mountingId === pack.id}
                       onChange={(checked) => handleToggleMount(pack, checked)}
                       aria-label={

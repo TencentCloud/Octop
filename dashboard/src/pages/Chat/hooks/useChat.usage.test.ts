@@ -41,4 +41,34 @@ describe("history token usage", () => {
       last_input_tokens: 120,
     });
   });
+
+  it("maps inbound_attachments from the history API into gallery attachments", () => {
+    const messages = convertHistoryMessages(
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: "这图是啥" }],
+          id: "u1",
+          inbound_attachments: [
+            {
+              filename: "1787277960_baidu_map.png",
+              media_type: "image/png",
+              kind: "image",
+              workspace_path: "inbound/1787277960_baidu_map.png",
+            },
+          ],
+        },
+      ],
+      "agent_1",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.content).toBe("这图是啥");
+    expect(messages[0]?.attachments?.[0]).toMatchObject({
+      workspacePath: "inbound/1787277960_baidu_map.png",
+      kind: "image",
+    });
+    expect(messages[0]?.attachments?.[0]?.url).toContain(
+      "/api/agents/agent_1/",
+    );
+  });
 });

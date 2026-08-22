@@ -28,6 +28,16 @@ _ILLEGAL_CHARS_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _MAX_NAME_LEN = 64
 
 _ORIGINAL_NAME_PREFIX = "[原名: {name}] "
+_ORIGINAL_NAME_RE = re.compile(r"^\[原名:\s*(.+?)\]\s")
+
+
+def extract_original_plugin_label(description: str) -> str | None:
+    """Return the human-readable plugin tool name from a sanitized description."""
+    match = _ORIGINAL_NAME_RE.match(description)
+    if not match:
+        return None
+    label = match.group(1).strip()
+    return label or None
 
 
 def _transliterate(name: str) -> str:

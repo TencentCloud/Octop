@@ -1575,28 +1575,42 @@ export default function KnowledgeBasesPage() {
                             },
                           },
                           {
+                            title: t("knowledgeBases.entryType"),
+                            key: "entry_type",
+                            width: 88,
+                            render: (_, document) =>
+                              document.is_dir
+                                ? t("knowledgeBases.folder")
+                                : t("knowledgeBases.file"),
+                          },
+                          {
                             title: t("knowledgeBases.status"),
                             key: "status",
                             width: 100,
-                            render: (_, document) => (
-                              <Tooltip
-                                title={document.error_message || undefined}
-                              >
-                                <Tag
-                                  color={documentStatusColor(document.status)}
+                            render: (_, document) =>
+                              document.is_dir ? (
+                                "—"
+                              ) : (
+                                <Tooltip
+                                  title={document.error_message || undefined}
                                 >
-                                  {t(
-                                    `knowledgeBases.statusesShort.${document.status}`,
-                                  )}
-                                </Tag>
-                              </Tooltip>
-                            ),
+                                  <Tag
+                                    color={documentStatusColor(document.status)}
+                                  >
+                                    {t(
+                                      `knowledgeBases.statusesShort.${document.status}`,
+                                    )}
+                                  </Tag>
+                                </Tooltip>
+                              ),
                           },
                           {
                             title: t("knowledgeBases.chunks"),
                             dataIndex: "chunk_count",
                             key: "chunk_count",
                             width: 80,
+                            render: (chunkCount: number, document) =>
+                              document.is_dir ? "—" : chunkCount,
                           },
                           {
                             title: t("knowledgeBases.updatedAt"),

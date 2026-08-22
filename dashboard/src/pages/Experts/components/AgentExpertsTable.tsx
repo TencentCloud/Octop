@@ -36,7 +36,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
-import { iconForName } from "./iconForName";
+import { ExpertIcon } from "./iconForName";
 import {
   isAgentChatReady,
   formatAgentState,
@@ -273,7 +273,11 @@ export default function AgentExpertsTable({
               background: `${row.color || "#6366f1"}1a`,
             }}
           >
-            {iconForName(row.icon_name, 16)}
+            <ExpertIcon
+              iconUrl={row.icon_url}
+              iconName={row.icon_name}
+              size={row.icon_url ? 28 : 16}
+            />
           </span>
           <span className={styles.tableNameText}>{name}</span>
           {row.is_shared && (
@@ -310,6 +314,7 @@ export default function AgentExpertsTable({
       title: t("experts.table.state", "状态"),
       dataIndex: "state",
       width: 200,
+      align: "center",
       render: (_state, row) => {
         const state = localStates[row.agent_id] ?? row.state;
         const friendlyError =

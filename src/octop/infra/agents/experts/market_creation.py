@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from octop.infra.agents.experts.catalog import (
-    MANIFEST_FILENAME,
+    WORKSPACE_MANIFEST_PATH,
     build_create_spec_from_expert,
 )
 from octop.infra.agents.experts.manifest_generator import (
@@ -191,7 +191,7 @@ async def _enrich_agent_welcome_async(
                 status="failed",
             )
             return
-        await workspace.aupload_many([(MANIFEST_FILENAME, payload)])
+        await workspace.aupload_many([(WORKSPACE_MANIFEST_PATH, payload)])
         _set_welcome_enrichment_status(
             server=server,
             agent_id=agent_id,
@@ -234,7 +234,7 @@ async def create_agent_from_skillhub_skillset(
 
     Welcome / quick-prompt cards use the deterministic SkillHub workflow first so
     create stays fast. Optional LLM enrichment runs in the background and updates
-    only this agent's workspace ``manifest.json`` when ready.
+    only this agent's workspace ``.octop/manifest.json`` when ready.
     """
     catalog = server.expert_catalog
     if catalog is None:

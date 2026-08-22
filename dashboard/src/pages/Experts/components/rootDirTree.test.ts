@@ -4,6 +4,7 @@ import {
   ancestorDirPaths,
   ensurePathInTree,
   insertChild,
+  isPathUnderHome,
   pathExistsInTree,
   renameNode,
   sanitizeTree,
@@ -178,6 +179,53 @@ describe("rootDirTree helpers", () => {
     ]);
     expect(ancestorDirPaths("/")).toEqual([]);
     expect(ancestorDirPaths("/Users")).toEqual(["/"]);
+  });
+
+  it("ancestorDirPaths can start from a home tree root", () => {
+    expect(ancestorDirPaths("/home/wally/projects/app", "/home/wally")).toEqual(
+      ["/home/wally", "/home/wally/projects"],
+    );
+    expect(ancestorDirPaths("/home/wally", "/home/wally")).toEqual([]);
+  });
+
+  it("isPathUnderHome accepts home and subdirs only", () => {
+    expect(isPathUnderHome("/home/wally", "/home/wally")).toBe(true);
+    expect(isPathUnderHome("/home/wally/docs", "/home/wally")).toBe(true);
+    expect(isPathUnderHome("/", "/home/wally")).toBe(false);
+    expect(isPathUnderHome("/tmp", "/home/wally")).toBe(false);
+  });
+
+  it("isPathUnderHome normalizes Windows separators and drive case", () => {
+    expect(isPathUnderHome("C:\\Users\\Wally\\docs", "C:/Users/Wally")).toBe(
+      true,
+    );
+    expect(isPathUnderHome("c:/Users/Wally", "C:/Users/Wally")).toBe(true);
+    expect(isPathUnderHome("D:/other", "C:/Users/Wally")).toBe(false);
+  });
+
+  it("ancestorDirPaths works under a Windows drive tree root", () => {
+    expect(ancestorDirPaths("C:/Users/Wally/projects/app", "C:/")).toEqual([
+      "C:/",
+      "C:/Users",
+      "C:/Users/Wally",
+      "C:/Users/Wally/projects",
+    ]);
+  });
+
+  it("sanitizeTree keeps a non-/ tree root", () => {
+    const homeRoot: DirTreeNode = {
+      value: "/home/wally",
+      title: "wally",
+      isLeaf: false,
+      children: [{ value: "/home/wally/docs", title: "docs", isLeaf: false }],
+    };
+    const next = sanitizeTree(
+      [homeRoot, { value: "/home/wally/docs", title: "orphan", isLeaf: false }],
+      "/home/wally",
+    );
+    expect(next).toHaveLength(1);
+    expect(next[0].value).toBe("/home/wally");
+    expect(pathExistsInTree(next, "/home/wally/docs")).toBe(true);
   });
 
   it("appendChildren only updates the first matching parent", () => {

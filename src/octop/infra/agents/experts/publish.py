@@ -15,7 +15,10 @@ from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
-from octop.infra.agents.experts.catalog import MANIFEST_FILENAME
+from octop.infra.agents.experts.catalog import (
+    MANIFEST_FILENAME,
+    read_workspace_manifest_bytes,
+)
 from octop.infra.agents.subagents.catalog import slugify
 from octop.infra.db.repos.published_experts import PublishedExpertRepo, PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
@@ -49,7 +52,13 @@ _EXPORT_ROOT_MD = frozenset(
         "PROACTIVE.md",
     }
 )
-_SEEDABLE_GLOB_PATTERNS = ("*.md", "skills/**/*", "agents/*.md")
+_SEEDABLE_GLOB_PATTERNS = (
+    "*.md",
+    "skills/**/*",
+    "agents/*.md",
+    ".octop/skills/**/*",
+    ".octop/agents/*.md",
+)
 
 
 @dataclass(frozen=True)
@@ -137,15 +146,16 @@ async def _write_workspace_snapshot(
     for rel in paths:
         if not _is_seedable_path(rel):
             continue
-        if rel == MANIFEST_FILENAME:
+        logical = _logical_seed_path(rel)
+        if logical == MANIFEST_FILENAME:
             continue
         content = await workspace.adownload_bytes(rel)
         if content is None:
             continue
-        target = dest.joinpath(*PurePosixPath(rel).parts)
+        target = dest.joinpath(*PurePosixPath(logical).parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
-        exported.append(rel)
+        exported.append(logical)
 
     avatar_rel = await copy_workspace_avatar_to_dir(workspace, dest)
     if avatar_rel:
@@ -159,7 +169,7 @@ async def _write_workspace_snapshot(
             prompt_files=prompt_files,
         )
     else:
-        raw_manifest = await workspace.adownload_bytes(MANIFEST_FILENAME)
+        raw_manifest = await read_workspace_manifest_bytes(workspace)
         if raw_manifest is None:
             raise ValueError(f"workspace does not contain {MANIFEST_FILENAME}")
         _validate_manifest(raw_manifest)
@@ -250,8 +260,17 @@ async def _workspace_file_paths(workspace: BackendWorkspace) -> list[str]:
     return sorted(paths)
 
 
+def _logical_seed_path(path: str) -> str:
+    rel = path.replace("\\", "/").lstrip("/")
+    prefix = ".octop/"
+    if rel.startswith(prefix):
+        return rel[len(prefix) :]
+    return rel
+
+
 def _is_seedable_path(path: str) -> bool:
-    parts = PurePosixPath(path).parts
+    logical = _logical_seed_path(path)
+    parts = PurePosixPath(logical).parts
     if not parts or any(part in _EXCLUDED_PARTS or part.startswith(".") for part in parts):
         return False
     basename = parts[-1]
