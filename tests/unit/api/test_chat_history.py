@@ -162,6 +162,20 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
         "_load_thread_messages",
         AsyncMock(return_value=([{"role": "user", "content": "hi"}], True)),
     )
+    monkeypatch.setattr(
+        history_mod,
+        "read_thread_task_state",
+        AsyncMock(
+            return_value={
+                "thread_id": "thr_1",
+                "available": True,
+                "status": "active",
+                "items": [{"id": "1", "content": "Ship", "status": "pending"}],
+                "completed": 0,
+                "total": 1,
+            }
+        ),
+    )
     out = await history_mod.get_thread_history(
         "agt_1",
         "thr_1",
@@ -175,6 +189,7 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
     assert out["limit"] == HISTORY_DEFAULT_LIMIT
     assert out["offset"] == 0
     assert out["messages"][0]["role"] == "user"
+    assert out["task_state"]["items"][0]["content"] == "Ship"
 
 
 @pytest.mark.asyncio

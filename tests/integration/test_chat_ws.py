@@ -6,8 +6,9 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -565,6 +566,48 @@ async def test_thread_history_reports_active_turn(env: Any) -> None:
     srv.app_runtime.gateway.ws_hub.mark_turn_active(tid)
     active = await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=alice_auth)
     assert active.json()["turn_active"] is True
+
+
+async def test_thread_task_summary_and_cancel_active_turn(env: Any) -> None:
+    c, srv, _fake, alice_auth, bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(
+            values={
+                "todos": [
+                    {"content": "Inspect", "status": "completed"},
+                    {"content": "Implement", "status": "in_progress"},
+                ]
+            }
+        )
+    )
+    srv.app_runtime.gateway.ws_hub.mark_turn_active(tid)
+
+    listed = await c.get(
+        f"/api/agents/{aid}/thread-tasks?status=active",
+        headers=alice_auth,
+    )
+    assert listed.status_code == 200
+    row = next(item for item in listed.json() if item["thread_id"] == tid)
+    assert row["turn_active"] is True
+    assert isinstance(row["turn_started_at"], int)
+
+    cancel_spy = MagicMock()
+    srv.app_runtime.agent_registry.cancel_stream = cancel_spy
+    cancelled = await c.post(
+        f"/api/agents/{aid}/threads/{tid}/cancel",
+        headers=alice_auth,
+    )
+    assert cancelled.json() == {"thread_id": tid, "cancelled": True}
+    cancel_spy.assert_called_once_with(aid, tid)
+
+    denied = await c.post(
+        f"/api/agents/{aid}/threads/{tid}/cancel",
+        headers=bob_auth,
+    )
+    assert denied.status_code in {403, 404}
 
 
 async def test_create_thread(env: Any) -> None:

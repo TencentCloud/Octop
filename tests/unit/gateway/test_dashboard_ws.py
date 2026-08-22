@@ -88,10 +88,13 @@ async def test_ws_hub_subscribe_switches_thread_without_kicking_others() -> None
 def test_ws_hub_turn_active_flags() -> None:
     hub = WebSocketHub()
     assert hub.is_turn_active("t1") is False
+    assert hub.turn_started_at("t1") is None
     hub.mark_turn_active("t1")
     assert hub.is_turn_active("t1") is True
+    assert isinstance(hub.turn_started_at("t1"), int)
     hub.mark_turn_idle("t1")
     assert hub.is_turn_active("t1") is False
+    assert hub.turn_started_at("t1") is None
 
 
 @pytest.mark.asyncio

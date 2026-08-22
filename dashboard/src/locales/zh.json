@@ -4536,14 +4536,57 @@
       }
     }
   },
+  "taskCenter": {
+    "tabs": {
+      "active": "进行中",
+      "scheduled": "已计划",
+      "history": "历史"
+    },
+    "noAgent": "请选择一个专家查看任务",
+    "noActive": "暂无进行中的线程计划",
+    "noHistory": "暂无已完成的线程计划",
+    "count": "共 {{count}} 个任务线程",
+    "untitled": "未命名线程",
+    "activeStatus": "进行中",
+    "completedStatus": "已完成",
+    "runningStatus": "正在运行",
+    "waitingStatus": "等待继续",
+    "openThread": "打开对话",
+    "continueThread": "继续任务",
+    "viewDetails": "查看详情",
+    "stopRun": "停止运行",
+    "activeHeading": "Agent 运行任务",
+    "historyHeading": "已完成的运行",
+    "liveRefresh": "实时刷新",
+    "runningNow": "当前运行",
+    "awaitingInput": "等待输入",
+    "stepsCompleted": "已完成步骤",
+    "currentRun": "当前运行",
+    "completedRun": "已完成运行",
+    "awaitingRun": "等待你继续",
+    "nextPlan": "下一项计划",
+    "latestCompleted": "最近完成",
+    "otherPlans": "其他计划",
+    "earlierRuns": "更早的运行",
+    "currentStep": "当前步骤",
+    "stepProgress": "已完成 {{completed}} / {{total}} 步",
+    "moreSteps": "还有 {{count}} 个步骤",
+    "progress": "完成进度",
+    "elapsed": "已运行",
+    "executionPlan": "执行计划",
+    "threadId": "线程 ID",
+    "cancelConfirmTitle": "停止这次运行？",
+    "cancelConfirmDesc": "Agent 当前的回复和工具执行会被取消，任务计划仍会保留，之后可以继续。",
+    "cancelled": "运行已停止"
+  },
   "pageShell": {
     "experts": {
       "title": "专家",
       "subtitle": "创建与管理你的 AI 专家，也可从模板库挑选场景一键新建。"
     },
     "tasks": {
-      "title": "定时任务",
-      "subtitle": "配置 Agent 定期执行的计划任务"
+      "title": "任务中心",
+      "subtitle": "统一查看 Agent 进行中的计划、定时任务和已完成记录"
     },
     "connectors": {
       "title": "连接器",

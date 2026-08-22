@@ -2,7 +2,7 @@
 const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/chat": () => import("../pages/Chat"),
   "/experts": () => import("../pages/Experts"),
-  "/tasks": () => import("../pages/Control/CronJobs"),
+  "/tasks": () => import("../pages/Tasks"),
   "/connectors": () => import("../pages/Agent/Connectors"),
   "/skill-packages": () => import("../pages/SkillPackages"),
   "/knowledge-bases": () => import("../pages/KnowledgeBases"),

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import {
   Button,
   Card,
@@ -79,7 +80,7 @@ function CronJobsEmptyState({
   );
 }
 
-function CronJobsPage() {
+function CronJobsPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
   const { isMobile, viewMode, setViewMode, showCardView } =
     useCardTableView("table");
@@ -232,19 +233,26 @@ function CronJobsPage() {
     timeZone: cronTimezone,
   });
 
-  // Until the user picks an agent there is nothing to fetch and no scope
-  // to write to. Mirror the behaviour of the other octop agent-scoped pages.
-  if (!activeAgentId) {
-    return (
+  const wrap = (content: ReactNode) =>
+    embedded ? (
+      <>{content}</>
+    ) : (
       <PageShell
         title={t("pageShell.tasks.title")}
         subtitle={t("pageShell.tasks.subtitle")}
         agentScoped
       >
-        <Card>
-          <Empty description={t("cronJobs.noAgentSelected")} />
-        </Card>
+        {content}
       </PageShell>
+    );
+
+  // Until the user picks an agent there is nothing to fetch and no scope
+  // to write to. Mirror the behaviour of the other octop agent-scoped pages.
+  if (!activeAgentId) {
+    return wrap(
+      <Card>
+        <Empty description={t("cronJobs.noAgentSelected")} />
+      </Card>,
     );
   }
 
@@ -256,12 +264,8 @@ function CronJobsPage() {
   const showBodySpinner = loading || (contentBusy && !showList && !showEmpty);
   const showToolbar = showList;
 
-  return (
-    <PageShell
-      title={t("pageShell.tasks.title")}
-      subtitle={t("pageShell.tasks.subtitle")}
-      agentScoped
-    >
+  return wrap(
+    <>
       {showToolbar ? (
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
@@ -390,7 +394,7 @@ function CronJobsPage() {
         onCancel={handleExecuteNowCancel}
         onConfirm={handleExecuteNowConfirm}
       />
-    </PageShell>
+    </>,
   );
 }
 

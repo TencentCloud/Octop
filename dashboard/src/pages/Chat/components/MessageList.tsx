@@ -13,6 +13,7 @@ import { Spin, Button } from "antd";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
+import type { ThreadTaskState } from "../../../api/modules/octopThreads";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
 import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
@@ -109,6 +110,7 @@ interface MessageListProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  taskPlan?: ThreadTaskState | null;
 }
 
 interface GroupRenderContext {
@@ -133,6 +135,7 @@ interface GroupRenderContext {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  taskPlan?: ThreadTaskState | null;
   registerBubbleRef: (messageId: string, el: HTMLDivElement | null) => void;
 }
 
@@ -178,6 +181,11 @@ function renderMessageGroup(
             shellCommandDisabled={ctx.shellCommandDisabled}
             shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
             compactProcess={ctx.compactProcess}
+            taskPlan={
+              groupIndex === ctx.lastAssistantGroupIndex
+                ? ctx.taskPlan
+                : undefined
+            }
           />
         </div>
       );
@@ -226,6 +234,9 @@ function renderMessageGroup(
         shellCommandDisabled={ctx.shellCommandDisabled}
         shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
         compactProcess={ctx.compactProcess}
+        taskPlan={
+          groupIndex === ctx.lastAssistantGroupIndex ? ctx.taskPlan : undefined
+        }
       />
     </div>
   );
@@ -259,6 +270,7 @@ export default function MessageList(props: MessageListProps) {
     shellCommandDisabled,
     shellCommandDisabledTitle,
     compactProcess,
+    taskPlan,
   } = props;
 
   const { t } = useTranslation();
@@ -687,6 +699,7 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabled,
       shellCommandDisabledTitle,
       compactProcess,
+      taskPlan,
       registerBubbleRef,
     }),
     [
@@ -709,6 +722,7 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabled,
       shellCommandDisabledTitle,
       compactProcess,
+      taskPlan,
       registerBubbleRef,
     ],
   );

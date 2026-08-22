@@ -33,6 +33,7 @@ import type {
   ChatMessage,
   UserComposerContext,
 } from "./sseHelpers";
+import type { ThreadTaskState } from "../../../api/modules/octopThreads";
 
 export type {
   ToolCallData,
@@ -656,6 +657,7 @@ async function loadThreadHistory(
   nextOffset: number;
   turnActive: boolean;
   artifacts: string[];
+  taskPlan: ThreadTaskState | null;
 }> {
   try {
     const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
@@ -695,6 +697,7 @@ async function loadThreadHistory(
       nextOffset: offset + limit,
       turnActive: Boolean(history.turn_active),
       artifacts,
+      taskPlan: history.task_state ?? null,
     };
   } catch (err) {
     console.error("loadThreadHistory failed", err);
@@ -704,6 +707,7 @@ async function loadThreadHistory(
       nextOffset: 0,
       turnActive: false,
       artifacts: [],
+      taskPlan: null,
     };
   }
 }
@@ -748,6 +752,7 @@ export function useChat(
     thinkingStartedAt,
     runUsage,
     contextUsage,
+    taskPlan,
     historyHasMore,
     historyLoadingMore,
     historyHydrated,
@@ -857,11 +862,13 @@ export function useChat(
           hasMore,
           nextOffset,
           turnActive,
+          taskPlan,
         } = await loadThreadHistory(agentId, targetThreadId, { offset: 0 });
         if (loadGenRef.current !== gen) return;
         chatStore.setHistoryPage(key, converted, {
           hasMore,
           nextOffset,
+          taskPlan,
         });
         if (shouldProbeActiveTurn({ isStreaming: false, turnActive })) {
           attachAfterHistory(key, targetThreadId);
@@ -940,6 +947,7 @@ export function useChat(
         messages: latest,
         hasMore,
         nextOffset,
+        taskPlan,
       } = await loadThreadHistory(agentId, key, { offset: 0 });
       // Stale after a concurrent loadHistory / newer refresh — drop apply only.
       if (loadGenRef.current !== gen) return;
@@ -954,6 +962,7 @@ export function useChat(
         hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
         nextOffset:
           olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
+        taskPlan,
       });
     } finally {
       refreshInFlightRef.current = false;
@@ -1020,6 +1029,7 @@ export function useChat(
     thinkingStartedAt,
     runUsage,
     contextUsage,
+    taskPlan,
     historyLoading,
     historyHasMore,
     historyLoadingMore,

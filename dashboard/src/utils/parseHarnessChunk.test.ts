@@ -23,4 +23,19 @@ describe("parseHarnessChunk usage", () => {
       },
     });
   });
+
+  it("parses authoritative task plan updates", () => {
+    const chunk = parseHarnessChunk(
+      'data: {"type":"task_plan_updated","thread_id":"thread-1","task_state":{"thread_id":"thread-1","available":true,"status":"active","items":[{"id":"1","content":"Ship","status":"in_progress"}],"completed":0,"total":1}}',
+    );
+
+    expect(chunk).toMatchObject({
+      type: "task_plan_updated",
+      thread_id: "thread-1",
+      task_state: {
+        status: "active",
+        total: 1,
+      },
+    });
+  });
 });

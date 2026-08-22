@@ -1,6 +1,36 @@
 import type { HitlPendingPayload } from "../types/hitl";
 import { request } from "../request";
 
+export type ThreadTaskItemStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+export interface ThreadTaskItem {
+  id: string;
+  content: string;
+  status: ThreadTaskItemStatus;
+}
+
+export interface ThreadTaskState {
+  thread_id: string;
+  available: boolean;
+  status: "idle" | "active" | "completed";
+  items: ThreadTaskItem[];
+  completed: number;
+  total: number;
+}
+
+export interface ThreadTaskSummary extends ThreadTaskState {
+  agent_id: string;
+  title: string | null;
+  last_active: number;
+  created_at: number;
+  turn_active: boolean;
+  turn_started_at: number | null;
+}
+
 export interface OctopThread {
   thread_id: string;
   title: string | null;
@@ -39,6 +69,8 @@ export interface OctopThreadHistory {
   /** Pending tool approval for this thread (survives page reload). */
   hitl_pending?: HitlPendingPayload | null;
   artifacts?: string[];
+  /** Authoritative DeepAgents todo projection from the thread checkpoint. */
+  task_state?: ThreadTaskState;
 }
 
 export interface OctopThreadPatch {
@@ -96,6 +128,32 @@ export const octopThreadsApi = {
       )}/history?limit=${limit}&offset=${offset}`,
     );
   },
+
+  taskState: (agentId: string, threadId: string) =>
+    request<ThreadTaskState>(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/task-state`,
+    ),
+
+  tasks: (
+    agentId: string,
+    status: "active" | "completed" | "all" = "all",
+    limit = 50,
+  ) =>
+    request<ThreadTaskSummary[]>(
+      `/agents/${encodeURIComponent(
+        agentId,
+      )}/thread-tasks?status=${status}&limit=${limit}`,
+    ),
+
+  cancelTurn: (agentId: string, threadId: string) =>
+    request<{ thread_id: string; cancelled: boolean }>(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/cancel`,
+      { method: "POST" },
+    ),
 
   contextUsage: (
     agentId: string,

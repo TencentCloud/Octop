@@ -131,6 +131,7 @@ export default function BrowserAiPanel({
     bootError,
     messages,
     isStreaming,
+    taskPlan,
     send,
     cancelStream,
   } = useAgentThreadChat(agentId);
@@ -636,6 +637,7 @@ export default function BrowserAiPanel({
         ) : (
           <MessageList
             messages={messages}
+            taskPlan={taskPlan}
             isStreaming={isStreaming}
             sessionKey={threadId ?? undefined}
             onCancel={cancelStream}

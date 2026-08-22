@@ -11,6 +11,7 @@ import type {
   TokenUsage,
 } from "../../../api/types";
 import type { ContentBlockItem } from "../../../utils/messageParser";
+import type { ThreadTaskState } from "../../../api/modules/octopThreads";
 
 export interface ToolCallData {
   name?: string;
@@ -80,6 +81,8 @@ export interface SessionStreamState {
   runUsage: TokenUsage | null;
   /** Latest prompt/context token count from SSE state snapshots. */
   contextUsage: TokenUsage | null;
+  /** Authoritative task plan projected from the server-side checkpoint. */
+  taskPlan: ThreadTaskState | null;
   abortController: AbortController | null;
   /** Running buffer for in-flight ``token`` chunks. */
   streamMsg: string;
@@ -109,6 +112,7 @@ export interface SessionSnapshot {
   thinkingStartedAt: number | null;
   runUsage: TokenUsage | null;
   contextUsage: TokenUsage | null;
+  taskPlan: ThreadTaskState | null;
   historyHasMore: boolean;
   historyLoadingMore: boolean;
   historyNextOffset: number;
