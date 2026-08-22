@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
+import pytest
+
 from tests.support.auth import create_user
+
+posix_only = pytest.mark.skipif(
+    os.name != "posix", reason="local_shell backend workspace file ops unsupported on Windows"
+)
 
 
 async def _owner_and_peer(
@@ -66,6 +73,7 @@ async def test_publish_list_install_and_unpublish_preserves_installed_fork(
     assert fork.json()["name"] == "Peer installed expert"
 
 
+@posix_only
 async def test_install_published_expert_accepts_create_options(
     env: tuple[Any, Any, dict[str, str]],
 ) -> None:

@@ -79,13 +79,9 @@ def normalize_host_path(path: str) -> Path:
     return Path(os.path.realpath(os.path.expanduser(raw)))
 
 
-def _browse_tree_base(*, restrict_to_home: bool) -> str:
-    """Containment root for picker paths (home jail or host/drive root)."""
-    if restrict_to_home:
-        return os.path.realpath(str(host_home_dir()))
-    if os.name == "posix":
-        return os.path.realpath("/")
-    return os.path.realpath(str(Path.home().anchor))
+def _browse_tree_base() -> str:
+    """Containment root for home-jailed picker paths."""
+    return os.path.realpath(str(host_home_dir()))
 
 
 def _is_denied_host_path(resolved: Path) -> bool:
@@ -126,12 +122,17 @@ def assert_safe_host_path(path: str, *, restrict_to_home: bool = False) -> Path:
         raise ValueError("invalid path") from exc
     if not os.path.isabs(resolved_s):
         raise ValueError("path must be absolute")
-    base = _browse_tree_base(restrict_to_home=restrict_to_home)
-    if not _path_within_base(resolved_s, base):
-        raise ValueError(_OUTSIDE_HOME_MSG if restrict_to_home else "path must be absolute")
     resolved = Path(resolved_s)
     if _is_denied_host_path(resolved):
         raise ValueError(_NOT_ALLOWED_MSG)
+    # Home jail only. The host-root case (restrict_to_home=False) allows any
+    # absolute path: on POSIX everything sits under "/", and on Windows the
+    # denylist is empty while windows_neutralize_host_root rewrites "/" at
+    # runtime, so a drive-relative "/" must not be rejected there.
+    if restrict_to_home:
+        base = _browse_tree_base()
+        if not _path_within_base(resolved_s, base):
+            raise ValueError(_OUTSIDE_HOME_MSG)
     return resolved
 
 
