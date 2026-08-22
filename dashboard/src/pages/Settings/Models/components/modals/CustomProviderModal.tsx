@@ -267,20 +267,6 @@ export function CustomProviderModal({
           <Input.Password placeholder="sk-..." visibilityToggle />
         </Form.Item>
 
-        {kind === "openai" && (
-          <Form.Item style={{ marginBottom: 12 }}>
-            <Button
-              icon={<Download size={14} />}
-              loading={fetchingModels}
-              onClick={() => void handleFetchModels()}
-            >
-              {fetchingModels
-                ? t("models.fetchingModels")
-                : t("models.fetchModels")}
-            </Button>
-          </Form.Item>
-        )}
-
         <Form.Item name="note" label={t("models.noteLabel")}>
           <Input.TextArea rows={2} placeholder={t("models.notePlaceholder")} />
         </Form.Item>

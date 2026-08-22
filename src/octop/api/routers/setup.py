@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -12,7 +13,12 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
 from octop.infra.agents.providers.presets import load_provider_presets
-from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
+from octop.infra.agents.providers.probe import (
+    fetch_openai_compatible_models,
+    make_probe_provider_row,
+    probe_provider_row,
+    provider_headers,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
@@ -66,6 +72,14 @@ class ProviderTestBody(BaseModel):
     api_key: str = ""
     base_url: str | None = None
     model_id: str = Field(min_length=1)
+    reasoning: bool = False
+
+
+class SetupFetchModelsBody(BaseModel):
+    kind: str
+    api_key: str | None = None
+    base_url: str | None = None
+    extra_json: str | None = None
 
 
 class DatabaseSetupBody(BaseModel):
@@ -402,8 +416,34 @@ async def test_provider_draft(
         api_key=body.api_key or None,
         base_url=body.base_url,
         model_id=body.model_id,
+        reasoning=body.reasoning,
     )
     return await probe_provider_row(row)
+
+
+@router.post("/setup/fetch-models", summary="List OpenAI-compatible models for a wizard draft")
+async def fetch_models(
+    body: SetupFetchModelsBody,
+    server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """List remote model ids via OpenAI-compatible ``GET /models`` (openai kind only)."""
+    _enforce_wizard_token_phase(server)
+    _authorize_setup_provider_test(authorization, server)
+    if body.kind != "openai":
+        return {
+            "ok": False,
+            "error": "fetch models is only supported for openai-compatible providers",
+        }
+    api_key = (body.api_key or "").strip()
+    if not api_key:
+        return {"ok": False, "error": "api_key is required"}
+    draft = SimpleNamespace(extra_json=body.extra_json)
+    return await fetch_openai_compatible_models(
+        base_url=(body.base_url or "").strip() or None,
+        api_key=api_key,
+        extra_headers=provider_headers(draft) or None,
+    )
 
 
 @router.post("/setup/finish", summary="Finish setup wizard")

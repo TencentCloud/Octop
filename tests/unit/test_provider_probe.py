@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -164,3 +164,30 @@ async def test_chat_probe_skips_embeddings_endpoint() -> None:
     assert result["ok"] is True
     client.assert_not_called()
     fake.ainvoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_streams_reasoning_model() -> None:
+    row = SimpleNamespace(
+        name="HAI",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "tc-code-latest", "name": "tc-code-latest"}],
+    )
+    fake = AsyncMock()
+    fake.astream = MagicMock(return_value=_stream_chunks())
+    with patch(
+        "octop.infra.agents.providers.probe.build_probe_chat_model",
+        return_value=fake,
+    ):
+        result = await probe_provider_row(row, model_id="tc-code-latest")
+
+    assert result["ok"] is True
+    fake.astream.assert_called_once()
+    fake.ainvoke.assert_not_called()
+
+
+async def _stream_chunks():
+    yield SimpleNamespace(content="reasoning")
