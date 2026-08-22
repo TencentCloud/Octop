@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -270,3 +271,110 @@ def test_delete_stays_under_cache_root(tmp_path, monkeypatch) -> None:
     mod.delete_downloaded_model(mid)
     assert outside.is_file()
     assert outside.read_text(encoding="utf-8") == "secret"
+
+
+def test_is_downloaded_finds_nested_onnx_weights(tmp_path, monkeypatch) -> None:
+    """Regression: weights under ``onnx/`` with a non-``model.onnx`` name.
+
+    ``jinaai/jina-clip-v1`` ships ``onnx/text_model.onnx`` /
+    ``onnx/vision_model.onnx``. Fixed-name matching missed both, so the model
+    downloaded fine but every enable attempt reported it as missing.
+    """
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    from octop.infra.agents.providers import onnx_service as mod
+
+    mid = "jinaai/jina-clip-v1"
+    snap = mod.model_cache_dir(mid) / "snapshots" / "abc123"
+    (snap / "onnx").mkdir(parents=True)
+    (snap / "config.json").write_text("{}", encoding="utf-8")
+    for name in ("text_model.onnx", "vision_model.onnx"):
+        (snap / "onnx" / name).write_bytes(b"onnx")
+
+    assert mod.is_model_downloaded(mid) is True
+    assert mid in mod.list_downloaded_models()
+
+
+def test_is_downloaded_ignores_dangling_snapshot_symlink(tmp_path, monkeypatch) -> None:
+    """A snapshot entry whose blob is still downloading must not count."""
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    from octop.infra.agents.providers import onnx_service as mod
+
+    mid = ONNX_PRESET_MODEL_IDS[0]
+    root = mod.model_cache_dir(mid)
+    snap = root / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    (root / "blobs").mkdir(parents=True)
+    try:
+        (snap / "model.onnx").symlink_to(root / "blobs" / "not-fetched-yet")
+    except OSError:
+        pytest.skip("symlinks unavailable")
+
+    assert mod.is_model_downloaded(mid) is False
+
+    (root / "blobs" / "not-fetched-yet").write_bytes(b"onnx")
+    assert mod.is_model_downloaded(mid) is True
+
+
+def test_fallback_catalog_ids_stay_loadable_by_fastembed() -> None:
+    """The deps-missing catalog must be a subset of what fastembed can load.
+
+    Otherwise a user picks a model while the extra is absent, the click
+    installs fastembed, and the id disappears from the catalog mid-flow.
+    """
+    from octop.infra.agents.providers import onnx_catalog as catalog
+
+    meta_map = catalog._fastembed_meta_map()
+    if not meta_map:
+        pytest.skip("fastembed not installed")
+
+    fallback_ids = {*ONNX_PRESET_MODEL_IDS, *catalog._EXTRA_CATALOG_IDS}
+    unsupported = sorted(fallback_ids - set(meta_map))
+    assert not unsupported, f"catalog offers models fastembed cannot load: {unsupported}"
+
+
+async def test_provider_probe_never_leaves_the_host_for_local_onnx(monkeypatch) -> None:
+    """Regression: probing ``ONNX (Local)`` POSTed its placeholder key to OpenAI.
+
+    The row is stored as ``kind=openai`` with ``api_key="onnx"`` and no base
+    URL, so the generic embedding probe fell back to api.openai.com and got
+    ``Incorrect API key provided: onnx``.
+    """
+    import httpx
+
+    from octop.infra.agents.providers import onnx_service, probe
+
+    def no_network(*_args, **_kwargs):
+        raise AssertionError("local ONNX probe must not open a network client")
+
+    monkeypatch.setattr(httpx, "AsyncClient", no_network)
+
+    async def fake_probe(model: str) -> dict[str, object]:
+        return {"ok": True, "latency_ms": 12.7, "dim": 512, "model": model}
+
+    monkeypatch.setattr(onnx_service, "probe_local_model", fake_probe)
+
+    row = SimpleNamespace(
+        name="ONNX (Local)",
+        api_key="onnx",
+        base_url=None,
+        kind="openai",
+        extra_json=None,
+        get_models=lambda: [
+            {"id": "BAAI/bge-small-zh-v1.5", "enabled": False, "embedding": True},
+            {"id": "jinaai/jina-embeddings-v2-base-zh", "enabled": True, "embedding": True},
+        ],
+    )
+
+    result = await probe.probe_provider_row(row)
+    assert result["ok"] is True
+    assert result["latency_ms"] == 12
+    # The enabled entry wins over models[0].
+    assert result["model"] == "jinaai/jina-embeddings-v2-base-zh"
+
+    # ModelListEditor's per-model test link sends {model_id, embedding: true};
+    # the local guard must win over the explicit embedding flag.
+    explicit = await probe.probe_provider_row(
+        row, model_id="BAAI/bge-small-zh-v1.5", embedding=True
+    )
+    assert explicit["ok"] is True
+    assert explicit["model"] == "BAAI/bge-small-zh-v1.5"

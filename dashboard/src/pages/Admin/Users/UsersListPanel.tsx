@@ -40,10 +40,12 @@ import {
   Bot,
   Check,
   ChevronRight,
+  CircleHelp,
   Clock,
   IdCard,
   KeyRound,
   LayoutGrid,
+  Link2,
   List,
   Lock,
   LockOpen,
@@ -65,6 +67,7 @@ import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
+import InviteDrawer from "./InviteDrawer";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
 
@@ -110,6 +113,7 @@ interface CreateValues {
 }
 
 interface EditValues {
+  display_name?: string;
   role: "admin" | "user";
   permissions?: string[];
 }
@@ -760,6 +764,7 @@ export default function UsersListPanel() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
@@ -978,6 +983,7 @@ export default function UsersListPanel() {
   const openEdit = (row: UserRow) => {
     setEditTarget(row);
     editForm.setFieldsValue({
+      display_name: row.display_name ?? "",
       role: row.role,
       permissions: [...(row.permissions ?? [])],
     });
@@ -1014,14 +1020,21 @@ export default function UsersListPanel() {
     if (!editTarget) return;
     setEditSubmitting(true);
     try {
-      const ok = await togglePatch(editTarget, {
-        role: values.role,
-        permissions: values.role === "admin" ? [] : values.permissions ?? [],
+      await request(`/users/${editTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          display_name: values.display_name?.trim() || null,
+          role: values.role,
+          permissions: values.role === "admin" ? [] : values.permissions ?? [],
+        }),
       });
-      if (ok) {
-        setEditTarget(null);
-        editForm.resetFields();
-      }
+      setEditTarget(null);
+      editForm.resetFields();
+      void refreshUsers();
+    } catch (err) {
+      message.error(
+        err instanceof Error ? err.message : t("adminUsers.updateFailed"),
+      );
     } finally {
       setEditSubmitting(false);
     }
@@ -1115,6 +1128,12 @@ export default function UsersListPanel() {
               onClick={() => void refreshAll()}
             >
               {t("common.refresh")}
+            </Button>
+            <Button
+              icon={<Link2 size={14} />}
+              onClick={() => setInviteOpen(true)}
+            >
+              {t("adminUsers.inviteUsers")}
             </Button>
             <Button
               type="primary"
@@ -1395,6 +1414,8 @@ export default function UsersListPanel() {
         onSaved={handleEditSaved}
       />
 
+      <InviteDrawer open={inviteOpen} onClose={() => setInviteOpen(false)} />
+
       <Drawer
         title={t("adminUsers.modalNewTitle")}
         placement="right"
@@ -1505,6 +1526,12 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
+            <div
+              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
+            >
+              <CircleHelp size={15} strokeWidth={2} />
+              <span>{t("adminUsers.permEditHint")}</span>
+            </div>
             <Form.Item
               label={t("adminUsers.formRole")}
               name="role"
@@ -1531,7 +1558,6 @@ export default function UsersListPanel() {
                   <Form.Item
                     label={t("adminUsers.colPermissions")}
                     name="permissions"
-                    extra={t("adminUsers.permEditHint")}
                     className={styles.createUserPermItem}
                   >
                     <PermissionCheckboxPicker catalog={permCatalog} />
@@ -1593,7 +1619,25 @@ export default function UsersListPanel() {
         >
           <div className={styles.createSection}>
             <div className={styles.createSectionTitle}>
+              {t("adminUsers.createSectionAccount")}
+            </div>
+            <Form.Item
+              label={t("adminUsers.formDisplayName")}
+              name="display_name"
+            >
+              <Input prefix={<IdCard {...FIELD_ICON_PROPS} />} />
+            </Form.Item>
+          </div>
+
+          <div className={styles.createSection}>
+            <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
+            </div>
+            <div
+              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
+            >
+              <CircleHelp size={15} strokeWidth={2} />
+              <span>{t("adminUsers.permEditHint")}</span>
             </div>
             <Form.Item
               label={t("adminUsers.formRole")}
@@ -1629,7 +1673,6 @@ export default function UsersListPanel() {
                   <Form.Item
                     label={t("adminUsers.colPermissions")}
                     name="permissions"
-                    extra={t("adminUsers.permEditHint")}
                     className={styles.createUserPermItem}
                   >
                     <PermissionCheckboxPicker catalog={permCatalog} />

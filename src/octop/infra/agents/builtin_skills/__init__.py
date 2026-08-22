@@ -9,6 +9,8 @@ from typing import Any
 OCTOP_BUILTIN_SKILLS_ROOT = "_builtin_skills"
 RETIRED_BUILTIN_SKILLS = ("install-skill",)
 _WORKSPACE_TOKEN = b"{{OCTOP_WORKSPACE}}"
+_SKILLS_TOKEN = b"{{OCTOP_SKILLS}}"
+_BUILTIN_TOKEN = b"{{OCTOP_BUILTIN_SKILLS}}"
 _PACKAGE = "octop.infra.agents.builtin_skills"
 
 
@@ -41,11 +43,26 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
         skill_names.append(entry.name)
         _collect_files(entry, f"{OCTOP_BUILTIN_SKILLS_ROOT}/{entry.name}", uploads)
 
-    # Render the exact backend-visible workspace path into the instructions.
-    # This prevents an agent from confusing Octop's per-expert workspace with
-    # a legacy ~/.harness-agent/workspace directory discovered through HOME.
-    workspace_path = workspace.resolve_path(".").encode("utf-8")
-    uploads = [(path, data.replace(_WORKSPACE_TOKEN, workspace_path)) for path, data in uploads]
+    # Render the agent-facing workspace path into the instructions (not the
+    # host ``root_dir`` join that ``resolve_path`` returns for I/O).
+    from octop.infra.gateway.media.inbound_store import (  # noqa: PLC0415
+        agent_facing_workspace_path,
+    )
+
+    workspace_path = agent_facing_workspace_path(workspace, ".").encode("utf-8")
+    skills_rel = workspace.system_rel("skills")
+    builtin_rel = workspace.system_rel(OCTOP_BUILTIN_SKILLS_ROOT)
+    skills_path = agent_facing_workspace_path(workspace, skills_rel).encode("utf-8")
+    builtin_path = agent_facing_workspace_path(workspace, builtin_rel).encode("utf-8")
+    uploads = [
+        (
+            path,
+            data.replace(_WORKSPACE_TOKEN, workspace_path)
+            .replace(_SKILLS_TOKEN, skills_path)
+            .replace(_BUILTIN_TOKEN, builtin_path),
+        )
+        for path, data in uploads
+    ]
 
     if uploads:
         await workspace.aupload_many(uploads)

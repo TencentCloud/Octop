@@ -52,11 +52,15 @@ async def test_create_agent_seeds_workspace_and_starts(
     entry = live_agent_manager._harness_manager.get_agent(row.agent_id)  # type: ignore[union-attr]
     assert entry.agent_id == row.agent_id
     cfg = live_agent_manager._build_harness_config(row)
-    assert cfg.backend == {
-        "type": "local_shell",
-        "root_dir": "/",
-        "virtual_mode": True,
-    }
+    backend = cfg.backend
+    assert backend["type"] == "local_shell"
+    assert backend["root_dir"] == "/"
+    assert backend["virtual_mode"] is True
+    # execute-env injection (PR #376): platform identity folded into shell env
+    assert backend.get("inherit_env") is True
+    env = backend["env"]
+    assert env["OCTOP_AGENT_ID"] == row.agent_id
+    assert "OCTOP_AUTH_DIR" in env and "OCTOP_HOME" in env and "OCTOP_SKILLS_DIR" in env
     assert str(cfg.workspace_dir) == str(ws)
 
 

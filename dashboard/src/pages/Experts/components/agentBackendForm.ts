@@ -18,6 +18,17 @@ export interface BackendOption {
   bucket?: string | null;
 }
 
+export interface FilesystemDefaults {
+  home: string;
+  default_root_dir: string;
+  allow_outside_home: boolean;
+  tree_root: string;
+}
+
+export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {
+  return request<FilesystemDefaults>("/filesystem/defaults");
+}
+
 export function isNamedBackend(ref: string): ref is `named:${string}` {
   return ref.startsWith("named:");
 }
@@ -51,7 +62,8 @@ export type RootDirProbeCode =
   | "not_directory"
   | "permission_denied"
   | "write_failed"
-  | "not_allowed";
+  | "not_allowed"
+  | "outside_home";
 
 export interface RootDirProbeResult {
   ok: boolean;
@@ -60,10 +72,63 @@ export interface RootDirProbeResult {
   path?: string;
 }
 
+/** Normalize a root_dir for comparisons (empty → ``/``; strip trailing slashes). */
+export function normalizeRootDir(rootDir?: string | null): string {
+  const trimmed = (rootDir ?? "").trim();
+  if (!trimmed || trimmed === "\\" || trimmed === "/") return "/";
+  return trimmed.replace(/\/+$/, "") || "/";
+}
+
+export function isHostRootDir(rootDir?: string | null): boolean {
+  return normalizeRootDir(rootDir) === "/";
+}
+
+/**
+ * Mirror of Octop ``_backend_supports_host_skill_packages`` for local UI gates.
+ *
+ * Host root ``/`` or ``root_dir`` equal to the agent workspace root may mount
+ * packages; scoped project roots and non-local backends may not.
+ */
+export function supportsHostSkillPackages(options: {
+  backendChoice: string;
+  rootDir?: string | null;
+  workspaceDir?: string | null;
+}): boolean {
+  const choice = options.backendChoice;
+  if (choice !== "local_shell" && choice !== "filesystem") {
+    return false;
+  }
+  if (isHostRootDir(options.rootDir)) {
+    return true;
+  }
+  const root = normalizeRootDir(options.rootDir);
+  const workspace = normalizeRootDir(options.workspaceDir);
+  if (!options.workspaceDir?.trim() || workspace === "/") {
+    return false;
+  }
+  return root === workspace;
+}
+
+/** Gate skill-package UI from an agent ``config`` blob (list/detail). */
+export function supportsHostSkillPackagesFromConfig(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  const parsed = parseBackendSpec(config?.backend);
+  const workspaceRaw = config?.workspace_dir;
+  const workspaceDir =
+    typeof workspaceRaw === "string" && workspaceRaw.trim()
+      ? workspaceRaw.trim()
+      : null;
+  return supportsHostSkillPackages({
+    backendChoice: parsed.backendChoice,
+    rootDir: parsed.rootDir,
+    workspaceDir,
+  });
+}
+
 export function shouldProbeRootDir(choice: string, rootDir?: string): boolean {
   if (!needsRootDirProbe(choice)) return false;
-  const normalized = (rootDir?.trim() || "/").replace(/\/+$/, "") || "/";
-  return normalized !== "/";
+  return !isHostRootDir(rootDir);
 }
 
 export async function probeRootDir(path: string): Promise<RootDirProbeResult> {

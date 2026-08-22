@@ -123,6 +123,17 @@ export const knowledgeBasesApi = {
       "/knowledge-bases/onnx-download-status",
     ),
 
+  testOnnx: (model: string) =>
+    request<{
+      ok: boolean;
+      latency_ms?: number | null;
+      dim?: number | null;
+      error?: string | null;
+    }>("/knowledge-bases/onnx-test", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }),
+
   activateOnnx: (model: string) =>
     request<{ enabled: boolean; model: string; ready: boolean }>(
       "/knowledge-bases/onnx-activate",

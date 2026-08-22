@@ -331,7 +331,7 @@ def test_strip_image_only_text_blocks_without_user_skips_zh_default() -> None:
 
 
 def test_strip_image_only_text_blocks_keeps_voice_caption() -> None:
-    """A non-image attachment must not trigger placeholder stripping."""
+    """Non-image attachments still strip LLM-only noise; keep the user caption."""
     msg = HumanMessage(
         content=[
             {"type": "text", "text": "请听这段录音"},
@@ -350,12 +350,122 @@ def test_strip_image_only_text_blocks_keeps_voice_caption() -> None:
     )
     entry = _serialize_history_message(msg, user=SimpleNamespace(locale="zh"))
     assert entry is not None
-    # The audio file is rendered from inbound_attachments, not as a
-    # placeholder text block, so the on-disk placeholder is the only
-    # signal — leave it alone.
-    assert entry["content"] == [
-        {"type": "text", "text": "请听这段录音"},
-        {"type": "text", "text": _PLACEHOLDER_TEXT},
+    # Offload placeholders are LLM-facing only once inbound_attachments exists.
+    assert entry["content"] == [{"type": "text", "text": "请听这段录音"}]
+
+
+def test_serialize_history_message_drops_zip_path_hint() -> None:
+    """Zip/file path hints must not appear as user-authored history text."""
+    hint = (
+        "[附件] report.zip\n"
+        "工作区路径：/.octop/workspaces/JRK846/inbound/1_report.zip\n"
+        "MIME：application/zip"
+    )
+    msg = HumanMessage(
+        content=[{"type": "text", "text": f"请解压\n\n{hint}"}],
+        additional_kwargs={
+            "octop_inbound_attachments": [
+                {
+                    "filename": "report.zip",
+                    "media_type": "application/zip",
+                    "kind": "file",
+                    "workspace_path": "inbound/1_report.zip",
+                }
+            ],
+        },
+    )
+    entry = _serialize_history_message(msg, user=SimpleNamespace(locale="zh"))
+    assert entry is not None
+    assert entry["content"] == [{"type": "text", "text": "请解压"}]
+    assert entry["inbound_attachments"][0]["filename"] == "report.zip"
+
+
+def test_serialize_history_message_drops_workspace_image_ref() -> None:
+    """Path-only vision refs are history noise when inbound_attachments is set."""
+    msg = HumanMessage(
+        content=[
+            {"type": "text", "text": "这是什么"},
+            {
+                "type": "image_url",
+                "workspace_path": "inbound/1_shot.png",
+                "mime_type": "image/png",
+                "image_url": {"url": "workspace://inbound/1_shot.png"},
+            },
+        ],
+        additional_kwargs={
+            "octop_inbound_attachments": [
+                {
+                    "filename": "shot.png",
+                    "media_type": "image/png",
+                    "kind": "image",
+                    "workspace_path": "inbound/1_shot.png",
+                }
+            ],
+        },
+    )
+    entry = _serialize_history_message(msg, user=SimpleNamespace(locale="zh"))
+    assert entry is not None
+    assert entry["content"] == [{"type": "text", "text": "这是什么"}]
+
+
+def test_serialize_history_synthesizes_attachment_from_workspace_image_ref() -> None:
+    """Even without inbound_attachments, path refs become thumbnails — not JSON text."""
+    msg = HumanMessage(
+        content=[
+            {
+                "type": "image_url",
+                "workspace_path": "inbound/1787231393_baidu_map.png",
+                "mime_type": "image/png",
+                "image_url": {
+                    "url": "workspace://inbound/1787231393_baidu_map.png",
+                },
+            }
+        ],
+    )
+    entry = _serialize_history_message(msg, user=SimpleNamespace(locale="zh"))
+    assert entry is not None
+    assert entry["content"] == []
+    assert entry["inbound_attachments"] == [
+        {
+            "filename": "1787231393_baidu_map.png",
+            "media_type": "image/png",
+            "kind": "image",
+            "workspace_path": "inbound/1787231393_baidu_map.png",
+        }
+    ]
+
+
+def test_serialize_history_drops_dumped_image_ref_json_text() -> None:
+    dumped = (
+        '{"type": "image_url", "workspace_path": "inbound/1787231393_baidu_map.png", '
+        '"mime_type": "image/png", '
+        '"image_url": {"url": "workspace://inbound/1787231393_baidu_map.png"}}'
+    )
+    msg = HumanMessage(content=[{"type": "text", "text": dumped}])
+    entry = _serialize_history_message(msg, user=SimpleNamespace(locale="zh"))
+    assert entry is not None
+    assert entry["content"] == []
+    assert entry["inbound_attachments"][0]["workspace_path"] == ("inbound/1787231393_baidu_map.png")
+
+
+def test_serialize_history_splits_caption_from_stringified_image_ref() -> None:
+    """Session JSONL joins caption + json.dumps(image_url) — must not show as text."""
+    dumped = (
+        '{"type": "image_url", "workspace_path": "inbound/1787277960_baidu_map.png", '
+        '"mime_type": "image/png", '
+        '"image_url": {"url": "workspace://inbound/1787277960_baidu_map.png"}}'
+    )
+    msg = HumanMessage(content=f"这图是啥\n{dumped}")
+    entry = _serialize_history_message(msg, user=SimpleNamespace(locale="zh"))
+    assert entry is not None
+    assert entry["content"] == [{"type": "text", "text": "这图是啥"}]
+    assert entry["inbound_attachments"] == [
+        {
+            "filename": "1787277960_baidu_map.png",
+            "media_type": "image/png",
+            "kind": "image",
+            "workspace_path": "inbound/1787277960_baidu_map.png",
+        }
     ]
 
 

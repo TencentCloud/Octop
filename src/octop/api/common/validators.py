@@ -5,6 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.host_dirs import assert_backend_root_dirs_allowed
+
+
+def assert_user_backend_root_dirs(_user: Any, backend: Any) -> None:
+    """Reject local backend ``root_dir`` values that fail the host denylist.
+
+    All authenticated users may select host paths outside home (UI still
+    defaults to home). Sensitive pseudo-fs mounts remain blocked.
+    """
+    if backend is None:
+        return
+    try:
+        assert_backend_root_dirs_allowed(backend, restrict_to_home=False)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
 
 
 async def validate_chat_mcp_servers(

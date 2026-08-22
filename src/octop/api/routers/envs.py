@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 from typing import Any
 
@@ -28,7 +27,7 @@ _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _after_env_sync(server: Any, previous: dict[str, str], new: dict[str, str]) -> None:
-    """Drop MCP tool cache; rebuild agents only when search-tool keys change."""
+    """Sync process env; reload agents only when search-tool keys change."""
     runtime = getattr(server, "app_runtime", None)
     registry = getattr(runtime, "agent_registry", None) if runtime is not None else None
     if registry is None:
@@ -65,9 +64,10 @@ async def list_envs(
     summary="Replace global environment variables",
     description=(
         "Overwrite ~/.octop/env and align the Octop process environment "
-        "(including deleting keys removed from the list). Running shells and "
-        "Docker sandboxes pick up keys without a full agent reload. Agents are "
-        "rebuilt in the background only when web-search keys change."
+        "(including deleting keys removed from the list). Running execute "
+        "shells and Docker sandboxes pick up keys on the next command without "
+        "an agent reload. Agents reload in the background only when search "
+        "API keys (Tavily, Brave, …) change."
     ),
 )
 async def batch_save_envs(
@@ -110,6 +110,5 @@ async def delete_env(
     values.pop(k, None)
     save_env_file(path, values)
     apply_env_file_replace(path, previous=previous)
-    os.environ.pop(k, None)
     _after_env_sync(server, previous, values)
     return list_env_items(path)

@@ -73,13 +73,25 @@ interface MessageBubbleProps {
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string },
+  labels: { input: string; output: string; total: string; cacheHit: string },
 ): string[] {
   if (!usage) return [];
 
   const parts: string[] = [];
   if (typeof usage.input_tokens === "number") {
     parts.push(`${usage.input_tokens} ${labels.input}`);
+  }
+  if (
+    typeof usage.cache_read_tokens === "number" &&
+    usage.cache_read_tokens > 0
+  ) {
+    const percent =
+      typeof usage.input_tokens === "number" && usage.input_tokens > 0
+        ? ` (${Math.round(
+            (usage.cache_read_tokens / usage.input_tokens) * 100,
+          )}%)`
+        : "";
+    parts.push(`${usage.cache_read_tokens} ${labels.cacheHit}${percent}`);
   }
   if (typeof usage.output_tokens === "number") {
     parts.push(`${usage.output_tokens} ${labels.output}`);
@@ -131,20 +143,33 @@ function RefreshableImage({
   agentId?: string | null;
 }) {
   const { t } = useTranslation();
-  const { src, loadState, setSrc } = useAuthImageSrc(url, filename);
+  const resolvedUrl = useMemo(() => {
+    if (url && !url.startsWith("workspace://")) return url;
+    const path =
+      workspacePath ||
+      (url.startsWith("workspace://")
+        ? url.slice("workspace://".length).replace(/^\/+/, "")
+        : "") ||
+      workspacePathFromAccessUrl(url);
+    if (path && agentId) {
+      return agentAttachmentAccessUrl(agentId, path, mediaType);
+    }
+    return url;
+  }, [url, workspacePath, agentId, mediaType]);
+  const { src, loadState, setSrc } = useAuthImageSrc(resolvedUrl, filename);
   const retried = useRef(false);
 
   const handleError = useCallback(() => {
     if (retried.current) return;
     retried.current = true;
 
-    if (isDataUrl(url)) return;
+    if (isDataUrl(resolvedUrl)) return;
 
-    const path = workspacePath || workspacePathFromAccessUrl(url);
+    const path = workspacePath || workspacePathFromAccessUrl(resolvedUrl);
     if (!path || !agentId) return;
 
     setSrc(agentAttachmentAccessUrl(agentId, path, mediaType));
-  }, [url, agentId, workspacePath, mediaType, setSrc]);
+  }, [resolvedUrl, agentId, workspacePath, mediaType, setSrc]);
 
   if (loadState === "loading") {
     return (
@@ -546,6 +571,7 @@ function MessageBubble({
         input: t("chatUsage.input"),
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
+        cacheHit: t("chatUsage.cacheHit"),
       }),
     [message.usage, t],
   );

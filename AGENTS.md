@@ -206,6 +206,8 @@ make build-frontend                     # dashboard/ → src/octop/dashboard/
 
 **Agent workspace I/O:** All reads/writes of agent workspace **content files** go through `HarnessAgent.workspace` (`BackendWorkspace` from `harness-agent`). Do **not** use `agent.backend` directly, `resolve_harness_backend`, or `Path.write_text` / `read_text` on `~/.octop/agents/<id>/` for workspace content. Do **not** branch on backend type or `virtual_mode` in Octop — path rules live in `BackendWorkspace`.
 
+New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.g. sessions/sqlite, skills/agents system trees, auth tokens under `.octop/auth`). `system_files_path` is internal and not user-configurable; the `.octop` directory is created on first harness workspace init. Legacy agents keep auth at `{workspace}/.octop-auth`.
+
 | Context | Entry |
 |---------|--------|
 | HTTP (agent must be running) | `require_running_workspace()` in `api/common/workspace.py` |

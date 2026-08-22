@@ -101,6 +101,10 @@
   line-height: 1.5;
 }
 
+.packageMountAlert {
+  margin: 0 0 16px;
+}
+
 .packageDetailDesc {
   margin: 0 0 12px;
   color: var(--fn-text-tertiary);
@@ -989,13 +993,21 @@
 
   &:hover {
     border-color: var(--fn-color-brand);
-    background-color: color-mix(in srgb, var(--fn-color-brand) 5%, var(--fn-bg-tertiary));
+    background-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 5%,
+      var(--fn-bg-tertiary)
+    );
   }
 }
 
 .zipDragDropActive {
   border-color: var(--fn-color-brand);
-  background-color: color-mix(in srgb, var(--fn-color-brand) 10%, var(--fn-bg-tertiary));
+  background-color: color-mix(
+    in srgb,
+    var(--fn-color-brand) 10%,
+    var(--fn-bg-tertiary)
+  );
   transform: scale(1.01);
 }
 

@@ -46,13 +46,18 @@ class FakeHarnessAgent:
         *,
         workspace_dir: Path | None = None,
         virtual_mode: bool = True,
+        system_files_path: str = "",
     ) -> None:
         self.chunks = chunks or []
         self.raise_on_stream = raise_on_stream
         self.last_request: dict[str, Any] | None = None
         self.closed = False
         if workspace_dir is not None:
-            self.use_workspace_dir(workspace_dir, virtual_mode=virtual_mode)
+            self.use_workspace_dir(
+                workspace_dir,
+                virtual_mode=virtual_mode,
+                system_files_path=system_files_path,
+            )
         else:
             self._workspace_dir = Path(tempfile.mkdtemp(prefix="octop-fake-ws-"))
             self._backend = _FakeBackend()
@@ -67,7 +72,13 @@ class FakeHarnessAgent:
         self._thread_messages: dict[str, list[Any]] = {}
         self.graph = _FakeHarnessGraph(self._thread_messages)
 
-    def use_workspace_dir(self, workspace_dir: Path, *, virtual_mode: bool = False) -> None:
+    def use_workspace_dir(
+        self,
+        workspace_dir: Path,
+        *,
+        virtual_mode: bool = False,
+        system_files_path: str = "",
+    ) -> None:
         """Bind workspace I/O to a real ``local_shell`` backend on disk.
 
         The fake mirrors production's ``root_dir="/"`` behaviour by honoring
@@ -81,7 +92,11 @@ class FakeHarnessAgent:
         self._workspace_dir = workspace_dir
         workspace_dir.mkdir(parents=True, exist_ok=True)
         self._backend = LocalShellBackend(root_dir=str(workspace_dir), virtual_mode=False)
-        self._workspace = BackendWorkspace(self._backend, workspace_dir)
+        self._workspace = BackendWorkspace(
+            self._backend,
+            workspace_dir,
+            system_files_path=system_files_path,
+        )
 
     async def stream(self, request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         self.last_request = request
@@ -143,10 +158,11 @@ description: General-purpose agent
         from octop.infra.utils.frontmatter import parse_frontmatter
 
         paths: set[str] = set()
-        agents_dir = self._workspace_dir / "agents"
-        if agents_dir.is_dir():
-            for fpath in agents_dir.glob("*.md"):
-                paths.add(f"agents/{fpath.name}")
+        for root in ("agents", ".octop/agents"):
+            agents_dir = self._workspace_dir / root
+            if agents_dir.is_dir():
+                for fpath in agents_dir.glob("*.md"):
+                    paths.add(f"{root}/{fpath.name}")
 
         glob_result = await self._workspace.aglob("agents/*.md", ".")
         matches = getattr(glob_result, "matches", None) or []
@@ -206,7 +222,7 @@ description: General-purpose agent
             for fpath, data in files.items():
                 if not fpath.endswith(".md"):
                     continue
-                if "/skills/" not in fpath and not fpath.startswith("_builtin_skills/"):
+                if "/skills/" not in fpath and "_builtin_skills/" not in fpath:
                     continue
                 if isinstance(data, bytes):
                     try:
@@ -217,7 +233,7 @@ description: General-purpose agent
                     collected[fpath] = data
 
         # Real disk-backed workspace (e.g. when use_workspace_dir was called).
-        for root in ("skills", "_builtin_skills"):
+        for root in ("skills", "_builtin_skills", ".octop/skills", ".octop/_builtin_skills"):
             disk_root = self._workspace_dir / root
             if disk_root.is_dir():
                 for fpath in disk_root.rglob("*.md"):
@@ -269,7 +285,7 @@ description: General-purpose agent
             # Mirror harness: skip soft-deleted skills (``removed: true`` frontmatter).
             if meta.get("removed"):
                 continue
-            kind = "builtin" if path.startswith("_builtin_skills/") else "workspace"
+            kind = "builtin" if "_builtin_skills/" in path else "workspace"
             if slug in merged and not (
                 merged[slug]["kind"] in {"builtin", "package"} and kind == "workspace"
             ):

@@ -698,7 +698,7 @@ fi
 
 # ── 步骤 3.4: Linux 安装 bubblewrap（局部 root_dir 下 execute jail）──────────
 _ensure_bubblewrap() {
-    # macOS 无可用 bwrap；仅 Linux 安装。缺失时 execute 仍可路径改写降级。
+    # macOS 无可用 bwrap；仅 Linux 安装。缺失时 harness 走普通 local_shell（无目录狱）。
     if [ "$(uname -s 2>/dev/null || echo unknown)" != "Linux" ]; then
         return 0
     fi

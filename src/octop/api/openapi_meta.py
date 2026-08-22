@@ -28,7 +28,8 @@ token when present.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
-`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/connectors/oauth/callback`,
+`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/invite/validate`,
+`/api/auth/invite/redeem`, `/api/connectors/oauth/callback`,
 and `/api/internal/mcp/*`.
 
 ## Agent scope

@@ -9,6 +9,8 @@ import pytest
 
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_home_dir,
+    is_within_host_home,
     list_host_subdirs,
     mkdir_host_subdir,
     normalize_host_path,
@@ -83,7 +85,7 @@ def test_probe_host_root_dir_skips_write_for_slash() -> None:
 
 def test_probe_host_root_dir_ok(tmp_path: Path) -> None:
     result = probe_host_root_dir(str(tmp_path))
-    assert result == {"ok": True, "path": str(tmp_path.resolve())}
+    assert result == {"ok": True, "path": tmp_path.resolve().as_posix()}
 
 
 def test_probe_host_root_dir_rejects_file(tmp_path: Path) -> None:
@@ -135,3 +137,72 @@ def test_rename_host_dir_rejects_path_separators(tmp_path: Path) -> None:
     target.mkdir()
     with pytest.raises(ValueError, match="invalid name"):
         rename_host_dir(str(target), "nested/child")
+
+
+def test_is_within_host_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "os_home"
+    home.mkdir()
+    nested = home / "docs"
+    nested.mkdir()
+    outside = tmp_path / "other"
+    outside.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    assert is_within_host_home(home.resolve())
+    assert is_within_host_home(nested.resolve())
+    assert not is_within_host_home(outside.resolve())
+    assert host_home_dir() == home.resolve()
+
+
+def test_assert_safe_host_path_restrict_to_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "os_home"
+    home.mkdir()
+    nested = home / "docs"
+    nested.mkdir()
+    outside = tmp_path / "other"
+    outside.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    assert assert_safe_host_path(str(nested), restrict_to_home=True) == nested.resolve()
+    with pytest.raises(ValueError, match="path outside home"):
+        assert_safe_host_path(str(outside), restrict_to_home=True)
+    with pytest.raises(ValueError, match="path outside home"):
+        assert_safe_host_path("/", restrict_to_home=True)
+
+
+def test_probe_host_root_dir_rejects_outside_home_when_restricted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "os_home"
+    home.mkdir()
+    outside = tmp_path / "other"
+    outside.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    result = probe_host_root_dir(str(outside), restrict_to_home=True)
+    assert result["ok"] is False
+    assert result["code"] == "outside_home"
+
+    ok = probe_host_root_dir(str(home), restrict_to_home=True)
+    assert ok == {"ok": True, "path": home.resolve().as_posix()}
+
+
+def test_host_fs_tree_root_admin_posix(monkeypatch: pytest.MonkeyPatch) -> None:
+    if os.name != "posix":
+        pytest.skip("POSIX tree root")
+    home = Path("/tmp/octop-home-probe")
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    from octop.infra.utils.host_dirs import host_fs_tree_root
+
+    assert host_fs_tree_root(allow_outside_home=True) == "/"
+    assert host_fs_tree_root(allow_outside_home=False) == home.resolve().as_posix()
+
+
+def test_list_and_probe_return_posix_paths(tmp_path: Path) -> None:
+    (tmp_path / "alpha").mkdir()
+    entries = list_host_subdirs(str(tmp_path))
+    assert entries[0]["path"] == (tmp_path / "alpha").resolve().as_posix()
+    probed = probe_host_root_dir(str(tmp_path))
+    assert probed["path"] == tmp_path.resolve().as_posix()

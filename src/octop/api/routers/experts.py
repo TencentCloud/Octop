@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
@@ -450,6 +451,7 @@ async def install_published_expert(
     """Create a private agent and seed it from the immutable published snapshot."""
     assert server.app_runtime is not None
     assert server.services is not None
+    assert_user_backend_root_dirs(user, body.backend)
     return await install_published_expert_agent(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -533,6 +535,7 @@ async def install_expert_hub_item(
 ) -> dict[str, Any]:
     """Create an agent from a SkillHub skillset-backed expert template."""
     assert server.app_runtime is not None
+    assert_user_backend_root_dirs(user, body.backend)
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
         if body.skill_package_ids is not None
@@ -611,6 +614,7 @@ async def create_agent_from_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     assert server.app_runtime is not None
+    assert_user_backend_root_dirs(user, body.backend)
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
         if body.skill_package_ids is not None

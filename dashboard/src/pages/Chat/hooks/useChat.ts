@@ -57,7 +57,64 @@ function normalizeTokenUsage(value: unknown): TokenUsage | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
-  return { ...(value as TokenUsage) };
+  const raw = value as TokenUsage;
+  const count = (candidate: unknown): number =>
+    typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0
+      ? Math.floor(candidate)
+      : 0;
+  const detailCount = (details: unknown, names: readonly string[]): number => {
+    if (!details || typeof details !== "object" || Array.isArray(details)) {
+      return 0;
+    }
+    return Object.entries(details as Record<string, unknown>).reduce(
+      (total, [key, candidate]) =>
+        names.some((name) => key === name || key.endsWith(`_${name}`))
+          ? total + count(candidate)
+          : total,
+      0,
+    );
+  };
+
+  let input = count(raw.input_tokens ?? raw.prompt_tokens);
+  const cacheRead =
+    count(raw.cache_read_tokens) ||
+    count(raw.prompt_cache_hit_tokens) ||
+    detailCount(raw.input_token_details ?? raw.prompt_tokens_details, [
+      "cache_read",
+      "cached_tokens",
+    ]);
+  const cacheWrite =
+    count(raw.cache_write_tokens) ||
+    detailCount(raw.input_token_details ?? raw.prompt_tokens_details, [
+      "cache_creation",
+      "cache_write",
+    ]);
+  const explicitUncached = raw.uncached_input_tokens;
+  const uncached =
+    typeof explicitUncached === "number"
+      ? count(explicitUncached)
+      : Math.max(0, input - cacheRead - cacheWrite);
+  if (input === 0) input = uncached + cacheRead + cacheWrite;
+  const output = count(raw.output_tokens ?? raw.completion_tokens);
+  const reasoning =
+    count(raw.reasoning_tokens) ||
+    detailCount(raw.output_token_details ?? raw.completion_tokens_details, [
+      "reasoning",
+      "reasoning_tokens",
+    ]);
+  const hasUsage = input > 0 || output > 0;
+
+  return {
+    ...raw,
+    input_tokens: input,
+    uncached_input_tokens: uncached,
+    cache_read_tokens: cacheRead,
+    cache_write_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_tokens: reasoning,
+    total_tokens: input + output,
+    model_calls: count(raw.model_calls) || (hasUsage ? 1 : 0),
+  };
 }
 
 function normalizeMessageMetadata(value: unknown): MessageMetadata | undefined {
@@ -106,6 +163,33 @@ export function stripInlineImageMarkdown(
   return cleaned;
 }
 
+function isRenderableAttachmentUrl(url: string | undefined): boolean {
+  const trimmed = (url || "").trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("workspace://")) return false;
+  if (trimmed.startsWith("data:")) return true;
+  if (trimmed.startsWith("blob:")) return true;
+  if (trimmed.startsWith("/api/")) return true;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+    return true;
+  return false;
+}
+
+function normalizeExtractedAttachmentUrl(
+  url: string,
+  workspacePath?: string,
+): { url: string; workspacePath?: string } {
+  const trimmed = url.trim();
+  if (trimmed.startsWith("workspace://")) {
+    const fromScheme = trimmed.slice("workspace://".length).replace(/^\/+/, "");
+    return {
+      url: "",
+      workspacePath: workspacePath || fromScheme || undefined,
+    };
+  }
+  return { url: trimmed, workspacePath };
+}
+
 export function extractAttachments(content: unknown): ChatAttachment[] {
   if (!Array.isArray(content)) return [];
   return (content as ContentBlock[])
@@ -116,24 +200,32 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         (anyBlock.filename as string | undefined) ||
         (anyBlock.name as string | undefined) ||
         "";
-      const workspacePath =
+      let workspacePath =
         (anyBlock.workspace_path as string | undefined) ||
         (anyBlock.workspacePath as string | undefined);
 
       if (type === "image_url") {
         const imageUrlField = anyBlock.image_url;
-        const url =
+        const rawUrl =
           typeof imageUrlField === "string"
             ? imageUrlField
             : typeof imageUrlField === "object" && imageUrlField !== null
             ? String((imageUrlField as { url?: string }).url || "")
             : "";
-        if (!url && !workspacePath) return null;
+        const normalized = normalizeExtractedAttachmentUrl(
+          rawUrl,
+          workspacePath,
+        );
+        workspacePath = normalized.workspacePath;
+        if (!normalized.url && !workspacePath) return null;
         const mediaType =
+          (anyBlock.mime_type as string | undefined) ||
           (anyBlock.media_type as string | undefined) ||
-          (url.startsWith("data:") ? url.slice(5).split(";")[0] : undefined);
+          (normalized.url.startsWith("data:")
+            ? normalized.url.slice(5).split(";")[0]
+            : undefined);
         return {
-          url: url || "",
+          url: normalized.url,
           filename: filename || "image",
           mediaType,
           workspacePath,
@@ -189,10 +281,15 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         (anyBlock.file_url as string | undefined) ||
         (anyBlock.url as string | undefined) ||
         sourceUrl;
-      if (!finalUrl && !workspacePath) return null;
+      const normalized = normalizeExtractedAttachmentUrl(
+        finalUrl || "",
+        workspacePath,
+      );
+      workspacePath = normalized.workspacePath;
+      if (!normalized.url && !workspacePath) return null;
 
       return {
-        url: finalUrl || "",
+        url: normalized.url,
         filename,
         mediaType,
         workspacePath,
@@ -250,7 +347,12 @@ function enrichAttachmentPreviewUrls(
   return messages.map((message) => {
     if (!message.attachments?.length) return message;
     const attachments = message.attachments.map((attachment) => {
-      if (attachment.url || !attachment.workspacePath) return attachment;
+      const url = isRenderableAttachmentUrl(attachment.url)
+        ? attachment.url
+        : "";
+      if (url || !attachment.workspacePath) {
+        return url === attachment.url ? attachment : { ...attachment, url };
+      }
       return {
         ...attachment,
         url: agentAttachmentAccessUrl(
@@ -400,8 +502,13 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   // chat.meta.total_usage accumulation in turn_finalization.py).
   const emptyUsage = (): TokenUsage => ({
     input_tokens: 0,
+    uncached_input_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
     output_tokens: 0,
+    reasoning_tokens: 0,
     total_tokens: 0,
+    model_calls: 0,
   });
   let turnAcc: TokenUsage | null = null;
   let turnLastInputTokens = 0;
@@ -457,10 +564,19 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
       if (callIn > 0) turnLastInputTokens = callIn;
       turnAcc.input_tokens =
         (turnAcc.input_tokens || 0) + (u.input_tokens || 0);
+      turnAcc.uncached_input_tokens =
+        (turnAcc.uncached_input_tokens || 0) + (u.uncached_input_tokens || 0);
+      turnAcc.cache_read_tokens =
+        (turnAcc.cache_read_tokens || 0) + (u.cache_read_tokens || 0);
+      turnAcc.cache_write_tokens =
+        (turnAcc.cache_write_tokens || 0) + (u.cache_write_tokens || 0);
       turnAcc.output_tokens =
         (turnAcc.output_tokens || 0) + (u.output_tokens || 0);
+      turnAcc.reasoning_tokens =
+        (turnAcc.reasoning_tokens || 0) + (u.reasoning_tokens || 0);
       turnAcc.total_tokens =
         (turnAcc.total_tokens || 0) + (u.total_tokens || 0);
+      turnAcc.model_calls = (turnAcc.model_calls || 0) + (u.model_calls || 1);
       // Strip the per-call usage so only the Turn's final bubble shows a total.
       merged[i] = { ...m, usage: undefined };
     }
@@ -539,17 +655,28 @@ async function loadThreadHistory(
   hasMore: boolean;
   nextOffset: number;
   turnActive: boolean;
+  artifacts: string[];
 }> {
   try {
     const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
       "../../../api/modules/octopThreads"
     );
+    const { syncSessionArtifacts } = await import("./useSessions");
     const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
     const offset = params.offset ?? 0;
     const history = await octopThreadsApi.history(agentId, threadId, {
       limit,
       offset,
     });
+    const artifacts = Array.isArray(history.artifacts)
+      ? history.artifacts.filter(
+          (path): path is string =>
+            typeof path === "string" && path.trim().length > 0,
+        )
+      : [];
+    if (offset === 0) {
+      syncSessionArtifacts(threadId, artifacts);
+    }
     const messages = injectPendingHitlMessage(
       convertHistoryMessages(
         history.messages.filter(
@@ -567,10 +694,17 @@ async function loadThreadHistory(
       hasMore: Boolean(history.has_more),
       nextOffset: offset + limit,
       turnActive: Boolean(history.turn_active),
+      artifacts,
     };
   } catch (err) {
     console.error("loadThreadHistory failed", err);
-    return { messages: [], hasMore: false, nextOffset: 0, turnActive: false };
+    return {
+      messages: [],
+      hasMore: false,
+      nextOffset: 0,
+      turnActive: false,
+      artifacts: [],
+    };
   }
 }
 

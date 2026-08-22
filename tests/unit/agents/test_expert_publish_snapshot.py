@@ -11,7 +11,11 @@ from deepagents.backends.local_shell import LocalShellBackend
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
-from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, seed_expert_directory
+from octop.infra.agents.experts.catalog import (
+    MANIFEST_FILENAME,
+    WORKSPACE_MANIFEST_PATH,
+    seed_expert_directory,
+)
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
     assert_can_mutate_published,
@@ -88,7 +92,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
     }
     await source.aupload_many(
         [
-            (MANIFEST_FILENAME, json.dumps(manifest, ensure_ascii=False).encode()),
+            (WORKSPACE_MANIFEST_PATH, json.dumps(manifest, ensure_ascii=False).encode()),
             ("SOUL.md", b"# Source soul"),
             ("MEMORY.md", b"# Shared memory"),
             ("skills/research/SKILL.md", b"# Research"),
@@ -128,7 +132,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
     )
 
     assert copied == 4
-    assert (installed_dir / MANIFEST_FILENAME).read_text(encoding="utf-8") == json.dumps(
+    assert (installed_dir / ".octop" / "manifest.json").read_text(encoding="utf-8") == json.dumps(
         manifest,
         ensure_ascii=False,
     )
@@ -142,7 +146,7 @@ async def test_export_snapshot_rejects_invalid_manifest(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()
     source = _workspace(source_dir)
-    await source.aupload_many([(MANIFEST_FILENAME, b"not json")])
+    await source.aupload_many([(WORKSPACE_MANIFEST_PATH, b"not json")])
 
     with pytest.raises(ValueError, match="valid JSON object"):
         await export_agent_workspace_to_dir(workspace=source, dest=tmp_path / "published")
@@ -154,7 +158,7 @@ async def test_export_snapshot_keeps_existing_directory_when_export_fails(
 ) -> None:
     class FailingWorkspace:
         async def adownload_bytes(self, path: str) -> bytes:
-            if path == MANIFEST_FILENAME:
+            if path in {MANIFEST_FILENAME, WORKSPACE_MANIFEST_PATH}:
                 return b"{}"
             raise RuntimeError("workspace download failed")
 

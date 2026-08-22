@@ -155,6 +155,8 @@
       "last_active": "last_active",
       "model_override": "model_override",
       "input": "input",
+      "cache_read": "cached input",
+      "cache_hit": "cache hit rate",
       "output": "output",
       "total": "total",
       "turns": "turns",
@@ -356,7 +358,12 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
-    "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit."
+    "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
+    "INVITE_INVALID": "This invite code is invalid.",
+    "INVITE_USED": "This invite code has already been used.",
+    "INVITE_EXPIRED": "This invite code has expired.",
+    "INVITE_REVOKED": "This invite code has been revoked.",
+    "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -468,6 +475,8 @@
     "mobile_launch_app": "Launch mobile app",
     "mobile_ui_dump": "Mobile UI dump",
     "mobile_handoff_to_user": "Hand off to user (mobile)"
+    "read_env_file": "Read env file",
+    "write_env_file": "Write env file"
   },
   "skills": {
     "pdf": "PDF",

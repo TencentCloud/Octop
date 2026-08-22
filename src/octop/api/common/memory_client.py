@@ -15,6 +15,7 @@ from typing import Any
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.infra.agents.memory_backend import open_memory_kwargs
+from octop.infra.agents.workspace_dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,26 @@ def memory_namespace(agent_id: str) -> str:
 
 
 def memory_db_path(workspace_dir: Path) -> Path:
-    """Return the default SQLite file path within an agent workspace."""
-    return workspace_dir / "memory.sqlite"
+    """Return the default SQLite file path within an agent workspace.
+
+    Prefer an explicit on-disk file. When neither exists, treat a populated
+    ``.octop/_builtin_skills`` tree as the new-layout signal (empty ``.octop/``
+    alone is not enough for legacy agents).
+    """
+    nested = workspace_dir / ".octop" / "memory.sqlite"
+    root = workspace_dir / "memory.sqlite"
+    if nested.exists():
+        return nested
+    if root.exists():
+        return root
+    if (workspace_dir / ".octop" / "_builtin_skills").is_dir():
+        return nested
+    return root
+
+
+def memory_db_path_for_cfg(workspace_dir: Path, cfg: dict[str, Any] | None) -> Path:
+    """Return the default SQLite file path for a specific agent config."""
+    return host_system_dir(workspace_dir, cfg) / "memory.sqlite"
 
 
 _MAX_CACHED = 16
@@ -108,7 +127,9 @@ def _open_memory_for_agent(server: Any, agent_id: str) -> tuple[Any, Any]:
     )
     fingerprint = f"{ns}:{backend}:{backend_config}"
     if backend == "sqlite":
-        db_path = Path((backend_config or {}).get("db_path") or memory_db_path(workspace))
+        db_path = Path(
+            (backend_config or {}).get("db_path") or memory_db_path_for_cfg(workspace, cfg)
+        )
         if not db_path.exists():
             logger.debug(
                 "memory db not yet created for agent %s; opening will create empty schema",
@@ -165,5 +186,6 @@ __all__ = [
     "call_memory_rpc",
     "invalidate_cached_memory",
     "memory_db_path",
+    "memory_db_path_for_cfg",
     "memory_namespace",
 ]

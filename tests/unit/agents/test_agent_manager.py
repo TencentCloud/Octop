@@ -23,10 +23,21 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
+# Rootfs-absolute workspace paths (e.g. /.octop/workspaces/<id>) are a
+# Linux/Docker sandbox concept; on Windows they are not absolute paths.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX rootfs workspace paths")
 
-def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, str | bool]:
+
+def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, Any]:
+    from octop.infra.agents.execute_env import inject_agent_execute_env
+
     ws = manager._paths.ensure_agent_workspace(agent_id)
-    return default_agent_backend_spec(ws)
+    return inject_agent_execute_env(
+        default_agent_backend_spec(ws),
+        paths=manager.paths,
+        row=_row(agent_id=agent_id),
+        workspace_dir=ws,
+    )
 
 
 @pytest.fixture
@@ -329,6 +340,20 @@ def test_apply_pending_bootstrap_graph_refresh_recompiles_graph(manager: AgentMa
     assert agent_id not in manager._bootstrap_graph_refresh_pending
 
 
+def test_is_bootstrapped_returns_false_when_agent_not_running(manager: AgentManager) -> None:
+    assert manager.is_bootstrapped("NOPE") is False
+
+
+def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentManager) -> None:
+    agent = MagicMock()
+    agent.is_bootstrapped.side_effect = OSError("TLS CA bundle missing")
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+
+    assert manager.is_bootstrapped("AGT_COS") is True
+
+
 @pytest.mark.asyncio
 async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
     manager: AgentManager,
@@ -547,7 +572,10 @@ def test_build_harness_config_keeps_fs_permissions_for_local_shell_guard(
     cfg = manager._build_harness_config(
         _row(config_json=json.dumps({"backend": {"type": "local_shell", "virtual_mode": True}})),
     )
-    assert cfg.backend == {"type": "local_shell", "virtual_mode": True}
+    backend = cfg.backend
+    assert isinstance(backend, dict)
+    assert backend.get("type") == "local_shell"
+    assert backend.get("virtual_mode") is True
     assert cfg.permissions is not None
     middleware = cfg.middleware or []
     assert not any(isinstance(item, FilesystemGuardMiddleware) for item in middleware)
@@ -791,8 +819,96 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     assert cfg.get("workspace_dir") == str(
         manager.paths.ensure_agent_workspace(row.agent_id).resolve()
     )
-    assert manager.resolve_workspace_dir(row.agent_id) == Path(cfg["workspace_dir"])
+    assert cfg.get("system_files_path") == ".octop"
+    ws = manager.resolve_workspace_dir(row.agent_id)
+    assert cfg.get("workspace_dir") == str(ws)
+    assert (ws / "AGENTS.md").is_file()
+    assert (ws / ".octop" / "_builtin_skills").is_dir() or agent.workspace.exists(
+        "_builtin_skills/skill-manager/SKILL.md"
+    )
+    assert not (ws / "_builtin_skills").exists()
     manager._harness_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_create_keeps_user_workspace_dir(
+    manager: AgentManager,
+    tmp_path: Path,
+) -> None:
+    """Explicit config.workspace_dir must not be replaced by the scoped default."""
+    from harness_agent import HarnessAgentManager
+
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    _seed_test_provider(manager)
+    manager._harness_manager = HarnessAgentManager(
+        providers=manager.providers.build_harness_configs(),
+    )
+    custom = tmp_path / "custom-user-ws"
+    try:
+        row = await manager.create(
+            AgentCreateSpec(
+                name="user-ws",
+                config={
+                    "backend": {
+                        "type": "local_shell",
+                        "root_dir": str(tmp_path),
+                        "virtual_mode": True,
+                    },
+                    "workspace_dir": str(custom),
+                },
+            )
+        )
+        cfg = manager.get_config(row.agent_id)
+        assert cfg["workspace_dir"] == str(custom)
+        assert manager.resolve_workspace_dir(row.agent_id) == custom.resolve()
+        assert custom.is_dir()
+    finally:
+        manager._harness_manager.close()
+
+
+@pytest.mark.asyncio
+@posix_only
+async def test_create_persists_rootfs_workspace_under_scoped_root(
+    manager: AgentManager,
+    tmp_path: Path,
+) -> None:
+    """Non-host root_dir → config.workspace_dir is rootfs-absolute under that root."""
+    from harness_agent import HarnessAgentManager
+
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    _seed_test_provider(manager)
+    manager._harness_manager = HarnessAgentManager(
+        providers=manager.providers.build_harness_configs(),
+    )
+    try:
+        # manager fixture uses ``{tmp_path}/.octop`` as OCTOP_HOME, so scoping
+        # root_dir to tmp_path places the default workspace inside the rootfs.
+        row = await manager.create(
+            AgentCreateSpec(
+                name="scoped-ws",
+                config={
+                    "backend": {
+                        "type": "local_shell",
+                        "root_dir": str(tmp_path),
+                        "virtual_mode": True,
+                    }
+                },
+            )
+        )
+        cfg = manager.get_config(row.agent_id)
+        assert cfg["workspace_dir"] == f"/.octop/workspaces/{row.agent_id}"
+        host = manager.resolve_workspace_dir(row.agent_id)
+        assert host == (tmp_path / ".octop" / "workspaces" / row.agent_id).resolve()
+        assert host.is_dir()
+        assert (host / "AGENTS.md").is_file()
+        harness_cfg = manager._build_harness_config(row)
+        # Harness receives the persisted agent-facing path — not the host join.
+        assert Path(harness_cfg.workspace_dir) == Path(f"/.octop/workspaces/{row.agent_id}")
+        assert not (tmp_path / ".octop" / "agents" / row.agent_id).exists()
+    finally:
+        manager._harness_manager.close()
 
 
 def test_resolve_workspace_dir_uses_persisted_path(manager: AgentManager, tmp_path: Path) -> None:
@@ -900,7 +1016,7 @@ async def test_seed_expert_template_writes_workspace_files(
 
     ws = manager._paths.ensure_agent_workspace("AGT1")
     assert (ws / "SOUL.md").read_text(encoding="utf-8") == "# Soul"
-    manifest = json.loads((ws / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((ws / ".octop" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["id"] == "demo"
     assert manifest["welcome_message"]["zh"] == "欢迎"
 
@@ -950,6 +1066,27 @@ async def test_update_config_json_still_schedules_reload(
 
     await manager.update_config_json(row.agent_id, json.dumps({"foo": 1}))
     assert scheduled == [row.agent_id]
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_cannot_change_system_files_path(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``system_files_path`` is an internal layout knob; user updates must not mutate it."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    # Avoid starting harness runtime in this unit-test context.
+    row = await manager.create(AgentCreateSpec(name="sysfiles-fixed"), defer_bootstrap=True)
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+
+    assert manager.get_config(row.agent_id).get("system_files_path") == ".octop"
+
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps({"system_files_path": "", "foo": 1}),
+    )
+
+    assert manager.get_config(row.agent_id).get("system_files_path") == ".octop"
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,7 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useServerCapabilities } from "../../hooks/useServerCapabilities";
 import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
-import { useSessions } from "./hooks/useSessions";
+import { useSessions, fetchAndSyncSessionArtifacts } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
 import { formatRunUsage, assistantTurnsFromEnd } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
@@ -37,9 +37,9 @@ import { useChatSessionActions } from "./hooks/useChatSessionActions";
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
-import { useChatFileDetection } from "./hooks/useChatFileDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
-import { dedupeDockFilePaths } from "./utils/dockFilePath";
+import { listDockFilePathsForTree } from "./utils/dockFilePath";
+import { isFileToolName } from "./constants";
 import { browserApi } from "../../api/modules/browser";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
 import type { TokenUsage } from "../../api/types";
@@ -226,12 +226,33 @@ function ChatPageInner() {
   // Weak stream resume may skip intermediate tokens — hint once after rebind.
   useEffect(() => {
     return chatStore.onStreamEvent((event) => {
-      if (event.kind !== "streamResume") return;
+      if (event.kind === "streamResume") {
+        const key = activeThreadId || "__empty__";
+        if (event.sessionId !== key) return;
+        antMessage.info(t("chat.streamResumed"));
+        return;
+      }
+      if (event.kind !== "streamEnd") return;
       const key = activeThreadId || "__empty__";
-      if (event.sessionId !== key) return;
-      antMessage.info(t("chat.streamResumed"));
+      if (event.sessionId !== key || !resolvedAgentId || key === "__empty__") {
+        return;
+      }
+      void fetchAndSyncSessionArtifacts(resolvedAgentId, key);
     });
-  }, [activeThreadId, t]);
+  }, [activeThreadId, resolvedAgentId, t]);
+
+  // Refresh thread artifacts after file-producing tools finish (mid-turn updates).
+  useEffect(() => {
+    return chatStore.onToolEvent((event) => {
+      if (event.kind !== "toolDone") return;
+      const key = activeThreadId || "__empty__";
+      if (event.sessionId !== key || !resolvedAgentId || key === "__empty__") {
+        return;
+      }
+      if (!isFileToolName(event.toolName)) return;
+      void fetchAndSyncSessionArtifacts(resolvedAgentId, key);
+    });
+  }, [activeThreadId, resolvedAgentId]);
 
   const {
     messages,
@@ -271,11 +292,6 @@ function ChatPageInner() {
 
   refreshBrowserRef.current = refreshBrowserSession;
 
-  const { filePaths } = useChatFileDetection(
-    activeThreadId,
-    messages,
-    resolvedAgentId,
-  );
   const {
     dockOpen,
     dockMode,
@@ -306,11 +322,11 @@ function ChatPageInner() {
       .filter((tab) => tab.kind === "file")
       .map((tab) => tab.path);
     const fromThread = composerSession?.artifacts ?? [];
-    return dedupeDockFilePaths(
-      [...fromThread, ...filePaths, ...fromTabs],
+    return listDockFilePathsForTree(
+      [...fromThread, ...fromTabs],
       resolvedAgentId,
     );
-  }, [filePaths, openTabs, resolvedAgentId, composerSession?.artifacts]);
+  }, [openTabs, resolvedAgentId, composerSession?.artifacts]);
 
   const {
     selectedModel,
@@ -355,6 +371,10 @@ function ChatPageInner() {
       if (typeof u.input_tokens === "number") {
         acc.input_tokens = (acc.input_tokens || 0) + u.input_tokens;
       }
+      if (typeof u.cache_read_tokens === "number") {
+        acc.cache_read_tokens =
+          (acc.cache_read_tokens || 0) + u.cache_read_tokens;
+      }
       if (typeof u.output_tokens === "number") {
         acc.output_tokens = (acc.output_tokens || 0) + u.output_tokens;
       }
@@ -371,6 +391,7 @@ function ChatPageInner() {
     input: t("chatUsage.input"),
     output: t("chatUsage.output"),
     total: t("chatUsage.total"),
+    cacheHit: t("chatUsage.cacheHit"),
   });
 
   const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({

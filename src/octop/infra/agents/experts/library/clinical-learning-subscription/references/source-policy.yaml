@@ -1,0 +1,204 @@
+product_mode: general_assistant_with_clinical_learning_safety_domain
+
+# 普通任务可按通用助手规则处理；以下规则只约束医学学习、医保政策和
+# “基于指南”的主张。学习诊断与诊断标准学习均是教育用途，不得转化为
+# 对具体患者的疾病诊断或治疗决策。
+allowed_learning_modes:
+  - guideline_reading_and_learning_map
+  - guideline_diagnostic_criteria_learning
+  - guideline_section_expansion
+  - guideline_learning_pathway
+  - learning_baseline_assessment
+  - study_plan_and_review
+  - exam_oriented_material_recommendation
+  - insurance_policy_retrospective_learning
+
+# 医学安全域模块清单。只有这些模块才应用信源白名单与医学禁用词。
+# 未列出的模块（通用写作、翻译、编程、数据整理、其它 skill 输出等）
+# 一律按通用助手校验，不因为身处本专家包而被降级或截断。
+clinical_safety_modules:
+  - guideline_learning
+  - daily_guideline_learning
+  - guideline_section_expansion
+  - guideline_learning_pathway
+  - guideline_learning_diagnosis
+  - guideline_update_reminder
+  - professional_update_summary
+  - insurance_policy_summary
+  - insurance_policy_learning
+  - insurance_policy_retrospective
+  - exam_material_recommendation
+  - high_risk_refusal
+
+# 只在医学安全域模块内要求权威信源；通用模块允许任意合法链接。
+source_restricted_modules:
+  - guideline_learning
+  - daily_guideline_learning
+  - guideline_section_expansion
+  - guideline_learning_pathway
+  - guideline_learning_diagnosis
+  - guideline_update_reminder
+  - professional_update_summary
+  - insurance_policy_summary
+  - insurance_policy_learning
+  - insurance_policy_retrospective
+  - exam_material_recommendation
+
+# 信源分级（A 正式采集 / B 可增加 / C 仅发现辅助核验 / D 不入证据链）：
+#   A 正式纳入临床及公共卫生指南采集：卫健委/疾控/中医药/医保/药监局及直属中心、
+#     中华医学会/医师协会/预防医学会/医学期刊网、CSCO/营养学会/医院协会/人卫社、政府网/网信办。
+#   B 可增加的信源：国家疾病预防控制局、国家中医药管理局、全国标准信息公共服务平台。
+#   C 仅用于发现或辅助核验（聚合平台/指南注册），不作最终证据。
+#   D 不进入最终证据链（百科/问答/公众号等）。
+# 权威域名只是第一道门槛；最终依据还必须通过文档类型与版本时效性核验。
+#
+# B+ 受控降级不是把整个平台升级为权威来源。只有原始正文因 412、验证码、
+# JS 阻断、超时或正文不可获取而无法核对时，才允许把下列专业平台作为
+# “正式全文承载渠道”；同时必须有一条 S/A 原始发布方或正式期刊元数据链接，
+# 独立核对标题、制定机构、年份/版本及 DOI/文号。无法完成双重核验时仍只作线索。
+secondary_evidence_required_checks:
+  - title
+  - issuing_organization
+  - publication_year_or_version
+  - doi_or_document_number
+  - complete_normative_full_text
+  - current_version_status
+
+allowed_secondary_evidence_exact_domains:
+  - "guide.medlive.cn"
+  - "www.medlive.cn"
+  - "medlive.cn"
+  - "www.dxy.cn"
+  - "dxy.cn"
+
+allowed_final_evidence_content_types:
+  - official_guideline_or_consensus
+  - official_standard_pathway_or_quality_control_document
+  - official_policy_or_regulatory_document_and_attachment
+
+# 即使来自白名单网站，以下内容也不得作为最终依据；如果页面链接正式原文，应继续回溯原文。
+excluded_final_evidence_content_types:
+  # 证据综述可以帮助发现正式指南或理解证据背景，但不能成为本指南学习产品的最终来源。
+  - systematic_review
+  - meta_analysis
+  - systematic_review_and_meta_analysis
+  - narrative_review
+  - scoping_review
+  - umbrella_review
+  - rapid_review
+  - expert_review
+  - literature_review
+  # 原始研究和学术讨论同样不是规范性文件，不得替代指南/共识/规范/政策原文。
+  - randomized_controlled_trial
+  - observational_study
+  - case_report_or_case_series
+  - editorial_commentary_or_letter
+  - conference_abstract
+  - preprint
+  - retracted_or_expression_of_concern
+  - science_popularization
+  - guideline_or_consensus_interpretation
+  - repost_or_excerpt
+  - interview_or_media_report
+  - public_health_check_education_or_interpretation
+  - conference_training_or_event_report
+  - marketing_or_institutional_promotion
+
+allowed_final_evidence_domain_suffixes:
+  # A 正式采集 — S级 官方
+  - ".gov.cn"
+  - ".nhc.gov.cn"
+  - ".ndcpa.gov.cn"
+  - ".natcm.gov.cn"
+  - ".nhsa.gov.cn"
+  - ".nmpa.gov.cn"
+  - ".cmde.org.cn"
+  - ".cde.org.cn"
+  - ".cdr-adr.org.cn"
+  - ".chinacdc.cn"
+  # A 正式采集 — A级 官方/半官方学会与期刊
+  - ".cma.org.cn"
+  - ".cmda.net"
+  - ".medjournals.cn"
+  - ".cpma.org.cn"
+  # A 正式采集 — 半官方行业组织与出版社
+  - ".cha.org.cn"
+  - ".csco.org.cn"
+  - ".cnsoc.org"
+  - ".pmph.com"
+  # B 可增加 — 官方标准平台
+  - ".std.samr.gov.cn"
+
+allowed_final_evidence_exact_domains:
+  # A 正式采集 — S级 官方
+  - "www.nhc.gov.cn"
+  - "www.ndcpa.gov.cn"
+  - "www.natcm.gov.cn"
+  - "www.nhsa.gov.cn"
+  - "www.nmpa.gov.cn"
+  - "www.cac.gov.cn"
+  - "www.gov.cn"
+  - "www.cmde.org.cn"
+  - "www.cde.org.cn"
+  - "www.cdr-adr.org.cn"
+  # A 正式采集 — A级 官方/半官方学会与期刊
+  - "medjournals.cn"
+  - "www.cma.org.cn"
+  - "www.cmda.net"
+  - "cmda.net"
+  - "www.cpma.org.cn"
+  # 中华医学会杂志社旧版全文平台；只放行正式原文子域，不放行整个 yiigle.com。
+  - "rs.yiigle.com"
+  # 高等教育出版社期刊平台的正式原文域。
+  - "cjournal.hep.com.cn"
+  # A 正式采集 — 半官方行业组织与出版社
+  - "www.cha.org.cn"
+  - "www.csco.org.cn"
+  - "www.cnsoc.org"
+  - "cnsoc.org"
+  - "www.pmph.com"
+  # B 可增加 — 官方标准平台
+  - "std.samr.gov.cn"
+
+# C 仅用于发现或辅助核验（聚合平台/指南注册，不作最终证据）+ D 不进入最终证据链
+blocked_final_evidence_domains:
+  # C 仅发现/辅助核验
+  - "www.medsci.cn"
+  - "medsci.cn"
+  - "guidelines-registry.cn"
+  - "www.guidelines-registry.cn"
+  # D 不进入最终证据链
+  - "mp.weixin.qq.com"
+  - "www.baidu.com"
+  - "baidu.com"
+  - "baike.baidu.com"
+  - "www.zhihu.com"
+  - "zhihu.com"
+  - "zhuanlan.zhihu.com"
+
+blocked_capabilities:
+  - disease_sop
+  - emergency_action_card
+  - patient_case_advice
+  - medication_dosage_generation
+  - prescription_generation
+  - his_decision_support
+  - insurance_reimbursement_decision
+
+# 仅在 clinical_safety_modules 内生效。
+# 模式必须加词边界，避免误伤 delivery / import / point / 5 g 数据 等普通文本；
+# 医学语境靠“药名/剂量/给药”组合词而非裸词片段来识别。
+blocked_output_patterns:
+  - "\\d+(\\.\\d+)?\\s*(mg|g|ug|μg|ml|mL|IU|U)\\s*(/\\s*(kg|m2|㎡|次|日|天|d))"
+  - "(?<![A-Za-z])(每次|单次|首剂|负荷剂量)\\s*\\d+(\\.\\d+)?\\s*(mg|g|ug|μg|ml|mL|IU|U)"
+  - "(?<![A-Za-z])(bid|tid|qid|qd|qn|qod|q\\d+h|ivgtt|iv\\s*drip)(?![A-Za-z])"
+  - "(?<![A-Za-z])(po|im|iv|sc|ih)(?![A-Za-z])\\s*(给药|用药|注射|输注|\\d)"
+  - "(口服|静滴|静注|肌注|皮下注射|雾化吸入|舌下含服)\\s*\\d+(\\.\\d+)?\\s*(mg|g|ug|μg|ml|mL|IU|U)?"
+  - "首剂\\s*(加倍|\\d+)"
+  - "急诊行动卡"
+  - "疾病\\s*SOP"
+  - "【具体用药】"
+  - "【立即处理】"
+  - "【处方】"
+  - "HIS.*(提示|校验|配置)"
+  - "(该|这位|此)患者\\s*(应|需|建议|可以)\\s*(诊断为|给予|使用|服用|立即)"

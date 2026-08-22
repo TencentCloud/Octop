@@ -25,8 +25,11 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
                 m, provider_name=provider_name, provider_api_key=provider_api_key
             ):
                 continue
-            # Catalogs may store either name; both feed the chat context ring.
-            window = m.get("max_input_tokens") or m.get("context_window")
+            # Total context drives the UI ring; prompt and output caps remain
+            # separately available for runtime budgeting and model settings.
+            window = m.get("context_window") or m.get("max_input_tokens")
+            max_input = m.get("max_input_tokens") or window
+            max_output = m.get("max_output_tokens") or m.get("max_tokens")
             resolved.append(
                 {
                     "provider_id": provider.id,
@@ -38,8 +41,9 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
                     "reasoning": reasoning_capability(m, base_url=provider.base_url) is not None,
                     "reasoning_config": reasoning_capability(m, base_url=provider.base_url),
                     "context_window": window,
-                    "max_tokens": m.get("max_tokens"),
-                    "max_input_tokens": window,
+                    "max_tokens": max_output,
+                    "max_output_tokens": max_output,
+                    "max_input_tokens": max_input,
                 }
             )
     return resolved

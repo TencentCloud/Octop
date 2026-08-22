@@ -4,7 +4,11 @@ import { shouldEnterFreeModeOnScrollUp } from "./scrollFreeMode";
 describe("shouldEnterFreeModeOnScrollUp", () => {
   it("ignores tiny dips while still near the bottom (Safari reflow)", () => {
     expect(
-      shouldEnterFreeModeOnScrollUp({ upDelta: 2, atBottom: true, gapToBottom: 2 }),
+      shouldEnterFreeModeOnScrollUp({
+        upDelta: 2,
+        atBottom: true,
+        gapToBottom: 2,
+      }),
     ).toBe(false);
   });
 

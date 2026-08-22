@@ -42,8 +42,13 @@ interface UsageBucket {
   key: string;
   label: string;
   input_tokens: number;
+  uncached_input_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
   output_tokens: number;
+  reasoning_tokens: number;
   total_tokens: number;
+  model_calls: number;
   turns: number;
 }
 
@@ -53,8 +58,14 @@ interface UsageSummary {
   range_start: number;
   range_end: number;
   input_tokens: number;
+  uncached_input_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
   output_tokens: number;
+  reasoning_tokens: number;
   total_tokens: number;
+  model_calls: number;
+  cache_hit_percent: number;
   turns: number;
   avg_per_turn: number;
   buckets: UsageBucket[];
@@ -486,7 +497,7 @@ function SummaryView({
         style={{
           gridTemplateColumns: isMobile
             ? "repeat(2, minmax(0, 1fr))"
-            : "repeat(5, minmax(0, 1fr))",
+            : "repeat(7, minmax(0, 1fr))",
         }}
       >
         <StatBlock
@@ -500,6 +511,14 @@ function SummaryView({
         <StatBlock
           label={t("tokenUsage.output")}
           value={formatNumber(totals.output_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.cacheRead")}
+          value={formatNumber(totals.cache_read_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.cacheHit")}
+          value={`${totals.cache_hit_percent.toFixed(1)}%`}
         />
         <StatBlock label={t("tokenUsage.turns")} value={totals.turns} />
         <StatBlock
@@ -604,7 +623,7 @@ function DimensionView({
         style={{
           gridTemplateColumns: isMobile
             ? "repeat(2, minmax(0, 1fr))"
-            : "repeat(5, minmax(0, 1fr))",
+            : "repeat(7, minmax(0, 1fr))",
         }}
       >
         <StatBlock
@@ -618,6 +637,14 @@ function DimensionView({
         <StatBlock
           label={t("tokenUsage.output")}
           value={formatNumber(totals.output_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.cacheRead")}
+          value={formatNumber(totals.cache_read_tokens)}
+        />
+        <StatBlock
+          label={t("tokenUsage.cacheHit")}
+          value={`${totals.cache_hit_percent.toFixed(1)}%`}
         />
         <StatBlock label={t("tokenUsage.turns")} value={totals.turns} />
         <StatBlock

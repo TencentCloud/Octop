@@ -103,7 +103,13 @@ export function filterConfigMdFiles(entries: WorkspaceEntry[]): string[] {
     .filter((f) => {
       if (f.is_dir || !f.path?.endsWith(".md")) return false;
       const p = f.path.startsWith("/") ? f.path : `/${f.path}`;
-      return !p.startsWith("/skills/") && !p.startsWith("/_builtin_skills/");
+      return (
+        !p.startsWith("/skills/") &&
+        !p.startsWith("/_builtin_skills/") &&
+        !p.startsWith("/.octop/skills/") &&
+        !p.startsWith("/.octop/_builtin_skills/") &&
+        !p.startsWith("/.octop/agents/")
+      );
     })
     .map((f) => (f.path.startsWith("/") ? f.path : `/${f.path}`))
     .sort();

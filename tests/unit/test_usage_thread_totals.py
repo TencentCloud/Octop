@@ -22,6 +22,8 @@ def test_thread_totals_aggregate(tmp_path: Path):
         user_id=uid,
         thread_id="thr_1",
         input_tokens=10,
+        uncached_input_tokens=4,
+        cache_read_tokens=6,
         output_tokens=5,
         model="m",
     )
@@ -35,6 +37,32 @@ def test_thread_totals_aggregate(tmp_path: Path):
     )
     totals = repo.thread_totals(agent_id="a1", thread_id="thr_1")
     assert totals["input_tokens"] == 13
+    assert totals["uncached_input_tokens"] == 7
+    assert totals["cache_read_tokens"] == 6
     assert totals["output_tokens"] == 7
     assert totals["total_tokens"] == 20
+    assert totals["model_calls"] == 2
     assert totals["turns"] == 2
+
+
+def test_migration_repair_preserves_fully_cached_input(tmp_path: Path) -> None:
+    db = SqlitePool(tmp_path / "cached.db")
+    run_migrations(db)
+    uid = UserRepo(db).create(username="u", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id="a1", user_id=uid, name="a")
+    repo = UsageRepo(db)
+    repo.record(
+        agent_id="a1",
+        user_id=uid,
+        thread_id="thr_1",
+        input_tokens=10,
+        uncached_input_tokens=0,
+        cache_read_tokens=10,
+        output_tokens=1,
+    )
+
+    run_migrations(db)
+
+    totals = repo.thread_totals(agent_id="a1", thread_id="thr_1")
+    assert totals["uncached_input_tokens"] == 0
+    assert totals["cache_read_tokens"] == 10

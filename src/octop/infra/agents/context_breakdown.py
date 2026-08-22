@@ -54,16 +54,11 @@ def _empty_breakdown(*, max_tokens: int) -> ContextBreakdownResult:
     )
 
 
-def _usage_to_breakdown(usage: Any, *, max_tokens: int) -> ContextBreakdownResult:
-    with_max = getattr(usage, "with_max_tokens", None)
-    if callable(with_max):
-        usage = with_max(max_tokens)
+def _usage_to_breakdown(usage: Any, *, fallback_max_tokens: int) -> ContextBreakdownResult:
     raw_segments = getattr(usage, "segments", None) or {}
     segments = {key: int(raw_segments.get(key, 0) or 0) for key in SEGMENT_KEYS}
     used = int(getattr(usage, "used_tokens", 0) or 0)
-    cap = int(getattr(usage, "max_tokens", max_tokens) or max_tokens)
-    if max_tokens > 0:
-        cap = max_tokens
+    cap = int(getattr(usage, "max_tokens", fallback_max_tokens) or fallback_max_tokens or 128_000)
     return ContextBreakdownResult(max_tokens=cap, used_tokens=used, segments=segments)
 
 
@@ -147,7 +142,9 @@ def _breakdown_from_context_stamp(
     )
     if used <= 0:
         return None
-    cap = max_tokens if max_tokens > 0 else 128_000
+    cap = _token_int(mapped.get("max_tokens"))
+    if cap == 0:
+        cap = max_tokens if max_tokens > 0 else 128_000
     if not any(segments.values()):
         segments = dict.fromkeys(SEGMENT_KEYS, 0)
         segments["conversation"] = min(used, cap)
@@ -174,14 +171,16 @@ def usage_dict_from_message(msg: Any) -> dict[str, Any] | None:
     usage = getattr(msg, "usage_metadata", None)
     if usage is None and isinstance(msg, dict):
         usage = msg.get("usage_metadata")
+    mapped_usage = _as_mapping(usage)
     if inp == 0 and out == 0:
-        inp, out = _io_from_mapping(_as_mapping(usage))
+        inp, out = _io_from_mapping(mapped_usage)
 
+    rm = getattr(msg, "response_metadata", None)
+    if rm is None and isinstance(msg, dict):
+        rm = msg.get("response_metadata")
+    mapped_response = _as_mapping(rm)
     if inp == 0 and out == 0:
-        rm = getattr(msg, "response_metadata", None)
-        if rm is None and isinstance(msg, dict):
-            rm = msg.get("response_metadata")
-        inp, out = _io_from_mapping(_as_mapping(rm))
+        inp, out = _io_from_mapping(mapped_response)
 
     if inp == 0 and out == 0:
         return None
@@ -190,14 +189,38 @@ def usage_dict_from_message(msg: Any) -> dict[str, Any] | None:
         "output_tokens": out,
         "total_tokens": inp + out,
     }
-    mapped = _as_mapping(usage)
-    if mapped:
-        details = mapped.get("input_token_details")
+    wire = (
+        _as_mapping(mapped_response.get("token_usage") or mapped_response.get("usage"))
+        if mapped_response
+        else None
+    )
+    merged = {**(wire or {}), **(mapped_usage or {})}
+    if merged:
+        details = merged.get("input_token_details") or merged.get("prompt_tokens_details")
         if details is not None:
             payload["input_token_details"] = details
-        out_details = mapped.get("output_token_details")
+        out_details = merged.get("output_token_details") or merged.get("completion_tokens_details")
         if out_details is not None:
             payload["output_token_details"] = out_details
+        cache_read = _token_int(merged.get("cache_read_tokens")) or _token_int(
+            merged.get("prompt_cache_hit_tokens")
+        )
+        cache_write = _token_int(merged.get("cache_write_tokens"))
+        uncached_raw = merged.get("uncached_input_tokens")
+        uncached = (
+            _token_int(uncached_raw)
+            if uncached_raw is not None
+            else max(0, inp - cache_read - cache_write)
+        )
+        payload.update(
+            {
+                "uncached_input_tokens": uncached,
+                "cache_read_tokens": cache_read,
+                "cache_write_tokens": cache_write,
+                "reasoning_tokens": _token_int(merged.get("reasoning_tokens")),
+                "model_calls": 1,
+            }
+        )
     return payload
 
 
@@ -265,7 +288,9 @@ async def compute_context_breakdown(
     getter = getattr(harness, "aget_context_usage", None) if harness is not None else None
     if getter is not None:
         try:
-            usage = await getter(thread_id, max_tokens=max_tokens)
+            # The harness snapshot owns the exact routed model capacity. Passing
+            # the dashboard fallback here would overwrite it after model switches.
+            usage = await getter(thread_id)
         except Exception:
             logger.debug(
                 "harness aget_context_usage failed for thread=%s",
@@ -275,7 +300,7 @@ async def compute_context_breakdown(
             usage = None
 
     if _usage_has_segments(usage):
-        return _usage_to_breakdown(usage, max_tokens=max_tokens)
+        return _usage_to_breakdown(usage, fallback_max_tokens=max_tokens)
 
     messages: list[Any] = []
     if harness is not None:

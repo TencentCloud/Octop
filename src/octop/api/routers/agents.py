@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from octop.api.common.agent import assert_agent_access_row, assert_agent_owner
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.avatar import (
@@ -250,6 +251,8 @@ async def create_agent(
     from octop.infra.agents.manager import AgentCreateSpec  # noqa: PLC0415
 
     assert server.app_runtime is not None
+    if isinstance(body.config, dict):
+        assert_user_backend_root_dirs(user, body.config.get("backend"))
     spec = AgentCreateSpec(
         name=body.name,
         user_id=user.id,
@@ -328,6 +331,8 @@ async def patch_agent(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
+    if body.config is not None and isinstance(body.config, dict):
+        assert_user_backend_root_dirs(user, body.config.get("backend"))
     updates = {
         key: value
         for key, value in body.model_dump(exclude_unset=True).items()

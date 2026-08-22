@@ -155,7 +155,9 @@ export default function ContextWindowRing({
 
   const ringUsed = useMemo(() => {
     if (breakdown && breakdown.used_tokens > 0) {
-      return Math.min(breakdown.used_tokens, max);
+      const breakdownMax =
+        breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
+      return Math.min(breakdown.used_tokens, breakdownMax);
     }
     // Until prefetch returns, show last-call hint (capped so a stale
     // turn-sum cannot flash a full ring).
@@ -244,7 +246,9 @@ export default function ContextWindowRing({
                   key={segment.key}
                   className={styles.contextUsageBarSegment}
                   style={{
-                    flexGrow: segment.tokens,
+                    // Provider input usage owns the total bar width. Segment
+                    // estimates contribute only their relative composition.
+                    flexGrow: (displayUsed * segment.tokens) / segmentTotal,
                     background: SEGMENT_COLORS[segment.key],
                   }}
                 />
@@ -274,7 +278,7 @@ export default function ContextWindowRing({
                   {t(`chat.contextWindow.segments.${segment.key}`)}
                 </span>
                 <span className={styles.contextUsageLegendValue}>
-                  {formatTokenK(segment.tokens)}
+                  ~{formatTokenK(segment.tokens)}
                 </span>
               </li>
             ))}

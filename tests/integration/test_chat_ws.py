@@ -194,6 +194,62 @@ def _turn_with_second_subscriber_sync(
     return a_frames, b_frames
 
 
+def _two_threads_turn_sync(
+    app: object,
+    aid: str,
+    token: str,
+    tid_a: str,
+    tid_b: str,
+    *,
+    text_a: str = "one",
+    text_b: str = "two",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run two live turns on different threads from one TestClient thread.
+
+    Each sync ``TestClient`` spins a blocking anyio portal; driving two portals
+    from separate ``asyncio.to_thread`` workers deadlocks the server's
+    ``run_coroutine_threadsafe`` outbound path under pytest-asyncio. Interleaving
+    receives on one thread still exercises concurrent per-thread routing.
+    """
+    body_a: dict[str, Any] = {
+        "type": "user_turn",
+        "text": text_a,
+        "messages": [{"role": "user", "content": text_a}],
+        "thread_id": tid_a,
+    }
+    body_b: dict[str, Any] = {
+        "type": "user_turn",
+        "text": text_b,
+        "messages": [{"role": "user", "content": text_b}],
+        "thread_id": tid_b,
+    }
+    a_frames: list[dict[str, Any]] = []
+    b_frames: list[dict[str, Any]] = []
+    with (
+        TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+            f"/api/agents/{aid}/chat/ws?token={token}"
+        ) as ws_a,
+        TestClient(app).websocket_connect(  # type: ignore[attr-defined]
+            f"/api/agents/{aid}/chat/ws?token={token}"
+        ) as ws_b,
+    ):
+        ws_a.send_json(body_a)
+        ws_b.send_json(body_b)
+        pending = {"a": True, "b": True}
+        while pending["a"] or pending["b"]:
+            if pending["a"]:
+                frame = json.loads(ws_a.receive_text())
+                a_frames.append(frame)
+                if frame.get("type") in ("done", "error"):
+                    pending["a"] = False
+            if pending["b"]:
+                frame = json.loads(ws_b.receive_text())
+                b_frames.append(frame)
+                if frame.get("type") in ("done", "error"):
+                    pending["b"] = False
+    return a_frames, b_frames
+
+
 async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> None:
     """Two dashboard sockets on the same thread both get live tokens."""
     c, srv, _fake, alice_auth, _bob_auth, aid = env
@@ -242,9 +298,13 @@ async def test_ws_two_threads_do_not_cross_stream(env: Any) -> None:
 
     agent.stream = tagged_stream
 
-    a_frames, b_frames = await asyncio.gather(
-        _consume_ws_turn(c, aid, alice_auth, text="one", thread_id=tid_a),
-        _consume_ws_turn(c, aid, alice_auth, text="two", thread_id=tid_b),
+    a_frames, b_frames = await asyncio.to_thread(
+        _two_threads_turn_sync,
+        c._octop_app,  # type: ignore[attr-defined]
+        aid,
+        ws_token(alice_auth),
+        tid_a,
+        tid_b,
     )
 
     a_tokens = [f.get("content") for f in a_frames if f.get("type") == "token"]

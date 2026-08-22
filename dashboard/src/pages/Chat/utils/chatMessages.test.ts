@@ -1,10 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatRunUsage,
   resolveTurnModelOverride,
   resolveTurnModelRef,
   assistantTurnsFromEnd,
   userTurnsFromEnd,
 } from "./chatMessages";
+
+describe("formatRunUsage", () => {
+  it("shows cached input and the cache hit rate", () => {
+    expect(
+      formatRunUsage(
+        {
+          input_tokens: 1_000,
+          cache_read_tokens: 700,
+          output_tokens: 80,
+          total_tokens: 1_080,
+        },
+        {
+          input: "input",
+          cacheHit: "cache hit",
+          output: "output",
+          total: "total",
+        },
+      ),
+    ).toBe("1000 input / 700 cache hit (70%) / 80 output / 1080 total");
+  });
+});
 
 describe("resolveTurnModelRef", () => {
   it("sends only an explicit composer selection", () => {

@@ -102,9 +102,20 @@ def test_list_resolved_models_skips_embedding() -> None:
             api_key="sk-x",
             base_url="https://api.openai.com/v1",
             get_models=lambda: [
-                {"id": "gpt-4o", "name": "GPT-4o", "enabled": True},
+                {
+                    "id": "gpt-4o",
+                    "name": "GPT-4o",
+                    "enabled": True,
+                    "context_window": 128_000,
+                    "max_input_tokens": 120_000,
+                    "max_output_tokens": 16_384,
+                },
             ],
         ),
     ]
     resolved = list_resolved_models(providers)
     assert [r["model"] for r in resolved] == ["gpt-4o"]
+    assert resolved[0]["context_window"] == 128_000
+    assert resolved[0]["max_input_tokens"] == 120_000
+    assert resolved[0]["max_output_tokens"] == 16_384
+    assert resolved[0]["max_tokens"] == 16_384

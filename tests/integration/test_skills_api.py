@@ -323,6 +323,105 @@ async def test_put_updates_workspace_skill(env: Any) -> None:
     assert raw == UPDATED_SKILL
 
 
+async def test_put_content_only_keeps_sibling_files_and_dirs(env: Any) -> None:
+    """Editing SKILL.md via the dashboard must not wipe the skill's other files."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: zip-demo\ndescription: from zip\n---\n\n# Zip Demo\n"
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+                {"path": "README.md", "content_base64": _b64("# readme")},
+                {"path": "references/", "content_base64": ""},
+                {"path": "references/doc.md", "content_base64": _b64("# doc")},
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    updated_md = "---\nname: zip-demo\ndescription: edited\n---\n\n# Edited\n"
+    r = await c.put(
+        f"/api/agents/{aid}/skills/zip-demo",
+        headers=auth,
+        json={"content": updated_md},
+    )
+    assert r.status_code == 200, r.text
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aread_text("skills/zip-demo/SKILL.md") == updated_md
+    assert await agent.workspace.aread_text("skills/zip-demo/README.md") == "# readme"
+    assert await agent.workspace.aread_text("skills/zip-demo/references/doc.md") == "# doc"
+
+
+async def test_put_files_payload_replaces_directory(env: Any) -> None:
+    """A full ``files`` payload on PUT replaces the skill directory wholesale."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: zip-demo\ndescription: from zip\n---\n\n# Zip Demo\n"
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+                {"path": "stale.txt", "content_base64": _b64("old")},
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    updated_md = "---\nname: zip-demo\ndescription: replaced\n---\n\n# New\n"
+    r = await c.put(
+        f"/api/agents/{aid}/skills/zip-demo",
+        headers=auth,
+        json={
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(updated_md)},
+                {"path": "fresh.txt", "content_base64": _b64("new")},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aread_text("skills/zip-demo/SKILL.md") == updated_md
+    assert await agent.workspace.aread_text("skills/zip-demo/fresh.txt") == "new"
+    assert await agent.workspace.aread_text("skills/zip-demo/stale.txt") is None
+
+
+async def test_put_empty_files_list_falls_back_to_content_only(env: Any) -> None:
+    """``files: []`` + ``content`` must not wipe the directory (empty list = content path)."""
+    c, srv, auth, aid = env
+    skill_md = "---\nname: zip-demo\ndescription: from zip\n---\n\n# Zip Demo\n"
+    r = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "zip-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+                {"path": "notes.txt", "content_base64": _b64("keep me")},
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    updated_md = "---\nname: zip-demo\ndescription: edited\n---\n\n# Edited\n"
+    r = await c.put(
+        f"/api/agents/{aid}/skills/zip-demo",
+        headers=auth,
+        json={"content": updated_md, "files": []},
+    )
+    assert r.status_code == 200, r.text
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aread_text("skills/zip-demo/SKILL.md") == updated_md
+    assert await agent.workspace.aread_text("skills/zip-demo/notes.txt") == "keep me"
+
+
 async def test_put_rejects_missing_skill(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.put(

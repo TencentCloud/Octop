@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,6 +42,8 @@ __all__ = [
     "HitlToolCatalogEntry",
     "all_tool_labels",
     "hitl_tool_catalog",
+    "humanize_tool_segment",
+    "resolve_tool_display_name",
     "tool_display_name",
 ]
 
@@ -52,11 +55,42 @@ class HitlToolCatalogEntry:
     label_en: str
 
 
-def tool_display_name(name: str | None, locale: str | Locale = "en") -> str:
+def humanize_tool_segment(segment: str) -> str:
+    cleaned = segment.replace("_", " ").replace("-", " ").strip()
+    if not cleaned:
+        return segment
+    return cleaned[0].upper() + cleaned[1:]
+
+
+def resolve_tool_display_name(
+    name: str | None,
+    locale: str | Locale = "en",
+    *,
+    mcp_server_labels: Mapping[str, str] | None = None,
+    plugin_labels: Mapping[str, str] | None = None,
+) -> str:
     if not name:
         return lookup("tools.unknown", locale) or "unknown"
     text = lookup(f"tools.{name}", locale)
-    return text if text is not None else name
+    if text is not None:
+        return text
+    if plugin_labels and name in plugin_labels:
+        return plugin_labels[name]
+    if mcp_server_labels:
+        for server in sorted(mcp_server_labels, key=len, reverse=True):
+            prefix = f"{server}_"
+            if not name.startswith(prefix):
+                continue
+            base = name[len(prefix) :]
+            server_label = mcp_server_labels[server]
+            if base:
+                return f"{server_label} · {humanize_tool_segment(base)}"
+            return server_label
+    return name
+
+
+def tool_display_name(name: str | None, locale: str | Locale = "en") -> str:
+    return resolve_tool_display_name(name, locale)
 
 
 def all_tool_labels(locale: str | Locale = "en") -> dict[str, str]:

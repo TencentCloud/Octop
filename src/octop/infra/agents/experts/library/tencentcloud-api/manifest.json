@@ -1,0 +1,118 @@
+{
+  "id": "tencentcloud-api",
+  "label": {
+    "zh": "腾讯云API专家",
+    "en": "Tencent Cloud API Expert"
+  },
+  "description": {
+    "zh": "腾讯云API专家 — 通过自然语言管理腾讯云 200+ 产品资源，智能检索 API 文档并构造 tccli 命令执行，内置安全管控（高危操作确认、费用提醒）与异常诊断（错误码解读、凭证引导）机制。",
+    "en": "Tencent Cloud API expert — manage 200+ Tencent Cloud products via natural language: smart API doc retrieval, tccli command construction, safety guardrails (confirmation for risky ops, cost alerts) and error-code diagnostics."
+  },
+  "welcome_message": {
+    "zh": "想查或想管腾讯云上的资源？直接说，比如「查广州的云服务器」「帮我开一台 2 核 4G」",
+    "en": "Want to query or manage Tencent Cloud resources? Just say it, e.g. \"list my CVM instances in Guangzhou\""
+  },
+  "icon_name": "cloud",
+  "color": "#0052D9",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "账号登录授权",
+        "en": "Sign in to Tencent Cloud"
+      },
+      "description": {
+        "zh": "全自动引导 OAuth 登录并回显当前账号身份",
+        "en": "Fully automated OAuth sign-in with identity echo"
+      },
+      "prompt": {
+        "zh": "帮我登录腾讯云账号，完成后告诉我当前是哪个账号",
+        "en": "Sign me in to Tencent Cloud and tell me which account is active"
+      },
+      "color": "#e0f2fe",
+      "icon_name": "log-in"
+    },
+    {
+      "title": {
+        "zh": "查云服务器",
+        "en": "List CVM instances"
+      },
+      "description": {
+        "zh": "查看指定地域的云服务器实例及运行状态",
+        "en": "View CVM instances and their status in a region"
+      },
+      "prompt": {
+        "zh": "帮我查看广州地域的云服务器实例及运行状态",
+        "en": "List my CVM instances in the Guangzhou region with their status"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "server"
+    },
+    {
+      "title": {
+        "zh": "按量计费开机器",
+        "en": "Launch a pay-as-you-go CVM"
+      },
+      "description": {
+        "zh": "创建一台按量计费的 2 核 4G 云服务器",
+        "en": "Create a 2C4G pay-as-you-go cloud server"
+      },
+      "prompt": {
+        "zh": "帮我在广州创建一台 2 核 4G 的按量计费云服务器",
+        "en": "Create a pay-as-you-go 2 vCPU / 4 GB CVM in Guangzhou for me"
+      },
+      "color": "#dcfce7",
+      "icon_name": "plus-circle"
+    },
+    {
+      "title": {
+        "zh": "配安全组",
+        "en": "Configure a security group"
+      },
+      "description": {
+        "zh": "放通 HTTP 和 SSH 访问的安全组规则",
+        "en": "Open HTTP and SSH in a security group"
+      },
+      "prompt": {
+        "zh": "帮我配置一个安全组，放通 HTTP 和 SSH 访问",
+        "en": "Configure a security group that allows HTTP and SSH access"
+      },
+      "color": "#fef9c3",
+      "icon_name": "shield"
+    },
+    {
+      "title": {
+        "zh": "查全地域资源",
+        "en": "Scan all regions"
+      },
+      "description": {
+        "zh": "遍历所有地域查询实例分布（先列清单再执行）",
+        "en": "Scan every region for instances (list plan first)"
+      },
+      "prompt": {
+        "zh": "查看我所有地域的云服务器实例及运行状态",
+        "en": "Check my CVM instances across all regions and their status"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "诊断报错",
+        "en": "Diagnose an API error"
+      },
+      "description": {
+        "zh": "把 tccli 报错贴给我，解读错误码并给修复方案",
+        "en": "Paste a tccli error and get a decoded fix"
+      },
+      "prompt": {
+        "zh": "tccli 报了这个错，帮我看看怎么修：",
+        "en": "tccli returned this error, help me fix it: "
+      },
+      "color": "#ffe8f0",
+      "icon_name": "stethoscope"
+    }
+  ]
+}

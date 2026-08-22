@@ -185,7 +185,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       uploading,
       dragOver,
       fileInputRef,
-      acceptAttr,
       handleFileSelect,
       handleFileChange,
       removeAttachment,
@@ -784,7 +783,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <input
             ref={fileInputRef}
             type="file"
-            accept={acceptAttr}
             multiple
             style={{ display: "none" }}
             onChange={handleFileChange}

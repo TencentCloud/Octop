@@ -2,8 +2,9 @@
 
 End-to-end smoke: build a real OctopServer with a main agent, seed a
 small graph (entity / candidate / atom / episode / journal) directly
-into ``~/.octop/agents/<id>/memory.sqlite`` via ``harness_memory.Memory``,
-then drive the FastAPI router and assert the JSON shapes.
+into the agent memory SQLite (``.octop/memory.sqlite`` for new agents)
+via ``harness_memory.Memory``, then drive the FastAPI router and assert
+the JSON shapes.
 
 We bypass the harness-agent middleware (``capture`` / ``extract``)
 because the dashboard surface is purely read-side; this keeps the
@@ -27,7 +28,7 @@ pytest.importorskip("harness_memory.adapters.bridge.handlers")
 
 from octop.api.common.memory_client import (
     invalidate_cached_memory,
-    memory_db_path,
+    memory_db_path_for_cfg,
     memory_namespace,
 )
 
@@ -49,7 +50,19 @@ def _seed_memory(srv: Any, agent_id: str) -> None:
     )
 
     workspace = srv.services.paths.ensure_agent_workspace(agent_id)
-    db_path = memory_db_path(workspace)
+    row = srv.services.agent_repo.get(agent_id)
+    cfg: dict[str, Any] = {}
+    if row is not None and row.config_json:
+        import json  # noqa: PLC0415
+
+        try:
+            parsed = json.loads(row.config_json)
+            if isinstance(parsed, dict):
+                cfg = parsed
+        except json.JSONDecodeError:
+            cfg = {}
+    db_path = memory_db_path_for_cfg(workspace, cfg)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     namespace = memory_namespace(agent_id)
 
     memory = Memory(

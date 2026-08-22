@@ -52,6 +52,8 @@ async def test_repo_record_and_summary_total(env: Any) -> None:
         thread_id="t1",
         model="openai:gpt-4o-mini",
         input_tokens=100,
+        uncached_input_tokens=30,
+        cache_read_tokens=70,
         output_tokens=50,
     )
     repo.record(
@@ -64,6 +66,9 @@ async def test_repo_record_and_summary_total(env: Any) -> None:
     )
     result = repo.summary(user_id=ctx["alice_id"], window="last_30d", granularity="total")
     assert result["input_tokens"] == 300
+    assert result["uncached_input_tokens"] == 230
+    assert result["cache_read_tokens"] == 70
+    assert result["cache_hit_percent"] == 23
     assert result["output_tokens"] == 130
     assert result["total_tokens"] == 430
     assert result["turns"] == 2
@@ -180,7 +185,12 @@ def test_extract_usage_from_chunk_direct() -> None:
     from octop.api.routers.chat.turn import extract_usage_from_chunk as _extract_usage_from_chunk
 
     chunk = {"usage": {"input_tokens": 7, "output_tokens": 3}}
-    assert _extract_usage_from_chunk(chunk) == {"input_tokens": 7, "output_tokens": 3}
+    usage = _extract_usage_from_chunk(chunk)
+    assert usage is not None
+    assert usage["input_tokens"] == 7
+    assert usage["uncached_input_tokens"] == 7
+    assert usage["cache_read_tokens"] == 0
+    assert usage["output_tokens"] == 3
 
 
 def test_extract_usage_from_state_snapshot_dict_message() -> None:
@@ -195,7 +205,14 @@ def test_extract_usage_from_state_snapshot_dict_message() -> None:
                     "role": "assistant",
                     "content": "hello!",
                     "usage_metadata": {"input_tokens": 9, "output_tokens": 4},
-                    "response_metadata": {"model_name": "openai:gpt-4o-mini"},
+                    "response_metadata": {
+                        "model_name": "openai:gpt-4o-mini",
+                        "token_usage": {
+                            "prompt_tokens": 9,
+                            "completion_tokens": 4,
+                            "prompt_cache_hit_tokens": 6,
+                        },
+                    },
                 },
             ],
         },
@@ -204,7 +221,97 @@ def test_extract_usage_from_state_snapshot_dict_message() -> None:
     assert out is not None
     assert out["input_tokens"] == 9
     assert out["output_tokens"] == 4
+    assert out["cache_read_tokens"] == 6
     assert out["model"] == "openai:gpt-4o-mini"
+
+
+def test_usage_tracker_accumulates_calls_and_replaces_duplicate_call() -> None:
+    from octop.infra.gateway.process.usage_record import UsageTracker
+
+    tracker = UsageTracker()
+    tracker.observe(
+        {
+            "type": "usage",
+            "call_id": "call-1",
+            "model": "deepseek-v4-pro",
+            "usage": {
+                "input_tokens": 1_000,
+                "uncached_input_tokens": 300,
+                "cache_read_tokens": 700,
+                "output_tokens": 50,
+            },
+        }
+    )
+    tracker.observe(
+        {
+            "type": "usage",
+            "call_id": "call-1",
+            "model": "deepseek-v4-pro",
+            "usage": {
+                "input_tokens": 1_000,
+                "uncached_input_tokens": 300,
+                "cache_read_tokens": 700,
+                "output_tokens": 50,
+            },
+        }
+    )
+    tracker.observe(
+        {
+            "type": "usage",
+            "call_id": "call-2",
+            "model": "deepseek-v4-pro",
+            "usage": {
+                "input_tokens": 1_200,
+                "uncached_input_tokens": 400,
+                "cache_read_tokens": 800,
+                "output_tokens": 60,
+            },
+        }
+    )
+
+    assert tracker.usage == {
+        "input_tokens": 2_200,
+        "uncached_input_tokens": 700,
+        "cache_read_tokens": 1_500,
+        "cache_write_tokens": 0,
+        "output_tokens": 110,
+        "reasoning_tokens": 0,
+        "total_tokens": 2_310,
+        "model": "deepseek-v4-pro",
+        "model_calls": 2,
+        "last_input_tokens": 1_200,
+    }
+
+
+def test_usage_tracker_explicit_events_supersede_legacy_snapshots() -> None:
+    from octop.infra.gateway.process.usage_record import UsageTracker
+
+    tracker = UsageTracker()
+    snapshot = {
+        "type": "state_snapshot",
+        "data": {
+            "messages": [
+                {
+                    "id": "persisted-message-id",
+                    "role": "assistant",
+                    "usage_metadata": {"input_tokens": 100, "output_tokens": 5},
+                }
+            ]
+        },
+    }
+    tracker.observe(snapshot)
+    tracker.observe(
+        {
+            "type": "usage",
+            "call_id": "stream-call-id",
+            "usage": {"input_tokens": 100, "output_tokens": 5},
+        }
+    )
+    tracker.observe(snapshot)
+
+    assert tracker.usage is not None
+    assert tracker.usage["input_tokens"] == 100
+    assert tracker.usage["model_calls"] == 1
 
 
 def test_extract_usage_from_state_snapshot_sums_turn_calls() -> None:
