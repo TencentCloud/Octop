@@ -7,7 +7,6 @@ import {
   GraduationCap,
   Globe,
   FilePen,
-  Smartphone,
   Terminal,
   FolderOpen,
 } from "lucide-react";
@@ -16,7 +15,6 @@ import { message as antMessage } from "@/utils/antdMessage";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { useServerCapabilities } from "../../hooks/useServerCapabilities";
 import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions, fetchAndSyncSessionArtifacts } from "./hooks/useSessions";
@@ -89,9 +87,6 @@ function ChatPageInner() {
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
-  const canMobile = userCan(user, "mobile");
-  const { mobileEnabled } = useServerCapabilities();
-  const showPhoneDock = canMobile && mobileEnabled;
   const chatHistoryRail = useChatHistoryRail();
   const [selectedTargetAgents, setSelectedTargetAgents] = useState<string[]>(
     [],
@@ -311,7 +306,6 @@ function ChatPageInner() {
     openBrowserTab,
     toggleBrowserPanel,
     toggleTerminalPanel,
-    togglePhonePanel,
     closeTab: closeDockTab,
     setActiveTab: setDockActiveTab,
   } = useChatDockPanel(isMobile, resolvedAgentId);
@@ -1100,24 +1094,6 @@ function ChatPageInner() {
                     </button>
                   </span>
                 </Tooltip>
-                {showPhoneDock && (
-                  <Tooltip
-                    title={t("chat.openPhone", "打开远程手机")}
-                    mouseEnterDelay={0.35}
-                    placement="left"
-                  >
-                    <span className={styles.chatFloatBtnWrap}>
-                      <button
-                        type="button"
-                        className={styles.phoneFloatBtn}
-                        onClick={togglePhonePanel}
-                        aria-label={t("chat.openPhone", "打开远程手机")}
-                      >
-                        <Smartphone size={20} strokeWidth={2.1} />
-                      </button>
-                    </span>
-                  </Tooltip>
-                )}
               </div>
             )}
 

@@ -16,7 +16,7 @@ async def test_invite_create_list_redeem_and_one_time(env) -> None:
     assert invite["status"] == "pending"
     assert invite["note"] == "for bob"
     assert invite["code"]
-    assert invite["invite_path"].startswith("/?invite=")
+    assert invite["invite_path"].startswith("/invite?code=")
     assert invite["invite_url"].endswith(invite["invite_path"])
     code = invite["code"]
 

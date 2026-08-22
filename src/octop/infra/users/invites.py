@@ -55,8 +55,8 @@ def generate_invite_code() -> str:
 
 
 def invite_path(code: str) -> str:
-    """Canonical share path (SPA root query), matching common invite links."""
-    return f"/?invite={code}"
+    """Canonical share path for invite redemption UI."""
+    return f"/invite?code={code}"
 
 
 def build_invite_url(base_url: str, code: str) -> str:

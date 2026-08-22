@@ -47,7 +47,7 @@ export interface InviteRedeemResponse {
 /** Prefer the browser origin so copied links match how admins reach the UI. */
 export function localInviteUrl(code: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/?invite=${encodeURIComponent(code)}`;
+  return `${origin}/invite?code=${encodeURIComponent(code)}`;
 }
 
 export const invitesApi = {

@@ -1,12 +1,24 @@
+/* #root / body are overflow:hidden — pin a viewport scrollport so the invite
+   form can center when short and scroll when tall (mobile register step). */
 .inviteShell {
-  box-sizing: border-box;
-  min-height: 100dvh;
-  display: flex;
-  justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: var(--fn-bg-layout);
   transition: background var(--fn-transition);
+}
+
+.inviteShellInner {
+  box-sizing: border-box;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 24px 16px;
   padding-top: max(24px, env(safe-area-inset-top));
   padding-bottom: max(24px, env(safe-area-inset-bottom));
@@ -18,7 +30,7 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 420px;
-  margin-block: auto;
+  flex: 0 0 auto;
   padding: 40px 32px 36px;
   border-radius: 16px;
   background: var(--fn-bg-elevated, #fff);
@@ -64,17 +76,15 @@
 }
 
 @media (max-width: 480px) {
-  .inviteShell {
+  .inviteShellInner {
     padding: 12px;
     padding-top: max(12px, env(safe-area-inset-top));
     padding-bottom: max(12px, env(safe-area-inset-bottom));
     padding-left: max(12px, env(safe-area-inset-left));
     padding-right: max(12px, env(safe-area-inset-right));
-    align-items: stretch;
   }
 
   .inviteCard {
-    margin-block: 0;
     max-width: none;
     padding: 24px 16px 20px;
     border-radius: 12px;

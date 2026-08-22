@@ -20,7 +20,6 @@ export type DockTab =
   | { id: "files"; kind: "files" }
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
-  | { id: "phone"; kind: "phone" }
   | { id: string; kind: "file"; path: string };
 
 export type DockTabId = DockTab["id"];
@@ -88,7 +87,7 @@ function fallbackActiveId(
 }
 
 /**
- * Shared chat dock with tabbed file list / file viewers / browser / terminal / phone.
+ * Shared chat dock with tabbed file list / file viewers / browser / terminal.
  */
 export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   const [dockOpen, setDockOpen] = useState(false);
@@ -175,18 +174,9 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openDock();
   }, [openDock]);
 
-  const openPhoneTab = useCallback(() => {
-    setOpenTabs((prev) => {
-      if (prev.some((t) => t.id === "phone")) return prev;
-      return [...prev, { id: "phone", kind: "phone" }];
-    });
-    setActiveTabId("phone");
-    openDock();
-  }, [openDock]);
-
-  /** Toggle dock open/closed around a dedicated tab (browser / terminal / phone). */
+  /** Toggle dock open/closed around a dedicated tab (browser / terminal). */
   const toggleDockTab = useCallback(
-    (tab: Extract<DockTab, { kind: "browser" | "terminal" | "phone" }>) => {
+    (tab: Extract<DockTab, { kind: "browser" | "terminal" }>) => {
       setDockOpen((prevOpen) => {
         if (prevOpen && activeTabId === tab.id) {
           return false;
@@ -211,10 +201,6 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
 
   const toggleTerminalPanel = useCallback(() => {
     toggleDockTab({ id: "terminal", kind: "terminal" });
-  }, [toggleDockTab]);
-
-  const togglePhonePanel = useCallback(() => {
-    toggleDockTab({ id: "phone", kind: "phone" });
   }, [toggleDockTab]);
 
   const closeTab = useCallback((id: DockTabId) => {
@@ -277,8 +263,6 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleBrowserPanel,
     openTerminalTab,
     toggleTerminalPanel,
-    openPhoneTab,
-    togglePhonePanel,
     closeTab,
     setActiveTab,
   };

@@ -30,7 +30,7 @@ def test_generate_invite_code_shape() -> None:
     code = generate_invite_code()
     assert len(code) == 11
     assert code.isalnum()
-    assert invite_path(code) == f"/?invite={code}"
+    assert invite_path(code) == f"/invite?code={code}"
 
 
 def test_invite_repo_redeem_once(db: SqlitePool) -> None:

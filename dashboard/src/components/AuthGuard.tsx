@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Spin } from "antd";
 import { getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
@@ -8,16 +8,6 @@ import { CurrentUserProvider } from "../hooks/useCurrentUser";
 
 interface AuthGuardProps {
   children: React.ReactNode;
-}
-
-function inviteRedirectTarget(searchParams: URLSearchParams): string | null {
-  const invite = (
-    searchParams.get("invite") ||
-    searchParams.get("code") ||
-    ""
-  ).trim();
-  if (!invite) return null;
-  return `/invite?code=${encodeURIComponent(invite)}`;
 }
 
 /**
@@ -32,11 +22,10 @@ function inviteRedirectTarget(searchParams: URLSearchParams): string | null {
  *
  * When unauthenticated we must NOT render children: MainLayout / AgentProvider
  * would fire authenticated APIs, trip the 401 interceptor, and race the
- * invite redirect back to ``/login``.
+ * navigate back to ``/login``.
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const hadToken = Boolean(getAuthToken());
   const [checking, setChecking] = useState(!hadToken);
   const [authed, setAuthed] = useState(hadToken);
@@ -62,8 +51,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             setAuthed(false);
             // Stay on the spinner until navigation away completes — do not
             // flip ``checking`` off or children would mount and 401→/login.
-            const inviteTo = inviteRedirectTarget(searchParams);
-            navigate(inviteTo ?? "/login", { replace: true });
+            navigate("/login", { replace: true });
           }
           return;
         }
@@ -99,7 +87,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     return () => {
       cancelled = true;
     };
-  }, [navigate, searchParams]);
+  }, [navigate]);
 
   if (checking || !authed) {
     return (

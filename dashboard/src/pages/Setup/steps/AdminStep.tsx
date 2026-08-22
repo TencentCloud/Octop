@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Form, Input, Button, Alert, Typography, Space } from "antd";
-import { User, Lock, IdCard } from "lucide-react";
+import { User, Lock, IdCard, Mail } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { wizardApi, wizardSession } from "../wizardClient";
@@ -169,7 +169,11 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
             },
           ]}
         >
-          <Input type="email" autoComplete="email" />
+          <Input
+            type="email"
+            autoComplete="email"
+            prefix={<Mail size={16} />}
+          />
         </Form.Item>
 
         <Form.Item

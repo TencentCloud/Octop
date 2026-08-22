@@ -31,6 +31,109 @@
     <link rel="manifest" href="/manifest.json" />
     <title>Octop</title>
     <!--
+      First-paint boot splash: visible before JS chunks parse. React.createRoot
+      replaces #root contents on mount, so this disappears automatically.
+    -->
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #f7f8fa;
+      }
+      #root {
+        min-height: 100%;
+        min-height: 100dvh;
+      }
+      #octop-boot {
+        /* fixed + inset: always viewport-centered before app CSS sets #root height */
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 24px;
+        margin: 0;
+        background: #f7f8fa;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Noto Sans SC", sans-serif;
+        color: #8b8fa3;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #12141c;
+        }
+        #octop-boot {
+          background: #12141c;
+          color: rgba(255, 255, 255, 0.55);
+        }
+      }
+      #octop-boot-mark {
+        position: relative;
+        width: 88px;
+        height: 88px;
+        flex: none;
+      }
+      #octop-boot-ring {
+        box-sizing: border-box;
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 3px solid rgba(232, 93, 117, 0.18);
+        border-top-color: #e85d75;
+        animation: octop-boot-spin 0.85s linear infinite;
+      }
+      @media (prefers-color-scheme: dark) {
+        #octop-boot-ring {
+          border-color: rgba(240, 139, 154, 0.22);
+          border-top-color: #f08b9a;
+        }
+      }
+      #octop-boot-logo {
+        position: absolute;
+        inset: 14px;
+        width: 60px;
+        height: 60px;
+        border-radius: 14px;
+        object-fit: contain;
+        display: block;
+        animation: octop-boot-breathe 1.6s ease-in-out infinite;
+      }
+      #octop-boot-text {
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        user-select: none;
+      }
+      @keyframes octop-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes octop-boot-breathe {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(0.94);
+          opacity: 0.88;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #octop-boot-ring,
+        #octop-boot-logo {
+          animation: none;
+        }
+      }
+    </style>
+    <!--
       Classic script (not type=module) so it runs even when hashed chunks 404.
       Shares octop:chunk-reload with reloadOnStaleChunk.ts.
     -->
@@ -90,7 +193,35 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="octop-boot" role="status" aria-live="polite">
+        <div id="octop-boot-mark" aria-hidden="true">
+          <div id="octop-boot-ring"></div>
+          <img
+            id="octop-boot-logo"
+            src="/logo.svg"
+            alt=""
+            width="60"
+            height="60"
+          />
+        </div>
+        <div id="octop-boot-text">Loading…</div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var el = document.getElementById("octop-boot-text");
+        if (!el) return;
+        try {
+          var lang = (
+            navigator.language ||
+            navigator.userLanguage ||
+            ""
+          ).toLowerCase();
+          if (lang.indexOf("zh") === 0) el.textContent = "加载中…";
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

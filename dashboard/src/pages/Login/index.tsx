@@ -31,24 +31,6 @@ export default function LoginPage() {
     void applyGuestLocale();
   }, []);
 
-  // Invite links that bounced onto /login (e.g. race before AuthGuard fix)
-  // should continue the invite wizard instead of the password form.
-  useEffect(() => {
-    const invite = (
-      searchParams.get("invite") ||
-      searchParams.get("code") ||
-      ""
-    ).trim();
-    if (!invite) return;
-    // OIDC error uses ``code`` as an error key — don't hijack that.
-    if (searchParams.get("oidc_error")) return;
-    if (searchParams.has("code") && !searchParams.has("invite")) {
-      // Bare ``?code=`` on /login is ambiguous; only trust ``invite``.
-      return;
-    }
-    navigate(`/invite?code=${encodeURIComponent(invite)}`, { replace: true });
-  }, [navigate, searchParams]);
-
   useEffect(() => {
     let cancelled = false;
     authApi
