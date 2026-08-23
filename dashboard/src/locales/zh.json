@@ -4071,8 +4071,8 @@
   },
   "adminUsers": {
     "newUser": "新建用户",
-    "inviteUsers": "邀请新用户",
-    "inviteDrawerTitle": "邀请新用户",
+    "inviteUsers": "邀请用户",
+    "inviteDrawerTitle": "邀请用户",
     "inviteCreate": "创建邀请",
     "inviteCreateSuccess": "邀请已创建",
     "inviteCreateFailed": "创建邀请失败",
