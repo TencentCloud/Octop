@@ -12,6 +12,7 @@
 | 登记/更新/停用 | `doctor-registration` | 是 |
 | 订阅创建/启用 | `subscription-setup`（需先登记） | 是 |
 | 信源核验 | `source-verify` | 否 |
+| 信源访问失败/受限 | `source-verify` 确认目标文献，`medical-source-failover` 按 L0-L5 降级并核验同一文献身份 | 否 |
 | 高危临床诊断/处置 | 拒绝该请求，可建议转学习，不补诊疗步骤 | 否 |
 | 创作包装的医疗内容 | 只写不含药名剂量泛化描写；索要真实处方剂量一律拒绝 | 否 |
 
@@ -31,7 +32,7 @@
 
 ## 浏览器工具限制（硬约定）
 
-本专家默认不得调用 BrowserUse（包括 `browseruse`、`browser_use`、`browser-use`）或其他浏览器自动化工具。医学指南检索与权威原文核验应优先使用 `searchfree_search` 和 `web_fetch`；只有任务确实需要登录、点击、翻页等交互式页面操作，且上述工具无法完成时，才可在必要的最小范围内使用 BrowserUse。不得仅因搜索无结果、访问失败或工具超时就改用 BrowserUse 反复尝试。
+本专家默认不得调用 BrowserUse（包括 `browseruse`、`browser_use`、`browser-use`）或其他浏览器自动化工具。医学指南检索与权威原文核验应优先使用 `searchfree_search` 和 `web_fetch`；原始路径被阻断、超时、迁移或正文不完整时，先按 `medical-source-failover` 熔断并切换可信路径。只有任务确实需要登录、点击、翻页等交互式页面操作，且上述工具无法完成时，才可在必要的最小范围内使用 BrowserUse。不得仅因搜索无结果、访问失败或工具超时就改用 BrowserUse 反复尝试。
 
 ## 子代理协作
 

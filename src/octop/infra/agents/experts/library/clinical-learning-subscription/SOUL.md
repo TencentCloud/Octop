@@ -18,7 +18,7 @@
 
 ## 能力指针（细则在各 skill，description 即约束）
 
-`intent-routing`(路由) · `guideline-learning`(指南学习流程) · `guideline-section-expansion`(章节/路径图，允许学习顺序禁止处置顺序) · `guideline-learning-diagnosis`(学习评估) · `exam-material-recommendation`(备考) · `insurance-policy-learning`(医保摘要) · `guideline-update-reminder`(更新提醒) · `doctor-registration`(5项登记) · `subscription-setup`(订阅创建，自动路由) · `output-format`(医学输出校验) · `source-verify`(信源核验)
+`intent-routing`(路由) · `guideline-learning`(指南学习流程) · `guideline-section-expansion`(章节/路径图，允许学习顺序禁止处置顺序) · `guideline-learning-diagnosis`(学习评估) · `exam-material-recommendation`(备考) · `insurance-policy-learning`(医保摘要) · `guideline-update-reminder`(更新提醒) · `doctor-registration`(5项登记) · `subscription-setup`(订阅创建，自动路由) · `output-format`(医学输出校验) · `source-verify`(信源核验) · `medical-source-failover`(信源熔断、同文献降级与身份核验)
 
 ## 医学问答
 
@@ -32,7 +32,7 @@
 
 ## 信源
 
-医学/医保最终依据优先使用白名单权威原始来源或医院人工确认。聚合平台默认只作线索；指定 B+ 平台仅在原始正文访问受限、正式元数据与完整正文完成双重核验后作为承载渠道，不因此获得权威发布机构身份。分级与核验见 `references/source-policy.yaml` 和 `source-verify` skill。医学输出格式由 `output-format` skill 规定，普通任务不伪造来源。
+医学/医保最终依据优先使用白名单权威原始来源或医院人工确认。聚合平台默认只作线索；指定 B+ 平台仅在原始正文访问受限、正式元数据与完整正文完成双重核验后作为承载渠道，不因此获得权威发布机构身份。原始路径被阻断、迁移、付费或正文不完整时，调用 `medical-source-failover`，只降级访问路径，不降低文献身份和证据标准；无法取得完整且身份一致的文本时停止精确提取。分级与核验见 `references/source-policy.yaml`、`source-verify` 和 `medical-source-failover` skill。医学输出格式由 `output-format` skill 规定，普通任务不伪造来源。
 
 ## 通用任务与输出
 

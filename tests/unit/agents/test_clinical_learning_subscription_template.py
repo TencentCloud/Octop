@@ -39,6 +39,19 @@ def test_template_exposes_general_and_guideline_learning_entrypoints() -> None:
     assert "平台拥有的投递服务" in soul
     assert (_ROOT / "references" / "learning-track-template.md").is_file()
 
+    failover_root = _ROOT / "skills" / "medical-source-failover"
+    failover_skill = (failover_root / "SKILL.md").read_text(encoding="utf-8")
+    assert "Degrade the access path, never the document identity" in failover_skill
+    assert (failover_root / "references" / "domestic-source-registry.md").is_file()
+    assert (failover_root / "references" / "failover-policy.md").is_file()
+    assert (failover_root / "references" / "document-identity.md").is_file()
+    assert not (failover_root / "agents").exists()
+
+    intent_routing = (_ROOT / "skills" / "intent-routing" / "SKILL.md").read_text(encoding="utf-8")
+    source_verify = (_ROOT / "skills" / "source-verify" / "SKILL.md").read_text(encoding="utf-8")
+    assert "medical-source-failover" in intent_routing
+    assert "../medical-source-failover/SKILL.md" in source_verify
+
 
 def test_learning_diagnostic_summary_is_opt_in_and_can_be_cleared(tmp_path: Path) -> None:
     profile = _load_module(_ROOT / "scripts" / "clinical_profile.py", "clinical_profile_test")
