@@ -48,7 +48,11 @@ async def test_provider_test_embedding_skips_chat_probe(
     c, _srv, auth, pid = env_with_provider_record
 
     async def fake_probe(
-        row: Any, *, model_id: str | None = None, embedding: bool | None = None
+        row: Any,
+        *,
+        model_id: str | None = None,
+        embedding: bool | None = None,
+        stream: bool = False,
     ) -> dict[str, Any]:
         assert embedding is True
         assert model_id == "text-embedding-3-small"

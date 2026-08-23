@@ -91,6 +91,7 @@ interface CustomModelEntry {
   context_window?: number;
   max_tokens?: number;
   reasoning?: boolean;
+  stream?: boolean;
 }
 
 interface Props {
@@ -305,6 +306,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       name: string;
       input?: string[];
       reasoning?: boolean;
+      stream?: boolean;
     }>,
   ): WizardProviderModel[] =>
     entries.map((m) => {
@@ -316,6 +318,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
         thinking: null,
       };
       if (m.reasoning) model.reasoning = true;
+      if (m.stream) model.stream = true;
       return model;
     });
 
@@ -532,6 +535,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
           base_url: draft.base_url,
           model_id: draft.models[0].id,
           reasoning: draft.models[0].reasoning,
+          stream: draft.models[0].stream,
         },
         probeToken,
       );
@@ -729,6 +733,9 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
     if (values.reasoning) {
       entry.reasoning = true;
     }
+    if (values.stream) {
+      entry.stream = true;
+    }
     setExtraPresetModels((prev) => [...prev, entry]);
     resetTest();
     const nextSelected = [...selectedModelIds, id];
@@ -756,6 +763,9 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
     }
     if (values.reasoning) {
       entry.reasoning = true;
+    }
+    if (values.stream) {
+      entry.stream = true;
     }
     setCustomModels((prev) => [...prev, entry]);
     const providerName = String(customForm.getFieldValue("name") ?? "").trim();
@@ -794,6 +804,11 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
     } else {
       delete updated.reasoning;
     }
+    if (values.stream) {
+      updated.stream = true;
+    } else {
+      delete updated.stream;
+    }
     setExtraPresetModels((prev) =>
       prev.map((m) => (m.id === editingPresetModel.id ? updated : m)),
     );
@@ -828,6 +843,11 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       updated.reasoning = true;
     } else {
       delete updated.reasoning;
+    }
+    if (values.stream) {
+      updated.stream = true;
+    } else {
+      delete updated.stream;
     }
     setCustomModels((prev) =>
       prev.map((m) => (m.id === editingCustomModel.id ? updated : m)),
@@ -904,6 +924,14 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
         <Form.Item
           name="reasoning"
           label={t("models.reasoning")}
+          valuePropName="checked"
+          style={{ marginBottom: 12 }}
+        >
+          <Switch size="small" />
+        </Form.Item>
+        <Form.Item
+          name="stream"
+          label={t("models.streamRequest")}
           valuePropName="checked"
           style={{ marginBottom: 12 }}
         >
@@ -1231,6 +1259,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
                         context_window: m.context_window,
                         max_tokens: m.max_tokens,
                         reasoning: m.reasoning,
+                        stream: m.stream,
                       });
                       setEditingPresetModel(m);
                     }}
@@ -1414,6 +1443,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
                       context_window: m.context_window,
                       max_tokens: m.max_tokens,
                       reasoning: m.reasoning,
+                      stream: m.stream,
                     });
                     setEditingCustomModel(m);
                   }}

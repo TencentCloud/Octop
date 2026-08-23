@@ -77,6 +77,7 @@ def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
     embedding: bool = False
+    stream: bool = False
 
 
 class ProviderTestDraftBody(BaseModel):
@@ -87,6 +88,7 @@ class ProviderTestDraftBody(BaseModel):
     model_id: str
     extra_json: str | None = None
     embedding: bool = False
+    stream: bool = False
 
 
 class ProviderFetchModelsBody(BaseModel):
@@ -315,7 +317,9 @@ async def admin_test_provider_draft(
         extra_json=body.extra_json,
         embedding=body.embedding,
     )
-    return await probe_provider_row(row, model_id=model_id, embedding=body.embedding)
+    return await probe_provider_row(
+        row, model_id=model_id, embedding=body.embedding, stream=body.stream
+    )
 
 
 @admin_router.post("/fetch-models", summary="List models from an OpenAI-compatible draft")
@@ -467,4 +471,7 @@ async def admin_test_provider(
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
     embedding = body.embedding if body else None
-    return await probe_provider_row(row, model_id=model_id, embedding=embedding)
+    stream = body.stream if body else False
+    return await probe_provider_row(
+        row, model_id=model_id, embedding=embedding, stream=stream
+    )

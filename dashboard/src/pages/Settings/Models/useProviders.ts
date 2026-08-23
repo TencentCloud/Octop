@@ -20,6 +20,7 @@ export interface ProviderModel {
   thinking?: boolean | null;
   reasoning?: boolean;
   reasoning_config?: ResolvedModel["reasoning_config"];
+  stream?: boolean;
   context_window?: number;
   max_tokens?: number;
   /** Embedding-only: excluded from chat picker and auto-route. */

@@ -2252,6 +2252,7 @@
     "maxTokens": "Max Output Tokens",
     "maxTokensPlaceholder": "e.g. 16000",
     "reasoning": "Reasoning Support",
+    "streamRequest": "Streaming Request",
     "reasoningToggle": "Allow toggle",
     "reasoningDefault": "Default thinking",
     "reasoningEfforts": "Supported thinking efforts",

@@ -140,6 +140,7 @@ export function ModelListEditor({
     modelId: string,
     modelName: string,
     embedding?: boolean,
+    stream?: boolean,
   ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
     if (onTestModel) {
       return onTestModel(modelId, modelName);
@@ -147,13 +148,19 @@ export function ModelListEditor({
     const isEmbedding =
       embedding ??
       (isOnnx || isEmbeddingModel(models.find((m) => m.id === modelId)));
+    const isStream =
+      stream ?? models.find((m) => m.id === modelId)?.stream ?? false;
     return request<{
       ok: boolean;
       latency_ms?: number;
       error?: string;
     }>(`${apiPrefix}/${provider.id}/test`, {
       method: "POST",
-      body: JSON.stringify({ model_id: modelId, embedding: isEmbedding }),
+      body: JSON.stringify({
+        model_id: modelId,
+        embedding: isEmbedding,
+        stream: isStream,
+      }),
     });
   };
 
@@ -207,7 +214,12 @@ export function ModelListEditor({
     }
     setTestingForm(true);
     try {
-      const result = await runTest(modelId, modelId, embeddingOn);
+      const result = await runTest(
+        modelId,
+        modelId,
+        embeddingOn,
+        form.getFieldValue("stream") === true,
+      );
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
@@ -254,6 +266,7 @@ export function ModelListEditor({
     if (values.max_tokens != null)
       entry.max_tokens = values.max_tokens as number;
     if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
+    if (values.stream != null) entry.stream = values.stream as boolean;
     if (values.reasoning === true) {
       const efforts = (values.reasoning_efforts as string[] | undefined) || [];
       entry.reasoning_config = {
@@ -328,6 +341,7 @@ export function ModelListEditor({
         (model as Record<string, unknown>).context_window ?? undefined,
       max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
+      stream: (model as Record<string, unknown>).stream ?? undefined,
       reasoning_toggle: model.reasoning_config?.toggle ?? true,
       reasoning_efforts: model.reasoning_config?.efforts ?? [],
       reasoning_default_mode: model.reasoning_config?.default_mode ?? "auto",
@@ -612,6 +626,14 @@ export function ModelListEditor({
                     <Form.Item
                       name="reasoning"
                       label={t("models.reasoning")}
+                      valuePropName="checked"
+                      style={{ marginBottom: 10 }}
+                    >
+                      <Switch size="small" />
+                    </Form.Item>
+                    <Form.Item
+                      name="stream"
+                      label={t("models.streamRequest")}
                       valuePropName="checked"
                       style={{ marginBottom: 10 }}
                     >

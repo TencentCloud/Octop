@@ -185,19 +185,25 @@ async def _probe_embedding_endpoint(row: Any, *, model_id: str) -> dict[str, Any
 
 
 async def probe_provider_row(
-    row: Any, *, model_id: str | None = None, embedding: bool | None = None
+    row: Any,
+    *,
+    model_id: str | None = None,
+    embedding: bool | None = None,
+    stream: bool = False,
 ) -> dict[str, Any]:
-    """Probe a provider: chat models get a one-token ping; embedding models POST /embeddings."""
+    """Probe a provider: chat models get a one-token ping; embedding models POST /embeddings.
+
+    ``stream`` independently selects the streaming code path — it is decoupled from
+    whether the model is reasoning-capable. Reasoning itself only influences request
+    parameters, not the transport.
+    """
     mid = _probe_model_id(row, model_id)
     if _should_probe_embedding(row, model_id=mid, embedding=embedding):
         return await _probe_embedding_endpoint(row, model_id=mid)
     started = time.perf_counter()
     try:
         chat = build_probe_chat_model(row, model_id=mid)
-        if _is_reasoning_model(row, model_id=mid):
-            # Reasoning-capable models (e.g. DeepSeek thinking, OpenAI o-series)
-            # often reject non-streaming requests; stream to exercise the same
-            # code path used for real reasoning calls.
+        if stream:
             async for _chunk in chat.astream("ping"):
                 pass
         else:
@@ -207,15 +213,6 @@ async def probe_provider_row(
         return {"ok": False, "error": str(exc)}
     latency_ms = int((time.perf_counter() - started) * 1000)
     return {"ok": True, "latency_ms": latency_ms}
-
-
-def _is_reasoning_model(row: Any, *, model_id: str) -> bool:
-    """Whether the probed model is reasoning-capable (and should be streamed)."""
-    from octop.infra.agents.providers.reasoning import reasoning_capability
-
-    entry = _probe_model_entry(row, model_id)
-    capability = reasoning_capability(entry, base_url=getattr(row, "base_url", None))
-    return capability is not None
 
 
 def _models_list_url(base_url: str | None) -> str:

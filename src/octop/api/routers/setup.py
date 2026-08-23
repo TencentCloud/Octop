@@ -73,6 +73,7 @@ class ProviderTestBody(BaseModel):
     base_url: str | None = None
     model_id: str = Field(min_length=1)
     reasoning: bool = False
+    stream: bool = False
 
 
 class SetupFetchModelsBody(BaseModel):
@@ -425,7 +426,7 @@ async def test_provider_draft(
         model_id=body.model_id,
         reasoning=body.reasoning,
     )
-    return await probe_provider_row(row)
+    return await probe_provider_row(row, stream=body.stream)
 
 
 @router.post("/setup/fetch-models", summary="List OpenAI-compatible models for a wizard draft")

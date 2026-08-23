@@ -28,6 +28,7 @@ export interface WizardProviderModel {
   input: string[];
   thinking: null;
   reasoning?: boolean;
+  stream?: boolean;
 }
 
 export interface ProviderDraft {
@@ -181,6 +182,7 @@ export const wizardApi = {
       base_url?: string;
       model_id: string;
       reasoning?: boolean;
+      stream?: boolean;
     },
     wizardToken: string,
   ) =>

@@ -2249,6 +2249,7 @@
     "maxTokens": "最大输出 Token",
     "maxTokensPlaceholder": "如 16000",
     "reasoning": "支持推理",
+    "streamRequest": "流式请求",
     "reasoningToggle": "允许开关",
     "reasoningDefault": "默认思考",
     "reasoningEfforts": "支持的思考强度",

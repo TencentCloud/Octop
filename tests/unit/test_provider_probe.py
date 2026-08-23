@@ -167,7 +167,7 @@ async def test_chat_probe_skips_embeddings_endpoint() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_probe_streams_reasoning_model() -> None:
+async def test_chat_probe_streams_when_stream_flag_enabled() -> None:
     row = SimpleNamespace(
         name="HAI",
         kind="openai",
@@ -182,11 +182,35 @@ async def test_chat_probe_streams_reasoning_model() -> None:
         "octop.infra.agents.providers.probe.build_probe_chat_model",
         return_value=fake,
     ):
-        result = await probe_provider_row(row, model_id="tc-code-latest")
+        result = await probe_provider_row(row, model_id="tc-code-latest", stream=True)
 
     assert result["ok"] is True
     fake.astream.assert_called_once()
     fake.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_uses_invoke_by_default() -> None:
+    row = SimpleNamespace(
+        name="HAI",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "tc-code-latest", "name": "tc-code-latest"}],
+    )
+    fake = AsyncMock()
+    fake.astream = MagicMock(return_value=_stream_chunks())
+    fake.ainvoke = AsyncMock(return_value=SimpleNamespace(content="pong"))
+    with patch(
+        "octop.infra.agents.providers.probe.build_probe_chat_model",
+        return_value=fake,
+    ):
+        result = await probe_provider_row(row, model_id="tc-code-latest")
+
+    assert result["ok"] is True
+    fake.ainvoke.assert_awaited_once()
+    fake.astream.assert_not_called()
 
 
 async def _stream_chunks():
