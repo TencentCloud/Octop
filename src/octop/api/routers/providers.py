@@ -472,6 +472,4 @@ async def admin_test_provider(
     model_id = body.model_id if body else None
     embedding = body.embedding if body else None
     stream = body.stream if body else False
-    return await probe_provider_row(
-        row, model_id=model_id, embedding=embedding, stream=stream
-    )
+    return await probe_provider_row(row, model_id=model_id, embedding=embedding, stream=stream)
