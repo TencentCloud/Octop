@@ -44,33 +44,14 @@ source_restricted_modules:
   - insurance_policy_retrospective
   - exam_material_recommendation
 
-# 信源分级（A 正式采集 / B 可增加 / C 仅发现辅助核验 / D 不入证据链）：
+# 信源分级（S/A 原始来源 / B+ 可信二级承载 / B 学术全文承载 / B- 题录核验 / C 仅发现 / D 禁止）：
 #   A 正式纳入临床及公共卫生指南采集：卫健委/疾控/中医药/医保/药监局及直属中心、
 #     中华医学会/医师协会/预防医学会/医学期刊网、CSCO/营养学会/医院协会/人卫社、政府网/网信办。
-#   B 可增加的信源：国家疾病预防控制局、国家中医药管理局、全国标准信息公共服务平台。
-#   C 仅用于发现或辅助核验（聚合平台/指南注册），不作最终证据。
+#   B+ 医脉通/丁香园与 B CNKI/万方/维普只可承载经文档级核验的正式指南/共识全文；
+#     平台内的解读、摘要、新闻、访谈、病例讨论、科普和二次整理仍不得作为最终依据。
+#   B- SinoMed 只用于题录、版本和正式出处核验；C 只用于发现，二者都不支持具体推荐。
 #   D 不进入最终证据链（百科/问答/公众号等）。
 # 权威域名只是第一道门槛；最终依据还必须通过文档类型与版本时效性核验。
-#
-# B+ 受控降级不是把整个平台升级为权威来源。只有原始正文因 412、验证码、
-# JS 阻断、超时或正文不可获取而无法核对时，才允许把下列专业平台作为
-# “正式全文承载渠道”；同时必须有一条 S/A 原始发布方或正式期刊元数据链接，
-# 独立核对标题、制定机构、年份/版本及 DOI/文号。无法完成双重核验时仍只作线索。
-secondary_evidence_required_checks:
-  - title
-  - issuing_organization
-  - publication_year_or_version
-  - doi_or_document_number
-  - complete_normative_full_text
-  - current_version_status
-
-allowed_secondary_evidence_exact_domains:
-  - "guide.medlive.cn"
-  - "www.medlive.cn"
-  - "medlive.cn"
-  - "www.dxy.cn"
-  - "dxy.cn"
-
 allowed_final_evidence_content_types:
   - official_guideline_or_consensus
   - official_standard_pathway_or_quality_control_document
@@ -97,9 +78,13 @@ excluded_final_evidence_content_types:
   - preprint
   - retracted_or_expression_of_concern
   - science_popularization
-  - guideline_or_consensus_interpretation
   - repost_or_excerpt
   - interview_or_media_report
+  - guideline_or_consensus_interpretation
+  - news_or_editorial_summary
+  - case_discussion
+  - patient_education
+  - blog_or_webinar
   - public_health_check_education_or_interpretation
   - conference_training_or_event_report
   - marketing_or_institutional_promotion
@@ -128,6 +113,17 @@ allowed_final_evidence_domain_suffixes:
   - ".pmph.com"
   # B 可增加 — 官方标准平台
   - ".std.samr.gov.cn"
+  # 国际 S/A 原始信源；仍只放行正式指南/共识等规范性文档。
+  - ".who.int"
+  - ".nice.org.uk"
+  - ".gi.org"
+  - ".gastro.org"
+  - ".asge.org"
+  - ".esge.com"
+  - ".easl.eu"
+  - ".aasld.org"
+  - ".ecco-ibd.eu"
+  - ".escardio.org"
 
 allowed_final_evidence_exact_domains:
   # A 正式采集 — S级 官方
@@ -160,14 +156,46 @@ allowed_final_evidence_exact_domains:
   # B 可增加 — 官方标准平台
   - "std.samr.gov.cn"
 
-# C 仅用于发现或辅助核验（聚合平台/指南注册，不作最终证据）+ D 不进入最终证据链
-blocked_final_evidence_domains:
-  # C 仅发现/辅助核验
-  - "www.medsci.cn"
+# B+ 可信二级指南承载平台。只有完成标题、文档类型、制定机构、年份/版本、
+# 正式出处、全文完整性和新版状态核验的正式指南/共识全文才可作最终依据。
+allowed_secondary_fulltext_domain_suffixes:
+  - ".medlive.cn"
+  - ".dxy.cn"
+
+allowed_secondary_fulltext_exact_domains:
+  - "medlive.cn"
+  - "dxy.cn"
+
+# B 正规学术全文承载平台。只接受实际取得并核验的正式期刊指南/共识全文；
+# 只有题录或摘要时不得据此生成具体指南要点。
+allowed_academic_fulltext_domain_suffixes:
+  - ".cnki.net"
+  - ".wanfangdata.com.cn"
+  - ".cqvip.com"
+
+allowed_academic_fulltext_exact_domains:
+  - "cnki.net"
+  - "wanfangdata.com.cn"
+  - "cqvip.com"
+
+# B- 题录与版本核验源，不作最终正文来源。
+metadata_verification_domain_suffixes:
+  - ".sinomed.ac.cn"
+
+metadata_verification_exact_domains:
+  - "sinomed.ac.cn"
+
+# C 发现源，不作最终证据。
+discovery_only_domain_suffixes:
+  - ".medsci.cn"
+  - ".guidelines-registry.cn"
+
+discovery_only_exact_domains:
   - "medsci.cn"
   - "guidelines-registry.cn"
-  - "www.guidelines-registry.cn"
-  # D 不进入最终证据链
+
+# D 不进入最终证据链。
+blocked_final_evidence_domains:
   - "mp.weixin.qq.com"
   - "www.baidu.com"
   - "baidu.com"

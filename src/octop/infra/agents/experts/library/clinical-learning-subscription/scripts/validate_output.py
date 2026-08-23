@@ -37,48 +37,61 @@ def _domain(url: str) -> str:
     return parsed.netloc.lower().split("@")[-1].split(":")[0]
 
 
-def _matches_domain_policy(
+def _matches_domain_group(
     domain: str,
     policy: dict[str, list[str]],
     *,
     exact_key: str,
     suffix_key: str,
 ) -> bool:
-    if domain in set(policy.get(exact_key, [])):
+    if domain in {item.lower() for item in policy.get(exact_key, [])}:
         return True
     for suffix in policy.get(suffix_key, []):
         normalized = suffix.lower()
-        if normalized.startswith(".") and domain.endswith(normalized):
-            return True
-        if domain == normalized:
+        root = normalized.removeprefix(".")
+        if domain == root or domain.endswith(f".{root}"):
             return True
     return False
 
 
-def _is_primary_domain(domain: str, policy: dict[str, list[str]]) -> bool:
-    if domain in set(policy.get("blocked_final_evidence_domains", [])):
-        return False
-    return _matches_domain_policy(
-        domain,
-        policy,
-        exact_key="allowed_final_evidence_exact_domains",
-        suffix_key="allowed_final_evidence_domain_suffixes",
+def _source_role(domain: str, policy: dict[str, list[str]]) -> str:
+    if domain in {item.lower() for item in policy.get("blocked_final_evidence_domains", [])}:
+        return "blocked"
+    groups = (
+        (
+            "primary",
+            "allowed_final_evidence_exact_domains",
+            "allowed_final_evidence_domain_suffixes",
+        ),
+        (
+            "secondary_bplus",
+            "allowed_secondary_fulltext_exact_domains",
+            "allowed_secondary_fulltext_domain_suffixes",
+        ),
+        (
+            "academic_b",
+            "allowed_academic_fulltext_exact_domains",
+            "allowed_academic_fulltext_domain_suffixes",
+        ),
+        (
+            "metadata_bminus",
+            "metadata_verification_exact_domains",
+            "metadata_verification_domain_suffixes",
+        ),
+        (
+            "discovery_c",
+            "discovery_only_exact_domains",
+            "discovery_only_domain_suffixes",
+        ),
     )
-
-
-def _is_secondary_domain(domain: str, policy: dict[str, list[str]]) -> bool:
-    if domain in set(policy.get("blocked_final_evidence_domains", [])):
-        return False
-    return _matches_domain_policy(
-        domain,
-        policy,
-        exact_key="allowed_secondary_evidence_exact_domains",
-        suffix_key="allowed_secondary_evidence_domain_suffixes",
-    )
+    for role, exact_key, suffix_key in groups:
+        if _matches_domain_group(domain, policy, exact_key=exact_key, suffix_key=suffix_key):
+            return role
+    return "unknown"
 
 
 def _is_allowed_domain(domain: str, policy: dict[str, list[str]]) -> bool:
-    return _is_primary_domain(domain, policy) or _is_secondary_domain(domain, policy)
+    return _source_role(domain, policy) in {"primary", "secondary_bplus", "academic_b"}
 
 
 def _extract_markdown_links(text: str) -> list[tuple[str, str]]:
@@ -120,9 +133,16 @@ _EXCLUDED_CONTENT_TYPE_PATTERNS: dict[str, str] = {
     "preprint": r"预印本|preprint",
     "retracted_or_expression_of_concern": r"撤稿|关注声明|retract(?:ed|ion)|expression\s+of\s+concern",
     "science_popularization": r"科普",
-    "guideline_or_consensus_interpretation": r"指南解读|共识解读|规范解读|政策解读",
-    "repost_or_excerpt": r"转载|摘编",
+    "repost_or_excerpt": r"(?<!授权)转载|摘编",
     "interview_or_media_report": r"访谈|媒体报道",
+    "guideline_or_consensus_interpretation": (
+        r"(?:指南|共识).{0,8}(?:解读|解析|摘要|要点)"
+        r"|(?:解读|解析).{0,8}(?:指南|共识)"
+    ),
+    "news_or_editorial_summary": r"新闻|编辑摘要|发布会",
+    "case_discussion": r"病例讨论|病例分享",
+    "patient_education": r"患者教育|患教",
+    "blog_or_webinar": r"博客|webinar|网络研讨会",
     "public_health_check_education_or_interpretation": r"体检知识|体检解读",
     "conference_training_or_event_report": r"会议报道|培训报道|活动报道",
     "marketing_or_institutional_promotion": r"营销|机构宣传",
@@ -147,7 +167,7 @@ def _extract_section(text: str, heading: str) -> str:
 
 def _final_evidence_lines(text: str) -> list[str]:
     evidence_prefix = re.compile(
-        r"^\s*(?:(?:依据|指南|来源|更新文件|政策文件|权威来源)\s*[:：]|[A-C][.、]\s*)"
+        r"^\s*(?:(?:依据|指南|来源|文档核验|更新文件|政策文件|权威来源)\s*[:：]|[A-C][.、]\s*)"
     )
     return [line.strip() for line in text.splitlines() if evidence_prefix.search(line)]
 
@@ -164,6 +184,33 @@ def _validate_final_evidence_content_types(
             if re.search(pattern, line, flags=re.IGNORECASE):
                 errors.append(f"最终依据不得使用非规范性文档类型：{content_type}")
                 break
+
+
+_CARRIER_METADATA_FIELDS: tuple[tuple[str, str], ...] = (
+    ("文档标题", r"文档标题\s*[:：]\s*[^；;\n]+"),
+    ("文档类型", r"文档类型\s*[:：]\s*正式(?:专家)?(?:指南|共识)"),
+    ("制定机构", r"制定机构\s*[:：]\s*[^；;\n]+"),
+    ("年份/版本", r"年份/版本\s*[:：]\s*[^；;\n]+"),
+    ("正式出处", r"正式出处\s*[:：]\s*[^；;\n]+"),
+    ("完整全文核验", r"完整全文核验\s*[:：]\s*已核验"),
+    ("版本状态", r"版本状态\s*[:：]\s*[^；;\n]+"),
+)
+
+
+def _carrier_link_context(text: str, url: str) -> str:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if url in line:
+            start = max(0, index - 1)
+            return "\n".join(lines[start : index + 1])
+    return ""
+
+
+def _validate_carrier_metadata(text: str, url: str, errors: list[str]) -> None:
+    context = _carrier_link_context(text, url)
+    for label, pattern in _CARRIER_METADATA_FIELDS:
+        if not re.search(pattern, context, flags=re.IGNORECASE):
+            errors.append(f"B+/B正文承载来源缺少文档核验字段：{label}")
 
 
 # 临床安全域模块清单。只有这些模块会套用医学禁用词和权威来源白名单。
@@ -370,18 +417,15 @@ def validate(text: str, module: str, policy_path: Path, allow_no_source: bool) -
             if not domain:
                 errors.append(f"无效URL：{url}")
                 continue
-            if not _is_allowed_domain(domain, policy):
+            role = _source_role(domain, policy)
+            if role in {"secondary_bplus", "academic_b"}:
+                _validate_carrier_metadata(text, url, errors)
+            elif role == "metadata_bminus":
+                errors.append(f"B-题录核验源不得作为最终来源：{domain}")
+            elif role == "discovery_c":
+                errors.append(f"C级发现源不得作为最终来源：{domain}")
+            elif role != "primary":
                 errors.append(f"来源域名不在白名单：{domain}")
-
-        secondary_urls = [url for url in urls if _is_secondary_domain(_domain(url), policy)]
-        if secondary_urls:
-            primary_urls = [url for url in urls if _is_primary_domain(_domain(url), policy)]
-            if not primary_urls:
-                errors.append("B+正文承载链接必须同时提供S/A原始元数据链接")
-            if "原始元数据" not in text:
-                errors.append("B+受控降级必须标明：原始元数据")
-            if "正文承载" not in text:
-                errors.append("B+受控降级必须标明：正文承载")
         _validate_final_evidence_content_types(text, policy, errors)
     else:
         for url in urls:

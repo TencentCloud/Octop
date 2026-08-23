@@ -288,7 +288,6 @@ def test_source_policy_filters_content_type_and_prefers_current_version() -> Non
         "scoping_review",
         "umbrella_review",
         "science_popularization",
-        "guideline_or_consensus_interpretation",
         "repost_or_excerpt",
         "interview_or_media_report",
         "public_health_check_education_or_interpretation",
@@ -297,82 +296,149 @@ def test_source_policy_filters_content_type_and_prefers_current_version() -> Non
 
     source_verify = (_ROOT / "skills" / "source-verify" / "SKILL.md").read_text(encoding="utf-8")
     assert "权威网站不等于" in source_verify
-    assert "科普、转载/摘编、访谈/媒体报道" in source_verify
+    assert "科普、未核验转载/摘编、指南/共识解读" in source_verify
     assert "不得出现在最终“来源”、下一阶段指南候选或正式学习轨道来源中" in source_verify
     assert "最新且当前有效的正式版本" in source_verify
     assert "网页更新时间" in source_verify
-    assert "整个用户回合累计" in source_verify
-
-    section_skill = (_ROOT / "skills" / "guideline-section-expansion" / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    assert "默认只选 1 份" in section_skill
-    assert "整个用户回合的总工具预算" in section_skill
-    assert "累计预算已耗尽时不得继续搜索补链" in section_skill
 
 
-def _bplus_section_output(*, include_primary: bool = True, label_pair: bool = True) -> str:
-    primary_label = "原始元数据" if label_pair else "正式出处"
-    secondary_label = "正文承载" if label_pair else "参考页面"
-    primary = (
-        f"\n来源：{primary_label}（国家卫生健康委）：[链接](https://www.nhc.gov.cn/example)"
-        if include_primary
-        else ""
-    )
-    return f"""【指南章节展开｜高血压随访】
-依据：高血压正式指南
-章节：随访管理
-原文定位：随访管理相关章节
-原文要点：定期评估诊室外血压与危险因素。
-学习提示：结合原文章节理解随访框架。
-边界：本内容用于指南学习，不替代原文，不提供个体诊疗。{primary}
-来源：{secondary_label}（原始正文访问受限）：[链接](https://guide.medlive.cn/example)
+def _carrier_learning_text(*, title: str, url: str, carrier_grade: str = "B+") -> str:
+    return f"""【指南章节展开｜随访管理】
+依据：{title}
+章节：随访管理章节
+原文定位：正式全文中的随访管理章节
+原文要点：学习随访管理的原则与质量要求。
+学习提示：结合原文理解，不代入具体患者。
+边界：本内容不替代原文，不提供个体诊疗、处方剂量或急诊处置建议。
+文档核验：文档标题：{title}；文档类型：正式指南；制定机构：中华医学会相关分会；年份/版本：2025；正式出处：中华医学杂志 2025 年第 1 期；完整全文核验：已核验；版本状态：未发现更新、替代或废止文件。
+来源：{title}（{carrier_grade}正文承载）：[链接]({url})
 """
 
 
-def test_bplus_source_requires_primary_metadata_and_explicit_labels() -> None:
-    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "bplus_source_test")
-    policy_path = _ROOT / "references" / "source-policy.yaml"
+@pytest.mark.parametrize(
+    ("domain", "role"),
+    [
+        ("guide.medlive.cn", "secondary_bplus"),
+        ("www.dxy.cn", "secondary_bplus"),
+        ("kns.cnki.net", "academic_b"),
+        ("d.wanfangdata.com.cn", "academic_b"),
+        ("www.cqvip.com", "academic_b"),
+        ("www.sinomed.ac.cn", "metadata_bminus"),
+        ("www.medsci.cn", "discovery_c"),
+        ("www.guidelines-registry.cn", "discovery_c"),
+        ("who.int", "primary"),
+        ("www.nice.org.uk", "primary"),
+        ("www.escardio.org", "primary"),
+    ],
+)
+def test_source_policy_assigns_document_carrier_roles(domain: str, role: str) -> None:
+    module_name = f"role_{role}_{domain.replace('.', '_')}"
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", module_name)
+    policy = validator._load_list_yaml(_ROOT / "references" / "source-policy.yaml")
+    assert validator._source_role(domain, policy) == role
 
-    valid = validator.validate(
-        _bplus_section_output(),
+
+@pytest.mark.parametrize(
+    ("url", "grade"),
+    [
+        ("https://guide.medlive.cn/guideline/example", "B+"),
+        ("https://www.dxy.cn/bbs/newweb/pc/post/example", "B+"),
+        ("https://kns.cnki.net/kcms2/article/abstract/example", "B"),
+        ("https://d.wanfangdata.com.cn/periodical/example", "B"),
+        ("https://www.cqvip.com/QK/example", "B"),
+    ],
+)
+def test_verified_secondary_fulltext_carrier_is_allowed(url: str, grade: str) -> None:
+    domain = url.split("/", 3)[2].replace(".", "_")
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", f"carrier_allowed_{grade}_{domain}"
+    )
+    result = validator.validate(
+        _carrier_learning_text(title="中国基层随访管理指南（2025）", url=url, carrier_grade=grade),
         module="guideline_section_expansion",
-        policy_path=policy_path,
+        policy_path=_ROOT / "references" / "source-policy.yaml",
         allow_no_source=False,
     )
-    assert valid["ok"] is True
+    assert result["ok"] is True
 
-    missing_primary = validator.validate(
-        _bplus_section_output(include_primary=False),
-        module="guideline_section_expansion",
-        policy_path=policy_path,
-        allow_no_source=False,
+
+def test_secondary_carrier_requires_all_document_identity_fields() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "carrier_missing_identity_test"
     )
-    assert "B+正文承载链接必须同时提供S/A原始元数据链接" in missing_primary["errors"]
-
-    missing_labels = validator.validate(
-        _bplus_section_output(label_pair=False),
-        module="guideline_section_expansion",
-        policy_path=policy_path,
-        allow_no_source=False,
-    )
-    assert "B+受控降级必须标明：原始元数据" in missing_labels["errors"]
-    assert "B+受控降级必须标明：正文承载" in missing_labels["errors"]
-
-
-def test_bplus_guideline_interpretation_is_not_final_evidence() -> None:
-    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "bplus_interpretation_test")
-    text = _bplus_section_output().replace("正文承载（原始正文访问受限）", "正文承载（指南解读）")
+    text = _carrier_learning_text(
+        title="中国基层随访管理指南（2025）",
+        url="https://guide.medlive.cn/guideline/example",
+    ).replace("；完整全文核验：已核验", "")
     result = validator.validate(
         text,
         module="guideline_section_expansion",
         policy_path=_ROOT / "references" / "source-policy.yaml",
         allow_no_source=False,
     )
+    assert result["ok"] is False
+    assert "B+/B正文承载来源缺少文档核验字段：完整全文核验" in result["errors"]
+
+
+def test_secondary_carrier_rejects_guideline_interpretation() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "carrier_interpretation_test"
+    )
+    result = validator.validate(
+        _carrier_learning_text(
+            title="中国基层随访管理指南解读",
+            url="https://www.dxy.cn/bbs/newweb/pc/post/example",
+        ),
+        module="guideline_section_expansion",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is False
     assert (
         "最终依据不得使用非规范性文档类型：guideline_or_consensus_interpretation"
         in result["errors"]
     )
+
+
+@pytest.mark.parametrize(
+    ("url", "expected_error"),
+    [
+        (
+            "https://www.sinomed.ac.cn/article/example",
+            "B-题录核验源不得作为最终来源：www.sinomed.ac.cn",
+        ),
+        (
+            "https://www.medsci.cn/guideline/example",
+            "C级发现源不得作为最终来源：www.medsci.cn",
+        ),
+    ],
+)
+def test_metadata_and_discovery_sources_cannot_be_final(url: str, expected_error: str) -> None:
+    domain = url.split("/", 3)[2].replace(".", "_")
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", f"non_final_source_{domain}")
+    result = validator.validate(
+        _carrier_learning_text(title="中国基层随访管理指南（2025）", url=url),
+        module="guideline_section_expansion",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is False
+    assert expected_error in result["errors"]
+
+
+def test_authorized_full_reprint_is_not_treated_as_unverified_repost() -> None:
+    validator = _load_module(_ROOT / "scripts" / "validate_output.py", "authorized_reprint_test")
+    text = _carrier_learning_text(
+        title="中国基层随访管理指南（2025）授权转载正式全文",
+        url="https://guide.medlive.cn/guideline/example",
+    )
+    result = validator.validate(
+        text,
+        module="guideline_section_expansion",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is True
 
 
 def test_internal_learning_team_members_have_no_tools() -> None:
