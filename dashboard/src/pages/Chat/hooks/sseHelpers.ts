@@ -20,6 +20,8 @@ export interface ToolCallData {
   output?: string;
   errorCode?: string;
   returnCode?: number;
+  /** Owning plugin id when known (from tool index / SSE). */
+  pluginId?: string;
 }
 
 export interface HitlActionRequest {

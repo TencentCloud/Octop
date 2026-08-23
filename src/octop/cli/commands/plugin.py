@@ -59,6 +59,10 @@ def install_plugin(source: str, force: bool) -> None:
     except OctopError as exc:
         raise click.ClickException(exc.message) from exc
     click.echo(f"Installed plugin {loaded.manifest.id} v{loaded.manifest.version}")
+    click.echo(
+        "Note: if octop run is already running, call POST /api/plugins/reload "
+        "(Admin → Plugins → Reload) or restart the server so status becomes loaded.",
+    )
 
 
 @plugin.command("uninstall")

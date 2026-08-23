@@ -91,6 +91,9 @@ routes until the wizard finishes.
 | `POST`   | `/agents/{id}/read` | owner | `204` (mark unread badge cleared) |
 | `GET`    | `/agents/{id}/status` | owner | `{state, last_error?, ...}` |
 | `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, ...}` → `201` (creates from bundled expert template) |
+| `GET`    | `/agents/{id}/tool-settings` | owner | built-in + installed plugin tools with enable / disableable / available flags |
+| `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
+| `PATCH`  | `/agents/{id}/tool-settings/{tool_name}` | owner | body `{enabled, source, plugin_id?}` — toggle one tool (hot-sync) |
 
 ## Chat (WebSocket)
 
@@ -355,6 +358,10 @@ endpoint (public, mounted directly in `api/app.py`).
 | `GET`/`POST` | `/preferences` | user | UI preferences (per-user key/value) |
 | `GET` | `/slash/commands` | user | slash command catalog for the composer menu |
 | `GET`/`POST` | `/plugins` | user | installed plugin list / install flow |
+| `POST` | `/plugins/reload` | admin (`plugins`) | reload plugins from disk into process |
+| `PATCH` | `/plugins/{id}` | admin (`plugins`) | enable/disable plugin (`{ "enabled": bool }`) |
+| `GET` | `/plugins/{id}/ui/{path}` | user | serve prebuilt plugin UI assets (`ui/dist/…`) |
+| `DELETE` | `/plugins/{id}` | admin (`plugins`) | uninstall plugin |
 
 ## Usage & admin
 

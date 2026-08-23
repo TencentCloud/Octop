@@ -478,7 +478,9 @@
     "mobile_ui_dump": "手机界面结构",
     "mobile_handoff_to_user": "交给用户操作（手机）",
     "read_env_file": "读取环境变量",
-    "write_env_file": "写入环境变量"
+    "write_env_file": "写入环境变量",
+    "generate_image": "生成图片",
+    "generate_video": "生成视频"
   },
   "skills": {
     "pdf": "PDF 处理",

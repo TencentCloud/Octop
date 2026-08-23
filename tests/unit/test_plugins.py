@@ -50,6 +50,38 @@ def test_build_plugin_tools_respects_enabled_flag() -> None:
     assert enabled[0].name == "echo_message"
 
 
+def test_expand_plugin_tools_default_on_without_agent_config() -> None:
+    """Octop default-on expansion makes tools bind without an agent opt-in."""
+    from octop.infra.agents.plugin_tool_defaults import expand_plugin_tools_default_on
+
+    load_plugin_dir(_FIXTURE, install_deps=False)
+    expanded = expand_plugin_tools_default_on(
+        {},
+        registered_tools=[("echo-tool", "echo_message")],
+        global_plugins={},
+    )
+    tools = build_plugin_tools(agent_plugins=expanded, global_plugins={})
+    assert len(tools) == 1
+    assert tools[0].name == "echo_message"
+
+    still_off = build_plugin_tools(
+        agent_plugins=expand_plugin_tools_default_on(
+            {},
+            registered_tools=[("echo-tool", "echo_message")],
+            global_plugins={"echo-tool": False},
+        ),
+        global_plugins={"echo-tool": False},
+    )
+    assert still_off == []
+
+    # Explicit opt-out still wins.
+    opted_out = expand_plugin_tools_default_on(
+        {"echo-tool": {"tools": {"echo_message": {"enabled": False}}}},
+        registered_tools=[("echo-tool", "echo_message")],
+    )
+    assert build_plugin_tools(agent_plugins=opted_out) == []
+
+
 def test_collect_plugin_tool_configs() -> None:
     cfg = collect_plugin_tool_configs(
         {

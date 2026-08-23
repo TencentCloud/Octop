@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 工具设置：单工具 `PATCH /agents/{id}/tool-settings/{name}`；插件工具开关热更新（不再 reload）；列表标注能力未挂载工具；harness `tools_disabled`（需 orcakit-harness-agent >=0.9.25）
+
 ## [0.9.26] - 2026-08-23
 
 ### 新增

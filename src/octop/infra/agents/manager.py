@@ -92,6 +92,13 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
     return set()
 
 
+def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
+    """Return disabled built-in tool names from agent config (critical stripped)."""
+    from octop.infra.agents.tool_catalog import tools_disabled_set as _tools_disabled_set
+
+    return _tools_disabled_set(cfg)
+
+
 def skill_package_ids_list(cfg: dict[str, Any]) -> list[str]:
     """Return non-empty skill package ids from agent config."""
     raw = cfg.get("skill_package_ids")
@@ -1430,6 +1437,27 @@ class AgentManager:
         self.persist_harness_config(agent_id, cfg)
         self.sync_skills_disabled(agent_id, disabled)
 
+    async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
+        """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
+        from octop.infra.agents.tool_catalog import normalize_tools_disabled
+
+        cfg = self.get_config(agent_id)
+        cleaned = normalize_tools_disabled(sorted(disabled))
+        cfg["tools_disabled"] = cleaned
+        self.persist_harness_config(agent_id, cfg)
+        self.sync_effective_tools_disabled(agent_id)
+
+    async def persist_plugin_tools_config(
+        self,
+        agent_id: str,
+        plugins: dict[str, Any],
+    ) -> None:
+        """Persist ``config.plugins`` and hot-sync tool denylist (no harness reload)."""
+        cfg = self.get_config(agent_id)
+        cfg["plugins"] = plugins
+        self.persist_harness_config(agent_id, cfg)
+        self.sync_effective_tools_disabled(agent_id)
+
     def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
         """Resolve persisted package ids to existing absolute package skill directories."""
         store = SkillPackageStore(
@@ -1702,6 +1730,40 @@ class AgentManager:
     def sync_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Push ``skills_disabled`` to the running harness agent (hot update)."""
         self.get_agent(agent_id).set_skills_disabled(disabled)
+
+    def sync_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
+        """Push ``tools_disabled`` to the running harness agent (hot update).
+
+        No-op when the agent is not loaded — persisted config still applies on
+        the next start via ``_build_harness_config``.
+        """
+        try:
+            agent = self.get_agent(agent_id)
+        except OctopError:
+            return
+        setter = getattr(agent, "set_tools_disabled", None)
+        if callable(setter):
+            setter(disabled)
+
+    def sync_effective_tools_disabled(self, agent_id: str) -> None:
+        """Hot-sync builtin + plugin denylist derived from current agent config."""
+        from harness_agent.plugins import PluginRegistry
+
+        from octop.infra.agents.tool_catalog import effective_tools_disabled
+
+        cfg = self.get_config(agent_id)
+        global_plugins = (
+            self._plugin_manager.global_enabled_map() if self._plugin_manager is not None else {}
+        )
+        registered = [(reg.plugin_id, reg.name) for reg in PluginRegistry().all_tools()]
+        self.sync_tools_disabled(
+            agent_id,
+            effective_tools_disabled(
+                cfg,
+                registered_plugin_tools=registered,
+                global_plugins=global_plugins,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Internal — validation
@@ -2166,12 +2228,23 @@ class AgentManager:
 
         from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
-        agent_plugins = cfg.get("plugins") if isinstance(cfg.get("plugins"), dict) else {}
+        from octop.infra.agents.plugin_tool_defaults import (  # noqa: PLC0415
+            expand_plugin_tools_default_on,
+        )
+
         global_plugins = (
             self._plugin_manager.global_enabled_map() if self._plugin_manager is not None else {}
         )
+        registered = [(reg.plugin_id, reg.name) for reg in PluginRegistry().all_tools()]
+        # Mount every globally-enabled plugin tool; per-agent ``enabled: false``
+        # is enforced via ``tools_disabled`` so toggles can hot-sync without reload.
+        mount_plugins = expand_plugin_tools_default_on(
+            None,
+            registered_tools=registered,
+            global_plugins=global_plugins,
+        )
         plugin_tools = build_plugin_tools(
-            agent_plugins=agent_plugins,
+            agent_plugins=mount_plugins,
             global_plugins=global_plugins,
         )
         # Plugin authors may register tools with non-ASCII (e.g. Chinese) names,
@@ -2330,6 +2403,16 @@ class AgentManager:
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
+        if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            from octop.infra.agents.tool_catalog import effective_tools_disabled
+
+            harness_cfg.tools_disabled = frozenset(
+                effective_tools_disabled(
+                    cfg,
+                    registered_plugin_tools=registered,
+                    global_plugins=global_plugins,
+                )
+            )
         applied = policy.apply_to_config(harness_cfg)
         return replace(
             applied,

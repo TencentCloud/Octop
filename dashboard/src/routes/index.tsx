@@ -55,6 +55,7 @@ export const pathToKey: Record<string, string> = {
   "/acp": "acp",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
+  "/personalization/tools": "personalization",
   "/personalization/subagents": "personalization",
   "/personalization/channels": "channels",
   "/personalization/mbti": "personalization",
@@ -262,7 +263,7 @@ export const routeConfigs: RouteConfig[] = [
   },
   {
     path: "/plugins",
-    element: <Navigate to="/admin/plugins?tab=agent-tools" replace />,
+    element: <Navigate to="/admin/plugins" replace />,
   },
   { path: "/sessions", element: <Navigate to="/chat" replace /> },
   { path: "/cron-jobs", element: <Navigate to="/tasks" replace /> },

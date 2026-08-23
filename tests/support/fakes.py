@@ -65,6 +65,7 @@ class FakeHarnessAgent:
         self.config = SimpleNamespace(
             mcp_server_configs={},
             skills_disabled=frozenset(),
+            tools_disabled=frozenset(),
             skill_package_roots=None,
         )
         self._mcp_tools: list[Any] = []
@@ -200,6 +201,13 @@ description: General-purpose agent
     ) -> None:
         """Hot-update disabled skills (mirrors harness_agent.HarnessAgent)."""
         self.config.skills_disabled = frozenset(str(x) for x in (disabled or ()))
+
+    def set_tools_disabled(
+        self,
+        disabled: set[str] | frozenset[str] | list[str] | None,
+    ) -> None:
+        """Hot-update disabled tools (mirrors harness_agent.HarnessAgent)."""
+        self.config.tools_disabled = frozenset(str(x) for x in (disabled or ()))
 
     def set_skill_package_roots(self, roots: list[dict[str, str]] | None) -> None:
         """Hot-update skill package roots (mirrors harness_agent.HarnessAgent)."""

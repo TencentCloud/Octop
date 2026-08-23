@@ -26,12 +26,14 @@ import {
   Sparkles,
   Notebook,
   Waypoints,
+  Wrench,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
+import ToolCatalogDrawer from "./ToolCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
@@ -84,6 +86,9 @@ export default function AgentExpertsTable({
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [workspaceAgentId, setWorkspaceAgentId] = useState<string | null>(null);
   const [skillCatalogAgentId, setSkillCatalogAgentId] = useState<string | null>(
+    null,
+  );
+  const [toolSettingsAgentId, setToolSettingsAgentId] = useState<string | null>(
     null,
   );
   const [channelCatalogAgentId, setChannelCatalogAgentId] = useState<
@@ -450,6 +455,16 @@ export default function AgentExpertsTable({
                     <Bot size={13} />
                   </button>
                 </Tooltip>
+                <Tooltip title={t("experts.toolsBtn")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.tableActionBtn}
+                    onClick={() => setToolSettingsAgentId(row.agent_id)}
+                    aria-label={t("experts.toolsBtn")}
+                  >
+                    <Wrench size={13} />
+                  </button>
+                </Tooltip>
                 <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
                   <button
                     type="button"
@@ -564,6 +579,11 @@ export default function AgentExpertsTable({
         agentId={skillCatalogAgentId ?? ""}
         open={skillCatalogAgentId !== null}
         onClose={() => setSkillCatalogAgentId(null)}
+      />
+      <ToolCatalogDrawer
+        agentId={toolSettingsAgentId ?? ""}
+        open={toolSettingsAgentId !== null}
+        onClose={() => setToolSettingsAgentId(null)}
       />
       <ChannelCatalogDrawer
         agentId={channelCatalogAgentId ?? ""}

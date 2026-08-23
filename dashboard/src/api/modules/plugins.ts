@@ -15,9 +15,15 @@ export interface InstalledPlugin {
   name?: string;
   kind?: string;
   description?: string;
+  /** Emoji text or absolute image URL from plugin.yaml. */
+  icon?: string | null;
+  requires?: string[];
   path?: string;
   loaded?: boolean;
+  /** Global enable switch from config.json (default true). */
+  enabled?: boolean;
   error?: string;
+  ui?: { entry: string; manifest: string } | null;
   tools?: {
     name: string;
     description?: string;
@@ -75,6 +81,20 @@ export const pluginsApi = {
     return request(`/plugins/${encodeURIComponent(pluginId)}`, {
       method: "DELETE",
     });
+  },
+
+  setEnabled(pluginId: string, enabled: boolean): Promise<InstalledPlugin> {
+    return request(`/plugins/${encodeURIComponent(pluginId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  reload(): Promise<{
+    status: string;
+    loaded: { id: string; version: string; kind: string }[];
+  }> {
+    return request("/plugins/reload", { method: "POST" });
   },
 
   listAgentTools(agentId: string): Promise<{ tools: AgentPluginTool[] }> {

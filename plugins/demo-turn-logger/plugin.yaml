@@ -2,5 +2,6 @@ id: demo-turn-logger
 version: 0.1.0
 name: Demo Turn Logger
 description: Sample hook plugin (kind=hook) — logs before and after each model call
+icon: "📝"
 kind: hook
 entry: main.py

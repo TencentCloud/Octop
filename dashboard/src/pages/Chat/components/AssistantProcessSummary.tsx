@@ -8,27 +8,33 @@ import { ToolDetailsInline } from "./MessageBubble";
 import styles from "../index.module.less";
 
 interface AssistantProcessSummaryProps {
+  /** Fold body: thinking + plain tools (pinned rich-UI tools excluded). */
   split: AssistantTurnSplit;
+  /**
+   * Full turn used for the summary counts. Pinned plugin UIs are siblings of
+   * this fold, but they still count as tool calls in the headline.
+   */
+  statsSplit?: AssistantTurnSplit;
   isStreaming?: boolean;
   onAcpPermissionSelect?: (message: string) => void;
-  /** When true, tool inline blocks skip image/video (shown on the turn strip). */
   hideToolMedia?: boolean;
   agentId?: string | null;
 }
 
+/** Foldable thinking + plain tools only (no rich plugin UI). */
 function AssistantProcessSummary({
   split,
+  statsSplit,
   isStreaming = false,
   onAcpPermissionSelect,
   hideToolMedia = false,
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  // Always collapsed by default — tools/thinking stay merged until the user opens them.
   const [expanded, setExpanded] = useState(false);
   const { toolCount, thinkingCount } = useMemo(
-    () => countProcessStats(split),
-    [split],
+    () => countProcessStats(statsSplit ?? split),
+    [statsSplit, split],
   );
 
   if (toolCount === 0 && thinkingCount === 0) return null;

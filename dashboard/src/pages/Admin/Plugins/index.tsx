@@ -1,29 +1,16 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Package, Wrench } from "lucide-react";
+import { Tabs } from "antd";
 import PageShell from "../../../layouts/PageShell";
-import SettingsTabBar from "../../Settings/shared/SettingsTabBar";
-import { AgentToolsPanel } from "./AgentToolsPanel";
 import { InstalledPluginsPanel } from "./InstalledPluginsPanel";
+import { PluginMarketPanel } from "./PluginMarketPanel";
 
-type TabKey = "installed" | "agent-tools";
-
-const TABS: { key: TabKey; labelKey: string; icon: ReactNode }[] = [
-  {
-    key: "installed",
-    labelKey: "plugins.tabInstalled",
-    icon: <Package size={15} />,
-  },
-  {
-    key: "agent-tools",
-    labelKey: "plugins.tabAgentTools",
-    icon: <Wrench size={15} />,
-  },
-];
+type TabKey = "installed" | "market";
 
 function parseTab(raw: string | null): TabKey {
-  if (raw === "agent-tools") return "agent-tools";
+  if (raw === "market") return "market";
+  // Legacy ?tab=agent-tools redirects to installed (tools live in plugin detail).
   return "installed";
 }
 
@@ -38,33 +25,38 @@ export default function AdminPluginsPage() {
     setActiveTab(parseTab(searchParams.get("tab")));
   }, [searchParams]);
 
-  const selectTab = (key: TabKey) => {
-    setActiveTab(key);
-    if (key === "installed") {
+  const selectTab = (key: string) => {
+    const next = parseTab(key);
+    setActiveTab(next);
+    if (next === "installed") {
       searchParams.delete("tab");
       setSearchParams(searchParams, { replace: true });
     } else {
-      setSearchParams({ tab: key }, { replace: true });
+      setSearchParams({ tab: next }, { replace: true });
     }
   };
 
   return (
-    <PageShell.Tabbed
+    <PageShell.FillTabs
       title={t("pageShell.adminPlugins.title")}
       subtitle={t("pageShell.adminPlugins.subtitle")}
-      tabBar={
-        <SettingsTabBar
-          tabs={TABS}
-          activeKey={activeTab}
-          onChange={selectTab}
-        />
-      }
     >
-      {activeTab === "installed" ? (
-        <InstalledPluginsPanel />
-      ) : (
-        <AgentToolsPanel />
-      )}
-    </PageShell.Tabbed>
+      <Tabs
+        activeKey={activeTab}
+        onChange={selectTab}
+        items={[
+          {
+            key: "installed",
+            label: t("plugins.tabInstalled"),
+            children: <InstalledPluginsPanel />,
+          },
+          {
+            key: "market",
+            label: t("plugins.tabMarket"),
+            children: <PluginMarketPanel />,
+          },
+        ]}
+      />
+    </PageShell.FillTabs>
   );
 }

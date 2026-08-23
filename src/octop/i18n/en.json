@@ -478,7 +478,9 @@
     "mobile_ui_dump": "Mobile UI dump",
     "mobile_handoff_to_user": "Hand off to user (mobile)",
     "read_env_file": "Read env file",
-    "write_env_file": "Write env file"
+    "write_env_file": "Write env file",
+    "generate_image": "Generate image",
+    "generate_video": "Generate video"
   },
   "skills": {
     "pdf": "PDF",
