@@ -8,8 +8,9 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Popconfirm, Switch, Table, Tag, Tooltip } from "antd";
+import { Popconfirm, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { ResizableTable } from "@/components/ResizableTable";
 
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -36,7 +37,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
-import { iconForName } from "./iconForName";
+import { ExpertIcon } from "./iconForName";
 import {
   isAgentChatReady,
   formatAgentState,
@@ -273,7 +274,11 @@ export default function AgentExpertsTable({
               background: `${row.color || "#6366f1"}1a`,
             }}
           >
-            {iconForName(row.icon_name, 16)}
+            <ExpertIcon
+              iconUrl={row.icon_url}
+              iconName={row.icon_name}
+              size={row.icon_url ? 28 : 16}
+            />
           </span>
           <span className={styles.tableNameText}>{name}</span>
           {row.is_shared && (
@@ -310,6 +315,7 @@ export default function AgentExpertsTable({
       title: t("experts.table.state", "状态"),
       dataIndex: "state",
       width: 200,
+      align: "center",
       render: (_state, row) => {
         const state = localStates[row.agent_id] ?? row.state;
         const friendlyError =
@@ -535,7 +541,8 @@ export default function AgentExpertsTable({
   return (
     <>
       <div ref={tableWrapRef} className={styles.expertsTable}>
-        <Table<OctopAgent>
+        <ResizableTable
+          storageKey="experts-agents"
           rowKey="agent_id"
           dataSource={agents}
           columns={columns}

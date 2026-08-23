@@ -65,6 +65,7 @@ def test_categories_match_nav_groups() -> None:
         "terminal",
         "browser",
         "desktop",
+        "mobile",
     }
     assert PERMISSIONS["envs"].page == "advanced"
     assert PERMISSIONS["knowledge_settings"].page == "advanced"

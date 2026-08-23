@@ -127,7 +127,7 @@ async def test_status_endpoint(env):
 
 
 async def test_icon_and_color_round_trip(env):
-    """icon_name and color stored in config_json must appear in GET /agents."""
+    """icon_name and color stored as first-class fields must appear in GET /agents."""
     c, _srv, auth = env
     r = await c.post(
         "/api/agents",

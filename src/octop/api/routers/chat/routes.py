@@ -20,6 +20,7 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_from_expert,
     welcome_payload_has_content,
 )
+from octop.infra.agents.profile import welcome_from_row
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
 from octop.infra.gateway.hitl.store import HitlPendingRecord
@@ -53,9 +54,10 @@ async def get_chat_welcome(
     """Welcome copy for the empty chat screen.
 
     Resolution order:
-    1. Agent workspace ``manifest.json`` (seeded at create; instance-owned).
-    2. Bundled expert catalog entry for ``template_name`` (legacy agents).
-    3. Default quick cards (``general-assistant`` or a small built-in set).
+    1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
+    2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
+    3. Bundled expert catalog entry for ``template_name`` (legacy agents).
+    4. Default quick cards (``general-assistant`` or a small built-in set).
     """
     assert_agent_access(server, agent_id, user)
     assert server.app_runtime is not None
@@ -63,21 +65,26 @@ async def get_chat_welcome(
     catalog = server.expert_catalog
 
     workspace = registry.workspace_for_agent(agent_id)
+    payload: dict[str, Any] | None = None
     if workspace is not None:
         payload = await read_workspace_manifest_welcome(workspace)
-        if payload is not None:
-            return payload
 
     row = registry.get_row(agent_id)
     template = (row.template_name if row else None) or ""
-    if catalog is not None and template:
+    if payload is None and catalog is not None and template:
         expert = catalog.get(template)
         if expert is not None:
-            payload = welcome_payload_from_expert(expert)
-            if welcome_payload_has_content(payload):
-                return payload
+            candidate = welcome_payload_from_expert(expert)
+            if welcome_payload_has_content(candidate):
+                payload = candidate
 
-    return default_welcome_payload(catalog)
+    if payload is None:
+        payload = default_welcome_payload(catalog)
+
+    db_welcome = welcome_from_row(row) if row is not None else None
+    if db_welcome is not None:
+        payload = {**payload, "welcome_message": {"zh": db_welcome, "en": db_welcome}}
+    return payload
 
 
 async def iter_dashboard_hitl_resume_sse(

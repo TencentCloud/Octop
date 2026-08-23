@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 DEFAULT_SANDBOX_PREFIX = "octop_sandbox"
@@ -16,6 +17,8 @@ _DOCKER_PASSTHROUGH_KEYS = (
     "auto_remove",
     "workspace_path",
     "volumes",
+    "environment",
+    "environment_file",
     "agent_id",
     "container_name",
     "sandbox_scope",
@@ -72,4 +75,17 @@ def enrich_docker_backend_spec(
         out.setdefault("agent_id", agent_id)
     elif scope == "user" and username and not out.get("username"):
         out["username"] = username
+    return out
+
+
+def inject_docker_global_environment(
+    spec: dict[str, Any],
+    env_file: str | Path | None,
+) -> dict[str, Any]:
+    """Point a docker spec at Admin ``~/.octop/env`` (re-read on each execute)."""
+    if str(spec.get("type") or "").lower() != "docker":
+        return spec
+    out = dict(spec)
+    if env_file is not None:
+        out["environment_file"] = str(env_file)
     return out

@@ -16,9 +16,36 @@ export const FORBIDDEN_EVENT = "octop:forbidden";
 /** Response header used by the server for JWT sliding renewal. */
 export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
 
+/** Quiet error thrown when setup lockdown blocks a non-wizard API call. */
+export class SetupRequiredError extends Error {
+  constructor() {
+    super("Setup required");
+    this.name = "SetupRequiredError";
+  }
+}
+
+/** Session flag: backend reported no admin yet (setup lockdown active). */
+let _setupRequiredKnown = false;
+
+/** Mark that first-run setup is still required (skips further locked APIs). */
+export function markSetupRequired(): void {
+  _setupRequiredKnown = true;
+}
+
+/** Clear the setup-lockdown short-circuit (after admin exists / login). */
+export function clearSetupRequired(): void {
+  _setupRequiredKnown = false;
+}
+
+/** Whether this tab already knows setup lockdown is active. */
+export function isSetupRequiredKnown(): boolean {
+  return _setupRequiredKnown;
+}
+
 /** Save JWT token to localStorage */
 export function setAuthToken(token: string) {
   localStorage.setItem(AUTH_TOKEN_KEY, token);
+  clearSetupRequired();
 }
 
 /** Get JWT token from localStorage */
@@ -48,16 +75,37 @@ let _redirectingToSetup = false;
  * The flag prevents N parallel API calls from each issuing a navigate.
  */
 function handleSetupRequired(): void {
+  markSetupRequired();
   if (_redirectingToSetup) return;
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
   const path = window.location.pathname;
-  if (path.startsWith("/setup") || path.startsWith("/login")) {
+  if (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite")
+  ) {
     return;
   }
   _redirectingToSetup = true;
   // Full reload drops any in-flight React state.
   window.location.replace("/setup");
+}
+
+/** Wizard endpoints stay reachable while lockdown is active. */
+function isSetupApiPath(path: string): boolean {
+  return path === "/setup/status" || path.startsWith("/setup/");
+}
+
+/**
+ * Skip the network when this tab already knows setup lockdown is on.
+ * Avoids stampeding ``/api/agents`` etc. after the first 503 / status probe.
+ */
+function assertNotSetupLocked(path: string): void {
+  if (_setupRequiredKnown && !isSetupApiPath(path)) {
+    handleSetupRequired();
+    throw new SetupRequiredError();
+  }
 }
 
 /**
@@ -85,7 +133,9 @@ async function check503ForSetupRequired(
     typeof body === "object" &&
     (body as Record<string, unknown>).setup_required === true
   ) {
-    if (!path.startsWith("/setup/")) {
+    markSetupRequired();
+    clearAuthToken();
+    if (!isSetupApiPath(path)) {
       handleSetupRequired();
     }
     return true;
@@ -199,7 +249,12 @@ let _redirectingToLogin = false;
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
   const path = window.location.pathname;
-  if (path.startsWith("/setup") || path.startsWith("/login")) return;
+  if (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite")
+  )
+    return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(
@@ -244,6 +299,8 @@ export async function request<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  assertNotSetupLocked(path);
+
   const url = getApiUrl(path);
 
   const headers = buildHeaders(path, options.headers);
@@ -254,7 +311,7 @@ export async function request<T = unknown>(
   });
 
   if (await check503ForSetupRequired(path, response)) {
-    throw new Error("Setup required — redirecting to /setup");
+    throw new SetupRequiredError();
   }
 
   await throwIfUnauthorized(path, response);
@@ -293,6 +350,8 @@ export async function requestBlob(
   path: string,
   options: RequestInit = {},
 ): Promise<Blob> {
+  assertNotSetupLocked(path);
+
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
   const response = await fetch(url, {
@@ -301,7 +360,7 @@ export async function requestBlob(
   });
 
   if (await check503ForSetupRequired(path, response)) {
-    throw new Error("Setup required — redirecting to /setup");
+    throw new SetupRequiredError();
   }
 
   await throwIfUnauthorized(path, response);
@@ -327,6 +386,8 @@ export async function probeAuthResource(
   path: string,
   options: RequestInit = {},
 ): Promise<void> {
+  assertNotSetupLocked(path);
+
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
   const response = await fetch(url, {
@@ -335,7 +396,7 @@ export async function probeAuthResource(
   });
 
   if (await check503ForSetupRequired(path, response)) {
-    throw new Error("Setup required — redirecting to /setup");
+    throw new SetupRequiredError();
   }
 
   await throwIfUnauthorized(path, response);
@@ -357,6 +418,49 @@ export async function probeAuthResource(
   }
 }
 
+/**
+ * POST JSON and hand back the response body as a byte stream (chunked TTS).
+ * Mirrors requestBlob()'s auth/setup/401 handling but never buffers.
+ */
+export async function requestStream(
+  path: string,
+  options: RequestInit = {},
+): Promise<{ contentType: string; body: ReadableStream<Uint8Array> }> {
+  assertNotSetupLocked(path);
+
+  const url = getApiUrl(path);
+  const headers = buildAuthHeaders(path);
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...headers, ...(options.headers as Record<string, string>) },
+  });
+
+  if (await check503ForSetupRequired(path, response)) {
+    throw new SetupRequiredError();
+  }
+
+  await throwIfUnauthorized(path, response);
+  applyRenewedAccessToken(response);
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Request failed: ${response.status} ${response.statusText}${
+        text ? ` - ${text}` : ""
+      }`,
+    );
+  }
+
+  if (!response.body) {
+    throw new Error("Empty stream from server");
+  }
+
+  return {
+    contentType: response.headers.get("content-type") || "",
+    body: response.body,
+  };
+}
+
 export type UploadProgressHandler = (percent: number) => void;
 
 /**
@@ -369,6 +473,8 @@ export async function requestUpload<T = unknown>(
   options: RequestInit = {},
   onProgress?: UploadProgressHandler,
 ): Promise<T> {
+  assertNotSetupLocked(path);
+
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
   const method = options.method ?? "POST";
@@ -429,7 +535,7 @@ export async function requestUpload<T = unknown>(
         });
 
         if (await check503ForSetupRequired(path, response)) {
-          reject(new Error("Setup required — redirecting to /setup"));
+          reject(new SetupRequiredError());
           return;
         }
 

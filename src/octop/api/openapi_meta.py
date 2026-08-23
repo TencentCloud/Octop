@@ -28,7 +28,8 @@ token when present.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
-`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/connectors/oauth/callback`,
+`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/invite/validate`,
+`/api/auth/invite/redeem`, `/api/connectors/oauth/callback`,
 and `/api/internal/mcp/*`.
 
 ## Agent scope
@@ -90,7 +91,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "settings",
         "description": "Process-level settings (e.g. default timezone from config.json).",
     },
-    {"name": "envs", "description": "Environment variable presets for agents and workspaces."},
+    {
+        "name": "envs",
+        "description": "Global environment variables (~/.octop/env) inherited by every agent.",
+    },
     {
         "name": "search",
         "description": "Web-search provider API key probes (Tavily, Brave, Google, Kimi).",
@@ -134,6 +138,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "browser",
         "description": "Remote browser sessions: navigate, screenshot, live stream.",
+    },
+    {
+        "name": "mobile",
+        "description": "Remote Phone stream and adb control (mobile permission).",
     },
     {
         "name": "desktop",

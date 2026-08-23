@@ -1,0 +1,475 @@
+.remotePhonePage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+
+.workspaceRow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.workspaceRowColumn {
+  flex-direction: column;
+}
+
+.mainColumn {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.aiPanelRight {
+  flex-shrink: 0;
+  display: flex;
+  min-height: 0;
+  position: relative;
+  border-left: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-primary);
+}
+
+.aiPanelBottom {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  border-top: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-primary);
+}
+
+.resizeHandleLeft {
+  width: 5px;
+  cursor: col-resize;
+  flex-shrink: 0;
+}
+
+.resizeHandleTop {
+  height: 5px;
+  cursor: row-resize;
+  flex-shrink: 0;
+}
+
+.embeddedRoot {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.embeddedActions {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.setupMascot {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  background: var(--fn-bg-elevated, #fff);
+}
+
+.deviceMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.deviceIcon {
+  flex-shrink: 0;
+  color: var(--fn-text-secondary);
+}
+
+.topBarSpacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.qualityControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.qualityLabel {
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusIdle {
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-secondary);
+}
+
+.statusConnecting {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.statusStreaming {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+/* Full remaining height of PageShell body */
+.viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-secondary);
+  overflow: hidden;
+}
+
+.idleFill {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.installProgress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: min(520px, 92%);
+  padding: 24px 20px;
+}
+
+.installProgressTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  text-align: center;
+}
+
+.installLog {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--fn-text-secondary);
+  box-sizing: border-box;
+}
+
+.installProgressActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.streamLoadingIcon {
+  animation: remotePhoneSpin 1s linear infinite;
+  color: var(--fn-color-brand, #1677ff);
+}
+
+@keyframes remotePhoneSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Coze-like: stage fills left; info docked right */
+.streamWorkspace {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+
+  &[hidden] {
+    display: none !important;
+  }
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.connectingStage {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phoneCluster {
+  display: flex;
+  align-items: stretch;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Keep canvas mounted for the first frame, but out of the visible layout. */
+.phoneClusterOffstage {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.phoneFrame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  border: 1px solid var(--fn-border-secondary);
+  border-right: none;
+  border-radius: 16px 0 0 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
+}
+
+.canvas {
+  display: block;
+  max-width: min(36vw, 420px);
+  max-height: calc(100% - 8px);
+  width: auto;
+  height: auto;
+  touch-action: none;
+  outline: none;
+}
+
+.deviceRail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 12px 5px;
+  width: 40px;
+  background: var(--fn-bg-elevated, #fafafa);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 0 16px 16px 0;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+}
+
+.railBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-secondary);
+    color: var(--fn-text-primary);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+.railDivider {
+  width: 18px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--fn-border-secondary);
+}
+
+.sidePanel {
+  flex-shrink: 0;
+  width: 280px;
+  height: 100%;
+  padding: 16px 18px;
+  box-sizing: border-box;
+  border-left: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-elevated, #fff);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.infoSection {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--fn-border-secondary);
+
+  &:first-child {
+    padding-top: 4px;
+  }
+
+  &:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+}
+
+.infoSectionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--fn-text-secondary);
+
+  .sidePanelTitle {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.sidePanelTitle {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.infoList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+
+.infoRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.infoLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary, rgba(0, 0, 0, 0.45));
+}
+
+.infoLabelWithIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.infoValue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--fn-text-primary);
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+}
+
+.infoSub {
+  font-size: 12px;
+  color: var(--fn-text-tertiary, rgba(0, 0, 0, 0.45));
+  word-break: break-word;
+}
+
+@media (max-width: 960px) {
+  .sidePanel {
+    display: none;
+  }
+
+  .canvas {
+    max-width: min(70vw, 360px);
+  }
+}
+
+@media (max-width: 640px) {
+  .topBar {
+    align-items: flex-start;
+  }
+
+  .topBarSpacer {
+    display: none;
+  }
+
+  .qualityControl {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stage {
+    padding: 12px;
+  }
+
+  .canvas {
+    max-width: min(100vw - 88px, 300px);
+    max-height: min(62vh, 620px);
+  }
+}

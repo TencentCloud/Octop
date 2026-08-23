@@ -21,6 +21,7 @@
 .label {
   color: var(--fn-text-secondary);
   line-height: 1.4;
+  font-weight: 500;
 }
 
 .hint {
@@ -28,4 +29,32 @@
   font-size: 12px;
   color: var(--fn-text-tertiary);
   line-height: 1.45;
+}
+
+.onDark {
+  color: rgba(255, 255, 255, 0.78);
+
+  .label {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .hint {
+    color: rgba(255, 255, 255, 0.48);
+  }
+}
+
+.sizeSm {
+  gap: 8px;
+  padding: 16px 12px;
+  font-size: 12px;
+
+  .mascot {
+    width: 128px;
+    height: 128px;
+  }
+
+  .hint {
+    max-width: 200px;
+    font-size: 11px;
+  }
 }

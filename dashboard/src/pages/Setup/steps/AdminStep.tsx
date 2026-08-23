@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Form, Input, Button, Alert, Typography, Space } from "antd";
-import { User, Lock, IdCard } from "lucide-react";
+import { User, Lock, IdCard, Mail } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { wizardApi, wizardSession } from "../wizardClient";
@@ -16,6 +16,7 @@ const { Text } = Typography;
 interface FormValues {
   username: string;
   display_name?: string;
+  email?: string;
   password: string;
   confirm: string;
 }
@@ -63,6 +64,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
         {
           username: values.username,
           display_name: values.display_name?.trim() || null,
+          email: values.email?.trim() || null,
           password: values.password,
           locale,
         },
@@ -155,6 +157,23 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
 
         <Form.Item label={t("wizard.admin.displayName")} name="display_name">
           <Input prefix={<IdCard size={16} />} />
+        </Form.Item>
+
+        <Form.Item
+          label={t("wizard.admin.email")}
+          name="email"
+          rules={[
+            {
+              type: "email",
+              message: t("wizard.admin.emailInvalid") as string,
+            },
+          ]}
+        >
+          <Input
+            type="email"
+            autoComplete="email"
+            prefix={<Mail size={16} />}
+          />
         </Form.Item>
 
         <Form.Item

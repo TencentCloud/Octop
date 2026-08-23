@@ -11,7 +11,12 @@ import {
   writeStoredAppearance,
   type ThemePreference,
 } from "../styles/appearanceStorage";
-import { DEFAULT_PALETTE, type ThemePalette } from "../styles/themePalettes";
+import {
+  DEFAULT_PALETTE,
+  customPaletteCssVars,
+  normalizeHexColor,
+  type ThemePalette,
+} from "../styles/themePalettes";
 
 export type { ThemePreference };
 
@@ -30,6 +35,10 @@ interface ThemeContextValue {
   palette: ThemePalette;
   /** Set brand palette */
   setPalette: (p: ThemePalette) => void;
+  /** Brand hex for the "custom" palette */
+  customColor: string;
+  /** Set the custom brand hex (also switches palette to "custom") */
+  setCustomColor: (hex: string) => void;
   /** Legacy toggle kept for backward compat (cycles light/dark) */
   toggle: () => void;
   /** Whether the current mode is considered "dark" for Ant Design */
@@ -42,6 +51,8 @@ const ThemeContext = createContext<ThemeContextValue>({
   setPreference: () => {},
   palette: DEFAULT_PALETTE,
   setPalette: () => {},
+  customColor: "",
+  setCustomColor: () => {},
   toggle: () => {},
   isDark: false,
 });
@@ -71,6 +82,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return loadAppearanceOnBoot().palette;
   });
 
+  const [customColor, setCustomColorState] = useState<string>(
+    () => loadAppearanceOnBoot().customColor ?? "",
+  );
+
   const [mode, setMode] = useState<ThemeMode>(() => resolveMode(preference));
 
   // Listen for system color scheme changes when preference is "system"
@@ -92,9 +107,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Persist preference + palette together (mode is derived, not stored)
   useEffect(() => {
-    writeStoredAppearance({ preference, palette });
+    writeStoredAppearance({ preference, palette, customColor });
     document.documentElement.setAttribute("data-palette", palette);
-  }, [preference, palette]);
+  }, [preference, palette, customColor]);
+
+  // Inject the runtime-derived CSS variables for the custom palette. The
+  // style element is reused across renders; content updates on change.
+  useEffect(() => {
+    if (palette !== "custom") return;
+    const el =
+      document.getElementById("octop-custom-palette") ??
+      (() => {
+        const node = document.createElement("style");
+        node.id = "octop-custom-palette";
+        document.head.appendChild(node);
+        return node;
+      })();
+    const normalized = normalizeHexColor(customColor);
+    if (normalized) {
+      el.textContent = `${customPaletteCssVars(
+        normalized,
+        mode === "dark",
+      )}\n${customPaletteCssVars(normalized, mode !== "dark")}`;
+    }
+  }, [palette, customColor, mode]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", mode);
@@ -117,6 +153,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setPaletteState(p);
   }, []);
 
+  const setCustomColor = useCallback((hex: string) => {
+    const normalized = normalizeHexColor(hex);
+    if (normalized) {
+      setCustomColorState(normalized);
+      setPaletteState("custom");
+    }
+  }, []);
+
   const toggle = useCallback(() => {
     setPreferenceState((prev) => {
       if (prev === "light") return "dark";
@@ -133,6 +177,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setPreference,
         palette,
         setPalette,
+        customColor,
+        setCustomColor,
         toggle,
         isDark: isDarkMode(mode),
       }}

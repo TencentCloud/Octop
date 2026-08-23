@@ -29,7 +29,7 @@ async def test_read_workspace_manifest_welcome() -> None:
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         await workspace.awrite_text(
-            "manifest.json",
+            ".octop/manifest.json",
             json.dumps(
                 {
                     "id": "demo",
@@ -55,6 +55,20 @@ async def test_read_workspace_manifest_welcome() -> None:
 
 
 @pytest.mark.asyncio
+async def test_read_workspace_manifest_welcome_falls_back_to_root() -> None:
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        await workspace.awrite_text(
+            "manifest.json",
+            json.dumps({"welcome_message": {"zh": "旧路径", "en": "Legacy"}}),
+            force=True,
+        )
+        payload = await read_workspace_manifest_welcome(workspace)
+        assert payload is not None
+        assert payload["welcome_message"]["zh"] == "旧路径"
+
+
+@pytest.mark.asyncio
 async def test_seed_expert_directory_includes_manifest() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         expert_dir = Path(tmp) / "demo"
@@ -73,7 +87,7 @@ async def test_seed_expert_directory_includes_manifest() -> None:
             seed_paths=["SOUL.md"],
         )
         assert count == 2
-        text = await workspace.aread_text("manifest.json")
+        text = await workspace.aread_text(".octop/manifest.json")
         assert text is not None
         assert json.loads(text)["id"] == "demo"
         soul = await workspace.aread_text("SOUL.md")

@@ -13,8 +13,14 @@ export interface ChatSpec {
 
 export interface TokenUsage {
   input_tokens?: number;
+  uncached_input_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
   output_tokens?: number;
+  reasoning_tokens?: number;
   total_tokens?: number;
+  model_calls?: number;
+  last_input_tokens?: number;
   input_token_details?: Record<string, unknown>;
   output_token_details?: Record<string, unknown>;
   [key: string]: unknown;

@@ -14,6 +14,7 @@ from typing import Any
 
 from octop import __version__
 from octop.config import DatabaseConfig
+from octop.infra.agents.workspace_dir import workspace_dir_from_config_json
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
 from octop.infra.backup.pg_dump import dump_postgres, restore_postgres
 from octop.infra.backup.snapshot import (
@@ -29,6 +30,7 @@ from octop.infra.backup.snapshot import (
 )
 from octop.infra.db.migrate import _current_version, run_migrations
 from octop.infra.db.pool import DatabasePool, SqlitePool
+from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import env_file_path
@@ -137,7 +139,11 @@ def create_system_backup(
             if env_path.is_file():
                 tf.add(root / _CONFIG_DIR / "env", arcname=f"{_CONFIG_DIR}/env")
             for row in agent_rows:
-                ws = paths.agent_workspace(str(row.agent_id))
+                ws = workspace_dir_from_config_json(
+                    getattr(row, "config_json", None),
+                    paths=paths,
+                    agent_id=str(row.agent_id),
+                )
                 if ws.is_dir():
                     _add_dir(tf, ws, f"{_WORKSPACES_DIR}/{row.agent_id}")
             if paths.skill_packages_dir.is_dir():
@@ -295,6 +301,8 @@ def restore_system_backup(
 
         restored_workspaces = 0
         prefix = f"{_WORKSPACES_DIR}/"
+        agent_repo = AgentRepo(pool)
+        workspace_by_agent: dict[str, Path] = {}
         for name, blob in members.items():
             if not name.startswith(prefix):
                 continue
@@ -304,7 +312,16 @@ def restore_system_backup(
             agent_id, _, file_rel = rel.partition("/")
             if not agent_id or not file_rel:
                 continue
-            dest = paths.agent_workspace(agent_id) / file_rel
+            dest_root = workspace_by_agent.get(agent_id)
+            if dest_root is None:
+                row = agent_repo.get(agent_id)
+                dest_root = workspace_dir_from_config_json(
+                    None if row is None else row.config_json,
+                    paths=paths,
+                    agent_id=agent_id,
+                )
+                workspace_by_agent[agent_id] = dest_root
+            dest = dest_root / file_rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(blob)
             restored_workspaces += 1

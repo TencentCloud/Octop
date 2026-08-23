@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { clearSetupRequired, markSetupRequired, request } from "../request";
 
 /**
  * Auth + setup module — adapted to octop's multi-user backend.
@@ -84,32 +84,65 @@ interface RawLoginResponse {
   user: OctopUser;
 }
 
+/** Coalesce AuthGuard / Login / Setup probing the same endpoint in parallel. */
+let statusInFlight: Promise<AuthStatus> | null = null;
+
+/** Drop any in-flight setup-status probe (e.g. after creating the admin). */
+export function invalidateAuthStatusCache(): void {
+  statusInFlight = null;
+}
+
+function applySetupFlags(status: AuthStatus): AuthStatus {
+  if (status.setup_required) {
+    markSetupRequired();
+  } else {
+    clearSetupRequired();
+  }
+  return status;
+}
+
 export const authApi = {
   /** Probe whether the initial admin has been created. */
   getAuthStatus: async (): Promise<AuthStatus> => {
-    const raw = await request<RawSetupStatus>("/setup/status");
-    return {
-      setup_required: raw.setup_required,
-      setup_done: !raw.setup_required,
-      enabled: true,
-      has_password: true,
-      wizard_password_exists: raw.wizard_password_exists ?? false,
-      wizard_password_required: raw.wizard_password_required ?? true,
-      wizard_password_path: raw.wizard_password_path,
-      database_bound: raw.database_bound ?? false,
-      database_driver: raw.database_driver ?? null,
-    };
+    if (statusInFlight) return statusInFlight;
+
+    statusInFlight = (async () => {
+      try {
+        const raw = await request<RawSetupStatus>("/setup/status");
+        const value: AuthStatus = {
+          setup_required: raw.setup_required,
+          setup_done: !raw.setup_required,
+          enabled: true,
+          has_password: true,
+          wizard_password_exists: raw.wizard_password_exists ?? false,
+          wizard_password_required: raw.wizard_password_required ?? true,
+          wizard_password_path: raw.wizard_password_path,
+          database_bound: raw.database_bound ?? false,
+          database_driver: raw.database_driver ?? null,
+        };
+        return applySetupFlags(value);
+      } finally {
+        statusInFlight = null;
+      }
+    })();
+
+    return statusInFlight;
   },
 
   /** Bootstrap the first admin (only succeeds while user_manager is empty). */
-  createInitialAdmin: (body: SetupBody) =>
-    request<{ id: number; username: string; role: string }>(
-      "/setup/initial-admin",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      },
-    ),
+  createInitialAdmin: async (body: SetupBody) => {
+    const result = await request<{
+      id: number;
+      username: string;
+      role: string;
+    }>("/setup/initial-admin", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    invalidateAuthStatusCache();
+    clearSetupRequired();
+    return result;
+  },
 
   /** Login — octop uses username + password. */
   login: async (username: string, password: string): Promise<LoginResponse> => {

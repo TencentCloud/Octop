@@ -2,8 +2,13 @@
 
 Security notes:
 - Authenticated users only (JWT).
-- Paths are resolved absolutely; ``..`` / symlinks cannot escape a denylist
-  of sensitive pseudo-fs mounts (``/proc``, ``/sys``, ``/dev``, ``/etc``, ``/root`` on POSIX).
+- Paths are resolved with ``os.path.realpath`` and must stay under the browse
+  tree root (``startswith`` containment — CodeQL-recognized sanitizer).
+  A denylist further blocks sensitive mounts (``/proc``, ``/sys``, ``/dev``,
+  ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
+  with home ``/root`` can use the default picker path).
+- All authenticated users may browse from host root ``/`` (denylist still applies).
+  The UI default ``root_dir`` remains the process home directory.
 - Directory listing is capped and skips unreadable entries.
 - Write probe creates a short-lived dotfile only for non-``/`` selections.
 - mkdir / rename only allow basename-safe names under already-browsable parents.
@@ -19,10 +24,14 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.identity import User
 from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_fs_tree_root,
+    host_home_dir,
+    host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
     probe_host_root_dir,
@@ -49,26 +58,48 @@ class RenameBody(BaseModel):
     new_name: str = Field(..., description="New basename (no path separators)")
 
 
+@router.get(
+    "/defaults",
+    summary="Default root_dir picker bounds for the current user",
+)
+async def filesystem_defaults(
+    _: User = Depends(current_user),
+) -> dict[str, Any]:
+    """Return the process home path and browse-tree root (host ``/`` on POSIX)."""
+    home = host_path_text(host_home_dir())
+    return {
+        "home": home,
+        "default_root_dir": home,
+        "allow_outside_home": True,
+        "tree_root": host_fs_tree_root(allow_outside_home=True),
+    }
+
+
 @router.get("/dirs")
 async def list_host_dirs(
     path: str = Query("/", description="Absolute host directory to list"),
-    _: Any = Depends(current_user),
+    _: User = Depends(current_user),
 ) -> dict[str, Any]:
     """Single-level directory listing for lazy folder pickers."""
     try:
-        entries = await asyncio.to_thread(list_host_subdirs, path)
+        entries = await asyncio.to_thread(list_host_subdirs, path, restrict_to_home=False)
+        resolved = assert_safe_host_path(path, restrict_to_home=False)
     except ValueError as exc:
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
-    return {"path": str(assert_safe_host_path(path)), "entries": entries}
+    return {"path": host_path_text(resolved), "entries": entries}
 
 
 @router.post("/probe")
 async def probe_host_dir(
     body: ProbeBody,
-    _: Any = Depends(current_user),
+    _: User = Depends(current_user),
 ) -> dict[str, Any]:
     """Check whether Octop can use *path* as a local backend root_dir."""
-    return await asyncio.to_thread(probe_host_root_dir, body.path)
+    return await asyncio.to_thread(
+        probe_host_root_dir,
+        body.path,
+        restrict_to_home=False,
+    )
 
 
 @router.post(
@@ -119,7 +150,7 @@ async def post_ensure_docker(
 @router.post("/mkdir")
 async def mkdir_host_dir(
     body: MkdirBody,
-    _: Any = Depends(current_user),
+    _: User = Depends(current_user),
 ) -> dict[str, Any]:
     """Create a child directory under *path* for root_dir pickers."""
     try:
@@ -127,6 +158,7 @@ async def mkdir_host_dir(
             mkdir_host_subdir,
             body.path,
             base_name=body.base_name,
+            restrict_to_home=False,
         )
     except ValueError as exc:
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
@@ -135,10 +167,15 @@ async def mkdir_host_dir(
 @router.post("/rename")
 async def rename_host_directory(
     body: RenameBody,
-    _: Any = Depends(current_user),
+    _: User = Depends(current_user),
 ) -> dict[str, Any]:
     """Rename a host directory (basename only) for root_dir pickers."""
     try:
-        return await asyncio.to_thread(rename_host_dir, body.path, body.new_name)
+        return await asyncio.to_thread(
+            rename_host_dir,
+            body.path,
+            body.new_name,
+            restrict_to_home=False,
+        )
     except ValueError as exc:
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc

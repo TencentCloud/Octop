@@ -12,6 +12,7 @@ import {
   Select,
   Spin,
   Switch,
+  Alert,
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
@@ -20,10 +21,13 @@ import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { workspaceApi } from "../../../api/modules/workspace";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { skillPackagesApi } from "../../../api/modules/skillPackages";
+import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
-import type { OctopAgent } from "../../../context/AgentContext";
+import { octopAgentsApi } from "../../../api/modules/octopAgents";
+import { useAgent, type OctopAgent } from "../../../context/AgentContext";
+import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import {
   buildModelSelectOptions,
@@ -32,9 +36,12 @@ import {
 } from "../../../utils/modelOptions";
 import {
   expertPaletteColor,
-  resolveExpertPalette,
+  parseStoredColor,
 } from "../../../utils/expertColor";
-import type { ThemePalette } from "../../../styles/themePalettes";
+import {
+  DEFAULT_PALETTE,
+  isCuratedPalette,
+} from "../../../styles/themePalettes";
 import { metaForFile } from "./iconForName";
 import {
   buildAgentRuntimeRequest,
@@ -43,6 +50,13 @@ import {
 } from "../../../utils/agentRuntimeConfig";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import FileEditModal from "./FileEditModal";
+import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
+import {
+  mergeWelcomeIntoManifest,
+  parseManifestObject,
+  shouldWriteWelcomeManifest,
+  type WelcomeConfigData,
+} from "./welcomeManifest";
 import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
   buildBackendSpec,
@@ -54,6 +68,7 @@ import {
   probeRootDir,
   rootDirProbeMessage,
   shouldProbeRootDir,
+  supportsHostSkillPackages,
   validatePathMappings,
   type PathMapping,
 } from "./agentBackendForm";
@@ -67,11 +82,13 @@ interface AgentDetail {
   description: string | null;
   default_model: string | null;
   color?: string | null;
+  icon_url?: string | null;
   max_iters?: number | null;
   max_input_length?: number | null;
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  welcome_message?: string | null;
   config?: Record<string, unknown>;
 }
 
@@ -102,6 +119,7 @@ function subagentFilePath(path: string): string {
 interface EditFormValues {
   name: string;
   description: string;
+  welcome_message?: string;
   is_shared?: boolean;
   default_model: string;
   backend_choice: string;
@@ -127,6 +145,7 @@ interface EditAgentDrawerProps {
       | "default_model"
       | "is_shared"
       | "color"
+      | "icon_url"
     >,
   ) => void;
 }
@@ -139,6 +158,48 @@ interface EditAgentDrawerBodyProps {
   onSavingChange: (saving: boolean) => void;
 }
 
+/**
+ * Merge page-config fields into the existing workspace .octop/manifest.json.
+ * Missing file → start from {}. Invalid JSON is refused so we do not
+ * clobber a hand-edited manifest.
+ */
+async function persistWelcomeManifest(
+  agentId: string,
+  data: WelcomeConfigData,
+): Promise<"ok" | "invalid-json"> {
+  let existing: Record<string, unknown> = {};
+  try {
+    const file = await workspaceApi.readWorkspaceFile(
+      agentId,
+      "/.octop/manifest.json",
+    );
+    const parsed = parseManifestObject(file.content ?? "");
+    if (!parsed.ok) return "invalid-json";
+    existing = parsed.value;
+  } catch (err) {
+    if (!isNotFoundApiError(err)) throw err;
+    // Legacy agents may still keep welcome metadata at workspace root.
+    try {
+      const legacy = await workspaceApi.readWorkspaceFile(
+        agentId,
+        "/manifest.json",
+      );
+      const parsed = parseManifestObject(legacy.content ?? "");
+      if (!parsed.ok) return "invalid-json";
+      existing = parsed.value;
+    } catch (legacyErr) {
+      if (!isNotFoundApiError(legacyErr)) throw legacyErr;
+    }
+  }
+  const merged = mergeWelcomeIntoManifest(existing, data);
+  await workspaceApi.createWorkspaceFile(
+    agentId,
+    "/.octop/manifest.json",
+    JSON.stringify(merged, null, 2),
+  );
+  return "ok";
+}
+
 function EditAgentDrawerBody({
   agent,
   onClose,
@@ -147,6 +208,7 @@ function EditAgentDrawerBody({
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
   const { t } = useTranslation();
+  const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [form] = Form.useForm<EditFormValues>();
@@ -157,9 +219,11 @@ function EditAgentDrawerBody({
     useAgentFormResources(true);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
-  const [colorPalette, setColorPalette] = useState<ThemePalette>(() =>
-    resolveExpertPalette(agent.color),
+  const [colorPalette, setColorPalette] = useState<string>(
+    () => parseStoredColor(agent.color) ?? DEFAULT_PALETTE,
   );
+  const [iconUrl, setIconUrl] = useState<string | null>(agent.icon_url);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -173,6 +237,7 @@ function EditAgentDrawerBody({
   );
   const [listRenameSaving, setListRenameSaving] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
+  const welcomeConfigRef = useRef<WelcomeConfigRef>(null);
 
   const installedSubagentSlugs = useMemo(
     () => new Set(agentSubagents.map((s) => s.slug)),
@@ -181,6 +246,16 @@ function EditAgentDrawerBody({
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
+  const watchedRootDir = Form.useWatch("root_dir", form);
+  const workspaceDirFromConfig =
+    typeof agentConfig.workspace_dir === "string"
+      ? agentConfig.workspace_dir
+      : null;
+  const skillPackagesSupported = supportsHostSkillPackages({
+    backendChoice,
+    rootDir: watchedRootDir,
+    workspaceDir: workspaceDirFromConfig,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -195,17 +270,26 @@ function EditAgentDrawerBody({
 
         const cfg = ag.config ?? {};
         setAgentConfig(cfg);
-        const colorFromCfg =
-          typeof cfg.color === "string"
+        const colorFromRow =
+          typeof ag.color === "string"
+            ? ag.color
+            : typeof cfg.color === "string"
             ? cfg.color
-            : ag.color ?? agent.color ?? null;
-        setColorPalette(resolveExpertPalette(colorFromCfg));
+            : agent.color ?? null;
+        setColorPalette(parseStoredColor(colorFromRow) ?? DEFAULT_PALETTE);
+        setIconUrl(
+          typeof ag.icon_url === "string" && ag.icon_url.trim()
+            ? ag.icon_url
+            : null,
+        );
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
 
         form.setFieldsValue({
           name: ag.name,
           description: ag.description ?? "",
+          welcome_message:
+            typeof ag.welcome_message === "string" ? ag.welcome_message : "",
           is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
           backend_choice: parsedBackend.backendChoice,
@@ -301,13 +385,47 @@ function EditAgentDrawerBody({
         values.root_dir,
       );
 
-      const nextColor = expertPaletteColor(colorPalette);
+      const nextColor = isCuratedPalette(colorPalette)
+        ? expertPaletteColor(colorPalette)
+        : colorPalette;
       const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
         backend: backendSpec,
-        color: nextColor,
       });
+      delete nextConfig.color;
+      delete nextConfig.icon_name;
+      delete nextConfig.icon_url;
+      delete nextConfig.expert_id;
+      delete nextConfig.skill_package_ids;
+      delete nextConfig.published_expert_id;
+      delete nextConfig.welcome_message;
 
+      // Persist page config before PATCH. Workspace I/O survives the
+      // background harness reload; skip when the editor is still loading
+      // or the user never touched 页面配置, so a name/model save cannot
+      // clobber bilingual copy or extra manifest keys.
+      const welcomeSnap = welcomeConfigRef.current?.getSnapshot();
+      if (
+        welcomeSnap &&
+        isAgentChatReady(agent.state) &&
+        shouldWriteWelcomeManifest(welcomeSnap.status, welcomeSnap.dirty)
+      ) {
+        try {
+          const result = await persistWelcomeManifest(
+            agent.agent_id,
+            welcomeSnap.data,
+          );
+          if (result === "invalid-json") {
+            message.warning(t("experts.manifestInvalidJson"));
+          }
+        } catch (manifestErr) {
+          message.warning(
+            apiErrorMessage(manifestErr, t("experts.manifestWriteFailed"), t),
+          );
+        }
+      }
+
+      const stored = form.getFieldsValue(true) as EditFormValues;
       await request(`/agents/${agent.agent_id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -315,11 +433,24 @@ function EditAgentDrawerBody({
           description: values.description || null,
           is_shared: values.is_shared ?? false,
           default_model: defaultModelFromForm(values.default_model),
+          color: nextColor,
           config: nextConfig,
+          welcome_message: stored.welcome_message ?? "",
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
-      message.success(t("common.save") + " ✓");
+
+      if (!skillPackagesSupported) {
+        try {
+          await skillPackagesApi.replaceMounted(agent.agent_id, []);
+        } catch (pkgErr) {
+          message.warning(
+            apiErrorMessage(pkgErr, t("experts.skillPackagesClearFailed"), t),
+          );
+        }
+      }
+
+      message.success(t("common.saveSuccess"));
       if (bwrapToast?.kind === "success") {
         message.success(bwrapToast.text);
       } else if (bwrapToast?.kind === "warning") {
@@ -333,6 +464,7 @@ function EditAgentDrawerBody({
         default_model: defaultModel,
         is_shared: values.is_shared ?? false,
         color: nextColor,
+        icon_url: iconUrl,
       });
       onClose();
     } catch (err) {
@@ -342,12 +474,15 @@ function EditAgentDrawerBody({
     }
   }, [
     agent.agent_id,
+    agent.state,
     agentConfig,
     colorPalette,
     form,
+    iconUrl,
     onClose,
     onSaved,
     pathMappings,
+    skillPackagesSupported,
     t,
   ]);
 
@@ -522,7 +657,7 @@ function EditAgentDrawerBody({
         </div>
       ) : (
         <>
-          <div className={styles.drawerSection}>
+          <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
             <div className={styles.drawerSectionTitle}>
               {t("experts.basicInfo")}
             </div>
@@ -541,6 +676,72 @@ function EditAgentDrawerBody({
                 label={t("experts.agentDescription")}
               >
                 <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item
+                name="welcome_message"
+                label={t("experts.welcomeMessageTitle")}
+                extra={t("experts.editWelcomeHint")}
+              >
+                <Input.TextArea
+                  rows={2}
+                  placeholder={t("experts.welcomeMessagePlaceholder")}
+                />
+              </Form.Item>
+              <Form.Item label={t("experts.avatar")}>
+                <ExpertAvatarPicker
+                  iconUrl={iconUrl}
+                  iconName={agent.icon_name}
+                  color={
+                    isCuratedPalette(colorPalette)
+                      ? expertPaletteColor(colorPalette)
+                      : colorPalette
+                  }
+                  disabled={avatarBusy}
+                  onPick={(file) => {
+                    void (async () => {
+                      setAvatarBusy(true);
+                      try {
+                        const result = await octopAgentsApi.uploadAvatar(
+                          agent.agent_id,
+                          file,
+                        );
+                        setIconUrl(result.icon_url);
+                        await refresh({ silent: true });
+                      } catch (err) {
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarUploadFailed"),
+                            t,
+                          ),
+                        );
+                        throw err;
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    })();
+                  }}
+                  onRemove={() => {
+                    void (async () => {
+                      setAvatarBusy(true);
+                      try {
+                        await octopAgentsApi.deleteAvatar(agent.agent_id);
+                        setIconUrl(null);
+                        await refresh({ silent: true });
+                      } catch (err) {
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarRemoveFailed"),
+                            t,
+                          ),
+                        );
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    })();
+                  }}
+                />
               </Form.Item>
               <Form.Item
                 label={t("experts.color")}
@@ -583,16 +784,26 @@ function EditAgentDrawerBody({
                 backendsLoading={backendsLoading}
                 backendChoice={backendChoice}
                 pathMappings={pathMappings}
+                rootDirMode="edit"
                 onAddPathMapping={addPathMapping}
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
+              {!skillPackagesSupported ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 12 }}
+                  message={t("experts.skillPackagesUnsupportedHint")}
+                />
+              ) : null}
             </Form>
 
             <Collapse
               ghost
               className={styles.drawerCollapse}
               style={{ margin: "8px 0 0", width: "100%" }}
+              defaultActiveKey={["configFiles"]}
               items={[
                 {
                   key: "advanced",
@@ -603,17 +814,33 @@ function EditAgentDrawerBody({
                     </Form>
                   ),
                 },
+                ...(isAgentChatReady(agent.state)
+                  ? [
+                      {
+                        key: "pageConfig",
+                        label: t("experts.pageConfigTitle"),
+                        children: (
+                          <div style={{ padding: 0 }}>
+                            <WelcomeConfig
+                              ref={welcomeConfigRef}
+                              agentId={agent.agent_id}
+                            />
+                          </div>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>
 
           {isAgentChatReady(agent.state) && (
-            <div className={styles.drawerSection}>
+            <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
               <Collapse
                 ghost
                 className={styles.drawerCollapse}
                 defaultActiveKey={["configFiles"]}
-                style={{ margin: "-4px 0 0", width: "100%" }}
+                style={{ margin: 0, width: "100%" }}
                 items={[
                   {
                     key: "configFiles",

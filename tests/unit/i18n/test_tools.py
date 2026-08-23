@@ -6,15 +6,36 @@ import json
 from pathlib import Path
 
 from octop.i18n import all_tool_labels, hitl_tool_catalog, tool_display_name
+from octop.i18n.domains.tools import resolve_tool_display_name
 
 
 def test_tool_display_name_known_zh():
     assert tool_display_name("read_file", "zh") == "读取文件"
     assert tool_display_name("write_todos", "zh") == "编写计划"
+    assert tool_display_name("read_env_file", "zh") == "读取环境变量"
+    assert tool_display_name("write_env_file", "en") == "Write env file"
 
 
 def test_tool_display_name_unknown_passthrough():
     assert tool_display_name("custom_plugin_tool", "en") == "custom_plugin_tool"
+
+
+def test_resolve_tool_display_name_mcp_connector_label():
+    label = resolve_tool_display_name(
+        "my_docs_search",
+        "zh",
+        mcp_server_labels={"my_docs": "腾讯文档"},
+    )
+    assert label == "腾讯文档 · Search"
+
+
+def test_resolve_tool_display_name_plugin_original_label():
+    label = resolve_tool_display_name(
+        "tianqichaxun",
+        "zh",
+        plugin_labels={"tianqichaxun": "天气查询"},
+    )
+    assert label == "天气查询"
 
 
 def test_tool_display_name_empty_uses_unknown():

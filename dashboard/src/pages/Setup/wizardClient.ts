@@ -16,6 +16,7 @@ export interface VerifyResponse {
 export interface CreateAdminBody {
   username: string;
   display_name: string | null;
+  email?: string | null;
   password: string;
   /** UI locale for the initial admin (zh|en). */
   locale?: string;

@@ -148,3 +148,98 @@
     font-size: 9px;
   }
 }
+
+.minimalNavBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.minimalPrimaryBlock {
+  flex-shrink: 0;
+}
+
+.minimalPaneHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 0 12px;
+  padding: 12px 10px 5px;
+}
+
+.minimalPaneSwitchBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-sidebar-group-text);
+  opacity: 0.45;
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast),
+    opacity var(--fn-transition-fast);
+
+  &:hover {
+    opacity: 0.85;
+    background: color-mix(in srgb, var(--fn-text-primary) 6%, transparent);
+    color: var(--fn-text-secondary);
+  }
+}
+
+.minimalPaneToggleCollapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0 8px;
+}
+
+.minimalPaneIconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition: all var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.minimalSettingsPane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.minimalRecordsPane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  &[hidden] {
+    display: none !important;
+  }
+}

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
@@ -37,6 +38,7 @@ from octop.infra.agents.experts.market_creation import (
 from octop.infra.agents.experts.published_creation import (
     PublishedExpertInstallOptions,
     require_published_expert,
+    snapshot_welcome_message,
 )
 from octop.infra.agents.experts.published_creation import (
     install_published_expert as install_published_expert_agent,
@@ -81,6 +83,12 @@ class FromExpertBody(AgentRuntimeFields):
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
     color: str | None = None
+    agent_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional custom agent id; auto-generated when omitted",
+    )
+    welcome_message: str | None = None
 
 
 class PublishExpertBody(BaseModel):
@@ -108,6 +116,12 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
     color: str | None = None
+    agent_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional custom agent id; auto-generated when omitted",
+    )
+    welcome_message: str | None = None
 
 
 class LocalizedTextResponse(BaseModel):
@@ -162,6 +176,7 @@ class MarketCreateResponse(BaseModel):
     state: str
     expert_id: str
     icon_name: str | None = None
+    icon_url: str | None = None
     color: str | None = None
     market: MarketCreateSourceResponse
     bootstrap_pending: bool
@@ -312,8 +327,10 @@ async def get_published_expert(
     files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
     if (snapshot_dir / MANIFEST_FILENAME).is_file():
         files.insert(0, MANIFEST_FILENAME)
+    welcome_zh, welcome_en = await asyncio.to_thread(snapshot_welcome_message, snapshot_dir)
     return {
         **_published_summary_dict(row, server),
+        "welcome_message": {"zh": welcome_zh, "en": welcome_en},
         "files": files,
         "file_contents": await asyncio.to_thread(
             read_text_file_contents,
@@ -434,6 +451,7 @@ async def install_published_expert(
     """Create a private agent and seed it from the immutable published snapshot."""
     assert server.app_runtime is not None
     assert server.services is not None
+    assert_user_backend_root_dirs(user, body.backend)
     return await install_published_expert_agent(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -447,6 +465,8 @@ async def install_published_expert(
             backend=body.backend,
             skill_package_ids=body.skill_package_ids,
             color=body.color,
+            agent_id=body.agent_id,
+            welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
         ),
     )
@@ -515,6 +535,7 @@ async def install_expert_hub_item(
 ) -> dict[str, Any]:
     """Create an agent from a SkillHub skillset-backed expert template."""
     assert server.app_runtime is not None
+    assert_user_backend_root_dirs(user, body.backend)
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
         if body.skill_package_ids is not None
@@ -534,6 +555,8 @@ async def install_expert_hub_item(
                 default_model=body.default_model,
                 backend=body.backend,
                 color=body.color,
+                agent_id=body.agent_id,
+                welcome_message=body.welcome_message,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -553,6 +576,7 @@ async def install_expert_hub_item(
         "state": row.last_state or "unknown",
         "expert_id": result.expert_id,
         "icon_name": result.icon_name,
+        "icon_url": getattr(row, "icon_url", None),
         "color": result.color,
         "market": {
             "source": "skillhub",
@@ -590,6 +614,7 @@ async def create_agent_from_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     assert server.app_runtime is not None
+    assert_user_backend_root_dirs(user, body.backend)
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
         if body.skill_package_ids is not None
@@ -603,8 +628,6 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
-    if body.color:
-        config_extra["color"] = body.color
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,
@@ -620,6 +643,9 @@ async def create_agent_from_expert(
         default_model=body.default_model,
         config_extra=config_extra or None,
         runtime_config=runtime_field_updates(body, exclude_unset=True),
+        agent_id=body.agent_id,
+        color=body.color,
+        welcome_message=body.welcome_message,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
     if package_ids is not None:
@@ -633,7 +659,8 @@ async def create_agent_from_expert(
         "default_model": row.default_model,
         "state": row.last_state or "unknown",
         "expert_id": expert_id,
-        "icon_name": expert.summary.icon_name,
-        "color": expert.summary.color,
+        "icon_name": row.icon_name or expert.summary.icon_name,
+        "icon_url": row.icon_url,
+        "color": row.color or expert.summary.color,
         "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(row.agent_id),
     }

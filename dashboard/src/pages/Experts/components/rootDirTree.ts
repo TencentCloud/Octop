@@ -5,15 +5,60 @@ export interface DirTreeNode {
   children?: DirTreeNode[];
 }
 
-export const ROOT_NODE: DirTreeNode = {
-  value: "/",
-  title: "/",
-  isLeaf: false,
-};
+/** Host filesystem root — POSIX admins may browse from here. */
+export const HOST_FS_ROOT = "/";
+
+export const ROOT_NODE: DirTreeNode = makeRootNode(HOST_FS_ROOT);
+
+/** Normalize separators and trailing slashes for tree keys / comparisons. */
+export function normalizeTreeRoot(path: string): string {
+  const trimmed = path.trim().replace(/\\/g, "/");
+  if (!trimmed || trimmed === "/") return HOST_FS_ROOT;
+  // Keep Windows drive roots like ``C:/`` as a single segment with trailing slash.
+  if (/^[A-Za-z]:\/?$/.test(trimmed)) {
+    return `${trimmed.replace(/\/+$/, "")}/`;
+  }
+  return trimmed.replace(/\/+$/, "") || HOST_FS_ROOT;
+}
+
+function compareKey(path: string): string {
+  const normalized = normalizeTreeRoot(path);
+  // Drive-letter paths are case-insensitive on Windows hosts.
+  if (/^[A-Za-z]:/.test(normalized)) {
+    return normalized.toLowerCase();
+  }
+  return normalized;
+}
+
+export function makeRootNode(path: string): DirTreeNode {
+  const value = normalizeTreeRoot(path);
+  if (value === HOST_FS_ROOT) {
+    return { value: HOST_FS_ROOT, title: "/", isLeaf: false };
+  }
+  if (/^[A-Za-z]:\/$/.test(value)) {
+    return { value, title: value.replace(/\/$/, ""), isLeaf: false };
+  }
+  const title = value.split("/").filter(Boolean).pop() || value;
+  return { value, title, isLeaf: false };
+}
+
+/** True when *path* is *home* or a subdirectory of *home*. */
+export function isPathUnderHome(path: string, home: string): boolean {
+  const target = compareKey(path);
+  const base = compareKey(home);
+  if (base === HOST_FS_ROOT) return true;
+  const basePrefix = base.endsWith("/") ? base.slice(0, -1) : base;
+  return (
+    target === base ||
+    target === basePrefix ||
+    target.startsWith(`${basePrefix}/`)
+  );
+}
 
 export function pathExistsInTree(nodes: DirTreeNode[], path: string): boolean {
+  const needle = compareKey(path);
   for (const node of nodes) {
-    if (node.value === path) return true;
+    if (compareKey(node.value) === needle) return true;
     if (node.children?.length && pathExistsInTree(node.children, path)) {
       return true;
     }
@@ -21,23 +66,14 @@ export function pathExistsInTree(nodes: DirTreeNode[], path: string): boolean {
   return false;
 }
 
-/**
- * Keep the selected value displayable without inventing root-level orphans.
- * Orphans duplicate nested keys and break Ant Design TreeSelect expand/rename.
- */
-export function ensurePathInTree(
+/** Keep a single tree under *treeRoot* — orphans duplicate keys and break expand. */
+export function sanitizeTree(
   nodes: DirTreeNode[],
-  path: string,
+  treeRoot: string = HOST_FS_ROOT,
 ): DirTreeNode[] {
-  if (!path || pathExistsInTree(nodes, path)) {
-    return nodes;
-  }
-  return nodes;
-}
-
-/** Keep a single `/` tree — root-level orphans duplicate keys and break expand. */
-export function sanitizeTree(nodes: DirTreeNode[]): DirTreeNode[] {
-  const root = nodes.find((node) => node.value === "/");
+  const rootValue = normalizeTreeRoot(treeRoot);
+  const rootKey = compareKey(rootValue);
+  const root = nodes.find((node) => compareKey(node.value) === rootKey);
   if (!root) return nodes;
 
   // Ant Design TreeSelect virtual scroll renders duplicate rows when the same
@@ -45,8 +81,9 @@ export function sanitizeTree(nodes: DirTreeNode[]): DirTreeNode[] {
   const seen = new Set<string>();
 
   const walk = (node: DirTreeNode): DirTreeNode | null => {
-    if (seen.has(node.value)) return null;
-    seen.add(node.value);
+    const key = compareKey(node.value);
+    if (seen.has(key)) return null;
+    seen.add(key);
     const children = (node.children ?? [])
       .map(walk)
       .filter((child): child is DirTreeNode => child != null);
@@ -61,17 +98,40 @@ export function sanitizeTree(nodes: DirTreeNode[]): DirTreeNode[] {
 }
 
 /**
- * Ancestor directories from `/` down to the parent of *path* (excludes *path*).
- * POSIX absolute paths only (dashboard root_dir picker).
+ * Ancestor directories from *treeRoot* down to the parent of *path* (excludes *path*).
  */
-export function ancestorDirPaths(path: string): string[] {
-  const normalized = path.trim();
-  if (!normalized || normalized === "/") return [];
+export function ancestorDirPaths(
+  path: string,
+  treeRoot: string = HOST_FS_ROOT,
+): string[] {
+  const normalized = normalizeTreeRoot(path);
+  const root = normalizeTreeRoot(treeRoot);
+  if (!normalized || compareKey(normalized) === compareKey(root)) return [];
+  if (root !== HOST_FS_ROOT && !isPathUnderHome(normalized, root)) {
+    return [];
+  }
+
+  if (/^[A-Za-z]:\/$/.test(root)) {
+    // Windows drive root: build from ``C:/Users/...`` under ``C:/``.
+    const withoutDrive = normalized.replace(/^[A-Za-z]:\/?/, "");
+    const parts = withoutDrive.split("/").filter(Boolean);
+    if (parts.length === 0) return [];
+    const ancestors: string[] = [root];
+    let current = root.replace(/\/$/, "");
+    for (const part of parts.slice(0, -1)) {
+      current += `/${part}`;
+      ancestors.push(current);
+    }
+    return ancestors;
+  }
+
   const parts = normalized.split("/").filter(Boolean);
   if (parts.length === 0) return [];
-  const ancestors: string[] = ["/"];
-  let current = "";
-  for (const part of parts.slice(0, -1)) {
+  const rootParts =
+    root === HOST_FS_ROOT ? [] : root.split("/").filter(Boolean);
+  const ancestors: string[] = [root];
+  let current = root === HOST_FS_ROOT ? "" : root;
+  for (const part of parts.slice(rootParts.length, -1)) {
     current += `/${part}`;
     ancestors.push(current);
   }
@@ -84,17 +144,18 @@ export function appendChildren(
   children: DirTreeNode[],
 ): DirTreeNode[] {
   let found = false;
+  const parentKey = compareKey(parentPath);
 
   const walk = (list: DirTreeNode[]): DirTreeNode[] =>
     list.map((node) => {
       if (found) return node;
-      if (node.value === parentPath) {
+      if (compareKey(node.value) === parentKey) {
         found = true;
         const existing = node.children ?? [];
-        const seen = new Set(existing.map((child) => child.value));
+        const seen = new Set(existing.map((child) => compareKey(child.value)));
         const merged = [
           ...existing,
-          ...children.filter((child) => !seen.has(child.value)),
+          ...children.filter((child) => !seen.has(compareKey(child.value))),
         ];
         return { ...node, children: merged };
       }
@@ -125,11 +186,12 @@ export function renameNode(
   newName: string,
 ): DirTreeNode[] {
   let found = false;
+  const oldKey = compareKey(oldPath);
 
   const walk = (list: DirTreeNode[]): DirTreeNode[] =>
     list.map((node) => {
       if (found) return node;
-      if (node.value === oldPath) {
+      if (compareKey(node.value) === oldKey) {
         found = true;
         return { ...node, value: newPath, title: newName };
       }

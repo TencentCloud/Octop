@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field, fields, replace
@@ -18,6 +19,14 @@ from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_e
 from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
+from octop.infra.agents.profile import (
+    dump_skill_package_ids,
+    dumps_config,
+    extract_profile_from_config,
+    overlay_skill_package_ids,
+    parse_config_json,
+    strip_profile_config,
+)
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
 from octop.infra.agents.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
@@ -28,7 +37,10 @@ from octop.infra.agents.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
 )
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
-from octop.infra.backend.docker_spec import enrich_docker_backend_spec
+from octop.infra.backend.docker_spec import (
+    enrich_docker_backend_spec,
+    inject_docker_global_environment,
+)
 from octop.infra.backend.resolver import (
     default_agent_backend_spec,
     resolve_agent_backend_spec,
@@ -213,6 +225,30 @@ async def _fill_missing_subagent_colors(agent: Any, rows: list[dict[str, Any]]) 
 # Data types
 # ---------------------------------------------------------------------------
 
+# Custom agent ids become workspace directory names (~/.octop/agents/<id>/),
+# so restrict to a conservative slug charset — no separators, dots, or
+# unicode — to keep every downstream path/URL usage safe.
+_CUSTOM_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$")
+
+
+def validate_custom_agent_id(agent_id: str) -> str:
+    """Validate a user-supplied agent id; raise ``OctopError`` when invalid."""
+    if not _CUSTOM_AGENT_ID_RE.fullmatch(agent_id):
+        raise OctopError(
+            ErrorCode.AGENT_ID_INVALID,
+            "agent id must be 3-64 chars of letters/digits/underscore/hyphen, "
+            "starting and ending with a letter or digit",
+        )
+    lowered = agent_id.lower()
+    if lowered in _RESERVED_AGENT_IDS:
+        raise OctopError(ErrorCode.AGENT_ID_INVALID, f"agent id {agent_id!r} is reserved")
+    return agent_id
+
+
+# Lowercase names that would collide with workspace-adjacent directories or
+# well-known URL/route segments.
+_RESERVED_AGENT_IDS = frozenset({"api", "admin", "agents", "experts"})
+
 
 @dataclass
 class AgentCreateSpec:
@@ -228,6 +264,12 @@ class AgentCreateSpec:
     icon: str | None = None
     template_name: str | None = None
     is_shared: bool = False
+    icon_name: str | None = None
+    icon_url: str | None = None
+    color: str | None = None
+    skill_package_ids: list[str] | None = None
+    published_expert_id: str | None = None
+    welcome_message: str | None = None
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -308,6 +350,8 @@ class AgentManager:
         self._mcp_tool_cache: dict[tuple[int, str, str], list[Any]] = {}
         self._mcp_tool_cache_locks: dict[tuple[int, str], asyncio.Lock] = {}
         self._mcp_tool_cache_guard = asyncio.Lock()
+        # Sanitized plugin tool name → original label (per agent, rebuilt on reload).
+        self._plugin_tool_labels: dict[str, dict[str, str]] = {}
 
     def replace_persistence(self, repos: RepoBundle, config: OctopConfig) -> None:
         """Retarget repos/config and rebuild settings stores after control-plane rebind."""
@@ -405,9 +449,10 @@ class AgentManager:
         async with self._lock:
             self._assert_agent_name_available(spec.user_id, spec.name)
             if spec.agent_id:
+                validate_custom_agent_id(spec.agent_id)
                 if self._repos.agent_repo.get(spec.agent_id) is not None:
                     raise OctopError(
-                        ErrorCode.AGENT_BUSY,
+                        ErrorCode.AGENT_ID_TAKEN,
                         f"agent_id {spec.agent_id!r} already exists",
                     )
                 agent_id = spec.agent_id
@@ -424,9 +469,25 @@ class AgentManager:
             )
             if spec.persona_mbti:
                 config["persona"] = spec.persona_mbti.upper()
-            # Persist workspace path at create time (all backends share this root).
-            ws = self._paths.ensure_agent_workspace(agent_id).resolve()
-            config.setdefault("workspace_dir", str(ws))
+            from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+                DEFAULT_SYSTEM_FILES_PATH,
+                seed_workspace_dir_on_create,
+            )
+
+            # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
+            # After insert, resolve_workspace_dir reads the DB value as source of truth.
+            seed_workspace_dir_on_create(config, paths=self._paths, agent_id=agent_id)
+            # ``system_files_path`` is an internal layout control and must not
+            # be user-configurable. New agents always use the default prefix.
+            config.pop("system_files_path", None)
+            config["system_files_path"] = DEFAULT_SYSTEM_FILES_PATH
+            profile = extract_profile_from_config(config)
+            config = strip_profile_config(config)
+            package_ids_json = (
+                dump_skill_package_ids(spec.skill_package_ids)
+                if spec.skill_package_ids is not None
+                else profile.get("skill_package_ids")
+            )
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -437,7 +498,17 @@ class AgentManager:
                 system_prompt=spec.system_prompt,
                 config_json=json.dumps(config) if config else None,
                 icon=spec.icon,
-                template_name=spec.template_name,
+                template_name=spec.template_name or profile.get("template_name"),
+                color=spec.color or profile.get("color"),
+                icon_name=spec.icon_name or profile.get("icon_name"),
+                icon_url=spec.icon_url or profile.get("icon_url"),
+                skill_package_ids=package_ids_json,
+                published_expert_id=spec.published_expert_id or profile.get("published_expert_id"),
+                welcome_message=(
+                    spec.welcome_message
+                    if spec.welcome_message is not None
+                    else profile.get("welcome_message")
+                ),
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
@@ -464,6 +535,21 @@ class AgentManager:
             )
             return row
 
+    def _preserve_system_files_path(self, agent_id: str, cfg: dict[str, Any]) -> dict[str, Any]:
+        """Keep ``system_files_path`` as an internal layout control.
+
+        User-facing config updates must not introduce, remove, or rewrite the
+        stored prefix. Legacy agents without the key stay on the root layout.
+        """
+        out = dict(cfg)
+        row = self._repos.agent_repo.get(agent_id)
+        current_raw = parse_config_json(row.config_json) if row and row.config_json else {}
+        if "system_files_path" in current_raw:
+            out["system_files_path"] = current_raw["system_files_path"]
+        else:
+            out.pop("system_files_path", None)
+        return out
+
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
         """Update agent config in DB and reload harness agent in the background."""
         runtime_updates = {
@@ -485,6 +571,15 @@ class AgentManager:
             kwargs["config_json"] = json.dumps(
                 merge_agent_runtime_values(parsed_config, runtime_updates),
             )
+        if "config_json" in kwargs:
+            parsed_profile_cfg = parse_config_json(
+                kwargs["config_json"] if isinstance(kwargs["config_json"], str) else None
+            )
+            parsed_profile_cfg = self._preserve_system_files_path(agent_id, parsed_profile_cfg)
+            lifted = extract_profile_from_config(parsed_profile_cfg)
+            kwargs["config_json"] = dumps_config(parsed_profile_cfg)
+            for key, value in lifted.items():
+                kwargs.setdefault(key, value)
         new_name = kwargs.get("name")
         if isinstance(new_name, str):
             row = self._repos.agent_repo.get(agent_id)
@@ -511,11 +606,26 @@ class AgentManager:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         return row
 
+    def set_icon_url(self, agent_id: str, icon_url: str | None) -> AgentRow:
+        """Persist display avatar URL without reloading the harness agent."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        self._repos.agent_repo.update_config(agent_id, icon_url=icon_url)
+        updated = self._repos.agent_repo.get(agent_id)
+        if updated is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        return updated
+
     async def delete(self, agent_id: str) -> None:
         """Remove agent from DB, harness runtime, and workspace directory."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
         async with self._lock:
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
-        workspace_dir = self._paths.agent_workspace(agent_id)
+        self._plugin_tool_labels.pop(agent_id, None)
         try:
             if await asyncio.to_thread(workspace_dir.exists):
                 await asyncio.to_thread(shutil.rmtree, workspace_dir)
@@ -590,26 +700,39 @@ class AgentManager:
         return partial[0] if len(partial) == 1 else None
 
     def get_config(self, agent_id: str) -> dict[str, Any]:
-        """Return the parsed config_json for agent_id, or empty dict."""
+        """Return harness config for agent_id, overlaying column skill_package_ids."""
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             return {}
-        try:
-            cfg = json.loads(row.config_json or "{}")
-            return cfg if isinstance(cfg, dict) else {}
-        except Exception:
-            return {}
+        return self._agent_config_dict(row)
+
+    def persist_harness_config(self, agent_id: str, cfg: dict[str, Any], **extra: Any) -> None:
+        """Write harness keys to ``config_json`` and lift leftover profile fields.
+
+        ``dumps_config`` strips profile keys (including ``skill_package_ids``). If those
+        still only live in the dict, copy them onto empty columns so a later overlay
+        does not drop mounts.
+        """
+        cfg = self._preserve_system_files_path(agent_id, cfg)
+        lifted = extract_profile_from_config(cfg)
+        row = self._repos.agent_repo.get(agent_id)
+        kwargs: dict[str, Any] = {"config_json": dumps_config(cfg)}
+        if row is not None:
+            for key, value in lifted.items():
+                current = getattr(row, key, None)
+                if current is None or (isinstance(current, str) and not str(current).strip()):
+                    kwargs[key] = value
+        kwargs.update(extra)
+        self._repos.agent_repo.update_config(agent_id, **kwargs)
 
     def resolve_workspace_dir(self, agent_id: str, *, persist_if_missing: bool = True) -> Path:
-        """Return this agent's workspace directory (from config, else Octop default).
+        """On-disk workspace for Octop host FS ops (delete, memory path, …).
 
-        Same path for every backend: host sessions/memory live here; local FS
-        backends usually align content here; Docker mirrors the path inside the
-        sandbox. Legacy rows without ``config.workspace_dir`` fall back to
-        ``{OCTOP_HOME}/agents/<id>/`` and optionally backfill the DB.
+        May map agent-facing ``/.octop/workspaces/…`` onto scoped ``root_dir``.
+        ``_build_harness_config`` parses the persisted string directly from
+        config — do not route harness through this host join.
         """
         from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
-            default_agent_workspace_dir,
             workspace_dir_from_config,
         )
 
@@ -618,11 +741,12 @@ class AgentManager:
         if isinstance(raw, str) and raw.strip():
             return workspace_dir_from_config(cfg, paths=self._paths, agent_id=agent_id)
 
-        out = default_agent_workspace_dir(self._paths, agent_id)
+        # Legacy / incomplete row: classic Octop layout only (not scoped create default).
+        out = self._paths.ensure_agent_workspace(agent_id)
         if persist_if_missing and self._repos.agent_repo.get(agent_id) is not None:
             new_cfg = dict(cfg)
             new_cfg["workspace_dir"] = str(out.resolve())
-            self._repos.agent_repo.update_config(agent_id, config_json=json.dumps(new_cfg))
+            self.persist_harness_config(agent_id, new_cfg)
         return out
 
     def is_bootstrapped(self, agent_id: str) -> bool:
@@ -631,6 +755,13 @@ class AgentManager:
             return self.get_agent(agent_id).is_bootstrapped()
         except OctopError:
             return False
+        except Exception:
+            logger.warning(
+                "bootstrap check failed for agent %s; assuming bootstrapped",
+                agent_id,
+                exc_info=True,
+            )
+            return True
 
     def find_agents_using_provider(self, provider_name: str) -> list[dict[str, str]]:
         """Return agents referencing *provider_name* in config or default_model."""
@@ -936,6 +1067,37 @@ class AgentManager:
         for lock_key in [k for k in self._mcp_tool_cache_locks if k[0] == user_id]:
             del self._mcp_tool_cache_locks[lock_key]
 
+    def mcp_server_labels_for_user(self, user_id: int) -> dict[str, str]:
+        labels: dict[str, str] = {}
+        for inst in self._repos.connector_repo.list_by_user(user_id):
+            name = inst.mcp_server_name
+            labels[name] = (inst.display_name or name).strip() or name
+        for name in self._connector_svc.custom_harness_configs(user_id):
+            labels.setdefault(name, name)
+        return labels
+
+    def resolve_tool_display_name_for_chat(
+        self,
+        *,
+        agent_id: str,
+        user_id: int | None,
+        tool_name: str,
+        locale: str,
+    ) -> str:
+        from octop.i18n.domains.tools import resolve_tool_display_name
+
+        uid = user_id
+        if uid is None:
+            row = self.get_row(agent_id)
+            uid = self._connector_uid_for(row) if row is not None else None
+        mcp_labels = self.mcp_server_labels_for_user(uid) if uid is not None else {}
+        return resolve_tool_display_name(
+            tool_name,
+            locale,
+            mcp_server_labels=mcp_labels,
+            plugin_labels=self._plugin_tool_labels.get(agent_id, {}),
+        )
+
     async def _server_lock(self, user_id: int, server_name: str) -> asyncio.Lock:
         key = (user_id, server_name)
         async with self._mcp_tool_cache_guard:
@@ -978,7 +1140,15 @@ class AgentManager:
             cached = self._mcp_tool_cache.get(cache_key)
             if cached is not None:
                 return cached
-            raw = await aload_mcp_tools({server_name: spec})
+            from octop.infra.utils.env_file import (  # noqa: PLC0415
+                env_file_path,
+                load_env_file,
+                overlay_stdio_spec_env,
+            )
+
+            global_env = load_env_file(env_file_path(self._paths.root))
+            load_spec = overlay_stdio_spec_env(spec, global_env)
+            raw = await aload_mcp_tools({server_name: load_spec})
             server_lock = await self._server_lock(user_id, server_name)
             wrapped = wrap_tools_for_shared_use(raw, server_lock)
             self._mcp_tool_cache[cache_key] = wrapped
@@ -1106,6 +1276,12 @@ class AgentManager:
             if still_builtin:
                 from harness_agent.mcp import aload_mcp_tools
 
+                from octop.infra.utils.env_file import (
+                    env_file_path,
+                    load_env_file,
+                    overlay_stdio_mcp_configs,
+                )
+
                 subset = {
                     n: agent.config.mcp_server_configs[n]
                     for n in still_builtin
@@ -1118,7 +1294,8 @@ class AgentManager:
                         agent_id,
                         sorted(subset),
                     )
-                    extra = await aload_mcp_tools(subset)
+                    global_env = load_env_file(env_file_path(self._paths.root))
+                    extra = await aload_mcp_tools(overlay_stdio_mcp_configs(subset, global_env))
                     if extra:
                         agent.append_mcp_tools(extra)
 
@@ -1215,11 +1392,11 @@ class AgentManager:
 
         cfg = self.get_config(agent_id)
         cfg["persona"] = norm
-        self._repos.agent_repo.update_config(
+        self.persist_harness_config(
             agent_id,
+            cfg,
             persona_mbti=norm,
             system_prompt=persona_text,
-            config_json=json.dumps(cfg),
         )
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
@@ -1229,7 +1406,13 @@ class AgentManager:
 
     async def update_config_json(self, agent_id: str, config_json: str) -> AgentRow:
         """Patch ``config_json`` and reload the harness runtime in the background."""
-        self._repos.agent_repo.update_config(agent_id, config_json=config_json)
+        parsed = self._preserve_system_files_path(agent_id, parse_config_json(config_json))
+        lifted = extract_profile_from_config(parsed)
+        self._repos.agent_repo.update_config(
+            agent_id,
+            config_json=dumps_config(parsed),
+            **lifted,
+        )
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
@@ -1244,7 +1427,7 @@ class AgentManager:
         """
         cfg = self.get_config(agent_id)
         cfg["skills_disabled"] = sorted(disabled)
-        self._repos.agent_repo.update_config(agent_id, config_json=json.dumps(cfg))
+        self.persist_harness_config(agent_id, cfg)
         self.sync_skills_disabled(agent_id, disabled)
 
     def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
@@ -1324,8 +1507,11 @@ class AgentManager:
                 "with host root '/' or the agent workspace root",
             )
         cfg = self.get_config(agent_id)
-        cfg["skill_package_ids"] = normalized_ids
-        self._repos.agent_repo.update_config(agent_id, config_json=json.dumps(cfg))
+        self._repos.agent_repo.update_config(
+            agent_id,
+            skill_package_ids=dump_skill_package_ids(normalized_ids),
+            config_json=dumps_config(cfg),
+        )
         self.sync_skill_package_dirs(agent_id)
 
     def sync_skill_package_dirs(self, agent_id: str) -> None:
@@ -1411,8 +1597,12 @@ class AgentManager:
             package_ids = skill_package_ids_list(cfg)
             if package_id not in package_ids:
                 continue
-            cfg["skill_package_ids"] = [item for item in package_ids if item != package_id]
-            self._repos.agent_repo.update_config(row.agent_id, config_json=json.dumps(cfg))
+            remaining = [item for item in package_ids if item != package_id]
+            self._repos.agent_repo.update_config(
+                row.agent_id,
+                skill_package_ids=dump_skill_package_ids(remaining),
+                config_json=dumps_config(cfg),
+            )
             self.sync_skill_package_dirs(row.agent_id)
 
     def resolve_context_max_tokens(self, agent_id: str, *, fallback: int = 128_000) -> int:
@@ -1670,18 +1860,21 @@ class AgentManager:
             self._bootstrap_graph_refresh_pending.add(agent_id)
 
     def _agent_config_dict(self, row: AgentRow) -> dict[str, Any]:
-        try:
-            cfg = json.loads(row.config_json or "{}")
-            if not isinstance(cfg, dict):
-                return {}
-        except Exception:
-            return {}
-        return cfg
+        cfg = parse_config_json(row.config_json)
+        return overlay_skill_package_ids(cfg, row)
 
-    def _backend_spec_for_row(self, row: AgentRow) -> Any:
-        cfg = self._agent_config_dict(row)
+    def _backend_spec_for_row(
+        self,
+        row: AgentRow,
+        *,
+        cfg: dict[str, Any] | None = None,
+        workspace_dir: Path | None = None,
+    ) -> Any:
+        if cfg is None:
+            cfg = self._agent_config_dict(row)
         backend_spec = cfg.get("backend")
-        workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        if workspace_dir is None:
+            workspace_dir = self.resolve_workspace_dir(row.agent_id)
         if backend_spec is None:
             return default_agent_backend_spec(workspace_dir)
         resolved = resolve_agent_backend_spec(
@@ -1711,21 +1904,40 @@ class AgentManager:
         """Inject Octop docker defaults (prefix / agent_id / username) without overwrite."""
         if not isinstance(backend, dict) or backend.get("type") != "docker":
             return backend
-        return enrich_docker_backend_spec(
+        from octop.infra.utils.env_file import env_file_path  # noqa: PLC0415
+
+        enriched = enrich_docker_backend_spec(
             backend,
             agent_id=row.agent_id,
             username=self._owner_username(row),
         )
+        return inject_docker_global_environment(enriched, env_file_path(self._paths.root))
 
-    def _backend_workspace_for_row(self, row: AgentRow) -> Any:
+    def _backend_workspace_for_row(
+        self,
+        row: AgentRow,
+        *,
+        cfg: dict[str, Any] | None = None,
+        workspace_dir: Path | None = None,
+    ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
         from harness_agent.backends import resolve_backend  # noqa: PLC0415
         from harness_agent.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
-        workspace_dir = self.resolve_workspace_dir(row.agent_id)
-        backend = self._prepare_docker_backend(self._backend_spec_for_row(row), row)
+        from octop.infra.agents.workspace_dir import system_files_path_from_config  # noqa: PLC0415
+
+        if cfg is None:
+            cfg = self._agent_config_dict(row)
+        if workspace_dir is None:
+            workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        backend = self._prepare_docker_backend(
+            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir),
+            row,
+        )
         return BackendWorkspace(
-            resolve_backend(backend, workspace_dir=workspace_dir), workspace_dir
+            resolve_backend(backend, workspace_dir=workspace_dir),
+            workspace_dir,
+            system_files_path=system_files_path_from_config(cfg),
         )
 
     async def _seed_expert_template(self, row: AgentRow, template_name: str) -> None:
@@ -1847,7 +2059,7 @@ class AgentManager:
         )
 
         configure_browser_screenshots_dir(
-            agent_outbound_screenshots_dir(self._paths, row.agent_id),
+            agent_outbound_screenshots_dir(self.resolve_workspace_dir(row.agent_id)),
         )
         # Shared across agents — not under a single agent workspace.
         configure_browser_profiles_dir(octop_browser_profiles_dir(self._paths))
@@ -1902,11 +2114,27 @@ class AgentManager:
         """Convert an AgentRow into a HarnessAgentConfig."""
         from harness_agent.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
-        workspace_dir = self.resolve_workspace_dir(row.agent_id)
-        cfg = self._agent_config_dict(row)
+        from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+            resolve_workspace_host_path,
+            system_files_path_from_config,
+        )
 
-        backend = self._backend_spec_for_row(row)
-        ws = self._backend_workspace_for_row(row)
+        cfg = self._agent_config_dict(row)
+        raw = cfg.get("workspace_dir")
+        if isinstance(raw, str) and raw.strip():
+            # Persisted value goes to harness as-is; host map is Octop-local only.
+            harness_workspace = Path(raw.strip())
+            workspace_dir = resolve_workspace_host_path(raw, cfg)
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            # Legacy / incomplete row: backfill classic host workspace (also
+            # lifts profile keys such as skill_package_ids into columns).
+            workspace_dir = self.resolve_workspace_dir(row.agent_id)
+            harness_workspace = workspace_dir
+            cfg = self._agent_config_dict(row)
+
+        backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
+        ws = self._backend_workspace_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
 
         cron_tools: list[Any] | None = None
         if self._cron_manager is not None:
@@ -1926,6 +2154,16 @@ class AgentManager:
             )
         )
 
+        mobile_tools: list[Any] = []
+        if self._config.capabilities.mobile.enabled:
+            from octop.infra.mobile.tools import build_mobile_tools  # noqa: PLC0415
+
+            mobile_tools = build_mobile_tools(
+                self._config,
+                user_repo=self._repos.user_repo,
+                paths=self.paths,
+            )
+
         from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
         agent_plugins = cfg.get("plugins") if isinstance(cfg.get("plugins"), dict) else {}
@@ -1936,6 +2174,27 @@ class AgentManager:
             agent_plugins=agent_plugins,
             global_plugins=global_plugins,
         )
+        # Plugin authors may register tools with non-ASCII (e.g. Chinese) names,
+        # which strict LLM tool-name APIs reject. Rewrite them to legal names
+        # before binding, keeping the original in the description. Config keys
+        # and the plugin-side closures still use the original names.
+        from octop.infra.agents.plugin_tool_names import (  # noqa: PLC0415
+            extract_original_plugin_label,
+            sanitize_plugin_tool_names,
+        )
+
+        sanitize_plugin_tool_names(
+            plugin_tools,
+            reserved={
+                str(getattr(t, "name", ""))
+                for t in [*(cron_tools or []), *knowledge_tools, *mobile_tools]
+            },
+        )
+        self._plugin_tool_labels[row.agent_id] = {
+            str(getattr(tool, "name", "")): label
+            for tool in plugin_tools
+            if (label := extract_original_plugin_label(str(getattr(tool, "description", "") or "")))
+        }
         plugin_middleware = PluginRegistry().build_middleware_chain(global_enabled=global_plugins)
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
@@ -1943,21 +2202,33 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
+        from octop.infra.agents.middleware.workspace_image import (
+            WorkspaceImageMaterializeMiddleware,
+        )
         from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
 
         # FilesystemGuard + ModelSettings live in harness-agent (auto-mounted).
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
+        # ThreadArtifacts writes workspace paths onto threads after successful tools.
+        # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
         agent_middleware: list[Any] = [
             *plugin_middleware,
             ReasoningRequestMiddleware(),
             KnowledgeSearchHintMiddleware(),
             BinaryReadGuardMiddleware(),
+            WorkspaceImageMaterializeMiddleware(workspace=ws),
+            ThreadArtifactsMiddleware(
+                thread_repo=self._repos.thread_repo,
+                workspace_dir=harness_workspace,
+            ),
         ]
 
         merged_tools: list[Any] = []
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
+        merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
         if self._harness_manager is not None:
             merged_tools.extend(self._harness_manager.team.team_tools())
@@ -1998,6 +2269,17 @@ class AgentManager:
                 row.agent_id,
             )
 
+        from octop.infra.utils.env_file import (  # noqa: PLC0415
+            env_file_path,
+            load_env_file,
+            overlay_stdio_mcp_configs,
+        )
+
+        mcp_server_configs = overlay_stdio_mcp_configs(
+            mcp_server_configs,
+            load_env_file(env_file_path(self._paths.root)),
+        )
+
         configured_skill_dirs = self._normalize_skills_dir_config(cfg.get("skills"))
         package_skill_dirs = (
             self._resolve_skill_package_dirs(row.agent_id)
@@ -2009,11 +2291,20 @@ class AgentManager:
         )
         skill_dirs = configured_skill_dirs + package_skill_dirs
 
-        backend = self._prepare_docker_backend(backend, row)
+        from octop.infra.agents.execute_env import inject_agent_execute_env  # noqa: PLC0415
+
+        backend = inject_agent_execute_env(
+            self._prepare_docker_backend(backend, row),
+            paths=self._paths,
+            row=row,
+            workspace_dir=workspace_dir,
+            cfg=cfg,
+        )
 
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),
-            workspace_dir=workspace_dir,
+            workspace_dir=harness_workspace,
+            system_files_path=system_files_path_from_config(cfg),
             # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
             # back to the same resolution AUTO chat routing uses (active model
             # first, else first usable) — so promotion works whenever chat does.

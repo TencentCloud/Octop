@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from psycopg import IntegrityError as PsycopgIntegrityError
 
+from octop.infra.agents.avatar import bind_workspace_avatar_icon_url
 from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, seed_expert_directory
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
@@ -35,6 +36,9 @@ class PublishedExpertInstallOptions:
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
     color: str | None = None
+    agent_id: str | None = None
+    icon_url: str | None = None
+    welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
 
 
@@ -78,6 +82,11 @@ def _manifest_quick_prompts(manifest: dict[str, Any]) -> tuple[dict[str, Any], .
 
 
 def _agent_color(registry: Any, agent_id: str) -> str | None:
+    row = registry.get_row(agent_id)
+    if row is not None:
+        color = str(getattr(row, "color", None) or "").strip()
+        if color:
+            return color
     cfg = registry.get_config(agent_id)
     color = cfg.get("color")
     return str(color).strip() if isinstance(color, str) and color.strip() else None
@@ -96,7 +105,7 @@ def _snapshot_meta(
     return PublishedExpertSnapshotMeta(
         name=name,
         description=description,
-        icon_name=(source.icon or None),
+        icon_name=(getattr(source, "icon_name", None) or source.icon or None),
         color=color,
         label_zh=name,
         label_en=name,
@@ -111,6 +120,10 @@ def require_published_expert(services: Any, expert_id: str) -> PublishedExpertRo
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"published expert {expert_id!r} not found")
     return cast(PublishedExpertRow, row)
+
+
+def snapshot_welcome_message(snapshot_dir: Path) -> tuple[str, str]:
+    return _manifest_welcome(_read_snapshot_manifest(snapshot_dir))
 
 
 async def publish_agent_expert(
@@ -142,7 +155,7 @@ async def publish_agent_expert(
     snapshot_dir = _snapshot_dir(services, expert_id)
     resolved_description = description or source.description or ""
     color = _agent_color(registry, source.agent_id) or ""
-    icon_name = source.icon or ""
+    icon_name = getattr(source, "icon_name", None) or source.icon or ""
     try:
         await export_agent_workspace_to_dir(
             workspace=workspace,
@@ -204,7 +217,7 @@ async def refresh_published_expert(
         raise OctopError(ErrorCode.NOT_FOUND, "published expert source agent not found")
 
     color = _agent_color(registry, source.agent_id) or ""
-    icon_name = source.icon or ""
+    icon_name = getattr(source, "icon_name", None) or source.icon or ""
     snapshot_dir = _snapshot_dir(services, row.id)
     existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
     existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
@@ -274,28 +287,34 @@ async def install_published_expert(
     if package_ids:
         registry.assert_backend_supports_skill_packages(options.backend)
 
-    config_extra: dict[str, Any] = {"published_expert_id": row.id}
+    config_extra: dict[str, Any] = {}
     if options.providers:
         config_extra["providers"] = list(options.providers)
     if options.backend:
         config_extra["backend"] = options.backend
-    if options.color:
-        config_extra["color"] = options.color
 
     created = await registry.create(
         AgentCreateSpec(
             name=options.name,
+            agent_id=options.agent_id,
             user_id=user.id,
             description=options.description or row.description,
             default_model=options.default_model,
             runtime_config=options.runtime_config or {},
             config=config_extra,
+            template_name=None,
+            icon_name=row.icon_name or None,
+            icon_url=options.icon_url,
+            color=options.color or row.color or None,
+            published_expert_id=row.id,
+            welcome_message=options.welcome_message,
         )
     )
     workspace = registry.workspace_for_agent(created.agent_id)
     if workspace is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {created.agent_id!r} not found")
     await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)
+    await bind_workspace_avatar_icon_url(registry, created.agent_id, workspace)
     if package_ids is not None:
         await registry.persist_skill_package_ids(created.agent_id, package_ids)
     await registry.reload(created.agent_id)

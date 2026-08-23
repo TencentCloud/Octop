@@ -82,7 +82,7 @@ def test_migration_003_repairs_stored_hard_cuts(tmp_path: Path) -> None:
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         title = conn.execute("SELECT title FROM threads WHERE thread_id = ?", ("t1",)).fetchone()[0]
-    assert v == 6
+    assert v == 9
     assert title == "x" * 39 + "…"
     # Idempotent repair
     assert repair_all_legacy_thread_titles(pool) == 0

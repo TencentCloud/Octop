@@ -11,6 +11,7 @@ from octop.infra.db.repos._base import DbRow, map_rows, now_ts, partial_updates
 @dataclass(frozen=True)
 class SkillPackageRow:
     id: str
+    pk: int
     name: str
     description: str
     created_by: str
@@ -25,7 +26,8 @@ class SkillPackageRow:
         # sqlite3.Row's ``in`` checks values, not column names — use ``.keys()``.
         keys = frozenset(r.keys()) if hasattr(r, "keys") else frozenset()
         return cls(
-            id=r["id"],
+            id=str(r["skill_package_id"]),
+            pk=int(r["id"]),
             name=r["name"],
             description=r["description"],
             created_by=r["created_by"],
@@ -48,7 +50,10 @@ class SkillPackageRepo:
 
     def get(self, package_id: str) -> SkillPackageRow | None:
         with self._db.connect() as conn:
-            r = conn.execute("SELECT * FROM skill_packages WHERE id = ?", (package_id,)).fetchone()
+            r = conn.execute(
+                "SELECT * FROM skill_packages WHERE skill_package_id = ?",
+                (package_id,),
+            ).fetchone()
         return SkillPackageRow.from_row(r) if r else None
 
     def get_by_name(self, name: str) -> SkillPackageRow | None:
@@ -73,8 +78,8 @@ class SkillPackageRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO skill_packages("
-                "id, name, description, created_by, skill_count, icon_name, icon_url, "
-                "created_at, updated_at"
+                "skill_package_id, name, description, created_by, skill_count, "
+                "icon_name, icon_url, created_at, updated_at"
                 ") VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
                 (id, name, description, created_by, icon_name, icon_url, ts, ts),
             )
@@ -107,17 +112,21 @@ class SkillPackageRepo:
         params.append(package_id)
         with self._db.transaction() as conn:
             conn.execute(
-                f"UPDATE skill_packages SET {', '.join(fields)} WHERE id = ?",
+                f"UPDATE skill_packages SET {', '.join(fields)} WHERE skill_package_id = ?",
                 params,
             )
 
     def delete(self, package_id: str) -> None:
         with self._db.transaction() as conn:
-            conn.execute("DELETE FROM skill_packages WHERE id = ?", (package_id,))
+            conn.execute(
+                "DELETE FROM skill_packages WHERE skill_package_id = ?",
+                (package_id,),
+            )
 
     def update_skill_count(self, package_id: str, count: int) -> None:
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE skill_packages SET skill_count = ?, updated_at = ? WHERE id = ?",
+                "UPDATE skill_packages SET skill_count = ?, updated_at = ? "
+                "WHERE skill_package_id = ?",
                 (count, str(now_ts()), package_id),
             )

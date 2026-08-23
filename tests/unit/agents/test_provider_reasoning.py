@@ -84,7 +84,7 @@ def test_anthropic_adaptive_uses_native_model_fields() -> None:
         }
     )
     assert reasoning_request_parameters(capability, mode="enabled", effort="high") == {
-        "model_fields": {"thinking": {"type": "adaptive"}, "effort": "high"}
+        "model_fields": {"thinking": {"type": "adaptive"}, "reasoning_effort": "high"}
     }
 
 

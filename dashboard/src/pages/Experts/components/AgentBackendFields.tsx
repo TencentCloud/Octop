@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Form, Input, Select } from "antd";
 import RootDirSelect from "./RootDirSelect";
 import { MinusCircle } from "lucide-react";
@@ -6,12 +6,15 @@ import { useTranslation } from "react-i18next";
 import {
   BUILTIN_BACKENDS,
   DEFAULT_BACKEND,
+  fetchFilesystemDefaults,
   type BackendOption,
+  type FilesystemDefaults,
   type PathMapping,
   builtinDesc,
   builtinLabel,
   isValidCompositePath,
 } from "./agentBackendForm";
+import { HOST_FS_ROOT } from "./rootDirTree";
 import styles from "../index.module.less";
 
 interface AgentBackendFieldsProps {
@@ -19,6 +22,8 @@ interface AgentBackendFieldsProps {
   backendsLoading: boolean;
   backendChoice: string;
   pathMappings: PathMapping[];
+  /** ``create`` fills empty root_dir with home; ``edit`` leaves existing values. */
+  rootDirMode?: "create" | "edit";
   onAddPathMapping: () => void;
   onRemovePathMapping: (index: number) => void;
   onUpdatePathMapping: (
@@ -33,12 +38,39 @@ export default function AgentBackendFields({
   backendsLoading,
   backendChoice,
   pathMappings,
+  rootDirMode = "create",
   onAddPathMapping,
   onRemovePathMapping,
   onUpdatePathMapping,
 }: AgentBackendFieldsProps) {
   const { t } = useTranslation();
+  const form = Form.useFormInstance();
+  const [fsDefaults, setFsDefaults] = useState<FilesystemDefaults | null>(null);
+  const watchedRootDir = Form.useWatch("root_dir", form) as string | undefined;
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilesystemDefaults()
+      .then((defaults) => {
+        if (!cancelled) setFsDefaults(defaults);
+      })
+      .catch(() => {
+        if (!cancelled) setFsDefaults(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!fsDefaults || rootDirMode !== "create") return;
+    const current = watchedRootDir;
+    if (!current) {
+      form.setFieldValue("root_dir", fsDefaults.default_root_dir);
+    }
+  }, [fsDefaults, form, watchedRootDir, rootDirMode]);
+
+  const treeRoot = fsDefaults?.tree_root ?? HOST_FS_ROOT;
   const routeBackendOptions = useMemo(() => {
     const builtins = BUILTIN_BACKENDS.map((mode) => ({
       value: mode,
@@ -129,9 +161,13 @@ export default function AgentBackendFields({
           <Form.Item
             name="root_dir"
             label={t("experts.backendRootDir")}
-            initialValue="/"
+            initialValue={
+              rootDirMode === "create"
+                ? fsDefaults?.default_root_dir
+                : undefined
+            }
           >
-            <RootDirSelect />
+            <RootDirSelect treeRoot={treeRoot} />
           </Form.Item>
           <div style={{ margin: "-8px 0 12px" }}>
             <p
@@ -141,7 +177,9 @@ export default function AgentBackendFields({
                 margin: 0,
               }}
             >
-              {t("experts.backendRootDirDesc")}
+              {t("experts.backendRootDirDesc", {
+                home: fsDefaults?.home ?? "~",
+              })}
             </p>
             <p
               style={{

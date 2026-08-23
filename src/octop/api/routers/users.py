@@ -22,12 +22,14 @@ class UserCreateBody(BaseModel):
     password: str = Field(min_length=1, max_length=200)
     role: str = "user"
     display_name: str | None = None
+    email: str | None = Field(default=None, max_length=254)
     permissions: list[str] = Field(default_factory=list)
 
 
 class UserPatchBody(BaseModel):
     role: str | None = None
     display_name: str | None = None
+    email: str | None = Field(default=None, max_length=254)
     disabled: bool | None = None
     permissions: list[str] | None = None
 
@@ -147,6 +149,7 @@ async def create_user(
         password=body.password,
         role=role,
         display_name=body.display_name,
+        email=body.email,
         permissions=body.permissions,
     )
     row = server.user_manager.get_row(user.id)
@@ -190,6 +193,8 @@ async def patch_user(
         await server.user_manager.set_role(row.username, Role(body.role))
     if body.display_name is not None:
         await server.user_manager.set_display_name(row.username, body.display_name)
+    if "email" in body.model_fields_set:
+        await server.user_manager.set_email(row.username, body.email)
     if body.disabled is True:
         await server.user_manager.disable(row.username)
     elif body.disabled is False:

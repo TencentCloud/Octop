@@ -29,6 +29,7 @@ def _services(**extra: object) -> SimpleNamespace:
 @dataclass
 class _Base:
     id: str = "kb-1"
+    pk: int = 1
     owner_user_id: int = 1
     name: str = "Docs"
     description: str = ""
@@ -45,8 +46,11 @@ class _Base:
 @dataclass
 class _Document:
     id: str = "doc-1"
+    pk: int = 1
     kb_id: str = "kb-1"
+    path: str = "readme.md"
     filename: str = "readme.md"
+    is_dir: bool = False
     content_type: str = "text/markdown"
     byte_size: int = 2
     content_hash: str = ""

@@ -19,6 +19,7 @@ export const PERM = {
   browser: ["browser"],
   terminal: ["terminal"],
   desktop: ["desktop"],
+  mobile: ["mobile"],
   usersPage: ["users", "sso"],
   modelsPage: ["providers", "ollama_models", "onnx_models"],
   storage: ["storage_backends"],
@@ -42,7 +43,8 @@ export const NAV_PERMISSIONS = {
   "skill-packages": PERM.skillPackages,
   "knowledge-bases": PERM.knowledgeBasesPage,
   workbench: PERM.workbench,
-  "remote-desktop": PERM.desktop,
+  "remote-desktop": ["desktop", "mobile"],
+  "remote-phone": PERM.mobile,
   acp: "admin",
   "admin-users": PERM.usersPage,
   models: PERM.modelsPage,
@@ -181,11 +183,23 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   ) {
     return PERM.knowledgeBasesPage;
   }
+  if (pathname === "/remote-desktop/desktop") {
+    return PERM.desktop;
+  }
+  if (
+    pathname === "/remote-desktop/phone" ||
+    pathname === "/remote-phone" ||
+    pathname.startsWith("/remote-phone/") ||
+    pathname === "/remote-android" ||
+    pathname.startsWith("/remote-android/")
+  ) {
+    return PERM.mobile;
+  }
   if (
     pathname === "/remote-desktop" ||
     pathname.startsWith("/remote-desktop/")
   ) {
-    return PERM.desktop;
+    return ["desktop", "mobile"];
   }
   if (pathname === "/workbench/terminal" || pathname === "/terminal") {
     return PERM.terminal;

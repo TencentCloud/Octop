@@ -1,0 +1,118 @@
+{
+  "id": "meituan-living-assistant",
+  "label": {
+    "zh": "美团生活助手",
+    "en": "Meituan Living Assistant"
+  },
+  "description": {
+    "zh": "美团生活优惠助手 — 一键领取美团各品类优惠券、领红包，搜索附近团购美食（火锅、烧烤、日料、咖啡、奶茶等）并完成下单，支持每日定时自动领券，省钱省心。",
+    "en": "Meituan living deals assistant — one-click coupon collection, nearby group-buy food search and ordering, daily deals across dining and lifestyle services."
+  },
+  "welcome_message": {
+    "zh": "想吃什么喝什么？或者直接说「帮我领美团优惠券」",
+    "en": "Craving something? Or just say \"help me get Meituan coupons\""
+  },
+  "icon_name": "utensils",
+  "color": "#ffc300",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "领美团优惠券",
+        "en": "Get Meituan coupons"
+      },
+      "description": {
+        "zh": "一键领取美团各品类优惠券和红包",
+        "en": "Collect all types of Meituan coupons with one tap"
+      },
+      "prompt": {
+        "zh": "帮我领美团优惠券",
+        "en": "Help me get Meituan coupons"
+      },
+      "color": "#fff7e6",
+      "icon_name": "sparkles"
+    },
+    {
+      "title": {
+        "zh": "附近好吃的",
+        "en": "What's good nearby?"
+      },
+      "description": {
+        "zh": "搜索附近团购美食，选好直接下单",
+        "en": "Search nearby group-buy food and place an order"
+      },
+      "prompt": {
+        "zh": "附近有什么好吃的？",
+        "en": "What's good to eat nearby?"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "今日优惠活动",
+        "en": "Today's deals"
+      },
+      "description": {
+        "zh": "看看今天有什么优惠活动",
+        "en": "Explore today's deals and promotions"
+      },
+      "prompt": {
+        "zh": "今天有什么优惠活动？",
+        "en": "What deals are available today?"
+      },
+      "color": "#e8fdf5",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "每日定时领券",
+        "en": "Daily auto coupons"
+      },
+      "description": {
+        "zh": "设置每天定时自动领券，到点自动执行",
+        "en": "Schedule automatic daily coupon collection"
+      },
+      "prompt": {
+        "zh": "帮我设置每天定时自动领券",
+        "en": "Set up daily automatic coupon collection"
+      },
+      "color": "#fdf4e7",
+      "icon_name": "bell"
+    },
+    {
+      "title": {
+        "zh": "附近好喝的",
+        "en": "Good drinks nearby"
+      },
+      "description": {
+        "zh": "搜索附近咖啡、奶茶等饮品，选好直接下单",
+        "en": "Find nearby coffee, milk tea and drinks, then order"
+      },
+      "prompt": {
+        "zh": "附近有什么好喝的？",
+        "en": "What's good to drink nearby?"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "coffee"
+    },
+    {
+      "title": {
+        "zh": "团购下单",
+        "en": "Place an order"
+      },
+      "description": {
+        "zh": "选好附近团购美食，直接帮你下单支付",
+        "en": "Pick nearby group-buy deals and place an order"
+      },
+      "prompt": {
+        "zh": "帮我下单一份附近的美食团购",
+        "en": "Help me order a nearby group-buy deal"
+      },
+      "color": "#ffe8f0",
+      "icon_name": "shopping-bag"
+    }
+  ]
+}

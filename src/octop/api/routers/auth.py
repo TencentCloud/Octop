@@ -39,7 +39,7 @@ class ChangePasswordBody(BaseModel):
 
 @router.post("/login", summary="Sign in")
 async def login(body: LoginBody, server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Exchange username and password for a JWT access token and user profile."""
+    """Exchange username (or email) and password for a JWT access token and user profile."""
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
     user = await server.user_manager.authenticate(body.username, body.password)

@@ -1,44 +1,6 @@
 import type { ChatAttachment } from "../hooks/sseHelpers";
 
-export const ACCEPTED_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/plain",
-  "text/markdown",
-  "application/json",
-  "text/csv",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/zip",
-]);
-
-export const ACCEPTED_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".pdf",
-  ".txt",
-  ".md",
-  ".markdown",
-  ".json",
-  ".csv",
-  ".docx",
-  ".xlsx",
-  ".pptx",
-  ".zip",
-]);
-
-export const CHAT_ACCEPT_ATTR = [
-  ...ACCEPTED_EXTENSIONS,
-  ...ACCEPTED_MIME_TYPES,
-].join(",");
-
+/** Backend inbound store accepts any type; only enforce size client-side. */
 export const CHAT_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 const THINKING_TAG_RE = /<think>[\s\S]*?<\/redacted_thinking>\s*/gi;
@@ -79,14 +41,6 @@ export function inferAttachmentKind(
   })
     ? "image"
     : "file";
-}
-
-export function isAcceptedChatFile(file: File): boolean {
-  const type = (file.type || "").toLowerCase();
-  if (type && ACCEPTED_MIME_TYPES.has(type)) return true;
-
-  const lowerName = file.name.toLowerCase();
-  return [...ACCEPTED_EXTENSIONS].some((ext) => lowerName.endsWith(ext));
 }
 
 /** Vision block — backend materializes to ``image_url`` base64 for the LLM. */

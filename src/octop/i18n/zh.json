@@ -155,6 +155,8 @@
       "last_active": "最后活跃",
       "model_override": "模型覆盖",
       "input": "输入",
+      "cache_read": "缓存输入",
+      "cache_hit": "缓存命中率",
       "output": "输出",
       "total": "合计",
       "turns": "轮次",
@@ -290,6 +292,8 @@
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {minutes} 分钟后再试。",
     "USERNAME_TAKEN": "用户名已被占用。",
+    "EMAIL_TAKEN": "邮箱已被占用。",
+    "EMAIL_INVALID": "邮箱格式不正确。",
     "PASSWORD_SAME_AS_OLD": "新密码不能与当前密码相同。",
     "PASSWORD_TOO_WEAK": "密码过弱：至少 8 位，且同时包含字母和数字。",
     "SETUP_PASSWORD_WRONG": "启动密码不正确。",
@@ -300,6 +304,8 @@
     "AGENT_FAILED": "Agent 启动失败。",
     "AGENT_BUSY": "Agent 正忙。",
     "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",
+    "AGENT_ID_INVALID": "自定义 ID 无效：需 3-64 位字母/数字/下划线/连字符，且以字母或数字开头结尾。",
+    "AGENT_ID_TAKEN": "该 ID 已被使用，请换一个 ID。",
     "PROVIDER_NAME_TAKEN": "提供商名称已被占用。",
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
@@ -352,7 +358,14 @@
     "KNOWLEDGE_DOC_TOO_LARGE": "文档超过 20 MB 大小限制。",
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
-    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。"
+    "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
+    "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
+    "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
+    "INVITE_INVALID": "邀请码无效。",
+    "INVITE_USED": "该邀请码已被使用。",
+    "INVITE_EXPIRED": "该邀请码已过期。",
+    "INVITE_REVOKED": "该邀请码已被撤销。",
+    "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -457,7 +470,15 @@
     "acp_runner": "ACP 外部 Agent",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
-    "send_file_to_user": "发送文件"
+    "send_file_to_user": "发送文件",
+    "mobile_screenshot": "手机截图",
+    "mobile_tap": "手机点击",
+    "mobile_swipe": "手机滑动",
+    "mobile_launch_app": "启动手机应用",
+    "mobile_ui_dump": "手机界面结构",
+    "mobile_handoff_to_user": "交给用户操作（手机）",
+    "read_env_file": "读取环境变量",
+    "write_env_file": "写入环境变量"
   },
   "skills": {
     "pdf": "PDF 处理",
@@ -549,5 +570,18 @@
   "proactive_care": {
     "system_prompt": "今天是 {today}。\n\n请根据用户近期的生活事件，用温暖自然的语气写一段关心的话，不超过 150 字。\n注意事件发生的时间，不要把几天前的事说成「今天」。\n不要提及你是 AI，直接表达关心即可。",
     "system_prompt_with_soul": "{soul_md}\n\n---\n\n今天是 {today}。\n\n请根据用户近期的生活事件，用温暖自然的语气写一段关心的话，不超过 150 字。\n注意事件发生的时间，不要把几天前的事说成「今天」。\n不要提及你是 AI，直接表达关心即可。"
+  },
+  "mobile": {
+    "unsupported_reason": "此主机不支持远程手机。",
+    "adb_not_found": "未找到 adb。请安装 Android platform-tools 或 Android Studio SDK。",
+    "no_device": "没有已连接的 adb 设备。请启动模拟器或通过 USB 连接手机。",
+    "container_no_adb": "Android 容器已运行，但 adb 尚未发现设备。可稍等开机后点刷新；或在主机执行：adb connect 127.0.0.1:5555",
+    "install_log_start": "正在安装 Android 容器…",
+    "install_log_ready": "Android 环境已就绪。",
+    "error_script_missing": "Octop 包中缺少移动设备安装脚本。",
+    "error_docker_missing": "安装 Android 容器后端需要 Docker。",
+    "error_command_failed": "命令失败（退出码 {exit_code}）。",
+    "handoff_message": "请在设备上完成此步骤：{reason}",
+    "handoff_default": "需要在设备上手动操作"
   }
 }

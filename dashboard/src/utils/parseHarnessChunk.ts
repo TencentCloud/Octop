@@ -59,6 +59,14 @@ export interface CustomChunk {
   data: unknown;
 }
 
+export interface UsageChunk {
+  type: "usage";
+  call_id?: string;
+  model?: string;
+  node?: string;
+  usage: Record<string, unknown>;
+}
+
 export interface DoneChunk {
   type: "done";
 }
@@ -97,6 +105,7 @@ export type HarnessChunk =
   | StateUpdateChunk
   | StateSnapshotChunk
   | CustomChunk
+  | UsageChunk
   | DoneChunk
   | ErrorChunk
   | HitlRequiredChunk
@@ -149,6 +158,19 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
       return {
         type: "reasoning",
         content: typeof obj.content === "string" ? obj.content : "",
+      };
+    case "usage":
+      return {
+        type: "usage",
+        call_id: typeof obj.call_id === "string" ? obj.call_id : undefined,
+        model: typeof obj.model === "string" ? obj.model : undefined,
+        node: typeof obj.node === "string" ? obj.node : undefined,
+        usage:
+          obj.usage &&
+          typeof obj.usage === "object" &&
+          !Array.isArray(obj.usage)
+            ? (obj.usage as Record<string, unknown>)
+            : {},
       };
     case "tool_call_chunk":
       return {

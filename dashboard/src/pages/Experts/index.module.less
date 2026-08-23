@@ -62,6 +62,44 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatarPicker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatarPickerPreviewBtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.avatarPickerPreviewBody {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 8px;
+}
+
+.avatarPickerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.avatarPickerHint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.4;
 }
 
 .agentCard2TitleBlock {
@@ -101,8 +139,8 @@
     transition: opacity 0.15s;
   }
 
-  .agentCard2NameRow:hover .agentCard2NameActions,
-  .agentCard2NameRow:focus-within .agentCard2NameActions {
+  .agentCardIdRow:hover .agentCard2NameActions,
+  .agentCardIdRow:focus-within .agentCard2NameActions {
     opacity: 1;
   }
 }
@@ -132,16 +170,25 @@
   color: #ff4d4f;
 }
 
+.agentCardIdRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 4px;
+}
+
 .agentCardId {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
   padding: 0;
   border: none;
   background: transparent;
   cursor: pointer;
-  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  flex: 0 1 auto;
   text-align: left;
   color: var(--fn-text-tertiary);
   transition: color 0.15s;
@@ -170,6 +217,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
   color: var(--fn-text-secondary);
   transition: color 0.15s;
 }
@@ -461,6 +509,7 @@
 .tableStateCell {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 4px;
   min-width: 0;
 }
@@ -1711,6 +1760,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .tableNameText {
@@ -1803,6 +1853,271 @@
   margin-left: auto;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ── WelcomeConfig Component ──────────────────────────────────────────────── */
+
+.welcomeConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.welcomeConfigHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.welcomeConfigHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.welcomeConfigLoading {
+  padding: 24px;
+  text-align: center;
+  color: var(--fn-text-tertiary);
+}
+
+.welcomeConfigSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.welcomeConfigSection h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-secondary);
+}
+
+.welcomeMessageFields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.welcomeMessageField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.welcomeMessageField label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+}
+
+.quickPromptsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quickPromptsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quickPromptsEmpty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
+  border: 1px dashed var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+}
+
+.quickPromptItem {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: var(--fn-radius-md);
+}
+
+.quickPromptHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quickPromptIndex {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fn-text-tertiary);
+}
+
+.quickPromptFields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quickPromptRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.quickPromptField {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quickPromptFieldFull {
+  flex: 1 1 100%;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quickPromptField label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+}
+
+.colorPicker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.colorOption {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.colorOption:hover {
+  transform: scale(1.1);
+}
+
+.colorOptionActive {
+  border-color: var(--fn-color-brand);
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+}
+
+.iconPicker {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.iconOption {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--fn-border-primary);
+  background: var(--fn-bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--fn-text-secondary);
+  font-size: 14px;
+}
+
+.iconOption:hover {
+  border-color: var(--fn-color-brand);
+  background: var(--fn-sidebar-item-hover);
+}
+
+/* "无图标" 按钮：文字宽度自适应，避免溢出固定 28px 的图标框 */
+.iconOptionNoIcon {
+  width: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.iconOptionActive {
+  border-color: var(--fn-color-brand);
+  background: var(--fn-color-brand-light, #e6f4ff);
+  color: var(--fn-color-brand);
+}
+
+.quickPromptPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--fn-border-secondary);
+}
+
+.quickPromptPreviewLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fn-text-tertiary);
+}
+
+.quickCardPreview {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: var(--fn-radius-md);
+}
+
+.quickCardIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--fn-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.quickCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quickCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quickCardDesc {
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Publish expert drawer ─────────────────────────────────────── */

@@ -14,11 +14,12 @@ import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import { request } from "../../../api/request";
 import {
-  ROOT_NODE,
+  HOST_FS_ROOT,
   ancestorDirPaths,
   appendChildren,
-  ensurePathInTree,
   insertChild,
+  makeRootNode,
+  normalizeTreeRoot,
   renameNode,
   sanitizeTree,
   type DirTreeNode,
@@ -33,18 +34,14 @@ interface DirEntry {
 interface RootDirSelectProps {
   value?: string;
   onChange?: (value: string) => void;
+  /** Tree browse root: host ``/`` (or drive root). Default value is still home. */
+  treeRoot?: string;
 }
 
 type DisplayTreeNode = Omit<DirTreeNode, "title" | "children"> & {
   title: ReactNode;
   children?: DisplayTreeNode[];
 };
-
-function withSanitizedTree(
-  updater: (prev: DirTreeNode[]) => DirTreeNode[],
-): (prev: DirTreeNode[]) => DirTreeNode[] {
-  return (prev) => sanitizeTree(updater(prev));
-}
 
 function stopRowEvent(e: SyntheticEvent) {
   e.preventDefault();
@@ -64,9 +61,24 @@ function mapDisplayTitles(
   }));
 }
 
-export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
+function entriesToNodes(entries: DirEntry[]): DirTreeNode[] {
+  return entries.map((entry) => ({
+    value: entry.path,
+    title: entry.name,
+    isLeaf: false,
+  }));
+}
+
+export default function RootDirSelect({
+  value,
+  onChange,
+  treeRoot = HOST_FS_ROOT,
+}: RootDirSelectProps) {
   const { t } = useTranslation();
-  const [treeData, setTreeData] = useState<DirTreeNode[]>([ROOT_NODE]);
+  const normalizedRoot = normalizeTreeRoot(treeRoot);
+  const [treeData, setTreeData] = useState<DirTreeNode[]>(() => [
+    makeRootNode(normalizedRoot),
+  ]);
   const [expandedKeys, setExpandedKeys] = useState<string[] | undefined>(
     undefined,
   );
@@ -75,20 +87,52 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
   const [editingName, setEditingName] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  /** Ant Design ``treeLoadedKeys`` (array); membership checks use the Set ref. */
   const [loadedKeys, setLoadedKeys] = useState<string[]>([]);
+  const loadedKeysRef = useRef(new Set<string>());
   const loadingPathsRef = useRef(new Set<string>());
 
-  useEffect(() => {
-    if (!value) return;
-    setTreeData((prev) => sanitizeTree(ensurePathInTree(prev, value)));
-  }, [value]);
+  const withSanitizedTree = useCallback(
+    (
+      updater: (prev: DirTreeNode[]) => DirTreeNode[],
+    ): ((prev: DirTreeNode[]) => DirTreeNode[]) => {
+      return (prev) => sanitizeTree(updater(prev), normalizedRoot);
+    },
+    [normalizedRoot],
+  );
 
-  const loadData = useCallback<NonNullable<TreeSelectProps["loadData"]>>(
-    async (node) => {
-      const path = String(node.value ?? "");
+  const markLoaded = useCallback((paths: string[]) => {
+    let changed = false;
+    for (const path of paths) {
+      if (!loadedKeysRef.current.has(path)) {
+        loadedKeysRef.current.add(path);
+        changed = true;
+      }
+    }
+    if (changed) {
+      setLoadedKeys([...loadedKeysRef.current]);
+    }
+  }, []);
+
+  const resetTree = useCallback(() => {
+    setTreeData([makeRootNode(normalizedRoot)]);
+    loadedKeysRef.current.clear();
+    setLoadedKeys([]);
+    setExpandedKeys(undefined);
+    loadingPathsRef.current.clear();
+  }, [normalizedRoot]);
+
+  useEffect(() => {
+    resetTree();
+  }, [resetTree]);
+
+  /** Lazy-load one directory (TreeSelect ``loadData`` / ancestor prefetch). */
+  const loadDirChildren = useCallback(
+    async (path: string, options?: { showError?: boolean }) => {
+      const showError = options?.showError !== false;
       if (
         !path ||
-        loadedKeys.includes(path) ||
+        loadedKeysRef.current.has(path) ||
         loadingPathsRef.current.has(path)
       ) {
         return;
@@ -99,22 +143,52 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         const data = await request<{ entries: DirEntry[] }>(
           `/filesystem/dirs?path=${encodeURIComponent(path)}`,
         );
-        const children = data.entries.map((entry) => ({
-          value: entry.path,
-          title: entry.name,
-          isLeaf: false,
-        }));
         setTreeData(
-          withSanitizedTree((prev) => appendChildren(prev, path, children)),
+          withSanitizedTree((prev) =>
+            appendChildren(prev, path, entriesToNodes(data.entries)),
+          ),
         );
-        setLoadedKeys((prev) => (prev.includes(path) ? prev : [...prev, path]));
+        markLoaded([path]);
       } catch {
-        message.error(t("experts.rootDirListFailed"));
+        if (showError) {
+          message.error(t("experts.rootDirListFailed"));
+        }
       } finally {
         loadingPathsRef.current.delete(path);
       }
     },
-    [loadedKeys, t],
+    [markLoaded, t, withSanitizedTree],
+  );
+  const loadDirChildrenRef = useRef(loadDirChildren);
+  loadDirChildrenRef.current = loadDirChildren;
+
+  // Prefetch ancestors shallow→deep from the API, then expand. Expanding before
+  // parents exist makes antd loadData miss child merges; no synthetic path chain.
+  useEffect(() => {
+    if (!value) return;
+    const ancestors = ancestorDirPaths(value, normalizedRoot);
+    if (ancestors.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      for (const path of ancestors) {
+        if (cancelled) return;
+        await loadDirChildrenRef.current(path, { showError: false });
+      }
+      if (cancelled) return;
+      setExpandedKeys((prev) => [...new Set([...(prev ?? []), ...ancestors])]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [value, normalizedRoot]);
+
+  const loadData = useCallback<NonNullable<TreeSelectProps["loadData"]>>(
+    async (node) => {
+      await loadDirChildren(String(node.value ?? ""));
+    },
+    [loadDirChildren],
   );
 
   const beginEditing = useCallback((path: string, name: string) => {
@@ -149,9 +223,10 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
             renameNode(prev, path, result.path, result.name),
           ),
         );
-        setLoadedKeys((prev) =>
-          prev.map((key) => (key === path ? result.path : key)),
-        );
+        if (loadedKeysRef.current.delete(path)) {
+          loadedKeysRef.current.add(result.path);
+          setLoadedKeys([...loadedKeysRef.current]);
+        }
         if (value === path) {
           onChange?.(result.path);
         }
@@ -162,7 +237,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         setBusy(false);
       }
     },
-    [beginEditing, onChange, t, treeData, value],
+    [beginEditing, onChange, t, treeData, value, withSanitizedTree],
   );
 
   const handleMkdir = useCallback(
@@ -189,11 +264,10 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
             }),
           ),
         );
-        const ancestors = ancestorDirPaths(result.path);
-        setExpandedKeys((prev) => {
-          const base = prev ?? [];
-          return [...new Set([...base, ...ancestors])];
-        });
+        const ancestors = ancestorDirPaths(result.path, normalizedRoot);
+        setExpandedKeys((prev) => [
+          ...new Set([...(prev ?? []), ...ancestors]),
+        ]);
         beginEditing(result.path, result.name);
       } catch {
         message.error(t("experts.rootDirMkdirFailed"));
@@ -201,7 +275,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
         setBusy(false);
       }
     },
-    [beginEditing, busy, t],
+    [beginEditing, busy, normalizedRoot, t, withSanitizedTree],
   );
 
   const renderTitle = useCallback(
@@ -249,7 +323,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
               flexShrink: 0,
             }}
           >
-            {path !== "/" ? (
+            {path !== normalizedRoot ? (
               <button
                 type="button"
                 className={styles.rootDirActionBtn}
@@ -292,6 +366,7 @@ export default function RootDirSelect({ value, onChange }: RootDirSelectProps) {
       editingName,
       editingPath,
       handleMkdir,
+      normalizedRoot,
       t,
     ],
   );

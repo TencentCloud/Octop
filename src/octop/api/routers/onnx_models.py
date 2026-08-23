@@ -18,9 +18,9 @@ from octop.infra.agents.providers.onnx_service import (
     OnnxServiceConfig,
     assert_catalog_model,
     delete_downloaded_model,
-    embed_texts,
     ensure_local_embedding_deps_async,
     is_model_downloaded,
+    probe_local_model,
     save_config,
     status_payload,
 )
@@ -137,6 +137,14 @@ async def put_config(
             )
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        # Without a download to fall back on, enabling a model that has no
+        # weights on disk would persist enabled=True and report ready=False
+        # forever — surface it instead of storing a service that cannot run.
+        if not body.download_if_missing and not is_model_downloaded(config.model):
+            raise HTTPException(
+                status_code=409,
+                detail="ONNX embedding model is not downloaded yet; download it before enabling",
+            )
     save_config(_settings_set(server), config)
     download_started = False
     if config.enabled and body.download_if_missing and not is_model_downloaded(config.model):
@@ -163,36 +171,13 @@ async def post_test(
     _: Any = Depends(require_permission("onnx_models")),
 ) -> OnnxTestResponse:
     """Run a tiny local embedding to verify the model loads and works (admin only)."""
-    try:
-        model = assert_catalog_model(body.model)
-        await ensure_local_embedding_deps_async(allow_install=True)
-    except ValueError as exc:
-        return OnnxTestResponse(ok=False, error=str(exc))
-    except RuntimeError as exc:
-        return OnnxTestResponse(ok=False, error=str(exc))
-    if not is_model_downloaded(model):
-        return OnnxTestResponse(
-            ok=False,
-            error="model is not downloaded yet; download it before testing",
-        )
-
-    import asyncio
-    import time
-
-    def _probe() -> int:
-        vectors = embed_texts(model, ["octop onnx probe"])
-        if not vectors:
-            raise RuntimeError("embedding returned no vectors")
-        return len(vectors[0])
-
-    started = time.perf_counter()
-    try:
-        loop = asyncio.get_running_loop()
-        dim = await loop.run_in_executor(None, _probe)
-    except Exception as exc:
-        return OnnxTestResponse(ok=False, error=str(exc))
-    latency_ms = (time.perf_counter() - started) * 1000.0
-    return OnnxTestResponse(ok=True, latency_ms=latency_ms, dim=dim)
+    result = await probe_local_model(body.model)
+    return OnnxTestResponse(
+        ok=bool(result.get("ok")),
+        latency_ms=result.get("latency_ms"),
+        error=result.get("error"),
+        dim=result.get("dim"),
+    )
 
 
 @router.post("/download", summary="Download a local ONNX embedding model")

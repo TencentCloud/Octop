@@ -85,6 +85,9 @@ def build_app(server: OctopServer) -> FastAPI:
     cfg = server.services.config if server.services else getattr(server, "config", None)
     enable_dashboard = cfg.enable_dashboard if cfg else True
     enable_api_docs = cfg.enable_api_docs if cfg else False
+    enable_mobile = (
+        cfg.capabilities.mobile.enabled if cfg and cfg.capabilities.mobile.enabled else False
+    )
 
     app = FastAPI(
         title="Octop API",
@@ -140,10 +143,12 @@ def build_app(server: OctopServer) -> FastAPI:
         health,
         i18n,
         internal_mcp,
+        invites,
         knowledge_bases,
         mbti,
         memory,
         memory_portable,
+        mobile,
         ollama_models,
         onnx_models,
         plugins,
@@ -180,9 +185,11 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(setup.router, "/api", ["setup"]),
             _RouterMount(auth.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oidc.router, "/api/auth", ["auth"]),
+            _RouterMount(invites.public_router, "/api/auth/invite", ["auth"]),
             _RouterMount(preferences.router, "/api", ["auth"]),
             _RouterMount(i18n.router, "/api", ["i18n"]),
             _RouterMount(health.router, "/api/health", ["health"]),
+            _RouterMount(invites.admin_router, "/api/users/invites", ["users"]),
             _RouterMount(users.router, "/api/users", ["users"]),
             _RouterMount(agents.router, "/api/agents", ["agents"]),
             _RouterMount(acp.router, "/api", ["agents"]),
@@ -232,6 +239,14 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(plugins.router, "/api", ["plugins"]),
         ],
     )
+
+    if enable_mobile:
+        _mount_routers(
+            app,
+            [
+                _RouterMount(mobile.router, "/api", ["mobile"]),
+            ],
+        )
 
     if enable_api_docs:
 

@@ -21,17 +21,21 @@ import {
   Select,
   Spin,
   Switch,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { ResizableTable } from "@/components/ResizableTable";
 import {
+  Check,
   ChevronLeft,
   Download,
   Eye,
+  FilePlus,
   FileUp,
+  Folder,
+  FolderPlus,
   LayoutGrid,
   List as ListIcon,
   PanelLeftClose,
@@ -41,6 +45,7 @@ import {
   RefreshCw,
   Settings,
   Trash2,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -71,6 +76,16 @@ import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
 import skillStyles from "../Agent/Skills/index.module.less";
 import { KNOWLEDGE_ICON_NAMES, knowledgeIconForName } from "./knowledgeIcons";
+import {
+  isDirectKnowledgeChild,
+  joinKnowledgePath,
+  knowledgeBasename,
+  knowledgeBreadcrumb,
+} from "./knowledgeFolder";
+import TextDocumentEditorModal, {
+  isEditableKnowledgeDocument,
+  type TextDocumentFormat,
+} from "./TextDocumentEditorModal";
 import styles from "./index.module.less";
 
 type BaseFormValues = {
@@ -114,16 +129,22 @@ function formatKnowledgeOwner(
   return displayName || username || String(base.owner_user_id);
 }
 
+const FOLDER_ICON_COLOR = "#d97706";
+
 function DocumentFormatIcon({
   filename,
   size = 14,
   className,
+  isDir = false,
 }: {
   filename: string;
   size?: number;
   className?: string;
+  isDir?: boolean;
 }) {
-  const { Icon, color } = fileTreeIconSpec(filename);
+  const { Icon, color } = isDir
+    ? { Icon: Folder, color: FOLDER_ICON_COLOR }
+    : fileTreeIconSpec(filename);
   return (
     <span
       className={className ?? styles.docFormatIcon}
@@ -170,6 +191,32 @@ function KnowledgeIconPicker({
   );
 }
 
+function ReadinessRow({
+  label,
+  ok,
+  okText,
+  failText,
+}: {
+  label: string;
+  ok: boolean;
+  okText: string;
+  failText: string;
+}) {
+  return (
+    <div className={styles.onnxReadinessRow}>
+      <span className={styles.onnxReadinessLabel}>{label}</span>
+      {ok ? (
+        <Check size={13} color="var(--fn-color-success)" />
+      ) : (
+        <X size={13} color="var(--fn-color-warning)" />
+      )}
+      <Typography.Text type={ok ? "success" : "warning"}>
+        {ok ? okText : failText}
+      </Typography.Text>
+    </div>
+  );
+}
+
 export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -183,6 +230,9 @@ export default function KnowledgeBasesPage() {
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [selected, setSelected] = useState<KnowledgeBase | null>(null);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [currentFolder, setCurrentFolder] = useState("");
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [folderName, setFolderName] = useState("");
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
   );
@@ -207,6 +257,13 @@ export default function KnowledgeBasesPage() {
   const [baseModalOpen, setBaseModalOpen] = useState(false);
   const [editingBase, setEditingBase] = useState(false);
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
+  const [onnxProbe, setOnnxProbe] = useState<{
+    ok: boolean;
+    latency_ms?: number | null;
+    dim?: number | null;
+    error?: string | null;
+  } | null>(null);
+  const [onnxProbing, setOnnxProbing] = useState(false);
   const [featureEnabledDraft, setFeatureEnabledDraft] = useState(false);
   const [featureModel, setFeatureModel] = useState<string>();
   const [featureBackend, setFeatureBackend] = useState<"onnx" | "remote">(
@@ -221,6 +278,17 @@ export default function KnowledgeBasesPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFilename, setPreviewFilename] = useState("");
   const [previewText, setPreviewText] = useState("");
+  const [textEditorOpen, setTextEditorOpen] = useState(false);
+  const [textEditorMode, setTextEditorMode] = useState<"create" | "edit">(
+    "create",
+  );
+  const [textEditorLoading, setTextEditorLoading] = useState(false);
+  const [textEditorSaving, setTextEditorSaving] = useState(false);
+  const [textEditorDocId, setTextEditorDocId] = useState<string | null>(null);
+  const [textEditorName, setTextEditorName] = useState("");
+  const [textEditorFormat, setTextEditorFormat] =
+    useState<TextDocumentFormat>("md");
+  const [textEditorContent, setTextEditorContent] = useState("");
   const [baseForm] = Form.useForm<BaseFormValues>();
   const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
   const [sharedChecked, setSharedChecked] = useState(false);
@@ -251,7 +319,23 @@ export default function KnowledgeBasesPage() {
     ? bases.filter((base) => base.owner_user_id === user.id).length
     : 0;
   const atBaseLimit = ownedBaseCount >= limits.max_bases_per_owner;
-  const isAtDocumentLimit = documents.length >= limits.max_docs_per_kb;
+  const fileCount = documents.filter((document) => !document.is_dir).length;
+  const isAtDocumentLimit = fileCount >= limits.max_docs_per_kb;
+  const folderEntries = documents
+    .filter((document) =>
+      isDirectKnowledgeChild(document.path || document.filename, currentFolder),
+    )
+    .sort((a, b) => {
+      const dirDelta = Number(Boolean(b.is_dir)) - Number(Boolean(a.is_dir));
+      if (dirDelta !== 0) return dirDelta;
+      return knowledgeBasename(a.path || a.filename).localeCompare(
+        knowledgeBasename(b.path || b.filename),
+      );
+    });
+  const folderCrumbs = knowledgeBreadcrumb(
+    currentFolder,
+    t("knowledgeBases.documents"),
+  );
 
   const loadBases = useCallback(async () => {
     try {
@@ -445,6 +529,10 @@ export default function KnowledgeBasesPage() {
   );
 
   useEffect(() => {
+    setCurrentFolder("");
+  }, [selected?.id]);
+
+  useEffect(() => {
     void Promise.all([loadBases(), loadCapability()]).finally(() =>
       setLoading(false),
     );
@@ -453,7 +541,8 @@ export default function KnowledgeBasesPage() {
   useEffect(() => {
     const indexing = documents.some(
       (document) =>
-        document.status === "pending" || document.status === "processing",
+        !document.is_dir &&
+        (document.status === "pending" || document.status === "processing"),
     );
     if (!selected || !indexing) return;
     const timer = window.setInterval(() => {
@@ -567,6 +656,26 @@ export default function KnowledgeBasesPage() {
       message.error(
         apiErrorMessage(error, t("knowledgeBases.deleteFailed"), t),
       );
+    }
+  };
+
+  // A probe describes one model; drop it as soon as the draft points elsewhere.
+  useEffect(() => {
+    setOnnxProbe(null);
+  }, [featureModel, featureBackend]);
+
+  const runOnnxProbe = async () => {
+    if (!featureModel) return;
+    setOnnxProbing(true);
+    try {
+      setOnnxProbe(await knowledgeBasesApi.testOnnx(featureModel));
+    } catch (error) {
+      setOnnxProbe({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setOnnxProbing(false);
     }
   };
 
@@ -695,7 +804,7 @@ export default function KnowledgeBasesPage() {
 
   const uploadDocuments = async (files: FileList | null) => {
     if (!selected || !files || !usable || isAtDocumentLimit) return;
-    const remaining = Math.max(0, limits.max_docs_per_kb - documents.length);
+    const remaining = Math.max(0, limits.max_docs_per_kb - fileCount);
     const chosen = Array.from(files).slice(0, remaining);
     const oversized = chosen.filter(
       (file) => file.size > limits.max_document_bytes,
@@ -711,7 +820,11 @@ export default function KnowledgeBasesPage() {
     }
     try {
       for (const file of chosen) {
-        await knowledgeBasesApi.uploadDocument(selected.id, file);
+        await knowledgeBasesApi.uploadDocument(
+          selected.id,
+          file,
+          joinKnowledgePath(currentFolder, file.name),
+        );
       }
       await loadDetail(selected.id);
       await loadBases();
@@ -722,6 +835,25 @@ export default function KnowledgeBasesPage() {
       );
     } finally {
       if (uploadRef.current) uploadRef.current.value = "";
+    }
+  };
+
+  const createFolder = async () => {
+    if (!selected) return;
+    const name = folderName.trim();
+    if (!name) return;
+    try {
+      await knowledgeBasesApi.createFolder(
+        selected.id,
+        joinKnowledgePath(currentFolder, name),
+      );
+      setFolderModalOpen(false);
+      setFolderName("");
+      await loadDetail(selected.id, { silent: true });
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.createFolderFailed"), t),
+      );
     }
   };
 
@@ -776,34 +908,141 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const openCreateTextDocument = () => {
+    setTextEditorMode("create");
+    setTextEditorDocId(null);
+    setTextEditorName("");
+    setTextEditorFormat("md");
+    setTextEditorContent("");
+    setTextEditorLoading(false);
+    setTextEditorOpen(true);
+  };
+
+  const openEditTextDocument = async (document: KnowledgeDocument) => {
+    if (!selected) return;
+    setTextEditorMode("edit");
+    setTextEditorDocId(document.id);
+    setTextEditorName(document.filename);
+    setTextEditorFormat(
+      document.filename.toLowerCase().endsWith(".txt") ||
+        document.content_type === "text/plain"
+        ? "txt"
+        : "md",
+    );
+    setTextEditorContent("");
+    setTextEditorOpen(true);
+    setTextEditorLoading(true);
+    try {
+      const payload = await knowledgeBasesApi.getTextDocument(
+        selected.id,
+        document.id,
+      );
+      setTextEditorContent(payload.text);
+      setTextEditorName(payload.filename);
+      setTextEditorFormat(
+        payload.content_type === "text/plain" ||
+          payload.filename.toLowerCase().endsWith(".txt")
+          ? "txt"
+          : "md",
+      );
+    } catch (error) {
+      setTextEditorOpen(false);
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.editDocumentFailed"), t),
+      );
+    } finally {
+      setTextEditorLoading(false);
+    }
+  };
+
+  const saveTextDocument = async (values: {
+    name: string;
+    format: TextDocumentFormat;
+    content: string;
+  }) => {
+    if (!selected) return;
+    setTextEditorSaving(true);
+    try {
+      if (textEditorMode === "create") {
+        await knowledgeBasesApi.createTextDocument(selected.id, {
+          name: values.name,
+          format: values.format,
+          content: values.content,
+          path: currentFolder || undefined,
+        });
+        message.success(t("knowledgeBases.createFileSuccess"));
+      } else if (textEditorDocId) {
+        await knowledgeBasesApi.updateTextDocument(
+          selected.id,
+          textEditorDocId,
+          values.content,
+        );
+        message.success(t("knowledgeBases.editDocumentSuccess"));
+      }
+      setTextEditorOpen(false);
+      await loadDetail(selected.id);
+    } catch (error) {
+      message.error(
+        apiErrorMessage(
+          error,
+          textEditorMode === "create"
+            ? t("knowledgeBases.createFileFailed")
+            : t("knowledgeBases.editDocumentFailed"),
+          t,
+        ),
+      );
+    } finally {
+      setTextEditorSaving(false);
+    }
+  };
+
   const renderDocumentActions = (document: KnowledgeDocument) => (
     <div className={styles.docCardActions}>
-      <Tooltip title={t("knowledgeBases.previewDocument")}>
-        <Button
-          type="text"
-          size="small"
-          icon={<Eye size={14} />}
-          aria-label={t("knowledgeBases.previewDocument")}
-          onClick={() => void openDocumentPreview(document.id)}
-        />
-      </Tooltip>
+      {document.is_dir ? null : (
+        <Tooltip title={t("knowledgeBases.previewDocument")}>
+          <Button
+            type="text"
+            size="small"
+            icon={<Eye size={14} />}
+            aria-label={t("knowledgeBases.previewDocument")}
+            onClick={() => void openDocumentPreview(document.id)}
+          />
+        </Tooltip>
+      )}
       {canWriteSelected ? (
         <>
-          <Popconfirm
-            title={t("knowledgeBases.rebuildDocumentConfirm")}
-            onConfirm={() => void rebuildDocument(document.id)}
-          >
-            <Tooltip title={t("knowledgeBases.rebuildDocument")}>
+          {!document.is_dir && isEditableKnowledgeDocument(document) ? (
+            <Tooltip title={t("knowledgeBases.editDocument")}>
               <Button
                 type="text"
                 size="small"
-                icon={<RefreshCw size={14} />}
-                aria-label={t("knowledgeBases.rebuildDocument")}
+                icon={<Pencil size={14} />}
+                aria-label={t("knowledgeBases.editDocument")}
+                onClick={() => void openEditTextDocument(document)}
               />
             </Tooltip>
-          </Popconfirm>
+          ) : null}
+          {document.is_dir ? null : (
+            <Popconfirm
+              title={t("knowledgeBases.rebuildDocumentConfirm")}
+              onConfirm={() => void rebuildDocument(document.id)}
+            >
+              <Tooltip title={t("knowledgeBases.rebuildDocument")}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<RefreshCw size={14} />}
+                  aria-label={t("knowledgeBases.rebuildDocument")}
+                />
+              </Tooltip>
+            </Popconfirm>
+          )}
           <Popconfirm
-            title={t("knowledgeBases.deleteDocumentConfirm")}
+            title={
+              document.is_dir
+                ? t("knowledgeBases.deleteFolderConfirm")
+                : t("knowledgeBases.deleteDocumentConfirm")
+            }
             onConfirm={() => void deleteDocument(document.id)}
           >
             <Button
@@ -1175,7 +1414,7 @@ export default function KnowledgeBasesPage() {
                     >
                       <span className={skillStyles.gridCount}>
                         {t("knowledgeBases.documentLimit", {
-                          count: documents.length,
+                          count: fileCount,
                           max: limits.max_docs_per_kb,
                         })}
                       </span>
@@ -1217,6 +1456,26 @@ export default function KnowledgeBasesPage() {
                         />
                         {canWriteSelected ? (
                           <Button
+                            icon={<FolderPlus size={14} />}
+                            onClick={() => {
+                              setFolderName("");
+                              setFolderModalOpen(true);
+                            }}
+                          >
+                            {t("knowledgeBases.createFolder")}
+                          </Button>
+                        ) : null}
+                        {canWriteSelected ? (
+                          <Button
+                            icon={<FilePlus size={14} />}
+                            disabled={isAtDocumentLimit}
+                            onClick={openCreateTextDocument}
+                          >
+                            {t("knowledgeBases.createFile")}
+                          </Button>
+                        ) : null}
+                        {canWriteSelected ? (
+                          <Button
                             type="primary"
                             icon={<FileUp size={14} />}
                             disabled={isAtDocumentLimit}
@@ -1227,18 +1486,60 @@ export default function KnowledgeBasesPage() {
                         ) : null}
                       </div>
                     </div>
-                    {canWriteSelected ? (
-                      <Typography.Text
-                        type="secondary"
-                        className={styles.uploadHint}
+                    <div className={styles.docsPathRow}>
+                      <nav
+                        className={styles.pathBreadcrumb}
+                        aria-label={t("knowledgeBases.pathBreadcrumb")}
                       >
-                        {t("knowledgeBases.uploadHint", {
-                          sizeMb: Math.round(
-                            limits.max_document_bytes / (1024 * 1024),
-                          ),
+                        {folderCrumbs.map((seg, index) => {
+                          const isLast = index === folderCrumbs.length - 1;
+                          return (
+                            <span
+                              key={`${seg.path}:${index}`}
+                              className={styles.pathBreadcrumbSegment}
+                            >
+                              {index > 0 ? (
+                                <span
+                                  className={styles.pathBreadcrumbSep}
+                                  aria-hidden
+                                >
+                                  /
+                                </span>
+                              ) : null}
+                              {isLast ? (
+                                <span
+                                  className={styles.pathBreadcrumbCurrent}
+                                  title={seg.label}
+                                >
+                                  {seg.label}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={styles.pathBreadcrumbLink}
+                                  onClick={() => setCurrentFolder(seg.path)}
+                                  title={seg.label}
+                                >
+                                  {seg.label}
+                                </button>
+                              )}
+                            </span>
+                          );
                         })}
-                      </Typography.Text>
-                    ) : null}
+                      </nav>
+                      {canWriteSelected ? (
+                        <Typography.Text
+                          type="secondary"
+                          className={styles.uploadHint}
+                        >
+                          {t("knowledgeBases.uploadHint", {
+                            sizeMb: Math.round(
+                              limits.max_document_bytes / (1024 * 1024),
+                            ),
+                          })}
+                        </Typography.Text>
+                      ) : null}
+                    </div>
                     {isAtDocumentLimit ? (
                       <Alert
                         className={styles.limitAlert}
@@ -1249,132 +1550,192 @@ export default function KnowledgeBasesPage() {
                         })}
                       />
                     ) : null}
-                    {documents.length === 0 ? (
+                    {folderEntries.length === 0 ? (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
                         description={t("knowledgeBases.emptyDocuments")}
                       />
                     ) : showCardView ? (
                       <div className={styles.docCardGrid}>
-                        {documents.map((document) => (
-                          <div key={document.id} className={styles.docCard}>
-                            <div className={styles.docCardHeader}>
-                              <DocumentFormatIcon
-                                filename={document.filename}
-                                size={14}
-                              />
-                              <div className={styles.docCardTitleBlock}>
-                                <div className={styles.docCardTitleRow}>
-                                  <div
-                                    className={styles.docCardName}
-                                    title={document.filename}
-                                  >
-                                    {document.filename}
+                        {folderEntries.map((document) => {
+                          const name = knowledgeBasename(
+                            document.path || document.filename,
+                          );
+                          return (
+                            <div
+                              key={document.id}
+                              className={styles.docCard}
+                              role={document.is_dir ? "button" : undefined}
+                              onClick={
+                                document.is_dir
+                                  ? () =>
+                                      setCurrentFolder(
+                                        document.path || document.filename,
+                                      )
+                                  : undefined
+                              }
+                            >
+                              <div className={styles.docCardHeader}>
+                                <DocumentFormatIcon
+                                  filename={name}
+                                  size={14}
+                                  isDir={document.is_dir}
+                                />
+                                <div className={styles.docCardTitleBlock}>
+                                  <div className={styles.docCardTitleRow}>
+                                    <div
+                                      className={styles.docCardName}
+                                      title={document.path || name}
+                                    >
+                                      {name}
+                                    </div>
+                                    {!document.is_dir &&
+                                    fileExtensionLabel(name) ? (
+                                      <span className={styles.docExtBadge}>
+                                        {fileExtensionLabel(name)}
+                                      </span>
+                                    ) : null}
                                   </div>
-                                  {fileExtensionLabel(document.filename) ? (
-                                    <span className={styles.docExtBadge}>
-                                      {fileExtensionLabel(document.filename)}
-                                    </span>
-                                  ) : null}
+                                  <div className={styles.docCardMeta}>
+                                    {document.is_dir
+                                      ? t("knowledgeBases.folder")
+                                      : `${formatBytes(
+                                          document.byte_size,
+                                        )} · ${t("knowledgeBases.chunkCount", {
+                                          count: document.chunk_count,
+                                        })}`}
+                                  </div>
                                 </div>
-                                <div className={styles.docCardMeta}>
-                                  {formatBytes(document.byte_size)}
-                                  {" · "}
-                                  {t("knowledgeBases.chunkCount", {
-                                    count: document.chunk_count,
-                                  })}
-                                </div>
-                              </div>
-                              {renderDocumentActions(document)}
-                            </div>
-                            <div className={styles.docCardFooter}>
-                              <Tooltip
-                                title={
-                                  document.error_message ||
-                                  t(
-                                    `knowledgeBases.statuses.${document.status}`,
-                                  )
-                                }
-                              >
-                                <Tag
-                                  className={styles.docStatusTag}
-                                  color={documentStatusColor(document.status)}
+                                <span
+                                  onClick={(event) => event.stopPropagation()}
                                 >
-                                  {t(
-                                    `knowledgeBases.statusesShort.${document.status}`,
-                                  )}
-                                </Tag>
-                              </Tooltip>
-                              <span
-                                className={styles.docUpdatedAt}
-                                title={formatServerDateTime(
-                                  document.updated_at,
-                                  timeZone,
-                                )}
-                              >
-                                {formatServerDateTime(
-                                  document.updated_at,
-                                  timeZone,
-                                )}
-                              </span>
+                                  {renderDocumentActions(document)}
+                                </span>
+                              </div>
+                              {document.is_dir ? null : (
+                                <div className={styles.docCardFooter}>
+                                  <Tooltip
+                                    title={
+                                      document.error_message ||
+                                      t(
+                                        `knowledgeBases.statuses.${document.status}`,
+                                      )
+                                    }
+                                  >
+                                    <Tag
+                                      className={styles.docStatusTag}
+                                      color={documentStatusColor(
+                                        document.status,
+                                      )}
+                                    >
+                                      {t(
+                                        `knowledgeBases.statusesShort.${document.status}`,
+                                      )}
+                                    </Tag>
+                                  </Tooltip>
+                                  <span
+                                    className={styles.docUpdatedAt}
+                                    title={formatServerDateTime(
+                                      document.updated_at,
+                                      timeZone,
+                                    )}
+                                  >
+                                    {formatServerDateTime(
+                                      document.updated_at,
+                                      timeZone,
+                                    )}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
-                      <Table
+                      <ResizableTable
+                        storageKey="kb-documents"
                         size="small"
                         rowKey="id"
                         pagination={false}
-                        dataSource={documents}
+                        dataSource={folderEntries}
+                        onRow={(document) => ({
+                          onClick: document.is_dir
+                            ? () =>
+                                setCurrentFolder(
+                                  document.path || document.filename,
+                                )
+                            : undefined,
+                        })}
                         locale={{
                           emptyText: t("knowledgeBases.emptyDocuments"),
                         }}
                         columns={[
                           {
                             title: t("knowledgeBases.filename"),
-                            dataIndex: "filename",
                             key: "filename",
                             ellipsis: true,
-                            render: (filename: string) => (
-                              <span className={styles.tableFilename}>
-                                <DocumentFormatIcon
-                                  filename={filename}
-                                  size={13}
-                                  className={styles.docTableIcon}
-                                />
-                                <span title={filename}>{filename}</span>
-                                {fileExtensionLabel(filename) ? (
-                                  <span className={styles.docExtBadge}>
-                                    {fileExtensionLabel(filename)}
+                            render: (_, document) => {
+                              const name = knowledgeBasename(
+                                document.path || document.filename,
+                              );
+                              return (
+                                <span className={styles.tableFilename}>
+                                  <DocumentFormatIcon
+                                    filename={name}
+                                    size={13}
+                                    className={styles.docTableIcon}
+                                    isDir={document.is_dir}
+                                  />
+                                  <span title={document.path || name}>
+                                    {name}
                                   </span>
-                                ) : null}
-                              </span>
-                            ),
+                                  {!document.is_dir &&
+                                  fileExtensionLabel(name) ? (
+                                    <span className={styles.docExtBadge}>
+                                      {fileExtensionLabel(name)}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              );
+                            },
+                          },
+                          {
+                            title: t("knowledgeBases.entryType"),
+                            key: "entry_type",
+                            width: 88,
+                            render: (_, document) =>
+                              document.is_dir
+                                ? t("knowledgeBases.folder")
+                                : t("knowledgeBases.file"),
                           },
                           {
                             title: t("knowledgeBases.status"),
                             key: "status",
                             width: 100,
-                            render: (_, document) => (
-                              <Tooltip
-                                title={document.error_message || undefined}
-                              >
-                                <Tag
-                                  color={documentStatusColor(document.status)}
+                            render: (_, document) =>
+                              document.is_dir ? (
+                                "—"
+                              ) : (
+                                <Tooltip
+                                  title={document.error_message || undefined}
                                 >
-                                  {t(
-                                    `knowledgeBases.statusesShort.${document.status}`,
-                                  )}
-                                </Tag>
-                              </Tooltip>
-                            ),
+                                  <Tag
+                                    color={documentStatusColor(document.status)}
+                                  >
+                                    {t(
+                                      `knowledgeBases.statusesShort.${document.status}`,
+                                    )}
+                                  </Tag>
+                                </Tooltip>
+                              ),
                           },
                           {
                             title: t("knowledgeBases.chunks"),
                             dataIndex: "chunk_count",
                             key: "chunk_count",
                             width: 80,
+                            render: (chunkCount: number, document) =>
+                              document.is_dir ? "—" : chunkCount,
                           },
                           {
                             title: t("knowledgeBases.updatedAt"),
@@ -1417,6 +1778,35 @@ export default function KnowledgeBasesPage() {
           <pre className={styles.previewBody}>{previewText}</pre>
         </Spin>
       </Modal>
+
+      <Modal
+        title={t("knowledgeBases.createFolder")}
+        open={folderModalOpen}
+        onCancel={() => setFolderModalOpen(false)}
+        onOk={() => void createFolder()}
+        okText={t("common.create")}
+        cancelText={t("common.cancel")}
+        destroyOnClose
+      >
+        <Input
+          value={folderName}
+          onChange={(event) => setFolderName(event.target.value)}
+          placeholder={t("knowledgeBases.folderNamePlaceholder")}
+          onPressEnter={() => void createFolder()}
+        />
+      </Modal>
+
+      <TextDocumentEditorModal
+        open={textEditorOpen}
+        mode={textEditorMode}
+        loading={textEditorLoading}
+        saving={textEditorSaving}
+        initialName={textEditorName}
+        initialFormat={textEditorFormat}
+        initialContent={textEditorContent}
+        onCancel={() => setTextEditorOpen(false)}
+        onSubmit={saveTextDocument}
+      />
 
       <Modal
         title={t(editingBase ? "knowledgeBases.edit" : "knowledgeBases.create")}
@@ -1691,6 +2081,54 @@ export default function KnowledgeBasesPage() {
                   ) : null}
                 </div>
               )}
+              {featureBackend === "onnx" && featureModel ? (
+                <div className={styles.onnxReadiness}>
+                  <ReadinessRow
+                    label={t("knowledgeBases.checkRuntime")}
+                    ok={Boolean(capability?.checks.deps_available)}
+                    okText={t("knowledgeBases.checkInstalled")}
+                    failText={t("knowledgeBases.checkRuntimeMissing")}
+                  />
+                  <ReadinessRow
+                    label={t("knowledgeBases.checkWeights")}
+                    ok={Boolean(
+                      catalog.find((model) => model.id === featureModel)
+                        ?.downloaded,
+                    )}
+                    okText={t("knowledgeBases.checkDownloaded")}
+                    failText={t("knowledgeBases.notDownloaded")}
+                  />
+                  <div className={styles.onnxReadinessRow}>
+                    <span className={styles.onnxReadinessLabel}>
+                      {t("knowledgeBases.checkEncode")}
+                    </span>
+                    {onnxProbe ? (
+                      <Typography.Text
+                        type={onnxProbe.ok ? "success" : "danger"}
+                      >
+                        {onnxProbe.ok
+                          ? t("knowledgeBases.probeOk", {
+                              dim: onnxProbe.dim ?? "?",
+                              ms: Math.round(onnxProbe.latency_ms ?? 0),
+                            })
+                          : onnxProbe.error ?? t("knowledgeBases.probeFailed")}
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type="secondary">
+                        {t("knowledgeBases.probeIdle")}
+                      </Typography.Text>
+                    )}
+                    <Button
+                      type="link"
+                      size="small"
+                      loading={onnxProbing}
+                      onClick={() => void runOnnxProbe()}
+                    >
+                      {t("knowledgeBases.probeRun")}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               <Typography.Text type="secondary" className={styles.settingsHint}>
                 {t("knowledgeBases.enableDescription")}
               </Typography.Text>

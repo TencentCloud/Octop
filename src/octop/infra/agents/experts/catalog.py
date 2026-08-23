@@ -2,8 +2,9 @@
 
 An *expert* is metadata in ``manifest.json`` plus files on disk under
 ``library/<id>/``. At seed time files (including a copy of ``manifest.json``)
-are written into the agent workspace. ``prompt_files`` in the manifest is
-metadata for the dashboard only — persona text is read from the workspace.
+are written into the agent workspace under ``.octop/manifest.json``.
+``prompt_files`` in the manifest is metadata for the dashboard only — persona
+text is read from the workspace.
 
 Templates are discovered at server start by :class:`ExpertCatalog`.
 """
@@ -19,11 +20,18 @@ from typing import Any, cast
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.manager import AgentCreateSpec
+from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
 
 logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "manifest.json"
-"""Expert template / agent-workspace welcome metadata filename."""
+"""Expert template / published-snapshot welcome metadata filename (dir root)."""
+
+WORKSPACE_MANIFEST_PATH = f"{DEFAULT_SYSTEM_FILES_PATH}/{MANIFEST_FILENAME}"
+"""Agent-workspace path for welcome metadata (under ``.octop/``)."""
+
+# Prefer system path; keep root ``manifest.json`` readable for pre-migration agents.
+_WORKSPACE_MANIFEST_READ_PATHS = (WORKSPACE_MANIFEST_PATH, MANIFEST_FILENAME)
 
 
 @dataclass(frozen=True)
@@ -139,11 +147,12 @@ async def seed_expert_directory(
     workspace: BackendWorkspace,
     seed_paths: list[str] | None = None,
 ) -> int:
-    """Upload expert template files into *workspace*, including ``manifest.json``.
+    """Upload expert template files into *workspace*, including welcome manifest.
 
     ``seed_paths`` / :func:`discover_seed_paths` omit the library manifest so
     catalog ``Expert.files`` stays seed-content only; this helper always
-    copies ``manifest.json`` when present (chat welcome source of truth).
+    copies library ``manifest.json`` to :data:`WORKSPACE_MANIFEST_PATH` when
+    present (chat welcome source of truth).
     """
     paths = seed_paths if seed_paths is not None else discover_seed_paths(expert_dir)
     pairs: list[tuple[str, bytes]] = []
@@ -154,11 +163,29 @@ async def seed_expert_directory(
         pairs.append((rel.lstrip("/"), fpath.read_bytes()))
     manifest_path = expert_dir / MANIFEST_FILENAME
     if manifest_path.is_file():
-        pairs.append((MANIFEST_FILENAME, manifest_path.read_bytes()))
+        pairs.append((WORKSPACE_MANIFEST_PATH, manifest_path.read_bytes()))
     if not pairs:
         return 0
     await workspace.aupload_many(pairs)
     return len(pairs)
+
+
+async def read_workspace_manifest_text(workspace: BackendWorkspace) -> str | None:
+    """Read welcome manifest text from the agent workspace (``.octop`` then legacy root)."""
+    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+        text = await workspace.aread_text(rel)
+        if text is not None and str(text).strip():
+            return str(text)
+    return None
+
+
+async def read_workspace_manifest_bytes(workspace: BackendWorkspace) -> bytes | None:
+    """Read welcome manifest bytes from the agent workspace (``.octop`` then legacy root)."""
+    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+        raw = await workspace.adownload_bytes(rel)
+        if raw is not None and raw.strip():
+            return raw
+    return None
 
 
 def _quick_prompt_api_dict(prompt: ExpertQuickPrompt) -> dict[str, Any]:
@@ -250,14 +277,14 @@ def default_welcome_payload(catalog: ExpertCatalog | None = None) -> dict[str, A
 async def read_workspace_manifest_welcome(
     workspace: BackendWorkspace,
 ) -> dict[str, Any] | None:
-    """Parse ``manifest.json`` from an agent workspace, if present and valid."""
-    text = await workspace.aread_text(MANIFEST_FILENAME)
-    if not text or not str(text).strip():
+    """Parse workspace welcome manifest (``.octop/manifest.json``), if present and valid."""
+    text = await read_workspace_manifest_text(workspace)
+    if text is None:
         return None
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("workspace manifest.json is not valid JSON")
+        logger.warning("workspace %s is not valid JSON", WORKSPACE_MANIFEST_PATH)
         return None
     if not isinstance(data, dict):
         return None
@@ -427,14 +454,13 @@ def resolve_expert_agent_name(
     return expert.summary.label_en or expert.summary.label_zh or expert_id
 
 
-def expert_agent_config(expert_id: str, expert: Expert, **extra: Any) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
-        "expert_id": expert_id,
-        "icon_name": expert.summary.icon_name,
-        "color": expert.summary.color,
-    }
-    cfg.update(extra)
-    return cfg
+def expert_agent_config(_expert_id: str, _expert: Expert, **extra: Any) -> dict[str, Any]:
+    """Harness-facing extras for an agent created from an expert template.
+
+    Display fields (icon, color, welcome) belong on ``AgentCreateSpec`` / DB
+    columns, not in ``config_json``. ``expert_id`` is ``template_name``.
+    """
+    return dict(extra)
 
 
 def build_create_spec_from_expert(
@@ -450,6 +476,11 @@ def build_create_spec_from_expert(
     runtime_config: dict[str, Any] | None = None,
     agent_id: str | None = None,
     icon: str | None = None,
+    icon_name: str | None = None,
+    icon_url: str | None = None,
+    color: str | None = None,
+    welcome_message: str | None = None,
+    published_expert_id: str | None = None,
 ) -> AgentCreateSpec:
     """Build :class:`AgentCreateSpec` for ``AgentManager.create`` from a catalog entry."""
     resolved_name = resolve_expert_agent_name(expert, expert_id, locale=locale, override=name)
@@ -469,14 +500,27 @@ def build_create_spec_from_expert(
             or expert.summary.description_zh
             or expert.summary.label_zh
         )
+    extra = dict(config_extra or {})
+    extra_color = extra.pop("color", None)
+    extra_icon_url = extra.pop("icon_url", None)
+    extra_icon_name = extra.pop("icon_name", None)
+    extra.pop("expert_id", None)
+    extra.pop("published_expert_id", None)
+    extra.pop("welcome_message", None)
+    extra.pop("skill_package_ids", None)
     return AgentCreateSpec(
         agent_id=agent_id,
         name=resolved_name,
         user_id=user_id,
         description=resolved_description,
         default_model=default_model,
-        config=expert_agent_config(expert_id, expert, **(config_extra or {})),
+        config=expert_agent_config(expert_id, expert, **extra),
         runtime_config=dict(runtime_config or {}),
         icon=icon,
         template_name=expert_id,
+        icon_name=icon_name or extra_icon_name or expert.summary.icon_name,
+        icon_url=icon_url or extra_icon_url,
+        color=color or extra_color or expert.summary.color,
+        published_expert_id=published_expert_id,
+        welcome_message=welcome_message,
     )

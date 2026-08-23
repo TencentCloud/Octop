@@ -30,6 +30,7 @@ export function needsAuthBlobFetch(url: string): boolean {
     ? new URL(url).pathname
     : url.split("?")[0];
   if (path === "/api/workspace/media") return true;
+  if (/^\/api\/agents\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/media\/preview$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/workspace\/download$/.test(path)) return true;
   return false;

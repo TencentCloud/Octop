@@ -41,7 +41,13 @@ def _assert_workspace_mutable(path: str) -> str:
     rel = _workspace_io_path(path, from_workspace=True)
     if rel == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
-    if rel == _PROTECTED_PREFIX or rel.startswith(f"{_PROTECTED_PREFIX}/"):
+    posix = rel.replace("\\", "/").strip("/")
+    if (
+        posix == _PROTECTED_PREFIX
+        or posix.startswith(f"{_PROTECTED_PREFIX}/")
+        or posix == f".octop/{_PROTECTED_PREFIX}"
+        or posix.startswith(f".octop/{_PROTECTED_PREFIX}/")
+    ):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
     return rel
 
@@ -481,7 +487,7 @@ async def glob_files(
     if glob_result is None:
         raise OctopError(ErrorCode.NOT_FOUND, "glob failed")
     matches = getattr(glob_result, "matches", None) or []
-    return [file_info_to_dict(f) for f in matches]
+    return [file_info_to_dict(item) for item in matches]
 
 
 @router.get("/agents/{agent_id}/workspace/grep")

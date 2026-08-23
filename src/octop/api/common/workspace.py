@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.api.common.agent import require_agent_owner_row, require_agent_row
+from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
     from harness_agent import HarnessAgent
@@ -41,10 +42,51 @@ async def require_running_workspace(
     server: Any,
     owner_only: bool = False,
 ) -> BackendWorkspace:
-    """Auth-checked :class:`BackendWorkspace` for a running agent."""
+    """Auth-checked :class:`BackendWorkspace` for a running agent.
+
+    PATCH /agents triggers a background ``arebuild_agent`` that briefly
+    removes the live harness handle while the DB row still says ``running``.
+    Workspace file I/O does not need the compiled graph, so during that
+    window we fall back to :meth:`AgentManager.workspace_for_agent`.
+    Stopped / failed agents still raise — the fallback is only for the
+    rebuild gap, not a way to edit a stopped workspace through this helper.
+    """
     checker = require_agent_owner_row if owner_only else require_agent_row
-    checker(agent_id, user=user, as_user=as_user, server=server)
-    return require_running_agent(server, agent_id).workspace
+    row = checker(agent_id, user=user, as_user=as_user, server=server)
+    try:
+        return require_running_agent(server, agent_id).workspace
+    except OctopError as exc:
+        if exc.code is not ErrorCode.AGENT_NOT_RUNNING:
+            raise
+        state = str(getattr(row, "last_state", "") or "").strip().lower()
+        if state != "running":
+            raise
+        assert server.app_runtime is not None
+        fallback = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
+        if fallback is None:
+            raise
+        return cast("BackendWorkspace", fallback)
+
+
+async def require_agent_workspace(
+    agent_id: str,
+    *,
+    user: Any,
+    server: Any,
+    owner_only: bool = False,
+) -> BackendWorkspace:
+    """Auth-checked workspace even when the agent is stopped.
+
+    Used for display files (e.g. expert avatar) that must work from the
+    experts list without requiring a running harness handle.
+    """
+    checker = require_agent_owner_row if owner_only else require_agent_row
+    checker(agent_id, user=user, as_user=None, server=server)
+    assert server.app_runtime is not None
+    workspace = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
+    if workspace is None:
+        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+    return cast("BackendWorkspace", workspace)
 
 
 def workspace_api_path(raw: str) -> str:

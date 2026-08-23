@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from octop.i18n import tr
+from octop.infra.knowledge.citations import append_citations_marker, citations_from_ranked
 from octop.infra.knowledge.embed import embed_knowledge_texts
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.index import Hit, KnowledgeIndex
@@ -89,7 +90,7 @@ def _retrieve_context_sync(
         ready_documents = {
             document.id: document
             for document in services.knowledge_repo.list_documents(kb_id)
-            if document.status == "ready"
+            if document.status == "ready" and not document.is_dir
         }
         for hit in KnowledgeIndex(kb_id).search(query_vectors[0], k=k):
             document = ready_documents.get(hit.doc_id)
@@ -127,4 +128,5 @@ def _format_context(
         remaining -= len(section)
     if not sections:
         return ""
-    return tr("knowledge.retrieval.preamble", locale) + "\n\n" + "\n\n".join(sections)
+    body = tr("knowledge.retrieval.preamble", locale) + "\n\n" + "\n\n".join(sections)
+    return append_citations_marker(body, citations_from_ranked(ranked))

@@ -17,6 +17,31 @@
   line-height: 1.5;
 }
 
+.onnxReadiness {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-primary);
+}
+
+.onnxReadinessRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.onnxReadinessLabel {
+  flex: none;
+  min-width: 72px;
+  color: var(--fn-text-tertiary);
+}
+
 .onnxModelList {
   display: flex;
   flex-direction: column;
@@ -627,10 +652,22 @@
   margin: 12px 0 8px;
 }
 
+.docsPathRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+
 .uploadHint {
   display: block;
-  margin: 0 0 12px;
+  margin: 0 0 0 auto;
   font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  flex: 1 1 auto;
 }
 
 .docsCount {
@@ -955,5 +992,260 @@
 
   .layoutMobile .detailBody {
     padding: 0 4px;
+  }
+}
+
+.pathBreadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 160px;
+  font-size: 12px;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+}
+
+.pathBreadcrumbSegment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pathBreadcrumbSep {
+  color: var(--fn-text-tertiary);
+  padding: 0 2px;
+  user-select: none;
+}
+
+.pathBreadcrumbLink {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+
+  &:hover {
+    color: var(--fn-primary, #2563eb);
+    background: var(--fn-bg-hover);
+  }
+}
+
+.pathBreadcrumbCurrent {
+  padding: 2px 4px;
+  color: var(--fn-text-primary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.textEditorLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.textEditorDrawer {
+  :global(.ant-drawer-header) {
+    border-bottom: 1px solid var(--fn-border-primary);
+    padding: 14px 20px;
+  }
+
+  :global(.ant-drawer-footer) {
+    border-top: 1px solid var(--fn-border-primary);
+  }
+
+  :global(.ant-drawer-content),
+  :global(.ant-drawer-wrapper-body) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  :global(.ant-drawer-body) {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
+.textEditorTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.textEditorTitleMain {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
+}
+
+.textEditorTitleSub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fn-text-tertiary);
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.textEditorForm {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.textEditorFooter {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.textEditorMeta {
+  flex: none;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px 20px 0;
+}
+
+.textEditorNameItem {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.textEditorFormatItem {
+  flex: 0 0 200px;
+  margin-bottom: 12px;
+}
+
+.textEditorWorkspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 20px 16px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  background: var(--fn-bg-container, var(--fn-bg-primary));
+  overflow: hidden;
+}
+
+.textEditorToolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-layout, var(--fn-bg-secondary, transparent));
+}
+
+.textEditorToolbarLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fn-text-secondary);
+}
+
+.textEditorStage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.textEditorPane {
+  position: absolute;
+  inset: 0;
+
+  &[hidden] {
+    display: none !important;
+  }
+
+  :global(.ant-form-item),
+  :global(.ant-form-item-control),
+  :global(.ant-form-item-control-input),
+  :global(.ant-form-item-control-input-content) {
+    height: 100%;
+  }
+}
+
+.txtEditor {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  resize: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 16px 18px !important;
+  font-family: var(
+    --fn-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace
+  );
+  font-size: 13.5px;
+  line-height: 1.65;
+  background: transparent !important;
+
+  &:focus,
+  &:hover {
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+.mdPreviewPane {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 18px 22px 28px;
+}
+
+.mdPreviewEmpty {
+  display: block;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  padding-top: 8px;
+}
+
+@media (max-width: 768px) {
+  .textEditorMeta {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .textEditorFormatItem {
+    flex: none;
+    width: 100%;
+  }
+
+  .textEditorWorkspace {
+    margin: 0 12px 12px;
   }
 }

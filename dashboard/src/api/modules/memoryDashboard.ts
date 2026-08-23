@@ -237,6 +237,16 @@ export interface RejectCandidateResponse {
   status: "rejected";
 }
 
+export interface LastExtractRun {
+  timestamp?: string;
+  session_id?: string | null;
+  quiet?: boolean;
+  note?: string;
+  events_extracted?: number;
+  candidates?: number;
+  failure_reason?: string | null;
+}
+
 export interface StatsCounts {
   raw_events: number;
   atoms: number;
@@ -247,6 +257,7 @@ export interface StatsCounts {
   atoms_delta_7d: number;
   entities_delta_7d: number;
   episodes_delta_7d: number;
+  last_extract_run?: LastExtractRun | null;
 }
 
 export interface StatsAtomKindsResponse {

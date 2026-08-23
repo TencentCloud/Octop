@@ -311,7 +311,7 @@ export function useAutoScroll({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- caller supplies dynamic dependency list
-  }, [...deps, scrollToBottomInFollowMode, skipNextDepsScrollRef]);
+  }, [...deps, scrollToBottomInFollowMode, skipNextDepsScrollRef, getScroller]);
 
   useEffect(() => {
     const container = getScroller();
@@ -361,6 +361,11 @@ export function useAutoScroll({
 
       const upDelta = prev - cur;
       const scrolledUp = upDelta > 1;
+      // Distance from the bottom at the *resulting* position. Layout clamps
+      // (dock open/close, content shrink) rewrite scrollTop without moving the
+      // user — they land exactly at the bottom, so this stays ~0.
+      const gapToBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
 
       // Rubber-band at the bottom while pulling past the end must not clear
       // overscroll intent or yank into free mode.
@@ -377,6 +382,8 @@ export function useAutoScroll({
         shouldEnterFreeModeOnScrollUp({
           upDelta,
           atBottom: isAtBottom(),
+          gapToBottom,
+          atBottomBandPx: FOLLOW_RESUME_THRESHOLD,
         })
       ) {
         resetOverscroll();
@@ -396,6 +403,13 @@ export function useAutoScroll({
 
       if (scrolledUp) {
         if (!bottomPullNoise) resetOverscroll();
+        // A layout clamp (dock close / content shrink) can rewrite scrollTop
+        // straight to the bottom while we were already in free mode from an
+        // earlier gesture. The resulting position is authoritative — inside the
+        // bottom band counts as at the bottom, so drop the stale ↓ control.
+        if (isAtBottom(FOLLOW_RESUME_THRESHOLD)) {
+          enterFollowMode();
+        }
         return;
       }
 
@@ -480,8 +494,15 @@ export function useAutoScroll({
         scrollToBottomInFollowMode(true, true);
         return;
       }
-      // Free mode: never hide ↓ from resize/layout. Only enterFollowMode does.
-      setShowScrollBtn(true);
+      // Free mode after a layout change: a dock close / content shrink can
+      // clamp the user right back to the bottom without firing a scroll event.
+      // Re-check position — inside the bottom band counts as at the bottom, so
+      // resume follow; only keep the ↓ control when genuinely away.
+      if (isAtBottom(FOLLOW_RESUME_THRESHOLD)) {
+        enterFollowMode();
+      } else {
+        setShowScrollBtn(true);
+      }
     };
 
     const ro = new ResizeObserver(handleResize);

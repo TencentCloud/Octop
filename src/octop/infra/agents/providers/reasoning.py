@@ -180,7 +180,7 @@ def reasoning_request_parameters(
         elif selected_mode == "disabled":
             model_fields["thinking"] = None
         if selected_effort and selected_mode != "disabled":
-            model_fields["effort"] = selected_effort
+            model_fields["reasoning_effort"] = selected_effort
     elif adapter == "anthropic_budget":
         if selected_mode == "enabled" or (selected_mode == "auto" and selected_effort):
             budget = int(selected_effort) if selected_effort.isdigit() else 1024

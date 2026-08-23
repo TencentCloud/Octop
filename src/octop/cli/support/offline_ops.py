@@ -31,6 +31,7 @@ def _user_row_to_dict(row: Any) -> dict[str, Any]:
         "username": row.username,
         "role": row.role,
         "display_name": row.display_name,
+        "email": row.email,
         "disabled": bool(row.disabled),
     }
 
@@ -84,17 +85,47 @@ def create_user_offline(
     password: str,
     role: str,
     display_name: str | None = None,
+    email: str | None = None,
     home: Path | None = None,
 ) -> dict[str, Any]:
+    from octop.infra.users.email import parse_optional_email
+
+    normalized_email = parse_optional_email(email)
     with open_cli_services(home) as svc:
         if svc.user_repo.get_by_username(username) is not None:
             raise OctopError(ErrorCode.USERNAME_TAKEN, f"username {username!r} already exists")
+        if (
+            normalized_email is not None
+            and svc.user_repo.get_by_email(normalized_email) is not None
+        ):
+            raise OctopError(ErrorCode.EMAIL_TAKEN, f"email {normalized_email!r} already exists")
         uid = svc.user_repo.create(
             username=username,
             password_hash=hash_password(password),
             role=role,
             display_name=display_name,
+            email=normalized_email,
         )
+        row = svc.user_repo.get(uid)
+        assert row is not None
+        return _user_row_to_dict(row)
+
+
+def set_user_email_offline(
+    username: str, email: str | None, *, home: Path | None = None
+) -> dict[str, Any]:
+    from octop.infra.users.email import parse_optional_email
+
+    normalized_email = parse_optional_email(email)
+    with open_cli_services(home) as svc:
+        uid = _require_username(svc, username)
+        if normalized_email is not None:
+            owner = svc.user_repo.get_by_email(normalized_email)
+            if owner is not None and owner.id != uid:
+                raise OctopError(
+                    ErrorCode.EMAIL_TAKEN, f"email {normalized_email!r} already exists"
+                )
+        svc.user_repo.set_email(uid, normalized_email)
         row = svc.user_repo.get(uid)
         assert row is not None
         return _user_row_to_dict(row)
@@ -216,10 +247,15 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.workspace_dir import workspace_dir_from_config_json
+
     with open_cli_services(home) as svc:
-        if svc.agent_repo.get(agent_id) is None:
+        row = svc.agent_repo.get(agent_id)
+        if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        workspace_dir = svc.paths.agent_workspace(agent_id)
+        workspace_dir = workspace_dir_from_config_json(
+            row.config_json, paths=svc.paths, agent_id=agent_id
+        )
         try:
             if workspace_dir.exists():
                 shutil.rmtree(workspace_dir)

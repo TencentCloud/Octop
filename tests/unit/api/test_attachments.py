@@ -86,7 +86,9 @@ async def test_build_content_from_file_part_uses_resolved_path() -> None:
         )
         out = await build_content_from_message(msg, media_backend=backend)
         assert isinstance(out, str)
-        resolved = workspace.resolve_path("inbound/01JTEST.pdf")
+        from octop.infra.gateway.media.inbound_store import resolve_inbound_attachment_path
+
+        resolved = resolve_inbound_attachment_path(workspace, "inbound/01JTEST.pdf")
         assert resolved in out
         assert "pdf" in out.lower()
 
@@ -113,5 +115,7 @@ async def test_hints_from_saved_attachment_path() -> None:
             workspace=workspace,
         )
         assert len(hints) == 1
-        resolved = workspace.resolve_path(stored.data_path)
+        from octop.infra.gateway.media.inbound_store import resolve_inbound_attachment_path
+
+        resolved = resolve_inbound_attachment_path(workspace, stored.data_path)
         assert resolved in hints[0]

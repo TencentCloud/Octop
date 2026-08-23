@@ -11,7 +11,11 @@ from deepagents.backends.local_shell import LocalShellBackend
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
-from octop.infra.agents.experts.catalog import MANIFEST_FILENAME, seed_expert_directory
+from octop.infra.agents.experts.catalog import (
+    MANIFEST_FILENAME,
+    WORKSPACE_MANIFEST_PATH,
+    seed_expert_directory,
+)
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
     assert_can_mutate_published,
@@ -35,6 +39,7 @@ def test_published_experts_dir_is_under_instance_root(tmp_path: Path) -> None:
 def test_only_creator_or_admin_can_mutate_published_expert() -> None:
     row = PublishedExpertRow(
         id="01",
+        pk=1,
         slug="researcher",
         name="Researcher",
         description="",
@@ -87,7 +92,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
     }
     await source.aupload_many(
         [
-            (MANIFEST_FILENAME, json.dumps(manifest, ensure_ascii=False).encode()),
+            (WORKSPACE_MANIFEST_PATH, json.dumps(manifest, ensure_ascii=False).encode()),
             ("SOUL.md", b"# Source soul"),
             ("MEMORY.md", b"# Shared memory"),
             ("skills/research/SKILL.md", b"# Research"),
@@ -95,6 +100,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
             ("inbound/note.txt", b"user upload"),
             ("daily/2026-01-01.md", b"journal"),
             ("uploads/tmp.bin", b"binary"),
+            (".octop/avatar.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 8),
         ]
     )
 
@@ -105,6 +111,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
         MANIFEST_FILENAME,
         "SOUL.md",
         "skills/research/SKILL.md",
+        ".octop/avatar.png",
     }
     assert json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8")) == manifest
     assert (destination / "SOUL.md").read_text(encoding="utf-8") == "# Source soul"
@@ -124,12 +131,13 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
         workspace=_workspace(installed_dir),
     )
 
-    assert copied == 3
-    assert (installed_dir / MANIFEST_FILENAME).read_text(encoding="utf-8") == json.dumps(
+    assert copied == 4
+    assert (installed_dir / ".octop" / "manifest.json").read_text(encoding="utf-8") == json.dumps(
         manifest,
         ensure_ascii=False,
     )
     assert (installed_dir / "skills" / "research" / "SKILL.md").read_bytes() == b"# Research"
+    assert (installed_dir / ".octop" / "avatar.png").read_bytes().startswith(b"\x89PNG")
     assert not (installed_dir / "MEMORY.md").exists()
 
 
@@ -138,7 +146,7 @@ async def test_export_snapshot_rejects_invalid_manifest(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()
     source = _workspace(source_dir)
-    await source.aupload_many([(MANIFEST_FILENAME, b"not json")])
+    await source.aupload_many([(WORKSPACE_MANIFEST_PATH, b"not json")])
 
     with pytest.raises(ValueError, match="valid JSON object"):
         await export_agent_workspace_to_dir(workspace=source, dest=tmp_path / "published")
@@ -150,7 +158,7 @@ async def test_export_snapshot_keeps_existing_directory_when_export_fails(
 ) -> None:
     class FailingWorkspace:
         async def adownload_bytes(self, path: str) -> bytes:
-            if path == MANIFEST_FILENAME:
+            if path in {MANIFEST_FILENAME, WORKSPACE_MANIFEST_PATH}:
                 return b"{}"
             raise RuntimeError("workspace download failed")
 

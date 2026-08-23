@@ -33,12 +33,19 @@ async def cmd_token(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: 
     if totals["turns"] == 0:
         await sink.text(tr("token.empty", lang))
         return
+    cache_hit = (
+        round(totals["cache_read_tokens"] / totals["input_tokens"] * 100)
+        if totals["input_tokens"]
+        else 0
+    )
     await sink.text(
         markdown_kv_block(
             tr("token.title", lang, short=tid[-6:]),
             localized_rows(
                 [
                     ("input", f"{totals['input_tokens']:,}"),
+                    ("cache_read", f"{totals['cache_read_tokens']:,}"),
+                    ("cache_hit", f"{cache_hit}%"),
                     ("output", f"{totals['output_tokens']:,}"),
                     ("total", f"{totals['total_tokens']:,}"),
                     ("turns", str(totals["turns"])),

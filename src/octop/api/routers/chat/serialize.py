@@ -11,16 +11,34 @@ from pathlib import Path
 from typing import Any
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
+from octop.i18n.domains.attachment import attachment_empty_image
+from octop.infra.agents.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
+from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
 
 _THINKING_CAPTURE_RE = re.compile(
     r"<think>([\s\S]*?)</think>\s*",
+    re.IGNORECASE,
+)
+
+# Matches the lightweight placeholder that ``MediaOffloadMiddleware`` writes
+# into LangGraph state for already-offloaded inline images / audio. Format
+# (see harness_agent.middleware.media_offload._placeholder_text_block):
+#   [<btype> offloaded: sha=<short_sha> path=<path> size=<n>B mime=<m>;
+#   use read_file to retrieve bytes]
+# We strip these on history serialization because the original bytes are
+# still available via ``inbound_attachments`` and the dashboard renders the
+# thumbnail from there — leaving the placeholder visible made the chat show
+# a "[image offloaded: sha=… path=…]" line under every user image after the
+# second turn (when the middleware first re-encountered the block).
+_OFFLOAD_PLACEHOLDER_RE = re.compile(
+    r"^\s*\[\s*(?:image|audio)\s+offloaded\s*:",
     re.IGNORECASE,
 )
 
@@ -33,6 +51,244 @@ HISTORY_MAX_LIMIT = 200
 
 def _clamp_history_limit(limit: int) -> int:
     return max(1, min(limit, HISTORY_MAX_LIMIT))
+
+
+def _is_offload_placeholder_block(block: Any) -> bool:
+    """True when *block* is a ``MediaOffloadMiddleware`` placeholder.
+
+    The middleware rewrites an inline image/audio block into a single text
+    block of the form ``[image offloaded: sha=… path=… size=…B mime=…; use
+    read_file to retrieve bytes]`` on every turn after the first one. We
+    must not surface that text in the dashboard: the original attachment
+    is still available via ``inbound_attachments`` and the UI renders the
+    image from there. Showing the placeholder underneath is a UX bug.
+    """
+    if not isinstance(block, dict):
+        return False
+    if str(block.get("type") or "").lower() != "text":
+        return False
+    text = str(block.get("text") or "")
+    return bool(_OFFLOAD_PLACEHOLDER_RE.match(text))
+
+
+def _user_message_has_image_attachment(additional_kwargs: Any) -> bool:
+    """True if the persisted ``INBOUND_ATTACHMENTS_KEY`` carries any image."""
+    if not isinstance(additional_kwargs, dict):
+        return False
+    raw = additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
+    if not isinstance(raw, list):
+        return False
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").lower()
+        media_type = str(item.get("media_type") or item.get("mediaType") or "")
+        if kind == "image" or media_type.lower().startswith("image/"):
+            return True
+    return False
+
+
+def _is_attachment_path_hint_text(text: str) -> bool:
+    """True when *text* is an LLM-only ``[Attachment]/`` / ``[附件]`` path hint."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    first = stripped.split("\n", 1)[0].strip()
+    return first.startswith("[Attachment] ") or first.startswith("[附件] ")
+
+
+def _strip_attachment_hints_from_text(text: str) -> str:
+    """Drop blank-line-separated attachment path-hint sections from user text."""
+    parts = re.split(r"\n\n+", text)
+    kept = [part for part in parts if part.strip() and not _is_attachment_path_hint_text(part)]
+    return "\n\n".join(kept).strip()
+
+
+def _workspace_url_path(url: str) -> str:
+    if url.startswith("workspace://"):
+        return url[len("workspace://") :].lstrip("/")
+    return ""
+
+
+def _is_history_noise_image_block(block: Any) -> bool:
+    """True for vision blocks that must not appear as user-authored history text."""
+    if not isinstance(block, dict):
+        return False
+    if str(block.get("type") or "").lower() != "image_url":
+        return False
+    if str(block.get("workspace_path") or "").strip():
+        return True
+    url_field = block.get("image_url")
+    url = ""
+    if isinstance(url_field, dict):
+        url = str(url_field.get("url") or "")
+    elif isinstance(url_field, str):
+        url = url_field
+    return url.startswith("data:") or url.startswith("workspace://")
+
+
+def _attachment_meta_from_image_block(block: dict[str, Any]) -> dict[str, str] | None:
+    """Build ``inbound_attachments`` row from a path-only / data vision block."""
+    path = str(block.get("workspace_path") or "").strip()
+    url_field = block.get("image_url")
+    url = ""
+    if isinstance(url_field, dict):
+        url = str(url_field.get("url") or "")
+    elif isinstance(url_field, str):
+        url = url_field
+    if not path:
+        path = _workspace_url_path(url)
+    if not path and not url.startswith("data:"):
+        return None
+    mime = str(
+        block.get("mime_type") or block.get("media_type") or block.get("mediaType") or ""
+    ).strip()
+    if not mime and url.startswith("data:"):
+        mime = url[5:].split(";", 1)[0] or "image/png"
+    if not mime:
+        mime = "image/png"
+    filename = str(block.get("filename") or block.get("name") or "").strip()
+    if not filename and path:
+        filename = Path(path).name
+    if not filename:
+        filename = "image"
+    entry: dict[str, str] = {
+        "filename": filename,
+        "media_type": mime,
+        "kind": "image",
+    }
+    if path:
+        entry["workspace_path"] = path if path.startswith("inbound/") else f"inbound/{path}"
+    return entry
+
+
+def _parse_image_ref_json_text(text: str) -> dict[str, Any] | None:
+    """Return an ``image_url`` dict when *text* is a dumped vision ref (UI noise)."""
+    stripped = text.strip()
+    if not stripped.startswith("{") or "image_url" not in stripped:
+        return None
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, dict) and _is_history_noise_image_block(parsed):
+        return parsed
+    return None
+
+
+def _extract_dumped_image_refs_from_text(text: str) -> tuple[str, list[dict[str, Any]]]:
+    """Pull harness JSONL-style vision dumps out of user text.
+
+    ``MemoryMiddleware._stringify_content`` joins text blocks and
+    ``json.dumps(image_url_block)`` with newlines. Session-log history
+    therefore arrives as one string like::
+
+        这图是啥
+        {"type": "image_url", "workspace_path": "inbound/…", …}
+
+    Returns ``(cleaned_caption, image_ref_dicts)``.
+    """
+    if not text or "image_url" not in text:
+        return text, []
+    refs: list[dict[str, Any]] = []
+    kept: list[str] = []
+    for part in text.split("\n"):
+        parsed = _parse_image_ref_json_text(part)
+        if parsed is not None:
+            refs.append(parsed)
+            continue
+        kept.append(part)
+    if not refs:
+        return text, []
+    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return cleaned, refs
+
+
+def _collect_inbound_from_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Harvest attachment metadata from vision blocks / dumped JSON text blocks."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def _push(candidate: dict[str, Any]) -> None:
+        meta = _attachment_meta_from_image_block(candidate)
+        if meta is None:
+            return
+        key = meta.get("workspace_path") or meta.get("filename") or ""
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(meta)
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if _is_history_noise_image_block(block):
+            _push(block)
+            continue
+        if str(block.get("type") or "").lower() != "text":
+            continue
+        _cleaned, candidates = _extract_dumped_image_refs_from_text(str(block.get("text") or ""))
+        for candidate in candidates:
+            _push(candidate)
+    return out
+
+
+def _strip_image_only_text_blocks(
+    blocks: list[dict[str, Any]],
+    *,
+    locale: str,
+) -> list[dict[str, Any]]:
+    """Drop placeholders + the LLM-facing "User sent an image." sentinel.
+
+    Only safe when the original image is also being delivered to the
+    dashboard via ``inbound_attachments``; if not, removing the text
+    would make a pure-image turn look empty in the UI.
+    """
+    return _strip_attachment_llm_noise(blocks, locale=locale, strip_empty_image=True)
+
+
+def _strip_attachment_llm_noise(
+    blocks: list[dict[str, Any]],
+    *,
+    locale: str,
+    strip_empty_image: bool,
+) -> list[dict[str, Any]]:
+    """Remove LLM-only attachment noise from history content blocks.
+
+    Strips MediaOffload placeholders, optional empty-image sentinels, path-hint
+    text sections (``[附件]`` / ``[Attachment]``), dumped ``image_url`` JSON text,
+    and ``image_url`` blocks that the dashboard renders via ``inbound_attachments``.
+    """
+    empty_image = (
+        attachment_empty_image(normalize_locale(locale)).strip() if strip_empty_image else ""
+    )
+    out: list[dict[str, Any]] = []
+    for block in blocks:
+        if _is_offload_placeholder_block(block):
+            continue
+        if _is_history_noise_image_block(block):
+            continue
+        if not isinstance(block, dict) or str(block.get("type") or "").lower() != "text":
+            out.append(block)
+            continue
+        text = str(block.get("text") or "")
+        original = text
+        text, _image_refs = _extract_dumped_image_refs_from_text(text)
+        if empty_image and text.strip() == empty_image:
+            continue
+        cleaned = _strip_attachment_hints_from_text(text)
+        if not cleaned:
+            continue
+        if cleaned != original:
+            out.append({**block, "text": cleaned})
+        else:
+            out.append(block)
+    return out
+
+
+def _user_locale(user: Any) -> str:
+    raw = getattr(user, "locale", None) if user is not None else None
+    return normalize_locale(str(raw) if raw else None)
 
 
 def _slice_message_page(
@@ -112,7 +368,7 @@ async def _load_thread_messages(
             offset,
         )
         for m in raw_messages:
-            entry = _serialize_history_message(m)
+            entry = _serialize_history_message(m, user=user)
             if entry is not None:
                 out.append(entry)
     except Exception:
@@ -337,11 +593,13 @@ async def _load_thread_messages_from_sessions(
             raw_content = str(obj.get("content") or "")
             if not raw_content.strip():
                 continue
-            if role == "assistant":
-                content: Any = _split_string_thinking(raw_content) or raw_content
-            else:
-                content = raw_content
-            collected.append({"role": str(role), "content": content, "ts": obj.get("ts")})
+            collected.append(
+                {
+                    "role": str(role),
+                    "content": raw_content,
+                    "ts": obj.get("ts"),
+                }
+            )
 
         collected.sort(key=lambda item: _parse_jsonl_ts(item.get("ts")) or 0.0)
         if len(collected) >= needed:
@@ -351,7 +609,14 @@ async def _load_thread_messages_from_sessions(
     page, has_more = _slice_message_page(collected, limit=limit, offset=offset)
     out: list[dict[str, Any]] = []
     for m in page:
-        entry: dict[str, Any] = {"role": m["role"], "content": m["content"]}
+        # Reuse checkpoint polish so JSONL stringified ``image_url`` dumps
+        # become ``inbound_attachments`` instead of raw JSON in the bubble.
+        entry = _serialize_history_message(
+            {"role": m["role"], "content": m["content"]},
+            user=user,
+        )
+        if entry is None:
+            continue
         ts_ms = _ts_to_ms(_parse_jsonl_ts(m.get("ts")))
         if ts_ms is not None:
             entry["timestamp"] = ts_ms
@@ -474,14 +739,14 @@ def _split_string_thinking(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def _serialize_history_message(msg: Any) -> dict[str, Any] | None:
+def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] | None:
     """Project a LangGraph checkpoint message into dashboard history shape."""
     role = _message_role(msg)
     if role in ("system", ""):
         return None
 
     mid = _msg_attr(msg, "id")
-    usage = _msg_attr(msg, "usage_metadata")
+    usage = usage_dict_from_message(msg)
     additional_kwargs = _msg_attr(msg, "additional_kwargs")
     if not isinstance(additional_kwargs, dict):
         additional_kwargs = {}
@@ -512,7 +777,40 @@ def _serialize_history_message(msg: Any) -> dict[str, Any] | None:
     if role == "assistant":
         blocks.extend(_tool_use_blocks(_msg_attr(msg, "tool_calls")))
 
-    if not blocks:
+    raw_att = (
+        additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
+        if isinstance(additional_kwargs, dict)
+        else None
+    )
+    synthesized: list[dict[str, str]] = []
+    if role == "user":
+        # Path-only vision refs (plan B) must become inbound_attachments for the
+        # dashboard thumbnail UI — never leave the raw ``image_url`` JSON in
+        # history content (that looked like "流式输入" thumbnails before).
+        synthesized = _collect_inbound_from_blocks(blocks)
+        if isinstance(raw_att, list) and raw_att:
+            merged = [item for item in raw_att if isinstance(item, dict)]
+            seen = {
+                str(item.get("workspace_path") or item.get("filename") or "") for item in merged
+            }
+            for item in synthesized:
+                key = item.get("workspace_path") or item.get("filename") or ""
+                if key and key not in seen:
+                    merged.append(item)
+                    seen.add(key)
+            raw_att = merged
+        elif synthesized:
+            raw_att = synthesized
+
+    has_user_attachments = isinstance(raw_att, list) and bool(raw_att)
+    if role == "user" and (has_user_attachments or synthesized):
+        blocks = _strip_attachment_llm_noise(
+            blocks,
+            locale=_user_locale(user),
+            strip_empty_image=True,
+        )
+
+    if not blocks and not (role == "user" and has_user_attachments):
         return None
 
     entry = {"role": role, "content": blocks}
@@ -524,8 +822,7 @@ def _serialize_history_message(msg: Any) -> dict[str, Any] | None:
         raw_ctx = additional_kwargs.get(COMPOSER_CTX_KEY)
         if isinstance(raw_ctx, dict) and raw_ctx:
             entry["composer_context"] = raw_ctx
-        raw_att = additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
-        if isinstance(raw_att, list) and raw_att:
+        if has_user_attachments:
             entry["inbound_attachments"] = raw_att
     ts_ms = _extract_message_timestamp_ms(msg)
     if ts_ms is not None:

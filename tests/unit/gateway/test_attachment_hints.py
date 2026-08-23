@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import tempfile
+from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
@@ -95,6 +96,12 @@ async def test_hints_from_file_content_with_workspace_resolve_path() -> None:
         resolved = resolve_inbound_attachment_path(workspace, stored.path)
         assert len(hints) == 1
         assert f"Workspace path: {resolved}" in hints[0] or f"工作区路径：{resolved}" in hints[0]
+        assert resolved.replace("\\", "/").endswith(f"/{stored.path}")
+        # Must not invent a host root_dir prefix beyond the workspace itself.
+        # Canonicalize ws_dir: tempfile may yield an 8.3 short path on Windows
+        # while the resolved attachment path uses the long form.
+        ws_root = str(Path(ws_dir).resolve()).replace("\\", "/")
+        assert resolved.replace("\\", "/").startswith(ws_root)
 
 
 def test_format_pdf_hint() -> None:
@@ -122,10 +129,15 @@ async def test_materialize_image_part_from_workspace_path() -> None:
         block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
         assert block is not None
         assert block["type"] == "image_url"
-        url = block["image_url"]["url"]
+        assert block["workspace_path"] == stored.path
+        assert block["image_url"]["url"] == f"workspace://{stored.path}"
+        # Bytes are rematerialized only at model-call time.
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        url = expanded["image_url"]["url"]
         assert url.startswith("data:image/png;base64,")
         assert base64.b64decode(url.split(",", 1)[1]) == b"png-bytes"
-        assert block["workspace_path"] == stored.path
 
 
 @pytest.mark.asyncio
@@ -169,12 +181,17 @@ async def test_file_typed_image_path_still_materializes_via_content_parts() -> N
         content = await build_content_from_message(msg, media_backend=backend)
         assert isinstance(content, list)
         img = next(b for b in content if b.get("type") == "image_url")
-        assert base64.b64decode(img["image_url"]["url"].split(",", 1)[1]) == b"png-bytes"
+        assert img["image_url"]["url"].startswith("workspace://")
+        assert img["workspace_path"] == stored.path
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(img, workspace=workspace)
+        assert base64.b64decode(expanded["image_url"]["url"].split(",", 1)[1]) == b"png-bytes"
 
 
 @pytest.mark.asyncio
-async def test_oversized_undecodable_image_degrades_to_path_hint() -> None:
-    """Bytes Pillow can't decode stay a path hint (re-encode fallback)."""
+async def test_oversized_undecodable_image_stays_path_ref_until_expand() -> None:
+    """Undecodable oversized bytes stay a path ref; expand degrades to a path hint."""
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         big = b"x" * (VISION_MAX_BYTES + 1)
@@ -188,14 +205,19 @@ async def test_oversized_undecodable_image_degrades_to_path_hint() -> None:
         part = ImageContent(local_path=stored.path, mime_type="image/png", size=len(big))
         block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
         assert block is not None
-        assert block["type"] == "text"
-        hint = block["text"].replace("\\", "/")
+        assert block["type"] == "image_url"
+        assert block["workspace_path"] == stored.path
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        assert expanded["type"] == "text"
+        hint = expanded["text"].replace("\\", "/")
         assert stored.path.replace("\\", "/") in hint or "inbound/" in hint
 
 
 @pytest.mark.asyncio
-async def test_oversized_image_is_compressed_and_inlined() -> None:
-    """A real oversized PNG is downscaled/re-encoded and still inlined for vision."""
+async def test_oversized_image_is_compressed_on_expand() -> None:
+    """A real oversized PNG stays a path ref; rematerialize downscales for vision."""
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         big = _big_noise_png()
@@ -211,10 +233,14 @@ async def test_oversized_image_is_compressed_and_inlined() -> None:
         block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
         assert block is not None
         assert block["type"] == "image_url"
-        url = block["image_url"]["url"]
+        assert block["image_url"]["url"].startswith("workspace://")
+        assert block["workspace_path"] == stored.path
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        url = expanded["image_url"]["url"]
         assert url.startswith("data:image/jpeg;base64,")
         assert len(base64.b64decode(url.split(",", 1)[1])) <= VISION_MAX_BYTES
-        assert block["workspace_path"] == stored.path
 
 
 @pytest.mark.asyncio
@@ -231,8 +257,8 @@ async def test_oversized_image_in_data_branch_is_compressed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_small_image_is_not_reencoded() -> None:
-    """Images already under the limit pass through byte-identical."""
+async def test_small_image_is_path_ref_then_byte_identical_on_expand() -> None:
+    """Images under the limit stay path refs; expand returns original bytes."""
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         small = _tiny_png()
@@ -247,7 +273,11 @@ async def test_small_image_is_not_reencoded() -> None:
         block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
         assert block is not None
         assert block["type"] == "image_url"
-        url = block["image_url"]["url"]
+        assert block["image_url"]["url"].startswith("workspace://")
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        url = expanded["image_url"]["url"]
         assert base64.b64decode(url.split(",", 1)[1]) == small
 
 

@@ -112,3 +112,33 @@ def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     with db.transaction() as conn:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     assert repo.get(aid) is None
+
+
+def test_create_and_update_profile_fields(repo: AgentRepo, user_id: int):
+    aid = new_ulid()
+    repo.create(
+        agent_id=aid,
+        user_id=user_id,
+        name="bot",
+        color="#6366f1",
+        icon_name="zap",
+        icon_url="https://cdn.example.com/a.png",
+        skill_package_ids='["PACK01"]',
+        published_expert_id="exp_1",
+        welcome_message="你好",
+        template_name="general-assistant",
+    )
+    row = repo.get(aid)
+    assert row is not None
+    assert row.color == "#6366f1"
+    assert row.icon_name == "zap"
+    assert row.icon_url == "https://cdn.example.com/a.png"
+    assert row.skill_package_ids == '["PACK01"]'
+    assert row.published_expert_id == "exp_1"
+    assert row.welcome_message == "你好"
+    repo.update_config(aid, color="#111111", welcome_message="改")
+    updated = repo.get(aid)
+    assert updated is not None
+    assert updated.color == "#111111"
+    assert updated.welcome_message == "改"
+    assert updated.icon_name == "zap"

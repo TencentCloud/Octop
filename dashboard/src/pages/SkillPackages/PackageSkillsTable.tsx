@@ -1,8 +1,9 @@
-import { Popconfirm, Table } from "antd";
+import { Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SkillPackageSkill } from "../../api/types/skillPackage";
+import { ResizableTable } from "@/components/ResizableTable";
 import skillStyles from "../Agent/Skills/index.module.less";
 
 interface PackageSkillsTableProps {
@@ -80,7 +81,8 @@ export default function PackageSkillsTable({
   ];
 
   return (
-    <Table
+    <ResizableTable
+      storageKey="skill-packages-skills"
       className={skillStyles.skillsTable}
       rowKey="slug"
       size="middle"

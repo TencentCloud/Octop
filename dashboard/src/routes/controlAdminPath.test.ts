@@ -19,8 +19,18 @@ describe("pathPermissionKeys", () => {
     expect(pathPermissionKeys("/remote-browser")).toEqual([...PERM.browser]);
   });
 
-  it("matches remote desktop and acp", () => {
-    expect(pathPermissionKeys("/remote-desktop")).toEqual([...PERM.desktop]);
+  it("matches remote desktop hub tabs and acp", () => {
+    expect(pathPermissionKeys("/remote-desktop")).toEqual([
+      "desktop",
+      "mobile",
+    ]);
+    expect(pathPermissionKeys("/remote-desktop/desktop")).toEqual([
+      ...PERM.desktop,
+    ]);
+    expect(pathPermissionKeys("/remote-desktop/phone")).toEqual([
+      ...PERM.mobile,
+    ]);
+    expect(pathPermissionKeys("/remote-phone")).toEqual([...PERM.mobile]);
     expect(pathPermissionKeys("/acp")).toBe("admin");
   });
 
@@ -59,6 +69,14 @@ describe("pathPermissionKeys", () => {
   it("canAccessPath respects holder permissions", () => {
     const user = { role: "user", permissions: ["desktop"] };
     expect(canAccessPath(user, "/remote-desktop")).toBe(true);
+    expect(canAccessPath(user, "/remote-desktop/desktop")).toBe(true);
+    expect(canAccessPath(user, "/remote-desktop/phone")).toBe(false);
+    expect(
+      canAccessPath(
+        { role: "user", permissions: ["mobile"] },
+        "/remote-desktop/phone",
+      ),
+    ).toBe(true);
     expect(canAccessPath(user, "/admin/users")).toBe(false);
     expect(canAccessPath({ role: "admin", permissions: [] }, "/acp")).toBe(
       true,

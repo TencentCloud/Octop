@@ -7,11 +7,10 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from octop.infra.agents.workspace_dir import skills_discovery_roots
 from octop.infra.utils.frontmatter import parse_frontmatter
 
 logger = logging.getLogger(__name__)
-
-_SKILLS_ROOT = "skills"
 
 
 def _summary_dict(
@@ -44,21 +43,36 @@ def _read_manifest(skill_dir: Path) -> str | None:
         return None
 
 
-def _resolve_skill_dir(workspace_dir: Path, slug: str) -> Path | None:
-    skill_dir = workspace_dir / _SKILLS_ROOT / slug
-    try:
-        entry = skill_dir.lstat()
-    except OSError:
-        return None
-    if stat.S_ISLNK(entry.st_mode) or stat.S_ISDIR(entry.st_mode):
+def _skills_roots(workspace_dir: Path) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for root in skills_discovery_roots(workspace_dir):
         try:
-            resolved = skill_dir.resolve()
+            resolved = root.resolve()
         except OSError:
-            logger.debug("failed resolving skill dir %s", skill_dir, exc_info=True)
-            return None
-        if not resolved.is_dir():
-            return None
-        return resolved
+            continue
+        if resolved in seen or not root.is_dir():
+            continue
+        seen.add(resolved)
+        roots.append(root)
+    return roots
+
+
+def _resolve_skill_dir(workspace_dir: Path, slug: str) -> Path | None:
+    for skills_root in _skills_roots(workspace_dir):
+        skill_dir = skills_root / slug
+        try:
+            entry = skill_dir.lstat()
+        except OSError:
+            continue
+        if stat.S_ISLNK(entry.st_mode) or stat.S_ISDIR(entry.st_mode):
+            try:
+                resolved = skill_dir.resolve()
+            except OSError:
+                logger.debug("failed resolving skill dir %s", skill_dir, exc_info=True)
+                continue
+            if resolved.is_dir():
+                return resolved
     return None
 
 
@@ -67,35 +81,36 @@ def list_workspace_skill_summaries(
     *,
     skills_disabled: set[str] | frozenset[str],
 ) -> list[dict[str, Any]]:
-    """Scan ``skills/`` including symlinked directories outside the workspace."""
-    skills_root = workspace_dir / _SKILLS_ROOT
-    try:
-        entries = list(skills_root.iterdir())
-    except OSError:
-        return []
-
+    """Scan ``skills/`` including ``.octop/skills`` and symlinked directories."""
+    seen: set[str] = set()
     summaries: list[dict[str, Any]] = []
-    for entry in sorted(entries, key=lambda path: path.name):
-        slug = entry.name
-        if not slug or slug.startswith("."):
+    for skills_root in _skills_roots(workspace_dir):
+        try:
+            entries = list(skills_root.iterdir())
+        except OSError:
             continue
-        skill_dir = _resolve_skill_dir(workspace_dir, slug)
-        if skill_dir is None:
-            continue
-        manifest = _read_manifest(skill_dir)
-        if manifest is None:
-            continue
-        meta, _body = parse_frontmatter(manifest)
-        if meta.get("removed"):
-            continue
-        display_name = str(meta.get("name") or slug)
-        summaries.append(
-            _summary_dict(
-                slug,
-                meta,
-                enabled=slug not in skills_disabled and display_name not in skills_disabled,
+        for entry in sorted(entries, key=lambda path: path.name):
+            slug = entry.name
+            if not slug or slug.startswith(".") or slug in seen:
+                continue
+            skill_dir = _resolve_skill_dir(workspace_dir, slug)
+            if skill_dir is None:
+                continue
+            manifest = _read_manifest(skill_dir)
+            if manifest is None:
+                continue
+            meta, _body = parse_frontmatter(manifest)
+            if meta.get("removed"):
+                continue
+            display_name = str(meta.get("name") or slug)
+            seen.add(slug)
+            summaries.append(
+                _summary_dict(
+                    slug,
+                    meta,
+                    enabled=slug not in skills_disabled and display_name not in skills_disabled,
+                )
             )
-        )
     return summaries
 
 

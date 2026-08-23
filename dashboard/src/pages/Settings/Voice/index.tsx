@@ -39,7 +39,7 @@ export function VoiceSettingsPanel() {
   const [mimoEndpoint, setMimoEndpoint] = useState<"payg" | "tokenplan">(
     "payg",
   );
-  const [mimoVoiceId, setMimoVoiceId] = useState("mimo_default");
+  const [mimoVoiceId, setMimoVoiceId] = useState("冰糖");
   const [saving, setSaving] = useState(false);
 
   const fetchAll = useCallback(async () => {
@@ -100,7 +100,7 @@ export function VoiceSettingsPanel() {
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
     setMimoEndpoint(extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg");
-    setMimoVoiceId(String(extra.voice_id ?? "mimo_default"));
+    setMimoVoiceId(String(extra.voice_id ?? "冰糖"));
   };
 
   const handleSaveProvider = async () => {
@@ -155,6 +155,15 @@ export function VoiceSettingsPanel() {
         active.stt === "browser"
       ) {
         const next = await voiceApi.setActive({ stt: preset.id });
+        setActive(next);
+        invalidateVoiceConfigCache();
+      }
+      if (
+        preset.kind !== "browser" &&
+        (preset.capability === "tts" || preset.capability === "both") &&
+        active.tts === "browser"
+      ) {
+        const next = await voiceApi.setActive({ tts: preset.id });
         setActive(next);
         invalidateVoiceConfigCache();
       }
@@ -407,7 +416,6 @@ export function VoiceSettingsPanel() {
                   value={mimoVoiceId}
                   onChange={(v) => setMimoVoiceId(v)}
                   options={[
-                    { value: "mimo_default", label: "MiMo Default" },
                     { value: "冰糖", label: "冰糖 (中文·女)" },
                     { value: "茉莉", label: "茉莉 (中文·女)" },
                     { value: "苏打", label: "苏打 (中文·男)" },

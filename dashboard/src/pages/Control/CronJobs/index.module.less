@@ -55,7 +55,9 @@
 
 .promptCell {
   display: block;
-  max-width: 100%;
+  /* Table runs in `table-layout: auto` (scroll.x = max-content) so columns hug
+     their content — cap the prompt so a long instruction cannot stretch the row. */
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

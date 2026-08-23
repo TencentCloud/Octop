@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
 import SessionList from "./SessionList";
+import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
@@ -29,10 +30,18 @@ interface ChatSidebarPanelProps {
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
+  onForkSession: (id: string, agentId?: string | null) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
   onSidebarOpenChange: (open: boolean) => void;
   onSidebarResizeStart: (e: React.PointerEvent) => void;
   /** Mounted in MainLayout left rail (between app nav and content). */
   layoutRail?: boolean;
+  /**
+   * Minimal layout: render SessionList only inside the nav "records" pane
+   * (no second rail chrome / mobile overlay).
+   */
+  navEmbedded?: boolean;
 }
 
 export default function ChatSidebarPanel({
@@ -54,9 +63,13 @@ export default function ChatSidebarPanel({
   onDeleteSession,
   onRenameSession,
   onPinSession,
+  onForkSession,
+  forkDisabled,
+  forkDisabledHint,
   onSidebarOpenChange,
   onSidebarResizeStart,
   layoutRail = false,
+  navEmbedded = false,
 }: ChatSidebarPanelProps) {
   const { t } = useTranslation();
 
@@ -69,6 +82,50 @@ export default function ChatSidebarPanel({
     window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
     onSidebarOpenChange(true);
   }, [sidebarOpen, onSidebarOpenChange]);
+
+  const sessionList = navEmbedded ? (
+    <MinimalAgentSessionNav
+      agents={agents}
+      activeId={activeThreadId}
+      activeAgentId={resolvedAgentId ?? null}
+      activeSessions={sessions}
+      onSelect={onSelectSession}
+      onAgentSelect={onAgentSelect}
+      onDeleteActive={onDeleteSession}
+      onRenameActive={onRenameSession}
+      onPinActive={onPinSession}
+      onFork={onForkSession}
+      activeForkDisabled={forkDisabled}
+      activeForkDisabledHint={forkDisabledHint}
+    />
+  ) : (
+    <SessionList
+      agents={agents}
+      sessions={sessions}
+      activeId={activeThreadId}
+      activeAgentId={resolvedAgentId ?? null}
+      hasMore={sessionsHasMore}
+      loadingMore={sessionsLoadingMore}
+      onLoadMore={onLoadMoreSessions}
+      onFetchAllSessions={onFetchAllSessions}
+      onSelect={onSelectSession}
+      onAgentSelect={onAgentSelect}
+      onDelete={onDeleteSession}
+      onRename={onRenameSession}
+      onPin={onPinSession}
+      onFork={onForkSession}
+      activeForkDisabled={forkDisabled}
+      activeForkDisabledHint={forkDisabledHint}
+    />
+  );
+
+  if (navEmbedded) {
+    return (
+      <div className={styles.sidebarNavEmbedded} data-testid="chat-nav-records">
+        {sessionList}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -94,21 +151,7 @@ export default function ChatSidebarPanel({
             : undefined
         }
       >
-        <SessionList
-          agents={agents}
-          sessions={sessions}
-          activeId={activeThreadId}
-          activeAgentId={resolvedAgentId ?? null}
-          hasMore={sessionsHasMore}
-          loadingMore={sessionsLoadingMore}
-          onLoadMore={onLoadMoreSessions}
-          onFetchAllSessions={onFetchAllSessions}
-          onSelect={onSelectSession}
-          onAgentSelect={onAgentSelect}
-          onDelete={onDeleteSession}
-          onRename={onRenameSession}
-          onPin={onPinSession}
-        />
+        {sessionList}
         {!isMobile && sidebarOpen && (
           <div
             className={`${styles.sidebarResizeHandle} ${

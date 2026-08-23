@@ -5,7 +5,7 @@ import { message } from "@/utils/antdMessage";
 
 import { Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { setAuthToken } from "../../api";
+import { clearAuthToken, setAuthToken } from "../../api";
 import { authApi, type OidcStatus } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
@@ -38,8 +38,17 @@ export default function LoginPage() {
       .then((status) => {
         if (cancelled) return;
         if (status.setup_required) {
+          clearAuthToken();
           navigate("/setup", { replace: true });
+          return;
         }
+        // Only probe OIDC after setup is done — otherwise lockdown 503s.
+        authApi
+          .getOidcStatus()
+          .then((next) => {
+            if (!cancelled) setOidc(next);
+          })
+          .catch(() => {});
       })
       .catch(() => {
         // Backend unreachable — let the user attempt login and show a real
@@ -50,13 +59,6 @@ export default function LoginPage() {
       cancelled = true;
     };
   }, [navigate]);
-
-  useEffect(() => {
-    authApi
-      .getOidcStatus()
-      .then(setOidc)
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const code = searchParams.get("oidc_error");

@@ -62,6 +62,7 @@ import {
 import { getMediaKind } from "../utils/mediaKind";
 import { getDocKind, isEditableDoc } from "../utils/docKind";
 import { isProbablyText } from "../utils/fileKind";
+import { resolveWorkspaceMoveDest } from "../utils/workspaceMove";
 import styles from "../index.module.less";
 
 interface FileInfo {
@@ -114,7 +115,12 @@ function formatSize(bytes: number): string {
 }
 
 function isProtectedPath(path: string): boolean {
-  return path === "/_builtin_skills" || path.startsWith("/_builtin_skills/");
+  return (
+    path === "/_builtin_skills" ||
+    path.startsWith("/_builtin_skills/") ||
+    path === "/.octop/_builtin_skills" ||
+    path.startsWith("/.octop/_builtin_skills/")
+  );
 }
 
 const WORKSPACE_ROOT_PATH = "/";
@@ -190,12 +196,6 @@ function joinPath(dir: string, name: string): string {
   const base = dir.endsWith("/") ? dir.slice(0, -1) : dir;
   if (!base || base === "/") return `/${name}`;
   return `${base}/${name}`;
-}
-
-function isDescendantPath(ancestor: string, candidate: string): boolean {
-  const a = ancestor.replace(/\/$/, "");
-  const c = candidate.replace(/\/$/, "");
-  return c === a || c.startsWith(`${a}/`);
 }
 
 function toTreeNodes(infos: FileInfo[]): TreeDataNode[] {
@@ -623,32 +623,52 @@ export default function WorkspaceDrawer({
       message.warning(t("workspace.protectedPath"));
       return;
     }
-    if (info.dropPosition !== 0 || !drop.is_dir) {
+    const dest = resolveWorkspaceMoveDest({
+      dragPath: drag.path,
+      dropPath: drop.path,
+      dropIsDir: drop.is_dir,
+      dropToGap: info.dropToGap,
+    });
+    if (!dest) {
       message.warning(t("workspace.cannotMoveHere"));
       return;
     }
-    if (isDescendantPath(drag.path, drop.path)) {
-      message.warning(t("workspace.cannotMoveHere"));
-      return;
-    }
-    const basename = drag.path.split("/").filter(Boolean).pop();
-    if (!basename) return;
-    const dest = joinPath(drop.path, basename);
-    if (dest === drag.path) return;
     try {
-      await workspaceApi.moveWorkspaceFile(agentId, drag.path, dest);
+      const result = await workspaceApi.moveWorkspaceFile(
+        agentId,
+        drag.path,
+        dest,
+      );
       message.success(t("workspace.moveSuccess"));
       if (selectedKey === nodeKey(drag)) {
-        setSelectedKey(nodeKey({ ...drag, path: dest }));
+        setSelectedKey(nodeKey({ ...drag, path: result.path }));
       }
       await reloadBranch(parentDir(drag.path));
-      await reloadBranch(drop.path);
+      await reloadBranch(parentDir(result.path));
     } catch (err: unknown) {
       message.error(
         (err instanceof Error ? err.message : String(err)) ||
           t("workspace.moveFailed"),
       );
     }
+  };
+
+  const allowDrop: TreeProps["allowDrop"] = ({
+    dragNode,
+    dropNode,
+    dropPosition,
+  }) => {
+    const drag = pathFromKey(String(dragNode.key));
+    const drop = pathFromKey(String(dropNode.key));
+    if (isProtectedPath(drag.path) || isProtectedPath(drop.path)) return false;
+    if (!canDeletePath(drag.path)) return false;
+    const dest = resolveWorkspaceMoveDest({
+      dragPath: drag.path,
+      dropPath: drop.path,
+      dropIsDir: drop.is_dir,
+      dropToGap: dropPosition !== 0,
+    });
+    return dest != null;
   };
 
   const renderTreeTitle: TreeProps["titleRender"] = (node) => {
@@ -1247,7 +1267,14 @@ export default function WorkspaceDrawer({
                     expandedKeys={expandedKeys}
                     onExpand={(keys) => setExpandedKeys(keys as string[])}
                     blockNode
-                    draggable={{ icon: false }}
+                    draggable={{
+                      icon: false,
+                      nodeDraggable: (node) => {
+                        const target = pathFromKey(String(node.key));
+                        return canDeletePath(target.path);
+                      },
+                    }}
+                    allowDrop={allowDrop}
                     onDrop={(info) => void onDrop(info)}
                     titleRender={renderTreeTitle}
                   />

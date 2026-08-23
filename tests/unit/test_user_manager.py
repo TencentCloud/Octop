@@ -58,6 +58,59 @@ async def test_authenticate_success(manager: UserManager):
     assert user.username == "a"
 
 
+async def test_authenticate_by_email(manager: UserManager):
+    await manager.create(
+        username="alice",
+        password="TestPass12",
+        role=Role.USER,
+        email="Alice@Example.com",
+    )
+    user = await manager.authenticate("alice@example.com", "TestPass12")
+    assert user is not None
+    assert user.username == "alice"
+
+
+async def test_authenticate_prefers_username_over_email(manager: UserManager):
+    await manager.create(
+        username="bob@x.com",
+        password="TestPass12",
+        role=Role.USER,
+        email="other@x.com",
+    )
+    await manager.create(
+        username="carol",
+        password="TestPass34",
+        role=Role.USER,
+        email="bob@x.com",
+    )
+    user = await manager.authenticate("bob@x.com", "TestPass12")
+    assert user is not None
+    assert user.username == "bob@x.com"
+
+
+async def test_create_duplicate_email_rejected(manager: UserManager):
+    await manager.create(
+        username="a", password="TestPass12", role=Role.USER, email="dup@example.com"
+    )
+    with pytest.raises(OctopError) as ei:
+        await manager.create(
+            username="b", password="TestPass34", role=Role.USER, email="DUP@example.com"
+        )
+    assert ei.value.code is ErrorCode.EMAIL_TAKEN
+
+
+async def test_set_email_and_clear(manager: UserManager):
+    user = await manager.create(username="a", password="TestPass12", role=Role.USER)
+    await manager.set_email("a", "a@example.com")
+    row = manager.get_row(user.id)
+    assert row is not None
+    assert row.email == "a@example.com"
+    await manager.set_email("a", None)
+    row = manager.get_row(user.id)
+    assert row is not None
+    assert row.email is None
+
+
 async def test_authenticate_wrong_password(manager: UserManager):
     await manager.create(username="a", password="TestPass12", role=Role.USER)
     assert await manager.authenticate("a", "bad") is None

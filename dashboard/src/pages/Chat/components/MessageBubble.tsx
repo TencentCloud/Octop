@@ -11,7 +11,7 @@ import {
   Pencil,
   Volume2,
   Settings,
-  GitBranch,
+  GitFork,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -46,6 +46,7 @@ import {
   isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
+import { parseKnowledgeCitations } from "../../../utils/parseKnowledgeCitations";
 import styles from "../index.module.less";
 
 interface MessageBubbleProps {
@@ -54,7 +55,7 @@ interface MessageBubbleProps {
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
-  onForkUserMessage?: (messageId: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onHitlDecision?: (
@@ -72,13 +73,25 @@ interface MessageBubbleProps {
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string },
+  labels: { input: string; output: string; total: string; cacheHit: string },
 ): string[] {
   if (!usage) return [];
 
   const parts: string[] = [];
   if (typeof usage.input_tokens === "number") {
     parts.push(`${usage.input_tokens} ${labels.input}`);
+  }
+  if (
+    typeof usage.cache_read_tokens === "number" &&
+    usage.cache_read_tokens > 0
+  ) {
+    const percent =
+      typeof usage.input_tokens === "number" && usage.input_tokens > 0
+        ? ` (${Math.round(
+            (usage.cache_read_tokens / usage.input_tokens) * 100,
+          )}%)`
+        : "";
+    parts.push(`${usage.cache_read_tokens} ${labels.cacheHit}${percent}`);
   }
   if (typeof usage.output_tokens === "number") {
     parts.push(`${usage.output_tokens} ${labels.output}`);
@@ -130,20 +143,33 @@ function RefreshableImage({
   agentId?: string | null;
 }) {
   const { t } = useTranslation();
-  const { src, loadState, setSrc } = useAuthImageSrc(url, filename);
+  const resolvedUrl = useMemo(() => {
+    if (url && !url.startsWith("workspace://")) return url;
+    const path =
+      workspacePath ||
+      (url.startsWith("workspace://")
+        ? url.slice("workspace://".length).replace(/^\/+/, "")
+        : "") ||
+      workspacePathFromAccessUrl(url);
+    if (path && agentId) {
+      return agentAttachmentAccessUrl(agentId, path, mediaType);
+    }
+    return url;
+  }, [url, workspacePath, agentId, mediaType]);
+  const { src, loadState, setSrc } = useAuthImageSrc(resolvedUrl, filename);
   const retried = useRef(false);
 
   const handleError = useCallback(() => {
     if (retried.current) return;
     retried.current = true;
 
-    if (isDataUrl(url)) return;
+    if (isDataUrl(resolvedUrl)) return;
 
-    const path = workspacePath || workspacePathFromAccessUrl(url);
+    const path = workspacePath || workspacePathFromAccessUrl(resolvedUrl);
     if (!path || !agentId) return;
 
     setSrc(agentAttachmentAccessUrl(agentId, path, mediaType));
-  }, [url, agentId, workspacePath, mediaType, setSrc]);
+  }, [resolvedUrl, agentId, workspacePath, mediaType, setSrc]);
 
   if (loadState === "loading") {
     return (
@@ -346,12 +372,14 @@ export function ToolDetailsInline({
 
   let formattedOutput = structuredOutput.textOutput;
   if (!formattedOutput && toolData.output) {
-    formattedOutput = toolData.output;
+    formattedOutput = parseKnowledgeCitations(toolData.output).text;
     try {
       formattedOutput = JSON.stringify(JSON.parse(formattedOutput), null, 2);
     } catch {
       // keep as-is
     }
+  } else if (formattedOutput) {
+    formattedOutput = parseKnowledgeCitations(formattedOutput).text;
   }
 
   const hasMediaPreview =
@@ -497,7 +525,7 @@ function MessageBubble({
   composerLookups,
   onRegenerate,
   onEditUserMessage,
-  onForkUserMessage,
+  onForkAssistantMessage,
   forkDisabled,
   forkDisabledHint,
   onHitlDecision,
@@ -543,6 +571,7 @@ function MessageBubble({
         input: t("chatUsage.input"),
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
+        cacheHit: t("chatUsage.cacheHit"),
       }),
     [message.usage, t],
   );
@@ -731,9 +760,7 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
-                {(message.content ||
-                  onEditUserMessage ||
-                  onForkUserMessage) && (
+                {(message.content || onEditUserMessage) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
                       <CopyButton text={message.content} />
@@ -750,22 +777,6 @@ function MessageBubble({
                         aria-label={t("common.edit")}
                       >
                         <Pencil size={14} />
-                      </button>
-                    ) : null}
-                    {onForkUserMessage ? (
-                      <button
-                        className={styles.msgActionBtn}
-                        onClick={() => onForkUserMessage(message.id)}
-                        disabled={forkDisabled}
-                        title={
-                          forkDisabled && forkDisabledHint
-                            ? forkDisabledHint
-                            : t("chat.forkFromHere")
-                        }
-                        type="button"
-                        aria-label={t("chat.forkFromHere")}
-                      >
-                        <GitBranch size={14} />
                       </button>
                     ) : null}
                   </div>
@@ -888,6 +899,22 @@ function MessageBubble({
                       type="button"
                     >
                       <RotateCcw size={13} />
+                    </button>
+                  )}
+                  {!isUser && !isStreaming && onForkAssistantMessage && (
+                    <button
+                      className={styles.msgActionBtn}
+                      onClick={() => onForkAssistantMessage(message.id)}
+                      disabled={forkDisabled}
+                      title={
+                        forkDisabled && forkDisabledHint
+                          ? forkDisabledHint
+                          : t("chat.forkFromHere")
+                      }
+                      type="button"
+                      aria-label={t("chat.forkFromHere")}
+                    >
+                      <GitFork size={13} />
                     </button>
                   )}
                 </div>

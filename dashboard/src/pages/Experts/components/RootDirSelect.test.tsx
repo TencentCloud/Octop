@@ -84,6 +84,48 @@ describe("<RootDirSelect /> mkdir + rename", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("prefers selected home path and still lists sibling dirs under /", async () => {
+    const onChange = vi.fn();
+    mockedRequest.mockImplementation(async (path) => {
+      const p = String(path);
+      if (p.startsWith("/filesystem/dirs")) {
+        const listed = decodeURIComponent(p.split("path=")[1] ?? "");
+        if (listed === "/") {
+          return {
+            entries: [
+              { path: "/home", name: "home" },
+              { path: "/tmp", name: "tmp" },
+              { path: "/var", name: "var" },
+            ],
+          };
+        }
+        if (listed === "/home") {
+          return {
+            entries: [{ path: "/home/wally", name: "wally" }],
+          };
+        }
+        return { entries: [] };
+      }
+      throw new Error(`unexpected request: ${String(path)}`);
+    });
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <RootDirSelect value="/home/wally" onChange={onChange} />
+      </I18nextProvider>,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    const dropdown = document.querySelector(
+      ".ant-select-dropdown",
+    ) as HTMLElement;
+
+    await waitFor(() => within(dropdown).getByText("wally"));
+    await waitFor(() => within(dropdown).getByText("tmp"));
+    expect(within(dropdown).getByText("var")).toBeInTheDocument();
+    expect(within(dropdown).getByText("home")).toBeInTheDocument();
+  });
+
   it("creates a nested folder, keeps a single tree under /, and shows rename input", async () => {
     const onChange = vi.fn();
     mockedRequest.mockImplementation(async (path, init) => {
@@ -120,14 +162,9 @@ describe("<RootDirSelect /> mkdir + rename", () => {
       ".ant-select-dropdown",
     ) as HTMLElement;
 
-    // Expand / → Users so jubaoliang exists nested (not as a root orphan).
-    fireEvent.click(dropdown.querySelector(".ant-select-tree-switcher")!);
-    await waitFor(() => within(dropdown).getByText("Users"));
-    const usersNode = Array.from(
-      dropdown.querySelectorAll(".ant-select-tree-treenode"),
-    ).find((n) => n.textContent?.includes("Users"));
-    fireEvent.click(usersNode!.querySelector(".ant-select-tree-switcher")!);
+    // Selected value and siblings come from ancestor prefetch (API only).
     await waitFor(() => within(dropdown).getByText("jubaoliang"));
+    expect(within(dropdown).getByText("Users")).toBeInTheDocument();
 
     hoverTreeNode(dropdown, "jubaoliang");
     fireEvent.click(

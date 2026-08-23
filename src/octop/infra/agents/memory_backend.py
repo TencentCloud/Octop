@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig
+from octop.infra.agents.workspace_dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 
@@ -44,7 +45,7 @@ def memory_backend_from_agent_config(
     if btype == "sqlite":
         db_path = backend.get("db_path")
         if not db_path and workspace_dir is not None:
-            db_path = str(workspace_dir / "memory.sqlite")
+            db_path = str(host_system_dir(workspace_dir, cfg) / "memory.sqlite")
         spec: dict[str, Any] = {"type": "sqlite"}
         if db_path:
             spec["db_path"] = str(db_path)
@@ -78,9 +79,9 @@ def open_memory_kwargs(
     )
     spec = resolved.get("memory_backend")
     if not isinstance(spec, dict):
-        return ns, "sqlite", {"db_path": str(workspace_dir / "memory.sqlite")}
+        return ns, "sqlite", {"db_path": str(host_system_dir(workspace_dir, cfg) / "memory.sqlite")}
     btype = str(spec.get("type") or "sqlite")
     if btype == "postgres":
         return ns, "postgres", {"dsn": spec["dsn"]}
-    db_path = spec.get("db_path") or str(workspace_dir / "memory.sqlite")
+    db_path = spec.get("db_path") or str(host_system_dir(workspace_dir, cfg) / "memory.sqlite")
     return ns, "sqlite", {"db_path": str(db_path)}

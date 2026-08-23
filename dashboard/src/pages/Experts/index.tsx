@@ -64,11 +64,22 @@ async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
   return publishedExpertsApi.list();
 }
 
-async function fetchInstalledExpertIds(): Promise<Set<string>> {
-  const data = await request<{ config?: { expert_id?: string } }[]>("/agents");
-  return new Set(
-    data.flatMap((a) => (a.config?.expert_id ? [a.config.expert_id] : [])),
-  );
+function installedExpertIdsFromAgents(
+  agents: Pick<OctopAgent, "template_name" | "config">[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const agent of agents) {
+    const fromTemplate = agent.template_name?.trim();
+    if (fromTemplate) {
+      ids.add(fromTemplate);
+      continue;
+    }
+    const legacy = agent.config?.expert_id;
+    if (typeof legacy === "string" && legacy.trim()) {
+      ids.add(legacy.trim());
+    }
+  }
+  return ids;
 }
 
 export default function ExpertsPage() {
@@ -94,17 +105,14 @@ export default function ExpertsPage() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [agentList, expertList, publishedList, installedIds] =
-        await Promise.all([
-          request<OctopAgent[]>("/agents"),
-          fetchExpertLibrary(),
-          fetchPublishedExperts(),
-          fetchInstalledExpertIds(),
-        ]);
+      const [agentList, expertList, publishedList] = await Promise.all([
+        request<OctopAgent[]>("/agents"),
+        fetchExpertLibrary(),
+        fetchPublishedExperts(),
+      ]);
       setLocalAgents(ownedExperts(agentList));
       setExperts(expertList);
       setPublishedExperts(publishedList);
-      setAgentExpertIds(installedIds);
       await refreshAgents({ silent: true, force: true });
     } catch (err: unknown) {
       message.error(
@@ -210,6 +218,7 @@ export default function ExpertsPage() {
         | "default_model"
         | "is_shared"
         | "color"
+        | "icon_url"
       >,
     ) => {
       setEditAgent(null);
@@ -223,6 +232,7 @@ export default function ExpertsPage() {
                 default_model: updated.default_model,
                 is_shared: updated.is_shared,
                 color: updated.color,
+                icon_url: updated.icon_url,
               }
             : a,
         ),
@@ -251,23 +261,11 @@ export default function ExpertsPage() {
     setActiveTab("library");
   }, []);
 
-  // ── "Installed" badge lookup ───────────────────────────────────
-  const [agentExpertIds, setAgentExpertIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (activeTab !== "library" && activeTab !== "market") return;
-    let cancelled = false;
-    fetchInstalledExpertIds()
-      .then((ids) => {
-        if (!cancelled) setAgentExpertIds(ids);
-      })
-      .catch(() => {
-        /* non-critical */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, localAgents.length]);
+  // ── "Installed" badge lookup (template_name column; legacy config.expert_id) ──
+  const agentExpertIds = useMemo(
+    () => installedExpertIdsFromAgents(ownedAgents),
+    [ownedAgents],
+  );
 
   const refreshButton = useMemo(
     () => (
@@ -361,6 +359,7 @@ export default function ExpertsPage() {
                 <AgentCard
                   agent={agent}
                   iconName={agent.icon_name}
+                  iconUrl={agent.icon_url}
                   accentColor={agent.color}
                   publishedExpert={publishedByAgentId[agent.agent_id] ?? null}
                   onPublishedChange={() => {

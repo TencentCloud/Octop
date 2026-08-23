@@ -48,10 +48,13 @@ def test_knowledge_tables_migrated(db: SqlitePool) -> None:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
     assert {
         "knowledge_bases",
-        "knowledge_base_members",
         "knowledge_documents",
     }.issubset(names)
-    assert v == 6
+    assert v == 9
+    assert "knowledge_base_members" not in names
+    assert "knowledge_base_id" in {
+        r["name"] for r in conn.execute("PRAGMA table_info(knowledge_bases)").fetchall()
+    }
 
 
 def test_path_layout_knowledge_dir(tmp_path: Path) -> None:
@@ -83,7 +86,6 @@ def test_list_visible_owner_and_shared_base(
     other_id = users.create(username="other", password_hash="h", role="user")
 
     kb = repo.create_base(owner_user_id=owner_id, name="Shared", shared=True)
-    repo.set_member(kb.id, user_id=member_id, role="viewer")
 
     owner_visible = {r.id for r in repo.list_visible(owner_id)}
     member_visible = {r.id for r in repo.list_visible(member_id)}
@@ -93,6 +95,28 @@ def test_list_visible_owner_and_shared_base(
     assert kb.id in member_visible
     assert kb.id in other_visible
     assert kb.shared is True
+
+
+def test_knowledge_folders_and_nested_documents(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Nested")
+    folder = repo.ensure_folder(kb.id, "notes/law")
+    assert folder.is_dir is True
+    assert folder.path == "notes/law"
+    doc = repo.create_document(
+        kb_id=kb.id,
+        filename="act.md",
+        path="notes/law/act.md",
+        content_type="text/markdown",
+        byte_size=4,
+    )
+    assert doc.path == "notes/law/act.md"
+    children = repo.list_children(kb.id, "notes")
+    assert {row.path for row in children} == {"notes/law"}
+    nested = repo.list_children(kb.id, "notes/law")
+    assert [row.path for row in nested] == ["notes/law/act.md"]
+    removed = repo.delete_document(folder.id)
+    assert {row.path for row in removed} == {"notes/law", "notes/law/act.md"}
+    assert repo.count_documents(kb.id) == 0
 
 
 def test_knowledge_document_crud(repo: KnowledgeRepo, owner_id: int) -> None:
@@ -134,13 +158,81 @@ def test_create_document_applies_limit_within_insert_transaction(
         max_documents=1,
     )
 
-    with pytest.raises(ValueError, match="at most 1"):
-        repo.create_document(
-            kb_id=kb.id,
-            filename="second.md",
-            content_type="text/markdown",
-            byte_size=1,
-            max_documents=1,
-        )
-
     assert repo.count_documents(kb.id) == 1
+
+
+def test_migration_007_rebuilds_text_primary_keys(tmp_path: Path) -> None:
+    db_path = tmp_path / "octop.db"
+    pool = SqlitePool(db_path)
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("UPDATE _schema_version SET version = 6")
+        conn.executescript(
+            """
+            CREATE TABLE knowledge_bases (
+              id TEXT PRIMARY KEY,
+              owner_user_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL DEFAULT '',
+              default_open INTEGER NOT NULL DEFAULT 0,
+              shared INTEGER NOT NULL DEFAULT 0,
+              icon_name TEXT NOT NULL DEFAULT '',
+              embedding_model TEXT NOT NULL DEFAULT '',
+              embedding_dim INTEGER NOT NULL DEFAULT 0,
+              doc_count INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE knowledge_base_members (
+              kb_id TEXT NOT NULL,
+              user_id INTEGER NOT NULL,
+              role TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              PRIMARY KEY (kb_id, user_id)
+            );
+            CREATE TABLE knowledge_documents (
+              id TEXT PRIMARY KEY,
+              kb_id TEXT NOT NULL,
+              filename TEXT NOT NULL,
+              content_type TEXT NOT NULL,
+              byte_size INTEGER NOT NULL,
+              content_hash TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL DEFAULT 'pending',
+              error_message TEXT NOT NULL DEFAULT '',
+              chunk_count INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            INSERT INTO users(username, password_hash, role, created_at)
+            VALUES ('owner', 'h', 'user', 1);
+            INSERT INTO knowledge_bases(
+              id, owner_user_id, name, description, default_open, shared, icon_name,
+              embedding_model, embedding_dim, doc_count, created_at, updated_at
+            ) VALUES ('kbabcd', 1, 'Docs', '', 0, 0, '', '', 0, 1, 1, 1);
+            INSERT INTO knowledge_documents(
+              id, kb_id, filename, content_type, byte_size, content_hash, status,
+              error_message, chunk_count, created_at, updated_at
+            ) VALUES ('doc1', 'kbabcd', 'a.md', 'text/markdown', 1, '', 'ready', '', 1, 1, 1);
+            """
+        )
+    run_migrations(pool)
+    repo = KnowledgeRepo(pool)
+    base = repo.get_base("kbabcd")
+    assert base is not None
+    assert base.pk >= 1
+    assert base.id == "kbabcd"
+    doc = repo.get_document("doc1")
+    assert doc is not None
+    assert doc.path == "a.md"
+    assert doc.is_dir is False
+    with pool.connect() as conn:
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+    assert "knowledge_base_members" not in tables

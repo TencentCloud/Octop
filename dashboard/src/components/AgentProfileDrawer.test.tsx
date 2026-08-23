@@ -75,7 +75,12 @@ describe("AgentProfileDrawer sections", () => {
       expect(screen.getByText("SOUL.md")).toBeInTheDocument();
       expect(screen.getByText("Demo skill")).toBeInTheDocument();
       expect(screen.getByText("Demo subagent")).toBeInTheDocument();
+      expect(screen.getByText("agent-1")).toBeInTheDocument();
     });
+
+    expect(
+      screen.queryByRole("button", { name: /工作区|Workspace/i }),
+    ).not.toBeInTheDocument();
 
     const configHeader = screen
       .getByText("experts.configFiles")

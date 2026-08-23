@@ -1,6 +1,15 @@
 export * from "./types";
 
-export { request, setAuthToken, getAuthToken, clearAuthToken } from "./request";
+export {
+  request,
+  setAuthToken,
+  getAuthToken,
+  clearAuthToken,
+  markSetupRequired,
+  clearSetupRequired,
+  isSetupRequiredKnown,
+  SetupRequiredError,
+} from "./request";
 
 export { getApiUrl, getWsUrl } from "./config";
 

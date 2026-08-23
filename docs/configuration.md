@@ -22,9 +22,32 @@ on first server start (or by `octop init` / `octop run`).
 ```
 
 `env` is dotenv format, applied before `config.json` is loaded
-(`OctopServer.start` → `apply_env_file`). Useful when process env is hard
-to set (e.g. Docker volume) without editing Compose. Dashboard
-**Environments** and some tools also read/write this file.
+(`OctopServer.start` → `apply_env_file`). Dashboard **Advanced → Environment
+variables** writes this file. Saving **replaces** the file and drops removed
+keys from the process environment (host/systemd keys that were never in the
+file are left alone). Every running agent inherits those keys:
+
+- **Local shell** — live process env (including this file) plus the agent's
+  workspace `.env` (workspace wins on the same key; `OCTOP_*` / `HOME` / `USER`
+  cannot be overridden from `.env`). New agents store that file at
+  `{workspace}/.octop/.env`; existing agents keep `{workspace}/.env` when
+  their stored internal system-files prefix uses the legacy layout. Remote
+  object-store workspaces are not read from the host path — Octop/harness
+  also reads `.env` through the agent backend on each execute. Octop also
+  injects `OCTOP_AGENT_ID`, `OCTOP_AUTH_DIR` (under `{workspace}/.octop/auth`
+  for new agents; legacy agents keep `{workspace}/.octop-auth`),
+  and `OCTOP_HOME` into shell/sandbox env.
+- **Docker sandbox** — re-reads `~/.octop/env` on execute, plus workspace `.env`
+  and a minimal `PATH` (not the full host environment). Admin `PATH`/`HOME`
+  cannot override the container toolchain; workspace `.env` may set `PATH`.
+- **Web search tools** (Tavily, Brave, …) register at agent start from process
+  env. Put search API keys in the global file, not only in an agent's `.env`.
+  Changing search keys triggers a background agent reload; other keys take
+  effect on the next execute without reload.
+
+Per-agent secrets belong in `{workspace}/.env` or, for new agents,
+`{workspace}/.octop/.env` (also writable via the `write_env_file` tool).
+That file is excluded from published-expert snapshots.
 
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
@@ -135,7 +158,8 @@ container). Writing the same keys to the mounted `~/.octop/env` also works.
 
 Control-plane `database` and agent memory are separate layers. Defaults:
 
-- Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`.
+- Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`
+  (or `{workspace}/.octop/memory.sqlite` for new agents).
 - Control plane PostgreSQL → agent memory **defaults to the same DSN**
   (harness-memory per-agent PG schema `agent_<id>`). Runtime also needs
   ``langgraph-checkpoint-postgres`` (pulled in via

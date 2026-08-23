@@ -263,7 +263,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.113.0"
+version = "0.125.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -275,9 +275,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/2a/f856135e5b055bf8b6f34133b313810dfe1cb848e5ac5ea843e196daefdd/anthropic-0.113.0.tar.gz", hash = "sha256:1830e866430ebd351c4f277d20e4c9b0aa9ad71f6569a23772ae88b33e0abaf8", size = 939444, upload-time = "2026-06-29T14:57:22.257Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/f8/6f0560884b5363848347bd640b6c1d04abc25e7aa61787a232f790c6b60a/anthropic-0.125.0.tar.gz", hash = "sha256:e0cdd336580cb7411c1cdab69f80973e9bf4bff7f8e08141811d46307d45c682", size = 1112593, upload-time = "2026-08-19T22:00:42.837Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/4d/ea001c0993b8f48153c5eb74eecf5a3ed120df07fe894757351e8308bbe6/anthropic-0.113.0-py3-none-any.whl", hash = "sha256:9a52ed7a4982e916fa878d1ed3eaec2dcdf98699a39d8fc45b54b3c50f1e7426", size = 937995, upload-time = "2026-06-29T14:57:23.721Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/1a/b1bd30cda3790557e8791bec5922a6ec8fabb6fa8b008c76a39cf7be6152/anthropic-0.125.0-py3-none-any.whl", hash = "sha256:3486013602eca76d8b12540764e53654f02cf4951110bca86cf06e67428a9f21", size = 1184067, upload-time = "2026-08-19T22:00:44.596Z" },
 ]
 
 [[package]]
@@ -1308,7 +1308,7 @@ wheels = [
 
 [[package]]
 name = "harness-gateway"
-version = "0.9.2"
+version = "0.9.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1326,18 +1326,18 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e8/b3/51b707a92829f01c9baeb725854f1f293ff4e3e5e9d7f492e24876ed2336/harness_gateway-0.9.2.tar.gz", hash = "sha256:b6219a098cce91e88f84b337eae6b349ffa4475d2f4d0afa492372f8c6633187", size = 493828, upload-time = "2026-08-10T14:56:59.782Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/31/bffc0bedae91253db68cc6b18f44b2d3e97e964c87548aad86430a0fb296/harness_gateway-0.9.3.tar.gz", hash = "sha256:ea5135daa7e02726c93c5c0f8d124df0f7bf35ebde5e439a673d8eb6fc3f2ee8", size = 497904, upload-time = "2026-08-20T03:26:07.75Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/83/f3735c5609796126cef04f697ac26355f580853038f058938c8139bf14f1/harness_gateway-0.9.2-py3-none-any.whl", hash = "sha256:1fa7df9a4f26a20e2dffb622145c916c896f403289d60efb610d15afca6e3269", size = 137219, upload-time = "2026-08-10T14:56:57.241Z" },
+    { url = "https://files.pythonhosted.org/packages/58/11/03374a4b52520e918ee19db1c1d2bb8c844e951edc6d5d96ca55545f345a/harness_gateway-0.9.3-py3-none-any.whl", hash = "sha256:89dc52bbdf4c8167f6e4b003a07cc7dca0908ede572953350287af25a473a17c", size = 138401, upload-time = "2026-08-20T03:26:04.083Z" },
 ]
 
 [[package]]
 name = "harness-memory"
-version = "0.9.5"
+version = "0.9.7"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9d/f1/338ceac50178d2ff6e690050fde2dc83de332012ab4a721a19e9647371bf/harness_memory-0.9.5.tar.gz", hash = "sha256:7950697b4209320195d03bcda39a640f09f7b97fc95f08acc74d5ee6756e75da", size = 912009, upload-time = "2026-08-02T06:00:31.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/1e/31ed48da269f67eb18ba758974fa4d315cb0563d4e546bea52c985f21dd1/harness_memory-0.9.7.tar.gz", hash = "sha256:c1013bf5ce57f07393443a313b75e4f0e66f4e7158cc7295cb7e899d3b16719c", size = 34604833, upload-time = "2026-08-20T12:53:17.595Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/31/cbaf29ff9b9c0ac28aa85d9999d2f32dd6895c586c8510d22b7c96a94d8c/harness_memory-0.9.5-py3-none-any.whl", hash = "sha256:e1aff4ca3a7405ee5a53fcf75c5cb4b80e3ea56193a09a969fc3423c03156994", size = 316204, upload-time = "2026-08-02T06:00:27.688Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/05/b239a8db324d79f29c917d51daa1a30753998f559579d393d7629306685a/harness_memory-0.9.7-py3-none-any.whl", hash = "sha256:c0872ebcc24144edb89b3a928de8df0cef80abea36ab1bd2a6ee7ca56e7f71ff", size = 345460, upload-time = "2026-08-20T12:53:12.719Z" },
 ]
 
 [[package]]
@@ -1626,30 +1626,30 @@ wheels = [
 
 [[package]]
 name = "langchain"
-version = "1.3.11"
+version = "1.3.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/a2/91a7197c604a3ce1b774b3c10dd114c3c745c6186a304fc2573b3f94d400/langchain-1.3.11.tar.gz", hash = "sha256:f3cf9cd4d2329b1a03eb8fd92b9d73e4e58a4d52570d67725fc77fbe0f104b32", size = 633374, upload-time = "2026-06-22T23:00:33.44Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/1c/b84579174a8e82ed79f4c3e0cd5a7f2323facc5ccd4d1b8390e7d175b663/langchain-1.3.15.tar.gz", hash = "sha256:ab4b775b9703f7e37babe0b325dbbaef25573bda60ecf79f7850bc875f252795", size = 665047, upload-time = "2026-08-11T19:10:52.455Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/a4/3a181967294f8876362cc4ba36840d50b8286fa23bb3f5e602b69eb3cb1e/langchain-1.3.11-py3-none-any.whl", hash = "sha256:7ae011f95a09b22feea1e8ae4e43f0b6164aebf4c61b8ad845b45f72ff3a90a2", size = 133639, upload-time = "2026-06-22T23:00:31.619Z" },
+    { url = "https://files.pythonhosted.org/packages/09/8d/ae721f4d68ff79a17110cabc9cb39b4568b0e3f1fe0a379b926c3f81d175/langchain-1.3.15-py3-none-any.whl", hash = "sha256:c0d2d0d51ed7da249e8ab7487173872059a9dd46fb071d905957485b7334f987", size = 147001, upload-time = "2026-08-11T19:10:50.846Z" },
 ]
 
 [[package]]
 name = "langchain-anthropic"
-version = "1.4.8"
+version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
     { name = "langchain-core" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/98/22/40ab129b08329ca295b391aa1d48267692b42594757084c6918e22b655ac/langchain_anthropic-1.4.8.tar.gz", hash = "sha256:c76891b2044d56105ff13c106ed12650637b53bd598a4bdf15b4796eefa2a4ec", size = 708524, upload-time = "2026-06-26T21:28:46.916Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/db/1ff8c1ceaf0bb8febe1d3b16d8b7213d47bc7113328e68dbf46ebcf5fc38/langchain_anthropic-1.6.0.tar.gz", hash = "sha256:0307ec98b24566c747e91bac4158bc4f1510bae4b45f0d25107636cc1b616328", size = 722670, upload-time = "2026-08-19T21:39:40.395Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/14/746235c4da89d9bc6a608c5f489f628e03feb8f697195c146e452c8f23c8/langchain_anthropic-1.4.8-py3-none-any.whl", hash = "sha256:778e9301b6fd517824f76ec1776975ce8add97a1f6a36c50ae3c2f4b03a66f7f", size = 52366, upload-time = "2026-06-26T21:28:45.535Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/f2/c62b91a0663c668ffe5bd1cc83c90c603c4423b65e74d53f01d2b4329df5/langchain_anthropic-1.6.0-py3-none-any.whl", hash = "sha256:a85df4aa8f91a201703a4276e599ff3bcc498ade64294a85f79a96d6991f3154", size = 57151, upload-time = "2026-08-19T21:39:39.415Z" },
 ]
 
 [[package]]
@@ -1709,9 +1709,10 @@ wheels = [
 
 [[package]]
 name = "langchain-core"
-version = "1.4.8"
+version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "httpx" },
     { name = "jsonpatch" },
     { name = "langchain-protocol" },
     { name = "langsmith" },
@@ -1722,9 +1723,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/e3/bea6d0080acf183332f24dcd74c208aee5857cf8f783c3fb0bd86027d8fb/langchain_core-1.4.8.tar.gz", hash = "sha256:5bf1f8411077c904182ad8f975943d36adcbf579c4e017b3a118b719229ebf9a", size = 957974, upload-time = "2026-06-18T19:39:23.636Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/88/ebc98df187c525d729725ab39759337c56d5d2803423632376aa35bde899/langchain_core-1.6.0.tar.gz", hash = "sha256:dc72e36678ed26683ec0ad8829b44011fba461d10f9b31dbd9110215e5ec2333", size = 992493, upload-time = "2026-08-19T15:55:40.642Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/13/d6/bdf6f0481cc57ef300d6b1eb48cf1400c0409be715d6eb3cabadd1142a09/langchain_core-1.4.8-py3-none-any.whl", hash = "sha256:d84c28b05e3ba8d4271d0827aad5b592ccdaaf986e76768c23503f0a2045e8aa", size = 557416, upload-time = "2026-06-18T19:39:21.902Z" },
+    { url = "https://files.pythonhosted.org/packages/84/4c/508a90b9d2e3bd7738fd93cb2ac2178ce734662c75e69b3b81c445f1b360/langchain_core-1.6.0-py3-none-any.whl", hash = "sha256:d8bb924cd413955d9d3192ccced140407427c3ff51e50ffb941222648da92cb2", size = 570006, upload-time = "2026-08-19T15:55:38.935Z" },
 ]
 
 [[package]]
@@ -1830,7 +1831,7 @@ wheels = [
 
 [[package]]
 name = "langgraph"
-version = "1.2.7"
+version = "1.2.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
@@ -1840,9 +1841,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/11/c3961537ac7577125aabba68effc33ecc3dc0962e2d287d734dbd61caad7/langgraph-1.2.7.tar.gz", hash = "sha256:dcdf5b441bf8c7c7c154e603b302c9dbfbfd2d11e1b7ae7d93a5aba979dc87bd", size = 721385, upload-time = "2026-06-30T01:24:12.528Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/0d/c8e7ee98896659e1b6555db0ab115a9ca899844744645d5d894032bab1d7/langgraph-1.2.11.tar.gz", hash = "sha256:9ecfe11e50d338b34b15cf4d8a442642de103e8ae6971320efba84e4542eb363", size = 725753, upload-time = "2026-08-11T14:00:36.945Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/5d/19de0c674cf2d8bc95b25cdb4c13ba3f4fbe0f35bf2224ef19cc46bbb4cd/langgraph-1.2.7-py3-none-any.whl", hash = "sha256:249349a5d6a32cb0aa2304a8fb6529bd0cf56db8780d21db9e086e5383668f89", size = 246930, upload-time = "2026-06-30T01:24:11.15Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/7f/c5c30e4be99ff821029c7ac872a480676bb179c9f3df85ea3f38d13f86d4/langgraph-1.2.11-py3-none-any.whl", hash = "sha256:8bab70de7b2d00b5300fb289bcf38d8b241400f3184c1e95e8ce706fb0e8686b", size = 248854, upload-time = "2026-08-11T14:00:35.494Z" },
 ]
 
 [[package]]
@@ -2464,7 +2465,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "0.9.24"
+version = "0.9.26"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2489,6 +2490,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "pypdf" },
+    { name = "pypinyin" },
     { name = "python-docx" },
     { name = "python-pptx" },
     { name = "questionary" },
@@ -2547,8 +2549,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "harness-browser", specifier = ">=0.7.5" },
-    { name = "harness-gateway", specifier = ">=0.9.2" },
-    { name = "harness-memory", specifier = ">=0.9.5" },
+    { name = "harness-gateway", specifier = ">=0.9.3" },
+    { name = "harness-memory", specifier = ">=0.9.7" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },
@@ -2557,7 +2559,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.20" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.24" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2566,6 +2568,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.8" },
     { name = "pynput", marker = "extra == 'desktop'", specifier = ">=1.7" },
     { name = "pypdf", specifier = ">=5.0" },
+    { name = "pypinyin", specifier = ">=0.53" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },
@@ -2728,7 +2731,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "0.9.20"
+version = "0.9.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2746,9 +2749,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/7e/5c749a8b53debaaa175fdad66c81963daf9b6559deabd10bafd0d366155b/orcakit_harness_agent-0.9.20.tar.gz", hash = "sha256:dac5112226c633bf3a0e07193cde430a6d2901b6dae35b4514166e4da28322ce", size = 1144223, upload-time = "2026-08-10T14:53:41.171Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/3a/05421451c77788cb4b560bb15489fab67bbe4b51eb4430e765812e755d14/orcakit_harness_agent-0.9.24.tar.gz", hash = "sha256:4638f399678b2989656bf6dfaf38887b802b69f0c9179583725c939b4aafe367", size = 1182523, upload-time = "2026-08-22T12:56:24.027Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/a5/1f0f1c3c700ba97cbd472a356d8bff4f58e21c2a2dc3987e57c586db3bf3/orcakit_harness_agent-0.9.20-py3-none-any.whl", hash = "sha256:41e9311222d118e8c26f066b71131bdd2d2ecf6e4572e0c62eaef8e5598294c4", size = 1364449, upload-time = "2026-08-10T14:53:37.634Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/0d/d23d52b4f5175d179f2713647c6df306eefa78de095a5f14a7a3e5ae0a82/orcakit_harness_agent-0.9.24-py3-none-any.whl", hash = "sha256:10d6ad02116dfcd2b2232b3b92bb7a9f5678fe0f98fa0265597cf3e26e1dbcbc", size = 1406596, upload-time = "2026-08-22T12:56:20.497Z" },
 ]
 
 [package.optional-dependencies]
@@ -3611,6 +3614,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/17/17/ee75a92718ec7212de831e71454d702225aa5e474a805cce169806044453/pypdf-6.15.0.tar.gz", hash = "sha256:d39c4d955a76409284a905e2d65b40076d77ab76129e0faaeeb6612403ecfc79", size = 6993794, upload-time = "2026-08-06T13:06:49.929Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/72/ce3067ac31e214a66388159f8462ddb8c13dd00170f24d555a1f1ae8ee91/pypdf-6.15.0-py3-none-any.whl", hash = "sha256:14e001d6504822cb1ca9c7ed9a69bccb320f59b320730f55af804361abe4d5ee", size = 378123, upload-time = "2026-08-06T13:06:47.709Z" },
+]
+
+[[package]]
+name = "pypinyin"
+version = "0.55.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/a4/784cf98c09e0dc22776b0d7d8a4a5b761218bcae4608c2416ce1e167c8af/pypinyin-0.55.0.tar.gz", hash = "sha256:b5711b3a0c6f76e67408ec6b2e3c4987a3a806b7c528076e7c7b86fcf0eaa66b", size = 839836, upload-time = "2025-07-20T12:01:50.657Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/7b/4cabc76fcc21c3c7d5c671d8783984d30ac9d3bb387c4ba784fca3cdfa3a/pypinyin-0.55.0-py2.py3-none-any.whl", hash = "sha256:d53b1e8ad2cdb815fb2cb604ed3123372f5a28c6f447571244aca36fc62a286f", size = 840203, upload-time = "2025-07-20T12:01:48.535Z" },
 ]
 
 [[package]]

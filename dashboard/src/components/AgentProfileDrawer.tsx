@@ -11,6 +11,7 @@ import {
   type AgentSubagentSummary,
 } from "../api/modules/subagents";
 import MbtiPersonaTag from "./MbtiPersonaTag";
+import { CopyableResourceId } from "./CopyableResourceId";
 import { metaForFile } from "../pages/Experts/components/iconForName";
 import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups";
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
@@ -221,8 +222,14 @@ export default function AgentProfileDrawer({
           <div className={expertStyles.drawerSectionTitle}>
             {t("experts.basicInfo")}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-            {detail?.name ?? agent.name}
+          <div className={styles.nameRow}>
+            <div className={styles.name}>{detail?.name ?? agent.name}</div>
+            <CopyableResourceId
+              label={t("experts.agentId")}
+              value={agent.agent_id}
+              copyTitle={t("experts.copyAgentId")}
+              className={styles.agentId}
+            />
           </div>
           <p
             style={{

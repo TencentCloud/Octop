@@ -9,6 +9,7 @@
 
 import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
+import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
 import { generateId } from "../../../utils/messageParser";
 import type {
@@ -21,11 +22,13 @@ import {
   parseHarnessChunk,
   type HarnessChunk,
   type ToolCallChunk,
+  type UsageChunk,
 } from "../../../utils/parseHarnessChunk";
 import { isChatStreamError } from "../../../utils/chatStreamError";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import { turnStatusAction } from "./turnStatusGate";
+import { frameBelongsToThread } from "./frameThread";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
   STREAM_STALE_WITHOUT_SOCKET_MS,
@@ -208,6 +211,11 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
+/** Per-call samples let reconnects replace replayed usage instead of double-counting. */
+const usageSamplesByState = new WeakMap<
+  SessionStreamState,
+  Map<string, UsageChunk["usage"]>
+>();
 
 // ── Tool / stream event hooks (for cross-module bridging) ──
 export type ToolEventKind = "toolStart" | "toolDone";
@@ -498,6 +506,7 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
   state.runUsage = null;
+  usageSamplesByState.delete(state);
   notify(state);
 }
 
@@ -510,6 +519,7 @@ export function setHistoryPage(
   const state = getOrCreate(sessionId);
   state.messages = messages;
   state.runUsage = null;
+  usageSamplesByState.delete(state);
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
   state.historyLoadingMore = false;
@@ -580,6 +590,7 @@ export function truncateAndReplaceUserMessage(
   ];
   clearStreamingFlags(state);
   state.runUsage = null;
+  usageSamplesByState.delete(state);
   state.streamMsg = "";
   state.streamId = "";
   state.streamBlockType = "";
@@ -622,6 +633,7 @@ export function clearMessages(sessionId: string) {
   state.messages = [];
   clearStreamingFlags(state);
   state.runUsage = null;
+  usageSamplesByState.delete(state);
   state.streamMsg = "";
   state.streamId = "";
   state.streamBlockType = "";
@@ -686,6 +698,7 @@ export function cancelStream(sessionId: string) {
   clearStreamActivity(sessionId);
   pendingResumeBySession.delete(sessionId);
   state.runUsage = null;
+  usageSamplesByState.delete(state);
   if (hadStreamingMsgs) {
     state.messages = state.messages.map((m) =>
       m.status === "streaming" ? { ...m, status: "done" as const } : m,
@@ -816,6 +829,81 @@ function updateContextUsageFromChunk(
   state.contextUsage = { input_tokens: input };
 }
 
+function usageCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
+  if (chunk.call_id) {
+    let samples = usageSamplesByState.get(state);
+    if (!samples) {
+      samples = new Map();
+      usageSamplesByState.set(state, samples);
+    }
+    samples.set(chunk.call_id, chunk.usage);
+    const latestInput = usageCount(chunk.usage.input_tokens);
+    state.runUsage = Array.from(samples.values()).reduce<TokenUsage>(
+      (total, usage) => {
+        const input = usageCount(usage.input_tokens);
+        const output = usageCount(usage.output_tokens);
+        return {
+          input_tokens: usageCount(total.input_tokens) + input,
+          uncached_input_tokens:
+            usageCount(total.uncached_input_tokens) +
+            usageCount(usage.uncached_input_tokens),
+          cache_read_tokens:
+            usageCount(total.cache_read_tokens) +
+            usageCount(usage.cache_read_tokens),
+          cache_write_tokens:
+            usageCount(total.cache_write_tokens) +
+            usageCount(usage.cache_write_tokens),
+          output_tokens: usageCount(total.output_tokens) + output,
+          reasoning_tokens:
+            usageCount(total.reasoning_tokens) +
+            usageCount(usage.reasoning_tokens),
+          total_tokens:
+            usageCount(total.total_tokens) +
+            usageCount(usage.total_tokens || input + output),
+          model_calls: usageCount(total.model_calls) + 1,
+          last_input_tokens: latestInput,
+        };
+      },
+      {},
+    );
+    state.contextUsage = { input_tokens: latestInput };
+    return;
+  }
+
+  const usage = chunk.usage;
+  const input = usageCount(usage.input_tokens);
+  const output = usageCount(usage.output_tokens);
+  const previous = state.runUsage ?? {};
+  state.runUsage = {
+    input_tokens: usageCount(previous.input_tokens) + input,
+    uncached_input_tokens:
+      usageCount(previous.uncached_input_tokens) +
+      usageCount(usage.uncached_input_tokens),
+    cache_read_tokens:
+      usageCount(previous.cache_read_tokens) +
+      usageCount(usage.cache_read_tokens),
+    cache_write_tokens:
+      usageCount(previous.cache_write_tokens) +
+      usageCount(usage.cache_write_tokens),
+    output_tokens: usageCount(previous.output_tokens) + output,
+    reasoning_tokens:
+      usageCount(previous.reasoning_tokens) +
+      usageCount(usage.reasoning_tokens),
+    total_tokens:
+      usageCount(previous.total_tokens) +
+      usageCount(usage.total_tokens || input + output),
+    model_calls: usageCount(previous.model_calls) + 1,
+    last_input_tokens: input,
+  };
+  state.contextUsage = { input_tokens: input };
+}
+
 function findLastToolMessageIndex(state: SessionStreamState): number {
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const m = state.messages[i];
@@ -838,6 +926,9 @@ function handleHarnessChunk(
       break;
     case "reasoning":
       appendStreamingReasoning(state, chunk.content);
+      break;
+    case "usage":
+      applyUsageChunk(state, chunk);
       break;
     case "tool_call_chunk":
       upsertToolCall(state, chunk, sessionId);
@@ -1326,6 +1417,14 @@ function finalizeStreamingMessages(state: SessionStreamState): void {
     }
     return { ...m, status: "done" as const };
   });
+  if (state.runUsage) {
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index];
+      if (message.role !== "assistant" || message.toolData) continue;
+      state.messages[index] = { ...message, usage: { ...state.runUsage } };
+      break;
+    }
+  }
   state.streamMsg = "";
   state.streamId = "";
   state.streamBlockType = "";
@@ -1522,10 +1621,13 @@ export async function attachThread(
       try {
         const data = JSON.parse(String(event.data)) as Record<string, unknown>;
         if (!data || typeof data !== "object") return;
+        if (!frameBelongsToThread(data, live.threadId)) return;
 
         if (data.type === "turn_status") {
           if (turnStatusAction(Boolean(data.active)) === "expect_stream") {
             if (!state.isStreaming) {
+              state.runUsage = null;
+              usageSamplesByState.delete(state);
               beginStream(state, sessionId);
               notify(state);
               emitStreamEvent({ kind: "streamStart", sessionId });
@@ -1771,6 +1873,7 @@ async function sendTurnWebSocket(
       try {
         const data = JSON.parse(String(event.data)) as HarnessChunk;
         if (!data || typeof data !== "object") return;
+        if (!frameBelongsToThread(data, live.threadId)) return;
         if ((data as { type?: string }).type === "turn_status") return;
         handleHarnessChunk(state, data, sessionId);
         if (
@@ -1908,6 +2011,7 @@ export async function sendTurn(
   state.streamBlockType = "";
   beginStream(state, sessionId);
   state.runUsage = null;
+  usageSamplesByState.delete(state);
   notify(state);
 
   emitStreamEvent({ kind: "streamStart", sessionId });

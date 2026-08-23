@@ -113,6 +113,22 @@ def _probe_model_id(row: Any, model_id: str | None) -> str:
     return "gpt-4o-mini"
 
 
+def _onnx_probe_model_id(row: Any, model_id: str | None) -> str:
+    """Explicit request wins, then the row's enabled entry, then the first one.
+
+    ``_probe_model_id`` would take ``models[0]``, which for the ONNX row is
+    rarely the model the service is actually configured with.
+    """
+    if model_id:
+        return model_id
+    models = row.get_models() if hasattr(row, "get_models") else []
+    entries = [m for m in models if isinstance(m, dict) and str(m.get("id") or "").strip()]
+    chosen = next((m for m in entries if m.get("enabled")), None) or (
+        entries[0] if entries else None
+    )
+    return str(chosen["id"]) if chosen else ""
+
+
 def _probe_model_entry(row: Any, model_id: str) -> dict[str, Any]:
     models = row.get_models() if hasattr(row, "get_models") else []
     entry = next((m for m in models if isinstance(m, dict) and m.get("id") == model_id), None)
@@ -197,6 +213,20 @@ async def probe_provider_row(
     whether the model is reasoning-capable. Reasoning itself only influences request
     parameters, not the transport.
     """
+    from octop.infra.agents.providers.model_flags import is_onnx_local_provider
+
+    if is_onnx_local_provider(
+        getattr(row, "name", None), provider_api_key=getattr(row, "api_key", None)
+    ):
+        # Local runtime: probe on-device. It has no base URL, so the remote
+        # path below would post its placeholder API key to OpenAI.
+        from octop.infra.agents.providers.onnx_service import probe_local_model
+
+        result = await probe_local_model(_onnx_probe_model_id(row, model_id))
+        if result.get("latency_ms") is not None:
+            result["latency_ms"] = int(result["latency_ms"])
+        return result
+
     mid = _probe_model_id(row, model_id)
     if _should_probe_embedding(row, model_id=mid, embedding=embedding):
         return await _probe_embedding_endpoint(row, model_id=mid)

@@ -43,7 +43,7 @@ async def test_list_host_dirs_lists_children(
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["path"] == str(tmp_path.resolve())
+    assert body["path"] == tmp_path.resolve().as_posix()
     names = [entry["name"] for entry in body["entries"]]
     assert {"alpha", "beta"}.issubset(names)
 
@@ -95,6 +95,74 @@ async def test_ensure_bwrap_returns_status_shape(
 
 
 @pytest.mark.asyncio
+async def test_filesystem_defaults_for_admin(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from octop.infra.utils.host_dirs import host_fs_tree_root
+
+    client, auth = env_admin_client
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    r = await client.get("/api/filesystem/defaults", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["home"] == home.resolve().as_posix()
+    assert body["default_root_dir"] == home.resolve().as_posix()
+    assert body["allow_outside_home"] is True
+    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+
+
+@pytest.mark.asyncio
+async def test_non_admin_can_list_outside_home(
+    env: tuple[httpx.AsyncClient, Any, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from octop.infra.utils.host_dirs import host_fs_tree_root
+    from tests.support.auth import create_user
+
+    client, _srv, admin_auth = env
+    home = tmp_path / "os_home"
+    home.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    user_auth = await create_user(client, admin_auth, username="alice", password="TestPass12")
+
+    defaults = await client.get("/api/filesystem/defaults", headers=user_auth)
+    assert defaults.status_code == 200, defaults.text
+    body = defaults.json()
+    assert body["allow_outside_home"] is True
+    assert body["default_root_dir"] == home.resolve().as_posix()
+    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+
+    listed = await client.get(
+        f"/api/filesystem/dirs?path={outside.as_posix()}",
+        headers=user_auth,
+    )
+    assert listed.status_code == 200, listed.text
+
+    ok = await client.get(
+        f"/api/filesystem/dirs?path={home.as_posix()}",
+        headers=user_auth,
+    )
+    assert ok.status_code == 200, ok.text
+
+    probe = await client.post(
+        "/api/filesystem/probe",
+        headers=user_auth,
+        json={"path": outside.as_posix()},
+    )
+    assert probe.status_code == 200, probe.text
+    assert probe.json()["ok"] is True
+
+
+@pytest.mark.asyncio
 @posix_only
 async def test_probe_host_dir_ok_for_slash(
     env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
@@ -123,7 +191,7 @@ async def test_probe_host_dir_ok_for_writable_dir(
         json={"path": str(tmp_path)},
     )
     assert r.status_code == 200, r.text
-    assert r.json() == {"ok": True, "path": str(tmp_path.resolve())}
+    assert r.json() == {"ok": True, "path": tmp_path.resolve().as_posix()}
 
 
 @pytest.mark.asyncio

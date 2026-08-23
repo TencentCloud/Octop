@@ -16,6 +16,7 @@ import pytest
 
 from octop.infra.agents.experts.catalog import Expert, ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentCreateSpec
+from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
 
 pytestmark = pytest.mark.live
 
@@ -31,8 +32,20 @@ def _skill_expert_ids(catalog: ExpertCatalog) -> list[str]:
     return sorted(ids)
 
 
-def _workspace_rel_path(rel_path: str) -> Path:
-    return Path(rel_path.removeprefix("/"))
+def _physical_workspace_rel(rel_path: str, prefix: str = DEFAULT_SYSTEM_FILES_PATH) -> Path:
+    """Map a logical seed path to its on-disk location.
+
+    With ``system_files_path`` set, the harness relocates ``skills/`` and
+    ``agents/`` writes under ``<prefix>/`` (and the welcome manifest to
+    ``<prefix>/manifest.json``); root files stay at the workspace root.
+    """
+    rel = rel_path.removeprefix("/")
+    if rel == "manifest.json":
+        return Path(f"{prefix}/manifest.json")
+    top = rel.split("/", 1)[0]
+    if top in ("skills", "agents"):
+        return Path(f"{prefix}/{rel}")
+    return Path(rel)
 
 
 def _expert_text_contents(catalog: ExpertCatalog, expert_id: str) -> dict[str, str]:
@@ -69,7 +82,7 @@ async def _assert_expert_files_on_disk(
     assert contents, f"{expert_id}: no readable text seeds"
 
     for rel_path, expected in contents.items():
-        disk_path = ws / _workspace_rel_path(rel_path)
+        disk_path = ws / _physical_workspace_rel(rel_path)
         assert disk_path.is_file(), f"{expert_id}: missing on disk: {rel_path}"
         actual = disk_path.read_text(encoding="utf-8")
         assert actual == expected, f"{expert_id}: content mismatch for {rel_path}"
@@ -143,7 +156,7 @@ async def test_skill_experts_copy_md_and_skill_files(
 
             skill_md = [f for f in expert.files if f.endswith("SKILL.md")]
             for rel in skill_md:
-                assert (ws / _workspace_rel_path(rel)).is_file(), (
+                assert (ws / _physical_workspace_rel(rel)).is_file(), (
                     f"{expert_id}: SKILL.md not copied: {rel}"
                 )
         finally:
@@ -174,7 +187,7 @@ async def test_wechat_ops_copies_skill_scripts(
             "skills/publisher-multi-platform/scripts/wechat_publish.py",
             "skills/publisher-multi-platform/manifest.yaml",
         ):
-            path = ws / rel
+            path = ws / _physical_workspace_rel(rel)
             assert path.is_file(), rel
             assert path.stat().st_size > 0
             assert rel in contents, f"missing seed text for {rel}"
@@ -208,7 +221,7 @@ async def test_stock_assistant_skill_references_copied(
             "skills/stock-info/SKILL.md",
             "skills/stock-info/references/examples.md",
         ):
-            disk = ws / rel
+            disk = ws / _physical_workspace_rel(rel)
             assert disk.is_file(), rel
             assert rel in contents, f"missing seed text for {rel}"
             assert disk.read_text(encoding="utf-8") == contents[rel]

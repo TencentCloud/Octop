@@ -38,6 +38,7 @@ class SetupBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
     display_name: str | None = None
+    email: str | None = Field(default=None, max_length=254)
     locale: str | None = Field(
         default=None,
         description="UI locale for the initial admin (zh|en). Defaults to Accept-Language.",
@@ -167,28 +168,21 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
 
 
 async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
-    """Create the first default agent for a fresh install."""
-    from octop.infra.agents.experts.catalog import build_create_spec_from_expert
-
-    assert server.app_runtime is not None
-    registry = server.app_runtime.agent_registry
-    if registry.get_row("main") is not None:
-        return
-    if registry.list_agents(user_id):
-        return
-    catalog = server.expert_catalog
-    expert = None if catalog is None else catalog.get("general-assistant")
-    if expert is None:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "general-assistant expert template missing")
-    loc = normalize_locale(locale)
-    spec = build_create_spec_from_expert(
-        expert_id="general-assistant",
-        expert=expert,
-        user_id=user_id,
-        agent_id="main",
-        locale=loc,
+    """Create the first default agent for a fresh install (pinned id ``main``)."""
+    from octop.infra.agents.default_agent import (
+        SETUP_DEFAULT_AGENT_ID,
+        bootstrap_default_agent,
     )
-    await registry.create(spec, defer_bootstrap=True)
+
+    if server.app_runtime is None:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "app_runtime not ready")
+    await bootstrap_default_agent(
+        server.app_runtime.agent_registry,
+        server.expert_catalog,
+        user_id=user_id,
+        locale=locale,
+        agent_id=SETUP_DEFAULT_AGENT_ID,
+    )
 
 
 async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
@@ -378,6 +372,7 @@ async def initial_admin(
         password=body.password,
         role=Role.ADMIN,
         display_name=body.display_name,
+        email=body.email,
         locale=locale,
     )
     secret = server.services.secret_repo.get("jwt")

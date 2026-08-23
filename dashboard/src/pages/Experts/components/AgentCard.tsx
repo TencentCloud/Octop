@@ -29,7 +29,7 @@ import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
-import { iconForName } from "./iconForName";
+import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
   formatAgentState,
@@ -62,6 +62,7 @@ const TRANSIENT = new Set(["starting", "stopping"]);
 export interface AgentCardProps {
   agent: OctopAgent;
   iconName?: string | null;
+  iconUrl?: string | null;
   accentColor?: string | null;
   publishedExpert?: PublishedExpert | null;
   onPublishedChange?: () => void;
@@ -75,6 +76,7 @@ export interface AgentCardProps {
 export const AgentCard = memo(function AgentCard({
   agent,
   iconName,
+  iconUrl,
   accentColor,
   publishedExpert = null,
   onPublishedChange,
@@ -100,6 +102,8 @@ export const AgentCard = memo(function AgentCard({
     Set<string>
   >(() => new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [memorySlimming, setMemorySlimming] = useState(false);
+  const maintPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setLocalState(agent.state);
@@ -135,6 +139,51 @@ export const AgentCard = memo(function AgentCard({
       pollRef.current = null;
     };
   }, [localState, agent.agent_id, onStateChange, onPollSettled, refreshAgents]);
+
+  useEffect(() => {
+    if (localState !== "running") {
+      setMemorySlimming(false);
+      if (maintPollRef.current) {
+        clearInterval(maintPollRef.current);
+        maintPollRef.current = null;
+      }
+      return;
+    }
+    let cancelled = false;
+    const startedAt = Date.now();
+    const pull = () =>
+      request<{
+        memory_maintenance?: { phase?: string } | null;
+      }>(`/agents/${agent.agent_id}/status`)
+        .then((s) => {
+          if (cancelled) return;
+          const phase = s.memory_maintenance?.phase;
+          const active =
+            phase === "queued" || phase === "pruning" || phase === "compacting";
+          setMemorySlimming(!!active);
+          // First tick is ~1s after start; don't drop the poll on the
+          // idle snapshot before compact begins. Keep going while active.
+          if (
+            !active &&
+            Date.now() - startedAt > 15_000 &&
+            maintPollRef.current
+          ) {
+            clearInterval(maintPollRef.current);
+            maintPollRef.current = null;
+          }
+        })
+        .catch(() => {});
+    const start = setTimeout(pull, 800);
+    maintPollRef.current = setInterval(pull, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(start);
+      if (maintPollRef.current) {
+        clearInterval(maintPollRef.current);
+        maintPollRef.current = null;
+      }
+    };
+  }, [localState, agent.agent_id]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
@@ -245,7 +294,11 @@ export const AgentCard = memo(function AgentCard({
             className={styles.agentCard2Icon}
             style={{ color: accent, background: `${accent}1a` }}
           >
-            {iconForName(iconName, 22)}
+            <ExpertIcon
+              iconUrl={iconUrl ?? agent.icon_url}
+              iconName={iconName ?? agent.icon_name}
+              size={iconUrl ?? agent.icon_url ? 42 : 22}
+            />
           </div>
 
           <div className={styles.agentCard2TitleBlock}>
@@ -260,6 +313,23 @@ export const AgentCard = memo(function AgentCard({
                     : t("experts.share.badge")}
                 </Tag>
               )}
+            </div>
+            <div className={styles.agentCardIdRow}>
+              <Tooltip title={t("experts.copyAgentId")}>
+                <button
+                  type="button"
+                  className={styles.agentCardId}
+                  onClick={() => void copyAgentId()}
+                >
+                  <span className={styles.agentCardIdLabel}>
+                    {t("experts.agentId")}
+                  </span>
+                  <span className={styles.agentCardIdValue}>
+                    {agent.agent_id}
+                  </span>
+                  <Copy size={11} className={styles.agentCardIdIcon} />
+                </button>
+              </Tooltip>
               {isOwner && (
                 <div className={styles.agentCard2NameActions}>
                   <Tooltip
@@ -306,21 +376,6 @@ export const AgentCard = memo(function AgentCard({
                 </div>
               )}
             </div>
-            <Tooltip title={t("experts.copyAgentId")}>
-              <button
-                type="button"
-                className={styles.agentCardId}
-                onClick={() => void copyAgentId()}
-              >
-                <span className={styles.agentCardIdLabel}>
-                  {t("experts.agentId")}
-                </span>
-                <span className={styles.agentCardIdValue}>
-                  {agent.agent_id}
-                </span>
-                <Copy size={11} className={styles.agentCardIdIcon} />
-              </button>
-            </Tooltip>
             <div className={styles.agentCard2Meta}>
               <div
                 className={styles.agentCard2State}
@@ -332,6 +387,9 @@ export const AgentCard = memo(function AgentCard({
                 />
                 {formatAgentState(localState, t)}
               </div>
+              {memorySlimming && (
+                <Tag color="processing">{t("experts.memorySlimming")}</Tag>
+              )}
               <MbtiPersonaTag
                 value={agent.persona_mbti}
                 onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}

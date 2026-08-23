@@ -46,11 +46,11 @@ routes until the wizard finishes.
 | `POST`   | `/setup/begin` | public | Begin a wizard session (no password) |
 | `POST`   | `/setup/verify-password` | public | Exchange the wizard password for a session token |
 | `GET`    | `/setup/validate-token` | public | Check a wizard session token |
-| `POST`   | `/setup/initial-admin` | public | body `{username, password, display_name?}` → `201` |
+| `POST`   | `/setup/initial-admin` | public | body `{username, password, display_name?, email?}` → `201` |
 | `POST`   | `/setup/resume-wizard` | public | Issue a fresh wizard token mid-setup |
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
-| `POST`   | `/auth/login` | public | body `{username, password}` → `{access_token, role, user, ...}` |
+| `POST`   | `/auth/login` | public | body `{username, password}` (`username` may be email) → `{access_token, role, user, ...}` |
 | `GET`    | `/auth/oidc/status` | public | OIDC login availability and provider display name |
 | `POST`   | `/auth/oidc/start` | public | body `{redirect_after?}` → identity-provider authorization URL |
 | `GET`    | `/auth/oidc/callback` | public | Identity-provider callback; redirects to dashboard login completion |
@@ -68,10 +68,10 @@ routes until the wizard finishes.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/users` | admin | `[{id, username, role, display_name, enabled, ...}]` |
-| `POST`   | `/users` | admin | body `{username, password, role, display_name?}` → `201` |
+| `GET`    | `/users` | admin | `[{id, username, role, display_name, email, enabled, ...}]` |
+| `POST`   | `/users` | admin | body `{username, password, role, display_name?, email?}` → `201` |
 | `GET`    | `/users/{id}` | admin | full user row |
-| `PATCH`  | `/users/{id}` | admin | body subset of `{role, display_name, enabled, locale}` |
+| `PATCH`  | `/users/{id}` | admin | body subset of `{role, display_name, email, enabled, locale}` |
 | `POST`   | `/users/{id}/reset-password` | admin | body `{new_password}` → `204` |
 | `POST`   | `/users/{id}/unlock-login` | admin | `204` (clears the lockout) |
 | `DELETE` | `/users/{id}` | admin | `204` |
@@ -272,7 +272,9 @@ Zed setup example.
 Browse the host OS directory tree when configuring a local backend
 `root_dir` (`local_shell` / `filesystem`). Authenticated users only;
 sensitive mounts (`/proc`, `/sys`, `/dev`, `/etc`, `/root` on POSIX)
-are rejected. Listing is single-level and capped; write probe runs only
+are rejected, except the process home and its subdirectories (so a
+server running as root may use `/root` as the default `root_dir`).
+Listing is single-level and capped; write probe runs only
 for non-`/` paths.
 
 | Method | Path | Auth | Notes |

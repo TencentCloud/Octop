@@ -27,6 +27,8 @@ export interface CanvasRemotePointerOptions {
   onEvent: (event: Record<string, unknown>) => void;
   /** Merge extra fields (e.g. desktop screen/canvas size). */
   enrichPayload?: (coords: { x: number; y: number }) => Record<string, unknown>;
+  /** Emit hover mousemove (default true). Mobile streams should disable this. */
+  sendHoverMoves?: boolean;
 }
 
 function buttonName(button: number): "left" | "middle" | "right" {
@@ -50,6 +52,7 @@ export function useCanvasRemotePointer({
   canvasRef,
   onEvent,
   enrichPayload,
+  sendHoverMoves = true,
 }: CanvasRemotePointerOptions) {
   const pressingRef = useRef(false);
   const movedRef = useRef(false);
@@ -202,7 +205,7 @@ export function useCanvasRemotePointer({
 
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
-      if (!enabled || pressingRef.current) return;
+      if (!enabled || !sendHoverMoves || pressingRef.current) return;
       // Ignore hover while any mouse button is held (drag uses capture listeners).
       if (e.buttons !== 0) return;
       const coords = getCoords(e);
@@ -215,7 +218,7 @@ export function useCanvasRemotePointer({
       lastMoveSentRef.current = now;
       emit("mousemove", coords, { button: "none", buttons: 0 });
     },
-    [enabled, getCoords, emit],
+    [enabled, sendHoverMoves, getCoords, emit],
   );
 
   const onPointerLeave = useCallback(() => {

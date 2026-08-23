@@ -70,6 +70,10 @@ export const pathToKey: Record<string, string> = {
   "/terminal": "workbench",
   "/remote-browser": "workbench",
   "/remote-desktop": "remote-desktop",
+  "/remote-desktop/desktop": "remote-desktop",
+  "/remote-desktop/phone": "remote-desktop",
+  "/remote-phone": "remote-desktop",
+  "/remote-android": "remote-desktop",
   "/subagents": "personalization",
   "/mbti": "personalization",
   "/memory": "personalization",
@@ -92,6 +96,9 @@ export const FULLSCREEN_PATHS = new Set([
   "/workbench/browser",
   "/chat",
   "/remote-desktop",
+  "/remote-desktop/desktop",
+  "/remote-desktop/phone",
+  "/remote-phone",
 ]);
 
 /**
@@ -106,6 +113,12 @@ export function isWorkbenchPath(pathname: string): boolean {
   return pathname === "/workbench" || pathname.startsWith("/workbench/");
 }
 
+export function isRemoteDesktopPath(pathname: string): boolean {
+  return (
+    pathname === "/remote-desktop" || pathname.startsWith("/remote-desktop/")
+  );
+}
+
 export function isPersonalizationPath(pathname: string): boolean {
   return (
     pathname === "/personalization" || pathname.startsWith("/personalization/")
@@ -116,6 +129,7 @@ export function resolveSelectedKey(pathname: string): string {
   if (pathToKey[pathname]) return pathToKey[pathname];
   if (pathname.startsWith("/chat/")) return "chat";
   if (pathname.startsWith("/workbench/")) return "workbench";
+  if (pathname.startsWith("/remote-desktop/")) return "remote-desktop";
   if (pathname.startsWith("/personalization/")) return "personalization";
   return "chat";
 }
@@ -158,6 +172,16 @@ export const routeConfigs: RouteConfig[] = [
     element: <RedirectPreserveSearch to="/workbench/browser" />,
   },
   { path: "/remote-desktop", element: <RemoteDesktopPage /> },
+  { path: "/remote-desktop/desktop", element: <RemoteDesktopPage /> },
+  { path: "/remote-desktop/phone", element: <RemoteDesktopPage /> },
+  {
+    path: "/remote-phone",
+    element: <RedirectPreserveSearch to="/remote-desktop/phone" />,
+  },
+  {
+    path: "/remote-android",
+    element: <Navigate to="/remote-desktop/phone" replace />,
+  },
   {
     path: "/subagents",
     element: <RedirectPreserveSearch to="/personalization/subagents" />,

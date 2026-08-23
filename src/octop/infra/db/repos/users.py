@@ -182,6 +182,10 @@ class UserRepo:
                 (display_name, user_id),
             )
 
+    def set_email(self, user_id: int, email: str | None) -> None:
+        with self._db.transaction() as conn:
+            conn.execute("UPDATE users SET email = ? WHERE id = ?", (email, user_id))
+
     def set_locale(self, user_id: int, locale: str) -> None:
         with self._db.transaction() as conn:
             conn.execute("UPDATE users SET locale = ? WHERE id = ?", (locale, user_id))
