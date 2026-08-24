@@ -24,12 +24,20 @@ def _sse(event: dict[str, object]) -> str:
 
 
 def _runtime_dir_for_uid(uid: int | None = None) -> Path:
+    if not sys.platform.startswith("linux"):
+        import tempfile
+
+        return Path(tempfile.gettempdir()) / f"runtime-harness-browser-{os.getpid()}"
     if uid is None:
         uid = os.getuid() if hasattr(os, "getuid") else 0
     return Path(f"/tmp/runtime-harness-browser-{uid}")
 
 
 def _relocated_profiles_root_for_uid(uid: int | None = None) -> Path:
+    if not sys.platform.startswith("linux"):
+        import tempfile
+
+        return Path(tempfile.gettempdir()) / f"harness-browser-profiles-{os.getpid()}"
     if uid is None:
         uid = os.getuid() if hasattr(os, "getuid") else 0
     return Path(f"/tmp/harness-browser-profiles-{uid}")
@@ -128,16 +136,21 @@ def clear_profile_locks(profile_dir: Path) -> list[str]:
 
 
 def _probe_dir_writable(directory: Path) -> bool:
-    """Return True when we can create a file and a symlink in *directory*."""
+    """Return True when we can create a file in *directory*.
+
+    On Linux also probes symlink creation because Chrome ProcessSingleton
+    creates a symlink (SingletonLock).  Windows/macOS skip the symlink
+    probe—normal users lack the SeCreateSymbolicLinkPrivilege on Windows.
+    """
     try:
         directory.mkdir(parents=True, exist_ok=True)
         probe = directory / f".octop-write-{os.getpid()}"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
-        # Chrome ProcessSingleton creates a symlink (SingletonLock).
-        link = directory / f".octop-link-{os.getpid()}"
-        link.symlink_to("probe-target")
-        link.unlink()
+        if sys.platform.startswith("linux"):
+            link = directory / f".octop-link-{os.getpid()}"
+            link.symlink_to("probe-target")
+            link.unlink()
         return True
     except OSError:
         return False
