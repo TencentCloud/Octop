@@ -140,10 +140,20 @@
     <script>
       (function () {
         var KEY = "octop:chunk-reload";
+        // Firefox fires error on <link rel="modulepreload"> for /assets/*.js
+        // even when the file is fine; treating those as stale chunks caused
+        // infinite location.reload() loops (and aborted real dynamic imports).
+        var recovering = false;
         function isAsset(url) {
           return typeof url === "string" && url.indexOf("/assets/") !== -1;
         }
+        function isStylesheetLink(el) {
+          if (!el || el.tagName !== "LINK") return false;
+          var rel = (el.rel || "").toLowerCase();
+          return rel.indexOf("stylesheet") !== -1;
+        }
         function recover() {
+          if (recovering) return;
           try {
             if (sessionStorage.getItem(KEY) === "1") {
               sessionStorage.removeItem(KEY);
@@ -151,6 +161,7 @@
             }
             sessionStorage.setItem(KEY, "1");
           } catch (e) {}
+          recovering = true;
           var reload = function () {
             location.reload();
           };
@@ -185,7 +196,8 @@
             var t = e.target;
             if (!t || !t.tagName) return;
             if (t.tagName === "SCRIPT" && isAsset(t.src)) recover();
-            if (t.tagName === "LINK" && isAsset(t.href)) recover();
+            // Only stylesheets — never modulepreload / preload (Firefox noise).
+            if (isStylesheetLink(t) && isAsset(t.href)) recover();
           },
           true,
         );
