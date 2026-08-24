@@ -7,6 +7,7 @@ import Markdown from "../Markdown/LazyMarkdown";
 import { useTranslation } from "react-i18next";
 import type { CSSProperties } from "react";
 import { stripFrontmatter } from "../../utils/markdown";
+import { copyText } from "../../utils/copyText";
 import styles from "./index.module.less";
 
 interface MarkdownCopyProps {
@@ -78,36 +79,9 @@ export function MarkdownCopy({
 
     setIsCopying(true);
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        try {
-          await navigator.clipboard.writeText(contentToCopy);
-        } catch {
-          // Clipboard API can fail in PWA standalone mode when the document
-          // loses focus briefly — fall through to execCommand.
-          const textArea = document.createElement("textarea");
-          textArea.value = contentToCopy;
-          textArea.style.position = "fixed";
-          textArea.style.left = "-999999px";
-          textArea.style.top = "-999999px";
-          document.body.appendChild(textArea);
-          textArea.focus();
-          textArea.select();
-          document.execCommand("copy");
-          textArea.remove();
-        }
-      } else {
-        const textArea = document.createElement("textarea");
-        textArea.value = contentToCopy;
-        textArea.style.position = "fixed";
-        textArea.style.left = "-999999px";
-        textArea.style.top = "-999999px";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand("copy");
-        textArea.remove();
-      }
-      message.success(t("common.copied"));
+      const ok = await copyText(contentToCopy);
+      if (ok) message.success(t("common.copied"));
+      else message.error(t("common.copyFailed"));
     } catch (err) {
       console.error("Failed to copy text: ", err);
       message.error(t("common.copyFailed"));

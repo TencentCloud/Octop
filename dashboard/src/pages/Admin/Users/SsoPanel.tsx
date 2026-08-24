@@ -9,6 +9,7 @@ import {
   type OidcConfigPut,
 } from "../../../api/modules/sso";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { copyText } from "../../../utils/copyText";
 
 interface SsoFormValues {
   enabled: boolean;
@@ -98,12 +99,9 @@ export default function SsoPanel() {
   };
 
   const copyRedirectUri = async () => {
-    try {
-      await navigator.clipboard.writeText(redirectUri);
-      message.success(t("adminSso.copySuccess"));
-    } catch {
-      message.error(t("adminSso.copyFailed"));
-    }
+    const ok = await copyText(redirectUri);
+    if (ok) message.success(t("adminSso.copySuccess"));
+    else message.error(t("adminSso.copyFailed"));
   };
 
   return (

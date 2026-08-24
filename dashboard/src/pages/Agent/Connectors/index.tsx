@@ -19,6 +19,7 @@ import PageShell from "../../../layouts/PageShell";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { copyText } from "../../../utils/copyText";
 import {
   clearFormDraft,
   loadFormDraft,
@@ -409,10 +410,10 @@ function ConnectorConfigDrawer({
   };
 
   const handleCopyInstallCommand = async (command: string) => {
-    try {
-      await navigator.clipboard.writeText(command);
+    const ok = await copyText(command);
+    if (ok) {
       message.success(t("connectors.cliInstallCopied", "安装命令已复制"));
-    } catch {
+    } else {
       message.error(
         t("connectors.clipboardDenied", "无法读取剪贴板，请手动粘贴"),
       );

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import { copyText } from "../../../utils/copyText";
 import styles from "./dockerEnvFooter.module.less";
 
 export type DockerEnvStatus =
@@ -36,15 +37,6 @@ export interface DockerEnvResult {
   install_script?: string;
   agent_prompt?: string;
   can_auto_install?: boolean;
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function DockerEnvFooter() {

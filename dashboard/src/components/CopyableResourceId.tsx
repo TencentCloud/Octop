@@ -4,6 +4,7 @@ import { Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 import styles from "./CopyableResourceId.module.less";
 
 type CopyableResourceIdProps = {
@@ -25,12 +26,9 @@ export function CopyableResourceId({
   const { t } = useTranslation();
 
   const copy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      message.success(t("common.copied"));
-    } catch {
-      message.error(t("common.copyFailed"));
-    }
+    const ok = await copyText(value);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
   }, [t, value]);
 
   return (

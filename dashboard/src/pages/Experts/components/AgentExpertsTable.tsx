@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Popconfirm, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 import { ResizableTable } from "@/components/ResizableTable";
 
 import type { ColumnsType } from "antd/es/table";
@@ -236,12 +237,9 @@ export default function AgentExpertsTable({
 
   const copyAgentId = useCallback(
     async (agentId: string) => {
-      try {
-        await navigator.clipboard.writeText(agentId);
-        message.success(t("common.copied"));
-      } catch {
-        message.error(t("common.copyFailed"));
-      }
+      const ok = await copyText(agentId);
+      if (ok) message.success(t("common.copied"));
+      else message.error(t("common.copyFailed"));
     },
     [t],
   );

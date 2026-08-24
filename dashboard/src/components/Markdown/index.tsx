@@ -19,6 +19,7 @@ import {
   isAuthDownloadHref,
 } from "../AuthFileDownloadLink";
 import { isShellLanguage } from "../../utils/shellCodeBlock";
+import { copyText } from "../../utils/copyText";
 import { loadMermaid } from "./mermaidLoader";
 import { HighlightedCode } from "./syntaxHighlight";
 import { useMathPlugins } from "./mathPlugins";
@@ -223,23 +224,10 @@ function CodeCopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback
-      const ta = document.createElement("textarea");
-      ta.value = code;
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    const ok = await copyText(code);
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (

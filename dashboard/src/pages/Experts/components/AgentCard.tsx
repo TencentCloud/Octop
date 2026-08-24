@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Popconfirm, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 
 import {
   Copy,
@@ -244,12 +245,9 @@ export const AgentCard = memo(function AgentCard({
   }, [agent.agent_id, setActiveAgent, navigate]);
 
   const copyAgentId = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(agent.agent_id);
-      message.success(t("common.copied"));
-    } catch {
-      message.error(t("common.copyFailed"));
-    }
+    const ok = await copyText(agent.agent_id);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
   }, [agent.agent_id, t]);
 
   const reloadInstalledSubagents = useCallback(async () => {
