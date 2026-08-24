@@ -237,7 +237,7 @@ export default function ChatInputActionsRow({
   };
 
   const openMobilePicker = (key: MobilePickerKey) => {
-    setMobileOverflowOpen(false);
+    if (isMobile) setMobileOverflowOpen(false);
     setMobilePicker(key);
   };
 
@@ -617,23 +617,76 @@ export default function ChatInputActionsRow({
     }
   };
 
+  const compactPickerContent = mobilePicker ? (
+    <div className={styles.compactPickerPanel}>
+      <button
+        type="button"
+        className={styles.compactPickerBack}
+        onClick={closeMobilePicker}
+      >
+        <ChevronLeft size={16} />
+        <span>{mobilePickerTitle[mobilePicker]}</span>
+      </button>
+      {renderMobilePickerContent()}
+    </div>
+  ) : (
+    renderMobileOverflowMenu()
+  );
+
   const renderSecondaryActions = () => {
     if (useCompactControls) {
+      const modelButton = (
+        <button
+          className={`${styles.secondaryBtn} ${
+            modelOverride || reasoningMode !== "auto" || reasoningEffort
+              ? styles.secondaryBtnModelActive
+              : ""
+          }`}
+          type="button"
+          onClick={isMobile ? () => setMobilePicker("model") : undefined}
+        >
+          <Cpu size={16} />
+        </button>
+      );
+      const overflowButton = (
+        <button
+          className={`${styles.secondaryBtn} ${
+            overflowBadgeCount > 0 ? styles.secondaryBtnActive : ""
+          }`}
+          type="button"
+          onClick={
+            isMobile
+              ? () => setMobileOverflowOpen(true)
+              : () => setMobilePicker(null)
+          }
+        >
+          <MoreHorizontal size={16} />
+          {overflowBadgeCount > 0 && (
+            <span className={styles.toolbarBadge}>{overflowBadgeCount}</span>
+          )}
+        </button>
+      );
+
       return (
         <>
-          {showModelPicker && (
-            <button
-              className={`${styles.secondaryBtn} ${
-                modelOverride || reasoningMode !== "auto" || reasoningEffort
-                  ? styles.secondaryBtnModelActive
-                  : ""
-              }`}
-              type="button"
-              onClick={() => setMobilePicker("model")}
-            >
-              <Cpu size={16} />
-            </button>
-          )}
+          {showModelPicker &&
+            (isMobile ? (
+              modelButton
+            ) : (
+              <Popover
+                trigger="click"
+                placement="topLeft"
+                open={modelPickerOpen}
+                onOpenChange={(open) => {
+                  setModelPickerOpen(open);
+                  if (!open) setReasoningModelRef(null);
+                }}
+                overlayClassName={styles.modelPopover}
+                content={modelMenu}
+              >
+                {modelButton}
+              </Popover>
+            ))}
           <button
             className={styles.secondaryBtn}
             onClick={onFileSelect}
@@ -642,46 +695,50 @@ export default function ChatInputActionsRow({
           >
             <Paperclip size={16} />
           </button>
-          {showOverflowMenu && (
-            <button
-              className={`${styles.secondaryBtn} ${
-                overflowBadgeCount > 0 ? styles.secondaryBtnActive : ""
-              }`}
-              type="button"
-              onClick={() => setMobileOverflowOpen(true)}
-            >
-              <MoreHorizontal size={16} />
-              {overflowBadgeCount > 0 && (
-                <span className={styles.toolbarBadge}>
-                  {overflowBadgeCount}
-                </span>
-              )}
-            </button>
+          {showOverflowMenu &&
+            (isMobile ? (
+              overflowButton
+            ) : (
+              <Popover
+                trigger="click"
+                placement="topLeft"
+                overlayClassName={styles.skillPickerPopover}
+                content={compactPickerContent}
+                onOpenChange={(open) => {
+                  if (!open) closeMobilePicker();
+                }}
+              >
+                {overflowButton}
+              </Popover>
+            ))}
+          {isMobile && (
+            <>
+              <Drawer
+                open={mobileOverflowOpen}
+                onClose={() => setMobileOverflowOpen(false)}
+                placement="bottom"
+                height="auto"
+                title={t("chat.composerMore", "更多工具")}
+                className={styles.mobilePickerDrawer}
+                styles={{ body: { padding: 0 } }}
+                destroyOnHidden
+              >
+                {renderMobileOverflowMenu()}
+              </Drawer>
+              <Drawer
+                open={mobilePicker !== null}
+                onClose={closeMobilePicker}
+                placement="bottom"
+                height="auto"
+                title={mobilePicker ? mobilePickerTitle[mobilePicker] : ""}
+                className={styles.mobilePickerDrawer}
+                styles={{ body: { padding: 0 } }}
+                destroyOnHidden
+              >
+                {renderMobilePickerContent()}
+              </Drawer>
+            </>
           )}
-          <Drawer
-            open={mobileOverflowOpen}
-            onClose={() => setMobileOverflowOpen(false)}
-            placement="bottom"
-            height="auto"
-            title={t("chat.composerMore", "更多工具")}
-            className={styles.mobilePickerDrawer}
-            styles={{ body: { padding: 0 } }}
-            destroyOnHidden
-          >
-            {renderMobileOverflowMenu()}
-          </Drawer>
-          <Drawer
-            open={mobilePicker !== null}
-            onClose={closeMobilePicker}
-            placement="bottom"
-            height="auto"
-            title={mobilePicker ? mobilePickerTitle[mobilePicker] : ""}
-            className={styles.mobilePickerDrawer}
-            styles={{ body: { padding: 0 } }}
-            destroyOnHidden
-          >
-            {renderMobilePickerContent()}
-          </Drawer>
         </>
       );
     }
