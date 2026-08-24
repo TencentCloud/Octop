@@ -322,7 +322,7 @@ class SsoService:
             return verify_id_token(
                 id_token,
                 jwks_uri=jwks_uri,
-                issuer=provider.issuer.rstrip("/"),
+                issuer=self._endpoint(discovery, "issuer"),
                 client_id=provider.client_id,
                 nonce=nonce,
                 httpx=client,

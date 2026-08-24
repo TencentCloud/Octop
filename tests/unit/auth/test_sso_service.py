@@ -278,6 +278,50 @@ async def test_callback_exchanges_code_and_attaches_login_code(service: SsoServi
 
 
 @pytest.mark.asyncio
+async def test_callback_verifies_id_token_against_discovery_issuer(
+    service: SsoService,
+) -> None:
+    service._services.user_repo.create(username="admin", role="admin")
+    configure_provider(service, issuer="https://sso.example/application/o/app/")
+    discovery_issuer = "https://sso.example/application/o/app/"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/application/o/app/.well-known/openid-configuration":
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": discovery_issuer,
+                    "authorization_endpoint": "https://sso.example/application/o/app/authorize",
+                    "token_endpoint": "https://sso.example/application/o/app/token",
+                    "jwks_uri": "https://sso.example/application/o/app/jwks",
+                },
+            )
+        assert request.url.path == "/application/o/app/token"
+        return httpx.Response(200, json={"id_token": "signed-id-token"})
+
+    with (
+        discovery_client(handler),
+        patch(
+            "octop.infra.auth.sso.service.verify_id_token",
+            return_value={"sub": "subject-123"},
+        ) as verify,
+    ):
+        started = service.start_login(
+            redirect_after="/chat", public_base="https://octop.example"
+        )
+        state = httpx.QueryParams(started["authorization_url"].split("?", 1)[1])["state"]
+        result = await service.handle_callback(
+            code="authorization-code",
+            state=state,
+            error=None,
+            public_base="https://octop.example",
+        )
+
+    assert result.url.startswith("https://octop.example/login/oidc/complete#code=")
+    assert verify.call_args.kwargs["issuer"] == discovery_issuer
+
+
+@pytest.mark.asyncio
 async def test_exchange_login_code_is_one_shot_and_writes_audit(service: SsoService) -> None:
     user = User(id=42, username="member", role=Role.USER, display_name=None)
     provider = configure_provider(service)
