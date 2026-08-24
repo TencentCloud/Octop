@@ -306,9 +306,7 @@ async def test_callback_verifies_id_token_against_discovery_issuer(
             return_value={"sub": "subject-123"},
         ) as verify,
     ):
-        started = service.start_login(
-            redirect_after="/chat", public_base="https://octop.example"
-        )
+        started = service.start_login(redirect_after="/chat", public_base="https://octop.example")
         state = httpx.QueryParams(started["authorization_url"].split("?", 1)[1])["state"]
         result = await service.handle_callback(
             code="authorization-code",
