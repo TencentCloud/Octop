@@ -166,7 +166,7 @@ export default function AtomsList({ agentId }: Props) {
             {a.kind ? ` · ${kindLabel(a.kind)}` : ""}
           </div>
           {!isAtomDeprecated(a) && hoveredId === a.id ? (
-            <Tooltip title="弃用这条记忆">
+            <Tooltip title={t("memory.tree.deprecateTooltip", "弃用这条记忆")}>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
@@ -242,10 +242,10 @@ export default function AtomsList({ agentId }: Props) {
           {!isAtomDeprecated(atom) ? (
             <>
               <Typography.Title level={5} style={{ marginTop: 12 }}>
-                操作
+                {t("memory.tree.actions", "操作")}
               </Typography.Title>
               <Button danger onClick={() => handleDeprecate(atom)}>
-                弃用这条记忆
+                {t("memory.tree.deprecate", "弃用这条记忆")}
               </Button>
             </>
           ) : null}

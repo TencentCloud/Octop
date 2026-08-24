@@ -350,6 +350,7 @@ function EntityRow({
   onViewSummary: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const { t } = useTranslation();
   return (
     <div
       onClick={onToggle}
@@ -412,7 +413,7 @@ function EntityRow({
           待刷新
         </Tag>
       ) : null}
-      <Tooltip title="查看这个主题的摘要">
+      <Tooltip title={t("memory.tree.viewSummaryTip")}>
         <Button
           size="small"
           icon={<BookOpen size={13} />}
@@ -428,7 +429,7 @@ function EntityRow({
             color: hovered ? "#1677ff" : undefined,
           }}
         >
-          查看摘要
+          {t("memory.tree.viewSummary")}
         </Button>
       </Tooltip>
     </div>
@@ -499,6 +500,7 @@ function AtomRow({
   onDeprecate?: (atom: AtomItem) => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const { t } = useTranslation();
   const showDeprecateBtn = hovered && !isAtomDeprecated(atom) && !!onDeprecate;
 
   return (
@@ -549,7 +551,7 @@ function AtomRow({
         {formatRelativeTime(atom.created_at)}
       </span>
       {showDeprecateBtn ? (
-        <Tooltip title="弃用这条记忆">
+        <Tooltip title={t("memory.tree.deprecateTooltip")}>
           <span
             onClick={(e) => {
               e.stopPropagation();
@@ -693,7 +695,7 @@ function AtomDetailDrawer({
           {!isAtomDeprecated(atom) ? (
             <>
               <Typography.Title level={5} style={{ marginTop: 12 }}>
-                操作
+                {t("memory.tree.actions")}
               </Typography.Title>
               <Button
                 danger
@@ -705,7 +707,7 @@ function AtomDetailDrawer({
                   })
                 }
               >
-                弃用这条记忆
+                {t("memory.tree.deprecate")}
               </Button>
             </>
           ) : null}

@@ -6,6 +6,7 @@
  */
 import { Input, Modal, Typography } from "antd";
 import { message } from "@/utils/antdMessage";
+import i18n from "@/i18n";
 
 import {
   memoryDashboardApi,
@@ -24,15 +25,14 @@ export function confirmDeprecateAtom({
 }) {
   let reason = "";
   Modal.confirm({
-    title: "弃用这条记忆？",
+    title: i18n.t("memory.deprecate.title"),
     content: (
       <div>
         <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          弃用后 Octop
-          将不再使用这条记忆。如果是记录有误，建议先描述正确内容作为弃用原因。
+          {i18n.t("memory.deprecate.description")}
         </Typography.Paragraph>
         <Input.TextArea
-          placeholder="可选：填写弃用原因，比如「已过期」「记录有误」"
+          placeholder={i18n.t("memory.deprecate.reasonPlaceholder")}
           rows={3}
           onChange={(e) => {
             reason = e.target.value;
@@ -40,18 +40,22 @@ export function confirmDeprecateAtom({
         />
       </div>
     ),
-    okText: "弃用",
+    okText: i18n.t("memory.deprecate.ok"),
     okType: "danger",
-    cancelText: "取消",
+    cancelText: i18n.t("common.cancel"),
     onOk: async () => {
       try {
         await memoryDashboardApi.deprecateAtom(agentId, atom.id, {
           reason: reason || undefined,
         });
-        message.success("已弃用，Octop 将不再使用这条记忆");
+        message.success(i18n.t("memory.deprecate.success"));
         onSuccess?.();
       } catch (e) {
-        message.error(`操作失败：${(e as Error).message ?? e}`);
+        message.error(
+          i18n.t("memory.deprecate.failed", {
+            message: (e as Error).message ?? e,
+          }),
+        );
         throw e; // Keep the confirmation dialog open.
       }
     },

@@ -1481,6 +1481,7 @@
     "categories": "Categories",
     "homepage": "Homepage",
     "searchSkillHub": "Search skill name, description or category...",
+    "skillHub": "SkillHub",
     "skillHubCommunityNote": "All skills in this marketplace come from the SkillHub community",
     "rankingRecommended": "For You",
     "rankingTrending": "Trending",
@@ -1897,6 +1898,12 @@
     "testSuccess": "Channel probe succeeded",
     "testFailed": "Channel probe failed: {{error}}",
     "probeNeedConfig": "Fill in connection settings before probing",
+    "qrAutoSaving": "Auto-saving...",
+    "qrRetrySave": "Retry Save",
+    "qrRegenerate": "Regenerate",
+    "qrRetryBtn": "Retry",
+    "wecomGenerateQr": "Generate WeCom scan code",
+    "weixinGenerateQr": "Generate WeChat login QR code",
     "deleteConfirmTitle": "Delete channel \"{{name}}\"?"
   },
   "tokenUsage": {
@@ -3012,7 +3019,12 @@
       "loadError": "Failed to load configuration",
       "saveSuccess": "Search configuration saved",
       "applySuccess": "Search configuration applied",
-      "saveAndApply": "Save & Apply"
+      "saveAndApply": "Save & Apply",
+      "deleteModelBtn": "Delete model",
+      "deleteModelCacheTitle": "Delete model cache?",
+      "deleteModelCacheDesc": "Delete the local cache for {{model}}? You'll need to re-download it before vector search can be re-enabled.",
+      "deleteModelCacheSuccess": "Model cache deleted",
+      "deleteModelCacheFailed": "Delete failed: the model may be activating. Switch, save, or restart before deleting."
     },
     "pipeline": {
       "title": "Memory pipeline",
@@ -3100,7 +3112,26 @@
       "growthTitle": "Memory growth · 7 days",
       "growthEmpty": "No new memories in the last 7 days"
     },
-    "entitySummary": "Topic summary"
+    "entitySummary": "Topic summary",
+    "tree": {
+      "title": "Browse by topic",
+      "entityCount": "{{n}} topics",
+      "atomCount": "{{n}} memories",
+      "hint": "Click a topic to expand the memories under it; click a memory to view its details.",
+      "viewSummary": "View summary",
+      "viewSummaryTip": "View this topic's summary",
+      "deprecateTooltip": "Deprecate this memory",
+      "deprecate": "Deprecate this memory",
+      "actions": "Actions"
+    },
+    "deprecate": {
+      "title": "Deprecate this memory?",
+      "description": "Octop will no longer use this memory once it is deprecated. If it was recorded incorrectly, describe the correct content as the deprecation reason.",
+      "reasonPlaceholder": "Optional: deprecation reason, e.g. \"expired\" or \"recorded incorrectly\"",
+      "ok": "Deprecate",
+      "success": "Deprecated — Octop will no longer use this memory",
+      "failed": "Operation failed: {{message}}"
+    }
   },
   "personalization": {
     "title": "Personalization",
@@ -4657,5 +4688,39 @@
       "noAgentDesc": "The Remote Phone assistant reuses the current Agent chat. Once the phone is connected, the Agent can operate that device.",
       "inputPlaceholder": "Ask the Agent to operate the phone, or ask about the screen…"
     }
+  },
+  "errors": {
+    "outOfDateTitle": "This page is out of date",
+    "outOfDateSubtitle": "The app was updated while this tab was open. Reload to continue.",
+    "unexpectedTitle": "Something went wrong",
+    "unexpectedSubtitle": "An unexpected error occurred.",
+    "reload": "Reload",
+    "retry": "Retry",
+    "backHome": "Back to Home"
+  },
+  "adminProviders": {
+    "title": "Providers",
+    "newProvider": "New provider",
+    "pageDescription": "All providers are admin-managed and globally available to every agent.",
+    "colName": "Name",
+    "colKind": "Kind",
+    "colNote": "Note",
+    "deleteConfirm": "Delete {{name}}?",
+    "fieldBaseUrl": "Base URL (optional)",
+    "fieldApiKey": "API key (optional)",
+    "fieldModel": "Default model (optional)",
+    "nameRequired": "Name is required",
+    "notePlaceholder": "private to <you>",
+    "loadFailed": "Load failed",
+    "created": "Provider \"{{name}}\" created",
+    "createFailed": "Create failed",
+    "deleted": "Deleted",
+    "notePrivateTo": "private to {{username}}",
+    "notePrivate": "private"
+  },
+  "pwa": {
+    "updateReady": "A new version is ready",
+    "updateNow": "Update now",
+    "later": "Later"
   }
 }

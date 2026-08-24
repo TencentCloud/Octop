@@ -1,5 +1,7 @@
 import { createGlobalStyle } from "antd-style";
 import { ConfigProvider, theme as antdTheme } from "antd";
+import zhCN from "antd/locale/zh_CN";
+import enUS from "antd/locale/en_US";
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -31,9 +33,14 @@ const GlobalStyle = createGlobalStyle`
 
 function ThemedApp() {
   const { isDark, palette, customColor } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const brandTokens = brandTokensFor(palette, isDark, customColor);
+  // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
+  // Pagination, DatePicker, Table… ) follow the current UI language.
+  const antdLocale = i18n.language?.toLowerCase().startsWith("zh")
+    ? zhCN
+    : enUS;
 
   useUnauthorizedRedirect();
 
@@ -98,7 +105,11 @@ function ThemedApp() {
   };
 
   return (
-    <ConfigProvider theme={themeConfig} prefixCls="octop">
+    <ConfigProvider
+      theme={themeConfig}
+      prefixCls="octop"
+      locale={antdLocale}
+    >
       <AntdAppProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

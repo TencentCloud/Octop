@@ -713,6 +713,8 @@ export default function KnowledgeBasesPage() {
       Modal.confirm({
         title: t("knowledgeBases.rebuildConfirmTitle"),
         content: t("knowledgeBases.rebuildConfirmDescription"),
+        okText: t("common.confirm"),
+        cancelText: t("common.cancel"),
         onOk: () => void saveFeature(true),
       });
       return;

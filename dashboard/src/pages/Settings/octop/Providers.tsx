@@ -9,7 +9,8 @@
  * the agent settings editor (which depends on a non-empty provider list).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   Table,
@@ -57,27 +58,30 @@ const PROVIDER_KINDS = [
 ];
 
 export default function OctopProvidersPage() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<FormValues>();
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const data = await request<ProviderRow[]>("/providers");
       setRows(data);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Load failed");
+      message.error(
+        err instanceof Error ? err.message : t("adminProviders.loadFailed"),
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   const onCreate = async (values: FormValues) => {
     setSubmitting(true);
@@ -87,18 +91,22 @@ export default function OctopProvidersPage() {
       const body: FormValues = { ...values };
       if (!body.note) {
         const me = await authApi.me().catch(() => null);
-        body.note = me ? `private to ${me.username}` : "private";
+        body.note = me
+          ? t("adminProviders.notePrivateTo", { username: me.username })
+          : t("adminProviders.notePrivate");
       }
       await request("/providers", {
         method: "POST",
         body: JSON.stringify(body),
       });
-      message.success(`Provider "${values.name}" created`);
+      message.success(t("adminProviders.created", { name: values.name }));
       form.resetFields();
       setCreateOpen(false);
       void refresh();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Create failed");
+      message.error(
+        err instanceof Error ? err.message : t("adminProviders.createFailed"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -107,33 +115,35 @@ export default function OctopProvidersPage() {
   const onDelete = async (row: ProviderRow) => {
     try {
       await request(`/admin/providers/${row.id}`, { method: "DELETE" });
-      message.success("Deleted");
+      message.success(t("adminProviders.deleted"));
       void refresh();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Delete failed");
+      message.error(
+        err instanceof Error ? err.message : t("common.deleteFailed"),
+      );
     }
   };
 
   return (
     <Card
-      title="Providers"
+      title={t("adminProviders.title")}
       extra={
         <Space>
           <Button icon={<RefreshCw size={14} />} onClick={() => void refresh()}>
-            Refresh
+            {t("common.refresh")}
           </Button>
           <Button
             type="primary"
             icon={<Plus size={14} />}
             onClick={() => setCreateOpen(true)}
           >
-            New provider
+            {t("adminProviders.newProvider")}
           </Button>
         </Space>
       }
     >
       <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
-        All providers are admin-managed and globally available to every agent.
+        {t("adminProviders.pageDescription")}
       </Text>
 
       <Table<ProviderRow>
@@ -142,23 +152,23 @@ export default function OctopProvidersPage() {
         dataSource={rows}
         pagination={false}
         columns={[
-          { title: "Name", dataIndex: "name" },
+          { title: t("adminProviders.colName"), dataIndex: "name" },
           {
-            title: "Kind",
+            title: t("adminProviders.colKind"),
             dataIndex: "kind",
             render: (k) => <Tag>{k}</Tag>,
           },
-          { title: "Note", dataIndex: "note" },
+          { title: t("adminProviders.colNote"), dataIndex: "note" },
           {
             title: "",
             width: 80,
             render: (_, row) => (
               <Popconfirm
-                title={`Delete ${row.name}?`}
+                title={t("adminProviders.deleteConfirm", { name: row.name })}
                 onConfirm={() => onDelete(row)}
               >
                 <Button danger size="small" type="link">
-                  Delete
+                  {t("common.delete")}
                 </Button>
               </Popconfirm>
             ),
@@ -167,11 +177,11 @@ export default function OctopProvidersPage() {
       />
 
       <Modal
-        title="New provider"
+        title={t("adminProviders.newProvider")}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => form.submit()}
-        okText="Create"
+        okText={t("common.create")}
         confirmLoading={submitting}
       >
         <Form<FormValues>
@@ -181,26 +191,32 @@ export default function OctopProvidersPage() {
           initialValues={{ kind: "openai" }}
         >
           <Form.Item
-            label="Name"
+            label={t("adminProviders.colName")}
             name="name"
-            rules={[{ required: true, message: "Name is required" }]}
+            rules={[
+              { required: true, message: t("adminProviders.nameRequired") },
+            ]}
           >
             <Input placeholder="my-openai" />
           </Form.Item>
-          <Form.Item label="Kind" name="kind" rules={[{ required: true }]}>
+          <Form.Item
+            label={t("adminProviders.colKind")}
+            name="kind"
+            rules={[{ required: true }]}
+          >
             <Select options={PROVIDER_KINDS} />
           </Form.Item>
-          <Form.Item label="Base URL (optional)" name="base_url">
+          <Form.Item label={t("adminProviders.fieldBaseUrl")} name="base_url">
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
-          <Form.Item label="API key (optional)" name="api_key">
+          <Form.Item label={t("adminProviders.fieldApiKey")} name="api_key">
             <Input.Password placeholder="sk-…" />
           </Form.Item>
-          <Form.Item label="Default model (optional)" name="model">
+          <Form.Item label={t("adminProviders.fieldModel")} name="model">
             <Input placeholder="gpt-4o-mini" />
           </Form.Item>
-          <Form.Item label="Note" name="note">
-            <Input placeholder="private to <you>" />
+          <Form.Item label={t("adminProviders.colNote")} name="note">
+            <Input placeholder={t("adminProviders.notePlaceholder")} />
           </Form.Item>
         </Form>
       </Modal>

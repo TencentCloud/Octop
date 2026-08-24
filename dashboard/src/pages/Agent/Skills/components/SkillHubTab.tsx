@@ -331,7 +331,7 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
           size="small"
           style={{ color: "var(--fn-text-tertiary)" }}
         >
-          SkillHub
+          {t("skills.skillHub")}
         </Button>
         <Button
           icon={<RefreshCw size={14} />}

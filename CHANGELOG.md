@@ -10,6 +10,10 @@
 
 - 工具设置：单工具 `PATCH /agents/{id}/tool-settings/{name}`；插件工具开关热更新（不再 reload）；列表标注能力未挂载工具；harness `tools_disabled`（需 orcakit-harness-agent >=0.9.25）
 
+### 修复
+
+- 界面国际化：为 antd 组件补充 `ConfigProvider` locale（跟随界面语言切换），OK/Cancel、Refresh、Create 等此前在英文界面下仍显示英文的组件文案现随语言切换；并全球化 `Settings/octop/Providers.tsx` 全部按钮与文案（该文件当前未接入路由）
+
 ## [0.9.26] - 2026-08-23
 
 ### 新增

@@ -958,7 +958,7 @@ export function ChannelDrawer({
         >
           <Spin size="small" />
           <span style={{ color: "var(--fn-text-secondary)", fontSize: 13 }}>
-            正在自动保存...
+            {t("channels.qrAutoSaving")}
           </span>
         </div>
       );
@@ -980,7 +980,7 @@ export function ChannelDrawer({
           }}
           style={{ marginTop: 12 }}
         >
-          重试保存
+          {t("channels.qrRetrySave")}
         </Button>
       );
     }
@@ -1203,7 +1203,7 @@ export function ChannelDrawer({
           </div>
           <p className={styles.qrScanHint}>扫码后自动跳转下一步</p>
           <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
-            重新生成
+            {t("channels.qrRegenerate")}
           </Button>
         </div>
       );
@@ -1216,7 +1216,9 @@ export function ChannelDrawer({
             message={s.reason}
             style={{ width: "100%", marginBottom: 12 }}
           />
-          <Button onClick={() => void startWecomQr()}>重试</Button>
+          <Button onClick={() => void startWecomQr()}>
+            {t("channels.qrRetryBtn")}
+          </Button>
         </div>
       );
     }
@@ -1242,7 +1244,7 @@ export function ChannelDrawer({
           block
           onClick={() => void startWecomQr()}
         >
-          生成扫码二维码
+          {t("channels.wecomGenerateQr")}
         </Button>
       </div>
     );
@@ -1307,7 +1309,7 @@ export function ChannelDrawer({
           </div>
           <p className={styles.qrScanHint}>使用微信扫码登录个人账号</p>
           <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
-            重新生成
+            {t("channels.qrRegenerate")}
           </Button>
         </div>
       );
@@ -1320,7 +1322,9 @@ export function ChannelDrawer({
             message={s.reason}
             style={{ width: "100%", marginBottom: 12 }}
           />
-          <Button onClick={() => void startWeixinQr()}>重试</Button>
+          <Button onClick={() => void startWeixinQr()}>
+            {t("channels.qrRetryBtn")}
+          </Button>
         </div>
       );
     }
@@ -1344,7 +1348,7 @@ export function ChannelDrawer({
           block
           onClick={() => void startWeixinQr()}
         >
-          生成微信扫码二维码
+          {t("channels.weixinGenerateQr")}
         </Button>
       </div>
     );
