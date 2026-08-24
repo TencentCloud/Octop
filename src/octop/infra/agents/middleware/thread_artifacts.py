@@ -86,6 +86,15 @@ def _coerce_raw_path(path: str) -> str:
     return raw
 
 
+def _abs_workspace_dir(workspace_dir: Path) -> Path:
+    """Make ``workspace_dir`` absolute without following symlinks/firmlinks.
+
+    ``Path.resolve()`` on macOS rewrites ``/home/...`` to
+    ``/System/Volumes/Data/home/...``, which breaks relative/absolute dedupe.
+    """
+    return Path(os.path.abspath(os.path.expanduser(str(workspace_dir))))
+
+
 def normalize_artifact_path(path: str, workspace_dir: Path) -> str:
     """Return a path for ``threads.artifacts``, or ``\"\"``.
 
@@ -102,7 +111,7 @@ def normalize_artifact_path(path: str, workspace_dir: Path) -> str:
         rel = rel.removeprefix("workspace/")
     if not rel or not _artifact_path_allowed(rel):
         return ""
-    ws = workspace_dir.expanduser().resolve()
+    ws = _abs_workspace_dir(workspace_dir)
     return str((ws / rel).as_posix())
 
 
@@ -140,7 +149,7 @@ def extract_artifact_paths(
     """
     if not is_artifact_tool_name(tool_name):
         return []
-    ws = workspace_dir.expanduser().resolve() if workspace_dir is not None else None
+    ws = _abs_workspace_dir(workspace_dir) if workspace_dir is not None else None
     from_args = _dedupe_paths(_paths_from_args(args), ws)
     if from_args:
         return from_args
@@ -169,7 +178,7 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
     ) -> None:
         super().__init__()
         self._threads = thread_repo
-        self._workspace_dir = workspace_dir.expanduser().resolve()
+        self._workspace_dir = _abs_workspace_dir(workspace_dir)
 
     def wrap_tool_call(
         self,
