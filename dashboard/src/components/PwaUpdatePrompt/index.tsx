@@ -39,7 +39,7 @@ export default function PwaUpdatePrompt() {
     if (serviceMode) {
       updateApi.restartService().catch(() => {});
     }
-    applyUpdate();
+    await applyUpdate();
   };
 
   const handleDismiss = () => setVisible(false);

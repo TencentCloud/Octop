@@ -10,5 +10,5 @@
 /** Apply the waiting Service Worker update. Delegates to sw-register at runtime. */
 export async function applyUpdate(): Promise<void> {
   const { applyUpdate: apply } = await import("./sw-register");
-  apply();
+  await apply();
 }
