@@ -33,6 +33,15 @@ def test_load_defaults_include_codebuddy(
     runners = store.load_runners(user_id=user_id)
     assert "opencode" in runners
     assert "codebuddy" in runners
+    assert "kimi_code" in runners
+    assert "cursor_cli" in runners
+    assert "pi" in runners
+    assert runners["kimi_code"]["command"] == "kimi"
+    assert runners["kimi_code"]["args"] == ["acp"]
+    assert runners["cursor_cli"]["command"] == "agent"
+    assert runners["cursor_cli"]["args"] == ["acp"]
+    assert runners["pi"]["command"] == "npx"
+    assert runners["pi"]["args"] == ["-y", "pi-acp"]
     assert "qwen_code" not in runners
 
 

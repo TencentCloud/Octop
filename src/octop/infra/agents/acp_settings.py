@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from harness_agent.acp.models import ACPConfig
+from harness_agent.acp.models import ACPConfig, default_acp_runners
 
 from octop.infra.db.repos.agents import AgentRepo, AgentRow
 from octop.infra.db.repos.settings import SettingsRepo
@@ -15,6 +15,27 @@ logger = logging.getLogger(__name__)
 
 _SETTINGS_PREFIX = "acp_runners:user:"
 _HIDDEN_RUNNERS = frozenset({"qwen_code"})
+# Until orcakit-harness-agent ships these builtins, merge Octop-side defaults.
+_OCTOP_BUILTIN_RUNNERS: dict[str, dict[str, Any]] = {
+    "kimi_code": {
+        "command": "kimi",
+        "args": ["acp"],
+        "trusted": True,
+        "tool_parse_mode": "update_detail",
+    },
+    "cursor_cli": {
+        "command": "agent",
+        "args": ["acp"],
+        "trusted": True,
+        "tool_parse_mode": "update_detail",
+    },
+    "pi": {
+        "command": "npx",
+        "args": ["-y", "pi-acp"],
+        "trusted": True,
+        "tool_parse_mode": "update_detail",
+    },
+}
 
 
 def _settings_key(user_id: int) -> str:
@@ -100,7 +121,12 @@ class ACPSettingsStore:
 
 
 def _runners_response(raw_runners: dict[str, Any]) -> dict[str, Any]:
-    merged = ACPConfig.from_dict({"runners": raw_runners})
+    merged_raw = dict(raw_runners)
+    harness_names = set(default_acp_runners())
+    for name, spec in _OCTOP_BUILTIN_RUNNERS.items():
+        if name not in harness_names and name not in merged_raw:
+            merged_raw[name] = spec
+    merged = ACPConfig.from_dict({"runners": merged_raw})
     return {
         name: runner.to_dict()
         for name, runner in merged.runners.items()
