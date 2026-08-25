@@ -1,0 +1,214 @@
+name: Octop portable
+
+on:
+  push:
+    tags:
+      - "*"
+    branches:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Comma-separated plats, or 'all'"
+        required: true
+        default: "all"
+        type: string
+      attach_release:
+        description: "If running on a v* tag, also upload zips to that GitHub Release"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: green-portable-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Prefer GitHub upstream on Actions runners (npmmirror is for CN local builds).
+  PBS_BASE_URL: https://github.com/astral-sh/python-build-standalone/releases/download/20251209
+  PBS_TAG: "20251209"
+  PBS_PY: "3.12.12"
+
+jobs:
+  frontend:
+    name: Build dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build frontend → src/octop/dashboard
+        run: make build-frontend
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dashboard-dist
+          path: src/octop/dashboard/
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    name: "${{ matrix.plat }}"
+    needs: frontend
+    runs-on: ${{ matrix.os }}
+    # Matrix runners are native for each plat; pin host detection so x64 Git Bash
+    # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
+    env:
+      GREEN_HOST_PLAT: ${{ matrix.plat }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plat: linux-amd64
+            os: ubuntu-latest
+          - plat: linux-arm64
+            os: ubuntu-24.04-arm
+          - plat: darwin-arm64
+            os: macos-14
+          - plat: darwin-amd64
+            os: macos-15-intel
+          - plat: windows-amd64
+            os: windows-latest
+          - plat: windows-arm64
+            os: windows-11-arm
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Decide whether to build this platform
+        id: want
+        run: |
+          set -euo pipefail
+          sel="${{ github.event.inputs.platforms || 'all' }}"
+          sel="$(echo "$sel" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+          plat="${{ matrix.plat }}"
+          if [[ "$sel" == "all" || ",$sel," == *",$plat,"* ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping ${plat} (selection=${sel})"
+          fi
+
+      - uses: actions/download-artifact@v5
+        if: steps.want.outputs.build == 'true'
+        with:
+          name: dashboard-dist
+          path: src/octop/dashboard
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.want.outputs.build == 'true'
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      # GitHub Cache outages must not fail the build — PBS download is cheap enough.
+      - name: Cache python-build-standalone downloads
+        if: steps.want.outputs.build == 'true'
+        continue-on-error: true
+        uses: actions/cache@v5
+        with:
+          path: green/.cache
+          key: pbs-${{ env.PBS_TAG }}-${{ env.PBS_PY }}-${{ matrix.plat }}
+
+      - name: Bootstrap portable CPython
+        if: steps.want.outputs.build == 'true'
+        env:
+          GREEN_HOST_PLAT: ${{ matrix.plat }}
+        run: bash scripts/green/bootstrap-runtime.sh "${{ matrix.plat }}"
+
+      - name: Assemble green zip
+        if: steps.want.outputs.build == 'true'
+        env:
+          GREEN_HOST_PLAT: ${{ matrix.plat }}
+        run: |
+          set -euo pipefail
+          echo "GREEN_HOST_PLAT=${GREEN_HOST_PLAT} RUNNER_ARCH=${RUNNER_ARCH:-} uname=$(uname -ms)"
+          bash scripts/green/package.sh "${{ matrix.plat }}"
+
+      - name: Smoke import (native host only)
+        if: steps.want.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          staging="green/release/Octop-${{ matrix.plat }}"
+          if [[ -x "${staging}/runtime/bin/python3" ]]; then
+            py="${staging}/runtime/bin/python3"
+          elif [[ -f "${staging}/runtime/python.exe" ]]; then
+            py="${staging}/runtime/python.exe"
+          else
+            echo "python missing under ${staging}/runtime" >&2
+            exit 1
+          fi
+          req_file="green/requirements-${{ matrix.plat }}.txt"
+          if [[ ! -f "$req_file" ]]; then
+            echo "frozen requirements missing: ${req_file}" >&2
+            exit 1
+          fi
+          verify_args=(
+            --packages "${staging}/packages"
+            --requirements "$req_file"
+          )
+          override_file="green/overrides-${{ matrix.plat }}.txt"
+          if [[ -f "$override_file" ]]; then
+            verify_args+=(--overrides "$override_file")
+          fi
+          PYTHONNOUSERSITE=1 \
+            "$py" scripts/green/verify_imports.py \
+              "${verify_args[@]}"
+          # macOS: fail if any native extension linked Homebrew/MacPorts paths.
+          if [[ "${{ matrix.plat }}" == darwin-* ]]; then
+            REPO_ROOT="$PWD" # shellcheck source=scripts/green/_common.sh
+            source scripts/green/_common.sh
+            verify_no_homebrew_dylibs "${staging}/packages" "${{ matrix.plat }}"
+          fi
+
+      # archive: false — upload the prebuilt zip as-is. Default archive=true would
+      # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip
+      # (Octop-<plat>.zip containing another Octop-<plat>.zip). Affects every plat.
+      # With archive:false, artifact name is the filename (name: is ignored).
+      - uses: actions/upload-artifact@v7
+        if: steps.want.outputs.build == 'true'
+        with:
+          path: green/release/Octop-${{ matrix.plat }}.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Attach zips to GitHub Release
+    needs: package
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.event.inputs.attach_release == 'true'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # v8 required to download archive:false artifacts from upload-artifact@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: Octop-*.zip
+          path: green-zips
+          merge-multiple: true
+
+      - name: List zips
+        run: ls -lh green-zips/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: green-zips/*.zip
+          fail_on_unmatched_files: true
+          # Upsert: works whether Release workflow already created the release.
+          generate_release_notes: false
