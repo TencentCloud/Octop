@@ -1,0 +1,14 @@
+#!/bin/bash
+# Octop — 卸载后回调
+# 根据卸载向导选择：完全删除时清理 data-share 用户数据；保留数据时不作处理。
+set -euo pipefail
+
+if [ "${wizard_delete_data:-no}" = "yes" ]; then
+    DATA_DIR="/vol1/@appshare/octop/data"
+    if [ -d "$DATA_DIR" ]; then
+        rm -rf "$DATA_DIR" 2>/dev/null || true
+        echo "[octop] 已删除用户数据: $DATA_DIR" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+    fi
+fi
+
+exit 0

@@ -1,0 +1,241 @@
+#!/bin/bash
+#
+# Octop 本地版 — 安装后回调
+# 使用固定默认配置写入 PKGVAR/.env（安装向导已移除，避免用户输入无效字段）。
+# 并校验飞牛系统上是否已安装 Python 3.12（应用商店提供）。
+#
+set -uo pipefail
+
+# 释放 Octop 端口（8088=Docker 版，8089=本地版），杀掉残留/孤儿进程，避免重装端口冲突。
+free_octop_ports() {
+    local port pid pids
+    for port in 8088 8089; do
+        pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
+        if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
+            pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
+        fi
+        if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
+            pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
+        fi
+        for pid in $pids; do
+            [ -n "$pid" ] || continue
+            if kill -TERM "$pid" 2>/dev/null; then
+                echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+            fi
+        done
+        sleep 1
+        for pid in $pids; do
+            [ -n "$pid" ] || continue
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -KILL "$pid" 2>/dev/null || true
+                echo "[octop] 已强制 KILL 占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+            fi
+        done
+    done
+
+    # 兜底：按命令行特征清理残留的 octop 服务进程（部分环境下 ss/fuser 拿不到 pid，
+    # 例如进程在其它用户/网络命名空间，或这些工具未安装）。直接按特征杀，确保 8089
+    # 在启动前一定空闲，避免“安装成功但服务起不来”。
+    for pat in 'octop.cli.main run' 'octop/bin/octop' 'octop-native/bin/octop'; do
+        pids="$(pgrep -f "$pat" 2>/dev/null | tr '\n' ' ')" || true
+        [ -z "$pids" ] && continue
+        echo "[octop] 发现残留 octop 服务进程 ($pat): $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+        # 先按进程组整体 TERM，再对存活者 KILL
+        for pid in $pids; do
+            kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+        done
+        sleep 1
+        for pid in $pids; do
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+                echo "[octop] 已强制 KILL 残留 octop 服务进程 $pid" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+            fi
+        done
+    done
+}
+
+# ---------------------------------------------------------------------------
+# 修正数据目录与 .env 的属主/权限（致命坑，曾导致服务启动即崩）：
+#   install_callback/config_callback 以 root 身份写 .env，若不显式 chown 给
+#   octop-native，文件保持 root:root、权限 600，服务（octop-native）启动时
+#   `bin/octop` 第 25 行 `. "$PKGVAR/.env"` 会 Permission denied 直接崩溃。
+#   另外若目录曾带 ACL，单纯 chmod 会把 mask 压成 ---，需 setfacl -b 清除。
+#   路径一律用 TRIM_* 变量（PKGVAR / TRIM_DATA_SHARE_PATHS），不固定 /vol1，
+#   兼容用户在 /vol3 等其它卷安装（地址会变）。
+# ---------------------------------------------------------------------------
+fix_ownership_and_perms() {
+    local pkgvar="$1" envfile="$2"
+    local octop_user="octop-native"
+    id "$octop_user" >/dev/null 2>&1 || {
+        echo "[octop-native] 警告：${octop_user} 账户不存在，跳过数据目录 chown（服务将回退以 root 运行）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+        return 0
+    }
+
+    # 1) 应用数据目录（@appdata）与 .env 改属主为 octop-native
+    chown -R "$octop_user:$octop_user" "$pkgvar" 2>/dev/null || true
+    chmod 700 "$pkgvar" 2>/dev/null || true
+    [ -f "$envfile" ] && chmod 600 "$envfile" 2>/dev/null || true
+
+    # 2) 清除 ACL，避免 chmod 把 mask 压成 --- 导致仍读不到
+    if command -v setfacl >/dev/null 2>&1; then
+        setfacl -b "$pkgvar" 2>/dev/null || true
+        [ -f "$envfile" ] && setfacl -b "$envfile" 2>/dev/null || true
+    fi
+
+    # 3) 共享数据目录（data-share，@appshare）：确保属主 octop-native 且可进入
+    if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+        local ds="${TRIM_DATA_SHARE_PATHS%%:*}"
+        chown -R "$octop_user:$octop_user" "$ds" 2>/dev/null || true
+        # 向上找到 @appshare 下的应用共享根（如 /vol1/@appshare/octop-native），
+        # 将其属主也改回 octop-native 并放开 x 权限，否则 octop-native 进不去
+        # 自己的 data 子目录（曾出现 d--------- root:root）。
+        local share_root="$ds"
+        while [ "$share_root" != "/" ] && [ "$(basename "$(dirname "$share_root")")" != "@appshare" ]; do
+            share_root="$(dirname "$share_root")"
+        done
+        chown "$octop_user:$octop_user" "$share_root" 2>/dev/null || true
+        chmod 755 "$share_root" 2>/dev/null || true
+        if command -v setfacl >/dev/null 2>&1; then
+            setfacl -b "$share_root" 2>/dev/null || true
+            setfacl -b "$ds" 2>/dev/null || true
+        fi
+    fi
+
+    echo "[octop-native] 已修正数据目录/.env 属主与权限（${octop_user}:${octop_user}）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+}
+
+free_octop_ports
+
+PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
+APPDEST="${TRIM_APPDEST:-/var/apps/octop-native}"
+mkdir -p "$PKGVAR"
+ENV_FILE="$PKGVAR/.env"
+
+# 安装向导已移除，使用固定默认值（用户首次登录后可在控制台「设置」中修改）。
+ADMIN_USER="admin"
+ADMIN_PASS="octop"
+LOG_LEVEL="info"
+OPENAI=""
+DASHSCOPE=""
+
+sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+
+ADMIN_USER=$(sanitize "$ADMIN_USER")
+ADMIN_PASS=$(sanitize "$ADMIN_PASS")
+LOG_LEVEL=$(sanitize "$LOG_LEVEL")
+OPENAI=$(sanitize "$OPENAI")
+DASHSCOPE=$(sanitize "$DASHSCOPE")
+
+{
+    echo "OCTOP_PORT=8089"
+    echo "OCTOP_BIND_HOST=0.0.0.0"
+    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
+    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
+    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
+    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
+    echo "OPENAI_API_KEY=${OPENAI}"
+    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
+} > "$ENV_FILE"
+
+chmod 600 "$ENV_FILE"
+echo "[octop-native] 已写入配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+
+# 修正属主/权限：.env 与 appdata 改回 octop-native，避免服务以 octop-native 启动
+# 时 . "$PKGVAR/.env" 报 Permission denied（root 写 root 属主，低权限用户读不了）。
+fix_ownership_and_perms "$PKGVAR" "$ENV_FILE"
+
+# 校验 Python 3.12 是否存在
+find_python312() {
+    for cand in \
+        /var/apps/python312/target/bin/python3.12 \
+        /usr/local/bin/python3.12 \
+        /var/apps/python3.12/bin/python3.12 \
+        python3.12
+    do
+        if command -v "$cand" >/dev/null 2>&1; then
+            local py
+            py="$(command -v "$cand")"
+            if "$py" -c 'import sys; assert sys.version_info[:2] == (3,12)' >/dev/null 2>&1; then
+                printf '%s' "$py"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+if ! PY="$(find_python312)"; then
+    echo "[octop-native] 错误：飞牛系统中未找到 Python 3.12。" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "请先前往飞牛应用中心 → 开发工具 → 安装「Python 3.12」，然后重新安装 Octop 本地版。" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    exit 1
+fi
+
+echo "[octop-native] 已检测到 Python 3.12: $PY" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+
+# ---------------------------------------------------------------------------
+# 让 Octop 本地版“开箱即用”：
+#   1) 给 octop-native 系统账户设置已知密码（= 向导里的管理员密码），
+#      便于工作台终端等场景使用。
+#   2) 授予 octop-native 免密码 sudo（NOPASSWD）。
+#      Octop 的远程桌面/浏览器等组件在运行时会以 octop-native 身份执行
+#      `sudo -n ...`（例如 desktop/setup.py 的 install/start/resize/uninstall），
+#      若 sudo 需要密码就会失败报 “a password is required”。
+#      这里在安装回调（root 权限）阶段一次性配好，之后用户在界面里安装
+#      远程桌面 / 在工作台终端里执行 sudo 都不再需要输入密码。
+# ---------------------------------------------------------------------------
+OCTOP_USER="octop-native"
+
+# 设置 octop-native 登录密码为向导管理员密码（若账户不存在则跳过）
+if id "$OCTOP_USER" >/dev/null 2>&1; then
+    echo "${OCTOP_USER}:${ADMIN_PASS}" | chpasswd 2>/dev/null || true
+    echo "[octop-native] 已为 ${OCTOP_USER} 设置登录密码（与管理员密码一致）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+fi
+
+# 写入免密码 sudo 规则并做语法校验。
+# 这是本地版“远程桌面/浏览器/工作台终端”能正常工作的关键，必须成功；
+# 因此这里不使用 || true 静默失败，若写入或校验失败则让安装回调直接返回非零，
+# 避免飞牛显示“安装成功”但实际功能不可用（之前 printf+||true 导致文件被清空）。
+SUDOERS_FILE="/etc/sudoers.d/octop-native"
+cat > "$SUDOERS_FILE" <<'EOF'
+# 允许 octop-native 免密码执行任意命令（Octop 远程桌面/浏览器/工作台终端需要）
+# !requiretty：Octop 以内嵌子进程方式调用 `sudo -n ...`，没有 controlling tty；
+# 若系统 sudoers 默认开启 requiretty，这里必须显式关闭，否则会报
+# "sorry, you must have a tty to run sudo" 而让远程桌面/浏览器安装失败。
+Defaults:octop-native !requiretty
+octop-native ALL=(ALL) NOPASSWD: ALL
+EOF
+chmod 0440 "$SUDOERS_FILE"
+if command -v visudo >/dev/null 2>&1; then
+    if ! visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
+        echo "[octop-native] 错误：写入的 sudoers 语法校验失败，请检查 ${SUDOERS_FILE}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+        exit 1
+    fi
+fi
+echo "[octop-native] 已配置 ${OCTOP_USER} 免密码 sudo" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+
+# 整体校验：必须“真实执行”一次 sudo，而不仅是 `sudo -n -l -U`（后者不需要 tty，
+# 会掩盖 requiretty 问题）。以 octop-native 身份真实运行 `sudo -n id -u`，
+# 期望 stdout 为 0（uid=0）。若失败，说明 sudoers 未被包含或 requiretty 未关闭，
+# 用户点“安装虚拟桌面”时才会暴露，这里提前暴露便于排查。
+if id "$OCTOP_USER" >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+    if su -s /bin/bash "$OCTOP_USER" -c 'sudo -n id -u' 2>/dev/null | grep -qx 0; then
+        echo "[octop-native] 校验通过：${OCTOP_USER} 可免密 sudo（真实执行 id -u 返回 0）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    else
+        echo "[octop-native] 警告：${OCTOP_USER} 免密 sudo 真实执行未通过（可能 /etc/sudoers.d 未包含或 requiretty 未关闭）；若后续远程桌面报 sudo 错误，请在飞牛终端以 root 执行 visudo -c 并检查 /etc/sudoers 是否 #includedir /etc/sudoers.d。" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 将官方 octop CLI 暴露到 PATH，让用户安装后像官方一样直接用 `octop` 命令
+# （例如 `octop --help` / `octop provider list` / `octop agent list`）。
+# 真正的服务由飞牛应用中心托管（cmd/main 拉起 bin/octop），本 CLI 仅作命令行入口。
+# ---------------------------------------------------------------------------
+CLI_SRC="$APPDEST/bin/octop-cli"
+if [ -f "$CLI_SRC" ]; then
+    chmod +x "$CLI_SRC" 2>/dev/null || true
+    ln -sf "$CLI_SRC" /usr/local/bin/octop-cli
+    ln -sf "$CLI_SRC" /usr/local/bin/octop
+    echo "[octop-native] 已注册命令：octop / octop-cli -> $CLI_SRC" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+fi
+
+exit 0

@@ -1,0 +1,20 @@
+services:
+  octop:
+    image: ghcr.io/TencentCloud/octop:latest
+    container_name: octop
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "8088:8088"
+    volumes:
+      - "/var/apps/octop/share/octop/data:/data/.octop"
+    environment:
+      - HOME=/data
+      - OCTOP_BIND_HOST=0.0.0.0
+      - OCTOP_PORT=${OCTOP_PORT:-8088}
+      - OCTOP_LOG_LEVEL=${OCTOP_LOG_LEVEL:-info}
+      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-octop}
+      - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
+      - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}

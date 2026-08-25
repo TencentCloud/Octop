@@ -1,0 +1,82 @@
+#!/bin/bash
+#
+# Octop 本地版 — 重新配置回调
+# 与安装回调逻辑一致：将向导配置写回 PKGVAR/.env。
+# 注意：管理员账号/密码仅对尚未初始化的数据库生效；
+# 密钥与日志级别在应用重启后生效。
+#
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# 修正数据目录与 .env 属主/权限（与 install_callback 同一坑）：
+# 重新配置回调以 root 身份写 .env，必须 chown 给 octop-native，否则服务
+# 以 octop-native 启动读 .env 时 Permission denied。含 setfacl -b 防 ACL 把
+# mask 压成 ---。路径用 TRIM_* 变量，兼容 /vol3 等其它卷。
+# ---------------------------------------------------------------------------
+fix_ownership_and_perms() {
+    local pkgvar="$1" envfile="$2"
+    local octop_user="octop-native"
+    id "$octop_user" >/dev/null 2>&1 || {
+        echo "[octop-native] 警告：${octop_user} 账户不存在，跳过数据目录 chown" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+        return 0
+    }
+    chown -R "$octop_user:$octop_user" "$pkgvar" 2>/dev/null || true
+    chmod 700 "$pkgvar" 2>/dev/null || true
+    [ -f "$envfile" ] && chmod 600 "$envfile" 2>/dev/null || true
+    if command -v setfacl >/dev/null 2>&1; then
+        setfacl -b "$pkgvar" 2>/dev/null || true
+        [ -f "$envfile" ] && setfacl -b "$envfile" 2>/dev/null || true
+    fi
+    if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+        local ds="${TRIM_DATA_SHARE_PATHS%%:*}"
+        chown -R "$octop_user:$octop_user" "$ds" 2>/dev/null || true
+        local share_root="$ds"
+        while [ "$share_root" != "/" ] && [ "$(basename "$(dirname "$share_root")")" != "@appshare" ]; do
+            share_root="$(dirname "$share_root")"
+        done
+        chown "$octop_user:$octop_user" "$share_root" 2>/dev/null || true
+        chmod 755 "$share_root" 2>/dev/null || true
+        if command -v setfacl >/dev/null 2>&1; then
+            setfacl -b "$share_root" 2>/dev/null || true
+            setfacl -b "$ds" 2>/dev/null || true
+        fi
+    fi
+    echo "[octop-native] 已修正数据目录/.env 属主与权限（${octop_user}:${octop_user}）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+}
+
+PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
+mkdir -p "$PKGVAR"
+ENV_FILE="$PKGVAR/.env"
+
+ADMIN_USER="${wizard_admin_username:-admin}"
+ADMIN_PASS="${wizard_admin_password:-octop}"
+LOG_LEVEL="${wizard_log_level:-info}"
+OPENAI="${wizard_openai_api_key:-}"
+DASHSCOPE="${wizard_dashscope_api_key:-}"
+
+sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+
+ADMIN_USER=$(sanitize "$ADMIN_USER")
+ADMIN_PASS=$(sanitize "$ADMIN_PASS")
+LOG_LEVEL=$(sanitize "$LOG_LEVEL")
+OPENAI=$(sanitize "$OPENAI")
+DASHSCOPE=$(sanitize "$DASHSCOPE")
+
+{
+    echo "OCTOP_PORT=8089"
+    echo "OCTOP_BIND_HOST=0.0.0.0"
+    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
+    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
+    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
+    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
+    echo "OPENAI_API_KEY=${OPENAI}"
+    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
+} > "$ENV_FILE"
+
+chmod 600 "$ENV_FILE"
+echo "[octop-native] 已更新配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+
+# 修正属主/权限：.env 与 appdata 改回 octop-native（root 写 root 属主会让
+# 以 octop-native 启动的服务读取 .env 时 Permission denied）。
+fix_ownership_and_perms "$PKGVAR" "$ENV_FILE"
+exit 0

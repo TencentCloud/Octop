@@ -1,0 +1,16 @@
+{
+    ".url": {
+        "octop.Application": {
+            "title": "OCTOP",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "port": "8088",
+            "url": "/",
+            "allUsers": true,
+            "control": {
+                "accessPerm": "readonly"
+            }
+        }
+    }
+}
