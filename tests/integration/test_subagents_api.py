@@ -103,7 +103,7 @@ async def test_catalog_divisions(env: Any) -> None:
     r = await c.get("/api/subagent-catalog/divisions", headers=auth)
     assert r.status_code == 200, r.text
     rows = r.json()
-    assert len(rows) == 16
+    assert len(rows) == 19
     assert any(row["id"] == "engineering" and row["count"] > 0 for row in rows)
 
 
