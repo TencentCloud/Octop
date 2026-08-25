@@ -105,11 +105,7 @@ function ThemedApp() {
   };
 
   return (
-    <ConfigProvider
-      theme={themeConfig}
-      prefixCls="octop"
-      locale={antdLocale}
-    >
+    <ConfigProvider theme={themeConfig} prefixCls="octop" locale={antdLocale}>
       <AntdAppProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

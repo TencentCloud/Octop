@@ -74,6 +74,7 @@ def _response(view: Any) -> MediaGenerationSettingsResponse:
 @router.get(
     "",
     summary="Get media generation settings",
+    description="Return instance-wide Volcengine Ark generation settings. The stored API key is never returned.",
     response_model=MediaGenerationSettingsResponse,
 )
 async def get_media_generation_settings(
@@ -86,6 +87,7 @@ async def get_media_generation_settings(
 @router.put(
     "",
     summary="Update media generation settings",
+    description="Verify a new Ark API key when supplied, persist the settings, and reload running agents.",
     response_model=MediaGenerationSettingsResponse,
 )
 async def put_media_generation_settings(
@@ -116,6 +118,7 @@ async def put_media_generation_settings(
 @router.post(
     "/test",
     summary="Test Ark media generation credentials",
+    description="Test credentials or submit a real image/video model request. Model tests may incur provider charges.",
     response_model=MediaGenerationTestResponse,
 )
 async def test_media_generation_credentials(

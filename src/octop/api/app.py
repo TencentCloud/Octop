@@ -216,7 +216,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(
                 media_generation.router,
                 "/api/admin/media-generation",
-                ["admin"],
+                ["providers"],
             ),
             _RouterMount(tls_router, "/api/admin/tls", ["tls"]),
             _RouterMount(security_router, "/api/admin/security", ["security"]),

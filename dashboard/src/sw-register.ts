@@ -50,10 +50,7 @@ export async function applyUpdate(): Promise<void> {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeoutId);
-      navigator.serviceWorker.removeEventListener(
-        "controllerchange",
-        finish,
-      );
+      navigator.serviceWorker.removeEventListener("controllerchange", finish);
       resolve();
     };
     const timeoutId = window.setTimeout(finish, 3000);

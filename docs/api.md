@@ -178,6 +178,18 @@ documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
 | `GET` | `/models/active` | user | `{provider_name, model}` |
 | `PUT` | `/models/active` | admin | body `{provider_name, model}` |
 
+### Media generation models
+
+These instance-wide endpoints require the `providers` permission (administrators bypass
+permission checks). The Ark API key is write-only and encrypted at rest. Saving settings
+reloads running agents so the image and video tools receive the new configuration.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/admin/media-generation` | providers | Return Volcengine Ark image/video settings; never returns the API key |
+| `PUT` | `/admin/media-generation` | providers | Save enabled tools and Seedream/Seedance model IDs; an included API key is verified before saving |
+| `POST` | `/admin/media-generation/test` | providers | Test credentials or a selected image/video model; model tests submit real, potentially billable requests |
+
 ## Voice
 
 | Method | Path | Auth | Notes |

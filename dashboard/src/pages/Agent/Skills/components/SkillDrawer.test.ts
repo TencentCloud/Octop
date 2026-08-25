@@ -18,6 +18,7 @@ describe("isValidSkillName", () => {
     expect(isValidSkillName("a/b")).toBe(false);
     expect(isValidSkillName("a\\b")).toBe(false);
     expect(isValidSkillName('a:b*c?d"e<f>g|h')).toBe(false);
+    expect(isValidSkillName("line\nbreak")).toBe(false);
     expect(isValidSkillName("")).toBe(false);
     expect(isValidSkillName("x".repeat(65))).toBe(false);
   });

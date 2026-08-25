@@ -111,12 +111,12 @@ def test_recover_stale_profile_renames_and_recreates(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_ensure_chrome_runtime_env_forces_tmp_dir(
+def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")
     path = ensure_chrome_runtime_env()
-    assert path == Path(f"/tmp/runtime-harness-browser-{os.getuid()}")
+    assert path == _runtime_dir_for_uid()
     assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
     assert os.access(path, os.W_OK | os.X_OK)

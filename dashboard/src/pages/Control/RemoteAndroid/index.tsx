@@ -731,19 +731,6 @@ export default function RemoteAndroidPage({
     }
   }, [device, frameReady, t]);
 
-  if (!canMobile) {
-    return <ForbiddenPage />;
-  }
-
-  const ready = statusData?.setup_state === "ready" && statusData.ok;
-  const needsDevice = statusData?.setup_state === "needs_device";
-  const needsInstall = statusData?.setup_state === "needs_install";
-  const showStream =
-    streamStatus === "streaming" || streamStatus === "connecting";
-  const hasDevice = Boolean(device);
-  const railEnabled = streamStatus === "streaming";
-  const isLandscape =
-    streamSize.width > 0 && streamSize.width > streamSize.height;
   const phoneTabOptions = useMemo(
     () =>
       REMOTE_PHONE_VIEW_TABS.map((value) => {
@@ -757,6 +744,19 @@ export default function RemoteAndroidPage({
     [t],
   );
 
+  if (!canMobile) {
+    return <ForbiddenPage />;
+  }
+
+  const ready = statusData?.setup_state === "ready" && statusData.ok;
+  const needsDevice = statusData?.setup_state === "needs_device";
+  const needsInstall = statusData?.setup_state === "needs_install";
+  const showStream =
+    streamStatus === "streaming" || streamStatus === "connecting";
+  const hasDevice = Boolean(device);
+  const railEnabled = streamStatus === "streaming";
+  const isLandscape =
+    streamSize.width > 0 && streamSize.width > streamSize.height;
   const statusClass =
     streamStatus === "streaming"
       ? `${styles.statusPill} ${styles.statusStreaming}`
