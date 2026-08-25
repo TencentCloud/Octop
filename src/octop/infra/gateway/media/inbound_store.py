@@ -40,6 +40,26 @@ ALLOWED_INBOUND_MEDIA_TYPES = frozenset(
     }
 )
 
+# Used when the reported MIME is outside ALLOWED_INBOUND_MEDIA_TYPES (e.g. Windows
+# registry types like ``application/x-zip-compressed``).
+INBOUND_EXTENSION_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".json": "application/json",
+    ".csv": "text/csv",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".zip": "application/zip",
+}
+
 # Display / on-disk names may be non-ASCII; strip path separators / controls only.
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')
 # ``1783510288_report.pdf`` / ``1783510288_report-2.pdf`` stored names.
@@ -146,11 +166,15 @@ def validate_inbound_size(data: bytes) -> None:
         )
 
 
-def validate_inbound_media_type(media_type: str) -> str:
+def validate_inbound_media_type(media_type: str, filename: str = "") -> str:
     normalized_type = normalize_inbound_media_type(media_type)
-    if normalized_type not in ALLOWED_INBOUND_MEDIA_TYPES:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"unsupported media type {normalized_type!r}")
-    return normalized_type
+    if normalized_type in ALLOWED_INBOUND_MEDIA_TYPES:
+        return normalized_type
+    ext = Path(filename or "").suffix.lower()
+    mapped = INBOUND_EXTENSION_MEDIA_TYPES.get(ext)
+    if mapped is not None:
+        return mapped
+    raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"unsupported media type {normalized_type!r}")
 
 
 def sanitize_inbound_filename(filename: str) -> str:
@@ -202,7 +226,7 @@ async def write_inbound(
 ) -> InboundFile:
     """Persist bytes under ``inbound/{unix_ts}_{original}``."""
     validate_inbound_size(data)
-    normalized_type = validate_inbound_media_type(media_type)
+    normalized_type = validate_inbound_media_type(media_type, filename)
 
     display_name = sanitize_inbound_filename(filename)
     if not Path(display_name).suffix:
@@ -228,6 +252,7 @@ async def read_inbound_bytes(workspace: BackendWorkspace, path: str) -> bytes:
 
 __all__ = [
     "ALLOWED_INBOUND_MEDIA_TYPES",
+    "INBOUND_EXTENSION_MEDIA_TYPES",
     "InboundFile",
     "MAX_INBOUND_BYTES",
     "build_timestamped_inbound_name",

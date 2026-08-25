@@ -16,26 +16,9 @@ from octop.api.common.attachments import (
 from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
+from octop.infra.gateway.media.inbound_store import INBOUND_EXTENSION_MEDIA_TYPES
 
 router = APIRouter()
-
-_EXTENSION_MEDIA_TYPES = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".pdf": "application/pdf",
-    ".txt": "text/plain",
-    ".md": "text/markdown",
-    ".markdown": "text/markdown",
-    ".json": "application/json",
-    ".csv": "text/csv",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ".zip": "application/zip",
-}
 
 
 def _resolve_media_type(filename: str, content_type: str | None, data: bytes = b"") -> str:
@@ -43,8 +26,8 @@ def _resolve_media_type(filename: str, content_type: str | None, data: bytes = b
     if raw and raw != "application/octet-stream":
         return raw
     ext = Path(filename or "").suffix.lower()
-    if ext in _EXTENSION_MEDIA_TYPES:
-        return _EXTENSION_MEDIA_TYPES[ext]
+    if ext in INBOUND_EXTENSION_MEDIA_TYPES:
+        return INBOUND_EXTENSION_MEDIA_TYPES[ext]
     guessed, _ = mimetypes.guess_type(filename or "")
     if guessed:
         return guessed.lower()
