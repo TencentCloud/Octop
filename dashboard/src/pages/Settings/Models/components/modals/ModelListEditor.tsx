@@ -10,12 +10,12 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Select,
   Switch,
   Tooltip,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   Check,
@@ -120,7 +120,7 @@ export function ModelListEditor({
   };
 
   const handleRemoveModel = (modelId: string, modelName: string) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("models.removeModel"),
       content: t("models.removeModelConfirm", {
         name: modelName,

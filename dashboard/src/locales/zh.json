@@ -2438,7 +2438,6 @@
     "localDownloadContinueBackground": "后台继续",
     "localDownloadBackground": "下载已转到后台，完成后会通知你",
     "localDownloadBackgroundHint": "可关闭此窗口，下载在服务端继续，完成后会弹出通知。",
-    "onnxDownloadProgress": "正在下载 {{model}}（{{percent}}%）",
     "onnxDownloadLoading": "正在加载 {{model}}…",
     "defaultModelDownloadedOnly": "仅可选择已下载的模型",
     "defaultModelNeedDownload": "请先在下方管理模型中下载",

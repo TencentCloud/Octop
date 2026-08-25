@@ -15,6 +15,7 @@ import {
   Alert,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
@@ -548,7 +549,7 @@ function EditAgentDrawerBody({
   };
 
   const confirmDeleteConfigFile = (path: string) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("workspace.deleteConfirm"),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),
@@ -563,7 +564,7 @@ function EditAgentDrawerBody({
 
   const confirmDeleteSkill = (skill: SkillSummary) => {
     const slug = skill.slug ?? skill.name;
-    Modal.confirm({
+    modal.confirm({
       title: t("skills.deleteConfirmContent", { slug }),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),
@@ -579,7 +580,7 @@ function EditAgentDrawerBody({
   };
 
   const confirmDeleteSubagent = (subagent: SubagentSummary) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("workspace.deleteConfirm"),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),

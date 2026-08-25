@@ -7,8 +7,8 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
@@ -488,7 +488,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         };
 
         if (text.trim() || attachments.length > 0) {
-          Modal.confirm({
+          modal.confirm({
             title: t("chat.queue.reclaimOverwriteTitle"),
             content: t("chat.queue.reclaimOverwrite"),
             okText: t("common.confirm", "确认"),

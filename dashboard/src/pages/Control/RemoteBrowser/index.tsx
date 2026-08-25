@@ -21,6 +21,7 @@ import {
   Typography,
 } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   Bot,
@@ -610,7 +611,7 @@ export default function RemoteBrowserPage({
 
   const handleUninstall = useCallback(() => {
     if (!envStatus?.playwright_chromium || uninstalling) return;
-    Modal.confirm({
+    modal.confirm({
       title: t("remoteBrowser.uninstallTitle", "卸载远程浏览器"),
       content: t(
         "remoteBrowser.uninstallConfirm",

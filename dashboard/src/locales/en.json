@@ -2440,7 +2440,6 @@
     "localDownloadContinueBackground": "Continue in background",
     "localDownloadBackground": "Download moved to the background. You will be notified when it finishes.",
     "localDownloadBackgroundHint": "You can close this window. The download continues on the server and you will get a notification when it finishes.",
-    "onnxDownloadProgress": "Downloading {{model}} ({{percent}}%)",
     "onnxDownloadLoading": "Loading {{model}}…",
     "defaultModelDownloadedOnly": "Only downloaded models can be selected",
     "defaultModelNeedDownload": "Download a model below first",

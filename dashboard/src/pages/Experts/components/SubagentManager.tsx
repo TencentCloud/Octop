@@ -9,8 +9,9 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Alert, Empty, Form, Input, Modal, Spin, Tabs } from "antd";
+import { Alert, Empty, Form, Input, Spin, Tabs } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { CircleCheck, Download, Plus, RefreshCw, Search } from "lucide-react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
@@ -339,7 +340,7 @@ export default function SubagentManager({
   };
 
   const confirmDeleteSubagent = (subagent: AgentSubagentSummary) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("workspace.deleteConfirm"),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),

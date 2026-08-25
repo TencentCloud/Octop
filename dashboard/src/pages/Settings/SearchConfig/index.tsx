@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button, Form, Input, Typography, Spin, Modal } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   Check,
@@ -155,7 +156,7 @@ function ConfigureModal({
   };
 
   const handleRevoke = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("setupWizard.search.revokeTitle", { name: provider.name }),
       content: t("setupWizard.search.revokeConfirm", { name: provider.name }),
       okText: t("setupWizard.search.revoke"),

@@ -5,8 +5,9 @@
  * enabled toggle, edit and delete actions.
  */
 import { useState } from "react";
-import { Button, Modal, Switch, Tooltip } from "antd";
+import { Button, Switch, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   Pencil,
@@ -96,7 +97,7 @@ export function StorageBackendCard({
   };
 
   const handleDelete = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("storage.deleteTitle"),
       content: t("storage.deleteConfirm", { name: backend.name }),
       okText: t("common.delete"),

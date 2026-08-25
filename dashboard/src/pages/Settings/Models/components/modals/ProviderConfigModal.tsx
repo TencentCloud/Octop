@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Divider, Form, Input, Modal, Progress, Select } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -296,7 +297,7 @@ export function ProviderConfigModal({
   };
 
   const handleOllamaDelete = (model: OllamaModelResponse) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("models.localDeleteModel"),
       content: t("models.localDeleteConfirm", { name: model.name }),
       okText: t("common.delete"),
@@ -320,7 +321,7 @@ export function ProviderConfigModal({
   };
 
   const handleCancelOllamaDownload = (task: OllamaDownloadTaskResponse) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("models.localCancelDownload"),
       content: t("models.localCancelDownloadConfirm", { repo: task.name }),
       okText: t("models.localCancelDownload"),
@@ -432,10 +433,7 @@ export function ProviderConfigModal({
               );
             } else if (d.status === "downloading") {
               setDownloadProgressLabel(
-                t("models.onnxDownloadProgress", {
-                  model: modelId,
-                  percent: pct,
-                }),
+                t("models.onnxDownloading", { model: modelId }),
               );
             }
           },
@@ -469,7 +467,7 @@ export function ProviderConfigModal({
         );
       } else if (d.status === "downloading") {
         setDownloadProgressLabel(
-          t("models.onnxDownloadProgress", { model: modelId, percent: pct }),
+          t("models.onnxDownloading", { model: modelId }),
         );
       }
     });
@@ -488,7 +486,7 @@ export function ProviderConfigModal({
   const handleLocalModelDownload = useCallback(
     async (modelId: string) => {
       if (isOllama) {
-        Modal.confirm({
+        modal.confirm({
           title: t("models.localDownloadConfirmTitle"),
           content: t("models.localDownloadConfirmOllama", { name: modelId }),
           okText: t("models.localDownloadModel"),
@@ -531,7 +529,7 @@ export function ProviderConfigModal({
         /* use cached / unknown */
       }
 
-      Modal.confirm({
+      modal.confirm({
         title: t("models.localDownloadConfirmTitle"),
         content: t("models.localDownloadConfirmOnnx", {
           name: modelId,
@@ -691,7 +689,7 @@ export function ProviderConfigModal({
   };
 
   const handleRevoke = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("models.revokeConfirmTitle"),
       content: t("models.revokeConfirmContentSimple", { name: provider.name }),
       okText: t("models.revoke"),

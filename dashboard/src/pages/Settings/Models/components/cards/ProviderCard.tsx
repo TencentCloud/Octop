@@ -4,8 +4,9 @@
  * All providers are admin-managed. Local runtimes cannot be deleted.
  */
 import { useEffect, useState } from "react";
-import { Button, Card, Modal, Switch, Tooltip } from "antd";
+import { Button, Card, Switch, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -96,7 +97,7 @@ export function ProviderCard({
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    Modal.confirm({
+    modal.confirm({
       title: t("models.deleteProviderTitle"),
       content: t("models.deleteProviderConfirmSimple", { name: provider.name }),
       okText: t("common.delete"),

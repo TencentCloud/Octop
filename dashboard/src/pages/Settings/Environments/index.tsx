@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { useTranslation } from "react-i18next";
 
@@ -137,7 +138,7 @@ function EnvironmentsPage() {
         return;
       }
 
-      Modal.confirm({
+      modal.confirm({
         title: t("environments.deleteVariable"),
         content: t("environments.deleteConfirm", { name: row.key }),
         okText: t("common.delete"),
@@ -171,7 +172,7 @@ function EnvironmentsPage() {
         ? names.map((n) => `"${n}"`).join(", ")
         : `${names.length} variables`;
 
-    Modal.confirm({
+    modal.confirm({
       title: t("environments.deleteSelected"),
       content: t("environments.deleteSelectedConfirm", { label }),
       okText: t("common.delete"),

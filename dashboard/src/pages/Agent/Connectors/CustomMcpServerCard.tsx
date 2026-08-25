@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
-import { Alert, Button, Input, Modal, Select, Switch } from "antd";
+import { Alert, Button, Input, Select, Switch } from "antd";
+import { modal } from "@/utils/antdModal";
 import {
   Activity,
   Cable,
@@ -56,7 +57,7 @@ export function CustomMcpServerCard({
         .join(" ") || "npx / uvx / python";
 
   const handleRemove = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("connectors.customMcp.deleteConfirm", {
         name: label,
         defaultValue: `确定删除 MCP 服务器「${label}」？`,

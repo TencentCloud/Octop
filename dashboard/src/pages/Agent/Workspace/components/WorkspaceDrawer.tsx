@@ -22,6 +22,7 @@ import {
   Input,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import type { TreeDataNode, TreeProps } from "antd";
 import {
@@ -707,7 +708,7 @@ export default function WorkspaceDrawer({
                   label: t("common.delete"),
                   danger: true,
                   onClick: () => {
-                    Modal.confirm({
+                    modal.confirm({
                       title: target.is_dir
                         ? t("workspace.deleteDirConfirm")
                         : t("workspace.deleteConfirm"),

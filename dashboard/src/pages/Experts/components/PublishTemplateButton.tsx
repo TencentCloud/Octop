@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dropdown, Modal, Tooltip } from "antd";
+import { Dropdown, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import { Upload } from "lucide-react";
 import {
   publishedExpertsApi,
@@ -45,7 +46,7 @@ export default function PublishTemplateButton({
 
   const confirmUnpublish = () => {
     if (!published) return;
-    Modal.confirm({
+    modal.confirm({
       title: t("experts.published.unpublishConfirm"),
       okText: t("experts.published.unpublish"),
       cancelText: t("common.cancel"),

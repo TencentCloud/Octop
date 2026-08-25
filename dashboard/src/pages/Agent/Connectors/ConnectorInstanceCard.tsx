@@ -1,5 +1,6 @@
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Activity, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -38,7 +39,7 @@ export function ConnectorInstanceCard({
   };
 
   const handleDelete = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("connectors.deleteConfirm", { name: instance.display_name }),
       okText: t("common.delete"),
       okButtonProps: { danger: true },

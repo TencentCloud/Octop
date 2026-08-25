@@ -26,6 +26,7 @@ import {
   Typography,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import { ResizableTable } from "@/components/ResizableTable";
 import {
   Check,
@@ -417,7 +418,7 @@ export default function KnowledgeBasesPage() {
         );
       } else if (status === "downloading") {
         setDownloadProgressLabel(
-          t("models.onnxDownloadProgress", { model: modelId, percent: pct }),
+          t("models.onnxDownloading", { model: modelId }),
         );
       } else {
         setDownloadProgressLabel(t("models.localDownloadPreparing"));
@@ -717,7 +718,7 @@ export default function KnowledgeBasesPage() {
         capability.provider_id !==
           (featureBackend === "remote" ? featureProviderId : ""))
     ) {
-      Modal.confirm({
+      modal.confirm({
         title: t("knowledgeBases.rebuildConfirmTitle"),
         content: t("knowledgeBases.rebuildConfirmDescription"),
         okText: t("common.confirm"),
@@ -778,7 +779,7 @@ export default function KnowledgeBasesPage() {
   const startOnnxDownload = async (modelId: string) => {
     const selected = catalog.find((model) => model.id === modelId);
     const size = formatSizeGb(selected?.size_gb);
-    Modal.confirm({
+    modal.confirm({
       title: t("models.localDownloadConfirmTitle"),
       content: t("models.localDownloadConfirmOnnx", {
         name: modelId,
