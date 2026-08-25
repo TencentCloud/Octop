@@ -205,7 +205,6 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   thinkingStartedAt: null,
   runUsage: null,
   contextUsage: null,
-  taskPlan: null,
   historyHasMore: false,
   historyLoadingMore: false,
   historyNextOffset: 0,
@@ -332,7 +331,6 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     thinkingStartedAt: state.thinkingStartedAt,
     runUsage: state.runUsage,
     contextUsage: state.contextUsage,
-    taskPlan: state.taskPlan,
     historyHasMore: state.historyHasMore,
     historyLoadingMore: state.historyLoadingMore,
     historyNextOffset: state.historyNextOffset,
@@ -349,7 +347,6 @@ function getOrCreate(sessionId: string): SessionStreamState {
       thinkingStartedAt: null,
       runUsage: null,
       contextUsage: null,
-      taskPlan: null,
       abortController: null,
       streamMsg: "",
       streamId: "",
@@ -518,13 +515,7 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
 export function setHistoryPage(
   sessionId: string,
   messages: ChatMessage[],
-  opts: {
-    hasMore: boolean;
-    nextOffset: number;
-    taskPlan?:
-      | import("../../../api/modules/octopThreads").ThreadTaskState
-      | null;
-  },
+  opts: { hasMore: boolean; nextOffset: number },
 ) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
@@ -534,7 +525,6 @@ export function setHistoryPage(
   state.historyNextOffset = opts.nextOffset;
   state.historyLoadingMore = false;
   state.historyHydrated = true;
-  if (opts.taskPlan !== undefined) state.taskPlan = opts.taskPlan;
   notify(state);
 }
 
@@ -653,7 +643,6 @@ export function clearMessages(sessionId: string) {
   state.historyNextOffset = 0;
   state.historyLoadingMore = false;
   state.historyHydrated = false;
-  state.taskPlan = null;
   notify(state);
 }
 
@@ -947,9 +936,6 @@ function handleHarnessChunk(
       break;
     case "tool_result":
       closeToolCall(state, chunk.messages, sessionId);
-      break;
-    case "task_plan_updated":
-      state.taskPlan = chunk.task_state;
       break;
     case "done":
       finalizeStreamingMessages(state);

@@ -386,18 +386,28 @@ export function ToolDetailsInline({
   if (registration && registration.id !== "default") {
     const Comp = registration.component;
     return (
-      <ToolUiErrorBoundary propsForFallback={props}>
-        <Comp {...props} />
-      </ToolUiErrorBoundary>
+      <div data-octop-tool-renderer="">
+        <ToolUiErrorBoundary propsForFallback={props}>
+          <Comp {...props} />
+        </ToolUiErrorBoundary>
+      </div>
     );
   }
 
   // Structured plugin envelope without a loaded custom renderer — still show a card.
   if (parsed.octopUi) {
-    return <BuiltinOctopUiFallback {...props} />;
+    return (
+      <div data-octop-tool-renderer="">
+        <BuiltinOctopUiFallback {...props} />
+      </div>
+    );
   }
 
-  return <DefaultToolRenderer {...props} />;
+  return (
+    <div data-octop-tool-renderer="">
+      <DefaultToolRenderer {...props} />
+    </div>
+  );
 }
 
 function MessageBubble({

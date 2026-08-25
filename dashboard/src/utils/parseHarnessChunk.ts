@@ -9,8 +9,6 @@
  * ``parseHarnessChunk`` also accepts legacy ``data: …`` SSE lines.
  */
 
-import type { ThreadTaskState } from "../api/modules/octopThreads";
-
 export interface TokenChunk {
   type: "token";
   /** Graph node that produced the chunk (e.g. ``agent``, ``tool``). */
@@ -99,12 +97,6 @@ export interface AttachmentChunk {
   filename?: string;
 }
 
-export interface TaskPlanUpdatedChunk {
-  type: "task_plan_updated";
-  thread_id: string;
-  task_state: ThreadTaskState;
-}
-
 export type HarnessChunk =
   | TokenChunk
   | ReasoningChunk
@@ -118,8 +110,7 @@ export type HarnessChunk =
   | ErrorChunk
   | HitlRequiredChunk
   | SlashActionChunk
-  | AttachmentChunk
-  | TaskPlanUpdatedChunk;
+  | AttachmentChunk;
 
 /**
  * Parse one ``data: …`` SSE frame line into a typed chunk.
@@ -245,19 +236,6 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
           typeof obj.mime_type === "string" ? obj.mime_type : undefined,
         kind: typeof obj.kind === "string" ? obj.kind : undefined,
         filename: typeof obj.filename === "string" ? obj.filename : undefined,
-      };
-    case "task_plan_updated":
-      if (
-        !obj.task_state ||
-        typeof obj.task_state !== "object" ||
-        Array.isArray(obj.task_state)
-      ) {
-        return { type: "custom", data: raw };
-      }
-      return {
-        type: "task_plan_updated",
-        thread_id: typeof obj.thread_id === "string" ? obj.thread_id : "",
-        task_state: obj.task_state as unknown as ThreadTaskState,
       };
     default:
       // Forward-compatible: keep the unrecognized payload around so

@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { ChevronRight, FilePen, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useChat";
-import type { ThreadTaskState } from "../../../api/modules/octopThreads";
 import {
   splitAssistantTurn,
   toAnswerOnlyMessage,
@@ -47,8 +46,6 @@ interface AssistantTurnViewProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
-  /** Server-side checkpoint projection; preferred over tool-message parsing. */
-  taskPlan?: ThreadTaskState | null;
 }
 
 function hasProcessContent(
@@ -75,7 +72,6 @@ export default function AssistantTurnView({
   shellCommandDisabled,
   shellCommandDisabledTitle,
   compactProcess = false,
-  taskPlan,
 }: AssistantTurnViewProps) {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
@@ -130,18 +126,15 @@ export default function AssistantTurnView({
     toolMedia.videos.length > 0 ||
     toolMedia.files.length > 0;
 
-  const parsedTodoItems = useMemo(
+  const todoItems = useMemo(
     () => collectWriteTodosFromMessages(messages),
     [messages],
   );
-  const todoItems = taskPlan?.available ? taskPlan.items : parsedTodoItems;
   const todoStreaming =
     turnStreaming &&
-    (taskPlan?.items.some((item) => item.status === "in_progress") ||
-      messages.some(
-        (m) =>
-          m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
-      ));
+    messages.some(
+      (m) => m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
+    );
 
   const firstProcessSegmentIdx = compactProcess
     ? -1

@@ -170,7 +170,6 @@ export default function AiPanel({
     bootError,
     messages,
     isStreaming,
-    taskPlan,
     send,
     cancelStream,
   } = useAgentThreadChat(opsAgent?.agent_id ?? null);
@@ -423,7 +422,6 @@ export default function AiPanel({
             ) : (
               <MessageList
                 messages={messages}
-                taskPlan={taskPlan}
                 isStreaming={isStreaming}
                 sessionKey={threadId ?? undefined}
                 onCancel={cancelStream}

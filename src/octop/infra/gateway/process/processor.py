@@ -19,11 +19,6 @@ from harness_gateway.models import (
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
-from octop.infra.agents.thread_tasks import (
-    read_thread_task_state,
-    task_state_fingerprint,
-    task_state_from_stream_chunk,
-)
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlSlashOutcome,
@@ -590,7 +585,6 @@ class GlobalProcessor:
         stream_ok = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
-        last_task_fingerprint: tuple[Any, ...] | None = None
         locale = resolve_user_locale(
             user_repo=self._user_repo,
             user_id=user_id,
@@ -601,16 +595,6 @@ class GlobalProcessor:
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 usage_tracker.observe(chunk)
-                task_state = task_state_from_stream_chunk(thread_id, chunk)
-                if task_state is not None:
-                    fingerprint = task_state_fingerprint(task_state)
-                    if fingerprint != last_task_fingerprint:
-                        last_task_fingerprint = fingerprint
-                        yield {
-                            "type": "task_plan_updated",
-                            "thread_id": thread_id,
-                            "task_state": task_state,
-                        }
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
@@ -656,16 +640,6 @@ class GlobalProcessor:
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             yield {"type": "error", "message": format_stream_error(exc, locale)}
-        if stream_ok and last_task_fingerprint is None:
-            final_task_state = await read_thread_task_state(
-                self._agent_manager, agent_id, thread_id
-            )
-            if final_task_state.get("available") and final_task_state.get("total", 0) > 0:
-                yield {
-                    "type": "task_plan_updated",
-                    "thread_id": thread_id,
-                    "task_state": final_task_state,
-                }
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(

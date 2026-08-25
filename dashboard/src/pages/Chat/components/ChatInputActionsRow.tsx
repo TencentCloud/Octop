@@ -45,7 +45,8 @@ import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
 import styles from "../index.module.less";
 
-type MobilePickerKey =
+/** Shared by mobile drawers and narrow-desktop popovers. */
+type CompactPickerKey =
   | "model"
   | "connector"
   | "knowledge"
@@ -174,8 +175,12 @@ export default function ChatInputActionsRow({
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
+  /** Mobile-only bottom drawer for the overflow ("more") menu. */
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
-  const [mobilePicker, setMobilePicker] = useState<MobilePickerKey | null>(
+  /** Narrow-desktop overflow popover (tools / skills / …). */
+  const [overflowPopoverOpen, setOverflowPopoverOpen] = useState(false);
+  /** Active sub-picker for compact layouts (drawer on mobile, panel in popover). */
+  const [compactPicker, setCompactPicker] = useState<CompactPickerKey | null>(
     null,
   );
 
@@ -231,17 +236,17 @@ export default function ChatInputActionsRow({
     selectedSkills.length +
     selectedTargetAgents.length;
 
-  const closeMobilePicker = () => {
-    setMobilePicker(null);
+  const closeCompactPicker = () => {
+    setCompactPicker(null);
     setReasoningModelRef(null);
   };
 
-  const openMobilePicker = (key: MobilePickerKey) => {
+  const openCompactPicker = (key: CompactPickerKey) => {
     if (isMobile) setMobileOverflowOpen(false);
-    setMobilePicker(key);
+    setCompactPicker(key);
   };
 
-  const mobilePickerTitle: Record<MobilePickerKey, string> = {
+  const compactPickerTitle: Record<CompactPickerKey, string> = {
     model: t("chat.selectModel", "Select model"),
     connector: t("connectors.chatPicker"),
     knowledge: t("chat.knowledgePicker"),
@@ -372,7 +377,7 @@ export default function ChatInputActionsRow({
             }`}
             onClick={() => {
               onModelChange?.(null);
-              closeMobilePicker();
+              closeCompactPicker();
               setModelPickerOpen(false);
             }}
           >
@@ -400,7 +405,7 @@ export default function ChatInputActionsRow({
                   className={styles.modelMenuSelect}
                   onClick={() => {
                     onModelChange?.(active ? null : value);
-                    closeMobilePicker();
+                    closeCompactPicker();
                     setModelPickerOpen(false);
                   }}
                 >
@@ -457,7 +462,7 @@ export default function ChatInputActionsRow({
           }
           onSelect={(command) => {
             setShortcutOpen(false);
-            closeMobilePicker();
+            closeCompactPicker();
             onSlashShortcutSelect(command);
           }}
           onHover={() => undefined}
@@ -472,7 +477,7 @@ export default function ChatInputActionsRow({
         <button
           type="button"
           className={styles.mobileOverflowItem}
-          onClick={() => openMobilePicker("connector")}
+          onClick={() => openCompactPicker("connector")}
         >
           <span className={styles.mobileOverflowItemMain}>
             <Link2 size={18} />
@@ -492,7 +497,7 @@ export default function ChatInputActionsRow({
         <button
           type="button"
           className={styles.mobileOverflowItem}
-          onClick={() => openMobilePicker("knowledge")}
+          onClick={() => openCompactPicker("knowledge")}
         >
           <span className={styles.mobileOverflowItemMain}>
             <BookOpen size={18} />
@@ -512,7 +517,7 @@ export default function ChatInputActionsRow({
         <button
           type="button"
           className={styles.mobileOverflowItem}
-          onClick={() => openMobilePicker("skill")}
+          onClick={() => openCompactPicker("skill")}
         >
           <span className={styles.mobileOverflowItemMain}>
             <Sparkles size={18} />
@@ -534,7 +539,7 @@ export default function ChatInputActionsRow({
         <button
           type="button"
           className={styles.mobileOverflowItem}
-          onClick={() => openMobilePicker("expert")}
+          onClick={() => openCompactPicker("expert")}
         >
           <span className={styles.mobileOverflowItemMain}>
             <GraduationCap size={18} />
@@ -556,7 +561,7 @@ export default function ChatInputActionsRow({
         <button
           type="button"
           className={styles.mobileOverflowItem}
-          onClick={() => openMobilePicker("shortcut")}
+          onClick={() => openCompactPicker("shortcut")}
         >
           <span className={styles.mobileOverflowItemMain}>
             <Zap size={18} />
@@ -570,8 +575,8 @@ export default function ChatInputActionsRow({
     </div>
   );
 
-  const renderMobilePickerContent = () => {
-    switch (mobilePicker) {
+  const renderCompactPickerContent = () => {
+    switch (compactPicker) {
       case "model":
         return modelMenu;
       case "connector":
@@ -580,7 +585,7 @@ export default function ChatInputActionsRow({
             connectors={availableConnectors ?? []}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={onConnectorsChange!}
-            onNavigateAway={closeMobilePicker}
+            onNavigateAway={closeCompactPicker}
           />
         );
       case "knowledge":
@@ -589,7 +594,7 @@ export default function ChatInputActionsRow({
             knowledgeBases={availableKnowledgeBases ?? []}
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
-            onNavigateAway={closeMobilePicker}
+            onNavigateAway={closeCompactPicker}
           />
         );
       case "skill":
@@ -598,7 +603,7 @@ export default function ChatInputActionsRow({
             skills={availableSkills ?? []}
             selectedSkills={selectedSkills}
             onSkillsChange={onSkillsChange!}
-            onNavigateAway={closeMobilePicker}
+            onNavigateAway={closeCompactPicker}
           />
         );
       case "expert":
@@ -607,7 +612,7 @@ export default function ChatInputActionsRow({
             agents={availableExperts ?? []}
             selectedAgentIds={selectedTargetAgents}
             onAgentsChange={onTargetAgentsChange!}
-            onNavigateAway={closeMobilePicker}
+            onNavigateAway={closeCompactPicker}
           />
         );
       case "shortcut":
@@ -617,17 +622,17 @@ export default function ChatInputActionsRow({
     }
   };
 
-  const compactPickerContent = mobilePicker ? (
+  const compactPickerContent = compactPicker ? (
     <div className={styles.compactPickerPanel}>
       <button
         type="button"
         className={styles.compactPickerBack}
-        onClick={closeMobilePicker}
+        onClick={closeCompactPicker}
       >
         <ChevronLeft size={16} />
-        <span>{mobilePickerTitle[mobilePicker]}</span>
+        <span>{compactPickerTitle[compactPicker]}</span>
       </button>
-      {renderMobilePickerContent()}
+      {renderCompactPickerContent()}
     </div>
   ) : (
     renderMobileOverflowMenu()
@@ -643,7 +648,7 @@ export default function ChatInputActionsRow({
               : ""
           }`}
           type="button"
-          onClick={isMobile ? () => setMobilePicker("model") : undefined}
+          onClick={isMobile ? () => setCompactPicker("model") : undefined}
         >
           <Cpu size={16} />
         </button>
@@ -654,11 +659,7 @@ export default function ChatInputActionsRow({
             overflowBadgeCount > 0 ? styles.secondaryBtnActive : ""
           }`}
           type="button"
-          onClick={
-            isMobile
-              ? () => setMobileOverflowOpen(true)
-              : () => setMobilePicker(null)
-          }
+          onClick={isMobile ? () => setMobileOverflowOpen(true) : undefined}
         >
           <MoreHorizontal size={16} />
           {overflowBadgeCount > 0 && (
@@ -679,6 +680,7 @@ export default function ChatInputActionsRow({
                 open={modelPickerOpen}
                 onOpenChange={(open) => {
                   setModelPickerOpen(open);
+                  if (open) setOverflowPopoverOpen(false);
                   if (!open) setReasoningModelRef(null);
                 }}
                 overlayClassName={styles.modelPopover}
@@ -702,10 +704,18 @@ export default function ChatInputActionsRow({
               <Popover
                 trigger="click"
                 placement="topLeft"
+                open={overflowPopoverOpen}
                 overlayClassName={styles.skillPickerPopover}
                 content={compactPickerContent}
                 onOpenChange={(open) => {
-                  if (!open) closeMobilePicker();
+                  setOverflowPopoverOpen(open);
+                  if (open) {
+                    setModelPickerOpen(false);
+                    setCompactPicker(null);
+                    setReasoningModelRef(null);
+                  } else {
+                    closeCompactPicker();
+                  }
                 }}
               >
                 {overflowButton}
@@ -726,16 +736,16 @@ export default function ChatInputActionsRow({
                 {renderMobileOverflowMenu()}
               </Drawer>
               <Drawer
-                open={mobilePicker !== null}
-                onClose={closeMobilePicker}
+                open={compactPicker !== null}
+                onClose={closeCompactPicker}
                 placement="bottom"
                 height="auto"
-                title={mobilePicker ? mobilePickerTitle[mobilePicker] : ""}
+                title={compactPicker ? compactPickerTitle[compactPicker] : ""}
                 className={styles.mobilePickerDrawer}
                 styles={{ body: { padding: 0 } }}
                 destroyOnHidden
               >
-                {renderMobilePickerContent()}
+                {renderCompactPickerContent()}
               </Drawer>
             </>
           )}

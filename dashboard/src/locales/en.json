@@ -4497,49 +4497,6 @@
       }
     }
   },
-  "taskCenter": {
-    "tabs": {
-      "active": "Active",
-      "scheduled": "Scheduled",
-      "history": "History"
-    },
-    "noAgent": "Select an expert to view its tasks",
-    "noActive": "No active thread plans",
-    "noHistory": "No completed thread plans",
-    "count": "{{count}} task threads",
-    "untitled": "Untitled thread",
-    "activeStatus": "In progress",
-    "completedStatus": "Completed",
-    "runningStatus": "Running",
-    "waitingStatus": "Waiting",
-    "openThread": "Open conversation",
-    "continueThread": "Continue",
-    "viewDetails": "Details",
-    "stopRun": "Stop",
-    "activeHeading": "Agent runs",
-    "historyHeading": "Completed runs",
-    "liveRefresh": "Live refresh",
-    "runningNow": "Running now",
-    "awaitingInput": "Awaiting input",
-    "stepsCompleted": "Steps completed",
-    "currentRun": "Current run",
-    "completedRun": "Completed run",
-    "awaitingRun": "Awaiting your input",
-    "nextPlan": "Next plan",
-    "latestCompleted": "Latest completed",
-    "otherPlans": "Other plans",
-    "earlierRuns": "Earlier runs",
-    "currentStep": "Current step",
-    "stepProgress": "{{completed}} of {{total}} steps",
-    "moreSteps": "+{{count}} more steps",
-    "progress": "Progress",
-    "elapsed": "Elapsed",
-    "executionPlan": "Execution plan",
-    "threadId": "Thread ID",
-    "cancelConfirmTitle": "Stop this run?",
-    "cancelConfirmDesc": "The agent's current response and tool execution will be cancelled. The plan remains available to continue later.",
-    "cancelled": "Run stopped"
-  },
   "pageShell": {
     "experts": {
       "title": "Experts",
@@ -4547,7 +4504,7 @@
     },
     "tasks": {
       "title": "Tasks",
-      "subtitle": "Track active agent plans, scheduled work, and completed threads"
+      "subtitle": "Scheduled tasks that run on a cron trigger"
     },
     "connectors": {
       "title": "Connectors",

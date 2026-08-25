@@ -96,7 +96,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: fnos/Dockerfile
+          file: fnos/docker/Dockerfile
           push: true
           tags: |
             ghcr.io/TencentCloud/octop:vanilla
@@ -180,8 +180,8 @@ jobs:
           set -x
           LOG="${{ github.workspace }}/native-install.log"
           : > "$LOG"
-          mkdir -p "${{ github.workspace }}/fnos-native/app/site-packages"
-          SP="${{ github.workspace }}/fnos-native/app/site-packages"
+          mkdir -p "${{ github.workspace }}/fnos/native/app/site-packages"
+          SP="${{ github.workspace }}/fnos/native/app/site-packages"
           {
             # 用 uv 安装核心 whl 及其依赖到包内 site-packages。
             # pip 对 orcakit-harness-agent[all] 的复杂依赖树会报 resolution-too-deep，

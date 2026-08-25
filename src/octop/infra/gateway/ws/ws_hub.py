@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -37,7 +36,6 @@ class WebSocketHub:
         self._thread_subscribers: dict[str, set[str]] = {}
         self._conn_thread: dict[str, str] = {}
         self._active_turns: set[str] = set()
-        self._turn_started_at: dict[str, int] = {}
 
     def register(self, connection_id: str, send_fn: SendFn) -> None:
         self._connections[connection_id] = send_fn
@@ -80,19 +78,12 @@ class WebSocketHub:
         tid = thread_id.strip()
         if tid:
             self._active_turns.add(tid)
-            self._turn_started_at.setdefault(tid, int(time.time()))
 
     def mark_turn_idle(self, thread_id: str) -> None:
-        tid = thread_id.strip()
-        self._active_turns.discard(tid)
-        self._turn_started_at.pop(tid, None)
+        self._active_turns.discard(thread_id.strip())
 
     def is_turn_active(self, thread_id: str) -> bool:
         return thread_id.strip() in self._active_turns
-
-    def turn_started_at(self, thread_id: str) -> int | None:
-        """Return epoch seconds for the current in-memory turn, if active."""
-        return self._turn_started_at.get(thread_id.strip())
 
     async def push(self, connection_id: str, frame: dict[str, Any]) -> None:
         send_fn = self._connections.get(connection_id)

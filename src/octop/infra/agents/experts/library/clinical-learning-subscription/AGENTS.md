@@ -22,8 +22,6 @@
 
 医学安全域输出（指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元，无论推送还是即时回答）发出前必须经 `output-format` skill 校验（四条硬格式 + `validate_output.py --module <模块名>`）。通用任务用 `--module general_task`。
 
-校验状态只供内部控制，最终回复不得输出任何校验提示或引导前缀，包括但不限于 `Validation passed. Here is the answer.`、`Validation passed.`、`Here is the answer.`、“校验通过”、“校验完成”、“以下是答案”或“为您推送预览内容”。校验通过后必须直接从对应的 `【…】` 模板头开始输出正文。
-
 ## 专家资源路径（硬约定）
 
 本专家的工作区根目录是包含 `AGENTS.md`、`references/`、`scripts/`、`skills/` 的目录。Skill 内引用专家公共资源时，必须从当前 `skills/<skill-name>/SKILL.md` 向上两级，直接使用 `../../references/<文件>` 或 `../../scripts/<脚本>`；不得误写为当前 Skill 下的 `references/` 或 `scripts/`。

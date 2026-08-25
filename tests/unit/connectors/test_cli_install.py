@@ -138,6 +138,51 @@ def test_install_degrades_to_user_prefix_when_global_not_writable(
     assert "--prefix" in install_call
     assert str(home / ".npm-global") in install_call
     assert cli_install._user_npm_prefix()[0] == str(home / ".npm-global")
+    # Success path still returns the prefixed command so UI/docs stay consistent.
+    assert out["install_command"] == (f"npm install -g --prefix {home / '.npm-global'} @wecom/cli")
+
+
+def test_install_failure_message_uses_prefixed_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """When global prefix is not writable, failure guidance must not suggest bare -g."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    def _which(name: str) -> str | None:
+        if name == "npm":
+            return fake_bin_path("npm")
+        return None
+
+    def _run(argv: list[str], **kwargs: Any) -> Any:
+        del kwargs
+        if argv[1:3] == ["config", "get"]:
+
+            class _Cfg:
+                returncode = 0
+                stdout = "/usr/local"
+                stderr = ""
+
+            return _Cfg()
+
+        class _Failed:
+            returncode = 243
+            stdout = ""
+            stderr = "EACCES: permission denied"
+
+        return _Failed()
+
+    monkeypatch.setattr(cli_install.shutil, "which", _which)
+    monkeypatch.setattr(cli_install.subprocess, "run", _run)
+    monkeypatch.setattr(cli_install.os, "access", lambda _p, _m: False)
+
+    out = cli_install.install_connector_cli("wecom-cli")
+    assert out["ok"] is False
+    prefixed = f"npm install -g --prefix {home / '.npm-global'} @wecom/cli"
+    assert out["install_command"] == prefixed
+    assert prefixed in out["error"]
+    assert "npm install -g @wecom/cli" not in out["error"].replace(prefixed, "")
 
 
 def test_ensure_cli_path_injects_user_bin(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:

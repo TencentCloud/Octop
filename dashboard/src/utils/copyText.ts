@@ -1,18 +1,41 @@
 /**
- * Copy text to the clipboard, including plain HTTP (non-secure) pages.
+ * Copy text to the clipboard with a legacy fallback for non-secure contexts.
  *
- * `navigator.clipboard` requires a secure context (https or localhost).
- * `copy-to-clipboard` falls back to execCommand so copy still works on
- * http:// admin hosts.
+ * The async Clipboard API is only available in secure contexts (https or
+ * localhost). When it is unavailable or rejects, fall back to a temporary
+ * textarea + execCommand so copy still works on plain-http admin pages.
+ *
+ * This is the only write-clipboard entry for the dashboard. Clipboard *read*
+ * (e.g. paste) stays at the call site — it still requires a secure context.
  *
  * @returns true when the text was copied, false otherwise.
  */
-import copy from "copy-to-clipboard";
-
 export async function copyText(text: string): Promise<boolean> {
   if (text === "") return false;
+
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // fall through to the legacy path
+    }
+  }
+
   try {
-    return copy(text);
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "0";
+    textarea.style.left = "0";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
   } catch {
     return false;
   }

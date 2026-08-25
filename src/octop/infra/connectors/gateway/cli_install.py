@@ -85,6 +85,13 @@ def _user_npm_prefix() -> tuple[str, str]:
     return prefix, _prefix_bin_dir(prefix)
 
 
+def _manual_install_command(npm_package: str, *, prefix: str | None = None) -> str:
+    """Shell command users can paste; include ``--prefix`` when global is not writable."""
+    if prefix:
+        return f"npm install -g --prefix {prefix} {npm_package}"
+    return f"npm install -g {npm_package}"
+
+
 def _prefix_writable(prefix: str) -> bool:
     if not prefix:
         return False
@@ -151,11 +158,17 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
     # 自动降级到用户级目录 ~/.npm-global 安装，避免 EACCES 导致安装失败。
     prefix, _ = _npm_prefix_info(npm)
     install_args = [npm, "install", "-g"]
+    user_prefix: str | None = None
     if not _prefix_writable(prefix):
         user_prefix, _user_bin = _user_npm_prefix()
         with contextlib.suppress(OSError):
             os.makedirs(user_prefix, exist_ok=True)
         install_args += ["--prefix", user_prefix]
+        # Keep error / guide text aligned with the command that actually ran.
+        status = {
+            **status,
+            "install_command": _manual_install_command(status["npm_package"], prefix=user_prefix),
+        }
 
     try:
         completed = subprocess.run(
@@ -180,17 +193,27 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
         msg = f"npm install 失败（exit {completed.returncode}）"
         if detail:
             msg = f"{msg}：{detail}"
-        if "--prefix" in install_args:
-            msg = f"{msg}。已尝试写入用户级目录（~/.npm-global）仍失败，请在主机手动执行：{status['install_command']}"
+        if user_prefix is not None:
+            msg = (
+                f"{msg}。已尝试写入用户级目录（~/.npm-global）仍失败，"
+                f"请在主机手动执行：{status['install_command']}"
+            )
         else:
             msg = f"{msg}。请在主机手动执行：{status['install_command']}"
         return _fail(status, msg)
 
     # 降级安装到用户级目录后，把该 bin 目录加入进程 PATH，使状态检测与后续 CLI 调用可见。
-    if "--prefix" in install_args:
+    if user_prefix is not None:
         ensure_cli_path()
 
     refreshed = cli_install_status(kind)
+    if user_prefix is not None:
+        refreshed = {
+            **refreshed,
+            "install_command": _manual_install_command(
+                refreshed["npm_package"], prefix=user_prefix
+            ),
+        }
     if not refreshed["installed"]:
         return _fail(
             refreshed,

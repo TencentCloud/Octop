@@ -10,6 +10,7 @@ import logging
 import os
 import signal
 import subprocess
+from functools import partial
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -37,6 +38,10 @@ def _read_nonblock(fd: int) -> bytes | None:
         if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
             return None
         return b""
+
+
+def _write_pty(fd: int, data: bytes) -> None:
+    os.write(fd, data)
 
 
 async def _send_json(ws: WebSocket, payload: dict[str, Any]) -> None:
@@ -76,7 +81,8 @@ async def adb_shell_ws(
         return
 
     device = (serial or "").strip()
-    if not device or device not in list_devices():
+    connected = await asyncio.to_thread(list_devices)
+    if not device or device not in connected:
         await _send_json(websocket, {"type": "error", "message": "device unavailable"})
         await websocket.close(code=4003, reason="device unavailable")
         return
@@ -126,16 +132,26 @@ async def adb_shell_ws(
     try:
         while True:
             raw = await websocket.receive_text()
-            msg = json.loads(raw)
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
+                continue
             t = msg.get("type")
             if t == "input":
                 data = msg.get("data")
                 if isinstance(data, str) and data:
-                    os.write(master_fd, data.encode("utf-8", errors="replace"))
+                    await loop.run_in_executor(
+                        None,
+                        _write_pty,
+                        master_fd,
+                        data.encode("utf-8", errors="replace"),
+                    )
             elif t == "resize":
                 c = int(msg.get("cols") or cols)
                 r = int(msg.get("rows") or rows)
-                _set_winsize(master_fd, c, r)
+                await loop.run_in_executor(None, _set_winsize, master_fd, c, r)
     except WebSocketDisconnect:
         pass
     finally:
@@ -149,7 +165,7 @@ async def adb_shell_ws(
             with contextlib.suppress(OSError, ProcessLookupError):
                 posix_compat.killpg(posix_compat.getpgid(proc.pid), signal.SIGTERM)
             with contextlib.suppress(subprocess.TimeoutExpired):
-                proc.wait(timeout=1)
+                await loop.run_in_executor(None, partial(proc.wait, timeout=1))
         code = proc.poll()
         if code is not None:
             await _send_json(websocket, {"type": "exit", "code": code})

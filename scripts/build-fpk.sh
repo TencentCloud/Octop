@@ -70,11 +70,11 @@ build_one() {
   local KIND="$1" PKG OUTNAME
   case "$KIND" in
     docker)
-      PKG="$ROOT/fnos"
+      PKG="$ROOT/fnos/docker"
       OUTNAME="${PREFIX}-${VER}${ITER_SUFFIX}.fpk"
       ;;
     native)
-      PKG="$ROOT/fnos-native"
+      PKG="$ROOT/fnos/native"
       OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
       ;;
     *) echo "未知类型: $KIND"; return 1 ;;
