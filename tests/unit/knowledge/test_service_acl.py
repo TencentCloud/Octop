@@ -256,3 +256,24 @@ def test_shared_reader_cannot_rename(service: KnowledgeService) -> None:
 
     with pytest.raises(PermissionError, match="write"):
         service.rename_document(kb.id, folder.id, actor_user_id=viewer, new_name="b")
+
+
+def test_update_base_validates_max_documents_range(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="ow", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    # In range
+    service.update_base(kb.id, actor_user_id=owner, max_documents=0)
+    assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 0
+    service.update_base(kb.id, actor_user_id=owner, max_documents=500)
+    assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 500
+    service.update_base(kb.id, actor_user_id=owner, max_documents=10_000)
+    assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 10_000
+    # Out of range
+    with pytest.raises(ValueError, match="max_documents must be between"):
+        service.update_base(kb.id, actor_user_id=owner, max_documents=-1)
+    with pytest.raises(ValueError, match="max_documents must be between"):
+        service.update_base(kb.id, actor_user_id=owner, max_documents=10_001)
+    # Omit keeps value
+    service.update_base(kb.id, actor_user_id=owner, description="keep")
+    assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 10_000

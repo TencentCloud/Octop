@@ -85,7 +85,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         doc_cols = {
             r["name"] for r in conn.execute("PRAGMA table_info(knowledge_documents)").fetchall()
         }
-    assert v == 9
+    assert v == 10
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
@@ -143,7 +143,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 9
+    assert v == 10
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -280,7 +280,7 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
     with pool.connect() as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
-    assert version == 9
+    assert version == 10
     assert "permissions" in cols
 
 
@@ -311,7 +311,7 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
             r["name"]
             for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 9
+    assert version == 10
     assert "skill_package_id" in pkg_cols
     assert "published_expert_id" in pub_cols
     assert "user_invites" in invite_tables
@@ -350,7 +350,7 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    assert version == 9
+    assert version == 10
     assert "permissions" in user_cols
     assert {
         "published_experts",

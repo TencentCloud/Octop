@@ -12,6 +12,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   List,
   Modal,
   Popconfirm,
@@ -94,6 +95,7 @@ type BaseFormValues = {
   name: string;
   description?: string;
   icon_name?: string;
+  max_documents?: number;
 };
 
 type DocsViewMode = "card" | "table";
@@ -327,7 +329,8 @@ export default function KnowledgeBasesPage() {
     : 0;
   const atBaseLimit = ownedBaseCount >= limits.max_bases_per_owner;
   const fileCount = documents.filter((document) => !document.is_dir).length;
-  const isAtDocumentLimit = fileCount >= limits.max_docs_per_kb;
+  const isAtDocumentLimit =
+    fileCount >= (selected?.max_documents ?? limits.max_docs_per_kb);
   const folderEntries = documents
     .filter((document) =>
       isDirectKnowledgeChild(document.path || document.filename, currentFolder),
@@ -598,6 +601,7 @@ export default function KnowledgeBasesPage() {
       name: "",
       description: "",
       icon_name: "book-open",
+      max_documents: 100,
     });
     setDefaultOpenChecked(false);
     setSharedChecked(false);
@@ -611,6 +615,7 @@ export default function KnowledgeBasesPage() {
       name: selected.name,
       description: selected.description,
       icon_name: selected.icon_name || undefined,
+      max_documents: selected.max_documents,
     });
     setDefaultOpenChecked(selected.default_open);
     setSharedChecked(selected.shared);
@@ -813,7 +818,10 @@ export default function KnowledgeBasesPage() {
 
   const uploadDocuments = async (files: FileList | null) => {
     if (!selected || !files || !usable || isAtDocumentLimit) return;
-    const remaining = Math.max(0, limits.max_docs_per_kb - fileCount);
+    const remaining = Math.max(
+      0,
+      (selected?.max_documents ?? limits.max_docs_per_kb) - fileCount,
+    );
     const chosen = Array.from(files).slice(0, remaining);
     const oversized = chosen.filter(
       (file) => file.size > limits.max_document_bytes,
@@ -1476,7 +1484,7 @@ export default function KnowledgeBasesPage() {
                       <span className={skillStyles.gridCount}>
                         {t("knowledgeBases.documentLimit", {
                           count: fileCount,
-                          max: limits.max_docs_per_kb,
+                          max: selected?.max_documents ?? limits.max_docs_per_kb,
                         })}
                       </span>
                       <div className={skillStyles.gridToolbarRight}>
@@ -1607,7 +1615,7 @@ export default function KnowledgeBasesPage() {
                         type="info"
                         showIcon
                         message={t("knowledgeBases.documentLimitReached", {
-                          count: limits.max_docs_per_kb,
+                          count: selected?.max_documents ?? limits.max_docs_per_kb,
                         })}
                       />
                     ) : null}
@@ -1935,6 +1943,19 @@ export default function KnowledgeBasesPage() {
               autoSize={{ minRows: 2, maxRows: 5 }}
               maxLength={2000}
               showCount
+            />
+          </Form.Item>
+          <Form.Item
+            name="max_documents"
+            label={t("knowledgeBases.maxDocuments")}
+            extra={t("knowledgeBases.maxDocumentsHint")}
+          >
+            <InputNumber
+              min={0}
+              max={10000}
+              step={1}
+              precision={0}
+              style={{ width: "100%" }}
             />
           </Form.Item>
           <Form.Item name="icon_name" label={t("knowledgeBases.icon")}>

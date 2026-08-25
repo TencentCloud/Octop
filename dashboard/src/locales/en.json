@@ -322,6 +322,8 @@
     "documents": "Documents",
     "documentLimit": "{{count}} / {{max}} documents",
     "documentLimitReached": "This knowledge base already contains the maximum of {{count}} documents.",
+    "maxDocuments": "Document limit",
+    "maxDocumentsHint": "Maximum number of files in this knowledge base. 0 = unlimited, default 100.",
     "documentTooLarge": "Each document must be at most {{sizeMb}} MB.",
     "baseLimitReached": "You can create at most {{count}} knowledge bases.",
     "uploadHint": "Supports md / txt / pdf / docx / pptx. Max {{sizeMb}} MB per file.",

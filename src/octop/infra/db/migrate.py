@@ -637,6 +637,8 @@ def _ensure_knowledge_bases_schema(db: DatabasePool) -> None:
     """Create or rebuild knowledge tables to the integer-PK identity schema."""
     _rebuild_knowledge_identity_schema(db)
     _drop_knowledge_base_members(db)
+    # Schema v10: per-knowledge-base configurable document limit.
+    _ensure_column(db, "knowledge_bases", "max_documents", "INTEGER NOT NULL DEFAULT 100")
 
 
 def _ensure_sso_oidc_schema(db: DatabasePool) -> None:

@@ -322,6 +322,8 @@
     "documents": "文档",
     "documentLimit": "{{count}} / {{max}} 个文档",
     "documentLimitReached": "此知识库已达到 {{count}} 个文档的上限。",
+    "maxDocuments": "文档数量上限",
+    "maxDocumentsHint": "本知识库可容纳的最大文档数，0 表示不限制，默认为 100。",
     "documentTooLarge": "单个文档不能超过 {{sizeMb}} MB。",
     "baseLimitReached": "每个用户最多可创建 {{count}} 个知识库。",
     "uploadHint": "支持 md / txt / pdf / docx / pptx，单文件不超过 {{sizeMb}} MB。",
