@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 from pathlib import Path
 
 from octop.infra.agents.providers.onnx_catalog import get_onnx_model_meta
@@ -14,7 +16,6 @@ from octop.infra.agents.providers.onnx_download import (
     download_model_raced,
     race_download_sources,
 )
-from octop.infra.utils.paths import PathLayout
 
 
 def test_bge_small_zh_infers_hf_repo_without_fastembed(monkeypatch) -> None:
@@ -77,7 +78,41 @@ def test_race_orders_by_ttfb_and_skips_failures() -> None:
         return 0.12
 
     ranked = race_download_sources(cands, probe=probe)
-    assert [c.kind for c in ranked] == ["hf-mirror"]
+    assert [c.kind for c in ranked] == ["hf-mirror", "hf"]
+
+
+def test_race_returns_before_slow_probe_finishes() -> None:
+    cands = [
+        DownloadCandidate(
+            kind="hf",
+            probe_url="http://hf",
+            hf_endpoint=HF_ENDPOINT_OFFICIAL,
+            hf_repo="org/model",
+        ),
+        DownloadCandidate(
+            kind="hf-mirror",
+            probe_url="http://mirror",
+            hf_endpoint=HF_ENDPOINT_MIRROR,
+            hf_repo="org/model",
+        ),
+    ]
+    release = threading.Event()
+
+    def probe(url: str, _timeout_s: float) -> float:
+        if url.endswith("hf"):
+            release.wait(timeout=5)
+            return 5.0
+        return 0.05
+
+    started = time.monotonic()
+    try:
+        ranked = race_download_sources(cands, probe=probe)
+        elapsed = time.monotonic() - started
+    finally:
+        release.set()
+
+    assert [c.kind for c in ranked] == ["hf-mirror", "hf"]
+    assert elapsed < 0.5
 
 
 def test_race_keeps_catalog_order_when_all_probes_fail() -> None:
@@ -125,7 +160,7 @@ def test_download_uses_winner_then_falls_back(monkeypatch, tmp_path: Path) -> No
     monkeypatch.setattr(mod, "build_download_candidates", lambda _name: cands)
     monkeypatch.setattr(mod, "race_download_sources", lambda items, **_kw: items)
 
-    def fake_download(cand: DownloadCandidate, cache_dir: Path) -> None:
+    def fake_download(cand: DownloadCandidate, cache_dir: Path, **_kwargs: object) -> None:
         tried.append(cand.kind)
         if cand.kind == "hf":
             raise RuntimeError("hf 403")
@@ -136,14 +171,19 @@ def test_download_uses_winner_then_falls_back(monkeypatch, tmp_path: Path) -> No
     assert tried == ["hf", "hf-mirror"]
 
 
-def test_hf_snapshot_progress_goes_to_log_not_stdout(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_hf_snapshot_emits_tqdm_byte_progress(monkeypatch, tmp_path: Path) -> None:
     import types
 
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    seen: list[tuple[int, int | None, str]] = []
 
-    def fake_snapshot_download(**_kwargs: object) -> str:
-        print("Downloading bytes: fake-progress", flush=True)
-        print("Warning: unauthenticated requests", file=sys.stderr, flush=True)
+    def fake_snapshot_download(**kwargs: object) -> str:
+        tqdm_class = kwargs.get("tqdm_class")
+        assert callable(tqdm_class)
+        transfer = tqdm_class(total=1_000_000, desc="Downloading bytes", unit="B")
+        transfer.update(400_000)
+        reconstruct = tqdm_class(total=800_000, desc="Reconstructing", unit="B")
+        reconstruct.update(800_000)
         return "ok"
 
     hub = sys.modules.get("huggingface_hub")
@@ -162,15 +202,8 @@ def test_hf_snapshot_progress_goes_to_log_not_stdout(monkeypatch, tmp_path: Path
             hf_repo="Qdrant/bge-small-zh-v1.5",
         ),
         tmp_path / "cache",
+        on_progress=lambda n, total, desc: seen.append((n, total, desc)),
     )
 
-    captured = capsys.readouterr()
-    assert "fake-progress" not in captured.out
-    assert "unauthenticated" not in captured.err
-
-    log_path = PathLayout.from_env().log
-    assert log_path == tmp_path / "logs" / "octop.log"
-    text = log_path.read_text(encoding="utf-8")
-    assert "hf-mirror Qdrant/bge-small-zh-v1.5" in text
-    assert "Downloading bytes: fake-progress" in text
-    assert "Warning: unauthenticated requests" in text
+    assert (400_000, None, "Downloading bytes") in seen
+    assert (800_000, 800_000, "Reconstructing") in seen

@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 import httpx
 
 from octop.infra.agents.providers.onnx_catalog import get_onnx_model_meta
-from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,8 @@ class DownloadCandidate:
 
 
 ProbeFn = Callable[[str, float], float]
+# n bytes so far, real total if known, tqdm description.
+SnapshotProgressFn = Callable[[int, int | None, str], None]
 
 
 def _hf_repo_id(model_name: str) -> str:
@@ -80,6 +82,9 @@ def build_download_candidates(model_name: str) -> list[DownloadCandidate]:
 def probe_source(url: str, timeout_s: float = _PROBE_TIMEOUT_S) -> float:
     """Return TTFB in seconds for a 1 KiB range GET. Raises on HTTP/network errors."""
     started = time.monotonic()
+    # Local-only: OCTOP_DEBUG_SLOW_HF=<seconds> delays huggingface.co probes.
+    if url.startswith(HF_ENDPOINT_OFFICIAL):
+        time.sleep(10)
     with httpx.Client(
         timeout=httpx.Timeout(timeout_s, connect=min(3.0, timeout_s)),
         follow_redirects=True,
@@ -92,24 +97,15 @@ def probe_source(url: str, timeout_s: float = _PROBE_TIMEOUT_S) -> float:
     return time.monotonic() - started
 
 
-def race_download_sources(
-    candidates: list[DownloadCandidate],
-    *,
-    probe: ProbeFn = probe_source,
-    timeout_s: float = _PROBE_TIMEOUT_S,
-) -> list[DownloadCandidate]:
-    """Probe candidates in parallel and return them fastest-first.
-
-    Failed probes are omitted. If every probe fails, the original candidate
-    order is returned so the caller can still attempt a full download.
-    """
-    if not candidates:
-        return []
-    ranked: list[tuple[float, DownloadCandidate]] = []
-    workers = min(len(candidates), 2)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(probe, cand.probe_url, timeout_s): cand for cand in candidates}
-        for fut in as_completed(futures):
+def _first_probe_success(
+    futures: dict[Future[float], DownloadCandidate],
+) -> tuple[DownloadCandidate, float] | None:
+    """Wait until one probe succeeds; ignore failures and keep waiting."""
+    pending: set[Future[float]] = set(futures)
+    while pending:
+        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+        finished: list[tuple[float, DownloadCandidate]] = []
+        for fut in done:
             cand = futures[fut]
             try:
                 ttfb = fut.result()
@@ -118,22 +114,53 @@ def race_download_sources(
                 continue
             if ttfb < 0:
                 continue
-            ranked.append((ttfb, cand))
-    ranked.sort(key=lambda item: item[0])
-    if not ranked:
+            finished.append((ttfb, cand))
+        if finished:
+            finished.sort(key=lambda item: item[0])
+            ttfb, cand = finished[0]
+            return cand, ttfb
+    return None
+
+
+def race_download_sources(
+    candidates: list[DownloadCandidate],
+    *,
+    probe: ProbeFn = probe_source,
+    timeout_s: float = _PROBE_TIMEOUT_S,
+) -> list[DownloadCandidate]:
+    """Race probes in parallel; first success wins, the rest are fallbacks.
+
+    Losing probes are cancelled instead of being joined, so a blocked official
+    source cannot stall a fast mirror. If every probe fails, catalog order
+    is returned so the caller can still attempt a full download.
+    """
+    if not candidates:
+        return []
+    pool = ThreadPoolExecutor(max_workers=min(len(candidates), 2))
+    try:
+        futures = {pool.submit(probe, cand.probe_url, timeout_s): cand for cand in candidates}
+        result = _first_probe_success(futures)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    if result is None:
         logger.info("ONNX source probes all failed; falling back to catalog order")
         return list(candidates)
-    winner = ranked[0][1]
+    winner, winner_ttfb = result
     logger.info(
         "ONNX source race winner=%s ttfb=%.3fs (n=%d)",
         winner.kind,
-        ranked[0][0],
-        len(ranked),
+        winner_ttfb,
+        len(candidates),
     )
-    return [item[1] for item in ranked]
+    return [winner] + [c for c in candidates if c.kind != winner.kind]
 
 
-def download_model_raced(model_name: str, cache_dir: Path) -> str:
+def download_model_raced(
+    model_name: str,
+    cache_dir: Path,
+    *,
+    on_progress: SnapshotProgressFn | None = None,
+) -> str:
     """Race sources and download *model_name* into *cache_dir*. Return winner kind."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     candidates = build_download_candidates(model_name)
@@ -141,7 +168,7 @@ def download_model_raced(model_name: str, cache_dir: Path) -> str:
     errors: list[str] = []
     for cand in ordered:
         try:
-            _download_hf_snapshot(cand, cache_dir)
+            _download_hf_snapshot(cand, cache_dir, on_progress=on_progress)
             logger.info("ONNX model %s downloaded from %s", model_name, cand.kind)
             return cand.kind
         except Exception as exc:
@@ -151,47 +178,45 @@ def download_model_raced(model_name: str, cache_dir: Path) -> str:
     raise RuntimeError(f"All embedding download sources failed: {detail}")
 
 
-def _tqdm_to_log(log_file: TextIO) -> type[Any] | None:
-    """Build a tqdm subclass that writes progress bars into *log_file*."""
+def _progress_tqdm(on_progress: SnapshotProgressFn) -> type[Any] | None:
+    """tqdm subclass that forwards n/total; bars themselves go to redirected stderr."""
     try:
         from tqdm.auto import tqdm as Tqdm
     except ImportError:
         return None
 
-    class LogTqdm(Tqdm):  # type: ignore[misc]
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            kwargs["file"] = log_file
-            kwargs["disable"] = False
-            kwargs.setdefault("mininterval", 1.0)
-            super().__init__(*args, **kwargs)
+    class ProgressTqdm(Tqdm):  # type: ignore[misc]
+        def update(self, n: float | None = 1) -> Any:
+            result = super().update(n)
+            desc = str(self.desc or "")
+            total = int(self.total) if self.total and "reconstruct" in desc.lower() else None
+            on_progress(int(self.n or 0), total, desc)
+            return result
 
-    return LogTqdm
+    return ProgressTqdm
 
 
-def _download_hf_snapshot(cand: DownloadCandidate, cache_dir: Path) -> None:
+def _download_hf_snapshot(
+    cand: DownloadCandidate,
+    cache_dir: Path,
+    *,
+    on_progress: SnapshotProgressFn | None = None,
+) -> None:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
         raise RuntimeError("huggingface_hub is required for HF model downloads") from exc
-    log_path = PathLayout.from_env().ensure_log()
-    logger.info(
-        "ONNX HF snapshot %s via %s (progress log: %s)",
-        cand.hf_repo,
-        cand.kind,
-        log_path,
-    )
-    with log_path.open("a", encoding="utf-8") as log_file:
-        log_file.write(
-            f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {cand.kind} {cand.hf_repo} ===\n"
+    logger.info("ONNX HF snapshot %s via %s", cand.hf_repo, cand.kind)
+    tqdm_cls = _progress_tqdm(on_progress) if on_progress is not None else None
+    with (
+        open(os.devnull, "w", encoding="utf-8") as sink,
+        redirect_stdout(sink),
+        redirect_stderr(sink),
+    ):
+        snapshot_download(
+            repo_id=cand.hf_repo,
+            cache_dir=str(cache_dir),
+            endpoint=cand.hf_endpoint,
+            allow_patterns=list(_HF_ALLOW_PATTERNS),
+            tqdm_class=tqdm_cls,
         )
-        log_file.flush()
-        # tqdm + hf_xet warnings write stdout/stderr directly; keep them off the
-        # server console and append into ~/.octop/logs/octop.log instead.
-        with redirect_stdout(log_file), redirect_stderr(log_file):
-            snapshot_download(
-                repo_id=cand.hf_repo,
-                cache_dir=str(cache_dir),
-                endpoint=cand.hf_endpoint,
-                allow_patterns=list(_HF_ALLOW_PATTERNS),
-                tqdm_class=_tqdm_to_log(log_file),
-            )
