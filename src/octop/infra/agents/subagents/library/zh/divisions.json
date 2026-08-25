@@ -80,6 +80,21 @@
       "label": "测试",
       "icon": "FlaskConical",
       "color": "#F59E0B"
+    },
+    "hr": {
+      "label": "人力资源",
+      "icon": "Users",
+      "color": "#F472B6"
+    },
+    "legal": {
+      "label": "法务",
+      "icon": "Scale",
+      "color": "#6366F1"
+    },
+    "supply-chain": {
+      "label": "供应链",
+      "icon": "Truck",
+      "color": "#0891B2"
     }
   }
 }
