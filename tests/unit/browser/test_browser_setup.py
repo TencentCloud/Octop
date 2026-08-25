@@ -151,7 +151,9 @@ def test_temp_scope_token_uses_username_when_getuid_missing(
     from octop.infra.browser import setup as browser_setup
 
     # Simulate Windows: getuid absent / not callable.
-    monkeypatch.setattr(browser_setup.os, "getuid", object())
+    # Real Windows has no os.getuid — setattr(raising=True) would raise.
+    if hasattr(browser_setup.os, "getuid"):
+        monkeypatch.setattr(browser_setup.os, "getuid", object())
     monkeypatch.setenv("USERNAME", "OctopUser")
     monkeypatch.delenv("USER", raising=False)
 
