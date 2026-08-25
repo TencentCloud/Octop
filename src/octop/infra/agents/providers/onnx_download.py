@@ -6,12 +6,15 @@ import logging
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, TextIO
 
 import httpx
 
 from octop.infra.agents.providers.onnx_catalog import get_onnx_model_meta
+from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
 
@@ -148,14 +151,47 @@ def download_model_raced(model_name: str, cache_dir: Path) -> str:
     raise RuntimeError(f"All embedding download sources failed: {detail}")
 
 
+def _tqdm_to_log(log_file: TextIO) -> type[Any] | None:
+    """Build a tqdm subclass that writes progress bars into *log_file*."""
+    try:
+        from tqdm.auto import tqdm as Tqdm
+    except ImportError:
+        return None
+
+    class LogTqdm(Tqdm):  # type: ignore[misc]
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            kwargs["file"] = log_file
+            kwargs["disable"] = False
+            kwargs.setdefault("mininterval", 1.0)
+            super().__init__(*args, **kwargs)
+
+    return LogTqdm
+
+
 def _download_hf_snapshot(cand: DownloadCandidate, cache_dir: Path) -> None:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
         raise RuntimeError("huggingface_hub is required for HF model downloads") from exc
-    snapshot_download(
-        repo_id=cand.hf_repo,
-        cache_dir=str(cache_dir),
-        endpoint=cand.hf_endpoint,
-        allow_patterns=list(_HF_ALLOW_PATTERNS),
+    log_path = PathLayout.from_env().ensure_log()
+    logger.info(
+        "ONNX HF snapshot %s via %s (progress log: %s)",
+        cand.hf_repo,
+        cand.kind,
+        log_path,
     )
+    with log_path.open("a", encoding="utf-8") as log_file:
+        log_file.write(
+            f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {cand.kind} {cand.hf_repo} ===\n"
+        )
+        log_file.flush()
+        # tqdm + hf_xet warnings write stdout/stderr directly; keep them off the
+        # server console and append into ~/.octop/logs/octop.log instead.
+        with redirect_stdout(log_file), redirect_stderr(log_file):
+            snapshot_download(
+                repo_id=cand.hf_repo,
+                cache_dir=str(cache_dir),
+                endpoint=cand.hf_endpoint,
+                allow_patterns=list(_HF_ALLOW_PATTERNS),
+                tqdm_class=_tqdm_to_log(log_file),
+            )

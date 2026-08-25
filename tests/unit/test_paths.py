@@ -19,7 +19,7 @@ def test_root_paths(tmp_path: Path):
 def test_log_dir_creation(tmp_path: Path):
     p = PathLayout(tmp_path / ".octop")
     assert not (tmp_path / ".octop" / "logs").exists()
-    p.ensure_logs_dir()
+    assert p.ensure_log() == tmp_path / ".octop" / "logs" / "octop.log"
     assert (tmp_path / ".octop" / "logs").is_dir()
     assert p.log == tmp_path / ".octop" / "logs" / "octop.log"
 

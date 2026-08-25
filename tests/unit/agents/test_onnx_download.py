@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from octop.infra.agents.providers.onnx_catalog import get_onnx_model_meta
@@ -13,6 +14,7 @@ from octop.infra.agents.providers.onnx_download import (
     download_model_raced,
     race_download_sources,
 )
+from octop.infra.utils.paths import PathLayout
 
 
 def test_bge_small_zh_infers_hf_repo_without_fastembed(monkeypatch) -> None:
@@ -132,3 +134,43 @@ def test_download_uses_winner_then_falls_back(monkeypatch, tmp_path: Path) -> No
     winner = download_model_raced("BAAI/bge-small-zh-v1.5", tmp_path)
     assert winner == "hf-mirror"
     assert tried == ["hf", "hf-mirror"]
+
+
+def test_hf_snapshot_progress_goes_to_log_not_stdout(monkeypatch, tmp_path: Path, capsys) -> None:
+    import types
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+
+    def fake_snapshot_download(**_kwargs: object) -> str:
+        print("Downloading bytes: fake-progress", flush=True)
+        print("Warning: unauthenticated requests", file=sys.stderr, flush=True)
+        return "ok"
+
+    hub = sys.modules.get("huggingface_hub")
+    if hub is None:
+        hub = types.ModuleType("huggingface_hub")
+        monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setattr(hub, "snapshot_download", fake_snapshot_download, raising=False)
+
+    from octop.infra.agents.providers.onnx_download import _download_hf_snapshot
+
+    _download_hf_snapshot(
+        DownloadCandidate(
+            kind="hf-mirror",
+            probe_url="http://mirror",
+            hf_endpoint=HF_ENDPOINT_MIRROR,
+            hf_repo="Qdrant/bge-small-zh-v1.5",
+        ),
+        tmp_path / "cache",
+    )
+
+    captured = capsys.readouterr()
+    assert "fake-progress" not in captured.out
+    assert "unauthenticated" not in captured.err
+
+    log_path = PathLayout.from_env().log
+    assert log_path == tmp_path / "logs" / "octop.log"
+    text = log_path.read_text(encoding="utf-8")
+    assert "hf-mirror Qdrant/bge-small-zh-v1.5" in text
+    assert "Downloading bytes: fake-progress" in text
+    assert "Warning: unauthenticated requests" in text
