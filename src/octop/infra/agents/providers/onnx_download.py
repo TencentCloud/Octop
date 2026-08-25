@@ -82,9 +82,6 @@ def build_download_candidates(model_name: str) -> list[DownloadCandidate]:
 def probe_source(url: str, timeout_s: float = _PROBE_TIMEOUT_S) -> float:
     """Return TTFB in seconds for a 1 KiB range GET. Raises on HTTP/network errors."""
     started = time.monotonic()
-    # Local-only: OCTOP_DEBUG_SLOW_HF=<seconds> delays huggingface.co probes.
-    if url.startswith(HF_ENDPOINT_OFFICIAL):
-        time.sleep(10)
     with httpx.Client(
         timeout=httpx.Timeout(timeout_s, connect=min(3.0, timeout_s)),
         follow_redirects=True,
