@@ -1,0 +1,26 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.idleFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--fn-bg-secondary);
+}
+
+.terminalWrap {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 10px;
+}
+
+.terminalWrap :global(.xterm) {
+  height: 100%;
+}
