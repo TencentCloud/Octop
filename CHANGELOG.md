@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 绿色便携包：`scripts/green/` 用 python-build-standalone + 锁定依赖打出 `Octop-<plat>.zip`（六平台 Actions），解压后经 `launch.py` 启动；不含 OOB/UI 裁剪，首启走上游 setup wizard
+
 ## [0.9.26] - 2026-08-23
 
 ### 新增
