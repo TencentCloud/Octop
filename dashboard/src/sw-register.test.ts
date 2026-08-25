@@ -11,17 +11,18 @@ function mockRegistration(opts: {
   installing?: FakeWorker | null;
   controller?: { scriptURL: string } | null;
 }) {
-  const listeners = new Map<string, Array<() => void>>();
+  const registrationListeners = new Map<string, Array<() => void>>();
+  const swListeners = new Map<string, Array<() => void>>();
   const registration = {
     waiting: opts.waiting ?? null,
     installing: opts.installing ?? null,
     addEventListener: (type: string, fn: () => void) => {
-      const list = listeners.get(type) ?? [];
+      const list = registrationListeners.get(type) ?? [];
       list.push(fn);
-      listeners.set(type, list);
+      registrationListeners.set(type, list);
     },
     emit: (type: string) => {
-      for (const fn of listeners.get(type) ?? []) fn();
+      for (const fn of registrationListeners.get(type) ?? []) fn();
     },
     update: vi.fn(),
   };
@@ -31,6 +32,25 @@ function mockRegistration(opts: {
       register: vi.fn().mockResolvedValue(registration),
       getRegistrations: vi.fn().mockResolvedValue([]),
       controller: opts.controller ?? null,
+      addEventListener: (
+        type: string,
+        fn: () => void,
+        _options?: { once?: boolean },
+      ) => {
+        const list = swListeners.get(type) ?? [];
+        list.push(fn);
+        swListeners.set(type, list);
+      },
+      removeEventListener: (type: string, fn: () => void) => {
+        const list = swListeners.get(type) ?? [];
+        swListeners.set(
+          type,
+          list.filter((listener) => listener !== fn),
+        );
+      },
+      emit: (type: string) => {
+        for (const fn of [...(swListeners.get(type) ?? [])]) fn();
+      },
     },
   });
   return registration;
@@ -83,5 +103,80 @@ describe("registerProductionSW", () => {
 
     expect(waiting.postMessage).not.toHaveBeenCalled();
     expect(onReady).toHaveBeenCalledOnce();
+  });
+});
+
+describe("applyUpdate", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.stubGlobal("location", {
+      ...window.location,
+      reload: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("reloads immediately when no waiting worker is pending", async () => {
+    mockRegistration({ waiting: null, controller: null });
+    const { applyUpdate } = await import("./sw-register");
+
+    await applyUpdate();
+
+    expect(window.location.reload).toHaveBeenCalledOnce();
+  });
+
+  it("waits for controllerchange before reloading", async () => {
+    const waiting: FakeWorker = {
+      state: "installed",
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+    mockRegistration({
+      waiting,
+      controller: { scriptURL: "https://x/sw.js" },
+    });
+
+    const { applyUpdate, registerProductionSW } = await import("./sw-register");
+    await registerProductionSW();
+
+    const pending = applyUpdate();
+    expect(waiting.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(window.location.reload).not.toHaveBeenCalled();
+
+    (
+      navigator.serviceWorker as unknown as { emit: (type: string) => void }
+    ).emit("controllerchange");
+    await pending;
+
+    expect(window.location.reload).toHaveBeenCalledOnce();
+  });
+
+  it("reloads after timeout if controllerchange never fires", async () => {
+    const waiting: FakeWorker = {
+      state: "installed",
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+    mockRegistration({
+      waiting,
+      controller: { scriptURL: "https://x/sw.js" },
+    });
+
+    const { applyUpdate, registerProductionSW } = await import("./sw-register");
+    await registerProductionSW();
+
+    const pending = applyUpdate();
+    expect(window.location.reload).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await pending;
+
+    expect(window.location.reload).toHaveBeenCalledOnce();
   });
 });

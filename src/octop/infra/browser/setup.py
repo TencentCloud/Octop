@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -23,24 +24,40 @@ def _sse(event: dict[str, object]) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-def _runtime_dir_for_uid(uid: int | None = None) -> Path:
-    if not sys.platform.startswith("linux"):
-        import tempfile
+def _is_linux() -> bool:
+    return sys.platform.startswith("linux")
 
-        return Path(tempfile.gettempdir()) / f"runtime-harness-browser-{os.getpid()}"
-    if uid is None:
-        uid = os.getuid() if hasattr(os, "getuid") else 0
-    return Path(f"/tmp/runtime-harness-browser-{uid}")
+
+def _temp_scope_token(uid: int | None = None) -> str:
+    """Stable per-user suffix for temp dirs (never process id).
+
+    Linux/macOS use ``uid`` / ``getuid()``. Windows has no ``getuid`` — use
+    ``USERNAME`` / ``USER`` so relocated profiles survive process restarts.
+    """
+    if uid is not None:
+        return str(uid)
+    getuid = getattr(os, "getuid", None)
+    if callable(getuid):
+        return str(getuid())
+    for key in ("USERNAME", "USER"):
+        value = (os.environ.get(key) or "").strip()
+        if value:
+            return value
+    return "default"
+
+
+def _runtime_dir_for_uid(uid: int | None = None) -> Path:
+    token = _temp_scope_token(uid)
+    if _is_linux():
+        return Path(f"/tmp/runtime-harness-browser-{token}")
+    return Path(tempfile.gettempdir()) / f"runtime-harness-browser-{token}"
 
 
 def _relocated_profiles_root_for_uid(uid: int | None = None) -> Path:
-    if not sys.platform.startswith("linux"):
-        import tempfile
-
-        return Path(tempfile.gettempdir()) / f"harness-browser-profiles-{os.getpid()}"
-    if uid is None:
-        uid = os.getuid() if hasattr(os, "getuid") else 0
-    return Path(f"/tmp/harness-browser-profiles-{uid}")
+    token = _temp_scope_token(uid)
+    if _is_linux():
+        return Path(f"/tmp/harness-browser-profiles-{token}")
+    return Path(tempfile.gettempdir()) / f"harness-browser-profiles-{token}"
 
 
 def ensure_chrome_runtime_env() -> Path:
@@ -147,7 +164,7 @@ def _probe_dir_writable(directory: Path) -> bool:
         probe = directory / f".octop-write-{os.getpid()}"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
-        if sys.platform.startswith("linux"):
+        if _is_linux():
             link = directory / f".octop-link-{os.getpid()}"
             link.symlink_to("probe-target")
             link.unlink()

@@ -30,7 +30,6 @@
     "antd": "^5.29.1",
     "antd-style": "^3.7.1",
     "build": "^0.1.4",
-    "copy-to-clipboard": "^4.0.2",
     "docx-preview": "^0.3.2",
     "i18next": "^25.8.4",
     "jszip": "^3.10.1",
