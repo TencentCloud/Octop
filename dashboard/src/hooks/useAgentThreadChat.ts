@@ -15,14 +15,8 @@ export function useAgentThreadChat(agentId: string | null) {
   const [booting, setBooting] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
 
-  const {
-    messages,
-    isStreaming,
-    taskPlan,
-    sendMessage,
-    cancelStream,
-    loadHistory,
-  } = useChat(threadId, agentId);
+  const { messages, isStreaming, sendMessage, cancelStream, loadHistory } =
+    useChat(threadId, agentId);
 
   useEffect(() => {
     if (!agentId) {
@@ -89,7 +83,6 @@ export function useAgentThreadChat(agentId: string | null) {
     bootError,
     messages,
     isStreaming,
-    taskPlan,
     send,
     cancelStream,
   };

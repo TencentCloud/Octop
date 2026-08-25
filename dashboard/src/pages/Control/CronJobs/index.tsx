@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import type { ReactNode } from "react";
 import {
   Button,
   Card,
@@ -80,7 +79,7 @@ function CronJobsEmptyState({
   );
 }
 
-function CronJobsPage({ embedded = false }: { embedded?: boolean }) {
+function CronJobsPage() {
   const { t } = useTranslation();
   const { isMobile, viewMode, setViewMode, showCardView } =
     useCardTableView("table");
@@ -233,26 +232,19 @@ function CronJobsPage({ embedded = false }: { embedded?: boolean }) {
     timeZone: cronTimezone,
   });
 
-  const wrap = (content: ReactNode) =>
-    embedded ? (
-      <>{content}</>
-    ) : (
+  // Until the user picks an agent there is nothing to fetch and no scope
+  // to write to. Mirror the behaviour of the other octop agent-scoped pages.
+  if (!activeAgentId) {
+    return (
       <PageShell
         title={t("pageShell.tasks.title")}
         subtitle={t("pageShell.tasks.subtitle")}
         agentScoped
       >
-        {content}
+        <Card>
+          <Empty description={t("cronJobs.noAgentSelected")} />
+        </Card>
       </PageShell>
-    );
-
-  // Until the user picks an agent there is nothing to fetch and no scope
-  // to write to. Mirror the behaviour of the other octop agent-scoped pages.
-  if (!activeAgentId) {
-    return wrap(
-      <Card>
-        <Empty description={t("cronJobs.noAgentSelected")} />
-      </Card>,
     );
   }
 
@@ -264,8 +256,12 @@ function CronJobsPage({ embedded = false }: { embedded?: boolean }) {
   const showBodySpinner = loading || (contentBusy && !showList && !showEmpty);
   const showToolbar = showList;
 
-  return wrap(
-    <>
+  return (
+    <PageShell
+      title={t("pageShell.tasks.title")}
+      subtitle={t("pageShell.tasks.subtitle")}
+      agentScoped
+    >
       {showToolbar ? (
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
@@ -394,7 +390,7 @@ function CronJobsPage({ embedded = false }: { embedded?: boolean }) {
         onCancel={handleExecuteNowCancel}
         onConfirm={handleExecuteNowConfirm}
       />
-    </>,
+    </PageShell>
   );
 }
 

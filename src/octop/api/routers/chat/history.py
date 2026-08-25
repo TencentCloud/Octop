@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
@@ -20,7 +19,6 @@ from octop.api.routers.chat.serialize import (
 from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.middleware.thread_artifacts import artifacts_for_response
 from octop.infra.agents.thread_fork import fork_dashboard_thread
-from octop.infra.agents.thread_tasks import read_thread_task_state
 from octop.infra.agents.workspace_dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
@@ -193,9 +191,6 @@ async def get_thread_history(
         user_id=effective_uid,
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
-    task_state = await read_thread_task_state(
-        server.app_runtime.agent_registry, agent_id, thread_id
-    )
     return {
         "thread_id": thread_id,
         "messages": messages,
@@ -205,86 +200,7 @@ async def get_thread_history(
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
         "artifacts": artifacts_for_response(row.artifacts, workspace_dir),
-        "task_state": task_state,
     }
-
-
-@router.get(
-    "/agents/{agent_id}/threads/{thread_id}/task-state",
-    summary="Current thread task plan",
-)
-async def get_thread_task_state(
-    agent_id: str,
-    thread_id: str,
-    as_user: int | None = None,
-    user: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Return the authoritative task projection from the thread checkpoint."""
-    _require_thread(server, agent_id, thread_id, user, as_user)
-    return await read_thread_task_state(server.app_runtime.agent_registry, agent_id, thread_id)
-
-
-@router.get("/agents/{agent_id}/thread-tasks", summary="List thread task plans")
-async def list_thread_tasks(
-    agent_id: str,
-    status: Literal["active", "completed", "all"] = "all",
-    limit: int = 50,
-    as_user: int | None = None,
-    user: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> list[dict[str, Any]]:
-    """List non-empty task plans for this user's recent agent threads."""
-    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
-    effective_uid = as_user if as_user is not None else user.id
-    rows = server.app_runtime.gateway.thread_registry.list_threads(
-        agent_id=agent_id,
-        user_id=effective_uid,
-        limit=max(1, min(limit, 100)),
-    )
-    task_states = await asyncio.gather(
-        *(
-            read_thread_task_state(server.app_runtime.agent_registry, agent_id, row.thread_id)
-            for row in rows
-        )
-    )
-    output: list[dict[str, Any]] = []
-    for row, task_state in zip(rows, task_states, strict=True):
-        if task_state["status"] == "idle":
-            continue
-        if status != "all" and task_state["status"] != status:
-            continue
-        output.append(
-            {
-                **task_state,
-                "agent_id": agent_id,
-                "title": row.title,
-                "last_active": row.last_active,
-                "created_at": row.created_at,
-                "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(row.thread_id),
-                "turn_started_at": server.app_runtime.gateway.ws_hub.turn_started_at(row.thread_id),
-            }
-        )
-    return output
-
-
-@router.post(
-    "/agents/{agent_id}/threads/{thread_id}/cancel",
-    summary="Cancel active thread turn",
-)
-async def cancel_thread_turn(
-    agent_id: str,
-    thread_id: str,
-    as_user: int | None = None,
-    user: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Cancel the live harness stream for an owned thread, when one exists."""
-    _require_thread(server, agent_id, thread_id, user, as_user)
-    active = server.app_runtime.gateway.ws_hub.is_turn_active(thread_id)
-    if active:
-        server.app_runtime.agent_registry.cancel_stream(agent_id, thread_id)
-    return {"thread_id": thread_id, "cancelled": active}
 
 
 @router.post(

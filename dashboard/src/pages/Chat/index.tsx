@@ -268,7 +268,6 @@ function ChatPageInner() {
     historyRefreshing,
     historyHydrated,
     contextUsage,
-    taskPlan,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -928,7 +927,6 @@ function ChatPageInner() {
             ) : (
               <MessageList
                 messages={messages}
-                taskPlan={taskPlan}
                 composerLookups={composerLookups}
                 loading={awaitingThreadHistory}
                 historyHasMore={historyHasMore}
