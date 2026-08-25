@@ -17,8 +17,10 @@ from octop.infra.gateway.media.attachment_hints import (
     sniff_image_media_type,
 )
 from octop.infra.gateway.media.inbound_store import (
+    MAX_INBOUND_BYTES,
     inbound_extension,
     validate_inbound_media_type,
+    validate_inbound_size,
 )
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.harness_request import build_content_from_message
@@ -62,7 +64,7 @@ def test_unknown_mime_falls_back_to_extension() -> None:
 def test_unknown_mime_without_known_extension_is_rejected() -> None:
     with pytest.raises(OctopError) as exc_info:
         validate_inbound_media_type("application/x-zip-compressed", "bundle")
-    assert exc_info.value.code is ErrorCode.SLASH_BAD_ARGS
+    assert exc_info.value.code is ErrorCode.ATTACHMENT_UNSUPPORTED_TYPE
     # ``details.reason`` survives i18n localization; the raw message does not.
     assert "application/x-zip-compressed" in str(exc_info.value.details["reason"])
     envelope = exc_info.value.to_envelope(locale="zh")
@@ -71,6 +73,18 @@ def test_unknown_mime_without_known_extension_is_rejected() -> None:
 
 def test_allowed_mime_is_kept_even_if_extension_differs() -> None:
     assert validate_inbound_media_type("application/pdf", "notes.txt") == "application/pdf"
+
+
+def test_inbound_over_size_limit_is_rejected() -> None:
+    with pytest.raises(OctopError) as exc_info:
+        validate_inbound_size(b"x" * (MAX_INBOUND_BYTES + 1))
+    assert exc_info.value.code is ErrorCode.ATTACHMENT_TOO_LARGE
+    assert exc_info.value.status == 413
+    max_mb = MAX_INBOUND_BYTES // (1024 * 1024)
+    assert exc_info.value.details["max_mb"] == max_mb
+    envelope = exc_info.value.to_envelope(locale="zh")
+    assert str(max_mb) in envelope["error"]["message"]
+    assert "{max_mb}" not in envelope["error"]["message"]
 
 
 @pytest.mark.asyncio

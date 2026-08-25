@@ -325,6 +325,8 @@
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
+    "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",
+    "ATTACHMENT_TOO_LARGE": "This attachment exceeds the {max_mb} MB size limit.",
     "VOICE_BROWSER_ONLY": "Voice input is only available in the browser.",
     "VOICE_KIND_UNSUPPORTED": "Unsupported voice provider.",
     "VOICE_CAPABILITY_MISMATCH": "Voice capability does not match.",

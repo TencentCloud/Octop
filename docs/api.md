@@ -411,6 +411,8 @@ dashboard mirrors every code under `apiErrors.*` in
 | `CRON_PROMPT_INVALID` | 400 | Empty or too-long prompt |
 | `SLASH_UNKNOWN` | 400 | `/<cmd>` is not a registered handler |
 | `SLASH_BAD_ARGS` | 400 | Slash handler rejected its arguments |
+| `ATTACHMENT_UNSUPPORTED_TYPE` | 400 | Chat / inbound attachment rejected (media type not allowed) |
+| `ATTACHMENT_TOO_LARGE` | 413 | Chat / inbound attachment exceeds the configured size limit (`max_mb` in details) |
 | `WORKSPACE_PATH_INVALID` | 400 | Path outside the agent's workspace |
 | `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
 | `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |

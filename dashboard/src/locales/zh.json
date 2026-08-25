@@ -108,6 +108,8 @@
     "CRON_TRIGGER_INVALID": "无效的定时触发器。",
     "SLASH_UNKNOWN": "未知的斜杠指令。",
     "SLASH_BAD_ARGS": "参数无效。",
+    "ATTACHMENT_UNSUPPORTED_TYPE": "不支持此文件类型。",
+    "ATTACHMENT_TOO_LARGE": "附件超过 {{max_mb}} MB 大小限制。",
     "VOICE_BROWSER_ONLY": "语音输入仅在浏览器中可用。",
     "VOICE_KIND_UNSUPPORTED": "不支持的语音提供商。",
     "VOICE_CAPABILITY_MISMATCH": "语音能力不匹配。",
