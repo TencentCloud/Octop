@@ -6,33 +6,13 @@
 #
 set -euo pipefail
 
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
+_OCTOP_COMMON=""$(dirname "$0")/common.sh""
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
 # 释放 Octop 端口（8088=Docker 版，8089=本地版），杀掉残留/孤儿进程，避免重装端口冲突。
-free_octop_ports() {
-    local port pid pids
-    for port in 8088 8089; do
-        pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
-        if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
-            pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
-        fi
-        if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
-            pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
-        fi
-        for pid in $pids; do
-            [ -n "$pid" ] || continue
-            if kill -TERM "$pid" 2>/dev/null; then
-                echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
-            fi
-        done
-        sleep 1
-        for pid in $pids; do
-            [ -n "$pid" ] || continue
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
-                echo "[octop] 已强制 KILL 占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
-            fi
-        done
-    done
-}
+
 
 free_octop_ports
 

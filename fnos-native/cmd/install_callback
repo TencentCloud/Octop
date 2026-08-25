@@ -6,53 +6,13 @@
 #
 set -uo pipefail
 
-# 释放 Octop 端口（8088=Docker 版，8089=本地版），杀掉残留/孤儿进程，避免重装端口冲突。
-free_octop_ports() {
-    local port pid pids
-    for port in 8088 8089; do
-        pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
-        if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
-            pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
-        fi
-        if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
-            pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
-        fi
-        for pid in $pids; do
-            [ -n "$pid" ] || continue
-            if kill -TERM "$pid" 2>/dev/null; then
-                echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
-            fi
-        done
-        sleep 1
-        for pid in $pids; do
-            [ -n "$pid" ] || continue
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
-                echo "[octop] 已强制 KILL 占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
-            fi
-        done
-    done
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
+_OCTOP_COMMON=""$(dirname "$0")/common.sh""
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
-    # 兜底：按命令行特征清理残留的 octop 服务进程（部分环境下 ss/fuser 拿不到 pid，
-    # 例如进程在其它用户/网络命名空间，或这些工具未安装）。直接按特征杀，确保 8089
-    # 在启动前一定空闲，避免“安装成功但服务起不来”。
-    for pat in 'octop.cli.main run' 'octop/bin/octop' 'octop-native/bin/octop'; do
-        pids="$(pgrep -f "$pat" 2>/dev/null | tr '\n' ' ')" || true
-        [ -z "$pids" ] && continue
-        echo "[octop] 发现残留 octop 服务进程 ($pat): $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-        # 先按进程组整体 TERM，再对存活者 KILL
-        for pid in $pids; do
-            kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-        done
-        sleep 1
-        for pid in $pids; do
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-                echo "[octop] 已强制 KILL 残留 octop 服务进程 $pid" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-            fi
-        done
-    done
-}
+# 释放 Octop 端口（8088=Docker 版，8089=本地版），杀掉残留/孤儿进程，避免重装端口冲突。
+
 
 # ---------------------------------------------------------------------------
 # 修正数据目录与 .env 的属主/权限（致命坑，曾导致服务启动即崩）：
@@ -63,46 +23,7 @@ free_octop_ports() {
 #   路径一律用 TRIM_* 变量（PKGVAR / TRIM_DATA_SHARE_PATHS），不固定 /vol1，
 #   兼容用户在 /vol3 等其它卷安装（地址会变）。
 # ---------------------------------------------------------------------------
-fix_ownership_and_perms() {
-    local pkgvar="$1" envfile="$2"
-    local octop_user="octop-native"
-    id "$octop_user" >/dev/null 2>&1 || {
-        echo "[octop-native] 警告：${octop_user} 账户不存在，跳过数据目录 chown（服务将回退以 root 运行）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-        return 0
-    }
 
-    # 1) 应用数据目录（@appdata）与 .env 改属主为 octop-native
-    chown -R "$octop_user:$octop_user" "$pkgvar" 2>/dev/null || true
-    chmod 700 "$pkgvar" 2>/dev/null || true
-    [ -f "$envfile" ] && chmod 600 "$envfile" 2>/dev/null || true
-
-    # 2) 清除 ACL，避免 chmod 把 mask 压成 --- 导致仍读不到
-    if command -v setfacl >/dev/null 2>&1; then
-        setfacl -b "$pkgvar" 2>/dev/null || true
-        [ -f "$envfile" ] && setfacl -b "$envfile" 2>/dev/null || true
-    fi
-
-    # 3) 共享数据目录（data-share，@appshare）：确保属主 octop-native 且可进入
-    if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
-        local ds="${TRIM_DATA_SHARE_PATHS%%:*}"
-        chown -R "$octop_user:$octop_user" "$ds" 2>/dev/null || true
-        # 向上找到 @appshare 下的应用共享根（如 /vol1/@appshare/octop-native），
-        # 将其属主也改回 octop-native 并放开 x 权限，否则 octop-native 进不去
-        # 自己的 data 子目录（曾出现 d--------- root:root）。
-        local share_root="$ds"
-        while [ "$share_root" != "/" ] && [ "$(basename "$(dirname "$share_root")")" != "@appshare" ]; do
-            share_root="$(dirname "$share_root")"
-        done
-        chown "$octop_user:$octop_user" "$share_root" 2>/dev/null || true
-        chmod 755 "$share_root" 2>/dev/null || true
-        if command -v setfacl >/dev/null 2>&1; then
-            setfacl -b "$share_root" 2>/dev/null || true
-            setfacl -b "$ds" 2>/dev/null || true
-        fi
-    fi
-
-    echo "[octop-native] 已修正数据目录/.env 属主与权限（${octop_user}:${octop_user}）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-}
 
 free_octop_ports
 
@@ -145,24 +66,7 @@ echo "[octop-native] 已写入配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/nu
 fix_ownership_and_perms "$PKGVAR" "$ENV_FILE"
 
 # 校验 Python 3.12 是否存在
-find_python312() {
-    for cand in \
-        /var/apps/python312/target/bin/python3.12 \
-        /usr/local/bin/python3.12 \
-        /var/apps/python3.12/bin/python3.12 \
-        python3.12
-    do
-        if command -v "$cand" >/dev/null 2>&1; then
-            local py
-            py="$(command -v "$cand")"
-            if "$py" -c 'import sys; assert sys.version_info[:2] == (3,12)' >/dev/null 2>&1; then
-                printf '%s' "$py"
-                return 0
-            fi
-        fi
-    done
-    return 1
-}
+
 
 if ! PY="$(find_python312)"; then
     echo "[octop-native] 错误：飞牛系统中未找到 Python 3.12。" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true

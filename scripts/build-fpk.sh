@@ -86,6 +86,12 @@ build_one() {
   # 复制整个包目录（manifest / cmd / config / wizard / app / ICON* / LICENSE）
   cp -r "$PKG/." "$BUILD/"
 
+  # 注入共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports），
+  # 仓库单一来源 scripts/fnos/common.sh，cmd/bin 脚本统一 source cmd/common.sh。
+  if [ -f "$ROOT/scripts/fnos/common.sh" ]; then
+    cp "$ROOT/scripts/fnos/common.sh" "$BUILD/cmd/common.sh"
+  fi
+
   # 注入版本号到 manifest（manifest 为 key=value 无空格格式）
   sed -i.bak "s/^version=.*/version=$VER/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
 
