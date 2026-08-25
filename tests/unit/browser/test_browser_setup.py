@@ -116,7 +116,8 @@ def test_ensure_chrome_runtime_env_forces_tmp_dir(
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")
     path = ensure_chrome_runtime_env()
-    assert path == Path(f"/tmp/runtime-harness-browser-{os.getuid()}")
+    # Linux uses /tmp/<uid>; other POSIX (e.g. macOS) uses tempfile + pid.
+    assert path == _runtime_dir_for_uid()
     assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
     assert os.access(path, os.W_OK | os.X_OK)

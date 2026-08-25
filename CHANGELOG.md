@@ -8,11 +8,13 @@
 
 ### 新增
 
+- 连接器：腾讯设计 Ardot、滴答清单（dida365）；远程 MCP OAuth（Notion / Ardot / 滴答等）改为 catalog 驱动（`oauth_issuer` / `mcp_url` / `oauth_resource` / `oauth_scopes`），共用 DCR+PKCE 与回调，支持一键授权与手动粘贴 Token
 - 工具设置：单工具 `PATCH /agents/{id}/tool-settings/{name}`；插件工具开关热更新（不再 reload）；列表标注能力未挂载工具；harness `tools_disabled`（需 orcakit-harness-agent >=0.9.25）
 - ACP 内置 Runner：新增 Kimi Code（`kimi acp`）、Cursor CLI（`agent acp`）、Pi（`npx -y pi-acp`）卡片与默认启动命令
 
 ### 修复
 
+- 连接器 OAuth：公网回调使用 `X-Forwarded-*` 解析的公开基址；MCP OAuth 连接器在非回环地址要求 HTTPS；授权完成后前端可自动保存实例（含 COOP 下通过 pending 轮询）
 - 界面国际化：为 antd 组件补充 `ConfigProvider` locale（跟随界面语言切换），OK/Cancel、Refresh、Create 等此前在英文界面下仍显示英文的组件文案现随语言切换；并全球化 `Settings/octop/Providers.tsx` 全部按钮与文案（该文件当前未接入路由）
 
 ## [0.9.26] - 2026-08-23

@@ -61,7 +61,7 @@ export function ConnectorInstanceCard({
           className={styles.instanceCardIcon}
           style={{ color: accent, background: `${accent}18` }}
         >
-          <ConnectorLogo kind={instance.kind} />
+          <ConnectorLogo kind={instance.kind} icon={catalogEntry?.icon} />
         </div>
         <div className={styles.instanceCardMeta}>
           <div className={styles.instanceCardName}>{instance.display_name}</div>
