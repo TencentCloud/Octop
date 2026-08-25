@@ -26,6 +26,7 @@ from octop.infra.agents.providers.onnx_catalog import (
     get_onnx_model_meta,
     list_onnx_catalog_models,
 )
+from octop.infra.agents.providers.onnx_download import download_model_raced
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.runtime_packages import (
     PackageInstallSpec,
@@ -554,36 +555,19 @@ class OnnxDownloadManager:
         watcher.start()
         self._set(status=OnnxDownloadStatus.DOWNLOADING, progress=0.08)
         try:
+            winner = download_model_raced(model_name, cache)
+            logger.info("ONNX model %s fetched from %s", model_name, winner)
+            mark_model_downloaded(model_name)
             try:
                 from fastembed import TextEmbedding
 
                 self._set(
                     status=OnnxDownloadStatus.LOADING,
-                    progress=max(0.15, self.state.progress),
+                    progress=max(0.90, self.state.progress),
                 )
                 TextEmbedding(model_name=model_name, cache_dir=str(cache))
-                mark_model_downloaded(model_name)
-                self._set(progress=0.95)
-                return
             except ImportError:
                 pass
-
-            try:
-                from huggingface_hub import snapshot_download
-            except ImportError as exc:
-                raise RuntimeError(
-                    "Local embedding download requires optional components that "
-                    "could not be loaded. Enable the ONNX service to install them "
-                    "automatically."
-                ) from exc
-
-            repo_id = str(meta.get("hf_source") or model_name)
-            self._set(
-                status=OnnxDownloadStatus.DOWNLOADING,
-                progress=max(0.12, self.state.progress),
-            )
-            snapshot_download(repo_id=repo_id, cache_dir=str(cache))
-            mark_model_downloaded(model_name)
             self._set(progress=0.95)
         finally:
             stop.set()
