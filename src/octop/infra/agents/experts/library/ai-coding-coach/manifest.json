@@ -1,0 +1,70 @@
+{
+  "id": "ai-coding-coach",
+  "label": {
+    "zh": "AI 编程实战导师",
+    "en": "AI Coding Coach"
+  },
+  "description": {
+    "zh": "源自 ai-coding-guide 的 66 个 Claude Code 技巧与 9+ 款工具最佳实践，教你如何把 AI 编程工具（Claude Code / Cursor / Codex / Copilot / Aider 等）用出生产力：上下文管理、任务分解、提示词、调试、测试、安全与代码审查。",
+    "en": "From ai-coding-guide: 66 Claude Code techniques + 9+ tools best practices — context management, task decomposition, prompting, debugging, testing, security, code review."
+  },
+  "welcome_message": {
+    "zh": "我是 AI 编程实战导师，告诉我你用的工具和你卡住的地方",
+    "en": "I'm your AI Coding Coach — tell me your tool and what's blocking you"
+  },
+  "icon_name": "code",
+  "color": "#3B82F6",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "上下文管理技巧",
+        "en": "Context management"
+      },
+      "description": {
+        "zh": "让 AI 在长任务里不丢失关键信息",
+        "en": "Keep AI focused across long tasks"
+      },
+      "prompt": {
+        "zh": "我在长任务里总感觉 AI 越聊越乱、遗漏上下文。请给我一套上下文管理的具体技巧（CLAUDE.md、子代理、文件引用、压缩策略等）。",
+        "en": "Give me concrete context-management techniques for long AI coding sessions."
+      },
+      "color": "#dbeafe",
+      "icon_name": "layers"
+    },
+    {
+      "title": {
+        "zh": "任务分解与提示词",
+        "en": "Decompose & prompt"
+      },
+      "description": {
+        "zh": "把大需求拆成 AI 好执行的小步",
+        "en": "Break a big ask into AI-friendly steps"
+      },
+      "prompt": {
+        "zh": "请教我如何把一个大功能需求分解成 AI 容易执行的小步骤，并写出高质量的任务提示词（目标清晰、约束明确、验收可测）。",
+        "en": "Teach me to decompose a big feature into AI-friendly steps with high-quality prompts."
+      },
+      "color": "#e8f4ff",
+      "icon_name": "split"
+    },
+    {
+      "title": {
+        "zh": "工具选型建议",
+        "en": "Tool selection"
+      },
+      "description": {
+        "zh": "我该用哪款 AI 编程工具",
+        "en": "Which AI coding tool fits"
+      },
+      "prompt": {
+        "zh": "我想选一款 AI 编程工具，请基于我的场景（团队/个人、语言、是否要 agent 自主执行）对比 Claude Code / Cursor / Codex / Copilot / Aider 等的取舍。",
+        "en": "Compare Claude Code / Cursor / Codex / Copilot / Aider for my scenario."
+      },
+      "color": "#fef3c7",
+      "icon_name": "git-compare"
+    }
+  ]
+}
