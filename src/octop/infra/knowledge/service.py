@@ -18,7 +18,7 @@ from octop.infra.knowledge.files import (
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.index import KnowledgeIndex
 from octop.infra.knowledge.parse import parse_document
-from octop.infra.knowledge.relpath import normalize_kb_path, path_basename
+from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path_parent
 
 MAX_DOCS_PER_KB = 100
 MAX_BASES_PER_OWNER = 20
@@ -345,6 +345,33 @@ class KnowledgeService:
         if refreshed is None:
             raise LookupError("knowledge document not found")
         return cast(KnowledgeDocumentRow, refreshed)
+
+    def rename_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        new_name: str,
+        actor_user_id: int,
+        is_admin: bool = False,
+    ) -> KnowledgeDocumentRow:
+        """Rename a document (file or folder), rewriting descendant paths for folders."""
+        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        cleaned = (new_name or "").strip()
+        if not cleaned or "/" in cleaned or "\\" in cleaned:
+            raise ValueError("invalid knowledge document name")
+        new_path = normalize_kb_path(f"{path_parent(document.path)}/{cleaned}")
+        if new_path == document.path:
+            return cast(KnowledgeDocumentRow, document)
+        if self._repo.get_document_by_path(kb_id, new_path) is not None:
+            raise ValueError("a knowledge document with this name already exists")
+        result = self._repo.rename_document(kb_id, doc_id, cleaned)
+        if result is None:
+            raise LookupError("knowledge document not found")
+        return cast(KnowledgeDocumentRow, result)
 
     def delete_base(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)

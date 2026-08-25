@@ -41,6 +41,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  PencilLine,
   Plus,
   RefreshCw,
   Settings,
@@ -233,6 +234,11 @@ export default function KnowledgeBasesPage() {
   const [currentFolder, setCurrentFolder] = useState("");
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<KnowledgeDocument | null>(
+    null,
+  );
+  const [renameName, setRenameName] = useState("");
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
   );
@@ -859,6 +865,34 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const openRenameFolder = (document: KnowledgeDocument) => {
+    setRenameTarget(document);
+    setRenameName(knowledgeBasename(document.path || document.filename));
+    setRenameModalOpen(true);
+  };
+
+  const renameFolder = async () => {
+    if (!selected || !renameTarget) return;
+    const name = renameName.trim();
+    if (!name) return;
+    if (name === knowledgeBasename(renameTarget.path || renameTarget.filename)) {
+      setRenameModalOpen(false);
+      return;
+    }
+    try {
+      await knowledgeBasesApi.renameDocument(selected.id, renameTarget.id, name);
+      setRenameModalOpen(false);
+      setRenameTarget(null);
+      setRenameName("");
+      await loadDetail(selected.id);
+      message.success(t("knowledgeBases.renameFolderSuccess"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.renameFolderFailed"), t),
+      );
+    }
+  };
+
   const deleteDocument = async (documentId: string) => {
     if (!selected) return;
     try {
@@ -1039,6 +1073,17 @@ export default function KnowledgeBasesPage() {
               </Tooltip>
             </Popconfirm>
           )}
+          {document.is_dir ? (
+            <Tooltip title={t("knowledgeBases.renameFolder")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<PencilLine size={14} />}
+                aria-label={t("knowledgeBases.renameFolder")}
+                onClick={() => openRenameFolder(document)}
+              />
+            </Tooltip>
+          ) : null}
           <Popconfirm
             title={
               document.is_dir
@@ -1795,6 +1840,23 @@ export default function KnowledgeBasesPage() {
           onChange={(event) => setFolderName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
           onPressEnter={() => void createFolder()}
+        />
+      </Modal>
+
+      <Modal
+        title={t("knowledgeBases.renameFolder")}
+        open={renameModalOpen}
+        onCancel={() => setRenameModalOpen(false)}
+        onOk={() => void renameFolder()}
+        okText={t("common.save")}
+        cancelText={t("common.cancel")}
+        destroyOnClose
+      >
+        <Input
+          value={renameName}
+          onChange={(event) => setRenameName(event.target.value)}
+          placeholder={t("knowledgeBases.folderNamePlaceholder")}
+          onPressEnter={() => void renameFolder()}
         />
       </Modal>
 

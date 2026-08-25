@@ -96,6 +96,10 @@ class UpdateBaseBody(BaseModel):
     icon_name: str | None = Field(default=None, max_length=64)
 
 
+class RenameDocumentBody(BaseModel):
+    new_name: str = Field(min_length=1, max_length=255, description="New document or folder name.")
+
+
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "knowledge services are not initialized")
@@ -156,8 +160,10 @@ def _map_knowledge_error(exc: Exception, *, locale: str) -> OctopError:
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
-    if "unique constraint" in text or "duplicate key" in text:
+    if "unique constraint" in text or "duplicate key" in text or "already exists" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_TAKEN, locale)
+    if "invalid knowledge document name" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_INVALID, locale)
     return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
 
 
@@ -633,6 +639,31 @@ async def update_text_document(
         return _row_payload(document)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale) from exc
+
+
+@router.post(
+    "/{kb_id}/documents/{doc_id}/rename",
+    summary="Rename a document or folder",
+)
+async def rename_document(
+    kb_id: str,
+    doc_id: str,
+    body: RenameDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    try:
+        document = _knowledge_service(server).rename_document(
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            new_name=body.new_name.strip(),
+            is_admin=_is_admin(user),
+        )
+        return _row_payload(document)
+    except Exception as exc:
+        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
 
 
 @router.delete(
