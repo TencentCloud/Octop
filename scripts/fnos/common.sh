@@ -3,7 +3,7 @@
 # Octop FnOS 打包共享函数库。
 # 仓库唯一来源：scripts/fnos/common.sh
 # 打包时由 scripts/build-fpk.sh 注入到包内 cmd/common.sh；
-# fnos/ 与 fnos-native/ 的 cmd 脚本及 app/bin 脚本统一 source 本文件，
+# fnos/docker/ 与 fnos/native/ 的 cmd 脚本及 app/bin 脚本统一 source 本文件，
 # 避免 find_python312 / fix_ownership_and_perms / free_octop_ports 重复维护。
 #
 set -u

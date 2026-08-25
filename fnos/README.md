@@ -30,41 +30,42 @@ After install, open the app (Docker: `http://<device-ip>:8088`, native: `http://
 ## 目录结构
 
 ```
-fnos/                       # Docker 版（docker-project）
-├── manifest              # 应用元信息（platform=all / 名称/版本/桌面入口等）
-├── ICON.PNG / ICON_256.PNG
-├── LICENSE               # 复用仓库根 LICENSE（MIT）
-├── cmd/                  # 生命周期脚本（main / install_callback / config_callback 等）
-├── config/
-│   ├── privilege         # 权限声明（docker-octop 用户）
-│   └── resource          # 资源声明（docker-project + 数据共享目录）
-├── wizard/
-│   └── install           # 安装向导（可配置管理员账号/密码、日志级别、LLM 密钥）
-├── app/
-│   ├── docker/
-│   │   └── docker-compose.yaml   # 引用 ghcr.io/TencentCloud/octop:latest
-│   └── ui/
-│       ├── config                # 桌面图标入口
-│       └── images/icon-{64,256}.png
-└── Dockerfile            # 从仓库源码构建镜像，安装全部附加组件（browser + desktop）
-
-fnos-native/                # 本地版（非 Docker 的 FnOS 原生 app）
-├── manifest              # platform=all + 原生 app 元信息
-├── cmd/                  # 生命周期脚本（main / install_callback / config_callback）
-├── config/
-│   ├── privilege         # 权限声明（root，用于补装 Chromium 系统库）
-│   └── resource          # data-share + usr-local-linker
-├── app/
-│   ├── bin/octop         # 启动器（用自带 Python 运行时启动 octop init/run）
-│   └── ui/               # 桌面图标入口
-└── wizard/               # 安装/配置/卸载/升级向导
+fnos/
+├── README.md
+├── docker/                 # Docker 版（docker-project）
+│   ├── manifest            # 应用元信息（platform=all / 名称/版本/桌面入口等）
+│   ├── ICON.PNG / ICON_256.PNG
+│   ├── LICENSE             # 复用仓库根 LICENSE（MIT）
+│   ├── cmd/                # 生命周期脚本（main / install_callback / config_callback 等）
+│   ├── config/
+│   │   ├── privilege       # 权限声明（docker-octop 用户）
+│   │   └── resource        # 资源声明（docker-project + 数据共享目录）
+│   ├── wizard/
+│   │   └── install         # 安装向导（可配置管理员账号/密码、日志级别、LLM 密钥）
+│   ├── app/
+│   │   ├── docker/
+│   │   │   └── docker-compose.yaml   # 引用 ghcr.io/TencentCloud/octop:latest
+│   │   └── ui/
+│   │       ├── config                # 桌面图标入口
+│   │       └── images/icon-{64,256}.png
+│   └── Dockerfile          # 从仓库源码构建镜像，安装全部附加组件（browser + desktop）
+└── native/                 # 本地版（非 Docker 的 FnOS 原生 app）
+    ├── manifest            # platform=all + 原生 app 元信息
+    ├── cmd/                # 生命周期脚本（main / install_callback / config_callback）
+    ├── config/
+    │   ├── privilege       # 权限声明（root，用于补装 Chromium 系统库）
+    │   └── resource        # data-share + usr-local-linker
+    ├── app/
+    │   ├── bin/octop       # 启动器（用自带 Python 运行时启动 octop init/run）
+    │   └── ui/             # 桌面图标入口
+    └── wizard/             # 安装/配置/卸载/升级向导
 ```
 
 ## 工作机制
 
 1. **源码同步**：`.github/workflows/zz-sync-upstream.yml` 每 6 小时把上游 `TencentCloud/Octop` 的更新合并进本仓 `main` 分支（使用仓库自带 `GITHUB_TOKEN`，无需 PAT）。
-2. **镜像构建**：`.github/workflows/zz-build-fpk.yml` 的 `image` job 在 `main` 更新时，用 `fnos/Dockerfile` 从仓库源码构建 Octop 镜像并推送到 `ghcr.io/TencentCloud/octop:latest`（含全部附加组件）。
-3. **安装包构建**：同一 workflow 的 `fpk` job 用 `scripts/build-fpk.sh` 把 `fnos/` 打成 Docker 版 `.fpk`；`native` job 用 python-build-standalone 构建 Python 3.12 运行时、安装全部依赖与 Playwright Chromium，打成本地版 `.fpk`（`continue-on-error`，失败不阻塞 Docker 版）。两者均以滚动发布 `fnos-latest` 提供下载。
+2. **镜像构建**：`.github/workflows/fnos-build-fpk.yml` 的 `image` job 在 `main` 更新时，用 `fnos/docker/Dockerfile` 从仓库源码构建 Octop 镜像并推送到 `ghcr.io/TencentCloud/octop:latest`（含全部附加组件）。
+3. **安装包构建**：同一 workflow 的 `fpk` job 用 `scripts/build-fpk.sh` 把 `fnos/docker/` 打成 Docker 版 `.fpk`；`native` job 用 python-build-standalone 构建 Python 3.12 运行时、安装全部依赖与 Playwright Chromium，把 `fnos/native/` 打成本地版 `.fpk`（`continue-on-error`，失败不阻塞 Docker 版）。两者均以滚动发布 `fnos-latest` 提供下载。
 
 ## 本地构建 .fpk（无需 Docker）
 
