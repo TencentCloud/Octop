@@ -1,0 +1,367 @@
+name: Build Octop FPK (template)
+
+# TEMPLATE — FnOS (飞牛 NAS) app packaging pipeline for fork maintainers.
+# # This workflow builds the Octop Docker image, the Docker .fpk and the native .fpk,
+# # then publishes GitHub releases (fixed version + rolling latest).
+# #
+# # To enable on your fork:
+# #   1. Replace ghcr.io/TencentCloud/octop with your own image namespace (or fork a copy).
+# #   2. Optionally add a push trigger below (e.g. branches: [main]) so a rebuild happens
+# #      automatically on every upstream sync. It is intentionally workflow_dispatch-only
+# #      here so it never runs on the upstream repository.
+# #
+#   image  job：从仓库源码构建 Octop Docker 镜像，推送到 GHCR（ghcr.io/TencentCloud/octop:vanilla）
+#   fpk    job：构建「Docker 版」飞牛安装包 Fnos-octop-vanilla-<ver>-<iter>.fpk（依赖 image，确保镜像已就绪）
+#   native job：构建「本地版（非 Docker）」飞牛安装包 Fnos-octop-vanilla-native-<ver>-<iter>.fpk。
+#               不内置 Python 运行时（依赖飞牛应用商店 Python 3.12），
+#               仅内置 Octop 核心 whl + 核心依赖 site-packages，不含浏览器二进制与预装技能。
+#   release job：
+#               - 创建固定版本 release（如 fnos-0.9.16-01），保留历史、带更新日志；
+#               - 同步更新滚动 release fnos-vanilla-latest，方便用户始终从同一 URL 下载最新版。
+#
+# 镜像包随公开仓库默认即为 public，无需额外设置可见性。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-octop-vanilla
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      iter: ${{ steps.iter.outputs.iter }}
+      tag: ${{ steps.iter.outputs.tag }}
+      pkg_ver: ${{ steps.iter.outputs.pkg_ver }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Read version
+        id: ver
+        run: |
+          VER=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([0-9][0-9.]*[0-9])".*/\1/')
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Compute iteration
+        id: iter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=${{ steps.ver.outputs.version }}
+          # 查询已存在的 fnos-<ver>-NN releases，取最大序号 +1 作为本次迭代号。
+          # 之前用 GitHub API / git ls-remote / git tag -l 都在 CI 中因认证、
+          # 限流或本地 tag 未拉取而回退成 0，导致每次都覆盖 fnos-<ver>-01。
+          # GitHub CLI 在 Actions runner 中已预装且自动使用 GITHUB_TOKEN，最稳。
+          echo "[version] existing releases matching fnos-vanilla-${VER}-NN:"
+          gh release list --repo "${{ github.repository }}" --limit 100 --json tagName | python3 -c 'import sys,json; [print("  "+r.get("tagName","")) for r in json.load(sys.stdin)]' || true
+          EXISTING=$(gh release list --repo "${{ github.repository }}" --limit 100 --json tagName | python3 -c 'import sys,json,re; d=json.load(sys.stdin); pat=re.compile(r"fnos-vanilla-[0-9]+\.[0-9]+\.[0-9]+-([0-9]+)$"); nums=[int(pat.match(r.get("tagName","")).group(1)) for r in d if pat.match(r.get("tagName",""))]; print(max(nums) if nums else 0)')
+          MAX=${EXISTING:-0}
+          NEXT=$((MAX + 1))
+          ITER=$(printf "%02d" "$NEXT")
+          echo "iter=$ITER" >> "$GITHUB_OUTPUT"
+          echo "tag=fnos-vanilla-${VER}-${ITER}" >> "$GITHUB_OUTPUT"
+          echo "pkg_ver=${VER}-${ITER}" >> "$GITHUB_OUTPUT"
+          echo "[version] VER=$VER, EXISTING_MAX=$MAX, ITER=$ITER, TAG=fnos-${VER}-${ITER}"
+
+  image:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: fnos/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/TencentCloud/octop:vanilla
+            ghcr.io/TencentCloud/octop:vanilla-v${{ needs.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  fpk:
+    needs: [image, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Build Docker FPK
+        env:
+          FPK_NAME_PREFIX: Fnos-octop-vanilla
+          FPK_ITER: ${{ needs.version.outputs.iter }}
+        run: bash scripts/build-fpk.sh docker
+
+      - name: Upload docker fpk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-fpk
+          path: dist/Fnos-octop-vanilla-*.fpk
+          if-no-files-found: error
+
+  native:
+    # 即使原生版构建失败也不阻塞整体发布：Docker 版（fpk）始终会发布；
+    # 原生版成功则一并附带。continue-on-error 让 needs 视为通过。
+    continue-on-error: true
+    needs: version
+    runs-on: ubuntu-latest
+    outputs:
+      native_ok: ${{ steps.build_native.outcome == 'success' && steps.upload_native.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python 3.12 (build-only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20 (frontend build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      # native 包必须包含当前 fork 的源码修改（如 /admin/providers/fetch-models）。
+      # 上游 TencentCloud/Octop 的 release wheel 不包含这些修改，因此改为从当前
+      # 仓库源码构建 wheel：先构建前端产物到 src/octop/dashboard，再打包 wheel。
+      - name: Build Octop wheel from current source
+        run: |
+          set -e
+          echo "=== build frontend ==="
+          cd dashboard
+          npm ci --prefer-offline --no-audit
+          NODE_ENV=production NODE_OPTIONS="--max-old-space-size=4096" npm run build
+          cd ..
+          echo "=== frontend output ==="
+          ls -la src/octop/dashboard | head -20
+          echo "=== build wheel ==="
+          python3 -m pip install --quiet build
+          python3 -m build --wheel
+          echo "=== built wheel ==="
+          ls -lh dist/octop-*.whl
+
+      - name: Install Octop core into app/site-packages (no Chromium, no preinstalled skills)
+        id: install_core
+        timeout-minutes: 15
+        env:
+          UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/.uv-python
+        run: |
+          set -x
+          LOG="${{ github.workspace }}/native-install.log"
+          : > "$LOG"
+          mkdir -p "${{ github.workspace }}/fnos-native/app/site-packages"
+          SP="${{ github.workspace }}/fnos-native/app/site-packages"
+          {
+            # 用 uv 安装核心 whl 及其依赖到包内 site-packages。
+            # pip 对 orcakit-harness-agent[all] 的复杂依赖树会报 resolution-too-deep，
+            # uv 的回溯能力强得多（旧方案已验证）。
+            python3 -m pip install --quiet uv
+            # 第一步：让 uv 自由解析并安装核心 whl（含其完整依赖树）。
+            # 自由解析会拉到最新的 mcp==2.0.0 + langchain-mcp-adapters==0.3.1，这两者在结构上
+            # 不兼容（见第二步），但本步只负责把依赖装齐，不要求版本正确。
+            # 注意：不能把钉版与 octop.whl 放在同一条 uv 命令里——会和 whl 的传递依赖约束
+            # 发生 resolution 冲突，导致整个 native 构建失败（fdca4c6 的教训）。
+            python3 -m uv pip install --python python3.12 \
+              --target "$SP" --no-cache "$(ls dist/octop-*.whl | head -1)"
+            # 第二步：强制覆盖为仓库 uv.lock 锁定的兼容组合 mcp==1.28.1 + langchain-mcp-adapters==0.3.0。
+            # mcp 2.0 移除了 mcp.server.fastmcp / mcp.shared.context.RequestContext 等符号，
+            # 而 langchain-mcp-adapters 0.3.x 仍硬导入它们，导致 octop 启动即 ImportError。
+            # 先清掉旧版目录，防止多版本共存导致 Python 仍加载坏的 mcp 2.0。
+            rm -rf "$SP/mcp" "$SP"/mcp-*.dist-info \
+                   "$SP/langchain_mcp_adapters" "$SP"/langchain_mcp_adapters-*.dist-info
+            # 用 pip download 拿到钉版 whl，再 unzip 进 site-packages。
+            # 这比 pip install --target --force-reinstall 更可控，也不会触发 resolution。
+            mkdir -p /tmp/octop-pinned
+            python3.12 -m pip download --no-deps --no-cache-dir -d /tmp/octop-pinned \
+              "mcp==1.28.1" "langchain-mcp-adapters==0.3.0"
+            for whl in /tmp/octop-pinned/*.whl; do
+              echo "Extracting pinned wheel: $whl"
+              python3.12 -m zipfile -e "$whl" "$SP"
+            done
+            # 把核心 whl 也内置进去，供飞牛主机离线重装/回滚使用。
+            cp dist/octop-*.whl "$SP/octop.whl"
+            # 校验：必须能走通真正的启动导入链（octop.launch → octop.infra.server →
+            # harness_agent.mcp → langchain_mcp_adapters）。仅 import octop 不会触发该链路，
+            # 故这里显式导入启动入口，确保 mcp/langchain-mcp-adapters 组合确实可用。
+            PYTHONPATH="$SP" python3.12 \
+              -c "from octop.launch import run_foreground_blocking; import mcp, langchain_mcp_adapters; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__)"
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Build native FPK
+        id: build_native
+        env:
+          FPK_NAME_PREFIX: Fnos-octop-vanilla
+          FPK_ITER: ${{ needs.version.outputs.iter }}
+        run: bash scripts/build-fpk.sh native
+
+      - name: Show native fpk size
+        run: ls -lh dist/Fnos-octop-vanilla-native-*.fpk
+
+      - name: Upload native fpk artifact
+        id: upload_native
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-fpk
+          path: dist/Fnos-octop-vanilla-native-*.fpk
+          if-no-files-found: error
+
+      - name: Upload native install log (for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-install-log
+          path: native-install.log
+          if-no-files-found: ignore
+
+  release:
+    # 即使原生版失败（continue-on-error）也要发布 Docker 版；
+    # 原生版成功时 artifacts/native-fpk 存在，会被一并打包进发布。
+    if: always()
+    needs: [fpk, native, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # 分别按名称下载，单个大产物（native-fpk ~560MB）单独下载比「下载全部」更稳定，
+      # 避免 GitHub artifact 服务对“全部”模式偶发 5 次重试失败。
+      - name: Download docker fpk artifact (required)
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-fpk
+          path: artifacts/docker-fpk
+          if-no-files-found: error
+
+      - name: Download native fpk artifact (best-effort)
+        # 原生版即使下载/解压偶发失败也不阻塞发布：Docker 版始终会发布。
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: native-fpk
+          path: artifacts/native-fpk
+          if-no-files-found: ignore
+
+      - name: Stage dist
+        run: |
+          mkdir -p dist
+          cp artifacts/docker-fpk/*.fpk dist/ || true
+          cp artifacts/native-fpk/*.fpk dist/ || true
+          ls -lh dist
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VER="${{ needs.version.outputs.version }}"
+          ITER="${{ needs.version.outputs.iter }}"
+          TAG="fnos-vanilla-${VER}-${ITER}"
+          # 找本分支历史中可达的最近固定版本 tag（排除滚动 tag）。
+          # 不能直接 git describe：若历史 tag 误指向其它分支（如 main）的 commit，
+          # describe 会失败并回退到仓库根，导致更新说明把整个历史都列出来。
+          PREV_TAG=""
+          for t in $(git tag --list "fnos-vanilla-*" --sort=-creatordate); do
+            [ "$t" = "fnos-vanilla-latest" ] && continue
+            if git merge-base --is-ancestor "$t" HEAD 2>/dev/null; then
+              PREV_TAG="$t"
+              break
+            fi
+          done
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          {
+            # 安装说明置顶，用户一眼看到下载文件
+            echo "## 安装说明"
+            echo ""
+            echo "1. 飞牛应用中心 → 设置 → 手动安装应用，选择对应 .fpk。"
+            echo "2. Docker 版 **Fnos-octop-vanilla-${VER}-${ITER}.fpk**（约 80KB）：飞牛自动从 GHCR 拉取镜像运行，镜像为 \\"ghcr.io/TencentCloud/octop:vanilla\\"。"
+            echo "3. 本地版 **Fnos-octop-vanilla-native-${VER}-${ITER}.fpk**（约 200MB）：非 Docker，原生运行在飞牛主机；安装时自动关联系统 Python 3.12 开发工具；浏览器、远程桌面等附加组件在 Octop 应用内按需安装。"
+            echo ""
+            echo "---"
+            echo "固定版本请从本 Release 附件下载；最新滚动版见 [fnos-vanilla-latest](https://github.com/${{ github.repository }}/releases/tag/fnos-vanilla-latest)。"
+            echo ""
+            echo "## 本次更新（v${VER}-${ITER}）"
+            echo ""
+            # 只列相对上一版的非 merge commit，最多 30 条，避免说明冗长
+            if [ -n "$PREV_TAG" ]; then
+              git log --oneline --no-merges "$PREV_TAG"..HEAD | head -30
+            else
+              git log --oneline --no-merges -30 HEAD
+            fi
+          } > /tmp/release-body.md
+          cat /tmp/release-body.md
+
+      # --- 固定版本 release：保留历史 ---
+      - name: Publish fixed release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          # 显式指向构建所用 commit，避免 GitHub 默认指向 main 分支 HEAD
+          # （此前 fnos-vanilla-* tag 全部错误指向 main 的 commit）
+          target_commitish: ${{ github.sha }}
+          name: Octop (FnOS Vanilla) v${{ needs.version.outputs.pkg_ver }}
+          body_path: /tmp/release-body.md
+          files: dist/*.fpk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- 滚动 release fnos-vanilla-latest：始终指向最新版，只保留最新 assets ---
+      - name: Delete rolling release if exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=fnos-vanilla-latest
+          REL_ID=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG \
+            | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
+          if [ -n "$REL_ID" ]; then
+            curl -sS -X DELETE -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/releases/$REL_ID || true
+          fi
+          curl -sS -X DELETE -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$TAG || true
+
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: fnos-vanilla-latest
+          target_commitish: ${{ github.sha }}
+          name: Octop (FnOS Vanilla) latest
+          body_path: /tmp/release-body.md
+          files: dist/*.fpk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
