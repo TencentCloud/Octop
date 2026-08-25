@@ -57,8 +57,27 @@ def test_unknown_mime_falls_back_to_extension() -> None:
         validate_inbound_media_type("application/x-zip-compressed", "bundle.zip")
         == "application/zip"
     )
-    assert validate_inbound_media_type("application/vnd.ms-excel", "data.csv") == "text/csv"
+    assert validate_inbound_media_type("application/x-empty", "data.csv") == "text/csv"
     assert validate_inbound_media_type("image/x-png", "photo.png") == "image/png"
+
+
+def test_programmer_extensions_are_accepted() -> None:
+    assert validate_inbound_media_type("video/mp2t", "app.ts") == "text/x-typescript"
+    assert validate_inbound_media_type("application/x-sh", "setup.sh") == "application/x-sh"
+    assert validate_inbound_media_type("text/x-python", "main.py") == "text/x-python"
+    assert validate_inbound_media_type("foo/bar", "query.sql") == "application/sql"
+
+
+def test_office_image_and_archive_extensions_are_accepted() -> None:
+    assert validate_inbound_media_type("foo/bar", "notes.doc") == "application/msword"
+    assert validate_inbound_media_type("foo/bar", "notes.rtf") == "application/rtf"
+    assert validate_inbound_media_type("foo/bar", "book.epub") == "application/epub+zip"
+    assert validate_inbound_media_type("foo/bar", "map.xmind") == "application/vnd.xmind.workbook"
+    assert validate_inbound_media_type("foo/bar", "photo.heic") == "image/heic"
+    assert validate_inbound_media_type("foo/bar", "photo.bmp") == "image/bmp"
+    assert validate_inbound_media_type("foo/bar", "bundle.7z") == "application/x-7z-compressed"
+    assert validate_inbound_media_type("foo/bar", "bundle.rar") == "application/vnd.rar"
+    assert validate_inbound_media_type("foo/bar", "bundle.tgz") == "application/gzip"
 
 
 def test_unknown_mime_without_known_extension_is_rejected() -> None:
