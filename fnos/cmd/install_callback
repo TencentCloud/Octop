@@ -41,7 +41,7 @@ mkdir -p "$(dirname "$ENV_FILE")"
 
 # 安装向导已移除，使用固定默认值（用户首次登录后可在控制台「设置」中修改）。
 ADMIN_USER="admin"
-ADMIN_PASS="octop"
+ADMIN_PASS="Octop123"
 LOG_LEVEL="info"
 OPENAI=""
 DASHSCOPE=""

@@ -84,7 +84,7 @@ if [ ! -f "$OCTOP_HOME/octop.db" ]; then
     echo "[octop-native] 首次启动，正在初始化管理员账号 ..."
     octop_cmd init --yes \
         --admin-username "${OCTOP_ADMIN_USERNAME:-admin}" \
-        --admin-password "${OCTOP_DEFAULT_PASSWORD:-octop}" \
+        --admin-password "${OCTOP_DEFAULT_PASSWORD:-Octop123}" \
         ${OCTOP_ADMIN_DISPLAY_NAME:+--admin-display-name "$OCTOP_ADMIN_DISPLAY_NAME"}
 fi
 

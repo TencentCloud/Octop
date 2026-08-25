@@ -1,7 +1,7 @@
 appname=octop
 version=0.9.15
 display_name=OCTOP
-desc=腾讯开源的多用户多智能体 AI 助手平台，支持 Web 控制台、CLI、IM 渠道与定时任务，数据全部本地存储。<br/><br/><strong>安装后使用：</strong><br/>在应用中心点击「打开」按钮即可进入 Web 控制台，默认地址 http://设备IP:8088。<br/>初始管理员账号：admin，初始密码：octop。<br/><br/><strong>首次登录后：</strong><br/>请在控制台「设置」中配置 LLM 模型、IM 渠道、远程桌面、浏览器等组件。<br/><br/>注意：Docker 版通过容器部署，会自动从 ghcr.io/TencentCloud/octop:latest 拉取镜像运行，已预装 browser / desktop 附加组件。
+desc=腾讯开源的多用户多智能体 AI 助手平台，支持 Web 控制台、CLI、IM 渠道与定时任务，数据全部本地存储。<br/><br/><strong>安装后使用：</strong><br/>在应用中心点击「打开」按钮即可进入 Web 控制台，默认地址 http://设备IP:8088。<br/>初始管理员账号：admin，初始密码：Octop123（首次登录后请在头像菜单修改密码）。<br/><br/><strong>首次登录后：</strong><br/>请在控制台「设置」中配置 LLM 模型、IM 渠道、远程桌面、浏览器等组件。<br/><br/>注意：Docker 版通过容器部署，会自动从 ghcr.io/TencentCloud/octop:latest 拉取镜像运行，已预装 browser / desktop 附加组件。
 source=thirdparty
 platform=all
 maintainer=TencentCloud OrcaKit
