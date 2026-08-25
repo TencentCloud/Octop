@@ -549,15 +549,14 @@ export async function requestUpload<T = unknown>(
         applyRenewedAccessToken(response);
 
         if (!response.ok) {
-          const text = responseText;
-          let detail = `Upload failed: ${status}`;
-          try {
-            const json = JSON.parse(text) as { detail?: string };
-            if (json.detail) detail = json.detail;
-          } catch {
-            if (text) detail = text;
-          }
-          reject(new Error(detail));
+          // Same shape as request() so parseApiError() can read the error envelope.
+          reject(
+            new Error(
+              `Upload failed: ${status}${
+                responseText ? ` - ${responseText}` : ""
+              }`,
+            ),
+          );
           return;
         }
 

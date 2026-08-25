@@ -160,10 +160,8 @@ def resolve_inbound_attachment_path(workspace: BackendWorkspace, path: str) -> s
 
 def validate_inbound_size(data: bytes) -> None:
     if len(data) > MAX_INBOUND_BYTES:
-        raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
-            f"file too large (max {MAX_INBOUND_BYTES // (1024 * 1024)}MB)",
-        )
+        reason = f"file too large (max {MAX_INBOUND_BYTES // (1024 * 1024)}MB)"
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, reason, details={"reason": reason})
 
 
 def validate_inbound_media_type(media_type: str, filename: str = "") -> str:
@@ -174,7 +172,8 @@ def validate_inbound_media_type(media_type: str, filename: str = "") -> str:
     mapped = INBOUND_EXTENSION_MEDIA_TYPES.get(ext)
     if mapped is not None:
         return mapped
-    raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"unsupported media type {normalized_type!r}")
+    reason = f"unsupported media type {normalized_type!r}"
+    raise OctopError(ErrorCode.SLASH_BAD_ARGS, reason, details={"reason": reason})
 
 
 def sanitize_inbound_filename(filename: str) -> str:

@@ -63,6 +63,10 @@ def test_unknown_mime_without_known_extension_is_rejected() -> None:
     with pytest.raises(OctopError) as exc_info:
         validate_inbound_media_type("application/x-zip-compressed", "bundle")
     assert exc_info.value.code is ErrorCode.SLASH_BAD_ARGS
+    # ``details.reason`` survives i18n localization; the raw message does not.
+    assert "application/x-zip-compressed" in str(exc_info.value.details["reason"])
+    envelope = exc_info.value.to_envelope(locale="zh")
+    assert envelope["error"]["details"]["reason"] == exc_info.value.details["reason"]
 
 
 def test_allowed_mime_is_kept_even_if_extension_differs() -> None:

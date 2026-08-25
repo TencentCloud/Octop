@@ -5,6 +5,7 @@ import { uploadFile } from "../../../api/modules/upload";
 import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
 import type { ChatAttachment } from "./useChat";
 import { message as antMessage } from "@/utils/antdMessage";
+import { apiErrorMessage } from "../../../utils/apiError";
 
 import {
   CHAT_MAX_ATTACHMENT_BYTES,
@@ -67,7 +68,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
         setAttachments((prev) => [...prev, ...results]);
       } catch (err: unknown) {
         antMessage.error(
-          (err as Error).message || t("upload.failed", "Upload failed"),
+          apiErrorMessage(err, t("upload.failed", "Upload failed"), t),
         );
       } finally {
         setUploading(false);
