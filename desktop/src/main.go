@@ -50,22 +50,44 @@ func (a *App) GetSettings() Settings {
 	return a.store.get()
 }
 
-func (a *App) Platform() map[string]any {
-	return map[string]any{
-		"darwin": isDarwin(),
-		"plat":   greenPlat(),
-		"home":   octopHome(),
+func (a *App) GetSettingsStatus() (Settings, error) {
+	s := a.store.get()
+	if a.app == nil {
+		return s, nil
 	}
+	status, err := a.app.Autostart.Status()
+	if err != nil {
+		return s, fmt.Errorf("read autostart status: %w", err)
+	}
+	if s.Autostart != status.Enabled {
+		s.Autostart = status.Enabled
+		if err := a.store.save(s); err != nil {
+			return s, err
+		}
+	}
+	return s, nil
 }
 
 func (a *App) SaveSettings(next Settings) (Settings, error) {
-	cur := a.store.get()
+	cur, err := a.GetSettingsStatus()
+	if err != nil {
+		return cur, err
+	}
+	autostart, err := a.setAutostart(next.Autostart)
+	if err != nil {
+		return cur, err
+	}
+	if err := a.sleep.set(next.PreventSleep); err != nil {
+		if _, rollbackErr := a.setAutostart(cur.Autostart); rollbackErr != nil {
+			log.Printf("rollback autostart after sleep prevention failure: %v", rollbackErr)
+		}
+		return cur, err
+	}
+	next.Autostart = autostart
 	if err := a.store.save(next); err != nil {
 		return cur, err
 	}
 	saved := a.store.get()
-	a.applyAutostart(saved.Autostart)
-	a.sleep.set(saved.PreventSleepMac)
 	a.applyDashboardPrefs(saved)
 	return saved, nil
 }
@@ -78,29 +100,34 @@ func (a *App) Quit() {
 	a.requestQuit()
 }
 
-func (a *App) applyAutostart(on bool) {
+func (a *App) setAutostart(on bool) (bool, error) {
 	if a.app == nil {
-		return
+		return false, fmt.Errorf("autostart is unavailable before the application starts")
 	}
 	if on {
-		_ = a.app.Autostart.Enable()
-		return
+		if err := a.app.Autostart.Enable(); err != nil {
+			return false, fmt.Errorf("enable autostart: %w", err)
+		}
+	} else if err := a.app.Autostart.Disable(); err != nil {
+		return false, fmt.Errorf("disable autostart: %w", err)
 	}
-	_ = a.app.Autostart.Disable()
+	status, err := a.app.Autostart.Status()
+	if err != nil {
+		return false, fmt.Errorf("read autostart status: %w", err)
+	}
+	if status.Enabled != on {
+		return status.Enabled, fmt.Errorf("autostart state did not update")
+	}
+	return status.Enabled, nil
 }
 
 func (a *App) applyDashboardPrefs(s Settings) {
 	if a.window == nil {
 		return
 	}
-	pref := "light"
-	if s.Theme == ThemeDark {
-		pref = "dark"
-	}
 	js := fmt.Sprintf(
-		`(function(){try{localStorage.setItem('octop:ui-locale',%s);var t={};try{t=JSON.parse(localStorage.getItem('theme')||'{}')||{}}catch(e){t={}}t.preference=%s;localStorage.setItem('theme',JSON.stringify(t));}catch(e){}})();`,
+		`(function(){try{localStorage.setItem('octop:ui-locale',%s);}catch(e){}})();`,
 		jsonString(string(s.Locale)),
-		jsonString(pref),
 	)
 	a.window.ExecJS(js)
 }
@@ -325,8 +352,12 @@ func main() {
 	tray.OnClick(func() { api.showWindow() })
 	tray.OnRightClick(func() { tray.ShowWindow() })
 
-	api.applyAutostart(store.get().Autostart)
-	api.sleep.set(store.get().PreventSleepMac)
+	if _, err := api.setAutostart(store.get().Autostart); err != nil {
+		log.Printf("sync autostart: %v", err)
+	}
+	if err := api.sleep.set(store.get().PreventSleep); err != nil {
+		log.Printf("enable sleep prevention: %v", err)
+	}
 
 	api.scheduleDragOverlay()
 	go api.boot()

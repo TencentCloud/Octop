@@ -15,31 +15,22 @@ const (
 	LocaleEN Locale = "en"
 )
 
-type ThemeMode string
-
-const (
-	ThemeLight ThemeMode = "light"
-	ThemeDark  ThemeMode = "dark"
-)
-
 // Settings is persisted at ~/.octop/desktop-settings.json
 type Settings struct {
-	Locale          Locale    `json:"locale"`
-	Theme           ThemeMode `json:"theme"`
-	Autostart       bool      `json:"autostart"`
-	MinimizeToTray  bool      `json:"minimizeToTray"`
-	PreventSleepMac bool      `json:"preventSleepMac"`
-	Port            int       `json:"port,omitempty"`
+	Locale         Locale `json:"locale"`
+	Autostart      bool   `json:"autostart"`
+	MinimizeToTray bool   `json:"minimizeToTray"`
+	PreventSleep   bool   `json:"preventSleep"`
+	Port           int    `json:"port,omitempty"`
 }
 
 func defaultSettings() Settings {
 	return Settings{
-		Locale:          LocaleZH,
-		Theme:           ThemeLight,
-		Autostart:       false,
-		MinimizeToTray:  true,
-		PreventSleepMac: false,
-		Port:            8088,
+		Locale:         LocaleZH,
+		Autostart:      false,
+		MinimizeToTray: true,
+		PreventSleep:   false,
+		Port:           8088,
 	}
 }
 
@@ -74,14 +65,18 @@ func loadSettings() Settings {
 		return s
 	}
 	_ = json.Unmarshal(data, &s)
+	var legacy struct {
+		PreventSleepMac bool `json:"preventSleepMac"`
+	}
+	_ = json.Unmarshal(data, &legacy)
+	if !s.PreventSleep {
+		s.PreventSleep = legacy.PreventSleepMac
+	}
 	if s.Port == 0 {
 		s.Port = 8088
 	}
 	if s.Locale != LocaleEN {
 		s.Locale = LocaleZH
-	}
-	if s.Theme != ThemeDark {
-		s.Theme = ThemeLight
 	}
 	return s
 }

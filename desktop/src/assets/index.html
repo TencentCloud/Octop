@@ -1,190 +1,284 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Octop</title>
-  <script type="module" src="/wails/runtime.js"></script>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0f1115; color: #e8eaed; }
-    body.light { background: #f6f7f9; color: #1a1d23; }
-    .wrap { max-width: 560px; margin: 20px auto; padding: 0 22px; }
-    h1 { font-size: 1.4rem; font-weight: 600; }
-    .status { opacity: .8; min-height: 1.4em; margin: 12px 0 28px; }
-    .row { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
-    .row small { display: block; opacity: .65; margin-top: 4px; }
-    select, button { font: inherit; }
-    .actions { display: flex; gap: 10px; margin-top: 20px; }
-    .actions button { flex: 1; padding: 9px 12px; border: 0; border-radius: 8px; cursor: pointer; }
-    .actions .primary { background: #1677ff; color: white; }
-    .loading { min-height: 420px; display: grid; place-content: center; justify-items: center; text-align: center; }
-    .loading img { width: 78px; height: 78px; border-radius: 18px; box-shadow: 0 14px 38px rgba(255, 45, 55, .25); }
-    .spinner { width: 28px; height: 28px; margin-top: 24px; border: 3px solid color-mix(in srgb, currentColor 18%, transparent); border-top-color: #ff3545; border-radius: 50%; animation: spin .8s linear infinite; }
-    .loading .status { margin: 14px 0 0; }
-    .loading small { max-width: 320px; margin-top: 8px; opacity: .55; line-height: 1.5; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .hidden { display: none; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="loading" id="loading-panel">
-      <img src="/tray-icon.png" alt="Octop" />
-      <div class="spinner" aria-hidden="true"></div>
-      <p class="status" id="status">正在启动，请稍候…</p>
-      <small>正在检查运行环境，可能需要几分钟。</small>
-    </div>
-
-    <div id="settings-panel" class="hidden">
-    <h1 id="title">Octop 设置</h1>
-    <div class="row">
-      <div>
-        <div id="l-lang">语言 / Language</div>
-        <small id="h-lang">选择偏好语言 / Choose your preferred language</small>
-      </div>
-      <select id="locale">
-        <option value="zh">中文</option>
-        <option value="en">English</option>
-      </select>
-    </div>
-    <div class="row">
-      <div>
-        <div id="l-theme">深色主题</div>
-        <small id="h-theme">切换明暗主题</small>
-      </div>
-      <input type="checkbox" id="theme" />
-    </div>
-    <div class="row">
-      <div>
-        <div id="l-auto">开机启动</div>
-        <small id="h-auto">登录系统后自动启动</small>
-      </div>
-      <input type="checkbox" id="autostart" />
-    </div>
-    <div class="row">
-      <div>
-        <div id="l-tray">最小化到托盘</div>
-        <small id="h-tray">点击最小化时隐藏窗口并保留在系统托盘（关闭窗口仍会进入托盘）</small>
-      </div>
-      <input type="checkbox" id="tray" />
-    </div>
-    <div class="row mac-only" id="mac-row">
-      <div>
-        <div id="l-sleep">防止系统休眠（仅 macOS）</div>
-        <small id="h-sleep">启用后将保持系统唤醒（等效 caffeinate -dimsu）</small>
-      </div>
-      <input type="checkbox" id="sleep" />
-    </div>
-    <div class="actions">
-      <button class="primary" id="show-main">显示 Octop</button>
-      <button id="quit">退出</button>
-    </div>
-    </div>
-  </div>
-  <script type="module">
-    import { Call, Events } from "/wails/runtime.js";
-
-    const copy = {
-      zh: {
-        statusWait: "正在启动…",
-        lang: "语言",
-        langH: "选择偏好语言 / Choose your preferred language",
-        theme: "深色主题",
-        themeH: "切换明暗主题",
-        auto: "开机启动",
-        autoH: "登录系统后自动启动",
-        tray: "最小化到托盘",
-        trayH: "点击最小化时隐藏窗口并保留在系统托盘（关闭窗口仍会进入托盘）",
-        sleep: "防止系统休眠（仅 macOS）",
-        sleepH: "启用后将保持系统唤醒（等效 caffeinate -dimsu）",
-        showMain: "显示 Octop",
-        quit: "退出",
-      },
-      en: {
-        statusWait: "Starting…",
-        lang: "Language",
-        langH: "Choose your preferred language",
-        theme: "Dark theme",
-        themeH: "Toggle light / dark theme",
-        auto: "Launch at login",
-        autoH: "Start automatically after you sign in",
-        tray: "Minimize to tray",
-        trayH: "Hiding on minimize keeps Octop in the tray (closing the window also goes to tray)",
-        sleep: "Prevent sleep (macOS only)",
-        sleepH: "Keeps the system awake (equivalent to caffeinate -dimsu)",
-        showMain: "Show Octop",
-        quit: "Quit",
-      },
-    };
-
-    function applyCopy(locale) {
-      const t = copy[locale] || copy.zh;
-      document.getElementById("l-lang").textContent = t.lang;
-      document.getElementById("h-lang").textContent = t.langH;
-      document.getElementById("l-theme").textContent = t.theme;
-      document.getElementById("h-theme").textContent = t.themeH;
-      document.getElementById("l-auto").textContent = t.auto;
-      document.getElementById("h-auto").textContent = t.autoH;
-      document.getElementById("l-tray").textContent = t.tray;
-      document.getElementById("h-tray").textContent = t.trayH;
-      document.getElementById("l-sleep").textContent = t.sleep;
-      document.getElementById("h-sleep").textContent = t.sleepH;
-      document.getElementById("show-main").textContent = t.showMain;
-      document.getElementById("quit").textContent = t.quit;
-      document.body.classList.toggle("light", document.getElementById("theme").checked === false);
-    }
-
-    async function call(name, ...args) {
-      return Call.ByName("main.App." + name, ...args);
-    }
-
-    function current() {
-      return {
-        locale: document.getElementById("locale").value,
-        theme: document.getElementById("theme").checked ? "dark" : "light",
-        autostart: document.getElementById("autostart").checked,
-        minimizeToTray: document.getElementById("tray").checked,
-        preventSleepMac: document.getElementById("sleep").checked,
-      };
-    }
-
-    async function persist() {
-      const s = await call("GetSettings");
-      const next = { ...s, ...current() };
-      await call("SaveSettings", next);
-      applyCopy(next.locale);
-    }
-
-    const settingsMode = new URLSearchParams(window.location.search).get("settings") === "1";
-    const s = await call("GetSettings");
-    document.getElementById("status").textContent = copy[s.locale || "zh"].statusWait;
-
-    if (settingsMode) {
-      const plat = await call("Platform");
-      document.getElementById("loading-panel").classList.add("hidden");
-      document.getElementById("title").textContent = s.locale === "en" ? "Octop Settings" : "Octop 设置";
-      document.getElementById("settings-panel").classList.remove("hidden");
-      document.getElementById("status").classList.add("hidden");
-      document.getElementById("locale").value = s.locale || "zh";
-      document.getElementById("theme").checked = s.theme === "dark";
-      document.getElementById("autostart").checked = !!s.autostart;
-      document.getElementById("tray").checked = s.minimizeToTray !== false;
-      document.getElementById("sleep").checked = !!s.preventSleepMac;
-      if (!plat.darwin) document.getElementById("mac-row").classList.add("hidden");
-      applyCopy(s.locale || "zh");
-
-      for (const id of ["locale", "theme", "autostart", "tray", "sleep"]) {
-        document.getElementById(id).addEventListener("change", persist);
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octop</title>
+    <script type="module" src="/wails/runtime.js"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
       }
-      document.getElementById("show-main").addEventListener("click", () => call("ShowMain"));
-      document.getElementById("quit").addEventListener("click", () => call("Quit"));
-    }
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        margin: 0;
+        background: #0f1115;
+        color: #e8eaed;
+      }
+      body.light {
+        background: #f6f7f9;
+        color: #1a1d23;
+      }
+      .wrap {
+        max-width: 560px;
+        margin: 20px auto;
+        padding: 0 22px;
+      }
+      h1 {
+        font-size: 1.4rem;
+        font-weight: 600;
+      }
+      .status {
+        opacity: 0.8;
+        min-height: 1.4em;
+        margin: 12px 0 28px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        padding: 14px 0;
+        border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+      }
+      .row small {
+        display: block;
+        opacity: 0.65;
+        margin-top: 4px;
+      }
+      select,
+      button {
+        font: inherit;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .actions button {
+        flex: 1;
+        padding: 9px 12px;
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .actions .primary {
+        background: #1677ff;
+        color: white;
+      }
+      .loading {
+        min-height: 420px;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        text-align: center;
+      }
+      .loading img {
+        width: 78px;
+        height: 78px;
+        border-radius: 18px;
+        box-shadow: 0 14px 38px rgba(255, 45, 55, 0.25);
+      }
+      .spinner {
+        width: 28px;
+        height: 28px;
+        margin-top: 24px;
+        border: 3px solid color-mix(in srgb, currentColor 18%, transparent);
+        border-top-color: #ff3545;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      .loading .status {
+        margin: 14px 0 0;
+      }
+      .loading small {
+        max-width: 320px;
+        margin-top: 8px;
+        opacity: 0.55;
+        line-height: 1.5;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="loading" id="loading-panel">
+        <img src="/tray-icon.png" alt="Octop" />
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="status" id="status">正在启动，请稍候…</p>
+        <small>正在检查运行环境，可能需要几分钟。</small>
+      </div>
 
-    Events.On("desktop:status", (ev) => {
-      const msg = typeof ev === "string" ? ev : (ev?.data ?? ev?.payload ?? JSON.stringify(ev));
-      document.getElementById("status").textContent = String(msg);
-    });
-  </script>
-</body>
+      <div id="settings-panel" class="hidden">
+        <h1 id="title">Octop 设置</h1>
+        <div class="row">
+          <div>
+            <div id="l-lang">语言 / Language</div>
+            <small id="h-lang"
+              >选择偏好语言 / Choose your preferred language</small
+            >
+          </div>
+          <select id="locale">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="row">
+          <div>
+            <div id="l-auto">开机启动</div>
+            <small id="h-auto">登录系统后自动启动</small>
+          </div>
+          <input type="checkbox" id="autostart" />
+        </div>
+        <div class="row">
+          <div>
+            <div id="l-tray">最小化到托盘</div>
+            <small id="h-tray"
+              >点击最小化时隐藏窗口并保留在系统托盘（关闭窗口仍会进入托盘）</small
+            >
+          </div>
+          <input type="checkbox" id="tray" />
+        </div>
+        <div class="row">
+          <div>
+            <div id="l-sleep">防止系统休眠</div>
+            <small id="h-sleep">应用运行期间阻止系统自动休眠</small>
+          </div>
+          <input type="checkbox" id="sleep" />
+        </div>
+        <div class="actions">
+          <button class="primary" id="show-main">显示 Octop</button>
+          <button id="quit">退出</button>
+        </div>
+      </div>
+    </div>
+    <script type="module">
+      import { Call, Events } from "/wails/runtime.js";
+
+      const copy = {
+        zh: {
+          statusWait: "正在启动…",
+          lang: "语言",
+          langH: "选择偏好语言 / Choose your preferred language",
+          auto: "开机启动",
+          autoH: "登录系统后自动启动",
+          tray: "最小化到托盘",
+          trayH: "点击最小化时隐藏窗口并保留在系统托盘（关闭窗口仍会进入托盘）",
+          sleep: "防止系统休眠",
+          sleepH: "应用运行期间阻止系统自动休眠",
+          showMain: "显示 Octop",
+          quit: "退出",
+        },
+        en: {
+          statusWait: "Starting…",
+          lang: "Language",
+          langH: "Choose your preferred language",
+          auto: "Launch at login",
+          autoH: "Start automatically after you sign in",
+          tray: "Minimize to tray",
+          trayH:
+            "Hiding on minimize keeps Octop in the tray (closing the window also goes to tray)",
+          sleep: "Prevent system sleep",
+          sleepH: "Keeps the system awake while Octop is running",
+          showMain: "Show Octop",
+          quit: "Quit",
+        },
+      };
+
+      function applyCopy(locale) {
+        const t = copy[locale] || copy.zh;
+        document.getElementById("l-lang").textContent = t.lang;
+        document.getElementById("h-lang").textContent = t.langH;
+        document.getElementById("l-auto").textContent = t.auto;
+        document.getElementById("h-auto").textContent = t.autoH;
+        document.getElementById("l-tray").textContent = t.tray;
+        document.getElementById("h-tray").textContent = t.trayH;
+        document.getElementById("l-sleep").textContent = t.sleep;
+        document.getElementById("h-sleep").textContent = t.sleepH;
+        document.getElementById("show-main").textContent = t.showMain;
+        document.getElementById("quit").textContent = t.quit;
+      }
+
+      async function call(name, ...args) {
+        return Call.ByName("main.App." + name, ...args);
+      }
+
+      function current() {
+        return {
+          locale: document.getElementById("locale").value,
+          autostart: document.getElementById("autostart").checked,
+          minimizeToTray: document.getElementById("tray").checked,
+          preventSleep: document.getElementById("sleep").checked,
+        };
+      }
+
+      async function persist() {
+        let savedBefore;
+        try {
+          savedBefore = await call("GetSettingsStatus");
+          const saved = await call("SaveSettings", {
+            ...savedBefore,
+            ...current(),
+          });
+          document.getElementById("autostart").checked = !!saved.autostart;
+          document.getElementById("sleep").checked = !!saved.preventSleep;
+          document.getElementById("status").classList.add("hidden");
+          applyCopy(saved.locale);
+        } catch (error) {
+          if (savedBefore) {
+            document.getElementById("autostart").checked =
+              !!savedBefore.autostart;
+            document.getElementById("sleep").checked =
+              !!savedBefore.preventSleep;
+          }
+          document.getElementById("status").textContent = String(error);
+          document.getElementById("status").classList.remove("hidden");
+        }
+      }
+
+      const settingsMode =
+        new URLSearchParams(window.location.search).get("settings") === "1";
+      const s = await call("GetSettingsStatus");
+      document.getElementById("status").textContent =
+        copy[s.locale || "zh"].statusWait;
+
+      if (settingsMode) {
+        document.getElementById("loading-panel").classList.add("hidden");
+        document.getElementById("title").textContent =
+          s.locale === "en" ? "Octop Settings" : "Octop 设置";
+        document.getElementById("settings-panel").classList.remove("hidden");
+        document.getElementById("status").classList.add("hidden");
+        document.getElementById("locale").value = s.locale || "zh";
+        document.getElementById("autostart").checked = !!s.autostart;
+        document.getElementById("tray").checked = s.minimizeToTray !== false;
+        document.getElementById("sleep").checked = !!s.preventSleep;
+        applyCopy(s.locale || "zh");
+
+        for (const id of ["locale", "autostart", "tray", "sleep"]) {
+          document.getElementById(id).addEventListener("change", persist);
+        }
+        document
+          .getElementById("show-main")
+          .addEventListener("click", () => call("ShowMain"));
+        document
+          .getElementById("quit")
+          .addEventListener("click", () => call("Quit"));
+      }
+
+      Events.On("desktop:status", (ev) => {
+        const msg =
+          typeof ev === "string"
+            ? ev
+            : ev?.data ?? ev?.payload ?? JSON.stringify(ev);
+        document.getElementById("status").textContent = String(msg);
+      });
+    </script>
+  </body>
 </html>

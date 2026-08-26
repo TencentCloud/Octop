@@ -8,6 +8,13 @@ import (
 	"strconv"
 )
 
+func mustEnv(cmd *exec.Cmd, extra map[string]string) {
+	cmd.Env = os.Environ()
+	for key, value := range extra {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+}
+
 func startOctop(root string, port int) (*exec.Cmd, error) {
 	py := pythonExe(root)
 	launch := filepath.Join(root, "launch.py")
