@@ -157,6 +157,7 @@ func (a *App) showDashboard(base string) {
 		return
 	}
 	a.window.SetURL(base)
+	a.scheduleDragOverlay()
 	s := a.store.get()
 	go func() {
 		time.Sleep(800 * time.Millisecond)
@@ -180,6 +181,54 @@ func (a *App) showWindow() {
 	}
 	a.window.Show()
 	a.window.Focus()
+}
+
+func (a *App) installDragOverlay() {
+	if a.window == nil {
+		return
+	}
+	a.window.ExecJS(`(function(){
+		if (!document.body || !window._wails || typeof window._wails.invoke !== 'function') return;
+		var bar = document.getElementById('octop-window-drag-overlay');
+		if (!bar) {
+			bar = document.createElement('div');
+			bar.id = 'octop-window-drag-overlay';
+			bar.setAttribute('aria-hidden', 'true');
+			bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:32px;z-index:2147483647;background:transparent;user-select:none;';
+			document.body.appendChild(bar);
+		}
+		if (bar.dataset.octopDragReady === '1') return;
+		bar.dataset.octopDragReady = '1';
+		var armed = false, startX = 0, startY = 0;
+		bar.addEventListener('mousedown', function(event) {
+			if (event.button !== 0) return;
+			armed = true;
+			startX = event.screenX;
+			startY = event.screenY;
+		}, true);
+		window.addEventListener('mousemove', function(event) {
+			if (!armed) return;
+			if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) < 4) return;
+			armed = false;
+			window._wails.invoke('wails:drag');
+		}, true);
+		window.addEventListener('mouseup', function() { armed = false; }, true);
+		bar.addEventListener('dblclick', function(event) {
+			event.preventDefault();
+			event.stopPropagation();
+			armed = false;
+			window._wails.invoke('wails:event:emit:desktop:toggle-maximise');
+		}, true);
+	})();`)
+}
+
+func (a *App) scheduleDragOverlay() {
+	go func() {
+		for range 40 {
+			time.Sleep(250 * time.Millisecond)
+			a.installDragOverlay()
+		}
+	}()
 }
 
 func (a *App) requestQuit() {
@@ -217,14 +266,22 @@ func main() {
 	api.app = app
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Octop",
-		Width:            1200,
-		Height:           800,
-		URL:              "/",
-		Frameless:        true,
-		BackgroundColour: application.NewRGB(15, 17, 21),
+		Title:                "Octop",
+		Width:                1200,
+		Height:               800,
+		URL:                  "/",
+		Frameless:            true,
+		AllowSimpleEventEmit: true,
+		BackgroundColour:     application.NewRGB(15, 17, 21),
 	})
 	api.window = win
+	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
+		win.ToggleMaximise()
+	})
+	installDragOverlay := func(_ *application.WindowEvent) { api.scheduleDragOverlay() }
+	win.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, installDragOverlay)
+	win.OnWindowEvent(events.Windows.WebViewNavigationCompleted, installDragOverlay)
+	win.OnWindowEvent(events.Linux.WindowLoadFinished, installDragOverlay)
 	settingsWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Octop 设置",
 		Width:            400,
@@ -271,6 +328,7 @@ func main() {
 	api.applyAutostart(store.get().Autostart)
 	api.sleep.set(store.get().PreventSleepMac)
 
+	api.scheduleDragOverlay()
 	go api.boot()
 
 	if err := app.Run(); err != nil {
