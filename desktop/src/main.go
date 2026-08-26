@@ -21,6 +21,8 @@ var assets embed.FS
 //go:embed assets/tray-icon.png
 var trayIcon []byte
 
+const trayDoubleClick = 400 * time.Millisecond
+
 // App is the Wails service bound to the shell UI.
 type App struct {
 	app      *application.App
@@ -30,6 +32,10 @@ type App struct {
 	cmd      *exec.Cmd
 	mu       sync.Mutex
 	quitting bool
+
+	trayClickMu    sync.Mutex
+	lastTrayClick  time.Time
+	trayClickTimer *time.Timer
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -197,17 +203,51 @@ func (a *App) hideToTray() {
 	if a.window == nil {
 		return
 	}
-	if a.store.get().MinimizeToTray {
-		a.window.Hide()
-	}
+	a.window.Hide()
 }
 
 func (a *App) showWindow() {
 	if a.window == nil {
 		return
 	}
+	if a.window.IsMinimised() {
+		a.window.UnMinimise()
+	}
 	a.window.Show()
 	a.window.Focus()
+}
+
+func (a *App) toggleMainWindow() {
+	if a.window == nil {
+		return
+	}
+	if a.window.IsVisible() && !a.window.IsMinimised() {
+		a.hideToTray()
+		return
+	}
+	a.showWindow()
+}
+
+func (a *App) onTrayLeftClick() {
+	a.trayClickMu.Lock()
+	defer a.trayClickMu.Unlock()
+	if a.trayClickTimer != nil {
+		a.trayClickTimer.Stop()
+		a.trayClickTimer = nil
+	}
+	now := time.Now()
+	if !a.lastTrayClick.IsZero() && now.Sub(a.lastTrayClick) < trayDoubleClick {
+		a.lastTrayClick = time.Time{}
+		go a.toggleMainWindow()
+		return
+	}
+	a.lastTrayClick = now
+	a.trayClickTimer = time.AfterFunc(trayDoubleClick, func() {
+		a.trayClickMu.Lock()
+		a.trayClickTimer = nil
+		a.trayClickMu.Unlock()
+		a.showWindow()
+	})
 }
 
 func (a *App) installDragOverlay() {
@@ -286,6 +326,9 @@ func main() {
 		Windows: application.WindowsOptions{
 			DisableQuitOnLastWindowClosed: true,
 		},
+		Linux: application.LinuxOptions{
+			DisableQuitOnLastWindowClosed: true,
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
@@ -299,7 +342,7 @@ func main() {
 		URL:                  "/",
 		Frameless:            true,
 		AllowSimpleEventEmit: true,
-		BackgroundColour:     application.NewRGB(15, 17, 21),
+		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
@@ -318,13 +361,13 @@ func main() {
 		Frameless:        true,
 		AlwaysOnTop:      true,
 		DisableResize:    true,
-		BackgroundColour: application.NewRGB(15, 17, 21),
+		BackgroundColour: application.NewRGB(255, 255, 255),
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: true,
 		},
 	})
 
-	win.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
+	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		api.mu.Lock()
 		quit := api.quitting
 		api.mu.Unlock()
@@ -335,9 +378,11 @@ func main() {
 		api.hideToTray()
 	})
 	win.OnWindowEvent(events.Common.WindowMinimise, func(_ *application.WindowEvent) {
-		api.hideToTray()
+		if api.store.get().MinimizeToTray {
+			api.hideToTray()
+		}
 	})
-	settingsWin.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
+	settingsWin.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		e.Cancel()
 		settingsWin.Hide()
 	})
@@ -349,7 +394,7 @@ func main() {
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("Octop")
 	tray.AttachWindow(settingsWin).WindowOffset(6)
-	tray.OnClick(func() { api.showWindow() })
+	tray.OnClick(func() { api.onTrayLeftClick() })
 	tray.OnRightClick(func() { tray.ShowWindow() })
 
 	if _, err := api.setAutostart(store.get().Autostart); err != nil {
