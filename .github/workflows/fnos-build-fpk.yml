@@ -5,12 +5,12 @@ name: Build Octop FPK (template)
 # # then publishes GitHub releases (fixed version + rolling latest).
 # #
 # # To enable on your fork:
-# #   1. Replace ghcr.io/TencentCloud/octop with your own image namespace (or fork a copy).
+# #   1. Replace ghcr.io/jubaoliang/octop with your own image namespace (or fork a copy).
 # #   2. Optionally add a push trigger below (e.g. branches: [main]) so a rebuild happens
 # #      automatically on every upstream sync. It is intentionally workflow_dispatch-only
 # #      here so it never runs on the upstream repository.
 # #
-#   image  job：从仓库源码构建 Octop Docker 镜像，推送到 GHCR（ghcr.io/TencentCloud/octop:vanilla）
+#   image  job：从仓库源码构建 Octop Docker 镜像，推送到 GHCR（ghcr.io/jubaoliang/octop:vanilla）
 #   fpk    job：构建「Docker 版」飞牛安装包 Fnos-octop-vanilla-<ver>-<iter>.fpk（依赖 image，确保镜像已就绪）
 #   native job：构建「本地版（非 Docker）」飞牛安装包 Fnos-octop-vanilla-native-<ver>-<iter>.fpk。
 #               不内置 Python 运行时（依赖飞牛应用商店 Python 3.12），
@@ -99,8 +99,9 @@ jobs:
           file: fnos/docker/Dockerfile
           push: true
           tags: |
-            ghcr.io/TencentCloud/octop:vanilla
-            ghcr.io/TencentCloud/octop:vanilla-v${{ needs.version.outputs.version }}
+            ghcr.io/jubaoliang/octop:latest
+            ghcr.io/jubaoliang/octop:vanilla
+            ghcr.io/jubaoliang/octop:vanilla-v${{ needs.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -304,7 +305,7 @@ jobs:
             echo "## 安装说明"
             echo ""
             echo "1. 飞牛应用中心 → 设置 → 手动安装应用，选择对应 .fpk。"
-            echo "2. Docker 版 **Fnos-octop-vanilla-${VER}-${ITER}.fpk**（约 80KB）：飞牛自动从 GHCR 拉取镜像运行，镜像为 \\"ghcr.io/TencentCloud/octop:vanilla\\"。"
+            echo "2. Docker 版 **Fnos-octop-vanilla-${VER}-${ITER}.fpk**（约 80KB）：飞牛自动从 GHCR 拉取镜像运行，镜像为 \\"ghcr.io/jubaoliang/octop:vanilla\\"。"
             echo "3. 本地版 **Fnos-octop-vanilla-native-${VER}-${ITER}.fpk**（约 200MB）：非 Docker，原生运行在飞牛主机；安装时自动关联系统 Python 3.12 开发工具；浏览器、远程桌面等附加组件在 Octop 应用内按需安装。"
             echo ""
             echo "---"

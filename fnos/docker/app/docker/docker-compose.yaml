@@ -1,6 +1,6 @@
 services:
   octop:
-    image: ghcr.io/TencentCloud/octop:latest
+    image: ghcr.io/jubaoliang/octop:latest
     container_name: octop
     restart: unless-stopped
     pull_policy: always

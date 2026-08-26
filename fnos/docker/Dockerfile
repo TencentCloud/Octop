@@ -7,7 +7,7 @@
 #   - desktop  （mss / pynput / pillow，桌面控制附加组件）
 #
 # 构建上下文必须为仓库根目录（fnpack / CI 中以仓库根为 context）：
-#   docker build -f fnos/docker/Dockerfile -t ghcr.io/TencentCloud/octop:latest .
+#   docker build -f fnos/docker/Dockerfile -t ghcr.io/jubaoliang/octop:latest .
 #
 # 国内加速（可选 build-arg）：
 #   PIP_INDEX_URL / PIP_TRUSTED_HOST / NPM_REGISTRY / APT_MIRROR
