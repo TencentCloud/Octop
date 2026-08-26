@@ -357,7 +357,25 @@ def _run_fpk_upgrade(site_packages: str, *, verbose: bool = False) -> UpgradeRes
         return result.returncode, snippet
 
     python_exe = sys.executable
-    for mirror in _MIRRORS:
+    installer = detect_installer()  # uv 优先：pip 对 orcakit-harness-agent[all] 依赖树解析会卡死
+
+    def _build_cmd(index_url: str = "") -> list[str]:
+        if installer == "uv":
+            cmd = [
+                find_uv_executable(),
+                "pip",
+                "install",
+                "--python",
+                python_exe,
+                "--target",
+                site_packages,
+                "--upgrade-package",
+                _PACKAGE_NAME,
+            ]
+            if index_url:
+                cmd.extend(["--index-url", index_url])
+            cmd.append(_PACKAGE_NAME)
+            return cmd
         cmd = [
             python_exe,
             "-m",
@@ -368,11 +386,14 @@ def _run_fpk_upgrade(site_packages: str, *, verbose: bool = False) -> UpgradeRes
             "only-if-needed",
             "--target",
             site_packages,
-            "-i",
-            mirror,
-            _PACKAGE_NAME,
         ]
-        rc, err_snippet = _run_install(cmd, mirror)
+        if index_url:
+            cmd.extend(["-i", index_url])
+        cmd.append(_PACKAGE_NAME)
+        return cmd
+
+    for mirror in _MIRRORS:
+        rc, err_snippet = _run_install(_build_cmd(mirror), mirror)
         if rc != 0:
             mirror_errors.append(f"{mirror}: {err_snippet}")
             continue
@@ -382,19 +403,7 @@ def _run_fpk_upgrade(site_packages: str, *, verbose: bool = False) -> UpgradeRes
         # 镜像装到了同版本/旧版（同步滞后）：继续尝试下一个镜像
         mirror_errors.append(f"{mirror}: {res.error or 'version unchanged'}")
 
-    cmd = [
-        python_exe,
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "--upgrade-strategy",
-        "only-if-needed",
-        "--target",
-        site_packages,
-        _PACKAGE_NAME,
-    ]
-    rc, err_snippet = _run_install(cmd, "pypi.org")
+    rc, err_snippet = _run_install(_build_cmd(), "pypi.org")
     if rc != 0:
         mirror_errors.append(f"pypi.org: {err_snippet or 'unknown error'}")
         return UpgradeResult(
