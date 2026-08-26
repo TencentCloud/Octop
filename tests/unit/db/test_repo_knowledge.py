@@ -236,3 +236,63 @@ def test_migration_007_rebuilds_text_primary_keys(tmp_path: Path) -> None:
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
     assert "knowledge_base_members" not in tables
+
+
+def test_rename_folder_updates_descendant_paths(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    folder = repo.ensure_folder(kb.id, "notes/law")
+    doc = repo.create_document(
+        kb_id=kb.id,
+        filename="act.md",
+        path="notes/law/act.md",
+        content_type="text/markdown",
+        byte_size=4,
+    )
+    renamed = repo.rename_document(kb.id, folder.id, "legal")
+    assert renamed is not None
+    assert renamed.is_dir is True
+    assert renamed.filename == "legal"
+    assert renamed.path == "notes/legal"
+
+    children = repo.list_children(kb.id, "notes")
+    assert {row.path for row in children} == {"notes/legal"}
+    nested = repo.list_children(kb.id, "notes/legal")
+    assert [row.path for row in nested] == ["notes/legal/act.md"]
+    moved = repo.get_document(doc.id)
+    assert moved is not None
+    assert moved.path == "notes/legal/act.md"
+    assert moved.filename == "act.md"
+
+
+def test_rename_root_folder(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    folder = repo.ensure_folder(kb.id, "notes")
+    renamed = repo.rename_document(kb.id, folder.id, "chapters")
+    assert renamed is not None
+    assert renamed.path == "chapters"
+    assert renamed.filename == "chapters"
+
+
+def test_rename_file_updates_path_and_filename(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    doc = repo.create_document(
+        kb_id=kb.id,
+        filename="readme.md",
+        content_type="text/markdown",
+        byte_size=4,
+    )
+    renamed = repo.rename_document(kb.id, doc.id, "guide.md")
+    assert renamed is not None
+    assert renamed.filename == "guide.md"
+    assert renamed.path == "guide.md"
+
+
+def test_rename_document_missing_or_wrong_kb_returns_none(
+    repo: KnowledgeRepo, owner_id: int
+) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    other = repo.create_base(owner_user_id=owner_id, name="Other")
+    folder = repo.ensure_folder(kb.id, "notes")
+    assert repo.rename_document("missing-kb", folder.id, "x") is None
+    assert repo.rename_document(other.id, folder.id, "x") is None
+    assert repo.rename_document(kb.id, "missing-doc", "x") is None

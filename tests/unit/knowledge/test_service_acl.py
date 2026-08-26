@@ -187,3 +187,73 @@ def test_upload_enforces_document_limit(service: KnowledgeService) -> None:
             content_type="text/markdown",
             content=b"x",
         )
+
+
+def test_rename_folder_rewrites_descendant_paths(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    folder = service.create_folder(kb.id, actor_user_id=owner, path="notes/law")
+    doc = service.upload_document(
+        kb.id,
+        actor_user_id=owner,
+        filename="act.md",
+        content_type="text/markdown",
+        content=b"x",
+        path="notes/law/act.md",
+    )
+
+    renamed = service.rename_document(kb.id, folder.id, actor_user_id=owner, new_name="legal")
+    assert renamed.path == "notes/legal"
+    assert renamed.filename == "legal"
+    assert service._services.knowledge_repo.get_document(doc.id).path == "notes/legal/act.md"
+
+
+def test_rename_rejects_name_collision(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    repo = service._services.knowledge_repo
+    repo.ensure_folder(kb.id, "a")
+    repo.ensure_folder(kb.id, "b")
+
+    with pytest.raises(ValueError, match="already exists"):
+        service.rename_document(
+            kb.id,
+            repo.get_document_by_path(kb.id, "a").id,
+            actor_user_id=owner,
+            new_name="b",
+        )
+
+
+def test_rename_rejects_name_with_separator(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    folder = service.create_folder(kb.id, actor_user_id=owner, path="a")
+
+    with pytest.raises(ValueError, match="invalid knowledge document name"):
+        service.rename_document(kb.id, folder.id, actor_user_id=owner, new_name="b/c")
+
+
+def test_rename_same_name_is_idempotent(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    folder = service.create_folder(kb.id, actor_user_id=owner, path="a")
+
+    result = service.rename_document(kb.id, folder.id, actor_user_id=owner, new_name="a")
+    assert result.id == folder.id
+    assert result.path == "a"
+    assert service._services.knowledge_repo.list_documents(kb.id) == [result]
+
+
+def test_shared_reader_cannot_rename(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    viewer = users.create(username="viewer", password_hash="h", role="user")
+    kb = service._services.knowledge_repo.create_base(owner_user_id=owner, name="Docs", shared=True)
+    folder = service._services.knowledge_repo.ensure_folder(kb.id, "a")
+
+    with pytest.raises(PermissionError, match="write"):
+        service.rename_document(kb.id, folder.id, actor_user_id=viewer, new_name="b")

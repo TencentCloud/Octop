@@ -47,7 +47,7 @@ export const ConnectorCard = memo(function ConnectorCard({
       <div className={styles.typeCardBody}>
         <div className={styles.typeCardHeader}>
           <div className={styles.typeCardIconLarge}>
-            <ConnectorLogo kind={entry.kind} size={40} />
+            <ConnectorLogo kind={entry.kind} icon={entry.icon} size={40} />
           </div>
           <div className={styles.typeCardTitle}>{entry.name}</div>
         </div>

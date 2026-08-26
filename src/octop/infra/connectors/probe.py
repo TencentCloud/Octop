@@ -16,7 +16,11 @@ from octop.infra.connectors.builder import (
     normalize_weiyun_mcp_token,
     validate_create_credentials,
 )
-from octop.infra.connectors.catalog import ConnectorCatalogEntry, get_catalog_entry
+from octop.infra.connectors.catalog import (
+    ConnectorCatalogEntry,
+    get_catalog_entry,
+    is_mcp_oauth_remote,
+)
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.connectors.gateway.registry import probe_gateway_credentials
 from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request
@@ -263,8 +267,6 @@ def _probe_youdao_note_http_error(exc: httpx.HTTPStatusError) -> dict[str, Any]:
     }
 
 
-_STREAMABLE_HTTP_PROBE_KINDS = frozenset({"notion"})
-
 # Connectors whose tool list is known statically (from the catalog
 # ``allowed_tools``); a failing ``tools/list`` during probe is tolerated for
 # these because :func:`static_probe_tools` supplies the fallback list.
@@ -357,7 +359,7 @@ async def probe_connector(
     headers = dict(spec.get("headers") or {})
     url = str(spec["url"])
 
-    if entry.kind in _STREAMABLE_HTTP_PROBE_KINDS:
+    if is_mcp_oauth_remote(entry):
         return await probe_streamable_http_mcp(url, headers, kind=entry.kind)
 
     try:

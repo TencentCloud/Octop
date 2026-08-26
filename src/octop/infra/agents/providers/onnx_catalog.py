@@ -98,6 +98,14 @@ def _fastembed_meta_map() -> dict[str, dict[str, Any]]:
     return out
 
 
+def _hf_repo_from_sources(sources: object) -> str | None:
+    """Read the Hugging Face repo id from fastembed ``sources`` (dict or ModelSource)."""
+    raw = sources.get("hf") if isinstance(sources, dict) else getattr(sources, "hf", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
 def get_onnx_model_meta(model_id: str) -> dict[str, Any]:
     """Return size / HF source metadata for a model id."""
     meta = _fastembed_meta_map().get(model_id) or {}
@@ -109,10 +117,7 @@ def get_onnx_model_meta(model_id: str) -> dict[str, Any]:
         size_gb = None
     if size_gb is None:
         size_gb = _FALLBACK_SIZE_GB.get(model_id)
-    sources = meta.get("sources") if isinstance(meta.get("sources"), dict) else {}
-    hf_source = sources.get("hf") if isinstance(sources, dict) else None
-    if not isinstance(hf_source, str) or not hf_source.strip():
-        hf_source = _HF_SOURCE_FALLBACK.get(model_id)
+    hf_source = _hf_repo_from_sources(meta.get("sources")) or _HF_SOURCE_FALLBACK.get(model_id)
     return {
         "id": model_id,
         "size_gb": size_gb,
@@ -135,10 +140,7 @@ def list_onnx_catalog_models() -> list[dict[str, Any]]:
                 size_gb = float(size) if size is not None else _FALLBACK_SIZE_GB.get(model_id)
             except (TypeError, ValueError):
                 size_gb = _FALLBACK_SIZE_GB.get(model_id)
-            sources = item.get("sources") if isinstance(item.get("sources"), dict) else {}
-            hf = sources.get("hf") if isinstance(sources, dict) else None
-            if not isinstance(hf, str) or not hf.strip():
-                hf = _HF_SOURCE_FALLBACK.get(model_id)
+            hf = _hf_repo_from_sources(item.get("sources")) or _HF_SOURCE_FALLBACK.get(model_id)
             return _model_entry(
                 model_id,
                 recommended=rec,

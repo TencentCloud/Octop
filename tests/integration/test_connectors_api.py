@@ -32,6 +32,8 @@ async def test_catalog(env):
         "notion",
         "tencent-news",
         "wechat-reading",
+        "tencent-ardot",
+        "dida365",
         "youdao-note",
         "tencent-weiyun",
         "qq-music",

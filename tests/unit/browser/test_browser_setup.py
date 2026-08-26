@@ -116,6 +116,7 @@ def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")
     path = ensure_chrome_runtime_env()
+    # Linux uses /tmp/<uid>; other POSIX (e.g. macOS) uses tempfile + pid.
     assert path == _runtime_dir_for_uid()
     assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
@@ -150,8 +151,9 @@ def test_temp_scope_token_uses_username_when_getuid_missing(
     from octop.infra.browser import setup as browser_setup
 
     # Simulate Windows: getuid absent / not callable.
-    # raising=False: Windows os has no getuid (frozen module AttributeError otherwise).
-    monkeypatch.setattr(browser_setup.os, "getuid", object(), raising=False)
+    # Real Windows has no os.getuid — setattr(raising=True) would raise.
+    if hasattr(browser_setup.os, "getuid"):
+        monkeypatch.setattr(browser_setup.os, "getuid", object())
     monkeypatch.setenv("USERNAME", "OctopUser")
     monkeypatch.delenv("USER", raising=False)
 

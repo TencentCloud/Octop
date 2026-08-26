@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from octop.infra.connectors.catalog import get_catalog_entry
+from octop.infra.connectors.catalog import get_catalog_entry, get_mcp_oauth_remote
 from octop.infra.connectors.oauth.mcp import (
     build_authorize_url,
     exchange_authorization_code,
@@ -14,18 +14,36 @@ from octop.infra.connectors.oauth.mcp import (
     mcp_oauth_kinds,
     refresh_access_token,
     register_dynamic_client,
+    resource_for_kind,
 )
 from octop.infra.connectors.oauth.pkce import new_pkce_pair
 
 OAUTH_CTX_PREFIX = "connector.oauth.ctx."
 
-_BUILTIN_OAUTH_KINDS = frozenset({"notion"})
-
 _AUTH_CODE_PASSTHROUGH_KINDS: frozenset[str] = frozenset()
 
 
+def _scope_from_metadata(metadata: dict[str, Any]) -> str | None:
+    scopes = metadata.get("scopes_supported")
+    if isinstance(scopes, list) and scopes:
+        return " ".join(str(s) for s in scopes if s)
+    return None
+
+
+def _scopes_for_kind(kind: str, metadata: dict[str, Any]) -> str | None:
+    """Prefer AS metadata scopes; fall back to catalog ``oauth_scopes``."""
+    from_meta = _scope_from_metadata(metadata)
+    if from_meta:
+        return from_meta
+    entry = get_mcp_oauth_remote(kind)
+    if entry is None:
+        return None
+    scopes = (entry.oauth_scopes or "").strip()
+    return scopes or None
+
+
 def oauth_supported_kinds() -> frozenset[str]:
-    return _BUILTIN_OAUTH_KINDS
+    return mcp_oauth_kinds() | _AUTH_CODE_PASSTHROUGH_KINDS
 
 
 def save_oauth_ctx(settings_repo: Any, state_id: str, ctx: dict[str, Any]) -> None:
@@ -46,16 +64,14 @@ def delete_oauth_ctx(settings_repo: Any, state_id: str) -> None:
 
 def oauth_ready_for_kind(kind: str, settings_repo: Any) -> bool:
     del settings_repo
-    if kind == "notion":
+    if get_mcp_oauth_remote(kind) is not None:
         return True
     return kind in _AUTH_CODE_PASSTHROUGH_KINDS
 
 
 def oauth_mode_for_kind(kind: str) -> str | None:
-    if kind == "notion":
+    if get_mcp_oauth_remote(kind) is not None:
         return "dynamic"
-    if kind in _BUILTIN_OAUTH_KINDS:
-        return "configured"
     return None
 
 
@@ -120,12 +136,15 @@ async def start_oauth(
         reg = await register_dynamic_client(metadata, issuer=issuer, redirect_uri=redirect_uri)
         client_id = str(reg["client_id"])
         client_secret = str(reg.get("client_secret") or "") or None
+        resource = resource_for_kind(kind)
         url = build_authorize_url(
             metadata,
             client_id=client_id,
             redirect_uri=redirect_uri,
             state=state,
             code_challenge=challenge,
+            scope=_scopes_for_kind(kind, metadata),
+            resource=resource,
         )
         ctx = {
             "flow": "mcp",
@@ -133,6 +152,8 @@ async def start_oauth(
             "metadata": metadata,
             "client_id": client_id,
             "client_secret": client_secret,
+            "resource": resource,
+            "redirect_uri": redirect_uri,
         }
         return url, verifier, ctx
 
@@ -160,14 +181,19 @@ async def exchange_oauth_code(
         secret = str(client_secret_raw) if client_secret_raw else None
         if not client_id:
             raise ValueError("missing MCP oauth client_id")
+        resource = str(ctx.get("resource") or "") or resource_for_kind(kind)
+        # Prefer the redirect_uri used at authorize/register time — Host header
+        # drift (localhost vs 127.0.0.1) would otherwise fail the exchange.
+        exchange_redirect = str(ctx.get("redirect_uri") or "").strip() or redirect_uri
         return await exchange_authorization_code(
             metadata,
             issuer=issuer_for_kind(kind),
             client_id=client_id,
             client_secret=secret,
             code=code,
-            redirect_uri=redirect_uri,
+            redirect_uri=exchange_redirect,
             code_verifier=code_verifier,
+            resource=resource,
         )
 
     raise ValueError(f"oauth exchange not supported for {kind}")
@@ -198,6 +224,7 @@ async def refresh_oauth_credentials(
             client_id=client_id,
             client_secret=secret,
             refresh_token=refresh,
+            resource=resource_for_kind(kind),
         )
 
     return creds

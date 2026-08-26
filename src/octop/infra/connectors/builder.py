@@ -8,7 +8,11 @@ from typing import Any
 from urllib.parse import quote
 
 from octop.config import OctopConfig
-from octop.infra.connectors.catalog import ConnectorCatalogEntry, get_catalog_entry
+from octop.infra.connectors.catalog import (
+    ConnectorCatalogEntry,
+    get_catalog_entry,
+    is_mcp_oauth_remote,
+)
 from octop.infra.connectors.mail_servers import resolve_mail_servers
 from octop.infra.utils.ulid import new_ulid
 
@@ -138,16 +142,21 @@ def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> d
                 "x-api-key": api_key,
             },
         }
-    if entry.kind == "notion":
-        access_token = str(creds.get("access_token") or "")
+    if is_mcp_oauth_remote(entry):
+        access_token = str(creds.get("access_token") or creds.get("token") or "").strip()
+        mcp_url = (entry.mcp_url or "").strip()
+        if not mcp_url:
+            raise ValueError(f"connector {entry.kind} is missing mcp_url")
+        headers: dict[str, str] = {
+            **_mcp_http_headers(),
+            "Authorization": f"Bearer {access_token}",
+        }
+        if entry.mcp_user_agent:
+            headers["User-Agent"] = entry.mcp_user_agent
         return {
             "transport": "http",
-            "url": "https://mcp.notion.com/mcp",
-            "headers": {
-                **_mcp_http_headers(),
-                "Authorization": f"Bearer {access_token}",
-                "User-Agent": "octop-connector/0.1",
-            },
+            "url": mcp_url,
+            "headers": headers,
         }
     raise ValueError(f"unsupported remote connector kind: {entry.kind}")
 
@@ -191,7 +200,9 @@ def validate_create_credentials(
         return {"token": token}
 
     if entry.auth_kind == "oauth2":
-        access_token = str(credentials.get("access_token") or "").strip()
+        access_token = str(
+            credentials.get("access_token") or credentials.get("token") or ""
+        ).strip()
         if not access_token:
             raise ValueError("access_token is required")
         out = {"access_token": access_token}

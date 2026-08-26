@@ -11,7 +11,7 @@ connector is probed only when ALL of its env vars are present; otherwise that
 single case auto-skips, so CI stays green for connectors you hold no key for.
 
 Excluded by design (need interactive / real-account auth):
-  * notion       — oauth2, requires browser authorization
+  * notion / tencent-ardot / dida365 — oauth2, requires browser authorization
   * qq-mail      — imap_app_password, requires a real mailbox + auth code
 
 Run locally::

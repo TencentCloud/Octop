@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.connectors.builder import (
     mcp_server_name,
@@ -22,6 +23,7 @@ from octop.infra.connectors.builder import (
 from octop.infra.connectors.catalog import (
     catalog_entry_to_dict,
     get_catalog_entry,
+    get_mcp_oauth_remote,
     list_catalog,
 )
 from octop.infra.connectors.custom_mcp import (
@@ -961,12 +963,12 @@ async def oauth_start(
 
     state = secrets.token_urlsafe(24)
     state_id = new_ulid()
-    base = str(request.base_url).rstrip("/")
+    base = resolve_public_base(request)
     redirect_uri = f"{base}/api/connectors/oauth/callback"
-    if kind == "notion" and _is_public_http_uri(redirect_uri):
+    if get_mcp_oauth_remote(kind) is not None and _is_public_http_uri(redirect_uri):
         raise OctopError(
             ErrorCode.CONNECTOR_OAUTH_HTTPS_REQUIRED,
-            "Notion OAuth callbacks require HTTPS for non-loopback addresses",
+            f"{kind} OAuth callbacks require HTTPS for non-loopback addresses",
         )
 
     try:
@@ -1016,7 +1018,7 @@ async def oauth_callback(
     if row is None:
         return HTMLResponse("<html><body>无效或过期的 state</body></html>", status_code=400)
 
-    base = str(request.base_url).rstrip("/")
+    base = resolve_public_base(request)
     redirect_uri = f"{base}/api/connectors/oauth/callback"
 
     try:

@@ -252,4 +252,13 @@ export const knowledgeBasesApi = {
     request<{ enqueued: number }>(`/knowledge-bases/${id}/reindex`, {
       method: "POST",
     }),
+
+  renameDocument: (id: string, documentId: string, newName: string) =>
+    request<KnowledgeDocument>(
+      `/knowledge-bases/${id}/documents/${documentId}/rename`,
+      {
+        method: "POST",
+        body: JSON.stringify({ new_name: newName }),
+      },
+    ),
 };

@@ -38,6 +38,11 @@ class PathLayout:
         out.mkdir(parents=True, exist_ok=True)
         return out
 
+    def ensure_log(self) -> Path:
+        """Create the logs directory and return ``octop.log``."""
+        self.ensure_logs_dir()
+        return self.log
+
     @property
     def config(self) -> Path:
         return self.root / "config.json"
