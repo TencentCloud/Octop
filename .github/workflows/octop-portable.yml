@@ -18,6 +18,16 @@ on:
         required: false
         default: true
         type: boolean
+      release_tag:
+        description: "GitHub Release tag to attach to (e.g. v0.9.27). Defaults to the current v* tag ref."
+        required: false
+        default: ""
+        type: string
+      attach_from_run:
+        description: "Existing workflow run ID — attach its Octop-* artifacts and skip the 6-platform rebuild"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -35,6 +45,7 @@ env:
 jobs:
   frontend:
     name: Build dashboard
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -225,28 +236,65 @@ jobs:
   release:
     name: Attach zips to GitHub Release
     needs: package
+    # always(): still run when package was skipped (attach_from_run rebuild skip).
     if: >-
-      startsWith(github.ref, 'refs/tags/v') &&
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' &&
-        github.event.inputs.attach_release == 'true'))
+      always() &&
+      !cancelled() &&
+      (needs.package.result == 'success' || needs.package.result == 'skipped') &&
+      (
+        (github.event_name == 'workflow_dispatch' &&
+         github.event.inputs.attach_from_run != '') ||
+        (startsWith(github.ref, 'refs/tags/v') &&
+         (github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' &&
+           github.event.inputs.attach_release == 'true')))
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
-      # v8 required to download archive:false artifacts from upload-artifact@v7
+      - name: Resolve release tag
+        id: rel
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.release_tag }}"
+          if [[ -z "$tag" && "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ "$tag" != v* ]]; then
+            echo "Need a v* tag (run on a version tag, or pass release_tag)." >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      # v8 required for archive:false artifacts. skip-decompress keeps the
+      # uploaded .zip/.tar.gz intact — default unzip turns portable zips into
+      # directories, so files: release-assets/* would skip them.
       - uses: actions/download-artifact@v8
         with:
           pattern: Octop-*
           path: release-assets
           merge-multiple: true
+          skip-decompress: true
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.inputs.attach_from_run || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List release assets
-        run: ls -lh release-assets/
+        run: |
+          set -euo pipefail
+          ls -lh release-assets/
+          if find release-assets -mindepth 1 -maxdepth 1 -type d | grep -q .; then
+            echo "Download extracted archives into directories; refuse incomplete attach." >&2
+            find release-assets -mindepth 1 -maxdepth 1 -print
+            exit 1
+          fi
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.rel.outputs.tag }}
           files: release-assets/*
           fail_on_unmatched_files: true
           # Upsert: works whether Release workflow already created the release.
