@@ -18,6 +18,3 @@ services:
       - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
-      # 飞牛 FPK 部署标识：禁止容器内在线升级（octop update / 面板「立即升级」），
-      # 升级请通过飞牛应用中心更新 FPK（应用中心更新时会重新拉取镜像）。
-      - OCTOP_INSTALL_MODE=fpk-docker

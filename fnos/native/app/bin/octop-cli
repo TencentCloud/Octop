@@ -60,9 +60,11 @@ export HOME="$DATA_DIR"
 export OCTOP_HOME="$DATA_DIR/.octop"
 export OCTOP_DATA_DIR="$DATA_DIR"
 
-# 飞牛 FPK 部署标识：禁止内置在线升级（octop update / 面板「立即升级」），
-# 升级请通过飞牛应用中心安装新版 FPK（见 src/octop/infra/setup/self_update.py）。
+# 飞牛 FPK 部署标识 + 打包 site-packages 路径：内置在线升级安装到此目录
+# （launcher 实际加载的位置），重启服务后即加载新版，升级真正生效
+# （见 src/octop/infra/setup/self_update.py 的 _run_fpk_upgrade）。
 export OCTOP_INSTALL_MODE="fpk-native"
+export OCTOP_FPK_SITE_PACKAGES="$SITE_PACKAGES"
 
 # 兜底：若包内 octop 未就绪，用内置核心 whl 离线安装（避免联网）
 if ! "$PY" -c "import octop" >/dev/null 2>&1; then
@@ -80,6 +82,8 @@ if id octop-native >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
         HOME="$HOME" \
         OCTOP_HOME="$OCTOP_HOME" \
         OCTOP_DATA_DIR="$OCTOP_DATA_DIR" \
+        OCTOP_INSTALL_MODE="$OCTOP_INSTALL_MODE" \
+        OCTOP_FPK_SITE_PACKAGES="$OCTOP_FPK_SITE_PACKAGES" \
         "$PY" -m octop.cli.main "$@"
 else
     exec "$PY" -m octop.cli.main "$@"
