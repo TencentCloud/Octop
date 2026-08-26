@@ -12,7 +12,11 @@ description: 为基层医生学习小助手生成专业指南更新提醒。适�
 - `../../USER.md`（脚本生成的只读摘要）
 - `../../references/compliance-boundary.md`
 - `../../references/source-policy.yaml`
+- `../../references/professional-society-source-routes.yaml`
 - `../../references/output-templates.md`
+
+只有用户订阅明确要求国际更新，或国内现行文件未覆盖对应主题时，再读取
+`../../references/international-guideline-source-routes.yaml`。
 
 ## 使用档案
 
@@ -46,6 +50,9 @@ description: 为基层医生学习小助手生成专业指南更新提醒。适�
 3. 与职称学习深度匹配。
 4. 有权威原文、发布机构和发布时间。
 5. 同一主题优先最新且当前有效的正式版本，并核对替代或废止信息。
+6. 先按科室/亚专业匹配专业学会信源路由并做限定域名增量检索；没有匹配项时才扩大到通用白名单，不得在一次提醒中遍历全部 91 个中华医学会分会。
+7. 用户要求国际补充或国内无覆盖时，可纳入国际 A 级官方正式指南，但普通主题只从 WHO、NICE、ESC、ADA、KDIGO 默认池选择最匹配的 1 站；明确属于 GINA、GOLD、ACG、EASL 等体系时直接访问对应官网。只有首站确实不覆盖时才增加第 2 站，不并行铺开。必须明确制定机构、地区适用性和版本；不得替代国内现行文件。
+8. A/B 均未取得正式原文时可做一次全网检索；只找到声明转述自权威期刊的页面时，最多作为“C级待核验线索”披露原始出处身份和未核验状态，不得列入“可靠更新”或生成精确变化要点。
 
 ## 输出边界
 
