@@ -35,7 +35,7 @@ build_octop_wheel() {
     echo "  Run: make build-frontend" >&2
   fi
   echo "[package] building octop wheel → ${wheel_dir}" >&2
-  uv build --wheel --out-dir "$wheel_dir" . >&2
+  uv build --wheel --out-dir "$wheel_dir" "$REPO_ROOT" >&2
   local whl
   whl="$(ls -1 "${wheel_dir}"/octop-*.whl 2>/dev/null | sort | tail -1 || true)"
   if [[ -z "$whl" ]]; then
@@ -103,7 +103,7 @@ assemble_one() {
 
   local req_file="${GREEN_ROOT}/requirements-${plat}.txt"
   echo "[package] ${plat}: exporting frozen deps → ${req_file}" >&2
-  uv export --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
 
   # Platform-specific pins / exclusions (see write_green_overrides in _common.sh).
   local override_file=""

@@ -37,7 +37,7 @@ green:
 	$(MAKE) -C $(REPO_ROOT) build-frontend
 	bash $(REPO_ROOT)/desktop/portable/bootstrap-runtime.sh $(GREEN_PLAT)
 	bash $(REPO_ROOT)/desktop/portable/package.sh $(GREEN_PLAT)
-	@echo "[green] Done. Zips under $(REPO_ROOT)/green/release/"
+	@echo "[green] Done. Zips under $(REPO_ROOT)/desktop/portable/release/"
 
 .PHONY: green-linux
 green-linux:
@@ -46,5 +46,10 @@ green-linux:
 
 .PHONY: clean
 clean:
-	rm -rf $(REPO_ROOT)/green
-	@echo "[green] removed $(REPO_ROOT)/green"
+	rm -rf $(REPO_ROOT)/desktop/portable/runtimes \
+		$(REPO_ROOT)/desktop/portable/wheels \
+		$(REPO_ROOT)/desktop/portable/.cache \
+		$(REPO_ROOT)/desktop/portable/release
+	rm -f $(REPO_ROOT)/desktop/portable/requirements-*.txt \
+		$(REPO_ROOT)/desktop/portable/overrides-*.txt
+	@echo "[green] removed generated files under $(REPO_ROOT)/desktop/portable"

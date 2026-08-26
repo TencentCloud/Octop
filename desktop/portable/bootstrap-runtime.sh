@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download python-build-standalone into green/runtimes/<plat>.
+# Download python-build-standalone into desktop/portable/runtimes/<plat>.
 #
 # Usage:
 #   bash desktop/portable/bootstrap-runtime.sh              # host platform

@@ -29,7 +29,6 @@ type Settings struct {
 	Autostart       bool      `json:"autostart"`
 	MinimizeToTray  bool      `json:"minimizeToTray"`
 	PreventSleepMac bool      `json:"preventSleepMac"`
-	GitHubRepo      string    `json:"githubRepo,omitempty"`
 	Port            int       `json:"port,omitempty"`
 }
 
@@ -40,16 +39,8 @@ func defaultSettings() Settings {
 		Autostart:       false,
 		MinimizeToTray:  true,
 		PreventSleepMac: false,
-		GitHubRepo:      defaultGitHubRepo(),
 		Port:            8088,
 	}
-}
-
-func defaultGitHubRepo() string {
-	if v := os.Getenv("OCTOP_DESKTOP_GITHUB_REPO"); v != "" {
-		return v
-	}
-	return "forcemeter/Octop-Agent"
 }
 
 func octopHome() string {
@@ -86,9 +77,6 @@ func loadSettings() Settings {
 	if s.Port == 0 {
 		s.Port = 8088
 	}
-	if s.GitHubRepo == "" {
-		s.GitHubRepo = defaultGitHubRepo()
-	}
 	if s.Locale != LocaleEN {
 		s.Locale = LocaleZH
 	}
@@ -109,9 +97,6 @@ func (st *settingsStore) save(next Settings) error {
 	defer st.mu.Unlock()
 	if next.Port == 0 {
 		next.Port = 8088
-	}
-	if next.GitHubRepo == "" {
-		next.GitHubRepo = defaultGitHubRepo()
 	}
 	if err := os.MkdirAll(octopHome(), 0o755); err != nil {
 		return err

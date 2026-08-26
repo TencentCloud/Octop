@@ -3,9 +3,9 @@
 
 Usage:
   python desktop/portable/verify_imports.py \\
-    --packages green/release/Octop-<plat>/packages \\
-    --requirements green/requirements-<plat>.txt \\
-    [--overrides green/overrides-<plat>.txt]
+    --packages desktop/portable/release/Octop-<plat>/packages \\
+    --requirements desktop/portable/requirements-<plat>.txt \\
+    [--overrides desktop/portable/overrides-<plat>.txt]
 """
 from __future__ import annotations
 

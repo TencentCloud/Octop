@@ -11,9 +11,9 @@ tasks:
       - go mod tidy
 
   install:frontend:deps:
-    summary: No npm frontend
+    summary: Builds the embedded-assets development server
     cmds:
-      - echo "embedded assets; skip npm"
+      - go build -o .task/devserver.exe ./cmd/devserver
 
   build:frontend:
     summary: No Vite build (assets embedded)
@@ -37,12 +37,11 @@ tasks:
       - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
 
   dev:frontend:
-    summary: Keep a process so wails3 dev background slot stays up
+    summary: Serves the embedded shell assets for Wails dev mode
+    deps:
+      - task: install:frontend:deps
     cmds:
-      - cmd: sleep 86400
-        platforms: [linux, darwin]
-      - cmd: timeout /t 86400 /nobreak
-        platforms: [windows]
+      - ./.task/devserver.exe
 
   update:build-assets:
     summary: Updates generated build assets from config.yml

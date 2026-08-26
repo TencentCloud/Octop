@@ -28,11 +28,26 @@ tasks:
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
 
   package:
-    summary: Production Windows exe
+    summary: Packages the production exe with its matching portable runtime
     deps:
       - task: build
         vars:
           PRODUCTION: "true"
+    cmds:
+      - cmd: >-
+          powershell -NoProfile -Command
+          "if (-not (Test-Path '{{.PORTABLE_ZIP}}')) { throw 'portable zip not found' };
+          Remove-Item -Recurse -Force '{{.PACKAGE_DIR}}' -ErrorAction SilentlyContinue;
+          New-Item -ItemType Directory -Force '{{.PACKAGE_DIR}}' | Out-Null;
+          Copy-Item '{{.BIN_DIR}}/{{.APP_NAME}}.exe' '{{.PACKAGE_DIR}}/';
+          Copy-Item '{{.PORTABLE_ZIP}}' '{{.PACKAGE_DIR}}/';
+          Remove-Item -Force '{{.ARCHIVE}}' -ErrorAction SilentlyContinue;
+          Compress-Archive -Path '{{.PACKAGE_DIR}}' -DestinationPath '{{.ARCHIVE}}'"
+    vars:
+      ARCH: "{{.ARCH | default ARCH}}"
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-windows-%s.zip" .ARCH)}}'
+      PACKAGE_DIR: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}'
+      ARCHIVE: '{{.PACKAGE_DIR}}.zip'
 
   run:
     cmds:

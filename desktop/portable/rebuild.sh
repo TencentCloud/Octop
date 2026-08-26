@@ -12,7 +12,9 @@ if [[ -f "${HOME}/.nvm/nvm.sh" ]]; then
 fi
 
 rm -rf src/octop/dashboard
-rm -rf green/
+rm -rf desktop/portable/runtimes desktop/portable/wheels \
+  desktop/portable/.cache desktop/portable/release
+rm -f desktop/portable/requirements-*.txt desktop/portable/overrides-*.txt
 
 make build-frontend
 make -f desktop/portable/Makefile green

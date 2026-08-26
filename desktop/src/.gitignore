@@ -1,4 +1,5 @@
 bin/
+.task/
 *.syso
 build/windows/*.syso
 build/darwin/icons.icns

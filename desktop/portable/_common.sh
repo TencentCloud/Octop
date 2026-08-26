@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # Sourced by bootstrap-runtime.sh / vendor-wheels.sh / package.sh
 
-GREEN_ROOT="${GREEN_ROOT:-${REPO_ROOT}/green}"
+GREEN_ROOT="${GREEN_ROOT:-${REPO_ROOT}/desktop/portable}"
 GREEN_RUNTIMES="${GREEN_ROOT}/runtimes"
 GREEN_WHEELS="${GREEN_ROOT}/wheels"
 GREEN_CACHE="${GREEN_ROOT}/.cache"

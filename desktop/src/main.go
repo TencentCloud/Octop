@@ -18,6 +18,9 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
+//go:embed assets/tray-icon.png
+var trayIcon []byte
+
 // App is the Wails service bound to the shell UI.
 type App struct {
 	app      *application.App
@@ -67,6 +70,14 @@ func (a *App) SaveSettings(next Settings) (Settings, error) {
 	return saved, nil
 }
 
+func (a *App) ShowMain() {
+	a.showWindow()
+}
+
+func (a *App) Quit() {
+	a.requestQuit()
+}
+
 func (a *App) applyAutostart(on bool) {
 	if a.app == nil {
 		return
@@ -108,7 +119,7 @@ func (a *App) setStatus(msg string) {
 
 func (a *App) boot() {
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
-		a.setStatus("connecting " + url)
+		a.setStatus("正在连接 Octop…")
 		if err := waitHealth(url, 60*time.Second); err != nil {
 			a.setStatus(err.Error())
 			return
@@ -117,8 +128,8 @@ func (a *App) boot() {
 		return
 	}
 	s := a.store.get()
-	a.setStatus("preparing portable runtime")
-	if err := ensureGreenZip(s.GitHubRepo, a.setStatus); err != nil {
+	a.setStatus("正在检查运行环境…")
+	if err := ensurePortable(a.setStatus); err != nil {
 		a.setStatus(err.Error())
 		return
 	}
@@ -133,7 +144,7 @@ func (a *App) boot() {
 		return
 	}
 	base := dashboardURL(s.Port)
-	a.setStatus("waiting for Octop")
+	a.setStatus("正在启动 Octop 服务…")
 	if err := waitHealth(base, 2*time.Minute); err != nil {
 		a.setStatus(err.Error())
 		return
@@ -151,7 +162,7 @@ func (a *App) showDashboard(base string) {
 		time.Sleep(800 * time.Millisecond)
 		a.applyDashboardPrefs(s)
 	}()
-	a.setStatus("ready")
+	a.setStatus("Octop 已就绪")
 }
 
 func (a *App) hideToTray() {
@@ -210,17 +221,23 @@ func main() {
 		Width:            1200,
 		Height:           800,
 		URL:              "/",
+		Frameless:        true,
 		BackgroundColour: application.NewRGB(15, 17, 21),
 	})
 	api.window = win
-
 	settingsWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Octop",
-		Width:            560,
-		Height:           640,
-		URL:              "/",
+		Title:            "Octop 设置",
+		Width:            400,
+		Height:           500,
+		URL:              "/?settings=1",
 		Hidden:           true,
+		Frameless:        true,
+		AlwaysOnTop:      true,
+		DisableResize:    true,
 		BackgroundColour: application.NewRGB(15, 17, 21),
+		Windows: application.WindowsWindow{
+			HiddenOnTaskbar: true,
+		},
 	})
 
 	win.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
@@ -236,30 +253,20 @@ func main() {
 	win.OnWindowEvent(events.Common.WindowMinimise, func(_ *application.WindowEvent) {
 		api.hideToTray()
 	})
-
 	settingsWin.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		api.mu.Lock()
-		quit := api.quitting
-		api.mu.Unlock()
-		if quit {
-			return
-		}
 		e.Cancel()
+		settingsWin.Hide()
+	})
+	settingsWin.OnWindowEvent(events.Common.WindowLostFocus, func(_ *application.WindowEvent) {
 		settingsWin.Hide()
 	})
 
 	tray := app.SystemTray.New()
-	menu := app.NewMenu()
-	menu.Add("Show Octop").OnClick(func(*application.Context) { api.showWindow() })
-	menu.Add("Settings").OnClick(func(*application.Context) {
-		settingsWin.Show()
-		settingsWin.Focus()
-	})
-	menu.AddSeparator()
-	menu.Add("Quit").OnClick(func(*application.Context) { api.requestQuit() })
-	tray.SetMenu(menu)
+	tray.SetIcon(trayIcon)
 	tray.SetTooltip("Octop")
+	tray.AttachWindow(settingsWin).WindowOffset(6)
 	tray.OnClick(func() { api.showWindow() })
+	tray.OnRightClick(func() { tray.ShowWindow() })
 
 	api.applyAutostart(store.get().Autostart)
 	api.sleep.set(store.get().PreventSleepMac)

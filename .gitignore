@@ -91,8 +91,8 @@ src/octop/dashboard/assets/*
 *.log
 logs/
 
-# green portable
-/green
+# Legacy green portable workspace
+/green/
 
 
 # Local monorepo dev helpers (not for upstream)

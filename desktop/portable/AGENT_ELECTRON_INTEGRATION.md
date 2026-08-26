@@ -9,7 +9,7 @@ path (no system Python, no `PYTHONPATH=packages`).
 CI / `make -f desktop/portable/Makefile green` produces:
 
 ```
-green/release/Octop-<plat>.zip
+desktop/portable/release/Octop-<plat>.zip
 ```
 
 Platforms: `darwin-arm64` `darwin-amd64` `linux-amd64` `linux-arm64`
@@ -27,7 +27,9 @@ Octop-<plat>/
 
 ## Spawn
 
-1. Download the zip for the current OS/arch. Verify checksum if you ship one.
+1. Ship the matching zip with the desktop application. The Wails packages place
+   it beside the executable (Windows/Linux) or under `Contents/Resources`
+   (macOS); the desktop shell does not download it at runtime.
 2. Extract to a writable user directory **outside** `app.asar`.
 3. On macOS, after checksum: `xattr -dr com.apple.quarantine <extractDir>`.
 4. Set `OCTOP_HOME` to Octop's default data dir (`~/.octop`, or `$OCTOP_HOME`

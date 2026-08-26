@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,24 +13,15 @@ import (
 	"time"
 )
 
-type ghRelease struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
-}
-
 func launchReady(root string) bool {
 	if _, err := os.Stat(filepath.Join(root, "launch.py")); err != nil {
 		return false
 	}
-	if runtime.GOOS == "windows" {
-		_, err := os.Stat(filepath.Join(root, "runtime", "python.exe"))
-		return err == nil
+	info, err := os.Stat(pythonExe(root))
+	if err != nil || !info.Mode().IsRegular() || info.Size() < 1024 {
+		return false
 	}
-	_, err := os.Stat(filepath.Join(root, "runtime", "bin", "python3"))
-	return err == nil
+	return runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0
 }
 
 func pythonExe(root string) string {
@@ -41,29 +31,17 @@ func pythonExe(root string) string {
 	return filepath.Join(root, "runtime", "bin", "python3")
 }
 
-func ensureGreenZip(repo string, status func(string)) error {
+func ensurePortable(status func(string)) error {
 	root := portableDir()
 	if launchReady(root) {
-		status("using existing portable runtime")
+		status("正在使用已有运行环境…")
 		return nil
 	}
-	plat := greenPlat()
-	name := fmt.Sprintf("Octop-%s.zip", plat)
-	status("fetching GitHub release " + name)
-	url, err := latestAssetURL(repo, name)
+	zipPath, err := bundledPortableZip()
 	if err != nil {
 		return err
 	}
-	zipPath := filepath.Join(octopHome(), name)
-	if err := os.MkdirAll(octopHome(), 0o755); err != nil {
-		return err
-	}
-	status("downloading " + url)
-	if err := downloadFile(url, zipPath); err != nil {
-		return err
-	}
-	defer os.Remove(zipPath)
-	status("extracting")
+	status("首次启动，正在解压内置运行环境…")
 	if err := unzipGreen(zipPath, root); err != nil {
 		return err
 	}
@@ -76,65 +54,30 @@ func ensureGreenZip(repo string, status func(string)) error {
 	return nil
 }
 
-func latestAssetURL(repo, assetName string) (string, error) {
-	api := "https://api.github.com/repos/" + repo + "/releases/latest"
-	req, err := http.NewRequest(http.MethodGet, api, nil)
+func bundledPortableZip() (string, error) {
+	name := fmt.Sprintf("Octop-%s.zip", greenPlat())
+	if override := os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP"); override != "" {
+		if _, err := os.Stat(override); err != nil {
+			return "", fmt.Errorf("bundled portable package: %w", err)
+		}
+		return override, nil
+	}
+	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "octop-desktop")
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
+	dir := filepath.Dir(exe)
+	candidates := []string{
+		filepath.Join(dir, name),
+		filepath.Join(dir, "..", "Resources", name),
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("github releases: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var rel ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return "", err
-	}
-	for _, a := range rel.Assets {
-		if a.Name == assetName {
-			return a.BrowserDownloadURL, nil
+	for _, candidate := range candidates {
+		candidate = filepath.Clean(candidate)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("release %s has no asset %s", rel.TagName, assetName)
-}
-
-func downloadFile(url, dest string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "octop-desktop")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download HTTP %d", resp.StatusCode)
-	}
-	tmp := dest + ".partial"
-	out, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, resp.Body)
-	closeErr := out.Close()
-	if err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmp)
-		return closeErr
-	}
-	return os.Rename(tmp, dest)
+	return "", fmt.Errorf("bundled portable package %s not found beside application", name)
 }
 
 func unzipGreen(zipPath, dest string) error {
@@ -164,6 +107,24 @@ func unzipGreen(zipPath, dest string) error {
 		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if f.Mode()&os.ModeSymlink != 0 {
+			rc, err := f.Open()
+			if err != nil {
+				return err
+			}
+			linkTarget, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			if err := os.Symlink(string(linkTarget), target); err != nil {
 				return err
 			}
 			continue

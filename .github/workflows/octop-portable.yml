@@ -68,16 +68,22 @@ jobs:
       matrix:
         include:
           - plat: linux-amd64
+            arch: amd64
             os: ubuntu-latest
           - plat: linux-arm64
+            arch: arm64
             os: ubuntu-24.04-arm
           - plat: darwin-arm64
+            arch: arm64
             os: macos-14
           - plat: darwin-amd64
+            arch: amd64
             os: macos-15-intel
           - plat: windows-amd64
+            arch: amd64
             os: windows-latest
           - plat: windows-arm64
+            arch: arm64
             os: windows-11-arm
     defaults:
       run:
@@ -139,7 +145,7 @@ jobs:
         if: steps.want.outputs.build == 'true'
         run: |
           set -euo pipefail
-          staging="green/release/Octop-${{ matrix.plat }}"
+          staging="desktop/portable/release/Octop-${{ matrix.plat }}"
           if [[ -x "${staging}/runtime/bin/python3" ]]; then
             py="${staging}/runtime/bin/python3"
           elif [[ -f "${staging}/runtime/python.exe" ]]; then
@@ -148,7 +154,7 @@ jobs:
             echo "python missing under ${staging}/runtime" >&2
             exit 1
           fi
-          req_file="green/requirements-${{ matrix.plat }}.txt"
+          req_file="desktop/portable/requirements-${{ matrix.plat }}.txt"
           if [[ ! -f "$req_file" ]]; then
             echo "frozen requirements missing: ${req_file}" >&2
             exit 1
@@ -157,7 +163,7 @@ jobs:
             --packages "${staging}/packages"
             --requirements "$req_file"
           )
-          override_file="green/overrides-${{ matrix.plat }}.txt"
+          override_file="desktop/portable/overrides-${{ matrix.plat }}.txt"
           if [[ -f "$override_file" ]]; then
             verify_args+=(--overrides "$override_file")
           fi
@@ -171,6 +177,30 @@ jobs:
             verify_no_homebrew_dylibs "${staging}/packages" "${{ matrix.plat }}"
           fi
 
+      - uses: actions/setup-go@v6
+        if: steps.want.outputs.build == 'true'
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: desktop/src/go.sum
+
+      - name: Install Linux desktop build dependencies
+        if: steps.want.outputs.build == 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Install Wails v3 CLI
+        if: steps.want.outputs.build == 'true'
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
+
+      - name: Package desktop app with bundled portable runtime
+        if: steps.want.outputs.build == 'true'
+        working-directory: desktop/src
+        run: >-
+          wails3 task package
+          ARCH=${{ matrix.arch }}
+          PORTABLE_ZIP=../portable/release/Octop-${{ matrix.plat }}.zip
+
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
       # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip
       # (Octop-<plat>.zip containing another Octop-<plat>.zip). Affects every plat.
@@ -178,7 +208,16 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: steps.want.outputs.build == 'true'
         with:
-          path: green/release/Octop-${{ matrix.plat }}.zip
+          path: desktop/portable/release/Octop-${{ matrix.plat }}.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload bundled desktop package
+        if: steps.want.outputs.build == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: desktop/src/bin/Octop-Desktop-${{ matrix.plat }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -198,17 +237,17 @@ jobs:
       # v8 required to download archive:false artifacts from upload-artifact@v7
       - uses: actions/download-artifact@v8
         with:
-          pattern: Octop-*.zip
-          path: green-zips
+          pattern: Octop-*
+          path: release-assets
           merge-multiple: true
 
-      - name: List zips
-        run: ls -lh green-zips/
+      - name: List release assets
+        run: ls -lh release-assets/
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: green-zips/*.zip
+          files: release-assets/*
           fail_on_unmatched_files: true
           # Upsert: works whether Release workflow already created the release.
           generate_release_notes: false
