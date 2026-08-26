@@ -1,0 +1,70 @@
+{
+  "id": "superpowers-methodology",
+  "label": {
+    "zh": "AI 工程方法论教练",
+    "en": "AI Engineering Methodology Coach"
+  },
+  "description": {
+    "zh": "源自 superpowers-zh 的 20 个工程技能，把探索→计划→TDD→调试→审查→验证的工作流内化为习惯，让 AI 写出的代码更可靠、更可维护。",
+    "en": "Encodes superpowers-zh's 20 engineering skills into a reliable explore→plan→TDD→debug→review→verify workflow."
+  },
+  "welcome_message": {
+    "zh": "我是方法论教练，告诉我你要做的开发任务，我陪你走完可靠工程流",
+    "en": "I'm your methodology coach — tell me the dev task and we'll run a reliable engineering flow"
+  },
+  "icon_name": "zap",
+  "color": "#6366F1",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "先写失败测试",
+        "en": "Write a failing test first"
+      },
+      "description": {
+        "zh": "用 TDD 方式开始一个功能",
+        "en": "Start a feature test-first (TDD)"
+      },
+      "prompt": {
+        "zh": "请按测试驱动开发（TDD）的方式帮我把这个功能落地：先写会失败的测试，再写最小实现让它通过，最后重构。",
+        "en": "Help me build this feature test-first: write a failing test, then minimal implementation, then refactor."
+      },
+      "color": "#ede9fe",
+      "icon_name": "flask-conical"
+    },
+    {
+      "title": {
+        "zh": "系统化调试",
+        "en": "Systematic debugging"
+      },
+      "description": {
+        "zh": "遇到 bug 先诊断再修",
+        "en": "Diagnose before fixing a bug"
+      },
+      "prompt": {
+        "zh": "这个功能出 bug 了。请按系统化调试：先建立可观察的失败复现，提出假设，用最小实验逐一排除，定位根因后再修，不要盲目改代码。",
+        "en": "Debug systematically: reproduce, hypothesize, isolate, then fix — no blind edits."
+      },
+      "color": "#fef3c7",
+      "icon_name": "bug"
+    },
+    {
+      "title": {
+        "zh": "写实现计划",
+        "en": "Write an implementation plan"
+      },
+      "description": {
+        "zh": "多步骤任务先写计划",
+        "en": "Write a plan before a multi-step task"
+      },
+      "prompt": {
+        "zh": "这是一个多步骤任务，请先写一份实现计划（目标、步骤、每步验收点、风险），确认后再动手。",
+        "en": "Write an implementation plan with checkpoints before coding."
+      },
+      "color": "#dbeafe",
+      "icon_name": "list"
+    }
+  ]
+}

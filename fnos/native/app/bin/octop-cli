@@ -1,0 +1,78 @@
+#!/bin/bash
+#
+# octop — 飞牛本地版「官方 CLI」包装
+#
+# 复刻 octop 运行环境后调用 `python -m octop.cli.main`，因此可使用全部官方子命令：
+#   octop --help
+#   octop version
+#   octop provider list
+#   octop agent list
+#   octop user list
+#   ...（还包括 init / run / config / backup / skills / update / clean 等）
+#
+# 注意：本机 Web 服务由飞牛应用中心托管（cmd/main 拉起 bin/octop），
+# 请勿手动执行 `octop run`（会与飞牛管理的实例抢 8089 端口）。
+#
+# 本包装以 octop-native 身份运行，避免产生 root 所有的数据文件
+# （Web 服务本身也以 octop-native 运行，混用 root 会导致后续权限问题）。
+# root 调用 sudo 免密；其他用户调用需输入自身 sudo 密码。
+#
+set -euo pipefail
+
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
+_OCTOP_COMMON=""$(dirname "$0")/../cmd/common.sh""
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+APPDEST="${TRIM_APPDEST:-/var/apps/octop-native}"
+PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
+
+# 数据目录：优先飞牛 data-share 共享目录，否则回退包内目录
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+else
+    DATA_DIR="$APPDEST/shares/octop-native/data"
+fi
+
+mkdir -p "$DATA_DIR" "$PKGVAR"
+
+# 加载安装向导写入的配置（OCTOP_PORT / 管理员账号 等）
+if [ -f "$PKGVAR/.env" ]; then
+    set -a; . "$PKGVAR/.env"; set +a
+fi
+
+# 查找飞牛应用商店提供的 Python 3.12
+
+
+PY="$(find_python312)" || {
+    echo "错误：未找到 Python 3.12，请先在飞牛应用中心安装「Python 3.12」开发工具。" >&2
+    exit 1
+}
+
+# 关键环境变量：让 octop 找到包本体（site-packages）与你的数据目录
+SITE_PACKAGES="$APPDEST/site-packages"
+export PYTHONPATH="${SITE_PACKAGES}${PYTHONPATH:+:$PYTHONPATH}"
+export HOME="$DATA_DIR"
+export OCTOP_HOME="$DATA_DIR/.octop"
+export OCTOP_DATA_DIR="$DATA_DIR"
+
+# 兜底：若包内 octop 未就绪，用内置核心 whl 离线安装（避免联网）
+if ! "$PY" -c "import octop" >/dev/null 2>&1; then
+    echo "[octop] 未检测到已安装的 Octop，正在用内置核心 whl 离线安装 ..."
+    "$PY" -m pip install --no-cache --no-index --find-links "$SITE_PACKAGES" "$SITE_PACKAGES/octop.whl" >/dev/null 2>&1 || {
+        echo "[octop] 离线安装失败，请检查网络或手动执行：$PY -m pip install $SITE_PACKAGES/octop.whl" >&2
+        exit 1
+    }
+fi
+
+# 以 octop-native 身份运行，避免产生 root 所有的数据文件
+if id octop-native >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+    exec sudo -u octop-native \
+        PYTHONPATH="$PYTHONPATH" \
+        HOME="$HOME" \
+        OCTOP_HOME="$OCTOP_HOME" \
+        OCTOP_DATA_DIR="$OCTOP_DATA_DIR" \
+        "$PY" -m octop.cli.main "$@"
+else
+    exec "$PY" -m octop.cli.main "$@"
+fi

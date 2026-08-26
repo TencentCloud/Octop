@@ -49,7 +49,7 @@ OctopServer.start()
  ├─ SharedServices (repos + factories)
  ├─ WizardTokenStore                 (5-min TTL setup tokens)
  ├─ ExpertCatalog  / SubagentCatalog (bundled MD libraries)
- ├─ PluginManager.load_installed()   (~/.octop/plugins/*)
+ ├─ PluginManager.seed_bundled() then load_installed()  (~/.octop/plugins/*; bundled default off)
  ├─ AgentManager (global registry — one per process)
  │    └─ for each agent row: builds HarnessAgentRuntime on demand
  │       ├─ HarnessAgent (LangGraph)

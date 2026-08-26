@@ -29,6 +29,7 @@ from octop.infra.mobile.adb import (
     screenrecord_h264_args,
     swipe,
     tap,
+    toggle_portrait_landscape,
     wm_size,
 )
 from octop.infra.mobile.agent_control import (
@@ -310,6 +311,36 @@ async def _run_adb_action(
     await _send_json(ws, {"type": "action_result", "action": action, "ok": bool(ok)})
 
 
+async def _run_adb_rotation(ws: WebSocket, *, device: str, adb: str | None) -> None:
+    loop = asyncio.get_running_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, partial(toggle_portrait_landscape, device, adb=adb)),
+            timeout=_INPUT_TIMEOUT_S,
+        )
+    except TimeoutError:
+        await _send_json(
+            ws,
+            {
+                "type": "action_result",
+                "action": "rotate",
+                "ok": False,
+                "message": "timeout",
+            },
+        )
+        return
+    await _send_json(
+        ws,
+        {
+            "type": "action_result",
+            "action": "rotate",
+            "ok": result.ok,
+            "rotation": result.rotation,
+            "message": result.message or None,
+        },
+    )
+
+
 async def _handle_input(
     ws: WebSocket,
     msg: dict[str, Any],
@@ -441,6 +472,10 @@ async def _handle_input(
                 fn=partial(keyevent, device, keycode, adb=adb),
             )
         )
+        return
+
+    if t == "rotate":
+        asyncio.create_task(_run_adb_rotation(ws, device=device, adb=adb))
 
 
 @router.websocket("/mobile-stream/ws")

@@ -35,6 +35,35 @@ class ConnectorCatalogEntry:
     # Optional allowlist of tool names exposed to the LLM.
     # None means no restriction (all tools from the MCP server are available).
     allowed_tools: tuple[str, ...] | None = None
+    # Catalog-driven remote MCP OAuth (Notion / Ardot / Linear…):
+    # when auth_kind=oauth2 + mcp_mode=remote and both issuer + mcp_url are set,
+    # Octop uses DCR + PKCE against oauth_issuer and talks to mcp_url.
+    oauth_issuer: str | None = None
+    mcp_url: str | None = None
+    oauth_resource: str | None = None
+    oauth_scopes: str | None = None
+    mcp_user_agent: str | None = None
+
+
+def is_mcp_oauth_remote(entry: ConnectorCatalogEntry) -> bool:
+    """True when this catalog entry is a dynamic-OAuth remote MCP connector."""
+    return (
+        entry.auth_kind == "oauth2"
+        and entry.mcp_mode == "remote"
+        and bool(entry.oauth_issuer)
+        and bool(entry.mcp_url)
+    )
+
+
+def mcp_oauth_remote_kinds() -> frozenset[str]:
+    return frozenset(e.kind for e in _CATALOG if is_mcp_oauth_remote(e))
+
+
+def get_mcp_oauth_remote(kind: str) -> ConnectorCatalogEntry | None:
+    entry = get_catalog_entry(kind)
+    if entry is None or not is_mcp_oauth_remote(entry):
+        return None
+    return entry
 
 
 _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
@@ -274,6 +303,22 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         auth_hint="登录元典开放平台获取 sk_ 开头的 API Key 并粘贴到下方",
     ),
     ConnectorCatalogEntry(
+        kind="tencent-ardot",
+        name="腾讯设计 Ardot",
+        description="腾讯设计平台官方 MCP：设计稿读写、设计系统与导出",
+        auth_kind="oauth2",
+        doc_url="https://docs.ardot.tencent.com/ardot-mcp/introduction.html",
+        icon="tencent-ardot",
+        color="#8b5cf6",
+        phase="available",
+        mcp_mode="remote",
+        guide_url="https://docs.ardot.tencent.com/ardot-mcp.html",
+        auth_hint="点击「一键授权」完成 Ardot 登录（成功后自动保存），或按文档手动粘贴 Token",
+        oauth_issuer="https://ardot.tencent.com",
+        mcp_url="https://ardot.tencent.com/mcp",
+        oauth_resource="https://ardot.tencent.com/mcp",
+    ),
+    ConnectorCatalogEntry(
         kind="youdao-note",
         name="有道云笔记",
         description="官方 MCP：笔记创建、搜索、整理与管理",
@@ -298,9 +343,29 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#000000",
         phase="available",
         mcp_mode="remote",
-        quick_auth_url="https://developers.notion.com/guides/mcp/get-started-with-mcp",
         guide_url="https://developers.notion.com/guides/mcp/get-started-with-mcp",
-        auth_hint="点击「一键授权」完成 Notion 登录，或按官方文档手动获取 Token",
+        auth_hint="点击「一键授权」完成 Notion 登录（成功后自动保存），或按官方文档手动获取 Token",
+        oauth_issuer="https://mcp.notion.com",
+        mcp_url="https://mcp.notion.com/mcp",
+        mcp_user_agent="octop-connector/0.1",
+    ),
+    ConnectorCatalogEntry(
+        kind="dida365",
+        name="滴答清单",
+        description="官方 MCP：任务、清单、习惯与专注记录",
+        auth_kind="oauth2",
+        doc_url="https://help.dida365.com/articles/7438132116019216384",
+        icon="dida365",
+        color="#e74c3c",
+        phase="available",
+        mcp_mode="remote",
+        guide_url="https://help.dida365.com/articles/7438132116019216384",
+        manual_url="https://dida365.com",
+        auth_hint="点击「一键授权」完成登录（成功后自动保存），或在网页版「头像 → 设置 → 账户与安全 → API 口令」创建并粘贴 Token",
+        oauth_issuer="https://dida365.com",
+        mcp_url="https://mcp.dida365.com",
+        oauth_resource="https://mcp.dida365.com/",
+        oauth_scopes="tasks:read tasks:write",
     ),
     ConnectorCatalogEntry(
         kind="feishu-cli",

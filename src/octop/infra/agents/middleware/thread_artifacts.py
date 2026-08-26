@@ -102,7 +102,10 @@ def normalize_artifact_path(path: str, workspace_dir: Path) -> str:
         rel = rel.removeprefix("workspace/")
     if not rel or not _artifact_path_allowed(rel):
         return ""
-    ws = workspace_dir.expanduser().resolve()
+    # Keep the configured workspace spelling stable. On macOS, ``/home`` is a
+    # firmlink and ``Path.resolve()`` rewrites it to ``/System/Volumes/Data/home``,
+    # which breaks artifact de-duplication against already-absolute entries.
+    ws = workspace_dir.expanduser()
     return str((ws / rel).as_posix())
 
 
@@ -140,7 +143,7 @@ def extract_artifact_paths(
     """
     if not is_artifact_tool_name(tool_name):
         return []
-    ws = workspace_dir.expanduser().resolve() if workspace_dir is not None else None
+    ws = workspace_dir.expanduser() if workspace_dir is not None else None
     from_args = _dedupe_paths(_paths_from_args(args), ws)
     if from_args:
         return from_args
@@ -169,7 +172,7 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
     ) -> None:
         super().__init__()
         self._threads = thread_repo
-        self._workspace_dir = workspace_dir.expanduser().resolve()
+        self._workspace_dir = workspace_dir.expanduser()
 
     def wrap_tool_call(
         self,

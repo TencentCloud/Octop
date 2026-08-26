@@ -2,8 +2,11 @@
  * Copy text to the clipboard with a legacy fallback for non-secure contexts.
  *
  * The async Clipboard API is only available in secure contexts (https or
- * localhost). When it is unavailable or rejects, we fall back to a temporary
- * textarea + execCommand so the copy still works on plain-http admin pages.
+ * localhost). When it is unavailable or rejects, fall back to a temporary
+ * textarea + execCommand so copy still works on plain-http admin pages.
+ *
+ * This is the only write-clipboard entry for the dashboard. Clipboard *read*
+ * (e.g. paste) stays at the call site — it still requires a secure context.
  *
  * @returns true when the text was copied, false otherwise.
  */

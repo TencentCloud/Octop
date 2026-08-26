@@ -97,7 +97,8 @@ export function ModelListEditor({
   const [testingForm, setTestingForm] = useState(false);
   const [form] = Form.useForm();
   const isOnnx = isOnnxProviderRow(provider);
-  const embeddingOn = isOnnx || Form.useWatch("embedding", form) === true;
+  const embeddingValue = Form.useWatch("embedding", form);
+  const embeddingOn = isOnnx || embeddingValue === true;
 
   const handleToggleEnabled = (
     modelId: string,

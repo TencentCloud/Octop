@@ -48,6 +48,7 @@ def init(
 ) -> None:
     """Bootstrap an Octop server (~/.octop dir, DB migrations, first admin)."""
     from octop.config import load_config
+    from octop.infra.agents.plugins.manager import PluginManager
     from octop.infra.db.factory import open_database
     from octop.infra.db.migrate import run_migrations
     from octop.infra.db.repos.users import UserRepo
@@ -75,6 +76,7 @@ def init(
         shutil.rmtree(home)
 
     paths.ensure_root()
+    PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
     apply_env_file(env_file_path(paths.root))
     config = load_config(paths.config)
     db = open_database(config, paths)

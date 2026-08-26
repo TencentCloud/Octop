@@ -80,33 +80,110 @@
   -webkit-user-drag: none;
 }
 
-.topBar {
+.phoneViewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--fn-bg-elevated, #fff);
+  box-shadow: 0 1px 2px rgba(26, 28, 40, 0.04);
+}
+
+.deviceBar {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--fn-border-secondary);
-  border-radius: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--fn-border-secondary);
   background: var(--fn-bg-elevated, #fff);
 }
 
 .deviceMeta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
-.deviceIcon {
-  flex-shrink: 0;
-  color: var(--fn-text-secondary);
-}
-
-.topBarSpacer {
+.deviceBarSpacer {
   flex: 1;
   min-width: 8px;
+}
+
+.deviceBarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.viewSwitcher {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.viewSwitcherTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out;
+
+  svg {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+  }
+}
+
+.viewSwitcherTabActive {
+  color: var(--fn-color-brand, #1677ff);
+  background: var(
+    --fn-color-brand-bg,
+    color-mix(in srgb, var(--fn-color-brand, #1677ff) 10%, transparent)
+  );
+
+  &:hover {
+    color: var(--fn-color-brand, #1677ff);
+    background: var(
+      --fn-color-brand-bg,
+      color-mix(in srgb, var(--fn-color-brand, #1677ff) 14%, transparent)
+    );
+  }
+}
+
+.commandIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
 }
 
 .qualityControl {
@@ -114,6 +191,10 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+
+  :global(.ant-select-selector) {
+    border-radius: 8px !important;
+  }
 }
 
 .qualityLabel {
@@ -122,7 +203,7 @@
   white-space: nowrap;
 }
 
-.statusPill {
+.streamSizePill {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
@@ -130,24 +211,132 @@
   font-size: 12px;
   line-height: 20px;
   font-variant-numeric: tabular-nums;
+  background: var(--fn-bg-elevated, #fff);
+  border: 1px solid var(--fn-border-secondary);
+  color: var(--fn-text-secondary);
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
 }
 
 .statusIdle {
-  background: var(--fn-bg-secondary);
+  background: var(--fn-bg-elevated, #fff);
+  border-color: var(--fn-border-secondary);
   color: var(--fn-text-secondary);
 }
 
 .statusConnecting {
   background: #fff7e6;
+  border-color: rgba(250, 173, 20, 0.35);
   color: #d46b08;
 }
 
 .statusStreaming {
-  background: #f6ffed;
+  background: rgba(82, 196, 26, 0.08);
+  border-color: rgba(82, 196, 26, 0.35);
   color: #389e0d;
 }
 
-/* Full remaining height of PageShell body */
+.phoneTabPanels {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.splitPanels {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.splitHandle {
+  position: relative;
+  width: 10px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+  user-select: none;
+  background: var(--fn-bg-secondary);
+  border-left: 1px solid var(--fn-border-secondary);
+  border-right: 1px solid var(--fn-border-secondary);
+  transition: background-color 120ms ease-out;
+
+  /* Wider hit target */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -6px;
+    right: -6px;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40px;
+    border-radius: 999px;
+    background: var(--fn-text-tertiary, rgba(0, 0, 0, 0.35));
+    box-shadow: 0 0 0 1px var(--fn-border-secondary);
+    transition:
+      background-color 120ms ease-out,
+      box-shadow 120ms ease-out,
+      height 120ms ease-out;
+  }
+
+  &:hover,
+  &:active {
+    background: var(
+      --fn-bg-hover,
+      color-mix(in srgb, var(--fn-text-primary) 4%, transparent)
+    );
+    border-left-color: var(--fn-color-brand, #1677ff);
+    border-right-color: var(--fn-color-brand, #1677ff);
+
+    &::after {
+      height: 48px;
+      background: var(--fn-color-brand, #1677ff);
+      box-shadow: 0 0 0 1px
+        color-mix(in srgb, var(--fn-color-brand, #1677ff) 35%, transparent);
+    }
+  }
+}
+
+.splitShellPane {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  border-left: none;
+}
+
+.phoneTabPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.splitPanels > .phoneTabPanel:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .viewport {
   position: relative;
   flex: 1 1 auto;
@@ -156,8 +345,6 @@
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  border: 1px solid var(--fn-border-secondary);
-  border-radius: 8px;
   background: var(--fn-bg-secondary);
   overflow: hidden;
 }
@@ -169,6 +356,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
 }
 
 .installProgress {
@@ -224,7 +413,6 @@
   }
 }
 
-/* Coze-like: stage fills left; info docked right */
 .streamWorkspace {
   display: flex;
   flex: 1;
@@ -248,6 +436,7 @@
   justify-content: center;
   padding: 20px;
   box-sizing: border-box;
+  background: #111318;
 }
 
 .connectingStage {
@@ -258,16 +447,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #111318;
 }
 
 .phoneCluster {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 0;
   max-width: 100%;
   max-height: 100%;
 }
 
-/* Keep canvas mounted for the first frame, but out of the visible layout. */
 .phoneClusterOffstage {
   position: absolute;
   width: 1px;
@@ -284,12 +474,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111;
-  border: 1px solid var(--fn-border-secondary);
-  border-right: none;
-  border-radius: 16px 0 0 16px;
+  padding: 6px;
+  background: #0d0f14;
+  border: 3px solid #2a2d3d;
+  border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
 }
 
 .canvas {
@@ -298,8 +488,20 @@
   max-height: calc(100% - 8px);
   width: auto;
   height: auto;
+  border-radius: 22px;
   touch-action: none;
   outline: none;
+}
+
+.phoneClusterLandscape {
+  .canvas {
+    max-width: min(72vw, 780px);
+    max-height: min(52vh, 420px);
+  }
+
+  .phoneFrame {
+    border-radius: 22px;
+  }
 }
 
 .deviceRail {
@@ -307,34 +509,44 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 2px;
-  padding: 12px 5px;
-  width: 40px;
-  background: var(--fn-bg-elevated, #fafafa);
-  border: 1px solid var(--fn-border-secondary);
-  border-radius: 0 16px 16px 0;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+  gap: 8px;
+  padding: 10px 8px;
+  width: 52px;
+  align-self: stretch;
+  background: var(--fn-bg-secondary);
+  border-left: 1px solid var(--fn-border-secondary);
 }
 
 .railBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  background: var(--fn-bg-elevated, #fff);
   color: var(--fn-text-secondary);
   cursor: pointer;
   transition:
     background-color 120ms ease-out,
-    color 120ms ease-out;
+    color 120ms ease-out,
+    border-color 120ms ease-out,
+    transform 120ms ease-out;
 
   &:hover:not(:disabled) {
     background: var(--fn-bg-secondary);
     color: var(--fn-text-primary);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand, #1677ff) 35%,
+      var(--fn-border-secondary)
+    );
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.96);
   }
 
   &:disabled {
@@ -344,9 +556,9 @@
 }
 
 .railDivider {
-  width: 18px;
+  width: 22px;
   height: 1px;
-  margin: 4px 0;
+  margin: 2px 0;
   background: var(--fn-border-secondary);
 }
 
@@ -448,18 +660,23 @@
   .canvas {
     max-width: min(70vw, 360px);
   }
+
+  .phoneClusterLandscape .canvas {
+    max-width: min(88vw, 640px);
+    max-height: min(40vh, 320px);
+  }
 }
 
 @media (max-width: 640px) {
-  .topBar {
+  .deviceBar {
     align-items: flex-start;
   }
 
-  .topBarSpacer {
+  .deviceBarSpacer {
     display: none;
   }
 
-  .qualityControl {
+  .deviceBarActions {
     width: 100%;
     justify-content: space-between;
   }
@@ -471,5 +688,10 @@
   .canvas {
     max-width: min(100vw - 88px, 300px);
     max-height: min(62vh, 620px);
+  }
+
+  .phoneClusterLandscape .canvas {
+    max-width: min(100vw - 88px, 520px);
+    max-height: min(42vh, 280px);
   }
 }

@@ -60,12 +60,15 @@ export function connectorAccent(
 
 export function ConnectorLogo({
   kind,
+  icon,
   size = 22,
 }: {
   kind: string;
+  icon?: string | null;
   size?: number;
 }) {
-  const src = getConnectorLogo(kind);
+  const src =
+    getConnectorLogo(kind) ?? (icon ? getConnectorLogo(icon) : undefined);
   if (!src) {
     return (
       <Cable

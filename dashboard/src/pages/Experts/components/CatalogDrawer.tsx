@@ -15,7 +15,7 @@ interface CatalogDrawerProps {
 }
 
 /**
- * Shared Experts "catalog" Drawer chrome (skills / memory / subagents / channels / MBTI).
+ * Shared Experts "catalog" Drawer chrome (skills / tools / memory / subagents / channels / MBTI).
  */
 export default function CatalogDrawer({
   title,

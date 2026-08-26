@@ -14,12 +14,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import yaml
 from harness_agent.plugins import (
     LoadedPlugin,
     PluginManifest,
     PluginRegistry,
     discover_plugin_dirs,
-    load_all,
     load_plugin_dir,
     unload_plugin,
 )
@@ -72,6 +72,29 @@ def _read_global_plugins(config_path: Path) -> dict[str, bool]:
     return out
 
 
+def _write_global_plugin_enabled(config_path: Path, plugin_id: str, enabled: bool) -> None:
+    """Merge ``plugins.<id>.enabled`` into ``config.json`` without dropping other keys."""
+    data: dict[str, Any] = {}
+    if config_path.is_file():
+        try:
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                data = raw
+        except Exception:
+            data = {}
+    plugins = data.get("plugins")
+    if not isinstance(plugins, dict):
+        plugins = {}
+        data["plugins"] = plugins
+    entry = plugins.get(plugin_id)
+    if not isinstance(entry, dict):
+        entry = {}
+    entry["enabled"] = bool(enabled)
+    plugins[plugin_id] = entry
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
 def _assert_http_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -90,11 +113,77 @@ def _assert_zip_magic(archive: Path) -> None:
         )
 
 
+def _read_plugin_yaml(plugin_dir: Path) -> dict[str, Any]:
+    raw = yaml.safe_load((plugin_dir / "plugin.yaml").read_text(encoding="utf-8"))
+    return raw if isinstance(raw, dict) else {}
+
+
+def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
+    """Return ``{entry, manifest}`` relative paths when ``plugin.yaml`` declares ``ui``.
+
+    Missing entry file → ``None`` (treat as backend-only). Harness ignores the
+    ``ui`` key; Octop surfaces it for Dashboard dynamic loading.
+    """
+    try:
+        data = _read_plugin_yaml(plugin_dir)
+    except Exception:
+        return None
+    ui = data.get("ui")
+    if not isinstance(ui, dict):
+        return None
+    entry = str(ui.get("entry") or "ui/dist/index.js").strip()
+    manifest = str(ui.get("manifest") or "ui/dist/manifest.json").strip()
+    if not entry or ".." in entry.replace("\\", "/").split("/"):
+        return None
+    if ".." in manifest.replace("\\", "/").split("/"):
+        return None
+    if not (plugin_dir / entry).is_file():
+        logger.warning(
+            "plugin %s declares ui.entry=%s but file is missing",
+            plugin_dir.name,
+            entry,
+        )
+        return None
+    return {"entry": entry, "manifest": manifest}
+
+
+def parse_plugin_icon(plugin_dir: Path) -> str | None:
+    """Optional ``icon`` from ``plugin.yaml``: emoji text or absolute image URL.
+
+    Harness ignores unknown keys; Octop surfaces ``icon`` for Dashboard cards.
+    """
+    try:
+        data = _read_plugin_yaml(plugin_dir)
+    except Exception:
+        return None
+    raw = data.get("icon")
+    if raw is None:
+        return None
+    icon = str(raw).strip()
+    if not icon or len(icon) > 2048:
+        return None
+    return icon
+
+
+def parse_plugin_requires(plugin_dir: Path) -> list[str]:
+    try:
+        data = _read_plugin_yaml(plugin_dir)
+    except Exception:
+        return []
+    raw = data.get("requires") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(r).strip() for r in raw if str(r).strip()]
+
+
 class PluginManager:
     def __init__(self, *, plugins_dir: Path, config_path: Path) -> None:
         self._plugins_dir = plugins_dir
         self._config_path = config_path
         self._plugins_dir.mkdir(parents=True, exist_ok=True)
+        # Last-known tool metadata so Admin / Experts can still list tools after
+        # a global disable unloads the plugin from the process registry.
+        self._tool_catalog: dict[str, list[dict[str, Any]]] = {}
 
     @property
     def plugins_dir(self) -> Path:
@@ -103,17 +192,81 @@ class PluginManager:
     def global_enabled_map(self) -> dict[str, bool]:
         return _read_global_plugins(self._config_path)
 
+    def seed_bundled(self) -> list[str]:
+        """Copy packaged plugins into ``plugins_dir`` with ``enabled: false``."""
+        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+        from octop.infra.agents.plugins.seed import seed_bundled_plugins
+
+        return seed_bundled_plugins(
+            bundled_root=default_bundled_plugins_root(),
+            plugins_dir=self._plugins_dir,
+            config_path=self._config_path,
+        )
+
     def load_installed(self, *, install_deps: bool = True) -> list[LoadedPlugin]:
         enabled = self.global_enabled_map()
-        loaded = load_all(self._plugins_dir, install_deps=install_deps)
-        # Drop globally disabled plugins from registry
+        PluginRegistry().clear()
+        loaded: list[LoadedPlugin] = []
+        for plugin_dir in discover_plugin_dirs(self._plugins_dir):
+            try:
+                manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
+            except Exception as exc:
+                logger.error("skip plugin dir %s: %s", plugin_dir, exc)
+                continue
+            if enabled.get(manifest.id, True) is False:
+                continue
+            try:
+                loaded.append(load_plugin_dir(plugin_dir, install_deps=install_deps))
+            except Exception as exc:
+                logger.error(
+                    "failed to load plugin from %s: %s",
+                    plugin_dir,
+                    exc,
+                    exc_info=True,
+                )
         for plugin_id, is_on in enabled.items():
             if not is_on:
                 unload_plugin(plugin_id)
-        return [p for p in loaded if enabled.get(p.manifest.id, True)]
+        return [p for p in loaded if enabled.get(p.manifest.id, True) is not False]
+
+    def load_missing(self, *, install_deps: bool = False) -> list[LoadedPlugin]:
+        """Load any on-disk plugins that are not yet in the process registry.
+
+        Used after CLI ``octop plugin install`` while ``octop run`` is already
+        up — unlike ``load_installed``, this does not clear already-loaded
+        plugins.
+        """
+        enabled = self.global_enabled_map()
+        newly: list[LoadedPlugin] = []
+        for plugin_dir in discover_plugin_dirs(self._plugins_dir):
+            try:
+                manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
+            except Exception as exc:
+                logger.error("skip plugin dir %s: %s", plugin_dir, exc)
+                continue
+            if enabled.get(manifest.id) is False:
+                continue
+            if PluginRegistry().get(manifest.id) is not None:
+                continue
+            try:
+                newly.append(load_plugin_dir(plugin_dir, install_deps=install_deps))
+                logger.info(
+                    "loaded missing plugin %s v%s",
+                    manifest.id,
+                    manifest.version,
+                )
+            except Exception as exc:
+                logger.error(
+                    "failed to load plugin from %s: %s",
+                    plugin_dir,
+                    exc,
+                    exc_info=True,
+                )
+        return newly
 
     def list_installed(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
+        enabled_map = self.global_enabled_map()
         for plugin_dir in discover_plugin_dirs(self._plugins_dir):
             try:
                 manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
@@ -123,10 +276,24 @@ class PluginManager:
                         "id": plugin_dir.name,
                         "error": str(exc),
                         "path": str(plugin_dir),
+                        "enabled": enabled_map.get(plugin_dir.name, True),
                     },
                 )
                 continue
             loaded = PluginRegistry().get(manifest.id)
+            ui_meta = parse_plugin_ui_meta(plugin_dir)
+            if loaded is not None:
+                tools_meta = [
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "config_fields": t.config_fields,
+                    }
+                    for t in loaded.tools
+                ]
+                self._tool_catalog[manifest.id] = tools_meta
+            else:
+                tools_meta = list(self._tool_catalog.get(manifest.id) or [])
             out.append(
                 {
                     "id": manifest.id,
@@ -134,19 +301,100 @@ class PluginManager:
                     "name": manifest.name,
                     "kind": manifest.kind,
                     "description": manifest.description,
+                    "icon": parse_plugin_icon(plugin_dir),
+                    "requires": parse_plugin_requires(plugin_dir),
                     "path": str(plugin_dir),
                     "loaded": loaded is not None,
-                    "tools": [
-                        {
-                            "name": t.name,
-                            "description": t.description,
-                            "config_fields": t.config_fields,
-                        }
-                        for t in (loaded.tools if loaded else [])
-                    ],
+                    "enabled": enabled_map.get(manifest.id, True),
+                    "ui": ui_meta,
+                    "tools": tools_meta,
                 },
             )
         return out
+
+    def set_enabled(self, plugin_id: str, enabled: bool) -> dict[str, Any]:
+        """Toggle global plugin enablement in ``config.json`` and load/unload registry."""
+        plugin_dir = self.plugin_dir(plugin_id)
+        if plugin_dir is None:
+            raise OctopError(ErrorCode.NOT_FOUND, f"plugin {plugin_id!r} not found")
+        try:
+            PluginManifest.load(plugin_dir / "plugin.yaml")
+        except Exception as exc:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"invalid plugin manifest: {exc}",
+            ) from exc
+
+        _write_global_plugin_enabled(self._config_path, plugin_id, enabled)
+        if enabled:
+            if PluginRegistry().get(plugin_id) is None:
+                try:
+                    load_plugin_dir(plugin_dir, install_deps=False)
+                except Exception as exc:
+                    raise OctopError(
+                        ErrorCode.PLUGIN_INSTALL_FAILED,
+                        f"failed to load plugin: {exc}",
+                        details={"reason": str(exc)},
+                    ) from exc
+        else:
+            loaded = PluginRegistry().get(plugin_id)
+            if loaded is not None:
+                self._tool_catalog[plugin_id] = [
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "config_fields": t.config_fields,
+                    }
+                    for t in loaded.tools
+                ]
+            unload_plugin(plugin_id)
+
+        for item in self.list_installed():
+            if item.get("id") == plugin_id:
+                return item
+        return {"id": plugin_id, "enabled": enabled}
+
+    def plugin_dir(self, plugin_id: str) -> Path | None:
+        """Return the on-disk plugin directory when it exists."""
+        dest = self._plugins_dir / plugin_id
+        if dest.is_dir() and (dest / "plugin.yaml").is_file():
+            return dest
+        return None
+
+    def resolve_ui_file(self, plugin_id: str, rel_path: str) -> Path:
+        """Resolve a UI asset under the plugin tree with path-traversal checks.
+
+        ``rel_path`` is typically relative to ``<plugin>/ui/`` (e.g. ``dist/index.js``)
+        as served by ``GET /api/plugins/{id}/ui/{path}``. Full paths from the
+        plugin root (``ui/dist/index.js``) are also accepted.
+        """
+        plugin_dir = self.plugin_dir(plugin_id)
+        if plugin_dir is None:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"plugin {plugin_id!r} not found",
+            )
+        cleaned = rel_path.strip().lstrip("/").replace("\\", "/")
+        if not cleaned or any(part == ".." for part in cleaned.split("/")):
+            raise OctopError(ErrorCode.NOT_FOUND, "invalid plugin UI path")
+        candidates = [
+            plugin_dir / "ui" / cleaned,
+            plugin_dir / cleaned,
+        ]
+        if not cleaned.startswith("ui/") and not cleaned.startswith("dist/"):
+            candidates.append(plugin_dir / "ui" / "dist" / cleaned)
+        for target in candidates:
+            resolved = target.resolve()
+            try:
+                resolved.relative_to(plugin_dir.resolve())
+            except ValueError as exc:
+                raise OctopError(ErrorCode.NOT_FOUND, "invalid plugin UI path") from exc
+            if resolved.is_file():
+                return resolved
+        raise OctopError(
+            ErrorCode.NOT_FOUND,
+            f"plugin UI file not found: {cleaned}",
+        )
 
     def install_path(self, source: Path, *, force: bool = False) -> LoadedPlugin:
         source = source.resolve()
@@ -260,6 +508,7 @@ class PluginManager:
 
     def uninstall(self, plugin_id: str) -> None:
         unload_plugin(plugin_id)
+        self._tool_catalog.pop(plugin_id, None)
         dest = self._plugins_dir / plugin_id
         if dest.is_dir():
             shutil.rmtree(dest)

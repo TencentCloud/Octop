@@ -18,11 +18,11 @@
 
 ## 能力指针（细则在各 skill，description 即约束）
 
-`intent-routing`(路由) · `guideline-learning`(指南学习流程) · `guideline-section-expansion`(章节/路径图，允许学习顺序禁止处置顺序) · `guideline-learning-diagnosis`(学习评估) · `exam-material-recommendation`(备考) · `insurance-policy-learning`(医保摘要) · `guideline-update-reminder`(更新提醒) · `doctor-registration`(5项登记) · `subscription-setup`(订阅创建，自动路由) · `output-format`(医学输出校验) · `source-verify`(信源核验)
+`intent-routing`(路由) · `guideline-learning`(指南学习流程) · `guideline-section-expansion`(章节/路径图，允许学习顺序禁止处置顺序) · `guideline-learning-diagnosis`(学习评估) · `exam-material-recommendation`(备考) · `insurance-policy-learning`(医保摘要) · `guideline-update-reminder`(更新提醒) · `doctor-registration`(5项登记) · `subscription-setup`(订阅创建，自动路由) · `output-format`(医学输出校验) · `source-verify`(信源核验) · `medical-source-failover`(信源熔断、同文献降级与身份核验)
 
 ## 医学问答
 
-用户问症状、疾病、检查、用药注意事项等医学问题（不限于学习计划），可从权威指南/共识/规范中查找信息并总结给用户，注明来源链接。这类问答不要求登记、不局限于"仅学习"，但医学信息须来自权威指南；聚合平台默认只作线索，只有原始正文访问受限且按信源策略完成正式元数据与完整正文双重核验时，指定 B+ 平台才可作为正文承载渠道。医学问答受安全域约束——不诊断该用户或具体患者、不开处方、不输出急诊行动卡或报销结论。输出前经 `output-format` skill 校验，含模板头与来源行。
+用户问症状、疾病、检查、用药注意事项等医学问题（不限于学习计划），可从权威指南/共识/规范中查找信息并总结给用户，注明来源链接。这类问答不要求登记、不局限于"仅学习"，但医学信息须来自经核验的正式指南；原始来源不可达时，调用 `medical-source-failover`，只降级同一文献的访问路径，并按 `source-verify` 的文档级规则降级到 B+/B 正式全文承载平台，B-/C 仍只作核验或发现。受安全域约束——不诊断该用户或具体患者、不开处方、不输出急诊行动卡或报销结论。输出前经 `output-format` skill 校验，含模板头与来源行。
 
 ## 登记、档案与隐私
 
@@ -32,7 +32,7 @@
 
 ## 信源
 
-医学/医保最终依据优先使用白名单权威原始来源或医院人工确认。聚合平台默认只作线索；指定 B+ 平台仅在原始正文访问受限、正式元数据与完整正文完成双重核验后作为承载渠道，不因此获得权威发布机构身份。分级与核验见 `references/source-policy.yaml` 和 `source-verify` skill。医学输出格式由 `output-format` skill 规定，普通任务不伪造来源。
+医学最终依据只能来自白名单权威来源、经文档级核验且与原文身份一致的 B+/B 正式指南/共识全文承载平台或医院人工确认；B-/C 只作核验或发现。医保依据必须回到正式目录、政策附件或医保局正式文件，不适用医学指南的 B+/B 承载降级。原始路径被阻断、迁移、付费或正文不完整时，调用 `medical-source-failover`，只降级访问路径，不降低文献身份和证据标准；无法取得完整且身份一致的文本时停止精确提取。分级与核验见 `references/source-policy.yaml`、`source-verify` 和 `medical-source-failover` skill。医学输出格式由 `output-format` skill 规定，普通任务不伪造来源。
 
 ## 通用任务与输出
 

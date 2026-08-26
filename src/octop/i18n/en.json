@@ -325,6 +325,8 @@
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
+    "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",
+    "ATTACHMENT_TOO_LARGE": "This attachment exceeds the {max_mb} MB size limit.",
     "VOICE_BROWSER_ONLY": "Voice input is only available in the browser.",
     "VOICE_KIND_UNSUPPORTED": "Unsupported voice provider.",
     "VOICE_CAPABILITY_MISMATCH": "Voice capability does not match.",
@@ -355,10 +357,11 @@
     "KNOWLEDGE_NOT_FOUND": "Knowledge base or document not found.",
     "KNOWLEDGE_FORBIDDEN": "You do not have access to this knowledge base.",
     "KNOWLEDGE_DOC_LIMIT": "A knowledge base can contain at most 100 documents.",
-    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the 20 MB size limit.",
+    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the {max_mb} MB size limit.",
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "KNOWLEDGE_NAME_INVALID": "Invalid name.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -478,7 +481,9 @@
     "mobile_ui_dump": "Mobile UI dump",
     "mobile_handoff_to_user": "Hand off to user (mobile)",
     "read_env_file": "Read env file",
-    "write_env_file": "Write env file"
+    "write_env_file": "Write env file",
+    "generate_image": "Generate image",
+    "generate_video": "Generate video"
   },
   "skills": {
     "pdf": "PDF",

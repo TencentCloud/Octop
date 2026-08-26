@@ -67,6 +67,7 @@ import { apiErrorMessage } from "../../utils/apiError";
 import PwaInstallPrompt from "../../components/PwaInstallPrompt";
 import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
 import { OPEN_NAV_RECORDS_EVENT } from "../../layouts/chatHistoryRail";
+import { usePluginToolUis } from "../../plugins/toolRenderers";
 import styles from "./index.module.less";
 
 export default function ChatPage() {
@@ -82,6 +83,10 @@ function ChatPageInner() {
     agentId?: string;
     threadId?: string;
   }>();
+  usePluginToolUis({
+    agentId: routeAgentId ?? null,
+    threadId: threadId ?? null,
+  });
   const isMobile = useIsMobile();
   const user = useCurrentUser();
   const { layoutMode } = useLayoutMode();

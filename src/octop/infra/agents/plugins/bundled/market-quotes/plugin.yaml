@@ -1,0 +1,12 @@
+id: market-quotes
+version: 0.2.0
+name: 行情
+description: 查询汇率、加密货币与 A 股行情卡片
+icon: "📈"
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

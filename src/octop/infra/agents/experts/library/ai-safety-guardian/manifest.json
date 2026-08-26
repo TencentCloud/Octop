@@ -1,0 +1,70 @@
+{
+  "id": "ai-safety-guardian",
+  "label": {
+    "zh": "AI 安全合规卫士",
+    "en": "AI Safety Guardian"
+  },
+  "description": {
+    "zh": "基于 shellward 8 层防御与中文合规（PIPL / 等保 2.0 / 数据出境 / 生成式 AI 标识 GB 45438）的 AI 安全专家。负责安全体检、危险命令拦截、敏感数据出境识别与合规审计。",
+    "en": "AI safety expert built on shellward's 8-layer defense and China compliance (PIPL / MLPS 2.0 / data export / GENAI labeling GB 45438)."
+  },
+  "welcome_message": {
+    "zh": "我是 AI 安全合规卫士，告诉我你想做的安全体检或合规检查",
+    "en": "I'm the AI Safety Guardian — tell me what safety check or compliance review you need"
+  },
+  "icon_name": "shield",
+  "color": "#EF4444",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "全量安全体检",
+        "en": "Full safety scan"
+      },
+      "description": {
+        "zh": "按 8 层防御做一遍安全与合规体检",
+        "en": "Run an 8-layer safety & compliance scan"
+      },
+      "prompt": {
+        "zh": "请按 8 层防御（promptGuard / outputScanner / toolBlocker / inputAuditor / securityGate / outboundGuard / dataFlowGuard / sessionGuard）帮我做一次 AI 工具安全体检，并给出加固建议。",
+        "en": "Please run an 8-layer safety scan and give hardening advice."
+      },
+      "color": "#fee2e2",
+      "icon_name": "shield"
+    },
+    {
+      "title": {
+        "zh": "命令安全检查",
+        "en": "Check a command"
+      },
+      "description": {
+        "zh": "检查某条命令是否危险",
+        "en": "Check if a command is dangerous"
+      },
+      "prompt": {
+        "zh": "请检查这条命令是否触发 toolBlocker 危险规则（rm -rf / curl|sh / 反弹 shell / fork bomb 等），并说明风险与更安全的替代。",
+        "en": "Check whether this command triggers dangerous-command rules."
+      },
+      "color": "#fef3c7",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "数据出境合规",
+        "en": "Data export check"
+      },
+      "description": {
+        "zh": "识别敏感数据是否会被发往境外大模型",
+        "en": "Detect sensitive data sent to overseas LLMs"
+      },
+      "prompt": {
+        "zh": "请帮我识别：当前任务中是否有敏感数据可能被发往境外大模型端点（数据出境风险），并给出境内路由 / 脱敏建议（依据 PIPL 与数据出境规定）。",
+        "en": "Identify data-export risk to overseas LLM endpoints per PIPL."
+      },
+      "color": "#dbeafe",
+      "icon_name": "globe"
+    }
+  ]
+}

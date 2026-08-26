@@ -1,0 +1,40 @@
+#!/bin/bash
+#
+# Octop — 配置后回调（重新配置时调用）
+# 逻辑与 install_callback 一致：用新配置重写 .env。
+# 注意：修改管理员密码/账号不会改动已初始化的数据库（仅首次启动生效）；
+#       修改 LLM 密钥与日志级别会在容器重启后生效。
+#
+set -euo pipefail
+
+ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
+mkdir -p "$(dirname "$ENV_FILE")"
+
+ADMIN_USER="${wizard_admin_username:-admin}"
+ADMIN_PASS="${wizard_admin_password:-octop}"
+LOG_LEVEL="${wizard_log_level:-info}"
+OPENAI="${wizard_openai_api_key:-}"
+DASHSCOPE="${wizard_dashscope_api_key:-}"
+
+sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+
+ADMIN_USER=$(sanitize "$ADMIN_USER")
+ADMIN_PASS=$(sanitize "$ADMIN_PASS")
+LOG_LEVEL=$(sanitize "$LOG_LEVEL")
+OPENAI=$(sanitize "$OPENAI")
+DASHSCOPE=$(sanitize "$DASHSCOPE")
+
+{
+    echo "OCTOP_PORT=8088"
+    echo "OCTOP_BIND_HOST=0.0.0.0"
+    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
+    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
+    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
+    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
+    echo "OPENAI_API_KEY=${OPENAI}"
+    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
+} > "$ENV_FILE"
+
+chmod 600 "$ENV_FILE"
+echo "[octop] 配置已更新: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+exit 0

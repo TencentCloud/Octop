@@ -18,6 +18,10 @@ from harness_agent.security.models import SecurityPolicy
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.acp_settings import ACPSettingsStore
 from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
+from octop.infra.agents.media_generation import (
+    MediaGenerationSettings,
+    MediaGenerationSettingsStore,
+)
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.profile import (
     dump_skill_package_ids,
@@ -90,6 +94,13 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
     if isinstance(raw, list):
         return {str(x) for x in raw}
     return set()
+
+
+def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
+    """Return disabled built-in tool names from agent config (critical stripped)."""
+    from octop.infra.agents.tool_catalog import tools_disabled_set as _tools_disabled_set
+
+    return _tools_disabled_set(cfg)
 
 
 def skill_package_ids_list(cfg: dict[str, Any]) -> list[str]:
@@ -331,6 +342,10 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
+        self._media_generation = MediaGenerationSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
         self._security = SecuritySettingsStore(settings_repo=repos.settings_repo)
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
@@ -358,6 +373,10 @@ class AgentManager:
         self._repos = repos
         self._config = config
         self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._media_generation = MediaGenerationSettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
@@ -433,12 +452,20 @@ class AgentManager:
         return self._langfuse
 
     @property
+    def media_generation(self) -> MediaGenerationSettingsStore:
+        return self._media_generation
+
+    @property
     def paths(self) -> PathLayout:
         return self._paths
 
     @property
     def harness_manager(self) -> HarnessAgentManager | None:
         return self._harness_manager
+
+    @property
+    def octop_config(self) -> OctopConfig:
+        return self._config
 
     # ------------------------------------------------------------------
     # CRUD — persist agent rows and sync harness runtime
@@ -1359,6 +1386,28 @@ class AgentManager:
             self._harness_manager.set_langfuse(self._langfuse.harness_config())
         return view
 
+    async def save_media_generation(
+        self,
+        *,
+        enabled: bool,
+        image_enabled: bool,
+        video_enabled: bool,
+        image_model: str,
+        video_model: str,
+        api_key: str | None = None,
+    ) -> MediaGenerationSettings:
+        """Persist media settings and rebuild running harness agents."""
+        view = self._media_generation.save(
+            enabled=enabled,
+            image_enabled=image_enabled,
+            video_enabled=video_enabled,
+            image_model=image_model,
+            video_model=video_model,
+            api_key=api_key,
+        )
+        await self.reload_all()
+        return view
+
     def save_security(self, policy: SecurityPolicy | dict[str, Any]) -> SecurityPolicy:
         """Persist security policy and push it into harness agents."""
         resolved = self._security.save(policy)
@@ -1429,6 +1478,27 @@ class AgentManager:
         cfg["skills_disabled"] = sorted(disabled)
         self.persist_harness_config(agent_id, cfg)
         self.sync_skills_disabled(agent_id, disabled)
+
+    async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
+        """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
+        from octop.infra.agents.tool_catalog import normalize_tools_disabled
+
+        cfg = self.get_config(agent_id)
+        cleaned = normalize_tools_disabled(sorted(disabled))
+        cfg["tools_disabled"] = cleaned
+        self.persist_harness_config(agent_id, cfg)
+        self.sync_effective_tools_disabled(agent_id)
+
+    async def persist_plugin_tools_config(
+        self,
+        agent_id: str,
+        plugins: dict[str, Any],
+    ) -> None:
+        """Persist ``config.plugins`` and hot-sync tool denylist (no harness reload)."""
+        cfg = self.get_config(agent_id)
+        cfg["plugins"] = plugins
+        self.persist_harness_config(agent_id, cfg)
+        self.sync_effective_tools_disabled(agent_id)
 
     def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
         """Resolve persisted package ids to existing absolute package skill directories."""
@@ -1702,6 +1772,40 @@ class AgentManager:
     def sync_skills_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Push ``skills_disabled`` to the running harness agent (hot update)."""
         self.get_agent(agent_id).set_skills_disabled(disabled)
+
+    def sync_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
+        """Push ``tools_disabled`` to the running harness agent (hot update).
+
+        No-op when the agent is not loaded — persisted config still applies on
+        the next start via ``_build_harness_config``.
+        """
+        try:
+            agent = self.get_agent(agent_id)
+        except OctopError:
+            return
+        setter = getattr(agent, "set_tools_disabled", None)
+        if callable(setter):
+            setter(disabled)
+
+    def sync_effective_tools_disabled(self, agent_id: str) -> None:
+        """Hot-sync builtin + plugin denylist derived from current agent config."""
+        from harness_agent.plugins import PluginRegistry
+
+        from octop.infra.agents.tool_catalog import effective_tools_disabled
+
+        cfg = self.get_config(agent_id)
+        global_plugins = (
+            self._plugin_manager.global_enabled_map() if self._plugin_manager is not None else {}
+        )
+        registered = [(reg.plugin_id, reg.name) for reg in PluginRegistry().all_tools()]
+        self.sync_tools_disabled(
+            agent_id,
+            effective_tools_disabled(
+                cfg,
+                registered_plugin_tools=registered,
+                global_plugins=global_plugins,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Internal — validation
@@ -2166,12 +2270,23 @@ class AgentManager:
 
         from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
-        agent_plugins = cfg.get("plugins") if isinstance(cfg.get("plugins"), dict) else {}
+        from octop.infra.agents.plugin_tool_defaults import (  # noqa: PLC0415
+            expand_plugin_tools_default_on,
+        )
+
         global_plugins = (
             self._plugin_manager.global_enabled_map() if self._plugin_manager is not None else {}
         )
+        registered = [(reg.plugin_id, reg.name) for reg in PluginRegistry().all_tools()]
+        # Mount every globally-enabled plugin tool; per-agent ``enabled: false``
+        # is enforced via ``tools_disabled`` so toggles can hot-sync without reload.
+        mount_plugins = expand_plugin_tools_default_on(
+            None,
+            registered_tools=registered,
+            global_plugins=global_plugins,
+        )
         plugin_tools = build_plugin_tools(
-            agent_plugins=agent_plugins,
+            agent_plugins=mount_plugins,
             global_plugins=global_plugins,
         )
         # Plugin authors may register tools with non-ASCII (e.g. Chinese) names,
@@ -2327,9 +2442,20 @@ class AgentManager:
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
             log_dir=str(self.paths.logs_dir),
+            media_generation=self._media_generation.harness_config(),
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
+        if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            from octop.infra.agents.tool_catalog import effective_tools_disabled
+
+            harness_cfg.tools_disabled = frozenset(
+                effective_tools_disabled(
+                    cfg,
+                    registered_plugin_tools=registered,
+                    global_plugins=global_plugins,
+                )
+            )
         applied = policy.apply_to_config(harness_cfg)
         return replace(
             applied,

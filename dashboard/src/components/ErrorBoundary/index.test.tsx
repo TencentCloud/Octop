@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import GlobalErrorBoundary from ".";
 
+// The boundary reads copy through the real i18n instance, which is not
+// initialized in unit tests (initI18n runs in main.tsx). Return the key so
+// button labels stay deterministic (e.g. "errors.reload" → reload button).
+vi.mock("../../i18n", () => ({
+  default: {
+    t: (key: string) => key,
+  },
+}));
+
 const { tryReloadOnStaleChunk } = vi.hoisted(() => ({
   tryReloadOnStaleChunk: vi.fn(),
 }));

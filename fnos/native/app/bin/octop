@@ -1,0 +1,80 @@
+#!/bin/bash
+#
+# Octop 本地版 — 启动器
+# 运行在飞牛主机上，依赖飞牛应用商店提供的 Python 3.12（不内置 Python 运行时）。
+# 包内仅含 Octop 核心 whl + 核心依赖 site-packages；浏览器/专家/技能由用户按需安装。
+# 首次启动用向导配置的 .env 初始化管理员账号，然后启动服务。
+#
+set -euo pipefail
+
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
+_OCTOP_COMMON=""$(dirname "$0")/../cmd/common.sh""
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+APPDEST="${TRIM_APPDEST:-/var/apps/octop-native}"
+PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
+
+# 数据落在 FnOS 的 data-share 共享目录，升级时保留。
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+else
+    DATA_DIR="${APPDEST}/shares/octop-native/data"
+fi
+
+mkdir -p "$DATA_DIR" "$PKGVAR"
+
+# 加载向导配置（install_callback / config_callback 写入）
+if [ -f "$PKGVAR/.env" ]; then
+    set -a
+    . "$PKGVAR/.env"
+    set +a
+fi
+
+export HOME="$DATA_DIR"
+export OCTOP_HOME="${DATA_DIR}/.octop"
+export OCTOP_DATA_DIR="$DATA_DIR"
+
+# 查找飞牛系统上的 Python 3.12（优先应用商店安装路径，再 PATH）
+
+
+PY="$(find_python312)" || {
+    echo "[octop-native] 错误：未找到 Python 3.12。" >&2
+    echo "请先前往飞牛应用中心安装「Python 3.12」开发工具，再重新安装本应用。" >&2
+    exit 1
+}
+
+SITE_PACKAGES="$APPDEST/site-packages"
+export PYTHONPATH="${SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
+
+# 兜底：若包内 site-packages 中未检测到 octop（升级异常 / 损坏等），
+# 用内置核心 whl 就地离线安装，避免用户联网下载。
+if ! "$PY" -c "import octop" >/dev/null 2>&1; then
+    echo "[octop-native] 未检测到已安装的 Octop，正在用内置核心 whl 离线安装 ..."
+    "$PY" -m pip install --no-cache --no-index --find-links "$SITE_PACKAGES" "$SITE_PACKAGES/octop.whl" >/dev/null 2>&1 || {
+        echo "[octop-native] 离线安装失败，请检查网络或手动执行：$PY -m pip install $SITE_PACKAGES/octop.whl" >&2
+        exit 1
+    }
+fi
+
+OCTOP_PORT="${OCTOP_PORT:-8089}"
+OCTOP_LOG_LEVEL="${OCTOP_LOG_LEVEL:-info}"
+OCTOP_BIND_HOST="${OCTOP_BIND_HOST:-0.0.0.0}"
+
+mkdir -p "$OCTOP_HOME"
+
+octop_cmd() {
+    "$PY" -m octop.cli.main "$@"
+}
+
+# 首次初始化管理员账号（仅当数据库尚未建立）
+if [ ! -f "$OCTOP_HOME/octop.db" ]; then
+    echo "[octop-native] 首次启动，正在初始化管理员账号 ..."
+    octop_cmd init --yes \
+        --admin-username "${OCTOP_ADMIN_USERNAME:-admin}" \
+        --admin-password "${OCTOP_DEFAULT_PASSWORD:-Octop123}" \
+        ${OCTOP_ADMIN_DISPLAY_NAME:+--admin-display-name "$OCTOP_ADMIN_DISPLAY_NAME"}
+fi
+
+echo "[octop-native] 正在启动 Octop，$OCTOP_BIND_HOST:$OCTOP_PORT ..."
+exec "$PY" -m octop.cli.main run --host "$OCTOP_BIND_HOST" --port "$OCTOP_PORT" --log-level "${OCTOP_LOG_LEVEL}"

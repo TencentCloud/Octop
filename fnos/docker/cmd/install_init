@@ -1,0 +1,3 @@
+#!/bin/bash
+# Octop — 安装前回调（无特殊处理；docker-project 由应用中心管理）
+exit 0

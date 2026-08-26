@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# Octop — FnOS 生命周期管理（docker-project）
+# start/stop 由 fnOS 应用中心根据 config/resource 的 docker-project 自动管理；
+# 本脚本仅负责状态检查（供系统健康检查轮询）。
+#
+
+FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+
+is_docker_running() {
+    DOCKER_NAME=""
+    if [ -f "$FILE_PATH" ]; then
+        DOCKER_NAME=$(grep "container_name" "$FILE_PATH" | awk -F ':' '{print $2}' | xargs)
+    fi
+    if [ -n "$DOCKER_NAME" ]; then
+        docker inspect "$DOCKER_NAME" 2>/dev/null | grep -q "\"Status\": \"running\"," || return 1
+        return 0
+    fi
+    return 1
+}
+
+case $1 in
+start)
+    # docker 应用由 appcenter 启动
+    exit 0
+    ;;
+stop)
+    # docker 应用由 appcenter 停止
+    exit 0
+    ;;
+status)
+    if is_docker_running; then
+        exit 0
+    else
+        exit 3
+    fi
+    ;;
+*)
+    exit 1
+    ;;
+esac

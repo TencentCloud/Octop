@@ -3,28 +3,6 @@
   min-width: 0;
 }
 
-.hint {
-  margin-bottom: 20px;
-  color: var(--fn-text-tertiary);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.group {
-  border: 1px solid var(--fn-border-primary);
-  border-radius: var(--fn-radius-md, 8px);
-  background: var(--fn-bg-primary);
-  padding: 4px 16px 8px;
-}
-
-.groupTitle {
-  margin: 12px 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fn-text-secondary);
-  letter-spacing: 0.01em;
-}
-
 .guide {
   margin-bottom: 16px;
   background: var(--fn-bg-layout, var(--fn-bg-secondary));
@@ -72,40 +50,544 @@
   overflow-x: auto;
 }
 
-.list {
+.toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.row {
-  display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--fn-border-secondary, var(--fn-border-subtle));
+  flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
-.row:last-child {
-  border-bottom: none;
-}
-
-.meta {
+.toolbarLeft {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
+  flex: 1;
 }
 
-.desc {
+.toolbarCount {
   font-size: 13px;
-  line-height: 1.45;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
 }
 
-.actions {
+.toolbarRight {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.viewModeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  padding: 4px 0 24px;
+
+  @media (max-width: 767px) {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+.card {
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: 14px;
+  box-shadow: var(--fn-card-shadow-normal, 0 1px 2px rgba(16, 24, 40, 0.04));
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 22%,
+      var(--fn-card-border-normal)
+    );
+
+    @media (max-width: 767px) {
+      transform: none;
+      box-shadow: var(
+        --fn-card-shadow-normal,
+        0 1px 2px rgba(16, 24, 40, 0.04)
+      );
+      border-color: var(--fn-card-border-normal);
+    }
+  }
+
+  &:active {
+    transform: translateY(0);
+    transition-duration: 0.05s;
+  }
+}
+
+.cardIcon {
+  transition: transform 0.2s ease;
+
+  .card:hover & {
+    transform: scale(1.08);
+
+    @media (max-width: 767px) {
+      transform: none;
+    }
+  }
+}
+
+.cardDisabled {
+  opacity: 0.7;
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cardTitleCol {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.cardName {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.cardDesc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.detailLink {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fn-color-brand, #1570ef);
+  line-height: 1.2;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease;
+
+  &:hover {
+    text-decoration: underline;
+    opacity: 0.85;
+  }
+}
+
+.cardFooterSpacer {
+  flex: 1;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table {
+  width: 100%;
+}
+
+.tableCellSingle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableNameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tableNameText {
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableMono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.tableActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.drawerTitleBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.drawerTitleMeta {
+  min-width: 0;
+  flex: 1;
+}
+
+.drawerTitleText {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawerTitleId {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--fn-text-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawerContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawerAlert {
+  margin: 0;
+}
+
+.drawerDesc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fn-text-secondary);
+}
+
+.drawerChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.drawerEnableRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--fn-bg-secondary, #f8fafc);
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.drawerEnableText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drawerEnableLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.drawerEnableHint {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.4;
+}
+
+.drawerSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drawerSectionTitle {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--fn-text-tertiary);
+}
+
+.detailList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--fn-bg-primary);
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  font-size: 13px;
+  line-height: 1.45;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:nth-child(even) {
+    background: color-mix(
+      in srgb,
+      var(--fn-bg-secondary, #f8fafc) 55%,
+      transparent
+    );
+  }
+}
+
+.detailLabel {
+  color: var(--fn-text-tertiary);
+  padding-top: 1px;
+}
+
+.detailValue {
+  color: var(--fn-text-primary);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.detailMono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.requiresTags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.toolsSectionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolsCountBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-secondary, #f2f4f7);
+}
+
+.toolsEmpty {
+  padding: 16px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--fn-border-primary);
+  background: var(--fn-bg-secondary, #f8fafc);
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.detailTools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detailToolItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+
+  &:hover {
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 28%,
+      var(--fn-card-border-normal)
+    );
+    box-shadow: 0 2px 10px rgba(16, 24, 40, 0.06);
+  }
+}
+
+.detailToolItemOff {
+  opacity: 0.72;
+}
+
+.detailToolIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  background: var(--fn-bg-secondary, #f2f4f7);
+  color: var(--fn-text-secondary);
+}
+
+.detailToolMeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailToolNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detailToolName {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fn-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.detailToolBadge {
+  margin: 0 !important;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.detailToolDesc {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.detailToolActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.toolsHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.45;
+}
+
+.marketEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 72px 20px 80px;
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-secondary);
+  margin: 4px 0 0;
+}
+
+.emptyHint {
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
+  max-width: 360px;
+  line-height: 1.6;
 }

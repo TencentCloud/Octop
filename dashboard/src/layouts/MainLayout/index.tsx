@@ -22,6 +22,7 @@ import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/components/ChatSidebarP
 import RequirePermission from "../../components/RequirePermission";
 import { routeNeedsPermission } from "../../utils/permissions";
 import { useLayoutMode } from "../../context/LayoutModeContext";
+import { useDashboardPushToast } from "../../hooks/useDashboardPushToast";
 
 const Chat = lazy(() => import("../../pages/Chat"));
 const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
@@ -55,6 +56,7 @@ export default function MainLayout() {
   const selectedKey = resolveSelectedKey(currentPath);
   const isMobile = useIsMobile();
   const { layoutMode } = useLayoutMode();
+  useDashboardPushToast();
   const isMinimalLayout = layoutMode === "minimal";
   const isFullscreen =
     FULLSCREEN_PATHS.has(currentPath) ||
@@ -175,6 +177,13 @@ export default function MainLayout() {
   );
 
   const isChatRoute = isChatPath(currentPath);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("octop-chat-open", isChatRoute);
+    return () => {
+      document.documentElement.classList.remove("octop-chat-open");
+    };
+  }, [isChatRoute]);
 
   return (
     <ServiceRestartProvider>

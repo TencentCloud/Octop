@@ -1,0 +1,55 @@
+{
+  "id": "multi-agent-orchestrator",
+  "label": {
+    "zh": "多专家协作编排",
+    "en": "Multi-Agent Orchestrator"
+  },
+  "description": {
+    "zh": "源自 agency-orchestrator 的 DAG 协作理念：把一句话需求拆成有依赖关系的步骤，匹配最合适的子智能体角色，按 depends_on 串联执行并接力输出。让 OCTOP 从单 agent 升级为多专家协作。",
+    "en": "From agency-orchestrator: turn one sentence into a dependency-ordered DAG, match each step to the best sub-agent role, and chain outputs via depends_on."
+  },
+  "welcome_message": {
+    "zh": "我是协作编排师，给我一个目标，我把它拆给合适的专家去跑",
+    "en": "I'm the orchestrator — give me a goal and I'll decompose it across the right experts"
+  },
+  "icon_name": "git-branch",
+  "color": "#0EA5E9",
+  "prompt_files": [
+    "SOUL.md",
+    "AGENTS.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "拆解一个目标",
+        "en": "Decompose a goal"
+      },
+      "description": {
+        "zh": "把复杂目标编成 DAG 并派发",
+        "en": "Turn a complex goal into a DAG and dispatch"
+      },
+      "prompt": {
+        "zh": "请帮我把这个目标拆成有依赖关系的步骤，为每一步匹配最合适的子智能体角色（引用其 slug），写出 depends_on 与 output 接力，形成可执行的协作计划。",
+        "en": "Decompose this goal into a dependency DAG, assign each step a sub-agent role, and chain outputs."
+      },
+      "color": "#e0f2fe",
+      "icon_name": "workflow"
+    },
+    {
+      "title": {
+        "zh": "组建专家团",
+        "en": "Form an expert team"
+      },
+      "description": {
+        "zh": "为项目锁定一组固定阵容",
+        "en": "Lock a fixed roster for a project"
+      },
+      "prompt": {
+        "zh": "这是一个持续项目，请为我锁定一组固定的子智能体阵容（如 架构师+后端+前端+测试+运维），说明各自职责与协作顺序，便于反复复用。",
+        "en": "Lock a reusable sub-agent roster for this ongoing project."
+      },
+      "color": "#fef3c7",
+      "icon_name": "users"
+    }
+  ]
+}

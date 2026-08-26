@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from "react";
 import { Popconfirm, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 
 import { useTranslation } from "react-i18next";
 import {
@@ -86,12 +87,9 @@ export const AdminAgentCard = memo(function AdminAgentCard({
   }, [agent.agent_id, onRefresh, t]);
 
   const copyAgentId = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(agent.agent_id);
-      message.success(t("common.copied"));
-    } catch {
-      message.error(t("common.copyFailed"));
-    }
+    const ok = await copyText(agent.agent_id);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
   }, [agent.agent_id, t]);
 
   return (

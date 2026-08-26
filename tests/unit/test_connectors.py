@@ -101,6 +101,8 @@ def test_validate_weiyun_token_normalizes_prefix():
 def test_build_notion_remote_spec():
     entry = get_catalog_entry("notion")
     assert entry is not None
+    assert entry.oauth_issuer == "https://mcp.notion.com"
+    assert entry.mcp_url == "https://mcp.notion.com/mcp"
     spec = build_http_mcp_spec(
         entry=entry,
         instance_id="x",
@@ -109,6 +111,62 @@ def test_build_notion_remote_spec():
     )
     assert spec["url"] == "https://mcp.notion.com/mcp"
     assert spec["headers"]["Authorization"] == "Bearer ntn_xxx"
+    assert spec["headers"]["Accept"] == "application/json, text/event-stream"
+    assert spec["headers"]["User-Agent"] == "octop-connector/0.1"
+
+
+def test_mcp_oauth_remote_catalog_helpers():
+    from octop.infra.connectors.catalog import (
+        get_mcp_oauth_remote,
+        is_mcp_oauth_remote,
+        mcp_oauth_remote_kinds,
+    )
+    from octop.infra.connectors.oauth.mcp import resource_for_kind
+
+    notion = get_catalog_entry("notion")
+    ardot = get_catalog_entry("tencent-ardot")
+    dida = get_catalog_entry("dida365")
+    assert notion is not None and ardot is not None and dida is not None
+    assert is_mcp_oauth_remote(notion)
+    assert is_mcp_oauth_remote(ardot)
+    assert is_mcp_oauth_remote(dida)
+    assert mcp_oauth_remote_kinds() >= {"notion", "tencent-ardot", "dida365"}
+    assert get_mcp_oauth_remote("notion") is notion
+    assert get_mcp_oauth_remote("tencent-docs") is None
+    assert resource_for_kind("tencent-ardot") == "https://ardot.tencent.com/mcp"
+    assert resource_for_kind("dida365") == "https://mcp.dida365.com/"
+    assert resource_for_kind("notion") is None
+    assert dida.mcp_url == "https://mcp.dida365.com"
+    assert dida.oauth_scopes == "tasks:read tasks:write"
+
+
+def test_mcp_oauth_scopes_prefer_metadata_then_catalog():
+    from octop.infra.connectors.oauth.registry import _scopes_for_kind
+
+    assert _scopes_for_kind("dida365", {"scopes_supported": ["a", "b"]}) == "a b"
+    assert _scopes_for_kind("dida365", {}) == "tasks:read tasks:write"
+    assert _scopes_for_kind("notion", {}) is None
+
+
+def test_oauth2_accepts_token_alias_for_access_token():
+    payload = validate_create_credentials("dida365", {"token": "paste-tok"})
+    assert payload == {"access_token": "paste-tok"}
+
+
+def test_build_dida365_remote_spec():
+    entry = get_catalog_entry("dida365")
+    assert entry is not None
+    assert entry.name == "滴答清单"
+    assert entry.auth_kind == "oauth2"
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds={"access_token": "dida-tok"},
+        config=OctopConfig(),
+    )
+    assert spec["transport"] == "http"
+    assert spec["url"] == "https://mcp.dida365.com"
+    assert spec["headers"]["Authorization"] == "Bearer dida-tok"
     assert spec["headers"]["Accept"] == "application/json, text/event-stream"
 
 
@@ -747,6 +805,130 @@ def test_build_tencent_meeting_remote_spec():
     assert spec["url"] == "https://mcp.meeting.tencent.com/mcp/wemeet-open/v1"
     assert spec["headers"]["X-Tencent-Meeting-Token"] == "tok"
     assert spec["headers"]["X-Skill-Version"] == "v1.0.1"
+
+
+def test_build_tencent_ardot_remote_spec():
+    entry = get_catalog_entry("tencent-ardot")
+    assert entry is not None
+    assert entry.name == "腾讯设计 Ardot"
+    assert entry.auth_kind == "oauth2"
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds={"access_token": "ardot-tok"},
+        config=OctopConfig(),
+    )
+    assert spec["transport"] == "http"
+    assert spec["url"] == "https://ardot.tencent.com/mcp"
+    assert spec["headers"]["Authorization"] == "Bearer ardot-tok"
+    assert spec["headers"]["Accept"] == "application/json, text/event-stream"
+
+
+def test_tencent_ardot_oauth_credentials():
+    payload = validate_create_credentials(
+        "tencent-ardot",
+        {"access_token": "ardot-tok"},
+    )
+    assert payload["access_token"] == "ardot-tok"
+
+
+def test_probe_tencent_ardot_routes_to_streamable(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    captured: dict[str, object] = {}
+
+    async def _fake(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["kind"] = kind
+        return {
+            "ok": True,
+            "tool_count": 1,
+            "tools": [{"name": "fetch_editor_state", "description": "Editor state"}],
+        }
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _fake)
+    entry = get_catalog_entry("tencent-ardot")
+    assert entry is not None
+
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"access_token": "ardot-tok"},
+            instance_id="probe",
+            config=OctopConfig(),
+        )
+    )
+    assert captured["kind"] == "tencent-ardot"
+    assert captured["url"] == "https://ardot.tencent.com/mcp"
+    assert captured["headers"]["Authorization"] == "Bearer ardot-tok"
+    assert out["ok"] is True
+    assert out["tools"][0]["name"] == "fetch_editor_state"
+
+
+def test_oauth_ready_tencent_ardot():
+    from octop.infra.connectors.oauth import oauth_ready_for_kind
+
+    class _Settings:
+        def get(self, _key: str) -> str:
+            return ""
+
+    assert oauth_ready_for_kind("tencent-ardot", _Settings()) is True
+
+
+def test_ardot_token_exchange_includes_resource(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.oauth import mcp as oauth_mcp
+
+    captured: dict[str, object] = {}
+
+    class _Resp:
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "access_token": "tok",
+                "refresh_token": "ref",
+                "expires_in": 3600,
+            }
+
+    async def _fake_request(
+        method: str,
+        url: str,
+        *,
+        data: dict[str, str] | None = None,
+        **_kwargs: object,
+    ) -> _Resp:
+        del method, url
+        captured["data"] = dict(data or {})
+        return _Resp()
+
+    async def _fake_ensure(url: str, **_kwargs: object) -> str:
+        return url
+
+    monkeypatch.setattr(oauth_mcp, "safe_request", _fake_request)
+    monkeypatch.setattr(oauth_mcp, "_ensure_mcp_oauth_url", _fake_ensure)
+
+    out = asyncio.run(
+        oauth_mcp.exchange_authorization_code(
+            {
+                "token_endpoint": "https://ardot.tencent.com/oauth/token",
+            },
+            issuer="https://ardot.tencent.com",
+            client_id="cid",
+            client_secret=None,
+            code="code",
+            redirect_uri="http://127.0.0.1:9000/api/connectors/oauth/callback",
+            code_verifier="verifier",
+            resource="https://ardot.tencent.com/mcp",
+        )
+    )
+    assert out["access_token"] == "tok"
+    assert captured["data"]["resource"] == "https://ardot.tencent.com/mcp"
+    assert captured["data"]["code_verifier"] == "verifier"
 
 
 def test_build_youdao_remote_spec():

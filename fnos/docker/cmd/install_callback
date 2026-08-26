@@ -1,0 +1,51 @@
+#!/bin/bash
+#
+# Octop — 安装后回调
+# 使用固定默认配置写入 docker-compose 同目录的 .env（安装向导已移除）。
+# docker compose 会自动加载该 .env，从而完成前后端参数配置。
+#
+set -euo pipefail
+
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
+_OCTOP_COMMON=""$(dirname "$0")/common.sh""
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+# 释放 Octop 端口（8088=Docker 版，8089=本地版），杀掉残留/孤儿进程，避免重装端口冲突。
+
+
+free_octop_ports
+
+ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
+mkdir -p "$(dirname "$ENV_FILE")"
+
+# 安装向导已移除，使用固定默认值（用户首次登录后可在控制台「设置」中修改）。
+ADMIN_USER="admin"
+ADMIN_PASS="Octop123"
+LOG_LEVEL="info"
+OPENAI=""
+DASHSCOPE=""
+
+# 去除可能破坏 .env 格式的换行/引号（安全起见）
+sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+
+ADMIN_USER=$(sanitize "$ADMIN_USER")
+ADMIN_PASS=$(sanitize "$ADMIN_PASS")
+LOG_LEVEL=$(sanitize "$LOG_LEVEL")
+OPENAI=$(sanitize "$OPENAI")
+DASHSCOPE=$(sanitize "$DASHSCOPE")
+
+{
+    echo "OCTOP_PORT=8088"
+    echo "OCTOP_BIND_HOST=0.0.0.0"
+    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
+    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
+    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
+    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
+    echo "OPENAI_API_KEY=${OPENAI}"
+    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
+} > "$ENV_FILE"
+
+chmod 600 "$ENV_FILE"
+echo "[octop] 已写入配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+exit 0

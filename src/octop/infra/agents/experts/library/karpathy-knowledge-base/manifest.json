@@ -1,0 +1,74 @@
+{
+  "id": "karpathy-knowledge-base",
+  "label": {
+    "zh": "卡帕西知识库专家",
+    "en": "Karpathy Knowledge Base"
+  },
+  "description": {
+    "zh": "基于 Karpathy LLM Wiki 思路维护本地 Markdown 知识库：原始资料保持不变，AI 持续编译相互链接的 Wiki，并通过 MEMORY.md 热索引、完整目录和日志让知识随每次摄取与研究不断积累。",
+    "en": "Maintains a local Markdown knowledge base using the Karpathy LLM Wiki pattern: immutable raw sources, an interlinked AI-maintained wiki, and a compact MEMORY.md index that compounds across ingests and research."
+  },
+  "welcome_message": {
+    "zh": "把资料交给我，或直接提出研究问题。我会先读 MEMORY.md，再从 Wiki 与原始资料中查找，并把值得长期保留的结论编译回知识库。",
+    "en": "Give me a source or ask a research question. I read MEMORY.md first, navigate the wiki and raw sources, and compile durable findings back into the knowledge base."
+  },
+  "icon_name": "book-open",
+  "color": "#7c3aed",
+  "prompt_files": [
+    "SOUL.md",
+    "AGENTS.md",
+    "BOOTSTRAP.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {"zh": "初始化知识主题", "en": "Initialize a topic"},
+      "description": {"zh": "确定知识库范围、目标和首批来源", "en": "Define scope, goals, and initial sources"},
+      "prompt": {
+        "zh": "请和我一起初始化这个知识库。主题是：；我希望长期回答的问题是：；首批资料是：。先检查现有 MEMORY.md 和 Wiki，再给出初始化方案。",
+        "en": "Help me initialize this knowledge base. Topic:; long-term questions:; initial sources:. Check MEMORY.md and the existing wiki first, then propose the setup."
+      },
+      "color": "#ede9fe",
+      "icon_name": "book-open"
+    },
+    {
+      "title": {"zh": "摄取新资料", "en": "Ingest a source"},
+      "description": {"zh": "读取一个来源并更新相关 Wiki 页面", "en": "Read one source and update related wiki pages"},
+      "prompt": {
+        "zh": "请把以下资料摄取到知识库：。先确认来源身份和范围，再摘要、交叉链接并更新索引与日志。",
+        "en": "Ingest this source into the knowledge base:. Confirm its identity and scope, then summarize, cross-link, and update the indexes and log."
+      },
+      "color": "#dbeafe",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {"zh": "查询知识库", "en": "Query the wiki"},
+      "description": {"zh": "基于已编译知识与原始来源回答", "en": "Answer from compiled knowledge and raw sources"},
+      "prompt": {
+        "zh": "请基于当前知识库回答这个问题：。先从 MEMORY.md 和 index.md 定位，再引用具体 Wiki 页面与原始来源。",
+        "en": "Answer this question from the current knowledge base:. Start with MEMORY.md and index.md, then cite the relevant wiki pages and raw sources."
+      },
+      "color": "#dcfce7",
+      "icon_name": "search"
+    },
+    {
+      "title": {"zh": "运行知识库体检", "en": "Lint the knowledge base"},
+      "description": {"zh": "检查冲突、陈旧内容、断链和索引漂移", "en": "Find conflicts, stale claims, broken links, and index drift"},
+      "prompt": {
+        "zh": "请对整个知识库做一次 lint：检查冲突、过期主张、孤立页面、断链、缺失来源和 MEMORY.md/index.md 漂移；先报告，再执行安全修复。",
+        "en": "Lint the knowledge base for contradictions, stale claims, orphan pages, broken links, missing sources, and MEMORY.md/index.md drift. Report first, then apply safe fixes."
+      },
+      "color": "#fef3c7",
+      "icon_name": "list-checks"
+    },
+    {
+      "title": {"zh": "整理主题地图", "en": "Build a topic map"},
+      "description": {"zh": "把分散页面组织成概念关系和研究缺口", "en": "Organize pages into concepts, relationships, and gaps"},
+      "prompt": {
+        "zh": "请为这个主题整理一张知识地图：。标出核心概念、实体、关键来源、相互关系、冲突和待研究问题，并把有长期价值的结果归档到 Wiki。",
+        "en": "Build a knowledge map for this topic:. Show core concepts, entities, sources, relationships, conflicts, and research gaps, then file durable results into the wiki."
+      },
+      "color": "#e0f2fe",
+      "icon_name": "network"
+    }
+  ]
+}

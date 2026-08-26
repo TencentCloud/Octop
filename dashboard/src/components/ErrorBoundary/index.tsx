@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { Result, Button, Space } from "antd";
+import i18n from "../../i18n";
 import {
   isChunkLoadError,
   tryReloadOnStaleChunk,
@@ -82,26 +83,31 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
           <Result
             status="error"
             title={
-              isChunkError ? "This page is out of date" : "Something went wrong"
+              isChunkError
+                ? i18n.t("errors.outOfDateTitle")
+                : i18n.t("errors.unexpectedTitle")
             }
             subTitle={
               isChunkError
-                ? "The app was updated while this tab was open. Reload to continue."
-                : this.state.error?.message || "An unexpected error occurred."
+                ? i18n.t("errors.outOfDateSubtitle")
+                : this.state.error?.message ||
+                  i18n.t("errors.unexpectedSubtitle")
             }
             extra={
               <Space>
                 {isChunkError && (
                   <Button type="primary" onClick={this.handleReload}>
-                    Reload
+                    {i18n.t("errors.reload")}
                   </Button>
                 )}
                 {canRetry && (
                   <Button type="primary" onClick={this.handleRetry}>
-                    Retry
+                    {i18n.t("errors.retry")}
                   </Button>
                 )}
-                <Button onClick={this.handleHome}>Back to Home</Button>
+                <Button onClick={this.handleHome}>
+                  {i18n.t("errors.backHome")}
+                </Button>
               </Space>
             }
           />

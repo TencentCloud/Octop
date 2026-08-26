@@ -13,29 +13,14 @@ from octop.api.common.attachments import (
     dashboard_inbound_preview_url,
     save_attachment,
 )
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
+from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
+from octop.infra.gateway.media.inbound_store import INBOUND_EXTENSION_MEDIA_TYPES
 
 router = APIRouter()
-
-_EXTENSION_MEDIA_TYPES = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".pdf": "application/pdf",
-    ".txt": "text/plain",
-    ".md": "text/markdown",
-    ".markdown": "text/markdown",
-    ".json": "application/json",
-    ".csv": "text/csv",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ".zip": "application/zip",
-}
 
 
 def _resolve_media_type(filename: str, content_type: str | None, data: bytes = b"") -> str:
@@ -43,8 +28,8 @@ def _resolve_media_type(filename: str, content_type: str | None, data: bytes = b
     if raw and raw != "application/octet-stream":
         return raw
     ext = Path(filename or "").suffix.lower()
-    if ext in _EXTENSION_MEDIA_TYPES:
-        return _EXTENSION_MEDIA_TYPES[ext]
+    if ext in INBOUND_EXTENSION_MEDIA_TYPES:
+        return INBOUND_EXTENSION_MEDIA_TYPES[ext]
     guessed, _ = mimetypes.guess_type(filename or "")
     if guessed:
         return guessed.lower()
@@ -80,7 +65,11 @@ async def upload_attachment(
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    data = await file.read()
+    max_bytes = (
+        int(server.services.config.max_upload_bytes) if server.services is not None else None
+    )
+    fallback = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
+    data = await read_upload_capped(file, max_bytes=max_bytes or fallback)
     filename = file.filename or "upload.bin"
     media_type = _resolve_media_type(filename, file.content_type, data)
     stored = await save_attachment(
@@ -89,5 +78,6 @@ async def upload_attachment(
         filename=filename,
         media_type=media_type,
         data=data,
+        max_bytes=max_bytes,
     )
     return _attachment_payload(agent_id, stored)

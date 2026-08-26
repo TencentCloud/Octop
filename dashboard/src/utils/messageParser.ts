@@ -181,7 +181,10 @@ export function extractToolData(
         data: {
           name: d.name,
           callId: d.call_id,
-          output: d.output,
+          output:
+            typeof d.output === "string"
+              ? d.output
+              : JSON.stringify(d.output ?? ""),
           errorCode:
             typeof d.error_code === "string" ? d.error_code : undefined,
           returnCode:

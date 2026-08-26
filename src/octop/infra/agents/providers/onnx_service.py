@@ -26,6 +26,7 @@ from octop.infra.agents.providers.onnx_catalog import (
     get_onnx_model_meta,
     list_onnx_catalog_models,
 )
+from octop.infra.agents.providers.onnx_download import download_model_raced
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.runtime_packages import (
     PackageInstallSpec,
@@ -332,6 +333,13 @@ def _dir_size_bytes(path: Path) -> int:
     return total
 
 
+def _ui_progress_from_bytes(n: int, total: int | None) -> float | None:
+    """Return downloaded-bytes fraction, or None when size is unknown."""
+    if not total or total <= 0:
+        return None
+    return min(1.0, max(0.0, n / total))
+
+
 def load_config(settings_get: Any) -> OnnxServiceConfig:
     raw = settings_get(_SETTINGS_KEY)
     if not raw:
@@ -497,7 +505,7 @@ class OnnxDownloadManager:
             }:
                 raise RuntimeError("another ONNX download is already running")
             self._state.status = OnnxDownloadStatus.DOWNLOADING
-            self._state.progress = 0.05
+            self._state.progress = 0.0
             self._state.error = None
             self._state.model_name = model_name
             self._state.task_id = task_id
@@ -539,52 +547,52 @@ class OnnxDownloadManager:
 
         stop = threading.Event()
         baseline = _dir_size_bytes(cache)
+        snapshot_total: int | None = None
+        best_bytes = 0
+
+        def _apply_bytes(n: int, total: int | None) -> None:
+            nonlocal snapshot_total, best_bytes
+            if total and total > 0:
+                snapshot_total = max(snapshot_total or 0, total)
+            best_bytes = max(best_bytes, n)
+            denom = snapshot_total
+            if expected_bytes:
+                denom = max(denom or 0, expected_bytes)
+            ratio = _ui_progress_from_bytes(best_bytes, denom)
+            if ratio is None:
+                return
+            with self._lock:
+                if self._state.status != OnnxDownloadStatus.DOWNLOADING:
+                    return
+                if ratio <= self._state.progress:
+                    return
+                self._state.progress = ratio
+                self._state.updated_at = time.time()
 
         def _watch() -> None:
             while not stop.wait(0.5):
                 grown = max(0, _dir_size_bytes(cache) - baseline)
-                if expected_bytes and expected_bytes > 0:
-                    ratio = min(0.92, 0.08 + 0.84 * (grown / expected_bytes))
-                else:
-                    # Unknown size: creep toward 0.85 while bytes keep growing.
-                    ratio = min(0.85, 0.08 + (grown / (200 * 1024 * 1024)) * 0.7)
-                self._set(status=OnnxDownloadStatus.DOWNLOADING, progress=ratio)
+                _apply_bytes(grown, None)
+
+        def _on_tqdm(n: int, total: int | None, desc: str) -> None:
+            if "fetching" in desc.lower():
+                return
+            _apply_bytes(n, total)
 
         watcher = threading.Thread(target=_watch, name="onnx-dl-progress", daemon=True)
         watcher.start()
-        self._set(status=OnnxDownloadStatus.DOWNLOADING, progress=0.08)
+        self._set(status=OnnxDownloadStatus.DOWNLOADING, progress=0.0)
         try:
+            winner = download_model_raced(model_name, cache, on_progress=_on_tqdm)
+            logger.info("ONNX model %s fetched from %s", model_name, winner)
+            mark_model_downloaded(model_name)
             try:
                 from fastembed import TextEmbedding
 
-                self._set(
-                    status=OnnxDownloadStatus.LOADING,
-                    progress=max(0.15, self.state.progress),
-                )
+                self._set(status=OnnxDownloadStatus.LOADING)
                 TextEmbedding(model_name=model_name, cache_dir=str(cache))
-                mark_model_downloaded(model_name)
-                self._set(progress=0.95)
-                return
             except ImportError:
                 pass
-
-            try:
-                from huggingface_hub import snapshot_download
-            except ImportError as exc:
-                raise RuntimeError(
-                    "Local embedding download requires optional components that "
-                    "could not be loaded. Enable the ONNX service to install them "
-                    "automatically."
-                ) from exc
-
-            repo_id = str(meta.get("hf_source") or model_name)
-            self._set(
-                status=OnnxDownloadStatus.DOWNLOADING,
-                progress=max(0.12, self.state.progress),
-            )
-            snapshot_download(repo_id=repo_id, cache_dir=str(cache))
-            mark_model_downloaded(model_name)
-            self._set(progress=0.95)
         finally:
             stop.set()
             watcher.join(timeout=2.0)

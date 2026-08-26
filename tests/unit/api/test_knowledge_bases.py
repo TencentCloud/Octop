@@ -449,3 +449,104 @@ async def test_onnx_activate_enables_downloaded_service(
 
     assert saved == {"enabled": True, "model": "BAAI/bge-small-zh-v1.5"}
     assert response["enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_rename_document_returns_row_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    server = SimpleNamespace(services=_services())
+    renamed = _Document(id="doc-1", is_dir=True, path="docs/new", filename="new")
+
+    class _FakeService:
+        def rename_document(self, *_args: object, **_kwargs: object) -> _Document:
+            return renamed
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: _FakeService())
+
+    result = await knowledge_bases.rename_document(
+        kb_id="kb-1",
+        doc_id="doc-1",
+        body=knowledge_bases.RenameDocumentBody(new_name="new"),
+        request=_request(),
+        server=server,
+        user=SimpleNamespace(id=1, is_admin=False),
+    )
+
+    assert result["document_id"] == "doc-1"
+    assert result["path"] == "docs/new"
+    assert result["filename"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_rename_document_maps_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise LookupError("knowledge document not found")
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.rename_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.RenameDocumentBody(new_name="new"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_rename_document_maps_name_taken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("a knowledge document with this name already exists")
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.rename_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.RenameDocumentBody(new_name="dup"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NAME_TAKEN
+
+
+@pytest.mark.asyncio
+async def test_rename_document_maps_invalid_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("invalid knowledge document name")
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.rename_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.RenameDocumentBody(new_name="a/b"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NAME_INVALID

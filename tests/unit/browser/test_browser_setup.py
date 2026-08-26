@@ -11,6 +11,9 @@ import pytest
 
 from octop.infra.browser.setup import (
     _probe_dir_writable,
+    _relocated_profiles_root_for_uid,
+    _runtime_dir_for_uid,
+    _temp_scope_token,
     chrome_source_for_path,
     clear_profile_locks,
     ensure_chrome_runtime_env,
@@ -108,16 +111,71 @@ def test_recover_stale_profile_renames_and_recreates(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_ensure_chrome_runtime_env_forces_tmp_dir(
+def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")
     path = ensure_chrome_runtime_env()
-    assert path == Path(f"/tmp/runtime-harness-browser-{os.getuid()}")
+    # Linux uses /tmp/<uid>; other POSIX (e.g. macOS) uses tempfile + pid.
+    assert path == _runtime_dir_for_uid()
     assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
     assert os.access(path, os.W_OK | os.X_OK)
     assert S_IMODE(path.stat().st_mode) == 0o700
+
+
+def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows must not use a literal /tmp path (drive-root PermissionError)."""
+    from octop.infra.browser import setup as browser_setup
+
+    fake_tmp = tmp_path / "WinTemp"
+    fake_tmp.mkdir()
+    monkeypatch.setattr(browser_setup.sys, "platform", "win32")
+    monkeypatch.setattr(browser_setup.tempfile, "gettempdir", lambda: str(fake_tmp))
+
+    runtime = _runtime_dir_for_uid(uid=7)
+    profiles = _relocated_profiles_root_for_uid(uid=7)
+
+    assert runtime == fake_tmp / "runtime-harness-browser-7"
+    assert profiles == fake_tmp / "harness-browser-profiles-7"
+    # Same inputs → same paths across "process restarts" (no pid in the name).
+    assert _runtime_dir_for_uid(uid=7) == runtime
+    assert _relocated_profiles_root_for_uid(uid=7) == profiles
+
+
+def test_temp_scope_token_uses_username_when_getuid_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.browser import setup as browser_setup
+
+    # Simulate Windows: getuid absent / not callable.
+    # Real Windows has no os.getuid — setattr(raising=True) would raise.
+    if hasattr(browser_setup.os, "getuid"):
+        monkeypatch.setattr(browser_setup.os, "getuid", object())
+    monkeypatch.setenv("USERNAME", "OctopUser")
+    monkeypatch.delenv("USER", raising=False)
+
+    assert _temp_scope_token() == "OctopUser"
+    assert _temp_scope_token(uid=3) == "3"
+
+
+def test_probe_dir_writable_skips_symlink_on_non_linux(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.browser import setup as browser_setup
+
+    monkeypatch.setattr(browser_setup.sys, "platform", "win32")
+
+    def _forbid_symlink(self: Path, *args: object, **kwargs: object) -> None:
+        raise AssertionError("symlink probe must not run on non-Linux")
+
+    monkeypatch.setattr(Path, "symlink_to", _forbid_symlink)
+
+    target = tmp_path / "profile"
+    assert _probe_dir_writable(target) is True
+    assert target.is_dir()
 
 
 @posix_only

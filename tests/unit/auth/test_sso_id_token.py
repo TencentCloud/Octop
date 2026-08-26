@@ -49,6 +49,35 @@ def _token(
     )
 
 
+def test_verify_id_token_accepts_issuer_with_trailing_slash(
+    signing_key: rsa.RSAPrivateKey, jwks_client: httpx.Client
+) -> None:
+    issuer = "https://issuer.example/application/o/app/"
+    claims = verify_id_token(
+        _token(signing_key, issuer=issuer),
+        jwks_uri="https://issuer.example/jwks",
+        issuer=issuer,
+        client_id="octop-client",
+        nonce="nonce",
+        httpx=jwks_client,
+    )
+    assert claims["sub"] == "user-1"
+
+
+def test_verify_id_token_rejects_trailing_slash_mismatch(
+    signing_key: rsa.RSAPrivateKey, jwks_client: httpx.Client
+) -> None:
+    with pytest.raises(jwt.InvalidIssuerError):
+        verify_id_token(
+            _token(signing_key, issuer="https://issuer.example/application/o/app/"),
+            jwks_uri="https://issuer.example/jwks",
+            issuer="https://issuer.example/application/o/app",
+            client_id="octop-client",
+            nonce="nonce",
+            httpx=jwks_client,
+        )
+
+
 def test_verify_id_token_rejects_wrong_issuer(
     signing_key: rsa.RSAPrivateKey, jwks_client: httpx.Client
 ) -> None:

@@ -32,12 +32,33 @@ async function unregisterAllServiceWorkers(): Promise<void> {
  * Apply a waiting Service Worker update and reload once.
  * Only called from explicit UI actions (PwaUpdatePrompt).
  */
-export function applyUpdate(): void {
+export async function applyUpdate(): Promise<void> {
   if (applyingUpdate) return;
   applyingUpdate = true;
-  if (pendingRegistration?.waiting) {
-    pendingRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+  const waiting = pendingRegistration?.waiting;
+  if (!waiting) {
+    window.location.reload();
+    return;
   }
+
+  // Wait until the new worker takes control before reloading. Reloading
+  // immediately after SKIP_WAITING can race activation, so the old worker
+  // serves the page again and the update prompt reappears after restart.
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      navigator.serviceWorker.removeEventListener("controllerchange", finish);
+      resolve();
+    };
+    const timeoutId = window.setTimeout(finish, 3000);
+    navigator.serviceWorker.addEventListener("controllerchange", finish, {
+      once: true,
+    });
+    waiting.postMessage({ type: "SKIP_WAITING" });
+  });
   window.location.reload();
 }
 

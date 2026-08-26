@@ -1,0 +1,5 @@
+{
+  "renderers": [
+    { "id": "fortune_card", "tools": ["roll_dice", "daily_fortune", "draw_lot"] }
+  ]
+}

@@ -11,6 +11,7 @@ from octop.infra.knowledge.relpath import (
     normalize_kb_path,
     path_basename,
     path_is_direct_child,
+    path_parent,
 )
 from octop.infra.utils.ulid import new_short_id, new_ulid
 
@@ -418,6 +419,34 @@ class KnowledgeRepo:
                 "ORDER BY kb_id, document_id"
             ).fetchall()
         return map_rows(rows, KnowledgeDocumentRow)
+
+    def rename_document(
+        self, kb_id: str, doc_id: str, new_name: str
+    ) -> KnowledgeDocumentRow | None:
+        """Rename a document (file or folder), rewriting descendant paths for folders."""
+        document = self.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            return None
+        parent = path_parent(document.path)
+        new_path = normalize_kb_path(f"{parent}/{new_name}")
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            if document.is_dir:
+                # Rewrite the folder's own prefix once across all descendants.
+                prefix = f"{document.path}/"
+                conn.execute(
+                    "UPDATE knowledge_documents SET "
+                    "path = ? || substr(path, ?), updated_at = ? "
+                    "WHERE kb_id = ? AND substr(path, 1, ?) = ?",
+                    (new_path, len(document.path) + 1, ts, kb_id, len(prefix), prefix),
+                )
+            conn.execute(
+                "UPDATE knowledge_documents SET "
+                "filename = ?, path = ?, updated_at = ? "
+                "WHERE document_id = ?",
+                (new_name, new_path, ts, doc_id),
+            )
+        return self.get_document(doc_id)
 
     def resume_pending_documents(self) -> list[KnowledgeDocumentRow]:
         """Return pending work after resetting jobs interrupted while processing."""

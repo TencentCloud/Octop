@@ -1,4 +1,9 @@
-"""OAuth 2.0 for remote MCP servers (Notion) via RFC 8414 + dynamic registration."""
+"""OAuth 2.0 for remote MCP servers via RFC 8414 + dynamic registration.
+
+Issuers and MCP URLs come from the connector catalog
+(``oauth_issuer`` + ``mcp_url`` on ``auth_kind=oauth2`` remote entries).
+Adding Notion / Ardot / Linear-style connectors is mostly a catalog row.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,9 @@ import time
 from typing import Any
 from urllib.parse import urlencode, urlparse
 
+import httpx
+
+from octop.infra.connectors.catalog import get_mcp_oauth_remote, mcp_oauth_remote_kinds
 from octop.infra.utils.ssrf_guard import (
     UnsafeOutboundUrl,
     host_allowed_for_issuer,
@@ -14,20 +22,25 @@ from octop.infra.utils.ssrf_guard import (
     validate_https_url_resolved,
 )
 
-_MCP_ISSUERS: dict[str, str] = {
-    "notion": "https://mcp.notion.com",
-}
-
 
 def mcp_oauth_kinds() -> frozenset[str]:
-    return frozenset(_MCP_ISSUERS)
+    return mcp_oauth_remote_kinds()
 
 
 def issuer_for_kind(kind: str) -> str:
-    issuer = _MCP_ISSUERS.get(kind)
-    if issuer is None:
+    entry = get_mcp_oauth_remote(kind)
+    if entry is None or not entry.oauth_issuer:
         raise ValueError(f"unsupported MCP oauth kind: {kind}")
-    return issuer
+    return entry.oauth_issuer.rstrip("/")
+
+
+def resource_for_kind(kind: str) -> str | None:
+    """Optional RFC 8707 resource indicator (e.g. Ardot / Dida MCP URL)."""
+    entry = get_mcp_oauth_remote(kind)
+    if entry is None:
+        return None
+    resource = (entry.oauth_resource or "").strip()
+    return resource or None
 
 
 async def _ensure_mcp_oauth_url(url: str, *, issuer: str, field: str) -> str:
@@ -106,6 +119,7 @@ def build_authorize_url(
     state: str,
     code_challenge: str,
     scope: str | None = None,
+    resource: str | None = None,
 ) -> str:
     params: dict[str, str] = {
         "response_type": "code",
@@ -117,7 +131,19 @@ def build_authorize_url(
     }
     if scope:
         params["scope"] = scope
+    if resource:
+        params["resource"] = resource
     return f"{metadata['authorization_endpoint']}?{urlencode(params)}"
+
+
+def _http_error_detail(resp: Any) -> str:
+    text = ""
+    try:
+        text = str(getattr(resp, "text", "") or "")[:300]
+    except Exception:
+        text = ""
+    status = getattr(resp, "status_code", "?")
+    return f"HTTP {status}" + (f": {text}" if text else "")
 
 
 async def exchange_authorization_code(
@@ -129,6 +155,7 @@ async def exchange_authorization_code(
     code: str,
     redirect_uri: str,
     code_verifier: str,
+    resource: str | None = None,
 ) -> dict[str, Any]:
     token_url = await _ensure_mcp_oauth_url(
         str(metadata["token_endpoint"]),
@@ -144,6 +171,8 @@ async def exchange_authorization_code(
     }
     if client_secret:
         data["client_secret"] = client_secret
+    if resource:
+        data["resource"] = resource
     r = await safe_request(
         "POST",
         token_url,
@@ -151,7 +180,10 @@ async def exchange_authorization_code(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=30.0,
     )
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise ValueError(f"token exchange failed ({_http_error_detail(r)})") from exc
     body = r.json()
     if not isinstance(body, dict) or not body.get("access_token"):
         raise ValueError(f"token exchange failed: {body!r}")
@@ -165,6 +197,7 @@ async def refresh_access_token(
     client_id: str,
     client_secret: str | None,
     refresh_token: str,
+    resource: str | None = None,
 ) -> dict[str, Any]:
     token_url = await _ensure_mcp_oauth_url(
         str(metadata["token_endpoint"]),
@@ -178,6 +211,8 @@ async def refresh_access_token(
     }
     if client_secret:
         data["client_secret"] = client_secret
+    if resource:
+        data["resource"] = resource
     r = await safe_request(
         "POST",
         token_url,
@@ -185,7 +220,10 @@ async def refresh_access_token(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=30.0,
     )
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise ValueError(f"token refresh failed ({_http_error_detail(r)})") from exc
     body = r.json()
     if not isinstance(body, dict) or not body.get("access_token"):
         raise ValueError(f"token refresh failed: {body!r}")

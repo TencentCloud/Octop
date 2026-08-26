@@ -2,8 +2,14 @@
 
 [中文版](./README_CN.md)
 
-Sample plugins for the three `kind` values supported by Octop / harness-agent.
+Sample plugins for Octop / harness-agent `kind` values, plus a **dual
+frontend + backend** demo that renders tool results in chat.
 Layout inspired by [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/main/octop-toolkit).
+
+Product plugins shipped with the wheel live in
+`src/octop/infra/agents/plugins/bundled/`. `octop init` and `octop run`
+copy missing ones into `~/.octop/plugins/` and set them **globally off**
+in `config.json`. Uninstalled ids are not re-copied.
 
 ## Demos
 
@@ -12,16 +18,19 @@ Layout inspired by [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/
 | [`demo-toolkit`](./demo-toolkit/) | `tool` | Register callable tools (time, text stats, configurable echo) |
 | [`demo-greeting-skill`](./demo-greeting-skill/) | `skill` | Sync a sample Skill into the agent workspace |
 | [`demo-turn-logger`](./demo-turn-logger/) | `hook` | Register `AgentMiddleware` that logs before/after model calls |
+| [`demo-ui-card`](./demo-ui-card/) | `tool` + `ui/` | Backend returns `octop_ui` JSON; frontend renders an interactive card |
 
 ## Plugin layout
 
-Each plugin is a folder with at least:
-
 ```text
 my-plugin/
-├── plugin.yaml    # id, version, name, kind, entry
+├── plugin.yaml    # id, version, name, kind, entry; optional ui
 ├── main.py        # must define setup(ctx)
-└── skills/        # skill plugins only: <name>/SKILL.md
+├── skills/        # skill plugins only: <name>/SKILL.md
+└── ui/            # optional prebuilt UI (no npm on install)
+    └── dist/
+        ├── index.js
+        └── manifest.json
 ```
 
 In `setup(ctx)`, use the API that matches `kind`:
@@ -32,66 +41,72 @@ In `setup(ctx)`, use the API that matches `kind`:
 | `skill` | `ctx.skills("skills")` — path relative to the plugin root |
 | `hook` | `ctx.middleware(instance, priority=...)` |
 
+### Optional icon + UI
+
+```yaml
+icon: "🧩"   # emoji or https://… image URL for Admin cards
+ui:
+  entry: ui/dist/index.js
+  manifest: ui/dist/manifest.json
+```
+
+### Tool plugins with UI
+
+```yaml
+ui:
+  entry: ui/dist/index.js
+  manifest: ui/dist/manifest.json
+```
+
+Prefer JSON tool output:
+
+```json
+{
+  "octop_ui": { "renderer": "demo_card", "version": 1 },
+  "data": { "title": "…", "count": 1 },
+  "text": "plain fallback"
+}
+```
+
+The Dashboard loads `index.js` via `GET /api/plugins/{id}/ui/…`, calls
+`setup(host)`, and resolves renderers in chat. Use `host.patchResult` for
+interactive L2 updates; streaming still replaces `output` via SSE (L1).
+Ship a self-contained ESM; React is provided as `window.__OCTOP_REACT__` /
+`__OCTOP_JSX__`.
+
 ## Install locally
 
 ```bash
-# From a directory (best for development)
 octop plugin install ./plugins/demo-toolkit --force
 octop plugin install ./plugins/demo-greeting-skill --force
 octop plugin install ./plugins/demo-turn-logger --force
+octop plugin install ./plugins/demo-ui-card --force
 octop plugin list
 ```
 
-Or pack a ZIP first:
+Or pack a ZIP first (include prebuilt `ui/dist/` when present — the server
+does **not** run `npm install`).
 
-```bash
-cd plugins
-zip -r demo-toolkit.zip demo-toolkit/
-octop plugin install ./demo-toolkit.zip --force
-```
+**Dashboard:** Admin → Plugins → Install. Paste a **direct ZIP download URL**.
 
-**Dashboard:** Admin → Plugins → Install. Paste a **direct ZIP download URL**
-(on GitHub use `raw.githubusercontent.com` or the Download / raw link — not a `/blob/` page).
-
-After installing a **tool** plugin, open **Tool management**, pick an agent, and enable
-the tools. **Skill** plugins sync into the agent workspace `skills/` on agent start.
-**Hook** middleware is attached for globally enabled plugins.
+After installing a **tool** plugin, open **Tool management** and enable the
+tools. **Skill** plugins sync on agent start. **Hook** middleware attaches for
+globally enabled plugins. **UI** loads when you open chat.
 
 ## Package rules
 
-The ZIP must contain **exactly one** plugin root that includes `plugin.yaml`:
-
-```bash
-# Good — one top-level plugin folder
-zip -r demo-toolkit.zip demo-toolkit/
-
-# Bad — multiple plugins, or loose files without a plugin root
-```
+The ZIP must contain **exactly one** plugin root that includes `plugin.yaml`.
 
 ## Quick validity check
-
-From the repo root (no server required):
 
 ```bash
 uv run python - <<'PY'
 from pathlib import Path
 from harness_agent.plugins import PluginRegistry, load_plugin_dir
 
-for name in ("demo-toolkit", "demo-greeting-skill", "demo-turn-logger"):
+for name in ("demo-toolkit", "demo-greeting-skill", "demo-turn-logger", "demo-ui-card"):
     PluginRegistry.reset()
     p = load_plugin_dir(Path("plugins") / name, install_deps=False)
-    print(
-        p.manifest.id,
-        p.manifest.kind,
-        f"tools={len(p.tools)}",
-        f"mw={len(p.middleware)}",
-        f"skills={p.skills_dir}",
-    )
+    print(p.manifest.id, p.manifest.kind, len(p.tools))
 PY
 ```
-
-Expected shape:
-
-- `demo-toolkit` → `tool`, 3 tools  
-- `demo-greeting-skill` → `skill`, `skills/` present  
-- `demo-turn-logger` → `hook`, 1 middleware  

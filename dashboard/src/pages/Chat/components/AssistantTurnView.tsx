@@ -5,7 +5,6 @@ import type { ChatMessage } from "../hooks/useChat";
 import {
   splitAssistantTurn,
   toAnswerOnlyMessage,
-  countProcessStats,
   turnUsedBrowserTool,
   turnUsedFileTool,
 } from "../utils/messageContent";
@@ -18,9 +17,9 @@ import {
   collectWriteTodosFromMessages,
   isWriteTodosToolName,
 } from "../../../utils/parseWriteTodos";
-import AssistantProcessSummary from "./AssistantProcessSummary";
 import MessageBubble from "./MessageBubble";
 import { ToolMediaStrip } from "./ToolMediaStrip";
+import { TurnProcessBlocks, turnHasVisibleProcess } from "./TurnProcessBlocks";
 import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowledgeCitations";
 import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
@@ -52,8 +51,7 @@ interface AssistantTurnViewProps {
 function hasProcessContent(
   split: ReturnType<typeof splitAssistantTurn>,
 ): boolean {
-  const { toolCount, thinkingCount } = countProcessStats(split);
-  return toolCount > 0 || thinkingCount > 0;
+  return turnHasVisibleProcess(split);
 }
 
 export default function AssistantTurnView({
@@ -170,15 +168,13 @@ export default function AssistantTurnView({
           <div key={hitl.id}>
             {showProcess ? (
               <>
-                <div className={styles.processSummaryRow}>
-                  <AssistantProcessSummary
-                    split={split}
-                    isStreaming={processStreaming}
-                    onAcpPermissionSelect={onAcpPermissionSelect}
-                    hideToolMedia={hasToolMedia}
-                    agentId={agentId}
-                  />
-                </div>
+                <TurnProcessBlocks
+                  split={split}
+                  isStreaming={processStreaming}
+                  onAcpPermissionSelect={onAcpPermissionSelect}
+                  hideToolMedia={hasToolMedia}
+                  agentId={agentId}
+                />
                 {todoPanel && idx === firstProcessSegmentIdx ? todoPanel : null}
               </>
             ) : null}
@@ -192,15 +188,13 @@ export default function AssistantTurnView({
       })}
       {showTrailingProcess ? (
         <>
-          <div className={styles.processSummaryRow}>
-            <AssistantProcessSummary
-              split={trailingSplit}
-              isStreaming={turnStreaming && !hasPendingHitl}
-              onAcpPermissionSelect={onAcpPermissionSelect}
-              hideToolMedia={hasToolMedia}
-              agentId={agentId}
-            />
-          </div>
+          <TurnProcessBlocks
+            split={trailingSplit}
+            isStreaming={turnStreaming && !hasPendingHitl}
+            onAcpPermissionSelect={onAcpPermissionSelect}
+            hideToolMedia={hasToolMedia}
+            agentId={agentId}
+          />
           {todoPanel && firstProcessSegmentIdx < 0 ? todoPanel : null}
         </>
       ) : null}

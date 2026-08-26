@@ -145,6 +145,11 @@ class OctopServer:
         if self._started:
             return
         self.paths.ensure_root()
+        # fnOS/容器内非 root 用户场景：把用户级 npm 全局 bin 目录（~/.npm-global）
+        # 纳入进程 PATH，保证连接器 CLI（wecom-cli / lark-cli）可被检测与调用。
+        from octop.infra.connectors.gateway.cli_install import ensure_cli_path  # noqa: PLC0415
+
+        ensure_cli_path()
         from octop.infra.utils.env_file import apply_env_file, env_file_path  # noqa: PLC0415
 
         apply_env_file(env_file_path(self.paths.root))
@@ -164,6 +169,7 @@ class OctopServer:
             plugins_dir=self.paths.plugins_dir,
             config_path=self.paths.config,
         )
+        self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
 
         import time  # noqa: PLC0415

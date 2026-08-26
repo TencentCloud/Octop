@@ -25,9 +25,11 @@ import {
   type UsageChunk,
 } from "../../../utils/parseHarnessChunk";
 import { isChatStreamError } from "../../../utils/chatStreamError";
+import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import { turnStatusAction } from "./turnStatusGate";
+import { mergePatchedToolOutput } from "../../../plugins/toolRenderers/parseToolOutput";
 import { frameBelongsToThread } from "./frameThread";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
@@ -1247,6 +1249,62 @@ function upsertToolCall(
 
 /** Close the tool bubble that matches ``tool_call_id`` in the result, or the
  *  most recently opened streaming tool bubble as a fallback. */
+function extractToolResultOutput(messages: unknown[]): string {
+  const mediaTypes = new Set(["image", "file", "audio", "video"]);
+  for (const raw of messages) {
+    if (!raw || typeof raw !== "object") continue;
+    const obj = raw as Record<string, unknown>;
+    const content = obj.content;
+
+    if (Array.isArray(content)) {
+      const hasMedia = content.some(
+        (part) =>
+          part &&
+          typeof part === "object" &&
+          mediaTypes.has(String((part as Record<string, unknown>).type || "")),
+      );
+      if (hasMedia) {
+        return JSON.stringify(content);
+      }
+      const textParts: string[] = [];
+      for (const part of content) {
+        if (
+          part &&
+          typeof part === "object" &&
+          typeof (part as Record<string, unknown>).text === "string"
+        ) {
+          textParts.push(String((part as Record<string, unknown>).text));
+        }
+      }
+      if (textParts.length > 0) {
+        return textParts.join("\n");
+      }
+      // Non-text structured blocks (rare) — keep JSON for UI parsers.
+      if (content.length > 0) {
+        return JSON.stringify(content);
+      }
+      continue;
+    }
+
+    // Already-parsed JSON object (e.g. octop_ui envelope) — must not drop.
+    if (content && typeof content === "object") {
+      return JSON.stringify(content);
+    }
+
+    if (typeof content === "string" && content) {
+      return content;
+    }
+
+    // Some runtimes put the payload on ``output`` / ``artifact`` instead.
+    for (const key of ["output", "artifact", "result"] as const) {
+      const v = obj[key];
+      if (typeof v === "string" && v) return v;
+      if (v && typeof v === "object") return JSON.stringify(v);
+    }
+  }
+  return "";
+}
+
 function closeToolCall(
   state: SessionStreamState,
   messages: unknown[],
@@ -1286,104 +1344,33 @@ function closeToolCall(
   }
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
-  let output = "";
-  for (const raw of messages) {
-    if (raw && typeof raw === "object") {
-      const obj = raw as Record<string, unknown>;
-      const content = obj.content;
-      if (Array.isArray(content)) {
-        const hasMedia = content.some(
-          (part) =>
-            part &&
-            typeof part === "object" &&
-            ["image", "file", "audio", "video"].includes(
-              String((part as Record<string, unknown>).type || ""),
-            ),
-        );
-        if (hasMedia) {
-          output = JSON.stringify(content);
-          break;
-        }
-        const textParts: string[] = [];
-        for (const part of content) {
-          if (
-            part &&
-            typeof part === "object" &&
-            typeof (part as Record<string, unknown>).text === "string"
-          ) {
-            textParts.push(String((part as Record<string, unknown>).text));
-          }
-        }
-        if (textParts.length > 0) {
-          output = textParts.join("\n");
-          break;
-        }
-      }
-      if (content && typeof content === "object" && !Array.isArray(content)) {
-        const part = content as Record<string, unknown>;
-        if (
-          ["image", "file", "audio", "video"].includes(String(part.type || ""))
-        ) {
-          output = JSON.stringify(content);
-          break;
-        }
-      }
-      if (typeof content === "string" && content) {
-        const stripped = content.trim();
-        if (stripped.startsWith("{") || stripped.startsWith("[")) {
-          try {
-            const parsed = JSON.parse(stripped);
-            const blocks = Array.isArray(parsed)
-              ? parsed
-              : parsed && typeof parsed === "object"
-              ? [parsed]
-              : [];
-            const hasMedia = blocks.some(
-              (part) =>
-                part &&
-                typeof part === "object" &&
-                ["image", "file", "audio", "video"].includes(
-                  String((part as Record<string, unknown>).type || ""),
-                ),
-            );
-            if (hasMedia) {
-              output = stripped;
-              break;
-            }
-            if (blocks.length > 0) {
-              output = stripped;
-              break;
-            }
-          } catch {
-            // fall through
-          }
-        }
-        output = content;
-        break;
-      }
-      if (Array.isArray(content)) {
-        for (const part of content) {
-          if (
-            part &&
-            typeof part === "object" &&
-            typeof (part as Record<string, unknown>).text === "string"
-          ) {
-            output = String((part as Record<string, unknown>).text);
-            break;
-          }
-        }
-        if (output) break;
-      }
-    }
-  }
+  const output = extractToolResultOutput(messages);
+  const explicitToolError = messages.some(
+    (raw) =>
+      raw !== null &&
+      typeof raw === "object" &&
+      (raw as Record<string, unknown>).status === "error",
+  );
+  const feedback = parseToolExecutionFeedback(output);
+  const isToolError = explicitToolError || feedback?.isError === true;
+  const errorCode = feedback?.code || (isToolError ? "tool_error" : undefined);
   state.messages = [
     ...state.messages.slice(0, toolIdx),
     {
       ...target,
-      status: "done",
+      status: isToolError ? "error" : "done",
+      errorInfo: isToolError
+        ? {
+            message: feedback?.message || output,
+            code: errorCode,
+            source: "tool_result",
+            retryable: feedback?.retryable,
+          }
+        : undefined,
       toolData: {
         ...(target.toolData ?? {}),
         output,
+        errorCode,
       },
     },
     ...state.messages.slice(toolIdx + 1),
@@ -1395,6 +1382,49 @@ function closeToolCall(
     toolName: target.toolData?.name ?? "",
     toolId: target.toolData?.callId ?? "",
   });
+}
+
+/**
+ * L2 interactive update: rewrite the tool bubble ``output`` for ``callId``
+ * (merges into ``octop_ui`` JSON ``data`` when present). Searches the focused
+ * session first, then any live session that owns the call id.
+ */
+export function patchToolResultData(callId: string, nextData: unknown): void {
+  if (!callId) return;
+
+  const tryPatch = (sessionId: string): boolean => {
+    const state = sessionStates.get(sessionId);
+    if (!state) return false;
+    const mapped = state.toolCallIdIndex[callId];
+    let idx = mapped ? state.messages.findIndex((m) => m.id === mapped) : -1;
+    if (idx < 0) {
+      idx = state.messages.findIndex(
+        (m) => m.toolData?.callId === callId && !!m.toolData,
+      );
+    }
+    if (idx < 0) return false;
+    const target = state.messages[idx];
+    const output = mergePatchedToolOutput(target.toolData?.output, nextData);
+    state.messages = [
+      ...state.messages.slice(0, idx),
+      {
+        ...target,
+        toolData: {
+          ...(target.toolData ?? {}),
+          output,
+        },
+      },
+      ...state.messages.slice(idx + 1),
+    ];
+    notify(state);
+    return true;
+  };
+
+  const focused = getFocusedChatSession();
+  if (focused && tryPatch(focused)) return;
+  for (const sessionId of sessionStates.keys()) {
+    if (tryPatch(sessionId)) return;
+  }
 }
 
 /** Mark every still-streaming assistant bubble as done. */

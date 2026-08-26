@@ -192,7 +192,7 @@ def test_bundled_library_non_empty() -> None:
     catalog = SubagentCatalog(default_package_root())
     catalog.refresh()
     assert len(catalog.list_summaries()) > 100
-    assert len(catalog.list_divisions()) == 16
+    assert len(catalog.list_divisions()) == 19
     assert catalog.get("engineering-software-architect") is not None
 
 

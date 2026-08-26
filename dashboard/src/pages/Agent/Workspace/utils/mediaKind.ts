@@ -12,7 +12,17 @@ const IMAGE_EXT = new Set([
   "avif",
 ]);
 
-const VIDEO_EXT = new Set(["mp4", "webm", "mov", "m4v", "ogv", "mkv"]);
+const VIDEO_EXT = new Set([
+  "mp4",
+  "webm",
+  "mov",
+  "m4v",
+  "ogv",
+  "mkv",
+  "avi",
+  "mpeg",
+  "mpg",
+]);
 
 const AUDIO_EXT = new Set([
   "mp3",

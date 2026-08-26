@@ -60,8 +60,11 @@ if (typeof window !== "undefined") {
 
 void initI18n()
   .then(() => {
-    clearChunkReloadFlag();
     createRoot(document.getElementById("root")!).render(<App />);
+    // Delay clearing the one-shot reload guard until after first paint / lazy
+    // chunks settle. Clearing immediately let Firefox modulepreload noise and
+    // aborted dynamic imports re-arm an infinite reload loop.
+    window.setTimeout(() => clearChunkReloadFlag(), 4000);
   })
   .catch((err: unknown) => {
     if (tryReloadOnStaleChunk(err)) return;

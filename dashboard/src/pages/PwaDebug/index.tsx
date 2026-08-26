@@ -9,6 +9,7 @@ import {
   DesktopInstallGuide,
   IosGuide,
 } from "../../components/PwaInstallPrompt";
+import { copyText } from "../../utils/copyText";
 
 interface CheckItem {
   id: string;
@@ -392,7 +393,8 @@ export default function PwaDebugPage() {
         .join("\n") +
       "\n\n--- raw log ---\n" +
       swLog.join("\n");
-    navigator.clipboard.writeText(text).then(() => {
+    void copyText(text).then((ok) => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

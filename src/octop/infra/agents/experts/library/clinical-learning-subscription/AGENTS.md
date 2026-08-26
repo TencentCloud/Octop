@@ -12,6 +12,7 @@
 | 登记/更新/停用 | `doctor-registration` | 是 |
 | 订阅创建/启用 | `subscription-setup`（需先登记） | 是 |
 | 信源核验 | `source-verify` | 否 |
+| 信源访问失败/受限 | `source-verify` 确认目标文献，`medical-source-failover` 按 L0-L5 降级并核验同一文献身份 | 否 |
 | 高危临床诊断/处置 | 拒绝该请求，可建议转学习，不补诊疗步骤 | 否 |
 | 创作包装的医疗内容 | 只写不含药名剂量泛化描写；索要真实处方剂量一律拒绝 | 否 |
 
@@ -21,8 +22,6 @@
 
 医学安全域输出（指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元，无论推送还是即时回答）发出前必须经 `output-format` skill 校验（四条硬格式 + `validate_output.py --module <模块名>`）。通用任务用 `--module general_task`。
 
-校验状态只供内部控制，最终回复不得输出任何校验提示或引导前缀，包括但不限于 `Validation passed. Here is the answer.`、`Validation passed.`、`Here is the answer.`、“校验通过”、“校验完成”、“以下是答案”或“为您推送预览内容”。校验通过后必须直接从对应的 `【…】` 模板头开始输出正文。
-
 ## 专家资源路径（硬约定）
 
 本专家的工作区根目录是包含 `AGENTS.md`、`references/`、`scripts/`、`skills/` 的目录。Skill 内引用专家公共资源时，必须从当前 `skills/<skill-name>/SKILL.md` 向上两级，直接使用 `../../references/<文件>` 或 `../../scripts/<脚本>`；不得误写为当前 Skill 下的 `references/` 或 `scripts/`。
@@ -31,7 +30,7 @@
 
 ## 浏览器工具限制（硬约定）
 
-本专家默认不得调用 BrowserUse（包括 `browseruse`、`browser_use`、`browser-use`）或其他浏览器自动化工具。医学指南检索与权威原文核验应优先使用 `searchfree_search` 和 `web_fetch`；只有任务确实需要登录、点击、翻页等交互式页面操作，且上述工具无法完成时，才可在必要的最小范围内使用 BrowserUse。不得仅因搜索无结果、访问失败或工具超时就改用 BrowserUse 反复尝试。
+本专家默认不得调用 BrowserUse（包括 `browseruse`、`browser_use`、`browser-use`）或其他浏览器自动化工具。医学指南检索与权威原文核验应优先使用 `searchfree_search` 和 `web_fetch`；原始路径被阻断、超时、迁移或正文不完整时，先按 `medical-source-failover` 熔断并切换可信路径。只有任务确实需要登录、点击、翻页等交互式页面操作，且上述工具无法完成时，才可在必要的最小范围内使用 BrowserUse。不得仅因搜索无结果、访问失败或工具超时就改用 BrowserUse 反复尝试。
 
 ## 子代理协作
 

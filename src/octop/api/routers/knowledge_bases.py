@@ -9,7 +9,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
+from octop.config import DEFAULT_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.agents.providers.model_flags import is_embedding_model, is_onnx_local_provider
 from octop.infra.agents.providers.onnx_catalog import (
     ONNX_PRESET_MODEL_IDS,
@@ -44,6 +46,8 @@ from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter(prefix="/knowledge-bases")
 
+_TEXT_DOC_MAX_LENGTH = upload_mb_to_bytes(MAX_MAX_UPLOAD_MB)
+
 
 class FeatureBody(BaseModel):
     enabled: bool = Field(description="Whether to enable the instance-wide knowledge-base feature.")
@@ -76,7 +80,7 @@ class CreateTextDocumentBody(BaseModel):
         min_length=1, max_length=200, description="File name without or with extension."
     )
     format: str = Field(pattern="^(md|txt)$", description="Text format: md or txt.")
-    content: str = Field(default="", max_length=MAX_DOCUMENT_BYTES)
+    content: str = Field(default="", max_length=_TEXT_DOC_MAX_LENGTH)
     path: str | None = Field(
         default=None,
         max_length=500,
@@ -85,7 +89,7 @@ class CreateTextDocumentBody(BaseModel):
 
 
 class UpdateTextDocumentBody(BaseModel):
-    content: str = Field(max_length=MAX_DOCUMENT_BYTES)
+    content: str = Field(max_length=_TEXT_DOC_MAX_LENGTH)
 
 
 class UpdateBaseBody(BaseModel):
@@ -94,6 +98,10 @@ class UpdateBaseBody(BaseModel):
     default_open: bool | None = None
     shared: bool | None = None
     icon_name: str | None = Field(default=None, max_length=64)
+
+
+class RenameDocumentBody(BaseModel):
+    new_name: str = Field(min_length=1, max_length=255, description="New document or folder name.")
 
 
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
@@ -133,7 +141,25 @@ def _is_admin(user: User) -> bool:
     return bool(user.is_admin)
 
 
-def _map_knowledge_error(exc: Exception, *, locale: str) -> OctopError:
+def _max_upload_mb(server: OctopServer) -> int:
+    config = getattr(getattr(server, "services", None), "config", None)
+    value = getattr(config, "max_upload_mb", None)
+    if isinstance(value, int) and value > 0:
+        return value
+    return DEFAULT_MAX_UPLOAD_MB
+
+
+def _max_upload_bytes(server: OctopServer) -> int:
+    config = getattr(getattr(server, "services", None), "config", None)
+    value = getattr(config, "max_upload_bytes", None)
+    if isinstance(value, int) and value > 0:
+        return value
+    return MAX_DOCUMENT_BYTES
+
+
+def _map_knowledge_error(
+    exc: Exception, *, locale: str, server: OctopServer | None = None
+) -> OctopError:
     if isinstance(exc, OctopError):
         return exc
     if isinstance(exc, LookupError):
@@ -151,13 +177,21 @@ def _map_knowledge_error(exc: Exception, *, locale: str) -> OctopError:
     if "at most 100" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_DOC_LIMIT, locale)
     if "document size exceeds" in text:
-        return OctopError.localized(ErrorCode.KNOWLEDGE_DOC_TOO_LARGE, locale)
+        max_mb = _max_upload_mb(server) if server is not None else DEFAULT_MAX_UPLOAD_MB
+        return OctopError.localized(
+            ErrorCode.KNOWLEDGE_DOC_TOO_LARGE,
+            locale,
+            details={"max_mb": max_mb},
+            max_mb=max_mb,
+        )
     if "at most" in text and "knowledge bases" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
-    if "unique constraint" in text or "duplicate key" in text:
+    if "unique constraint" in text or "duplicate key" in text or "already exists" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_TAKEN, locale)
+    if "invalid knowledge document name" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_INVALID, locale)
     return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
 
 
@@ -196,7 +230,9 @@ def _require_usable(server: OctopServer, request: Request) -> None:
     try:
         assert_knowledge_usable(server.services.settings_repo.get, server.services.provider_repo)
     except (RuntimeError, ValueError) as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 def _capability_payload(server: OctopServer) -> dict[str, Any]:
@@ -205,7 +241,7 @@ def _capability_payload(server: OctopServer) -> dict[str, Any]:
     payload["limits"] = {
         "max_bases_per_owner": MAX_BASES_PER_OWNER,
         "max_docs_per_kb": MAX_DOCS_PER_KB,
-        "max_document_bytes": MAX_DOCUMENT_BYTES,
+        "max_document_bytes": _max_upload_bytes(server),
     }
     return payload
 
@@ -268,7 +304,9 @@ async def put_feature(
         try:
             await ensure_local_embedding_deps_async(allow_install=True)
         except RuntimeError as exc:
-            raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+            raise _map_knowledge_error(
+                exc, locale=resolve_request_locale(request), server=server
+            ) from exc
     try:
         set_feature_enabled(
             server.services.settings_repo.get,
@@ -280,7 +318,9 @@ async def put_feature(
             provider_repo=server.services.provider_repo,
         )
     except (RuntimeError, ValueError) as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
     capability = _capability_payload(server)
     if body.enabled and selected_backend == "onnx":
         selected_model = str(capability.get("selected_model") or "").strip()
@@ -328,7 +368,9 @@ async def activate_onnx_service(
         await ensure_local_embedding_deps_async(allow_install=True)
         _enable_onnx_service(server, body.model.strip())
     except (RuntimeError, ValueError) as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
     assert server.services is not None
     return status_payload(server.services.settings_repo.get, DOWNLOAD_MANAGER.state)
 
@@ -379,7 +421,7 @@ async def create_base(
         )
         return _base_payload(server, base)
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=locale) from exc
+        raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
 
 @router.get("/default-open", summary="List current user's default-open knowledge-base IDs")
@@ -414,7 +456,9 @@ async def get_base(
             ),
         )
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.patch("/{kb_id}", summary="Update knowledge-base settings")
@@ -440,7 +484,9 @@ async def update_base(
             ),
         )
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.delete(
@@ -457,7 +503,9 @@ async def delete_base(
             kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.get("/{kb_id}/documents", summary="List knowledge-base documents")
@@ -479,7 +527,9 @@ async def list_documents(
             )
         ]
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.post(
@@ -500,7 +550,9 @@ async def create_folder(
         )
         return _row_payload(folder)
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.post(
@@ -531,7 +583,7 @@ async def create_text_document(
         enqueue_index_document(server.services, kb_id, document.id)
         return _row_payload(document)
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=locale) from exc
+        raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
 
 @router.post(
@@ -551,7 +603,11 @@ async def upload_document(
     locale = resolve_request_locale(request)
     try:
         _require_usable(server, request)
-        content = await upload.read()
+        content = await read_upload_capped(
+            upload,
+            max_bytes=_max_upload_bytes(server),
+            code=ErrorCode.KNOWLEDGE_DOC_TOO_LARGE,
+        )
         document = _knowledge_service(server).upload_document(
             kb_id,
             actor_user_id=user.id,
@@ -565,7 +621,7 @@ async def upload_document(
         enqueue_index_document(server.services, kb_id, document.id)
         return _row_payload(document)
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=locale) from exc
+        raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
 
 @router.get(
@@ -584,7 +640,9 @@ async def preview_document(
             kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.get(
@@ -603,7 +661,9 @@ async def get_text_document(
             kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.put(
@@ -632,7 +692,34 @@ async def update_text_document(
         enqueue_index_document(server.services, kb_id, doc_id)
         return _row_payload(document)
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=locale) from exc
+        raise _map_knowledge_error(exc, locale=locale, server=server) from exc
+
+
+@router.post(
+    "/{kb_id}/documents/{doc_id}/rename",
+    summary="Rename a document or folder",
+)
+async def rename_document(
+    kb_id: str,
+    doc_id: str,
+    body: RenameDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    try:
+        document = _knowledge_service(server).rename_document(
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            new_name=body.new_name.strip(),
+            is_admin=_is_admin(user),
+        )
+        return _row_payload(document)
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.delete(
@@ -652,7 +739,9 @@ async def delete_document(
             kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.post(
@@ -675,7 +764,9 @@ async def reindex_document(
         enqueue_index_document(server.services, kb_id, doc_id)
         return _row_payload(document)
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.post("/{kb_id}/reindex", summary="Reindex all documents in a knowledge base")
@@ -704,4 +795,6 @@ async def reindex_base(
             enqueue_index_document(server.services, kb_id, document.id)
         return {"enqueued": len(documents)}
     except Exception as exc:
-        raise _map_knowledge_error(exc, locale=resolve_request_locale(request)) from exc
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc

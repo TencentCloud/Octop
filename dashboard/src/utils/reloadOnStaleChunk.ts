@@ -15,8 +15,18 @@ const CHUNK_ERROR_RE =
  */
 let navigatingAway = false;
 
+/** In-memory guard: concurrent asset errors must not clear-and-rearm the flag. */
+let reloadScheduled = false;
+
 export function markNavigatingAway(): void {
   navigatingAway = true;
+}
+
+/** True for stylesheet links only — Firefox spuriously errors on modulepreload. */
+export function isStylesheetAssetLink(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLLinkElement)) return false;
+  if (!target.href.includes("/assets/")) return false;
+  return /\bstylesheet\b/i.test(target.rel || "");
 }
 
 export function isChunkLoadError(error: unknown): boolean {
@@ -52,10 +62,12 @@ export async function bustServiceWorkerAndReload(): Promise<void> {
 export function tryReloadOnStaleChunk(error: unknown): boolean {
   if (typeof window === "undefined") return false;
   if (navigatingAway) return false;
+  if (reloadScheduled) return true;
   if (!isChunkLoadError(error)) return false;
 
   try {
     if (sessionStorage.getItem(RELOAD_FLAG_KEY) === "1") {
+      // Already reloaded once this cycle — give up (do not loop).
       sessionStorage.removeItem(RELOAD_FLAG_KEY);
       return false;
     }
@@ -64,6 +76,7 @@ export function tryReloadOnStaleChunk(error: unknown): boolean {
     // Private mode / quota — still attempt a single reload without the guard.
   }
 
+  reloadScheduled = true;
   console.warn("[Octop] Stale chunk detected; reloading once.", error);
   void bustServiceWorkerAndReload();
   return true;
@@ -71,6 +84,7 @@ export function tryReloadOnStaleChunk(error: unknown): boolean {
 
 /** Clear the one-shot flag after a successful boot so a later deploy can recover again. */
 export function clearChunkReloadFlag(): void {
+  reloadScheduled = false;
   if (typeof window === "undefined") return;
   try {
     sessionStorage.removeItem(RELOAD_FLAG_KEY);
@@ -111,14 +125,11 @@ export function installChunkLoadRecovery(): void {
         );
         return;
       }
-      if (
-        target instanceof HTMLLinkElement &&
-        target.href.includes("/assets/")
-      ) {
+      // Ignore modulepreload / preload link errors (Firefox false positives).
+      if (isStylesheetAssetLink(target)) {
+        const href = (target as HTMLLinkElement).href;
         tryReloadOnStaleChunk(
-          new Error(
-            `Failed to fetch dynamically imported module: ${target.href}`,
-          ),
+          new Error(`Failed to fetch dynamically imported module: ${href}`),
         );
       }
     },

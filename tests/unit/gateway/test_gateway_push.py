@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -260,3 +261,67 @@ async def test_push_text_from_session_dashboard_agent_pushes_ws(gateway: Gateway
     gateway._channel_manager.push_text.assert_awaited_once()
     assert gateway._channel_manager.push_text.await_args.args[0] == "octop-dashboard"
     assert gateway._channel_manager.push_text.await_args.args[2] == "cron reply"
+
+
+def _insert_dashboard_session(gateway: Gateway, *, thread_id: str = "thr_dash") -> str:
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    gateway.thread_registry._threads.insert(
+        thread_id=thread_id,
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+    )
+    gateway.thread_registry._sessions.upsert(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        chat_type="dm",
+        thread_id=thread_id,
+        channel_metadata={"ws_connection_id": "conn-1"},
+    )
+    return sk
+
+
+@pytest.mark.asyncio
+async def test_push_text_from_session_dashboard_text_notifies_user(gateway: Gateway) -> None:
+    sk = _insert_dashboard_session(gateway)
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("n1", capture, user_id=1)
+    gateway._agent_manager.get_row.return_value = SimpleNamespace(name="Agent 1")
+
+    await gateway.push_text_from_session("a1", sk, "记得喝水", task_type="text")
+
+    assert len(frames) == 1
+    frame = frames[0]
+    assert frame["type"] == "dashboard_push"
+    assert frame["agent_id"] == "a1"
+    assert frame["thread_id"] == "thr_dash"
+    assert frame["text"] == "记得喝水"
+    assert frame["agent_name"] == "Agent 1"
+
+
+@pytest.mark.asyncio
+async def test_push_text_from_session_dashboard_agent_does_not_notify(
+    gateway: Gateway,
+) -> None:
+    sk = _insert_dashboard_session(gateway, thread_id="thr_agent")
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("n1", capture, user_id=1)
+
+    async def stream_with_token(_agent_id, _request):
+        yield {"type": "token", "content": "cron reply"}
+
+    gateway._agent_manager.stream = stream_with_token
+
+    await gateway.push_text_from_session("a1", sk, "run", task_type="agent")
+    assert frames == []

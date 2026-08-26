@@ -42,6 +42,35 @@ def _default_virtual_workspace(root: str) -> BackendWorkspace:
     return BackendWorkspace(resolve_backend(spec, workspace_dir=root), root)
 
 
+def test_iter_media_blocks_supports_workbuddy_generation_envelopes() -> None:
+    content = json.dumps(
+        {
+            "type": "image_gen_tool_result",
+            "images": [
+                {
+                    "path": "generated/images/a.png",
+                    "localPath": "/private/a.png",
+                    "mediaType": "image/png",
+                }
+            ],
+        }
+    )
+
+    assert iter_media_blocks(content) == [
+        {
+            "type": "image",
+            "path": "generated/images/a.png",
+            "filename": "a.png",
+            "media_type": "image/png",
+            "source": {
+                "type": "url",
+                "url": "generated/images/a.png",
+                "media_type": "image/png",
+            },
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_workspace_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as ws:

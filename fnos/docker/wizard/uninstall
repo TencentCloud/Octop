@@ -1,0 +1,29 @@
+[
+    {
+        "stepTitle": "卸载 OCTOP",
+        "items": [
+            {
+                "type": "radio",
+                "field": "wizard_delete_data",
+                "label": "请选择数据清理方式。",
+                "initValue": "no",
+                "options": [
+                    {
+                        "label": "保留数据（推荐 — 下次安装时可继续使用）",
+                        "value": "no"
+                    },
+                    {
+                        "label": "完全删除（包括对话历史、文件和配置）",
+                        "value": "yes"
+                    }
+                ],
+                "rules": [
+                    {
+                        "required": true,
+                        "message": "请选择是否删除应用数据"
+                    }
+                ]
+            }
+        ]
+    }
+]

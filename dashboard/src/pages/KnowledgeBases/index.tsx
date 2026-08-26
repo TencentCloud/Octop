@@ -41,6 +41,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  PencilLine,
   Plus,
   RefreshCw,
   Settings,
@@ -81,6 +82,7 @@ import {
   joinKnowledgePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  shouldOpenKnowledgeFolder,
 } from "./knowledgeFolder";
 import TextDocumentEditorModal, {
   isEditableKnowledgeDocument,
@@ -233,6 +235,11 @@ export default function KnowledgeBasesPage() {
   const [currentFolder, setCurrentFolder] = useState("");
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<KnowledgeDocument | null>(
+    null,
+  );
+  const [renameName, setRenameName] = useState("");
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
   );
@@ -713,6 +720,8 @@ export default function KnowledgeBasesPage() {
       Modal.confirm({
         title: t("knowledgeBases.rebuildConfirmTitle"),
         content: t("knowledgeBases.rebuildConfirmDescription"),
+        okText: t("common.confirm"),
+        cancelText: t("common.cancel"),
         onOk: () => void saveFeature(true),
       });
       return;
@@ -857,6 +866,40 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const openRenameFolder = (document: KnowledgeDocument) => {
+    setRenameTarget(document);
+    setRenameName(knowledgeBasename(document.path || document.filename));
+    setRenameModalOpen(true);
+  };
+
+  const renameFolder = async () => {
+    if (!selected || !renameTarget) return;
+    const name = renameName.trim();
+    if (!name) return;
+    if (
+      name === knowledgeBasename(renameTarget.path || renameTarget.filename)
+    ) {
+      setRenameModalOpen(false);
+      return;
+    }
+    try {
+      await knowledgeBasesApi.renameDocument(
+        selected.id,
+        renameTarget.id,
+        name,
+      );
+      setRenameModalOpen(false);
+      setRenameTarget(null);
+      setRenameName("");
+      await loadDetail(selected.id);
+      message.success(t("knowledgeBases.renameFolderSuccess"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.renameFolderFailed"), t),
+      );
+    }
+  };
+
   const deleteDocument = async (documentId: string) => {
     if (!selected) return;
     try {
@@ -997,7 +1040,11 @@ export default function KnowledgeBasesPage() {
   };
 
   const renderDocumentActions = (document: KnowledgeDocument) => (
-    <div className={styles.docCardActions}>
+    <div
+      className={styles.docCardActions}
+      data-kb-doc-actions=""
+      onClick={(event) => event.stopPropagation()}
+    >
       {document.is_dir ? null : (
         <Tooltip title={t("knowledgeBases.previewDocument")}>
           <Button
@@ -1037,6 +1084,20 @@ export default function KnowledgeBasesPage() {
               </Tooltip>
             </Popconfirm>
           )}
+          {document.is_dir ? (
+            <Tooltip title={t("knowledgeBases.renameFolder")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<PencilLine size={14} />}
+                aria-label={t("knowledgeBases.renameFolder")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openRenameFolder(document);
+                }}
+              />
+            </Tooltip>
+          ) : null}
           <Popconfirm
             title={
               document.is_dir
@@ -1566,14 +1627,19 @@ export default function KnowledgeBasesPage() {
                               key={document.id}
                               className={styles.docCard}
                               role={document.is_dir ? "button" : undefined}
-                              onClick={
-                                document.is_dir
-                                  ? () =>
-                                      setCurrentFolder(
-                                        document.path || document.filename,
-                                      )
-                                  : undefined
-                              }
+                              onClick={(event) => {
+                                if (
+                                  !shouldOpenKnowledgeFolder(
+                                    Boolean(document.is_dir),
+                                    event,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                setCurrentFolder(
+                                  document.path || document.filename,
+                                );
+                              }}
                             >
                               <div className={styles.docCardHeader}>
                                 <DocumentFormatIcon
@@ -1607,6 +1673,7 @@ export default function KnowledgeBasesPage() {
                                   </div>
                                 </div>
                                 <span
+                                  data-kb-doc-actions=""
                                   onClick={(event) => event.stopPropagation()}
                                 >
                                   {renderDocumentActions(document)}
@@ -1660,10 +1727,14 @@ export default function KnowledgeBasesPage() {
                         dataSource={folderEntries}
                         onRow={(document) => ({
                           onClick: document.is_dir
-                            ? () =>
+                            ? (event) => {
+                                if (!shouldOpenKnowledgeFolder(true, event)) {
+                                  return;
+                                }
                                 setCurrentFolder(
                                   document.path || document.filename,
-                                )
+                                );
+                              }
                             : undefined,
                         })}
                         locale={{
@@ -1750,7 +1821,11 @@ export default function KnowledgeBasesPage() {
                             key: "actions",
                             width: canWriteSelected ? 120 : 48,
                             render: (_, document) => (
-                              <div className={styles.tableActions}>
+                              <div
+                                className={styles.tableActions}
+                                data-kb-doc-actions=""
+                                onClick={(event) => event.stopPropagation()}
+                              >
                                 {renderDocumentActions(document)}
                               </div>
                             ),
@@ -1793,6 +1868,23 @@ export default function KnowledgeBasesPage() {
           onChange={(event) => setFolderName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
           onPressEnter={() => void createFolder()}
+        />
+      </Modal>
+
+      <Modal
+        title={t("knowledgeBases.renameFolder")}
+        open={renameModalOpen}
+        onCancel={() => setRenameModalOpen(false)}
+        onOk={() => void renameFolder()}
+        okText={t("common.save")}
+        cancelText={t("common.cancel")}
+        destroyOnClose
+      >
+        <Input
+          value={renameName}
+          onChange={(event) => setRenameName(event.target.value)}
+          placeholder={t("knowledgeBases.folderNamePlaceholder")}
+          onPressEnter={() => void renameFolder()}
         />
       </Modal>
 

@@ -34,6 +34,18 @@ export function isDirectKnowledgeChild(path: string, prefix: string): boolean {
   return Boolean(rest) && !rest.includes("/");
 }
 
+export function shouldOpenKnowledgeFolder(
+  isDir: boolean,
+  event?: { target?: EventTarget | null },
+): boolean {
+  if (!isDir) return false;
+  const target = event?.target;
+  if (target instanceof Element && target.closest("[data-kb-doc-actions]")) {
+    return false;
+  }
+  return true;
+}
+
 export function knowledgeBreadcrumb(
   prefix: string,
   rootLabel: string,

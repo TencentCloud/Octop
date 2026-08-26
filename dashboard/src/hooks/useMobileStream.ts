@@ -52,6 +52,12 @@ export function useMobileStream() {
         onFrame: (base64: string, width: number, height: number) => void;
         onVideoSize?: (width: number, height: number) => void;
         onError?: (message: string) => void;
+        onActionResult?: (result: {
+          action: string;
+          ok: boolean;
+          message?: string;
+          rotation?: number;
+        }) => void;
       },
     ) => {
       disconnect();
@@ -92,6 +98,9 @@ export function useMobileStream() {
             message?: string;
             codec?: string;
             description?: string;
+            action?: string;
+            ok?: boolean;
+            rotation?: number;
           };
           if (msg.type === "video_init") {
             const init = parseVideoInit(msg);
@@ -111,6 +120,15 @@ export function useMobileStream() {
           } else if (msg.type === "frame" && msg.data) {
             setStatus("streaming");
             callbacks.onFrame(msg.data, msg.width ?? 0, msg.height ?? 0);
+          } else if (msg.type === "action_result") {
+            callbacks.onActionResult?.({
+              action: String(msg.action ?? ""),
+              ok: Boolean(msg.ok),
+              message:
+                typeof msg.message === "string" ? msg.message : undefined,
+              rotation:
+                typeof msg.rotation === "number" ? msg.rotation : undefined,
+            });
           } else if (msg.type === "error") {
             setStatus("error");
             callbacks.onError?.(msg.message ?? "stream error");

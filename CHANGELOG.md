@@ -6,10 +6,38 @@
 
 ## [Unreleased]
 
+## [0.9.27] - 2026-08-26
+
 ### 新增
 
-- 绿色便携包：`desktop/portable/` 用 python-build-standalone + 锁定依赖打出 `Octop-<plat>.zip`（六平台 Actions），解压后经 `launch.py` 启动；不含 OOB/UI 裁剪，首启走上游 setup wizard
-- 桌面壳（Wails v3）：`desktop/src/` 从 GitHub Release 下载绿包并启动 Octop；`OCTOP_HOME` 与默认一致（`~/.octop`）；内置升级对绿包使用 `--target packages`；补齐 `Taskfile.yml` / `build/config.yml`，可在该目录执行 `wails3 dev` / `wails3 build`
+- 内置插件随包装分发（默认关闭，卸载后升级不重建）
+- 可配置上传上限（`max_upload_mb` / `OCTOP_MAX_UPLOAD_MB`，默认 100MB）
+- Dashboard 推送通知（定时任务与主动关怀 toast）
+- 聊天音视频附件预览播放，并扩展 inbound 附件 MIME
+- 火山方舟 Seedream / Seedance 生成模型配置、测试与结果展示
+- 连接器：Ardot、滴答清单；远程 MCP OAuth 改为 catalog 驱动
+- 单工具开关热更新与插件工具目录
+- ACP 内置 Runner：Kimi Code、Cursor CLI、Pi
+- 知识库文件夹重命名
+- ONNX 模型下载竞速 Hugging Face 与 hf-mirror
+- 远程手机 ADB shell（旋转与分屏布局）
+- FnOS NAS 应用打包（Docker / native `.fpk`）
+- 专家模板扩充（通用、Karpathy、临床来源策略）
+- 中文子智能体约 49 个（HR / 法务 / 供应链）
+- Dashboard 剪贴板回退与聊天 UI 打磨
+
+### 修复
+
+- 知识库文件夹操作按钮误开文件夹
+- 工具预期失败不再误报为 `stream_error`
+- 连接器 OAuth 公网回调 / HTTPS / 自动保存；npm 不可写时回退用户级 prefix
+- SSO ID token issuer 校验
+- Dashboard：SW 激活后再 reload、Firefox 无限刷新、选择器 popover、文案全球化
+- 浏览器 runtime 目录在 Windows 上可写探测
+
+### 变更
+
+- FnOS 打包拆分为 `docker/` 与 `native/`
 
 ## [0.9.26] - 2026-08-23
 

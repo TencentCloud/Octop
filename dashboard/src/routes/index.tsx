@@ -55,6 +55,7 @@ export const pathToKey: Record<string, string> = {
   "/acp": "acp",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
+  "/personalization/tools": "personalization",
   "/personalization/subagents": "personalization",
   "/personalization/channels": "channels",
   "/personalization/mbti": "personalization",
@@ -72,6 +73,8 @@ export const pathToKey: Record<string, string> = {
   "/remote-desktop": "remote-desktop",
   "/remote-desktop/desktop": "remote-desktop",
   "/remote-desktop/phone": "remote-desktop",
+  "/remote-desktop/phone/screen": "remote-desktop",
+  "/remote-desktop/phone/shell": "remote-desktop",
   "/remote-phone": "remote-desktop",
   "/remote-android": "remote-desktop",
   "/subagents": "personalization",
@@ -98,6 +101,8 @@ export const FULLSCREEN_PATHS = new Set([
   "/remote-desktop",
   "/remote-desktop/desktop",
   "/remote-desktop/phone",
+  "/remote-desktop/phone/screen",
+  "/remote-desktop/phone/shell",
   "/remote-phone",
 ]);
 
@@ -174,6 +179,8 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/remote-desktop", element: <RemoteDesktopPage /> },
   { path: "/remote-desktop/desktop", element: <RemoteDesktopPage /> },
   { path: "/remote-desktop/phone", element: <RemoteDesktopPage /> },
+  { path: "/remote-desktop/phone/screen", element: <RemoteDesktopPage /> },
+  { path: "/remote-desktop/phone/shell", element: <RemoteDesktopPage /> },
   {
     path: "/remote-phone",
     element: <RedirectPreserveSearch to="/remote-desktop/phone" />,
@@ -262,7 +269,7 @@ export const routeConfigs: RouteConfig[] = [
   },
   {
     path: "/plugins",
-    element: <Navigate to="/admin/plugins?tab=agent-tools" replace />,
+    element: <Navigate to="/admin/plugins" replace />,
   },
   { path: "/sessions", element: <Navigate to="/chat" replace /> },
   { path: "/cron-jobs", element: <Navigate to="/tasks" replace /> },

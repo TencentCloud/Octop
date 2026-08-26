@@ -1,5 +1,7 @@
+import tencentArdot from "./tencent-ardot.png";
 import baiduMap from "./baidu-map.png";
 import ctripWendao from "./ctrip-wendao.png";
+import dida365 from "./dida365.png";
 import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
@@ -18,6 +20,7 @@ import youdaoNote from "./youdao-note.png";
 import yuandian from "./yuandian.png";
 
 export const CONNECTOR_LOGOS: Record<string, string> = {
+  "tencent-ardot": tencentArdot,
   "tencent-docs": tencentDocs,
   "baidu-map": baiduMap,
   "qq-mail": qqMail,
@@ -32,6 +35,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "tencent-lexiang": tencentLexiang,
   "tencent-meeting": tencentMeeting,
   notion,
+  dida365: dida365,
   "tencent-news": tencentNews,
   "wechat-reading": wechatReading,
   "youdao-note": youdaoNote,

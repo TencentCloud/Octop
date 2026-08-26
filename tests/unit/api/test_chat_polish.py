@@ -75,6 +75,17 @@ def test_serialize_history_message_includes_thinking_and_tools() -> None:
     assert tool_result["content"][0]["type"] == "tool_result"
     assert tool_result["content"][0]["output"] == "found"
 
+    failed_tool_result = _serialize_history_message(
+        ToolMessage(
+            content="provider unavailable",
+            tool_call_id="call_2",
+            name="generate_image",
+            status="error",
+        )
+    )
+    assert failed_tool_result is not None
+    assert failed_tool_result["content"][0]["error_code"] == "tool_error"
+
 
 def test_split_string_thinking_parses_redacted_block() -> None:
     from octop.api.routers.chat.serialize import _split_string_thinking

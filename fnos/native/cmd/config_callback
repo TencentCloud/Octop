@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+# Octop 本地版 — 重新配置回调
+# 与安装回调逻辑一致：将向导配置写回 PKGVAR/.env。
+# 注意：管理员账号/密码仅对尚未初始化的数据库生效；
+# 密钥与日志级别在应用重启后生效。
+#
+set -euo pipefail
+
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
+_OCTOP_COMMON=""$(dirname "$0")/common.sh""
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+# ---------------------------------------------------------------------------
+# 修正数据目录与 .env 属主/权限（与 install_callback 同一坑）：
+# 重新配置回调以 root 身份写 .env，必须 chown 给 octop-native，否则服务
+# 以 octop-native 启动读 .env 时 Permission denied。含 setfacl -b 防 ACL 把
+# mask 压成 ---。路径用 TRIM_* 变量，兼容 /vol3 等其它卷。
+# ---------------------------------------------------------------------------
+
+
+PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
+mkdir -p "$PKGVAR"
+ENV_FILE="$PKGVAR/.env"
+
+ADMIN_USER="${wizard_admin_username:-admin}"
+ADMIN_PASS="${wizard_admin_password:-octop}"
+LOG_LEVEL="${wizard_log_level:-info}"
+OPENAI="${wizard_openai_api_key:-}"
+DASHSCOPE="${wizard_dashscope_api_key:-}"
+
+sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+
+ADMIN_USER=$(sanitize "$ADMIN_USER")
+ADMIN_PASS=$(sanitize "$ADMIN_PASS")
+LOG_LEVEL=$(sanitize "$LOG_LEVEL")
+OPENAI=$(sanitize "$OPENAI")
+DASHSCOPE=$(sanitize "$DASHSCOPE")
+
+{
+    echo "OCTOP_PORT=8089"
+    echo "OCTOP_BIND_HOST=0.0.0.0"
+    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
+    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
+    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
+    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
+    echo "OPENAI_API_KEY=${OPENAI}"
+    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
+} > "$ENV_FILE"
+
+chmod 600 "$ENV_FILE"
+echo "[octop-native] 已更新配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+
+# 修正属主/权限：.env 与 appdata 改回 octop-native（root 写 root 属主会让
+# 以 octop-native 启动的服务读取 .env 时 Permission denied）。
+fix_ownership_and_perms "$PKGVAR" "$ENV_FILE"
+exit 0

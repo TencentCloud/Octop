@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 _INSTALL_TIMEOUT_S = 300.0
 _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+(?:[-+][\w.]+)?)")
+# fnOS / 容器里 Octop 常以非 root 用户运行，npm 全局目录（/usr/local）不可写，
+# 此时降级到用户级目录安装，目录名沿用 npm 官方推荐的 ~/.npm-global。
+_NPM_USER_PREFIX_NAME = ".npm-global"
 
 
 @dataclass(frozen=True)
@@ -50,7 +56,69 @@ def get_cli_install_spec(kind: str) -> CliInstallSpec | None:
     return _SPECS.get(kind)
 
 
+def _prefix_bin_dir(prefix: str) -> str:
+    # npm 在 POSIX 下把全局 bin 放在 <prefix>/bin，Windows 下放在 <prefix> 根目录。
+    return prefix if os.name == "nt" else str(Path(prefix) / "bin")
+
+
+def _npm_prefix_info(npm: str) -> tuple[str, str]:
+    """Return ``(prefix, bin_dir)`` reported by ``npm config get prefix``."""
+    try:
+        completed = subprocess.run(
+            [npm, "config", "get", "prefix"],
+            capture_output=True,
+            text=True,
+            timeout=15.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "", ""
+    prefix = (completed.stdout or "").strip()
+    if not prefix:
+        return "", ""
+    return prefix, _prefix_bin_dir(prefix)
+
+
+def _user_npm_prefix() -> tuple[str, str]:
+    """Return ``(prefix, bin_dir)`` for the user-level npm global directory."""
+    prefix = os.path.join(os.path.expanduser("~"), _NPM_USER_PREFIX_NAME)
+    return prefix, _prefix_bin_dir(prefix)
+
+
+def _manual_install_command(npm_package: str, *, prefix: str | None = None) -> str:
+    """Shell command users can paste; include ``--prefix`` when global is not writable."""
+    if prefix:
+        return f"npm install -g --prefix {prefix} {npm_package}"
+    return f"npm install -g {npm_package}"
+
+
+def _prefix_writable(prefix: str) -> bool:
+    if not prefix:
+        return False
+    try:
+        return os.access(prefix, os.W_OK)
+    except OSError:
+        return False
+
+
+def ensure_cli_path() -> str:
+    """Prepend the user-level npm global bin dir to the in-process PATH.
+
+    Octop 在 fnOS 上常以非 root 用户运行，``/usr/local`` 下的 npm 全局目录
+    不可写，安装会降级到用户级目录（~/.npm-global）。这里确保该 bin 目录
+    进入进程 PATH，使 ``shutil.which`` 与后续 CLI 子进程调用都能找到命令。
+    目录不存在时不做任何修改，返回 bin 目录（可能为空串）。
+    """
+    _, bin_dir = _user_npm_prefix()
+    if bin_dir and os.path.isdir(bin_dir):
+        current = os.environ.get("PATH", "")
+        if bin_dir not in [part for part in current.split(os.pathsep) if part]:
+            os.environ["PATH"] = bin_dir + os.pathsep + current
+    return bin_dir
+
+
 def cli_install_status(kind: str) -> dict[str, Any]:
+    ensure_cli_path()
     spec = get_cli_install_spec(kind)
     if spec is None:
         raise ValueError(f"kind {kind!r} does not support CLI install")
@@ -86,9 +154,25 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
             f"未找到 npm，请先在 Octop 主机安装 Node.js，然后执行：{status['install_command']}",
         )
 
+    # npm 全局目录（默认 /usr/local）不可写时（fnOS/容器内非 root 用户），
+    # 自动降级到用户级目录 ~/.npm-global 安装，避免 EACCES 导致安装失败。
+    prefix, _ = _npm_prefix_info(npm)
+    install_args = [npm, "install", "-g"]
+    user_prefix: str | None = None
+    if not _prefix_writable(prefix):
+        user_prefix, _user_bin = _user_npm_prefix()
+        with contextlib.suppress(OSError):
+            os.makedirs(user_prefix, exist_ok=True)
+        install_args += ["--prefix", user_prefix]
+        # Keep error / guide text aligned with the command that actually ran.
+        status = {
+            **status,
+            "install_command": _manual_install_command(status["npm_package"], prefix=user_prefix),
+        }
+
     try:
         completed = subprocess.run(
-            [npm, "install", "-g", status["npm_package"]],
+            install_args + [status["npm_package"]],
             capture_output=True,
             text=True,
             timeout=_INSTALL_TIMEOUT_S,
@@ -109,10 +193,27 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
         msg = f"npm install 失败（exit {completed.returncode}）"
         if detail:
             msg = f"{msg}：{detail}"
-        msg = f"{msg}。请在主机手动执行：{status['install_command']}"
+        if user_prefix is not None:
+            msg = (
+                f"{msg}。已尝试写入用户级目录（~/.npm-global）仍失败，"
+                f"请在主机手动执行：{status['install_command']}"
+            )
+        else:
+            msg = f"{msg}。请在主机手动执行：{status['install_command']}"
         return _fail(status, msg)
 
+    # 降级安装到用户级目录后，把该 bin 目录加入进程 PATH，使状态检测与后续 CLI 调用可见。
+    if user_prefix is not None:
+        ensure_cli_path()
+
     refreshed = cli_install_status(kind)
+    if user_prefix is not None:
+        refreshed = {
+            **refreshed,
+            "install_command": _manual_install_command(
+                refreshed["npm_package"], prefix=user_prefix
+            ),
+        }
     if not refreshed["installed"]:
         return _fail(
             refreshed,

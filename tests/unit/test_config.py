@@ -26,10 +26,13 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.backup.auto_enabled is False
     assert cfg.backup.schedule == "cron:0 4 * * *"
     assert cfg.backup.retention_count == 7
+    assert cfg.max_upload_mb == 100
+    assert cfg.max_upload_bytes == 100 * 1024 * 1024
     assert cfg_path.exists()  # file written with defaults
     written = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert "password" not in written.get("database", {})
     assert written.get("backup", {}).get("auto_enabled") is False
+    assert written["max_upload_mb"] == 100
 
 
 def test_loads_backup_section(tmp_path: Path):
@@ -68,6 +71,31 @@ def test_loads_existing(tmp_path: Path):
     assert cfg.port == 9000
     assert cfg.log_level == "debug"
     assert cfg.bind_host == "127.0.0.1"  # default fills
+    assert cfg.max_upload_mb == 100  # missing key uses default
+
+
+def test_loads_max_upload_mb(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"max_upload_mb": 50}))
+    cfg = load_config(cfg_path)
+    assert cfg.max_upload_mb == 50
+    assert cfg.max_upload_bytes == 50 * 1024 * 1024
+
+
+def test_max_upload_mb_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OCTOP_MAX_UPLOAD_MB", "25")
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"max_upload_mb": 50}))
+    cfg = load_config(cfg_path)
+    assert cfg.max_upload_mb == 25
+    assert cfg.max_upload_bytes == 25 * 1024 * 1024
+
+
+def test_max_upload_mb_rejects_non_positive(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"max_upload_mb": 0}))
+    cfg = load_config(cfg_path)
+    assert cfg.max_upload_mb == 100
 
 
 def test_loads_database_section(tmp_path: Path):

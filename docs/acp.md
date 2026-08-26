@@ -32,6 +32,9 @@ Legacy per-agent `config_json.acp.runners` is migrated to the user-global store 
 | `codebuddy` | `codebuddy` | `--acp` |
 | `claude_code` | `npx` | `-y`, `@zed-industries/claude-agent-acp` |
 | `codex` | `npx` | `-y`, `@zed-industries/codex-acp` |
+| `kimi_code` | `kimi` | `acp` |
+| `cursor_cli` | `agent` | `acp` |
+| `pi` | `npx` | `-y`, `pi-acp` |
 
 Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (or set an absolute `command` in the runner drawer). Built-in runners cannot be deleted; custom runners can be added from **Add runner**.
 
@@ -176,6 +179,9 @@ Runner shape:
 | External runner returns no text | Check CLI auth/quota (e.g. `codebuddy auth status`) |
 | `octop acp` fails immediately | Agent not running or invalid `--agent`; create/start agent in dashboard first |
 | Command not found | Use absolute path in runner `command` if `PATH` for the server process differs from your shell |
+| Kimi Code fails to start | Install [kimi-code](https://github.com/MoonshotAI/kimi-code) and run `kimi` login on the host |
+| Cursor CLI fails to start | Install Cursor CLI; run `agent login` or set `CURSOR_API_KEY` |
+| Pi runner fails to start | Requires Node.js for `npx -y pi-acp`; ensure network access for first npm fetch |
 
 ---
 

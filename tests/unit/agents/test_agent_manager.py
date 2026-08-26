@@ -1048,6 +1048,32 @@ async def test_persist_skills_disabled_does_not_schedule_reload(
 
 
 @pytest.mark.asyncio
+async def test_persist_tools_disabled_strips_critical_and_hot_syncs(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tools_disabled is hot-synced; critical names are dropped."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    fake_agent = MagicMock()
+    fake_hm = MagicMock()
+    fake_hm.get_agent.return_value = MagicMock(agent=fake_agent)
+    fake_hm.acreate_agent = AsyncMock(return_value=MagicMock(agent=fake_agent))
+    fake_hm.shared_factory = object()
+    manager._harness_manager = fake_hm
+
+    row = await manager.create(AgentCreateSpec(name="tools-hot"))
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
+    await manager.persist_tools_disabled(row.agent_id, {"web_fetch", "read_file", "execute"})
+
+    cfg = manager.get_config(row.agent_id)
+    assert cfg.get("tools_disabled") == ["execute", "web_fetch"]
+    fake_agent.set_tools_disabled.assert_called_once_with({"execute", "web_fetch"})
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
 async def test_update_config_json_still_schedules_reload(
     manager: AgentManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1,7 +1,14 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Empty } from "antd";
-import { Bot, Brain, Notebook, Sparkles, Waypoints } from "lucide-react";
+import {
+  Bot,
+  Brain,
+  Notebook,
+  Sparkles,
+  Waypoints,
+  Wrench,
+} from "lucide-react";
 import PageShell, { pageShellStyles } from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
@@ -9,6 +16,7 @@ import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import SkillsTabs from "../Skills/components/SkillsTabs";
+import ToolsPanel from "../Tools/ToolsPanel";
 import SubagentManager from "../../Experts/components/SubagentManager";
 import MBTISelector from "./components/MBTISelector";
 import MemoryPanel from "../Memory/MemoryPanel";
@@ -18,6 +26,7 @@ import styles from "./index.module.less";
 export type PersonalizationTab =
   | "skills"
   | "subagents"
+  | "tools"
   | "mbti"
   | "memory"
   | "channels";
@@ -25,6 +34,7 @@ export type PersonalizationTab =
 const PERSONALIZATION_TABS = [
   "skills",
   "subagents",
+  "tools",
   "mbti",
   "memory",
   "channels",
@@ -33,6 +43,7 @@ const PERSONALIZATION_TABS = [
 const TAB_ICONS = {
   skills: Sparkles,
   subagents: Bot,
+  tools: Wrench,
   mbti: Brain,
   memory: Notebook,
   channels: Waypoints,
@@ -97,6 +108,18 @@ export default function PersonalizationPage() {
           >
             <div className={pageShellStyles.fillChild}>
               <SkillsTabs agentId={activeAgentId} />
+            </div>
+          </div>
+        )}
+
+        {isMounted("tools") && (
+          <div
+            className={styles.panel}
+            style={{ display: activeTab === "tools" ? "flex" : "none" }}
+            aria-hidden={activeTab !== "tools"}
+          >
+            <div className={pageShellStyles.fillChild}>
+              <ToolsPanel agentId={activeAgentId} />
             </div>
           </div>
         )}

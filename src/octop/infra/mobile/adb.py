@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -388,6 +389,154 @@ def input_text(device: str, text: str, *, adb: str | None = None) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0
+
+
+@dataclass(frozen=True)
+class RotationResult:
+    ok: bool
+    rotation: int | None
+    message: str = ""
+
+
+def is_emulator_device(device: str, *, adb: str | None = None) -> bool:
+    """True for AVD / qemu devices (``emulator-5554``, ``ro.kernel.qemu=1``)."""
+    if device.startswith("emulator-"):
+        return True
+    code, out = shell(device, "getprop ro.kernel.qemu", adb=adb)
+    return code == 0 and out.strip() == "1"
+
+
+def get_display_rotation(device: str, *, adb: str | None = None) -> int | None:
+    """Return live display rotation (0–3) from WindowManager, or None."""
+    code, out = shell(device, "dumpsys window displays", adb=adb)
+    if code != 0:
+        return None
+    block = re.search(r"DisplayRotation\b(.*?)(?:\n  [A-Z]|\Z)", out, re.DOTALL)
+    if block:
+        match = re.search(r"\bmRotation=(\d+)", block.group(1))
+        if match:
+            return int(match.group(1)) % 4
+    match = re.search(r"mDisplayRotation=(ROTATION_\d+)", out)
+    if match:
+        return {
+            "ROTATION_0": 0,
+            "ROTATION_90": 1,
+            "ROTATION_180": 2,
+            "ROTATION_270": 3,
+        }.get(match.group(1))
+    return None
+
+
+def get_user_rotation(device: str, *, adb: str | None = None) -> int | None:
+    """Return ``user_rotation`` (0–3) or None when unreadable."""
+    code, out = shell(device, "settings get system user_rotation", adb=adb)
+    if code != 0:
+        return None
+    text = out.strip()
+    if not text or text.lower() == "null":
+        return 0
+    try:
+        return int(text) % 4
+    except ValueError:
+        return None
+
+
+def _adb_client_command(
+    device: str,
+    *args: str,
+    adb: str | None = None,
+) -> tuple[int, str]:
+    exe = adb or find_adb()
+    if not exe:
+        return 127, "adb not found"
+    try:
+        proc = subprocess.run(
+            [exe, "-s", device, *args],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 124, "timeout"
+    out = (proc.stdout or "") + (proc.stderr or "")
+    return proc.returncode, out.strip()
+
+
+def _try_emulator_rotate(device: str, target: int, *, adb: str | None = None) -> None:
+    """Best-effort ``adb emu rotate`` (90° clockwise per call) on AVDs."""
+    current = get_display_rotation(device, adb=adb)
+    if current is None:
+        current = get_user_rotation(device, adb=adb)
+    if current is None:
+        current = 0
+    target %= 4
+    if current == target:
+        return
+    steps = (target - current) % 4
+    for _ in range(steps):
+        code, _out = _adb_client_command(device, "emu", "rotate", adb=adb)
+        if code != 0:
+            break
+
+
+def set_user_rotation(
+    device: str,
+    rotation: int,
+    *,
+    adb: str | None = None,
+) -> RotationResult:
+    """Lock auto-rotate and set ``user_rotation`` (0=0°, 1=90°, 2=180°, 3=270°)."""
+    target = int(rotation) % 4
+    emulator = is_emulator_device(device, adb=adb)
+    lock_code, lock_out = shell(
+        device,
+        "settings put system accelerometer_rotation 0",
+        adb=adb,
+    )
+    if lock_code != 0:
+        return RotationResult(False, None, lock_out or "accelerometer_rotation lock failed")
+    put_code, put_out = shell(
+        device,
+        f"settings put system user_rotation {target}",
+        adb=adb,
+    )
+    if put_code != 0:
+        return RotationResult(False, None, put_out or "user_rotation put failed")
+    shell(device, f"cmd window user-rotation lock {target}", adb=adb)
+    if emulator:
+        _try_emulator_rotate(device, target, adb=adb)
+
+    display = get_display_rotation(device, adb=adb)
+    if display == target:
+        return RotationResult(True, display, "")
+
+    if emulator:
+        return RotationResult(
+            False,
+            display,
+            "emulator_rotation_unsupported",
+        )
+
+    settings = get_user_rotation(device, adb=adb)
+    if settings == target:
+        return RotationResult(True, settings, "")
+    return RotationResult(
+        False,
+        display if display is not None else settings,
+        "rotation_not_applied",
+    )
+
+
+def toggle_portrait_landscape(device: str, *, adb: str | None = None) -> RotationResult:
+    """Toggle between portrait (0°) and landscape (90°) for remote control."""
+    current = get_display_rotation(device, adb=adb)
+    if current is None:
+        current = get_user_rotation(device, adb=adb)
+    if current is None:
+        current = 0
+    target = 1 if current in (0, 2) else 0
+    return set_user_rotation(device, target, adb=adb)
 
 
 def shell(device: str, command: str, *, adb: str | None = None) -> tuple[int, str]:

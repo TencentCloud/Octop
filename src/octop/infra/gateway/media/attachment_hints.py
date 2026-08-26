@@ -54,6 +54,15 @@ def is_image_media_type(media_type: str) -> bool:
     return media_type.split(";", 1)[0].strip().lower().startswith("image/")
 
 
+def is_av_media_type(media_type: str) -> bool:
+    return media_type.split(";", 1)[0].strip().lower().startswith(("video/", "audio/"))
+
+
+def is_preview_media_type(media_type: str) -> bool:
+    """True when the dashboard can inline-preview (image / audio / video)."""
+    return is_image_media_type(media_type) or is_av_media_type(media_type)
+
+
 def is_image_workspace_path(path: str) -> bool:
     return path.lower().endswith(_IMAGE_EXTENSIONS)
 
@@ -608,8 +617,10 @@ __all__ = [
     "format_attachment_path_hint",
     "hints_from_content_parts",
     "inbound_attachments_from_parts",
+    "is_av_media_type",
     "is_image_inbound",
     "is_image_media_type",
+    "is_preview_media_type",
     "is_vision_attachment",
     "is_workspace_image_ref",
     "make_image_url_block",

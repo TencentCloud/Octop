@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Popconfirm, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 
 import {
   Copy,
@@ -18,6 +19,7 @@ import {
   Sparkles,
   Notebook,
   Waypoints,
+  Wrench,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -25,6 +27,7 @@ import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
+import ToolCatalogDrawer from "./ToolCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
@@ -95,6 +98,7 @@ export const AgentCard = memo(function AgentCard({
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
   const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
+  const [toolSettingsOpen, setToolSettingsOpen] = useState(false);
   const [channelCatalogOpen, setChannelCatalogOpen] = useState(false);
   const [memoryCatalogOpen, setMemoryCatalogOpen] = useState(false);
   const [mbtiCatalogOpen, setMbtiCatalogOpen] = useState(false);
@@ -244,12 +248,9 @@ export const AgentCard = memo(function AgentCard({
   }, [agent.agent_id, setActiveAgent, navigate]);
 
   const copyAgentId = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(agent.agent_id);
-      message.success(t("common.copied"));
-    } catch {
-      message.error(t("common.copyFailed"));
-    }
+    const ok = await copyText(agent.agent_id);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
   }, [agent.agent_id, t]);
 
   const reloadInstalledSubagents = useCallback(async () => {
@@ -497,6 +498,17 @@ export const AgentCard = memo(function AgentCard({
                 </button>
               </Tooltip>
 
+              <Tooltip title={t("experts.toolsBtn")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  onClick={() => setToolSettingsOpen(true)}
+                  aria-label={t("experts.toolsBtn")}
+                >
+                  <Wrench size={13} />
+                </button>
+              </Tooltip>
+
               <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
                 <button
                   type="button"
@@ -568,6 +580,11 @@ export const AgentCard = memo(function AgentCard({
         agentId={agent.agent_id}
         open={skillCatalogOpen}
         onClose={() => setSkillCatalogOpen(false)}
+      />
+      <ToolCatalogDrawer
+        agentId={agent.agent_id}
+        open={toolSettingsOpen}
+        onClose={() => setToolSettingsOpen(false)}
       />
       <ChannelCatalogDrawer
         agentId={agent.agent_id}

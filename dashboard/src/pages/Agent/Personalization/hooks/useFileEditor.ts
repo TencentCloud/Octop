@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 
 export interface FileEditorState {
   content: string;
@@ -98,12 +99,9 @@ export function useFileEditor(): [FileEditorState, FileEditorActions] {
   }, []);
 
   const copyToClipboard = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(content);
-      message.success(t("common.copied"));
-    } catch {
-      message.error(t("common.copyFailed"));
-    }
+    const ok = await copyText(content);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
   }, [content, t]);
 
   const state: FileEditorState = {

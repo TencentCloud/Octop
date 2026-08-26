@@ -2,5 +2,6 @@ id: demo-greeting-skill
 version: 0.1.0
 name: Demo Greeting Skill
 description: Sample skill plugin (kind=skill) — syncs a polite-greeting skill into the agent workspace
+icon: "👋"
 kind: skill
 entry: main.py

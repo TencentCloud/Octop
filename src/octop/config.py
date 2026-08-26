@@ -12,6 +12,10 @@ from urllib.parse import quote_plus, urlparse
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MAX_UPLOAD_MB = 100
+MIN_MAX_UPLOAD_MB = 1
+MAX_MAX_UPLOAD_MB = 1024
+
 _VALID_DRIVERS = frozenset({"sqlite", "postgresql"})
 
 _DATABASE_ENV_KEYS = (
@@ -129,6 +133,11 @@ class OctopConfig:
     tls: TlsConfig = field(default_factory=TlsConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
     capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
+    max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return upload_mb_to_bytes(self.max_upload_mb)
 
 
 def _defaults_for_file() -> dict[str, Any]:
@@ -209,6 +218,40 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         schedule=schedule,
         retention_count=retention,
     )
+
+
+def upload_mb_to_bytes(mb: int) -> int:
+    return int(mb) * 1024 * 1024
+
+
+def parse_max_upload_mb(raw: object, *, default: int = DEFAULT_MAX_UPLOAD_MB) -> int:
+    """Coerce a config/env value to a sane megabyte limit."""
+    mb: int
+    if isinstance(raw, bool) or raw is None:
+        logger.warning("max_upload_mb is not int; using %s", default)
+        return default
+    if isinstance(raw, int):
+        mb = raw
+    elif isinstance(raw, str):
+        try:
+            mb = int(raw.strip())
+        except ValueError:
+            logger.warning("max_upload_mb is not int; using %s", default)
+            return default
+    else:
+        logger.warning("max_upload_mb is not int; using %s", default)
+        return default
+    if mb < MIN_MAX_UPLOAD_MB:
+        logger.warning("max_upload_mb %s is < %s; using %s", mb, MIN_MAX_UPLOAD_MB, default)
+        return default
+    if mb > MAX_MAX_UPLOAD_MB:
+        logger.warning(
+            "max_upload_mb %s exceeds %s; clamping",
+            mb,
+            MAX_MAX_UPLOAD_MB,
+        )
+        return MAX_MAX_UPLOAD_MB
+    return mb
 
 
 def _coerce_int(name: str, value: str, default: int) -> int:
@@ -392,6 +435,14 @@ def load_config(path: Path) -> OctopConfig:
         merged["require_setup_password"] = _coerce_bool(
             "OCTOP_REQUIRE_SETUP_PASSWORD", v, bool(merged["require_setup_password"])
         )
+    if v := os.environ.get("OCTOP_MAX_UPLOAD_MB"):
+        merged["max_upload_mb"] = parse_max_upload_mb(
+            v, default=int(merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB))
+        )
+    else:
+        merged["max_upload_mb"] = parse_max_upload_mb(
+            merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)
+        )
 
     capabilities = _parse_capabilities_section(raw.get("capabilities"))
     if v := os.environ.get("OCTOP_ENABLE_MOBILE"):
@@ -462,4 +513,5 @@ def load_config(path: Path) -> OctopConfig:
         tls=_parse_tls_section(raw.get("tls")),
         backup=backup,
         capabilities=capabilities,
+        max_upload_mb=int(merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)),
     )

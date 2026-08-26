@@ -19,6 +19,7 @@ import PageShell from "../../../layouts/PageShell";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { copyText } from "../../../utils/copyText";
 import {
   clearFormDraft,
   loadFormDraft,
@@ -246,6 +247,7 @@ function ConnectorConfigDrawer({
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
+  const [openingAuthorize, setOpeningAuthorize] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [authInfo, setAuthInfo] = useState<ConnectorAuthInfo | null>(null);
   const [instanceDetail, setInstanceDetail] =
@@ -400,8 +402,24 @@ function ConnectorConfigDrawer({
     openUrl(url);
   };
 
-  const handleOpenAuthorize = () => {
-    openUrl(authInfo?.authorize_url);
+  const handleOpenAuthorize = async () => {
+    if (!entry) return;
+    setOpeningAuthorize(true);
+    try {
+      const { authorize_url } = await connectorsApi.authorizeUrl(entry.kind);
+      if (!authorize_url) {
+        message.error(t("connectors.authUrlMissing", "无法获取授权页地址"));
+        return;
+      }
+      openUrl(authorize_url);
+    } catch (e) {
+      console.error(e);
+      message.error(
+        apiErrorMessage(e, t("connectors.authUrlFailed", "打开授权页失败"), t),
+      );
+    } finally {
+      setOpeningAuthorize(false);
+    }
   };
 
   const handleOpenLogin = () => {
@@ -409,10 +427,10 @@ function ConnectorConfigDrawer({
   };
 
   const handleCopyInstallCommand = async (command: string) => {
-    try {
-      await navigator.clipboard.writeText(command);
+    const ok = await copyText(command);
+    if (ok) {
       message.success(t("connectors.cliInstallCopied", "安装命令已复制"));
-    } catch {
+    } else {
       message.error(
         t("connectors.clipboardDenied", "无法读取剪贴板，请手动粘贴"),
       );
@@ -681,43 +699,131 @@ function ConnectorConfigDrawer({
     }
 
     setAuthorizing(true);
+    let settled = false;
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let stateId = "";
+
+    const cleanup = () => {
+      if (pollTimer !== undefined) clearInterval(pollTimer);
+      if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+      window.removeEventListener("message", onMessage);
+    };
+
+    const finishWithTokens = async (tokens: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        popup.close();
+      } catch {
+        // ignore
+      }
+      try {
+        const values = form.getFieldsValue();
+        const credentials: Record<string, unknown> = {};
+        if (tokens.access_token) credentials.access_token = tokens.access_token;
+        if (tokens.refresh_token)
+          credentials.refresh_token = tokens.refresh_token;
+        if (tokens.expires_at) credentials.expires_at = tokens.expires_at;
+        if (tokens.oauth_client_id)
+          credentials.oauth_client_id = tokens.oauth_client_id;
+        if (tokens.oauth_client_secret)
+          credentials.oauth_client_secret = tokens.oauth_client_secret;
+        if (tokens.openid) credentials.openid = tokens.openid;
+
+        if (!credentials.access_token) {
+          message.error(t("connectors.oauthFailed", "获取授权结果失败"));
+          return;
+        }
+
+        await connectorsApi.createInstance({
+          kind: entry.kind,
+          display_name: String(values.display_name || entry.name),
+          credentials,
+          default_open: values.default_open === true,
+        });
+        clearFormDraft(draftScope);
+        message.success(t("connectors.createSuccess", "连接器已创建"));
+        onSaved();
+        onClose();
+      } catch (e) {
+        console.error(e);
+        form.setFieldsValue({
+          display_name: entry.name,
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expires_at: tokens.expires_at,
+          oauth_client_id: tokens.oauth_client_id,
+          oauth_client_secret: tokens.oauth_client_secret,
+          openid: tokens.openid,
+        });
+        message.error(
+          apiErrorMessage(e, t("connectors.createFailed", "创建失败"), t),
+        );
+      } finally {
+        setAuthorizing(false);
+      }
+    };
+
+    const claimPending = async () => {
+      if (settled || !stateId) return;
+      try {
+        const pending = await connectorsApi.oauthPending(stateId);
+        await finishWithTokens(pending.tokens ?? {});
+      } catch {
+        // Pending not ready yet (404) — keep polling.
+      }
+    };
+
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      if (ev.data?.type !== "octop:connector-oauth") return;
+      if (ev.data.state_id !== stateId) return;
+      void claimPending();
+    };
+
     try {
       const { authorize_url, state_id } = await connectorsApi.oauthStart(
         entry.kind,
         "/connectors",
       );
-      const onMessage = async (ev: MessageEvent) => {
-        if (ev.origin !== window.location.origin) return;
-        if (ev.data?.type !== "octop:connector-oauth") return;
-        if (ev.data.state_id !== state_id) return;
-        window.removeEventListener("message", onMessage);
-        popup.close();
-        try {
-          const pending = await connectorsApi.oauthPending(state_id);
-          const tokens = pending.tokens ?? {};
-          form.setFieldsValue({
-            display_name: entry.name,
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            expires_at: tokens.expires_at,
-            oauth_client_id: tokens.oauth_client_id,
-            oauth_client_secret: tokens.oauth_client_secret,
-            openid: tokens.openid,
-          });
-          message.success(t("connectors.oauthSuccess", "授权成功，请保存连接"));
-        } catch {
-          message.error(t("connectors.oauthFailed", "获取授权结果失败"));
-        }
-      };
+      stateId = state_id;
       window.addEventListener("message", onMessage);
+      // Ardot (and some IdPs) set COOP so window.opener is null after redirect;
+      // poll pending so the parent still claims tokens without postMessage.
+      pollTimer = setInterval(() => {
+        void claimPending();
+      }, 1500);
+      timeoutTimer = setTimeout(
+        () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          try {
+            popup.close();
+          } catch {
+            // ignore
+          }
+          setAuthorizing(false);
+          message.error(
+            t("connectors.oauthTimedOut", "授权超时，请重试一键授权"),
+          );
+        },
+        5 * 60 * 1000,
+      );
       popup.location.replace(authorize_url);
     } catch (e) {
-      popup.close();
+      cleanup();
+      try {
+        popup.close();
+      } catch {
+        // ignore
+      }
       console.error(e);
       message.error(
         apiErrorMessage(e, t("connectors.oauthStartFailed", "无法启动 OAuth")),
       );
-    } finally {
       setAuthorizing(false);
     }
   };
@@ -1005,11 +1111,12 @@ function ConnectorConfigDrawer({
               {t("connectors.oneClickOAuth", "一键授权")}
             </Button>
           )}
-          {hasAuthorizeUrl && !hideTopAuth && (
+          {hasAuthorizeUrl && !hideTopAuth && !hasOAuthPopup && (
             <Button
               type="primary"
               icon={<ExternalLink size={14} />}
-              onClick={handleOpenAuthorize}
+              loading={openingAuthorize}
+              onClick={() => void handleOpenAuthorize()}
             >
               {t("connectors.openAuthorizePage", "打开授权页")}
             </Button>
@@ -1027,7 +1134,8 @@ function ConnectorConfigDrawer({
               <Button
                 type="primary"
                 icon={<ExternalLink size={14} />}
-                onClick={() => openUrl(entry.quick_auth_url)}
+                loading={openingAuthorize}
+                onClick={() => void handleOpenAuthorize()}
               >
                 {openAuthorizeLabel(entry.kind, t)}
               </Button>
@@ -1134,15 +1242,15 @@ function ConnectorConfigDrawer({
               rules={secretFieldRules(secretRequired)}
               extra={
                 configuredExtra(preview, "token_configured", t) ??
-                (manualUrl ? (
+                (!hideFieldGuide && manualUrl ? (
                   <a href={manualUrl} target="_blank" rel="noreferrer">
                     {t("connectors.getTokenAt", "前往获取 Token")}
                   </a>
-                ) : (
+                ) : !hideFieldGuide ? (
                   <a href={entry.doc_url} target="_blank" rel="noreferrer">
                     {t("connectors.getToken", "获取 Token")}
                   </a>
-                ))
+                ) : undefined)
               }
             >
               <Input.Password
@@ -1448,7 +1556,7 @@ function ConnectorConfigDrawer({
                 >
                   {t(
                     "connectors.oauthHint",
-                    "点击「一键授权」完成登录后保存即可",
+                    "点击「一键授权」完成登录后将自动保存；也可手动粘贴 Token",
                   )}
                 </div>
               )}
@@ -1700,18 +1808,41 @@ export default function ConnectorsPage() {
     void (async () => {
       try {
         const pending = await connectorsApi.oauthPending(oauthState);
-        setDrawerEntry(catalog.find((c) => c.kind === pending.kind) ?? null);
-        setDrawerInstance(null);
-        message.info(
-          t("connectors.oauthCompleteHint", "请填写显示名称并保存连接"),
-        );
+        const kind = String(pending.kind || "");
+        const entry = catalog.find((c) => c.kind === kind);
+        const tokens = pending.tokens ?? {};
+        if (!entry || !tokens.access_token) {
+          message.error(t("connectors.oauthFailed", "获取授权结果失败"));
+          return;
+        }
+        const credentials: Record<string, unknown> = {
+          access_token: tokens.access_token,
+        };
+        if (tokens.refresh_token)
+          credentials.refresh_token = tokens.refresh_token;
+        if (tokens.expires_at) credentials.expires_at = tokens.expires_at;
+        if (tokens.oauth_client_id)
+          credentials.oauth_client_id = tokens.oauth_client_id;
+        if (tokens.oauth_client_secret)
+          credentials.oauth_client_secret = tokens.oauth_client_secret;
+        if (tokens.openid) credentials.openid = tokens.openid;
+
+        await connectorsApi.createInstance({
+          kind: entry.kind,
+          display_name: entry.name,
+          credentials,
+          default_open: false,
+        });
+        await refresh();
+        notifyConnectorsChanged();
+        message.success(t("connectors.createSuccess", "连接器已创建"));
       } catch {
         message.error(t("connectors.oauthFailed", "获取授权结果失败"));
       }
       searchParams.delete("oauth_state");
       setSearchParams(searchParams, { replace: true });
     })();
-  }, [searchParams, setSearchParams, catalog, t]);
+  }, [searchParams, setSearchParams, catalog, refresh, t]);
 
   const handleConfigure = useCallback(
     (entry: ConnectorCatalogEntry, instance: ConnectorInstance | null) => {

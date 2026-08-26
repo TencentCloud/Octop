@@ -1,0 +1,3 @@
+#!/bin/bash
+# Octop — 配置前回调（无特殊处理）
+exit 0

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.agents.workspace_dir import (
     agent_facing_workspace_root,
     join_agent_facing,
@@ -19,24 +20,204 @@ from octop.infra.gateway.media.constants import INBOUND_DIR
 if TYPE_CHECKING:
     from harness_agent.backends.workspace import BackendWorkspace
 
-MAX_INBOUND_BYTES = 20 * 1024 * 1024
+MAX_INBOUND_BYTES = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
+
+# Used when the reported MIME is outside ALLOWED_INBOUND_MEDIA_TYPES (e.g. Windows
+# registry types like ``application/x-zip-compressed``, or browsers sending
+# ``video/mp2t`` for ``.ts``).
+INBOUND_EXTENSION_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".jfif": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".bmp": "image/bmp",
+    ".ico": "image/vnd.microsoft.icon",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".avif": "image/avif",
+    ".apng": "image/apng",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".rst": "text/x-rst",
+    ".json": "application/json",
+    ".jsonl": "application/jsonl",
+    ".ndjson": "application/x-ndjson",
+    ".csv": "text/csv",
+    ".tsv": "text/tab-separated-values",
+    ".doc": "application/msword",
+    ".xls": "application/vnd.ms-excel",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".docm": "application/vnd.ms-word.document.macroEnabled.12",
+    ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+    ".pptm": "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+    ".odt": "application/vnd.oasis.opendocument.text",
+    ".ods": "application/vnd.oasis.opendocument.spreadsheet",
+    ".odp": "application/vnd.oasis.opendocument.presentation",
+    ".rtf": "application/rtf",
+    ".epub": "application/epub+zip",
+    ".xmind": "application/vnd.xmind.workbook",
+    ".zip": "application/zip",
+    ".7z": "application/x-7z-compressed",
+    ".rar": "application/vnd.rar",
+    ".tar": "application/x-tar",
+    ".gz": "application/gzip",
+    ".tgz": "application/gzip",
+    ".bz2": "application/x-bzip2",
+    ".xz": "application/x-xz",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".m4v": "video/mp4",
+    ".ogg": "audio/ogg",
+    ".ogv": "video/ogg",
+    ".opus": "audio/ogg",
+    ".avi": "video/x-msvideo",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
+    ".weba": "audio/webm",
+    ".exe": "application/x-msdownload",
+    ".dmg": "application/x-apple-diskimage",
+    ".apk": "application/vnd.android.package-archive",
+    ".py": "text/x-python",
+    ".pyi": "text/x-python",
+    ".pyw": "text/x-python",
+    ".ipynb": "application/json",
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".cjs": "text/javascript",
+    ".jsx": "text/javascript",
+    ".ts": "text/x-typescript",
+    ".tsx": "text/x-typescript",
+    ".mts": "text/x-typescript",
+    ".cts": "text/x-typescript",
+    ".sh": "text/x-shellscript",
+    ".bash": "text/x-shellscript",
+    ".zsh": "text/x-shellscript",
+    ".fish": "text/x-shellscript",
+    ".ksh": "text/x-shellscript",
+    ".ps1": "text/plain",
+    ".bat": "text/plain",
+    ".cmd": "text/plain",
+    ".go": "text/x-go",
+    ".rs": "text/x-rust",
+    ".java": "text/x-java-source",
+    ".kt": "text/x-kotlin",
+    ".kts": "text/x-kotlin",
+    ".scala": "text/x-scala",
+    ".c": "text/x-c",
+    ".h": "text/x-c",
+    ".cpp": "text/x-c++",
+    ".cc": "text/x-c++",
+    ".cxx": "text/x-c++",
+    ".hpp": "text/x-c++",
+    ".hh": "text/x-c++",
+    ".cs": "text/x-csharp",
+    ".swift": "text/x-swift",
+    ".rb": "text/x-ruby",
+    ".php": "text/x-php",
+    ".pl": "text/x-perl",
+    ".pm": "text/x-perl",
+    ".lua": "text/x-lua",
+    ".r": "text/x-r",
+    ".jl": "text/x-julia",
+    ".sql": "application/sql",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".css": "text/css",
+    ".scss": "text/x-scss",
+    ".sass": "text/x-sass",
+    ".less": "text/x-less",
+    ".vue": "text/plain",
+    ".svelte": "text/plain",
+    ".astro": "text/plain",
+    ".xml": "application/xml",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+    ".toml": "application/toml",
+    ".ini": "text/plain",
+    ".cfg": "text/plain",
+    ".conf": "text/plain",
+    ".env": "text/plain",
+    ".properties": "text/plain",
+    ".tf": "text/plain",
+    ".hcl": "text/plain",
+    ".proto": "text/plain",
+    ".graphql": "application/graphql",
+    ".gql": "application/graphql",
+    ".lock": "text/plain",
+    ".log": "text/plain",
+    ".diff": "text/x-diff",
+    ".patch": "text/x-diff",
+    ".mk": "text/x-makefile",
+    ".cmake": "text/plain",
+    ".gradle": "text/plain",
+    ".dockerfile": "text/plain",
+}
+
+# Browser / OS registry types → canonical stored MIME (keys are not stored).
+_INBOUND_MEDIA_TYPE_ALIASES = {
+    "application/javascript": "text/javascript",
+    "application/x-javascript": "text/javascript",
+    "application/typescript": "text/x-typescript",
+    "text/typescript": "text/x-typescript",
+    "application/x-sh": "text/x-shellscript",
+    "application/x-shellscript": "text/x-shellscript",
+    "text/x-sh": "text/x-shellscript",
+    "application/x-python": "text/x-python",
+    "text/x-script.python": "text/x-python",
+    "application/x-yaml": "application/yaml",
+    "text/x-yaml": "application/yaml",
+    "text/yaml": "application/yaml",
+    "text/xml": "application/xml",
+    "application/x-httpd-php": "text/x-php",
+    "text/x-sql": "application/sql",
+    "application/x-ipynb+json": "application/json",
+    "text/rtf": "application/rtf",
+    "application/x-rtf": "application/rtf",
+    "application/x-gzip": "application/gzip",
+    "application/x-gtar": "application/x-tar",
+    "application/x-rar-compressed": "application/vnd.rar",
+    "application/x-rar": "application/vnd.rar",
+    "application/x-bzip": "application/x-bzip2",
+    "image/x-icon": "image/vnd.microsoft.icon",
+    "image/vnd.xmind.workbook": "application/vnd.xmind.workbook",
+    "application/x-xmind": "application/vnd.xmind.workbook",
+    "application/xmind": "application/vnd.xmind.workbook",
+    "audio/mp3": "audio/mpeg",
+    "audio/x-mp3": "audio/mpeg",
+    "audio/x-wav": "audio/wav",
+    "audio/wave": "audio/wav",
+    "audio/vnd.wave": "audio/wav",
+    "audio/x-flac": "audio/flac",
+    "audio/x-aac": "audio/aac",
+    "application/vnd.microsoft.portable-executable": "application/x-msdownload",
+    "application/x-msdos-program": "application/x-msdownload",
+    "application/x-dosexec": "application/x-msdownload",
+}
+
+_OCTET_STREAM = "application/octet-stream"
 
 ALLOWED_INBOUND_MEDIA_TYPES = frozenset(
     {
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/webp",
-        "application/pdf",
-        "text/plain",
-        "text/markdown",
-        "application/json",
-        "text/csv",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/zip",
-        "application/octet-stream",
+        _OCTET_STREAM,
+        *_INBOUND_MEDIA_TYPE_ALIASES.values(),
+        *INBOUND_EXTENSION_MEDIA_TYPES.values(),
     }
 )
 
@@ -138,19 +319,42 @@ def resolve_inbound_attachment_path(workspace: BackendWorkspace, path: str) -> s
     return agent_facing_workspace_path(workspace, path)
 
 
-def validate_inbound_size(data: bytes) -> None:
-    if len(data) > MAX_INBOUND_BYTES:
+def validate_inbound_size(data: bytes, *, max_bytes: int | None = None) -> None:
+    limit = MAX_INBOUND_BYTES if max_bytes is None else max_bytes
+    if len(data) > limit:
+        max_mb = max(1, limit // (1024 * 1024))
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
-            f"file too large (max {MAX_INBOUND_BYTES // (1024 * 1024)}MB)",
+            ErrorCode.ATTACHMENT_TOO_LARGE,
+            f"file too large (max {max_mb}MB)",
+            details={"max_mb": max_mb},
         )
 
 
-def validate_inbound_media_type(media_type: str) -> str:
+def canonicalize_inbound_media_type(media_type: str) -> str:
+    """Map browser/OS aliases to the MIME we persist."""
+    normalized = normalize_inbound_media_type(media_type)
+    return _INBOUND_MEDIA_TYPE_ALIASES.get(normalized, normalized)
+
+
+def _is_av_media_type(media_type: str) -> bool:
+    return media_type.startswith(("video/", "audio/"))
+
+
+def validate_inbound_media_type(media_type: str, filename: str = "") -> str:
     normalized_type = normalize_inbound_media_type(media_type)
-    if normalized_type not in ALLOWED_INBOUND_MEDIA_TYPES:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"unsupported media type {normalized_type!r}")
-    return normalized_type
+    canonical = canonicalize_inbound_media_type(normalized_type)
+    ext = Path(filename or "").suffix.lower()
+    mapped = INBOUND_EXTENSION_MEDIA_TYPES.get(ext)
+    if canonical != _OCTET_STREAM and canonical in ALLOWED_INBOUND_MEDIA_TYPES:
+        return canonical
+    if mapped is not None:
+        return mapped
+    if _is_av_media_type(canonical):
+        return canonical
+    if canonical == _OCTET_STREAM:
+        return canonical
+    reason = f"unsupported media type {normalized_type!r}"
+    raise OctopError(ErrorCode.ATTACHMENT_UNSUPPORTED_TYPE, reason, details={"reason": reason})
 
 
 def sanitize_inbound_filename(filename: str) -> str:
@@ -199,10 +403,11 @@ async def write_inbound(
     *,
     filename: str,
     media_type: str,
+    max_bytes: int | None = None,
 ) -> InboundFile:
     """Persist bytes under ``inbound/{unix_ts}_{original}``."""
-    validate_inbound_size(data)
-    normalized_type = validate_inbound_media_type(media_type)
+    validate_inbound_size(data, max_bytes=max_bytes)
+    normalized_type = validate_inbound_media_type(media_type, filename)
 
     display_name = sanitize_inbound_filename(filename)
     if not Path(display_name).suffix:
@@ -228,6 +433,7 @@ async def read_inbound_bytes(workspace: BackendWorkspace, path: str) -> bytes:
 
 __all__ = [
     "ALLOWED_INBOUND_MEDIA_TYPES",
+    "INBOUND_EXTENSION_MEDIA_TYPES",
     "InboundFile",
     "MAX_INBOUND_BYTES",
     "build_timestamped_inbound_name",

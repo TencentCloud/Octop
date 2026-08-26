@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -13,8 +14,11 @@ from octop.infra.agents.providers.onnx_catalog import (
     list_onnx_catalog_models,
 )
 from octop.infra.agents.providers.onnx_service import (
+    OnnxDownloadManager,
     OnnxDownloadState,
+    OnnxDownloadStatus,
     OnnxServiceConfig,
+    _ui_progress_from_bytes,
     embedding_models_dir,
     is_model_downloaded,
     load_config,
@@ -22,6 +26,62 @@ from octop.infra.agents.providers.onnx_service import (
     save_config,
     status_payload,
 )
+
+
+def test_ui_progress_from_bytes_is_byte_fraction() -> None:
+    assert _ui_progress_from_bytes(0, 100) == pytest.approx(0.0)
+    assert _ui_progress_from_bytes(50, 100) == pytest.approx(0.50)
+    assert _ui_progress_from_bytes(100, 100) == pytest.approx(1.0)
+    assert _ui_progress_from_bytes(200, 100) == pytest.approx(1.0)
+    assert _ui_progress_from_bytes(50, None) is None
+    assert _ui_progress_from_bytes(50, 0) is None
+
+
+def test_download_sync_reports_tqdm_bytes(monkeypatch, tmp_path) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    mgr = OnnxDownloadManager()
+    mgr._set(
+        status=OnnxDownloadStatus.DOWNLOADING,
+        progress=0.0,
+        model_name="BAAI/bge-small-zh-v1.5",
+    )
+    seen: list[float] = []
+
+    def fake_raced(
+        model_name: str,
+        cache_dir: object,
+        *,
+        on_progress: object = None,
+    ) -> str:
+        del model_name, cache_dir
+        assert callable(on_progress)
+        on_progress(50, 100, "Reconstructing")
+        seen.append(mgr.state.progress)
+        on_progress(100, 100, "Reconstructing")
+        seen.append(mgr.state.progress)
+        return "hf-mirror"
+
+    monkeypatch.setattr(mod, "download_model_raced", fake_raced)
+    monkeypatch.setattr(mod, "mark_model_downloaded", lambda _name: None)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _name: False)
+    monkeypatch.setattr(
+        mod,
+        "get_onnx_model_meta",
+        lambda _name: {"size_gb": 100 / (1024**3)},
+    )
+
+    class _FakeEmbed:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+    fastembed = SimpleNamespace(TextEmbedding=_FakeEmbed)
+    monkeypatch.setitem(sys.modules, "fastembed", fastembed)
+
+    mgr._download_sync("BAAI/bge-small-zh-v1.5")
+    assert seen[0] == pytest.approx(0.50)
+    assert seen[1] == pytest.approx(1.0)
 
 
 def test_catalog_includes_finnie_presets() -> None:

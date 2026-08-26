@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { applyUpdate } from "../../pwa";
 import { updateApi } from "../../api/modules/update";
 import styles from "./index.module.less";
@@ -13,6 +14,7 @@ import styles from "./index.module.less";
  * the new Python package takes effect alongside the new frontend bundle.
  */
 export default function PwaUpdatePrompt() {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [serviceMode, setServiceMode] = useState<string | null>(null);
 
@@ -39,7 +41,7 @@ export default function PwaUpdatePrompt() {
     if (serviceMode) {
       updateApi.restartService().catch(() => {});
     }
-    applyUpdate();
+    await applyUpdate();
   };
 
   const handleDismiss = () => setVisible(false);
@@ -47,14 +49,14 @@ export default function PwaUpdatePrompt() {
   return (
     <div className={styles.banner} role="alert" aria-live="polite">
       <span className={styles.icon}>✨</span>
-      <span className={styles.text}>新版本已就绪</span>
+      <span className={styles.text}>{t("pwa.updateReady")}</span>
       <button className={styles.btnPrimary} onClick={handleUpdate}>
-        立即更新
+        {t("pwa.updateNow")}
       </button>
       <button
         className={styles.btnGhost}
         onClick={handleDismiss}
-        aria-label="稍后更新"
+        aria-label={t("pwa.later")}
       >
         ✕
       </button>
