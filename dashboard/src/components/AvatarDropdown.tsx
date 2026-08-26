@@ -259,17 +259,19 @@ export default function AvatarDropdown({
         <span>{t("account.changePassword")}</span>
       </button>
 
-      <button
-        type="button"
-        className={styles.menuItem}
-        onClick={() => {
-          setMenuOpen(false);
-          navigate("/admin/advanced?tab=updates");
-        }}
-      >
-        <RefreshCw size={16} strokeWidth={1.8} />
-        <span>{t("account.checkUpdates")}</span>
-      </button>
+      {role === "admin" && (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => {
+            setMenuOpen(false);
+            navigate("/admin/advanced?tab=updates");
+          }}
+        >
+          <RefreshCw size={16} strokeWidth={1.8} />
+          <span>{t("account.checkUpdates")}</span>
+        </button>
+      )}
 
       <Divider className={styles.menuDivider} />
 
