@@ -9,6 +9,29 @@ import (
 	"testing"
 )
 
+func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", "")
+
+	zipPath := filepath.Join(t.TempDir(), "embedded.zip")
+	writeTestGreenZip(t, zipPath)
+	data, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := embeddedPortable
+	embeddedPortable = data
+	t.Cleanup(func() { embeddedPortable = prev })
+
+	if err := ensurePortable(func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if !launchReady(portableDir()) {
+		t.Fatal("embedded package was not extracted into the portable directory")
+	}
+}
+
 func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OCTOP_HOME", home)

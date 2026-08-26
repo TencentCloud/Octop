@@ -27,22 +27,36 @@ tasks:
       GOARCH: "{{.ARCH | default ARCH}}"
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
 
-  package:
-    summary: Packages the production exe with its matching portable runtime
-    deps:
-      - task: build
-        vars:
-          PRODUCTION: "true"
+  stage:portable:
+    summary: Copies the green zip to bundled/portable.zip for go:embed
     cmds:
       - cmd: >-
           powershell -NoProfile -Command
-          "if (-not (Test-Path '{{.PORTABLE_ZIP}}')) { throw 'portable zip not found' };
-          Remove-Item -Recurse -Force '{{.PACKAGE_DIR}}' -ErrorAction SilentlyContinue;
+          "if (-not (Test-Path '{{.PORTABLE_ZIP}}')) { throw 'portable zip not found: {{.PORTABLE_ZIP}}' };
+          New-Item -ItemType Directory -Force bundled | Out-Null;
+          Copy-Item -Force '{{.PORTABLE_ZIP}}' 'bundled/portable.zip'"
+    vars:
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-windows-%s.zip" (.ARCH | default ARCH))}}'
+
+  package:
+    summary: Packages a single production exe with the portable runtime embedded
+    cmds:
+      - task: stage:portable
+        vars:
+          ARCH: "{{.ARCH}}"
+          PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
+      - task: build
+        vars:
+          PRODUCTION: "true"
+          ARCH: "{{.ARCH}}"
+      - cmd: >-
+          powershell -NoProfile -Command
+          "Remove-Item -Recurse -Force '{{.PACKAGE_DIR}}' -ErrorAction SilentlyContinue;
           New-Item -ItemType Directory -Force '{{.PACKAGE_DIR}}' | Out-Null;
           Copy-Item '{{.BIN_DIR}}/{{.APP_NAME}}.exe' '{{.PACKAGE_DIR}}/';
-          Copy-Item '{{.PORTABLE_ZIP}}' '{{.PACKAGE_DIR}}/';
           Remove-Item -Force '{{.ARCHIVE}}' -ErrorAction SilentlyContinue;
-          Compress-Archive -Path '{{.PACKAGE_DIR}}' -DestinationPath '{{.ARCHIVE}}'"
+          Compress-Archive -Path '{{.PACKAGE_DIR}}' -DestinationPath '{{.ARCHIVE}}';
+          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-windows-%s.zip" .ARCH)}}'

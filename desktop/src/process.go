@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 )
 
@@ -27,8 +28,10 @@ func startOctop(root string, port int) (*exec.Cmd, error) {
 		"PYTHONPATH":           "",
 	})
 	configureProcGroup(cmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if runtime.GOOS != "windows" {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

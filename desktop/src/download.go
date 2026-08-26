@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,12 +38,8 @@ func ensurePortable(status func(string)) error {
 		status("正在使用已有运行环境…")
 		return nil
 	}
-	zipPath, err := bundledPortableZip()
-	if err != nil {
-		return err
-	}
 	status("首次启动，正在解压内置运行环境…")
-	if err := unzipGreen(zipPath, root); err != nil {
+	if err := extractPortable(root); err != nil {
 		return err
 	}
 	if runtime.GOOS == "darwin" {
@@ -52,6 +49,24 @@ func ensurePortable(status func(string)) error {
 		return fmt.Errorf("portable extract missing launch.py or python under %s", root)
 	}
 	return nil
+}
+
+func extractPortable(root string) error {
+	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") != "" {
+		zipPath, err := bundledPortableZip()
+		if err != nil {
+			return err
+		}
+		return unzipGreen(zipPath, root)
+	}
+	if len(embeddedPortable) > 0 {
+		return unzipGreenBytes(embeddedPortable, root)
+	}
+	zipPath, err := bundledPortableZip()
+	if err != nil {
+		return err
+	}
+	return unzipGreen(zipPath, root)
 }
 
 func bundledPortableZip() (string, error) {
@@ -86,12 +101,24 @@ func unzipGreen(zipPath, dest string) error {
 		return err
 	}
 	defer r.Close()
+	return unzipGreenFiles(r.File, dest)
+}
+
+func unzipGreenBytes(data []byte, dest string) error {
+	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return err
+	}
+	return unzipGreenFiles(r.File, dest)
+}
+
+func unzipGreenFiles(files []*zip.File, dest string) error {
 	_ = os.RemoveAll(dest)
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
 	// Zip root is Octop-<plat>/… — strip that prefix.
-	for _, f := range r.File {
+	for _, f := range files {
 		name := f.Name
 		parts := strings.SplitN(name, "/", 2)
 		if len(parts) < 2 {

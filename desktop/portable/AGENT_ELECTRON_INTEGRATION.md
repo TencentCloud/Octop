@@ -27,9 +27,9 @@ Octop-<plat>/
 
 ## Spawn
 
-1. Ship the matching zip with the desktop application. The Wails packages place
-   it beside the executable (Windows/Linux) or under `Contents/Resources`
-   (macOS); the desktop shell does not download it at runtime.
+1. Ship the matching zip with the desktop application. The Wails packages embed
+   it in the Windows `.exe`, place it under `Contents/Resources` (macOS), or
+   beside the executable (Linux); the desktop shell does not download it at runtime.
 2. Extract to a writable user directory **outside** `app.asar`.
 3. On macOS, after checksum: `xattr -dr com.apple.quarantine <extractDir>`.
 4. Set `OCTOP_HOME` to Octop's default data dir (`~/.octop`, or `$OCTOP_HOME`
