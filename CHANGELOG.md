@@ -9,7 +9,7 @@
 ### 新增
 
 - 绿色便携包：`desktop/portable/` 用 python-build-standalone + 锁定依赖打出 `Octop-<plat>.zip`（六平台 Actions），解压后经 `launch.py` 启动；不含 OOB/UI 裁剪，首启走上游 setup wizard
-- 桌面壳（Wails v3）：`desktop/src/` 从 GitHub Release 下载绿包并启动 Octop；`OCTOP_HOME` 与默认一致（`~/.octop`）；内置升级对绿包使用 `--target packages`
+- 桌面壳（Wails v3）：`desktop/src/` 从 GitHub Release 下载绿包并启动 Octop；`OCTOP_HOME` 与默认一致（`~/.octop`）；内置升级对绿包使用 `--target packages`；补齐 `Taskfile.yml` / `build/config.yml`，可在该目录执行 `wails3 dev` / `wails3 build`
 
 ## [0.9.26] - 2026-08-23
 

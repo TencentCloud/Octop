@@ -20,6 +20,8 @@ __pycache__/
 *.so
 .Python
 build/
+!desktop/src/build/
+!desktop/src/build/**
 dist/
 *.egg-info/
 *.egg

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>Octop</string>
+        <key>CFBundleExecutable</key>
+        <string>Octop</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.octop.desktop</string>
+        <key>CFBundleVersion</key>
+        <string>0.9.26.dev</string>
+        <key>CFBundleGetInfoString</key>
+        <string>Octop desktop shell (dev)</string>
+        <key>CFBundleShortVersionString</key>
+        <string>0.9.26.dev</string>
+        <key>CFBundleIconFile</key>
+        <string>icons</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>12.0.0</string>
+        <key>NSHighResolutionCapable</key>
+        <string>true</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>Copyright © 2026</string>
+        <key>NSAppTransportSecurity</key>
+        <dict>
+            <key>NSAllowsArbitraryLoads</key>
+            <true/>
+            <key>NSAllowsLocalNetworking</key>
+            <true/>
+        </dict>
+    </dict>
+</plist>

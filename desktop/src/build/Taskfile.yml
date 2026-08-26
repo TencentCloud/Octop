@@ -1,0 +1,51 @@
+version: "3"
+
+# Shell UI is Go-embedded HTML (desktop/src/assets). No Vite/npm frontend.
+
+tasks:
+  go:mod:tidy:
+    summary: Runs go mod tidy
+    internal: true
+    run: once
+    cmds:
+      - go mod tidy
+
+  install:frontend:deps:
+    summary: No npm frontend
+    cmds:
+      - echo "embedded assets; skip npm"
+
+  build:frontend:
+    summary: No Vite build (assets embedded)
+    cmds:
+      - echo "embedded assets; skip vite"
+
+  generate:bindings:
+    summary: Bindings unused (Call.ByName)
+    cmds:
+      - echo "skip generate bindings"
+
+  generate:icons:
+    summary: Generates .ico / .icns from appicon.png
+    dir: build
+    sources:
+      - appicon.png
+    generates:
+      - darwin/icons.icns
+      - windows/icon.ico
+    cmds:
+      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+
+  dev:frontend:
+    summary: Keep a process so wails3 dev background slot stays up
+    cmds:
+      - cmd: sleep 86400
+        platforms: [linux, darwin]
+      - cmd: timeout /t 86400 /nobreak
+        platforms: [windows]
+
+  update:build-assets:
+    summary: Updates generated build assets from config.yml
+    dir: build
+    cmds:
+      - wails3 update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .

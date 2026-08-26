@@ -1,5 +1,6 @@
 bin/
-build/bin/
-frontend/dist/
-frontend/node_modules/
-*.exe
+*.syso
+build/windows/*.syso
+build/darwin/icons.icns
+build/windows/icon.ico
+build/linux/icon.png

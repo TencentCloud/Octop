@@ -1,0 +1,47 @@
+version: "3"
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the Windows binary
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:build:frontend
+      - task: common:generate:icons
+    cmds:
+      - task: generate:syso
+        vars:
+          ARCH: "{{.ARCH}}"
+      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+      - cmd: powershell Remove-item *.syso
+        platforms: [windows]
+      - cmd: rm -f *.syso
+        platforms: [linux, darwin]
+    vars:
+      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
+    env:
+      GOOS: windows
+      CGO_ENABLED: "0"
+      GOARCH: "{{.ARCH | default ARCH}}"
+      PRODUCTION: '{{.PRODUCTION | default "false"}}'
+
+  package:
+    summary: Production Windows exe
+    deps:
+      - task: build
+        vars:
+          PRODUCTION: "true"
+
+  run:
+    cmds:
+      - "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+
+  generate:syso:
+    summary: Generates Windows .syso (linked from module root)
+    dir: build
+    cmds:
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
+    vars:
+      ARCH: "{{.ARCH | default ARCH}}"

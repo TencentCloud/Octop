@@ -28,21 +28,27 @@ CI: `.github/workflows/octop-portable.yml` (unchanged location).
 
 ## Build the Wails shell
 
-Requires **Go 1.25+** and [Wails v3](https://v3.wails.io/) (`wails3`).
+Run these from **`desktop/src`** (that directory contains `Taskfile.yml` and
+`build/config.yml`). Requires **Go 1.25+**, [Wails v3](https://v3.wails.io/)
+`v3.0.0-beta.13`, and [Task](https://taskfile.dev/) (`task` on `PATH`).
+
+```bash
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
+cd desktop/src
+go mod tidy
+wails3 generate icons   # once: appicon.png → .icns / .ico
+wails3 build            # native binary under desktop/src/bin/
+```
+
+Dev against an already-running Octop (skips downloading the green zip):
 
 ```bash
 cd desktop/src
-go mod tidy
-# generate bindings if you have the CLI:
-#   wails3 generate
-wails3 build
-```
-
-Dev against an already-running Octop:
-
-```bash
 OCTOP_DESKTOP_URL=http://127.0.0.1:8088 wails3 dev
 ```
 
-First launch without that env downloads `Octop-<plat>.zip` from the latest
-GitHub Release (`OCTOP_DESKTOP_GITHUB_REPO`, default `forcemeter/Octop-Agent`).
+Without `OCTOP_DESKTOP_URL`, first launch uses `~/.octop/portable/` if present,
+otherwise downloads `Octop-<plat>.zip` from the latest GitHub Release
+(`OCTOP_DESKTOP_GITHUB_REPO`, default `forcemeter/Octop-Agent`).
+
+Linux also needs GTK4 + WebKitGTK 6 to link. macOS 12+.
