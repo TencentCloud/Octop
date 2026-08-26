@@ -334,6 +334,9 @@ func main() {
 		},
 	})
 	api.app = app
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
+		app.SetIcon(trayIcon)
+	})
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:                "Octop",
