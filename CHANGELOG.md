@@ -8,6 +8,10 @@
 
 ### 新增
 
+- 内置插件随安装包分发：`octop init` / 服务启动时种植到 `~/.octop/plugins`，默认关闭；用户卸载后升级不再重建。
+- 可配置上传上限：`config.json` 的 `max_upload_mb` 与环境变量 `OCTOP_MAX_UPLOAD_MB`（1–1024，默认 100MB），同时约束聊天附件、知识库文档与 IM inbound。
+- Dashboard 推送通知：定时任务与主动关怀通过 `/api/notifications/ws` 以 toast 送达当前用户的所有会话。
+- 聊天支持音频 / 视频附件的预览与播放。
 - 模型管理页新增生成模型分区，支持配置与测试火山方舟 Seedream / Seedance；聊天工具卡片可展示生成结果，并针对凭证、模型权限、限流、内容安全与延迟加载失败给出结构化原因和下一步操作。
 - 连接器：腾讯设计 Ardot、滴答清单（dida365）；远程 MCP OAuth（Notion / Ardot / 滴答等）改为 catalog 驱动（`oauth_issuer` / `mcp_url` / `oauth_resource` / `oauth_scopes`），共用 DCR+PKCE 与回调，支持一键授权与手动粘贴 Token
 - 工具设置：单工具 `PATCH /agents/{id}/tool-settings/{name}`；插件工具开关热更新（不再 reload）；列表标注能力未挂载工具；harness `tools_disabled`（需 orcakit-harness-agent >=0.9.25）
@@ -15,6 +19,7 @@
 
 ### 修复
 
+- 知识库文件夹内点击操作按钮不再误打开该文件夹。
 - 工具的预期运行错误不再统一显示为前端 `stream_error`；失败状态会在实时聊天与历史记录中保留，缺少凭证或模型权限时可直接跳转到生成模型设置。
 - 连接器 OAuth：公网回调使用 `X-Forwarded-*` 解析的公开基址；MCP OAuth 连接器在非回环地址要求 HTTPS；授权完成后前端可自动保存实例（含 COOP 下通过 pending 轮询）
 - 界面国际化：为 antd 组件补充 `ConfigProvider` locale（跟随界面语言切换），OK/Cancel、Refresh、Create 等此前在英文界面下仍显示英文的组件文案现随语言切换；并全球化 `Settings/octop/Providers.tsx` 全部按钮与文案（该文件当前未接入路由）
