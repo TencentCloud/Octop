@@ -323,6 +323,11 @@ def _run_fpk_upgrade(site_packages: str, *, verbose: bool = False) -> UpgradeRes
     launcher 通过 PYTHONPATH 从应用中心托管的打包 site-packages 加载 octop，
     在线安装到系统 Python 永远不会被加载（重启后仍是旧版）。本函数把新版
     安装到该打包目录本身，重启服务后即加载新版，升级真正生效。
+
+    与普通部署不同，FPK 首次在线升级需要从零解析并下载完整依赖树
+    （octop 依赖 orcakit-harness-agent 等大包），故超时显著放宽；且某镜像
+    可能滞后（装到同版本旧版），此时继续尝试下一个镜像，最后以 pypi.org
+    兜底，避免「镜像有货但版本不新」导致升级假成功。
     """
     if not os.path.isdir(site_packages):
         return UpgradeResult(
@@ -331,7 +336,7 @@ def _run_fpk_upgrade(site_packages: str, *, verbose: bool = False) -> UpgradeRes
         )
     local_ver = get_local_version()
     mirror_errors: list[str] = []
-    per_mirror_timeout = 180
+    per_mirror_timeout = 900  # FPK 首次升级需下载完整依赖树，180s 不够
 
     def _run_install(cmd: list[str], label: str) -> tuple[int | None, str]:
         logger.debug("running %s: %s", label, " ".join(cmd))
@@ -368,9 +373,14 @@ def _run_fpk_upgrade(site_packages: str, *, verbose: bool = False) -> UpgradeRes
             _PACKAGE_NAME,
         ]
         rc, err_snippet = _run_install(cmd, mirror)
-        if rc == 0:
-            return _verify_fpk_upgrade(local_ver, site_packages, python_exe, mirror_errors)
-        mirror_errors.append(f"{mirror}: {err_snippet}")
+        if rc != 0:
+            mirror_errors.append(f"{mirror}: {err_snippet}")
+            continue
+        res = _verify_fpk_upgrade(local_ver, site_packages, python_exe, mirror_errors)
+        if res.success:
+            return res
+        # 镜像装到了同版本/旧版（同步滞后）：继续尝试下一个镜像
+        mirror_errors.append(f"{mirror}: {res.error or 'version unchanged'}")
 
     cmd = [
         python_exe,
