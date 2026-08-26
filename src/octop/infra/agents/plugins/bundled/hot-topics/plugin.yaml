@@ -1,0 +1,12 @@
+id: hot-topics
+version: 0.2.0
+name: 热榜
+description: 查看微博、知乎与 Hacker News 热榜，在聊天中展示可点击列表
+icon: "🔥"
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

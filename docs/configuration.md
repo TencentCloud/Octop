@@ -71,6 +71,7 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
   "enable_dashboard": true,
   "enable_api_docs": false,
   "require_setup_password": true,
+  "max_upload_mb": 100,
   "database": {
     "driver": "sqlite",
     "sqlite_path": "octop.db",
@@ -108,6 +109,17 @@ Notes:
 - `require_setup_password=true` adds the wizard password gate to the
   first-run setup flow; set `false` for unattended bootstraps via
   `OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD`.
+- `max_upload_mb` is the process-wide ceiling for dashboard chat
+  attachments, IM inbound files, and knowledge-base documents (default
+  100). Existing `config.json` files that omit the key pick up the
+  default on load. Change it and restart; reverse proxies may still
+  impose their own body-size limit (for example nginx
+  `client_max_body_size`). Agent workspace file upload, plugin ZIPs,
+  and backup archives use separate limits and are not this setting.
+- `plugins.<id>.enabled` is the **global** plugin switch (Dashboard Admin →
+  Plugins). Bundled plugins are copied into `~/.octop/plugins/` on init and
+  server start with `enabled: false`. `bundled_plugins_seeded` lists ids
+  already offered so uninstall does not come back on the next start.
 
 ## Environment overrides
 
@@ -128,6 +140,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_ENABLE_DASHBOARD` | bool | `true` | Serve the built React SPA at `/` |
 | `OCTOP_ENABLE_API_DOCS` | bool | `false` | Expose Scalar API docs at `/api/docs` |
 | `OCTOP_REQUIRE_SETUP_PASSWORD` | bool | `true` | Require wizard password during initial setup |
+| `OCTOP_MAX_UPLOAD_MB` | int | `100` | Max upload size in MiB for chat attachments, IM inbound, and knowledge documents (1–1024) |
 | `OCTOP_DATABASE_URL` | string | empty | Full DSN — overrides the `OCTOP_DATABASE_*` fields below |
 | `OCTOP_DATABASE_DRIVER` | `sqlite` \| `postgresql` | `sqlite` | Storage backend |
 | `OCTOP_DATABASE_SQLITE_PATH` | path | `octop.db` | SQLite file path (relative to `OCTOP_HOME` unless absolute) |

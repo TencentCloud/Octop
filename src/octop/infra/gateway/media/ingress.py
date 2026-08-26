@@ -14,11 +14,12 @@ from octop.infra.gateway.media.inbound_store import inbound_rel_path, validate_i
 class AgentBackedMediaBackend(MediaBackend):
     """harness-gateway ``MediaBackend`` adapter backed by ``agent.workspace``."""
 
-    def __init__(self, workspace: BackendWorkspace) -> None:
+    def __init__(self, workspace: BackendWorkspace, *, max_bytes: int | None = None) -> None:
         self._workspace = workspace
+        self._max_bytes = max_bytes
 
     async def save(self, data: bytes, key: str) -> None:
-        validate_inbound_size(data)
+        validate_inbound_size(data, max_bytes=self._max_bytes)
         await self._workspace.aupload_bytes(inbound_rel_path(key), data)
 
     async def read(self, key: str) -> bytes:

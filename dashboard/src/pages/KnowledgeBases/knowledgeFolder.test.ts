@@ -6,6 +6,7 @@ import {
   knowledgeBasename,
   knowledgeBreadcrumb,
   normalizeKnowledgePath,
+  shouldOpenKnowledgeFolder,
 } from "./knowledgeFolder";
 
 describe("knowledgeFolder", () => {
@@ -28,5 +29,28 @@ describe("knowledgeFolder", () => {
       { label: "notes", path: "notes" },
       { label: "law", path: "notes/law" },
     ]);
+  });
+
+  it("does not enter a folder when the click comes from rename/actions", () => {
+    const actions = document.createElement("div");
+    actions.setAttribute("data-kb-doc-actions", "");
+    const renameButton = document.createElement("button");
+    actions.appendChild(renameButton);
+    document.body.appendChild(actions);
+
+    expect(shouldOpenKnowledgeFolder(true, { target: renameButton })).toBe(
+      false,
+    );
+    actions.remove();
+  });
+
+  it("enters a folder when clicking the folder entry itself", () => {
+    const card = document.createElement("div");
+    expect(shouldOpenKnowledgeFolder(true, { target: card })).toBe(true);
+  });
+
+  it("does not navigate for files", () => {
+    const card = document.createElement("div");
+    expect(shouldOpenKnowledgeFolder(false, { target: card })).toBe(false);
   });
 });

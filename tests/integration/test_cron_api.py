@@ -181,6 +181,13 @@ async def test_settings_timezone_returns_default(env: Any) -> None:
     assert r.json() == {"timezone": "Asia/Shanghai"}
 
 
+async def test_settings_upload_returns_default_limit(env: Any) -> None:
+    c, _srv, alice_auth, _bob_auth, _aid = env
+    r = await c.get("/api/settings/upload", headers=alice_auth)
+    assert r.status_code == 200
+    assert r.json() == {"max_upload_mb": 100, "max_upload_bytes": 100 * 1024 * 1024}
+
+
 async def test_run_now_unknown_cron_returns_404(env: Any) -> None:
     c, _srv, alice_auth, _bob_auth, aid = env
     r = await c.post(

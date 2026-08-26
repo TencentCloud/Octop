@@ -230,7 +230,11 @@ export function agentAttachmentAccessUrl(
   mimeType?: string,
 ): string {
   const mime = (mimeType || "").toLowerCase();
-  if (mime.startsWith("image/") || mime.startsWith("video/")) {
+  if (
+    mime.startsWith("image/") ||
+    mime.startsWith("video/") ||
+    mime.startsWith("audio/")
+  ) {
     return agentMediaPreviewUrl(agentId, workspacePath, mimeType);
   }
   return workspaceDownloadUrl(agentId, workspacePath);

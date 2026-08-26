@@ -82,6 +82,11 @@ def test_login_locked_interpolates_minutes():
     assert "{minutes}" not in error_message("LOGIN_LOCKED", "en", minutes=15)
 
 
+def test_knowledge_doc_too_large_interpolates_max_mb():
+    assert "100" in error_message("KNOWLEDGE_DOC_TOO_LARGE", "zh", max_mb=100)
+    assert "{max_mb}" not in error_message("KNOWLEDGE_DOC_TOO_LARGE", "en", max_mb=100)
+
+
 def test_localized_message_falls_back_when_key_missing(monkeypatch: pytest.MonkeyPatch):
     err = OctopError(ErrorCode.AUTH_FAILED, "custom detail")
     monkeypatch.setattr(

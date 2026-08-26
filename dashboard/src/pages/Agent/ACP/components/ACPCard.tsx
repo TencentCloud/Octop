@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { ACPRunnerConfig } from "../../../../api/types/acp";
 import { runnerIcon, runnerIntroKey, runnerLabelKey } from "../constants";
 import styles from "../../Channels/index.module.less";
+import acpStyles from "../index.module.less";
 
 interface ACPCardProps {
   runnerKey: string;
@@ -75,7 +76,16 @@ export function ACPCard({
       onMouseLeave={onMouseLeave}
     >
       <div className={styles.cardTop}>
-        <img src={icon} alt={label} className={styles.channelIcon} />
+        <img
+          src={icon}
+          alt={label}
+          className={[
+            styles.channelIcon,
+            runnerKey === "pi" ? acpStyles.invertOnDark : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        />
         <span className={styles.cardTitle}>{label}</span>
         <div onClick={(e) => e.stopPropagation()}>
           <Tooltip

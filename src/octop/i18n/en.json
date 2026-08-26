@@ -357,7 +357,7 @@
     "KNOWLEDGE_NOT_FOUND": "Knowledge base or document not found.",
     "KNOWLEDGE_FORBIDDEN": "You do not have access to this knowledge base.",
     "KNOWLEDGE_DOC_LIMIT": "A knowledge base can contain at most 100 documents.",
-    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the 20 MB size limit.",
+    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the {max_mb} MB size limit.",
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",

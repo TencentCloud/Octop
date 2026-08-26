@@ -1,11 +1,7 @@
 import type { ChatAttachment } from "../hooks/sseHelpers";
-
-/** Backend inbound store accepts any type; only enforce size client-side. */
-export const CHAT_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 
 const THINKING_TAG_RE = /<think>[\s\S]*?<\/redacted_thinking>\s*/gi;
-
-const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
 export function stripThinkingTags(text: string): string {
   return text.replace(THINKING_TAG_RE, "").trim();
@@ -15,9 +11,22 @@ export function isImageMediaType(mime?: string): boolean {
   return Boolean(mime?.startsWith("image/"));
 }
 
-export function isImageFilename(name?: string): boolean {
-  if (!name) return false;
-  return IMAGE_EXT_RE.test(name.split("?")[0]);
+export function inferKindFromNameAndMime(
+  mediaType?: string,
+  filename?: string,
+  kind?: ChatAttachment["kind"],
+): ChatAttachment["kind"] {
+  if (kind === "image" || kind === "video" || kind === "audio") {
+    return kind;
+  }
+  const mime = (mediaType || "").toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  const fromName = filename
+    ? getMediaKind(filename.split("?")[0] || filename)
+    : null;
+  return fromName ?? "file";
 }
 
 /** Vision model input — not a workspace path hint for tools. */
@@ -26,21 +35,20 @@ export function isImageAttachment(attachment: {
   mediaType?: string;
   filename?: string;
 }): boolean {
-  if (attachment.kind === "image") return true;
-  if (isImageMediaType(attachment.mediaType)) return true;
-  return isImageFilename(attachment.filename);
+  return (
+    inferKindFromNameAndMime(
+      attachment.mediaType,
+      attachment.filename,
+      attachment.kind,
+    ) === "image"
+  );
 }
 
 export function inferAttachmentKind(
   file: File,
   serverMediaType: string,
 ): ChatAttachment["kind"] {
-  return isImageAttachment({
-    mediaType: serverMediaType || file.type,
-    filename: file.name,
-  })
-    ? "image"
-    : "file";
+  return inferKindFromNameAndMime(serverMediaType || file.type, file.name);
 }
 
 /** Vision block — backend materializes to ``image_url`` base64 for the LLM. */

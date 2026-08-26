@@ -9,6 +9,8 @@ import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
+import { inferKindFromNameAndMime } from "../utils/chatAttachments";
+import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import ContextChip from "./ContextChip";
 import { skillChipLabel } from "../utils/skillChipLabel";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
@@ -134,7 +136,12 @@ export default function ChatInputPreviewBar({
   if (!hasContent) return null;
 
   const imageAttachments = attachments.filter(
-    (attachment) => attachment.kind === "image",
+    (attachment) =>
+      inferKindFromNameAndMime(
+        attachment.mediaType,
+        attachment.filename,
+        attachment.kind,
+      ) === "image",
   );
 
   return (
@@ -142,7 +149,11 @@ export default function ChatInputPreviewBar({
       {imageAttachments.length > 0 ? (
         <Image.PreviewGroup>
           {attachments.map((attachment, idx) =>
-            attachment.kind === "image" ? (
+            inferKindFromNameAndMime(
+              attachment.mediaType,
+              attachment.filename,
+              attachment.kind,
+            ) === "image" ? (
               <div
                 key={`${attachment.url}-${idx}`}
                 className={styles.imagePreviewItem}
@@ -164,8 +175,42 @@ export default function ChatInputPreviewBar({
           )}
         </Image.PreviewGroup>
       ) : null}
-      {attachments.map((attachment, idx) =>
-        attachment.kind === "image" ? null : (
+      {attachments.map((attachment, idx) => {
+        const kind = inferKindFromNameAndMime(
+          attachment.mediaType,
+          attachment.filename,
+          attachment.kind,
+        );
+        if (kind === "image") return null;
+        if (kind === "video" || kind === "audio") {
+          return (
+            <div
+              key={`${attachment.url}-${idx}`}
+              className={
+                kind === "video"
+                  ? styles.composerMediaItem
+                  : styles.attachmentPreviewCard
+              }
+            >
+              <ChatMediaPlayer
+                url={attachment.url}
+                filename={attachment.filename}
+                workspacePath={attachment.workspacePath}
+                mediaType={attachment.mediaType}
+                kind={kind}
+                compact
+              />
+              <button
+                className={styles.imagePreviewRemove}
+                onClick={() => onRemoveAttachment(idx)}
+                type="button"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          );
+        }
+        return (
           <div
             key={`${attachment.url}-${idx}`}
             className={styles.attachmentPreviewCard}
@@ -184,8 +229,8 @@ export default function ChatInputPreviewBar({
               <X size={12} />
             </button>
           </div>
-        ),
-      )}
+        );
+      })}
       {uploading && (
         <div className={styles.imagePreviewItem}>
           <div className={styles.imagePreviewLoading}>

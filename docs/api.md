@@ -141,6 +141,7 @@ because each request is a one-shot continuation.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/settings/timezone` | user | process-level `{timezone}` from `default_timezone` |
+| `GET`    | `/settings/upload` | user | `{max_upload_mb, max_upload_bytes}` from `max_upload_mb` |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
 | `GET`    | `/agents/{aid}/cron` | owner | list of cron rows |
 | `POST`   | `/agents/{aid}/cron` | owner | body `{trigger, prompt, session_key?, fresh_thread?, model?, task_type?}` → `201` |
@@ -237,7 +238,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `PUT`    | `/agents/{aid}/workspace/file` | owner | write a content file (via `BackendWorkspace`) |
 | `DELETE` | `/agents/{aid}/workspace/file` | owner | delete a content file |
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
-| `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend |
+| `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |

@@ -4,6 +4,14 @@ import { parseOctopToolOutput } from "./parseToolOutput";
 import { resolveToolRenderer } from "./registry";
 import { lookupPluginIdForTool } from "./toolPluginIndex";
 
+export function isSilentPluginUiData(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const rec = data as Record<string, unknown>;
+  if (rec.silent === true) return true;
+  if (Array.isArray(rec.items) && rec.items.length === 0) return true;
+  return false;
+}
+
 /**
  * Tools with custom / structured UI render as sibling blocks outside the
  * foldable process body. They still count toward the summary headline
@@ -13,7 +21,10 @@ export function isPinnedToolUiMessage(message: ChatMessage): boolean {
   const toolData = message.toolData;
   if (!toolData) return false;
   const parsed = parseOctopToolOutput(toolData.output);
-  if (parsed.octopUi) return true;
+  if (parsed.octopUi) {
+    if (isSilentPluginUiData(parsed.data)) return false;
+    return true;
+  }
   const pluginId =
     toolData.pluginId ?? lookupPluginIdForTool(toolData.name) ?? null;
   const reg = resolveToolRenderer({

@@ -7,7 +7,7 @@ import os
 import platform
 import socket
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import psutil
@@ -115,10 +115,10 @@ def _collect() -> dict[str, Any]:
             "free_h": _bytes_human(disk.free),
         },
         "load_avg": load_avg,
-        "boot_time": datetime.fromtimestamp(boot_ts, tz=timezone.utc).isoformat(),
+        "boot_time": datetime.fromtimestamp(boot_ts, tz=UTC).isoformat(),
         "uptime_sec": int(now - boot_ts),
         "uptime_h": _uptime_human(now - boot_ts),
-        "collected_at": datetime.now(tz=timezone.utc).isoformat(),
+        "collected_at": datetime.now(tz=UTC).isoformat(),
     }
 
 

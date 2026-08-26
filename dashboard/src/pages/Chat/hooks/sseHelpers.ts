@@ -41,7 +41,7 @@ export interface ChatAttachment {
   filename?: string;
   mediaType?: string;
   workspacePath?: string;
-  kind: "image" | "file";
+  kind: "image" | "file" | "video" | "audio";
 }
 
 /** Skills, connectors, knowledge bases, experts, and selected model attached at send time. */

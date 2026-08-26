@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ToolRenderProps } from "../types";
+import { isSilentPluginUiData } from "../isPinnedToolUi";
 
 /** Hard-coded colors so the card is visible even if theme CSS vars are missing. */
 const cardStyle: CSSProperties = {
@@ -25,6 +26,7 @@ export function BuiltinOctopUiFallback({
   status,
   output,
 }: ToolRenderProps) {
+  if (isSilentPluginUiData(data)) return null;
   const obj =
     data && typeof data === "object" && !Array.isArray(data)
       ? (data as Record<string, unknown>)

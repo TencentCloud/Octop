@@ -1,0 +1,12 @@
+id: weather
+version: 0.2.0
+name: 天气
+description: 查询全球城市天气与未来预报，在聊天中展示天气卡片
+icon: "🌤️"
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

@@ -463,6 +463,10 @@ class AgentManager:
     def harness_manager(self) -> HarnessAgentManager | None:
         return self._harness_manager
 
+    @property
+    def octop_config(self) -> OctopConfig:
+        return self._config
+
     # ------------------------------------------------------------------
     # CRUD — persist agent rows and sync harness runtime
     # ------------------------------------------------------------------

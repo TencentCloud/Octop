@@ -140,7 +140,7 @@
     "KNOWLEDGE_NOT_FOUND": "Knowledge base or document not found.",
     "KNOWLEDGE_FORBIDDEN": "You do not have access to this knowledge base.",
     "KNOWLEDGE_DOC_LIMIT": "A knowledge base can contain at most 100 documents.",
-    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the 20 MB size limit.",
+    "KNOWLEDGE_DOC_TOO_LARGE": "This document exceeds the {{max_mb}} MB size limit.",
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
@@ -1006,6 +1006,10 @@
     "sharedExpert": {
       "banner": "Shared expert · provided by {{name}}"
     },
+    "pushToast": {
+      "title": "{{name}} sent a reminder",
+      "titleFallback": "Task reminder"
+    },
     "memoryMaintenance": {
       "queued": "Waiting to slim the memory database…",
       "pruning": "Cleaning expired memory…",
@@ -1045,6 +1049,7 @@
     "reasoningAlways": "Always reasoning",
     "errorOccurred": "An error occurred",
     "imageLoadFailed": "Image failed to load",
+    "mediaLoadFailed": "Unable to load media",
     "downloadFailed": "Download failed, please try again",
     "hideThinking": "Hide thinking",
     "showThinking": "Show thinking",
@@ -2849,7 +2854,7 @@
   "upload": {
     "fileTooltip": "Upload attachment",
     "unsupportedType": "Unsupported file type: {{type}}",
-    "tooLarge": "File too large (max 20MB): {{name}}",
+    "tooLarge": "File too large (max {{maxMb}}MB): {{name}}",
     "failed": "Upload failed"
   },
   "modelConfig": {

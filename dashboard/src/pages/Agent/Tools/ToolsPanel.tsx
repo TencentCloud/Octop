@@ -6,6 +6,44 @@ import {
   type CSSProperties,
 } from "react";
 import { Empty, Spin, Switch, Tooltip } from "antd";
+import type { LucideIcon } from "lucide-react";
+import {
+  AppWindow,
+  BookOpen,
+  Brain,
+  CalendarClock,
+  Clock,
+  Code2,
+  Eye,
+  FileKey,
+  FilePen,
+  FileSearch,
+  FileText,
+  Folder,
+  Globe,
+  Handshake,
+  Image,
+  Library,
+  ListChecks,
+  ListTodo,
+  MessageCircle,
+  Monitor,
+  MousePointerClick,
+  Move,
+  Pencil,
+  Play,
+  Plug,
+  Plus,
+  Puzzle,
+  Search,
+  Send,
+  Smartphone,
+  SquareTerminal,
+  Trash2,
+  Users,
+  Video,
+  Wrench,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import {
@@ -28,29 +66,77 @@ const CATEGORY_ORDER = [
   "plugin",
 ] as const;
 
-/** Soft accent colors per category (used as card tint). */
+/** Icon square fill per category. */
 const CATEGORY_ACCENT: Record<string, string> = {
-  filesystem: "#0EA5E9",
+  filesystem: "#3B82F6",
   orchestration: "#8B5CF6",
-  web: "#14B8A6",
+  web: "#22C55E",
   media: "#EC4899",
   memory: "#F59E0B",
   cron: "#6366F1",
   knowledge: "#10B981",
-  mobile: "#3B82F6",
+  mobile: "#0EA5E9",
   teams: "#F97316",
   misc: "#64748B",
   plugin: "#A855F7",
 };
 
-interface ToolsPanelProps {
-  agentId: string | null;
-}
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  ls: Folder,
+  read_file: FileSearch,
+  write_file: FilePen,
+  edit_file: Pencil,
+  glob: Search,
+  grep: FileText,
+  execute: SquareTerminal,
+  write_todos: ListTodo,
+  task: Users,
+  current_time: Clock,
+  web_fetch: Globe,
+  browser_use: AppWindow,
+  desktop_screenshot: Monitor,
+  send_file_to_user: Send,
+  read_env_file: FileKey,
+  write_env_file: FileKey,
+  tavily_search: Search,
+  brave_search: Search,
+  google_search: Search,
+  kimi_search: Search,
+  searchfree_search: Search,
+  generate_image: Image,
+  generate_video: Video,
+  memory_search: Brain,
+  memory_get: BookOpen,
+  acp_runner: Plug,
+  cronjob_list: ListChecks,
+  cronjob_get: Eye,
+  cronjob_create: Plus,
+  cronjob_update: CalendarClock,
+  cronjob_delete: Trash2,
+  cronjob_run_now: Play,
+  search_knowledge: Library,
+  mobile_screenshot: Smartphone,
+  mobile_tap: MousePointerClick,
+  mobile_swipe: Move,
+  mobile_launch_app: AppWindow,
+  mobile_ui_dump: Code2,
+  mobile_handoff_to_user: Handshake,
+  agent_list: Users,
+  ask_agent: MessageCircle,
+};
 
 function toolKey(tool: ToolSettingsItem): string {
   return tool.source === "plugin"
     ? `plugin:${tool.plugin_id ?? ""}:${tool.name}`
     : `builtin:${tool.name}`;
+}
+
+function toolIcon(tool: ToolSettingsItem): LucideIcon {
+  return TOOL_ICONS[tool.name] ?? (tool.source === "plugin" ? Puzzle : Wrench);
+}
+
+interface ToolsPanelProps {
+  agentId: string | null;
 }
 
 /**
@@ -185,6 +271,7 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
                 const checked = enabledMap[key] ?? tool.enabled;
                 const accent =
                   CATEGORY_ACCENT[tool.category] ?? CATEGORY_ACCENT.misc;
+                const Icon = toolIcon(tool);
                 const switchEl = (
                   <Switch
                     size="small"
@@ -203,8 +290,6 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
                   <div
                     key={key}
                     className={`${styles.card}${
-                      checked ? "" : ` ${styles.cardOff}`
-                    }${
                       tool.available === false
                         ? ` ${styles.cardUnavailable}`
                         : ""
@@ -215,9 +300,14 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
                       } as CSSProperties
                     }
                   >
+                    <div className={styles.icon} aria-hidden>
+                      <Icon size={18} strokeWidth={2.2} />
+                    </div>
                     <div className={styles.cardBody}>
                       <div className={styles.labelRow}>
-                        <div className={styles.label}>{tool.label}</div>
+                        <div className={styles.label} title={tool.label}>
+                          {tool.label}
+                        </div>
                         {tool.available === false ? (
                           <Tooltip title={t("toolSettings.unavailableHint")}>
                             <span className={styles.unavailableBadge}>
@@ -226,12 +316,14 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
                           </Tooltip>
                         ) : null}
                       </div>
-                      {tool.description ? (
+                      {tool.source === "plugin" && tool.description ? (
                         <div className={styles.desc} title={tool.description}>
                           {tool.description}
                         </div>
                       ) : (
-                        <div className={styles.name}>{tool.name}</div>
+                        <div className={styles.name} title={tool.name}>
+                          {tool.name}
+                        </div>
                       )}
                     </div>
                     <div className={styles.cardAction}>

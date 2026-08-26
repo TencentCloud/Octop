@@ -1,0 +1,5 @@
+{
+  "renderers": [
+    { "id": "mini_game_card", "tools": ["tic_tac_toe", "guess_number"] }
+  ]
+}

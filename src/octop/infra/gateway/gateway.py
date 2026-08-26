@@ -28,7 +28,11 @@ from octop.infra.gateway.process.response_mode import (
 )
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
 from octop.infra.gateway.threads import ThreadRegistry
-from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
+from octop.infra.gateway.ws import (
+    WS_CHANNEL_ID,
+    WebSocketChannel,
+    WebSocketHub,
+)
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
@@ -374,8 +378,9 @@ class Gateway:
             ThreadRegistry.CHANNEL_DASHBOARD,
             ThreadRegistry.CHANNEL_CLI,
         )
+        is_text = normalize_cron_task_type(str(task_type)) == "text"
 
-        if normalize_cron_task_type(str(task_type)) == "text":
+        if is_text:
             outbound = text
         else:
             # Stamp composer chips on this run's HumanMessage only (no history backfill).
@@ -452,6 +457,8 @@ class Gateway:
                 self._resolve_push_subject(session),
                 outbound,
             )
+            if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD and is_text:
+                await self._notify_dashboard_text_push(session, agent_id, outbound)
             return
 
         if not session.channel_id:
@@ -468,6 +475,26 @@ class Gateway:
     def _resolve_push_subject(self, session: SessionRow) -> ChannelSubject:
         """Build ChannelSubject from session; IM routing enrichment is in harness-gateway."""
         return session.to_channel_subject()
+
+    async def _notify_dashboard_text_push(
+        self, session: SessionRow, agent_id: str, text: str
+    ) -> None:
+        """Fan out a toast payload to the owner's dashboard notification sockets."""
+        if not text.strip():
+            return
+        row = self._agent_manager.get_row(agent_id)
+        name = getattr(row, "name", None) if row is not None else None
+        agent_name = str(name).strip() if isinstance(name, str) and name.strip() else agent_id
+        await self._ws_hub.push_to_user(
+            session.user_id,
+            {
+                "type": "dashboard_push",
+                "agent_id": agent_id,
+                "thread_id": session.thread_id,
+                "text": text,
+                "agent_name": agent_name,
+            },
+        )
 
     def _require_channel_manager(self) -> ChannelManager:
         if self._channel_manager is None:

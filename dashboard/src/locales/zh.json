@@ -140,7 +140,7 @@
     "KNOWLEDGE_NOT_FOUND": "未找到知识库或文档。",
     "KNOWLEDGE_FORBIDDEN": "您没有此知识库的访问权限。",
     "KNOWLEDGE_DOC_LIMIT": "每个知识库最多可包含 100 个文档。",
-    "KNOWLEDGE_DOC_TOO_LARGE": "文档超过 20 MB 大小限制。",
+    "KNOWLEDGE_DOC_TOO_LARGE": "文档超过 {{max_mb}} MB 大小限制。",
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
@@ -1006,6 +1006,10 @@
     "sharedExpert": {
       "banner": "共享专家 · 由 {{name}} 提供"
     },
+    "pushToast": {
+      "title": "{{name}} 发来提醒",
+      "titleFallback": "任务提醒"
+    },
     "memoryMaintenance": {
       "queued": "正在排队整理记忆库…",
       "pruning": "正在清理过期记忆…",
@@ -1045,6 +1049,7 @@
     "reasoningAlways": "始终推理",
     "errorOccurred": "出现错误",
     "imageLoadFailed": "图片加载失败",
+    "mediaLoadFailed": "无法加载媒体",
     "downloadFailed": "下载失败，请重试",
     "hideThinking": "隐藏思维过程",
     "showThinking": "查看思维过程",
@@ -2846,7 +2851,7 @@
   "upload": {
     "fileTooltip": "上传附件",
     "unsupportedType": "不支持的文件类型：{{type}}",
-    "tooLarge": "文件过大（最大 20MB）：{{name}}",
+    "tooLarge": "文件过大（最大 {{maxMb}}MB）：{{name}}",
     "failed": "上传失败"
   },
   "modelConfig": {

@@ -86,7 +86,7 @@ export interface KnowledgeOnnxDownloadState {
 export const DEFAULT_KNOWLEDGE_LIMITS: KnowledgeLimits = {
   max_bases_per_owner: 20,
   max_docs_per_kb: 100,
-  max_document_bytes: 20 * 1024 * 1024,
+  max_document_bytes: 100 * 1024 * 1024,
 };
 
 export const knowledgeBasesApi = {

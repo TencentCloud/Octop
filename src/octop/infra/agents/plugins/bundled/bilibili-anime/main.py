@@ -70,7 +70,9 @@ def _search_bangumi(keyword: str, *, page: int = 1) -> list[dict[str, Any]]:
                 "index_show": str(item.get("index_show") or ""),
                 "season_type_name": str(item.get("season_type_name") or "番剧"),
                 "desc": _strip_html(str(item.get("desc") or item.get("evaluate") or "")),
-                "url": str(item.get("goto_url") or f"https://www.bilibili.com/bangumi/play/ss{season_id}"),
+                "url": str(
+                    item.get("goto_url") or f"https://www.bilibili.com/bangumi/play/ss{season_id}"
+                ),
                 "episodes": [],
             },
         )

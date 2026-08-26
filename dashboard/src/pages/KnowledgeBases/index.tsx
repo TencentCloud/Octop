@@ -82,6 +82,7 @@ import {
   joinKnowledgePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  shouldOpenKnowledgeFolder,
 } from "./knowledgeFolder";
 import TextDocumentEditorModal, {
   isEditableKnowledgeDocument,
@@ -1039,7 +1040,11 @@ export default function KnowledgeBasesPage() {
   };
 
   const renderDocumentActions = (document: KnowledgeDocument) => (
-    <div className={styles.docCardActions}>
+    <div
+      className={styles.docCardActions}
+      data-kb-doc-actions=""
+      onClick={(event) => event.stopPropagation()}
+    >
       {document.is_dir ? null : (
         <Tooltip title={t("knowledgeBases.previewDocument")}>
           <Button
@@ -1086,7 +1091,10 @@ export default function KnowledgeBasesPage() {
                 size="small"
                 icon={<PencilLine size={14} />}
                 aria-label={t("knowledgeBases.renameFolder")}
-                onClick={() => openRenameFolder(document)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openRenameFolder(document);
+                }}
               />
             </Tooltip>
           ) : null}
@@ -1619,14 +1627,19 @@ export default function KnowledgeBasesPage() {
                               key={document.id}
                               className={styles.docCard}
                               role={document.is_dir ? "button" : undefined}
-                              onClick={
-                                document.is_dir
-                                  ? () =>
-                                      setCurrentFolder(
-                                        document.path || document.filename,
-                                      )
-                                  : undefined
-                              }
+                              onClick={(event) => {
+                                if (
+                                  !shouldOpenKnowledgeFolder(
+                                    Boolean(document.is_dir),
+                                    event,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                setCurrentFolder(
+                                  document.path || document.filename,
+                                );
+                              }}
                             >
                               <div className={styles.docCardHeader}>
                                 <DocumentFormatIcon
@@ -1660,6 +1673,7 @@ export default function KnowledgeBasesPage() {
                                   </div>
                                 </div>
                                 <span
+                                  data-kb-doc-actions=""
                                   onClick={(event) => event.stopPropagation()}
                                 >
                                   {renderDocumentActions(document)}
@@ -1713,10 +1727,14 @@ export default function KnowledgeBasesPage() {
                         dataSource={folderEntries}
                         onRow={(document) => ({
                           onClick: document.is_dir
-                            ? () =>
+                            ? (event) => {
+                                if (!shouldOpenKnowledgeFolder(true, event)) {
+                                  return;
+                                }
                                 setCurrentFolder(
                                   document.path || document.filename,
-                                )
+                                );
+                              }
                             : undefined,
                         })}
                         locale={{
@@ -1803,7 +1821,11 @@ export default function KnowledgeBasesPage() {
                             key: "actions",
                             width: canWriteSelected ? 120 : 48,
                             render: (_, document) => (
-                              <div className={styles.tableActions}>
+                              <div
+                                className={styles.tableActions}
+                                data-kb-doc-actions=""
+                                onClick={(event) => event.stopPropagation()}
+                              >
                                 {renderDocumentActions(document)}
                               </div>
                             ),

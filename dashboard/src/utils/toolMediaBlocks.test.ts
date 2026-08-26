@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentAttachmentAccessUrl,
   agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
   isHostAbsoluteMediaPath,
@@ -169,5 +170,22 @@ describe("parseStructuredToolOutput", () => {
       action: "retry_with_loaded_schema",
       retryable: true,
     });
+  });
+});
+
+describe("agentAttachmentAccessUrl", () => {
+  it("uses media preview for images, video, and audio", () => {
+    expect(
+      agentAttachmentAccessUrl("a1", "inbound/x.png", "image/png"),
+    ).toContain("/media/preview?");
+    expect(
+      agentAttachmentAccessUrl("a1", "inbound/x.mp4", "video/mp4"),
+    ).toContain("/media/preview?");
+    expect(
+      agentAttachmentAccessUrl("a1", "inbound/x.mp3", "audio/mpeg"),
+    ).toContain("/media/preview?");
+    expect(
+      agentAttachmentAccessUrl("a1", "inbound/x.pdf", "application/pdf"),
+    ).toContain("/workspace/download?");
   });
 });

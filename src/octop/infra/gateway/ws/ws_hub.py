@@ -24,25 +24,51 @@ def stamp_thread_id(frame: dict[str, Any], thread_id: str) -> dict[str, Any]:
 
 
 class WebSocketHub:
-    """Maps connection ids to async send callbacks for Dashboard chat.
+    """Maps connection ids to async send callbacks for Dashboard sockets.
 
-    Tracks per-thread subscriptions (any number of connections per thread) and
-    in-memory "turn active" flags so reconnecting clients can resume live chunks.
-    Each connection is bound to at most one thread at a time.
+    Tracks per-thread subscriptions (chat) and optional per-user bindings
+    (dashboard-wide toasts). Reconnecting clients resume live chunks via
+    in-memory "turn active" flags. Each connection is bound to at most one
+    thread at a time.
     """
 
     def __init__(self) -> None:
         self._connections: dict[str, SendFn] = {}
         self._thread_subscribers: dict[str, set[str]] = {}
         self._conn_thread: dict[str, str] = {}
+        self._user_conns: dict[int, set[str]] = {}
+        self._conn_user: dict[str, int] = {}
         self._active_turns: set[str] = set()
 
-    def register(self, connection_id: str, send_fn: SendFn) -> None:
+    def register(
+        self,
+        connection_id: str,
+        send_fn: SendFn,
+        *,
+        user_id: int | None = None,
+    ) -> None:
+        self._unbind_user(connection_id)
         self._connections[connection_id] = send_fn
+        if user_id is None:
+            return
+        self._conn_user[connection_id] = user_id
+        self._user_conns.setdefault(user_id, set()).add(connection_id)
 
     def unregister(self, connection_id: str) -> None:
         self.unsubscribe_connection(connection_id)
+        self._unbind_user(connection_id)
         self._connections.pop(connection_id, None)
+
+    def _unbind_user(self, connection_id: str) -> None:
+        user_id = self._conn_user.pop(connection_id, None)
+        if user_id is None:
+            return
+        conns = self._user_conns.get(user_id)
+        if conns is None:
+            return
+        conns.discard(connection_id)
+        if not conns:
+            self._user_conns.pop(user_id, None)
 
     def subscribe(self, thread_id: str, connection_id: str) -> None:
         """Add *connection_id* as a subscriber for *thread_id*.
@@ -107,6 +133,17 @@ class WebSocketHub:
             await self.push(targets[0], outbound)
             return
         await asyncio.gather(*(self.push(conn_id, outbound) for conn_id in targets))
+
+    async def push_to_user(self, user_id: int, frame: dict[str, Any]) -> None:
+        conns = self._user_conns.get(user_id)
+        if not conns:
+            logger.debug("ws hub: no subscriber for user %s", user_id)
+            return
+        targets = list(conns)
+        if len(targets) == 1:
+            await self.push(targets[0], frame)
+            return
+        await asyncio.gather(*(self.push(conn_id, frame) for conn_id in targets))
 
     async def push_json(self, connection_id: str, payload: str) -> None:
         try:

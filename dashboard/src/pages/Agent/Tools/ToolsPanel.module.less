@@ -1,7 +1,7 @@
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   height: 100%;
   overflow: auto;
   padding-bottom: 8px;
@@ -24,7 +24,7 @@
 .groups {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
 }
 
 .group {
@@ -32,82 +32,48 @@
 }
 
 .groupTitle {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fn-text-secondary);
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  gap: 20px;
+
+  @media (max-width: 767px) {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }
 
 .card {
   --tool-accent: #64748b;
 
-  position: relative;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  padding: 14px 14px 12px 16px;
-  min-height: 88px;
-  border: 1px solid
-    color-mix(in srgb, var(--tool-accent) 16%, var(--fn-card-border-normal));
-  border-radius: var(--fn-card-radius, 10px);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--tool-accent) 10%, var(--fn-bg-elevated)) 0%,
-    var(--fn-bg-elevated) 72%
-  );
-  box-shadow: var(--fn-card-shadow-normal);
-  overflow: hidden;
+  padding: 14px 14px 14px 12px;
+  min-height: 68px;
+  min-width: 0;
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: 12px;
+  background: var(--fn-bg-elevated);
   transition:
     border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    background 0.18s ease,
-    opacity 0.18s ease,
-    filter 0.18s ease;
-
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 10px;
-    bottom: 10px;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: color-mix(in srgb, var(--tool-accent) 70%, transparent);
-  }
+    box-shadow 0.18s ease;
 
   &:hover {
     border-color: color-mix(
       in srgb,
-      var(--tool-accent) 32%,
+      var(--tool-accent) 28%,
       var(--fn-card-border-normal)
     );
     box-shadow: var(--fn-shadow-sm);
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--tool-accent) 16%, var(--fn-bg-elevated)) 0%,
-      var(--fn-bg-elevated) 68%
-    );
-
-    &::before {
-      background: var(--tool-accent);
-    }
-  }
-}
-
-.cardOff {
-  filter: grayscale(0.2);
-  opacity: 0.7;
-
-  &:hover {
-    opacity: 0.88;
-    filter: grayscale(0.08);
   }
 }
 
@@ -119,11 +85,24 @@
   }
 }
 
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tool-accent) 14%, var(--fn-bg-elevated));
+  color: var(--tool-accent);
+}
+
 .cardBody {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 .labelRow {
@@ -156,12 +135,15 @@
 
 .name {
   font-size: 12px;
+  line-height: 1.35;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: var(--fn-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desc {
-  margin-top: 2px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--fn-text-secondary);
@@ -174,50 +156,17 @@
 
 .cardAction {
   flex-shrink: 0;
-  padding-top: 2px;
+  display: flex;
+  align-items: center;
 }
 
-/* Dark: slightly stronger accent wash so category tint stays visible on deep surfaces */
 :global(html[data-theme="dark"]) {
-  .card {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--tool-accent) 14%, var(--fn-bg-elevated)) 0%,
-      var(--fn-bg-elevated) 75%
-    );
-    border-color: color-mix(
+  .icon {
+    background: color-mix(
       in srgb,
       var(--tool-accent) 22%,
-      var(--fn-card-border-normal)
+      var(--fn-bg-elevated)
     );
-
-    &::before {
-      background: color-mix(in srgb, var(--tool-accent) 85%, transparent);
-    }
-
-    &:hover {
-      background: linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--tool-accent) 22%, var(--fn-bg-elevated)) 0%,
-        var(--fn-bg-tertiary) 70%
-      );
-      border-color: color-mix(
-        in srgb,
-        var(--tool-accent) 40%,
-        var(--fn-card-border-normal)
-      );
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-    }
-  }
-
-  .cardOff {
-    /* Grayscale on dark surfaces looks muddy — prefer opacity. */
-    filter: none;
-    opacity: 0.55;
-
-    &:hover {
-      filter: none;
-      opacity: 0.78;
-    }
+    color: color-mix(in srgb, var(--tool-accent) 88%, #fff);
   }
 }

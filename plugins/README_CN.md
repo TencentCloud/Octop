@@ -5,6 +5,9 @@
 本目录提供插件 demo，对应 Octop / harness-agent 支持的 `kind`，以及**前后端一体**的 UI 渲染示例。
 结构参考 [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/main/octop-toolkit)。
 
+随 Octop 安装包一并分发的产品插件在 `src/octop/infra/agents/plugins/bundled/`。
+`octop init` 与 `octop run` 启动时会把缺失的插件复制到 `~/.octop/plugins/`，并在 `config.json` 里写成 **全局关闭**；管理员在 Dashboard 插件页打开后再给 Agent 用。卸载过的 id 不会自动装回。
+
 ## 示例一览
 
 | 目录 | `kind` | 作用 |
@@ -13,8 +16,6 @@
 | [`demo-greeting-skill`](./demo-greeting-skill/) | `skill` | 向 Agent 工作区同步一份示例 Skill |
 | [`demo-turn-logger`](./demo-turn-logger/) | `hook` | 注册 `AgentMiddleware`，在模型调用前后打日志 |
 | [`demo-ui-card`](./demo-ui-card/) | `tool` + `ui/` | 后端返回 `octop_ui` JSON；前端在聊天页渲染可交互卡片 |
-| [`bilibili-anime`](./bilibili-anime/) | `tool` + `ui/` | 搜索哔哩哔哩番剧，聊天内 iframe 播放 + 分集导航 |
-| [`server-status`](./server-status/) | `tool` + `ui/` | 展示服务器 OS/内核与 CPU/内存/磁盘负载卡片 |
 
 ## 目录约定
 

@@ -25,7 +25,7 @@ import {
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
-import { isImageAttachment } from "../utils/chatAttachments";
+import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
   agentAttachmentAccessUrl,
   parseToolExecutionFeedback,
@@ -236,7 +236,13 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         };
       }
 
-      if (type !== "image" && type !== "file") return null;
+      if (
+        type !== "image" &&
+        type !== "file" &&
+        type !== "video" &&
+        type !== "audio"
+      )
+        return null;
 
       const previewUrl = anyBlock.preview_url as string | undefined;
       const source = anyBlock.source as
@@ -266,13 +272,13 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
           filename,
           mediaType: source.media_type,
           workspacePath,
-          kind: isImageAttachment({
-            kind: type === "image" ? "image" : "file",
-            filename,
+          kind: inferKindFromNameAndMime(
             mediaType,
-          })
-            ? "image"
-            : "file",
+            filename,
+            type === "image" || type === "video" || type === "audio"
+              ? type
+              : "file",
+          ),
         };
       }
 
@@ -296,13 +302,13 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         filename,
         mediaType,
         workspacePath,
-        kind: isImageAttachment({
-          kind: type === "image" ? "image" : "file",
-          filename,
+        kind: inferKindFromNameAndMime(
           mediaType,
-        })
-          ? "image"
-          : "file",
+          filename,
+          type === "image" || type === "video" || type === "audio"
+            ? type
+            : "file",
+        ),
       };
     })
     .filter(Boolean) as ChatAttachment[];
@@ -323,10 +329,13 @@ function attachmentsFromInboundMeta(
       const filename = String(row.filename || "attachment");
       const mediaType = String(row.media_type || row.mediaType || "");
       const kindRaw = String(row.kind || "");
-      const kind: ChatAttachment["kind"] =
-        kindRaw === "image" || mediaType.startsWith("image/")
-          ? "image"
-          : "file";
+      const kind = inferKindFromNameAndMime(
+        mediaType,
+        filename,
+        kindRaw === "image" || kindRaw === "video" || kindRaw === "audio"
+          ? kindRaw
+          : "file",
+      );
       if (!workspacePath) return null;
       return {
         url: "",

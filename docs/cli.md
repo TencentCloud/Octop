@@ -373,6 +373,12 @@ Options:
 Install and manage third-party plugins (drop into `~/.octop/plugins/`).
 The same plugin manager powers the dashboard's "Plugins" page.
 
+Octop also **seeds bundled plugins** into `~/.octop/plugins/` during
+`octop init` and every `octop run` start. They are listed in Admin →
+Plugins but stay **globally disabled** until you turn them on. An id
+already recorded in `config.json` → `bundled_plugins_seeded` is not
+copied again after uninstall.
+
 ```
 Usage: octop plugin [OPTIONS] COMMAND [ARGS]...
 
