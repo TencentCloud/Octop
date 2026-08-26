@@ -959,6 +959,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a5/f5/397b61091120a9ca5001041dd7bf76c385b3bfd67a0e5bcb74b852bd22a4/evdev-1.9.3.tar.gz", hash = "sha256:2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9", size = 32723, upload-time = "2026-02-05T21:54:24.987Z" }
 
 [[package]]
+name = "execnet"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e7128a3f87788354c7946a9cbb1401ad38a48c4db9a4f07/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd", size = 166622, upload-time = "2025-11-12T09:56:37.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.138.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2517,6 +2526,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-testmon" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
 ]
 local-embedding = [
@@ -2533,6 +2543,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-testmon" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
 ]
 
@@ -2559,7 +2570,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.26" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.27" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2573,6 +2584,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },
     { name = "pytest-testmon", marker = "extra == 'dev'", specifier = ">=2.0" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.6" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-pptx", specifier = ">=1.0" },
     { name = "questionary", specifier = ">=2.0" },
@@ -2594,6 +2606,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-cov", specifier = ">=4.1" },
     { name = "pytest-testmon", specifier = ">=2.0" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.4" },
 ]
 
@@ -2731,7 +2744,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "0.9.26"
+version = "0.9.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2749,9 +2762,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/74/c4724071aa68cec47fc9c82ed6e2c48b9fd491d6c66e2f79eb7af1ccdaf3/orcakit_harness_agent-0.9.26.tar.gz", hash = "sha256:e5998d15fff25870a5e7fce49b9cb840ee0c35dc6a5cc93d7b576532d0da069d", size = 1183490, upload-time = "2026-08-26T04:05:50.255Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/b1/bd9e23e840bf48d8cea12e0d24bae2caaecaf8e2364893466846f5f427e4/orcakit_harness_agent-0.9.27.tar.gz", hash = "sha256:40c7816f4a47ed610131c1442cc391198ca5519fcd650752803f14a85a075e54", size = 1182826, upload-time = "2026-08-26T10:50:24.475Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/5c/3ed38b4625e03c673fe11f61942a765252a82cddc631e1b8d5abd7959511/orcakit_harness_agent-0.9.26-py3-none-any.whl", hash = "sha256:ea947905ab92affb438125123fc9ff2f3874fa80489d88081f2f863e4ecc12e8", size = 1408183, upload-time = "2026-08-26T04:05:46.49Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/16/446c4fc6c5a6f0c9f84b8c742ec325cb48b4c1e59572811cef17157811e4/orcakit_harness_agent-0.9.27-py3-none-any.whl", hash = "sha256:328898750cff1d98db3ac36ce5e8a776b47f8288955b8e2a79bdfabd52a90659", size = 1407139, upload-time = "2026-08-26T10:50:20.842Z" },
 ]
 
 [package.optional-dependencies]
@@ -3697,6 +3710,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4d/1d/3e4230cc67cd6205bbe03c3527500c0ccaf7f0c78b436537eac71590ee4a/pytest_testmon-2.2.0.tar.gz", hash = "sha256:01f488e955ed0e0049777bee598bf1f647dd524e06f544c31a24e68f8d775a51", size = 23108, upload-time = "2025-12-01T07:30:24.76Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/61/55/ebb3c2f59fb089f08d00f764830d35780fc4e4c41dffcadafa3264682b65/pytest_testmon-2.2.0-py3-none-any.whl", hash = "sha256:2604ca44a54d61a2e830d9ce828b41a837075e4ebc1f81b148add8e90d34815b", size = 25199, upload-time = "2025-12-01T07:30:23.623Z" },
+]
+
+[[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "execnet" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/b4/439b179d1ff526791eb921115fca8e44e596a13efeda518b9d845a619450/pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1", size = 88069, upload-time = "2025-07-01T13:30:59.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/31/d4e37e9e550c2b92a9cbc2e4d0b7420a27224968580b5a447f420847c975/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88", size = 46396, upload-time = "2025-07-01T13:30:56.632Z" },
 ]
 
 [[package]]

@@ -43,6 +43,7 @@ import PaletteSwitcher from "./PaletteSwitcher";
 import type { OctopUser } from "../api/modules/auth";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import type { LayoutMode } from "../layouts/layoutModeStorage";
+import { userCan } from "../utils/permissions";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
@@ -259,17 +260,19 @@ export default function AvatarDropdown({
         <span>{t("account.changePassword")}</span>
       </button>
 
-      <button
-        type="button"
-        className={styles.menuItem}
-        onClick={() => {
-          setMenuOpen(false);
-          navigate("/admin/advanced?tab=updates");
-        }}
-      >
-        <RefreshCw size={16} strokeWidth={1.8} />
-        <span>{t("account.checkUpdates")}</span>
-      </button>
+      {userCan(user, "update") && (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => {
+            setMenuOpen(false);
+            navigate("/admin/advanced?tab=updates");
+          }}
+        >
+          <RefreshCw size={16} strokeWidth={1.8} />
+          <span>{t("account.checkUpdates")}</span>
+        </button>
+      )}
 
       <Divider className={styles.menuDivider} />
 

@@ -21,7 +21,7 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "orcakit-harness-agent[all]>=0.9.26",
+    "orcakit-harness-agent[all]>=0.9.27",
     "harness-memory>=0.9.7",
     "harness-gateway>=0.9.3",
     "cryptography>=41",
@@ -52,6 +52,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.1",
     "pytest-testmon>=2.0",
+    "pytest-xdist>=3.6",
     "httpx>=0.27",
     "ruff>=0.4",
     "mypy>=1.10",
@@ -74,6 +75,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.1",
     "pytest-testmon>=2.0",
+    "pytest-xdist>=3.6",
     "httpx>=0.27",
     "ruff>=0.4",
     "mypy>=1.10",
@@ -191,7 +193,8 @@ disable_error_code = ["attr-defined"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
-    "live: tests that hit real LLM endpoints (skipped by default)",
+    "live: tests that hit real LLM / external services (skipped by default)",
+    "slow: expensive tests (integration boot, real harness, browser); skipped by make test-fast",
     "postgresql: tests that need a live PostgreSQL (set OCTOP_TEST_DATABASE_URL)",
 ]
 # The project pins a starlette fork (1.3.1) whose TestClient prefers a
@@ -202,4 +205,3 @@ markers = [
 filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
-

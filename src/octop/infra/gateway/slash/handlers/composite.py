@@ -120,7 +120,15 @@ async def cmd_compact(
     if raw_path:
         p = Path(str(raw_path))
         # Prefer short workspace-relative display over absolute host paths.
-        short_path = f"conversation_history/{p.name}" if p.name else str(raw_path)
+        # Offloads land under ``{system_files_path}/conversation_history/``
+        # (Octop default: ``.octop/conversation_history/``).
+        parts = [part for part in p.parts if part not in ("/", "\\")]
+        if "conversation_history" in parts:
+            idx = parts.index("conversation_history")
+            start = idx - 1 if idx > 0 and parts[idx - 1].startswith(".") else idx
+            short_path = "/".join(parts[start:])
+        else:
+            short_path = f"conversation_history/{p.name}" if p.name else str(raw_path)
         await sink.text(
             tr("compact.done_offload", lang, count=count, short=tid[-6:], path=short_path)
         )

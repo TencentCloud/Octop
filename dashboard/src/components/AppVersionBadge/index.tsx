@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Tooltip } from "antd";
 import { ArrowUpCircle } from "lucide-react";
 import { useUpdateStatus } from "../../hooks/useUpdateStatus";
-import { useUserRole } from "../../hooks/useUserRole";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import styles from "./index.module.less";
 
 interface AppVersionBadgeProps {
@@ -13,11 +14,11 @@ interface AppVersionBadgeProps {
 export default function AppVersionBadge({ isMobile }: AppVersionBadgeProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const role = useUserRole();
+  const user = useCurrentUser();
   const { status, hasUpdate } = useUpdateStatus();
 
-  const isAdmin = role === "admin";
-  if (!status?.current_version || !hasUpdate || !isAdmin) return null;
+  const canUpdate = userCan(user, "update");
+  if (!status?.current_version || !hasUpdate || !canUpdate) return null;
 
   const tooltip = t("header.versionUpdateAvailable", {
     current: status.current_version,

@@ -372,11 +372,18 @@ def test_install_service_uses_bootstrap_target_not_bare_scope(
 
 
 def test_unit_path_launchd_user_is_under_home(monkeypatch: pytest.MonkeyPatch) -> None:
-    """User-scope macOS installs land in ~/Library/LaunchAgents (writable, no sudo)."""
+    """User-scope macOS installs land in ~/Library/LaunchAgents (writable, no sudo).
+
+    ``unit_path`` resolves the owner via passwd (not ``Path.home()`` / ``$HOME``),
+    so sudo installs still target the invoking user — match that here.
+    """
+    import pwd
+
     monkeypatch.setattr(service_mod, "is_root", lambda: False)
     monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "user")
     path = unit_path("launchd")
-    assert path == Path.home() / "Library" / "LaunchAgents" / "octop.plist"
+    owner_home = Path(pwd.getpwnam(getpass.getuser()).pw_dir)
+    assert path == owner_home / "Library" / "LaunchAgents" / "octop.plist"
 
 
 def test_unit_path_launchd_system_is_under_library(monkeypatch: pytest.MonkeyPatch) -> None:
