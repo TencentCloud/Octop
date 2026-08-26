@@ -103,8 +103,9 @@ echo "[desktop-release] packaging Wails application"
 )
 
 case "$plat" in
-  darwin-*|windows-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.zip" ;;
-  linux-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.tar.gz" ;;
+  darwin-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.dmg" ;;
+  windows-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.exe" ;;
+  linux-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.tar" ;;
 esac
 if [[ ! -s "$output" ]]; then
   echo "desktop release was not created: ${output}" >&2

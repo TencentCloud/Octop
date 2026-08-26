@@ -269,8 +269,8 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       # v8 required for archive:false artifacts. skip-decompress keeps the
-      # uploaded .zip/.tar.gz intact — default unzip turns portable zips into
-      # directories, so files: release-assets/* would skip them.
+      # uploaded .zip / .tar / .dmg / .exe intact — default unzip turns portable
+      # zips into directories, so files: release-assets/* would skip them.
       - uses: actions/download-artifact@v8
         with:
           pattern: Octop-*

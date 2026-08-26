@@ -27,13 +27,13 @@ make -f desktop/portable/Makefile green
 
 CI: `.github/workflows/octop-portable.yml` builds all six native platform/arch
 variants. Each job first creates the green zip and then packages the matching
-zip with its Wails application.
+Wails application.
 
 ## Build a complete desktop release
 
 Run the end-to-end script on the matching native host. It builds the Dashboard,
 creates and verifies the portable runtime, embeds it into Wails, and produces
-the final archive:
+the final native package:
 
 ```bash
 desktop/package-release.sh
@@ -72,8 +72,9 @@ in the Windows `.exe`, under `Contents/Resources` on macOS, beside the binary
 on Linux). The Wails shell never downloads Octop. For local runtime debugging, set
 `OCTOP_DESKTOP_PORTABLE_ZIP=/absolute/path/Octop-<plat>.zip`.
 
-Desktop outputs are named `Octop-Desktop-<plat>.zip` on macOS/Windows and
-`Octop-Desktop-<plat>.tar.gz` on Linux. Runtime upgrades remain owned by Octop:
+Desktop outputs are uncompressed native packages: `Octop-Desktop-<plat>.dmg`
+(macOS), `Octop-Desktop-<plat>.exe` (Windows), and `Octop-Desktop-<plat>.tar`
+(Linux). Runtime upgrades remain owned by Octop:
 the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
 `packages/` directory through Octop's existing `--target` logic.
 

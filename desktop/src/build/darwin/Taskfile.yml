@@ -26,19 +26,23 @@ tasks:
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
 
   package:
-    summary: Packages a production .app with its matching portable runtime
+    summary: Packages a production .app into an uncompressed DMG
     deps:
       - task: build
         vars:
           PRODUCTION: "true"
     cmds:
       - task: create:app:bundle
-      - rm -f {{.ARCHIVE}}
-      - ditto -c -k --sequesterRsrc --keepParent {{.BIN_DIR}}/{{.APP_NAME}}.app {{.ARCHIVE}}
+      - rm -rf {{.DMG_ROOT}} {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip
+      - mkdir -p {{.DMG_ROOT}}
+      - ditto {{.BIN_DIR}}/{{.APP_NAME}}.app {{.DMG_ROOT}}/{{.APP_NAME}}.app
+      - hdiutil create -volname {{.APP_NAME}} -srcfolder {{.DMG_ROOT}} -ov -format UDRO {{.ARCHIVE}}
+      - rm -rf {{.DMG_ROOT}}
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-darwin-%s.zip" .ARCH)}}'
-      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip'
+      DMG_ROOT: '{{.BIN_DIR}}/dmg-darwin-{{.ARCH}}'
+      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg'
 
   create:app:bundle:
     summary: Creates an .app bundle

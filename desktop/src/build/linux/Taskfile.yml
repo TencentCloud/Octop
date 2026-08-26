@@ -32,12 +32,13 @@ tasks:
       - mkdir -p {{.PACKAGE_DIR}}
       - cp {{.BIN_DIR}}/{{.APP_NAME}} {{.PACKAGE_DIR}}/
       - cp {{.PORTABLE_ZIP}} {{.PACKAGE_DIR}}/
-      - tar -C {{.BIN_DIR}} -czf {{.ARCHIVE}} {{.APP_NAME}}-Desktop-linux-{{.ARCH}}
+      - rm -f {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-linux-{{.ARCH}}.tar.gz
+      - tar -C {{.BIN_DIR}} -cf {{.ARCHIVE}} {{.APP_NAME}}-Desktop-linux-{{.ARCH}}
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-linux-%s.zip" .ARCH)}}'
       PACKAGE_DIR: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-linux-{{.ARCH}}'
-      ARCHIVE: '{{.PACKAGE_DIR}}.tar.gz'
+      ARCHIVE: '{{.PACKAGE_DIR}}.tar'
 
   run:
     cmds:
