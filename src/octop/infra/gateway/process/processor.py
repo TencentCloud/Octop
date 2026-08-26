@@ -412,6 +412,10 @@ class GlobalProcessor:
             channel_metadata=im_meta,
         )
 
+        # 自动会话上下文管理：IM/网页长会话在上下文接近模型上限时自动压缩，
+        # 保证通道持续可用（此前上下文爆满会直接 400 失败、消息静默丢失）。
+        await self._auto_manage_context(agent_id, thread_id)
+
         media_backend = media_backend_for_agent(self._agent_manager, agent_id)
         content = await build_content_from_message(
             msg,
@@ -475,30 +479,49 @@ class GlobalProcessor:
         hitl_paused = False
         usage_tracker = UsageTracker()
         projection_state = StreamProjectionState()
-        try:
-            async for ev in project_stream(
-                self._agent_manager,
-                agent_id,
-                request,
-                media_backend=media_backend,
-                usage_tracker=usage_tracker,
-                locale=locale,
-                projection_state=projection_state,
-                hitl_coordinator=self._hitl,
-                hitl_ctx=HitlStreamContext(
-                    thread_id=thread_id,
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    session_key=session_key,
-                    channel_type=channel_type,
-                ),
-            ):
-                yield ev
-            stream_ok = True
-            hitl_paused = projection_state.hitl_paused
-        except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
-            yield MessageEvent.error_event(format_stream_error(exc, locale))
+        last_exc: Exception | None = None
+        # 最多尝试 2 次：首次失败若为会话上下文超限（模型 400），自动压缩会话
+        # （保留最近消息 + 摘要）后重试一次，保证长会话通道持续可用、不静默丢消息。
+        for attempt in range(2):
+            try:
+                async for ev in project_stream(
+                    self._agent_manager,
+                    agent_id,
+                    request,
+                    media_backend=media_backend,
+                    usage_tracker=usage_tracker,
+                    locale=locale,
+                    projection_state=projection_state,
+                    hitl_coordinator=self._hitl,
+                    hitl_ctx=HitlStreamContext(
+                        thread_id=thread_id,
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        session_key=session_key,
+                        channel_type=channel_type,
+                    ),
+                ):
+                    yield ev
+                stream_ok = True
+                hitl_paused = projection_state.hitl_paused
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt == 0 and self._is_context_overflow(exc):
+                    logger.warning(
+                        "thread %s context overflow, auto-compacting and retrying once",
+                        thread_id,
+                    )
+                    try:
+                        await self._auto_compact_now(agent_id, thread_id)
+                    except Exception:
+                        logger.exception("auto-compact failed for thread %s", thread_id)
+                    continue
+                break
+        if not stream_ok:
+            if last_exc is not None:
+                await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=last_exc)
+                yield MessageEvent.error_event(format_stream_error(last_exc, locale))
         else:
             if stream_ok and not hitl_paused:
                 self._touch_thread_after_turn(thread_id, msg.text)
@@ -509,6 +532,64 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
         yield MessageEvent.completed()
+
+    # -- Auto conversation management ------------------------------------------
+    # 会话上下文占用达到模型窗口的该比例时自动压缩（保留最近消息 + 摘要），
+    # 防止长会话（IM 群/私聊、网页工作台）涨到模型上限后 400 失败、消息静默丢失。
+    _AUTO_COMPACT_RATIO = 0.75
+    # 模型 400 上下文超限的错误特征（用于失败后自动压缩重试）。
+    _CONTEXT_OVERFLOW_MARKERS = (
+        "Requested token count exceeds",
+        "maximum context length",
+        "exceeds the model's maximum",
+        "input prompt token len",
+    )
+
+    def _is_context_overflow(self, exc: Exception) -> bool:
+        text = str(exc)
+        return any(marker in text for marker in self._CONTEXT_OVERFLOW_MARKERS)
+
+    async def _auto_compact_now(self, agent_id: str, thread_id: str) -> None:
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            return
+        if agent is None:
+            return
+        await agent.acompact_conversation(thread_id=thread_id)
+
+    async def _auto_manage_context(self, agent_id: str, thread_id: str) -> None:
+        if not thread_id:
+            return
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            return
+        if agent is None:
+            return
+        try:
+            usage = await agent.aget_context_usage(thread_id=thread_id)
+        except Exception:
+            return
+        if usage is None:
+            return
+        used = int(getattr(usage, "used_tokens", 0) or 0)
+        max_tokens = int(getattr(usage, "max_tokens", 0) or 0)
+        if max_tokens <= 0:
+            return
+        ratio = used / max_tokens
+        if ratio < self._AUTO_COMPACT_RATIO:
+            return
+        logger.warning(
+            "auto-compacting thread %s (context %.0f%% of %d tokens)",
+            thread_id,
+            ratio * 100,
+            max_tokens,
+        )
+        try:
+            await agent.acompact_conversation(thread_id=thread_id)
+        except Exception:
+            logger.exception("auto-compact failed for thread %s", thread_id)
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
     # IM channels (DingTalk, Feishu, …) stream via __call__ → MessageEvent instead.
