@@ -1,0 +1,74 @@
+.banner {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px var(--chat-column-pad-x, 24px) 0;
+  padding: 10px 14px;
+  border: 1px solid var(--fn-border, #e8e8ed);
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, #f5f5f7);
+
+  @media (max-width: 767px) {
+    align-items: flex-start;
+    margin: 8px var(--chat-column-pad-x-narrow, 12px) 0;
+  }
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.hint,
+.errorHint {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+}
+
+.errorHint {
+  color: var(--fn-color-error, #d14343);
+}
+
+.progressTrack {
+  height: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fn-primary, #e8516d) 16%, transparent);
+}
+
+.progressBar {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fn-primary, #e8516d);
+  animation: historyMigrationProgress 1.3s ease-in-out infinite;
+}
+
+@keyframes historyMigrationProgress {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressBar {
+    width: 100%;
+    animation: none;
+  }
+}

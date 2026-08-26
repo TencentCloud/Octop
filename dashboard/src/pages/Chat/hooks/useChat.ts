@@ -656,6 +656,8 @@ async function loadThreadHistory(
   nextOffset: number;
   turnActive: boolean;
   artifacts: string[];
+  projectionLoading: boolean;
+  retryAfterMs: number;
 }> {
   try {
     const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
@@ -695,6 +697,11 @@ async function loadThreadHistory(
       nextOffset: offset + limit,
       turnActive: Boolean(history.turn_active),
       artifacts,
+      projectionLoading: Boolean(history.history_loading),
+      retryAfterMs:
+        typeof history.history_retry_after_ms === "number"
+          ? history.history_retry_after_ms
+          : 1500,
     };
   } catch (err) {
     console.error("loadThreadHistory failed", err);
@@ -704,6 +711,8 @@ async function loadThreadHistory(
       nextOffset: 0,
       turnActive: false,
       artifacts: [],
+      projectionLoading: false,
+      retryAfterMs: 1500,
     };
   }
 }
@@ -852,18 +861,32 @@ export function useChat(
       setHistoryLoading(true);
 
       try {
-        const {
-          messages: converted,
-          hasMore,
-          nextOffset,
-          turnActive,
-        } = await loadThreadHistory(agentId, targetThreadId, { offset: 0 });
-        if (loadGenRef.current !== gen) return;
-        chatStore.setHistoryPage(key, converted, {
-          hasMore,
-          nextOffset,
+        let loaded = await loadThreadHistory(agentId, targetThreadId, {
+          offset: 0,
         });
-        if (shouldProbeActiveTurn({ isStreaming: false, turnActive })) {
+        while (loaded.projectionLoading && loadGenRef.current === gen) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
+            ),
+          );
+          if (loadGenRef.current !== gen) return;
+          loaded = await loadThreadHistory(agentId, targetThreadId, {
+            offset: 0,
+          });
+        }
+        if (loadGenRef.current !== gen) return;
+        chatStore.setHistoryPage(key, loaded.messages, {
+          hasMore: loaded.hasMore,
+          nextOffset: loaded.nextOffset,
+        });
+        if (
+          shouldProbeActiveTurn({
+            isStreaming: false,
+            turnActive: loaded.turnActive,
+          })
+        ) {
           attachAfterHistory(key, targetThreadId);
         }
       } finally {

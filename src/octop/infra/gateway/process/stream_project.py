@@ -13,6 +13,7 @@ from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_disp
 from octop.infra.gateway.hitl.format import format_hitl_card
 from octop.infra.gateway.media.tool_media import media_events_from_tool_result
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
+from octop.infra.gateway.process.history_projection import TurnHistoryTracker
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
 
@@ -113,6 +114,7 @@ async def _project_chunks(
     agent_id: str,
     locale: str | Locale,
     usage_tracker: UsageTracker | None,
+    history_tracker: TurnHistoryTracker | None,
     projection_state: StreamProjectionState | None,
     hitl_coordinator: HitlChannelCoordinator | None,
     hitl_ctx: HitlStreamContext | None,
@@ -141,6 +143,8 @@ async def _project_chunks(
     async for chunk in chunks:
         if usage_tracker is not None:
             usage_tracker.observe(chunk)
+        if history_tracker is not None:
+            history_tracker.observe(chunk)
         ctype: str = chunk.get("type", "")
         node: str | None = chunk.get("node")
 
@@ -231,6 +235,7 @@ async def project_stream(
     *,
     media_backend: MediaBackend | None = None,
     usage_tracker: UsageTracker | None = None,
+    history_tracker: TurnHistoryTracker | None = None,
     locale: str | Locale = DEFAULT_LOCALE,
     projection_state: StreamProjectionState | None = None,
     hitl_coordinator: HitlChannelCoordinator | None = None,
@@ -243,6 +248,7 @@ async def project_stream(
         agent_id=agent_id,
         locale=locale,
         usage_tracker=usage_tracker,
+        history_tracker=history_tracker,
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
@@ -257,6 +263,7 @@ async def project_resume_stream(
     decisions: list[dict[str, Any]],
     *,
     usage_tracker: UsageTracker | None = None,
+    history_tracker: TurnHistoryTracker | None = None,
     locale: str | Locale = DEFAULT_LOCALE,
     projection_state: StreamProjectionState | None = None,
     hitl_coordinator: HitlChannelCoordinator | None = None,
@@ -268,6 +275,7 @@ async def project_resume_stream(
         agent_id=agent_id,
         locale=locale,
         usage_tracker=usage_tracker,
+        history_tracker=history_tracker,
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,

@@ -1014,6 +1014,20 @@
       "hintBlocking": "Sending is paused for this agent until slimming finishes.",
       "elapsed": "{{seconds}}s elapsed"
     },
+    "historyMigration": {
+      "title": "Upgrade complete: {{count}} old chats still need optimization",
+      "readyHint": "Run it in the background now so very long chats do not pause on first open. New chats remain available, and only one old chat is read at a time.",
+      "runningHint": "Processing old chats one at a time in the background. New chats remain available; avoid repeatedly refreshing the page.",
+      "agentBusyHint": "This expert is running a task. Wait until it is idle before starting old-chat optimization.",
+      "queueBusyHint": "The migration queue is handling other chats. You can start when capacity is available; this page refreshes automatically.",
+      "retryHint": "{{count}} chats failed during the previous attempt and can be retried safely.",
+      "startFailed": "Could not start background processing. Make sure the agent is running, then retry.",
+      "start": "Optimize in background",
+      "running": "Optimizing",
+      "queueRest": "Queue remaining chats",
+      "waiting": "Waiting for queue",
+      "retry": "Retry failed chats"
+    },
     "thinking": "Thinking",
     "continuing": "Continuing",
     "generating": "Generating",

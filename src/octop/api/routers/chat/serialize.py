@@ -6,9 +6,13 @@ import asyncio
 import json
 import logging
 import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from langchain_core.messages import messages_from_dict
+from langchain_core.runnables import RunnableConfig
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
@@ -386,6 +390,141 @@ async def _load_thread_messages(
         offset=offset,
         user=user,
     )
+
+
+def _isolated_sqlite_checkpoint_messages(
+    harness: Any,
+    thread_id: str,
+) -> list[Any] | None:
+    """Read the newest SQLite checkpoint through a separate read-only connection.
+
+    ``None`` means the harness is not backed by a discoverable SQLite saver.
+    Once SQLite is detected, failures are raised instead of falling back to the
+    live saver connection: availability of new turns is more important than a
+    legacy UI backfill.
+    """
+    checkpoint = getattr(harness, "_checkpointer_instance", None)
+    if checkpoint is None:
+        return None
+
+    backend = getattr(checkpoint, "_backend", None)
+    raw_path = getattr(backend, "_db_path", None)
+    saver = getattr(checkpoint, "_checkpointer", checkpoint)
+    disk_saver = getattr(saver, "_disk", saver)
+    live_conn = getattr(disk_saver, "conn", None)
+    if raw_path is None and isinstance(live_conn, sqlite3.Connection):
+        rows = live_conn.execute("PRAGMA database_list").fetchall()
+        raw_path = next((row[2] for row in rows if row[1] == "main"), None)
+    if raw_path is None or str(raw_path) == ":memory:":
+        return None
+
+    from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
+
+    uri = f"{Path(raw_path).resolve().as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA query_only = ON")
+        conn.execute("PRAGMA busy_timeout = 5000")
+        isolated = SqliteSaver(conn=conn, serde=getattr(disk_saver, "serde", None))
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        for checkpoint_tuple in isolated.list(config, limit=1):
+            messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
+            return list(messages) if isinstance(messages, list) else []
+        return []
+    finally:
+        conn.close()
+
+
+def _load_projected_thread_messages(
+    server: Any,
+    agent_id: str,
+    thread_id: str,
+    limit: int,
+    *,
+    user: Any,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Read one page without touching the agent checkpoint database."""
+    rows, has_more = server.services.thread_message_repo.page(
+        thread_id,
+        limit=limit,
+        offset=offset,
+    )
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            wire = json.loads(row.message_json)
+            message = messages_from_dict([wire])[0]
+        except Exception:
+            logger.warning(
+                "invalid projected history row thread=%s seq=%s",
+                thread_id,
+                row.seq,
+                exc_info=True,
+            )
+            continue
+        entry = _serialize_history_message(message, user=user)
+        if entry is not None:
+            out.append(entry)
+    return _enrich_history_tool_media(out, agent_id=agent_id), has_more
+
+
+async def _backfill_thread_projection(
+    server: Any,
+    agent_id: str,
+    thread_id: str,
+    *,
+    user: Any,
+) -> None:
+    """Decode one legacy checkpoint off-request and atomically publish it."""
+    repo = server.services.thread_message_repo
+    registry = server.app_runtime.agent_registry
+    reserve = getattr(registry, "try_begin_history_backfill", None)
+    release = getattr(registry, "end_history_backfill", None)
+    reserved = reserve(agent_id) if callable(reserve) else True
+    if reserved is False:
+        await asyncio.to_thread(repo.mark_projection, thread_id, "pending")
+        return
+    try:
+        await asyncio.to_thread(repo.mark_projection, thread_id, "running")
+        harness = registry.get_agent(agent_id)
+        raw = await asyncio.to_thread(
+            _isolated_sqlite_checkpoint_messages,
+            harness,
+            thread_id,
+        )
+        if raw is None:
+            raw, _has_more = await _load_checkpoint_messages(
+                harness,
+                thread_id,
+                1_000_000,
+                0,
+            )
+        if not raw:
+            session_rows, _ = await _load_thread_messages_from_sessions(
+                server,
+                agent_id,
+                thread_id,
+                1_000_000,
+                offset=0,
+                user=user,
+            )
+            raw = session_rows
+        from octop.infra.gateway.process.history_projection import message_inputs  # noqa: PLC0415
+
+        projected = await asyncio.to_thread(message_inputs, list(raw))
+        await asyncio.to_thread(repo.replace_all, thread_id, projected)
+    except Exception as exc:
+        logger.exception("history projection backfill failed for thread=%s", thread_id)
+        await asyncio.to_thread(
+            repo.mark_projection,
+            thread_id,
+            "failed",
+            error=str(exc)[:500],
+        )
+    finally:
+        if callable(release):
+            release(agent_id)
 
 
 def _enrich_history_tool_media(

@@ -184,6 +184,11 @@ class ThreadRepo:
                     ts,
                 ),
             )
+            conn.execute(
+                "INSERT INTO thread_history_projection(thread_id, status, updated_at, error) "
+                "VALUES (?, 'ready', ?, NULL) ON CONFLICT(thread_id) DO NOTHING",
+                (thread_id, ts),
+            )
 
     def get(self, thread_id: str) -> ThreadRow | None:
         with self._db.connect() as conn:

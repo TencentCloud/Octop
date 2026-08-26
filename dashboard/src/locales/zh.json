@@ -1014,6 +1014,20 @@
       "hintBlocking": "整理期间此智能体暂时无法发送消息，完成后会自动恢复。",
       "elapsed": "已进行 {{seconds}}s"
     },
+    "historyMigration": {
+      "title": "升级完成：还有 {{count}} 个旧会话需要优化",
+      "readyHint": "建议现在后台处理，之后首次打开超长会话就不必临时等待。处理时仍可使用新会话，系统每次只读取一个旧会话。",
+      "runningHint": "正在后台逐个处理；新会话可正常使用，请不要重复刷新页面。",
+      "agentBusyHint": "此专家正在执行任务，请等待专家空闲后再开始旧会话优化。",
+      "queueBusyHint": "后台迁移队列正在处理其他会话；空出位置后即可开始，本页会自动刷新状态。",
+      "retryHint": "有 {{count}} 个会话上次处理失败，可以安全重试。",
+      "startFailed": "未能启动后台处理，请确认 Agent 正在运行后重试。",
+      "start": "现在后台优化",
+      "running": "后台优化中",
+      "queueRest": "加入其余旧会话",
+      "waiting": "等待队列空闲",
+      "retry": "重试失败项"
+    },
     "thinking": "正在思考",
     "continuing": "继续生成中",
     "generating": "生成中",

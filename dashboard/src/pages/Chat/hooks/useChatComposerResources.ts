@@ -22,6 +22,7 @@ import {
 } from "../utils/chatStorage";
 import { resolveInitialConnectors } from "../utils/resolveInitialConnectors";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
+import { isPendingThread } from "./useSessions";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -312,7 +313,11 @@ export function useChatComposerResources(
           },
         }));
       }
-      if (resolvedAgentId && activeThreadId) {
+      if (
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
         void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
           model_ref: model,
           reasoning_mode: nextMode,
@@ -337,7 +342,11 @@ export function useChatComposerResources(
           },
         }));
       }
-      if (resolvedAgentId && activeThreadId) {
+      if (
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
         void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
           reasoning_mode: mode,
           reasoning_effort: effort,

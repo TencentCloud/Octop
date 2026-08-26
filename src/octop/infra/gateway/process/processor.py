@@ -38,6 +38,7 @@ from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
 )
+from octop.infra.gateway.process.history_projection import TurnHistoryTracker
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
@@ -102,6 +103,7 @@ class GlobalProcessor:
         provider_repo: Any | None = None,
         dispatcher: SlashDispatcher,
         usage_repo: Any | None = None,
+        thread_message_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
     ) -> None:
@@ -122,12 +124,17 @@ class GlobalProcessor:
         )
         self._dispatcher = dispatcher
         self._usage_repo = usage_repo
+        self._thread_message_repo = thread_message_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
 
     @property
     def hitl_coordinator(self) -> HitlChannelCoordinator:
         return self._hitl
+
+    def replace_thread_message_repo(self, repo: Any) -> None:
+        """Rebind projection writes after a control-plane restore."""
+        self._thread_message_repo = repo
 
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
 
@@ -474,6 +481,7 @@ class GlobalProcessor:
         stream_ok = False
         hitl_paused = False
         usage_tracker = UsageTracker()
+        history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
         try:
             async for ev in project_stream(
@@ -482,6 +490,7 @@ class GlobalProcessor:
                 request,
                 media_backend=media_backend,
                 usage_tracker=usage_tracker,
+                history_tracker=history_tracker,
                 locale=locale,
                 projection_state=projection_state,
                 hitl_coordinator=self._hitl,
@@ -508,6 +517,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
+                self._record_turn_history(thread_id, history_tracker)
         yield MessageEvent.completed()
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
@@ -585,6 +595,7 @@ class GlobalProcessor:
         stream_ok = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
+        history_tracker = TurnHistoryTracker.from_request(request)
         locale = resolve_user_locale(
             user_repo=self._user_repo,
             user_id=user_id,
@@ -595,6 +606,7 @@ class GlobalProcessor:
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 usage_tracker.observe(chunk)
+                history_tracker.observe(chunk)
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
@@ -648,6 +660,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 usage=usage_tracker.usage,
             )
+            self._record_turn_history(thread_id, history_tracker)
         yield {"type": "done"}
 
     async def _build_dashboard_request(
@@ -883,3 +896,21 @@ class GlobalProcessor:
             thread_id=thread_id,
             usage=usage,
         )
+
+    def _record_turn_history(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+    ) -> None:
+        if self._thread_message_repo is None:
+            return
+        try:
+            self._thread_message_repo.append_if_ready(thread_id, tracker.inputs)
+        except Exception:
+            # History projection is a read optimization and must never turn a
+            # successful model response into a failed chat turn.
+            logger.warning(
+                "failed to append thread history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
