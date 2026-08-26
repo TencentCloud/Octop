@@ -2,13 +2,13 @@
 # Assemble a relocatable green portable zip for one platform.
 #
 # Prerequisites:
-#   bash scripts/green/bootstrap-runtime.sh <plat>
+#   bash desktop/portable/bootstrap-runtime.sh <plat>
 #   make build-frontend   # recommended (dashboard inside wheel)
 #
 # Usage:
-#   bash scripts/green/package.sh                # host platform (online install)
-#   bash scripts/green/package.sh darwin-arm64
-#   OCTOP_GREEN_OFFLINE=1 bash scripts/green/package.sh   # require local wheels
+#   bash desktop/portable/package.sh                # host platform (online install)
+#   bash desktop/portable/package.sh darwin-arm64
+#   OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh   # require local wheels
 #
 # Layout of each zip:
 #   Octop-<plat>/
@@ -19,10 +19,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=scripts/green/_common.sh
-source "${REPO_ROOT}/scripts/green/_common.sh"
+# shellcheck source=desktop/portable/_common.sh
+source "${REPO_ROOT}/desktop/portable/_common.sh"
 
-TEMPLATES="${REPO_ROOT}/scripts/green/templates"
+TEMPLATES="${REPO_ROOT}/desktop/portable/templates"
 require_uv
 
 build_octop_wheel() {
@@ -93,7 +93,7 @@ assemble_one() {
 
   if [[ ! -d "$runtime" ]]; then
     echo "[package] missing runtime ${runtime}" >&2
-    echo "  Run: bash scripts/green/bootstrap-runtime.sh ${plat}" >&2
+    echo "  Run: bash desktop/portable/bootstrap-runtime.sh ${plat}" >&2
     exit 1
   fi
 
@@ -146,7 +146,7 @@ assemble_one() {
   fi
 
   # Cross-platform: refuse compiling sdists on the host (wrong ABI). Prefer
-  # binary wheels only; for Linux use scripts/green/package-linux-docker.sh.
+  # binary wheels only; for Linux use desktop/portable/package-linux-docker.sh.
   if [[ "$plat" != "$host" ]]; then
     common_args+=( --only-binary ":all:" )
     echo "[package] ${plat}: cross-assemble from ${host} (binary wheels only)" >&2
@@ -155,7 +155,7 @@ assemble_one() {
   if [[ "${OCTOP_GREEN_OFFLINE:-0}" == "1" ]]; then
     if ! wheel_cache_usable "$wheel_dir"; then
       echo "[package] OCTOP_GREEN_OFFLINE=1 but wheels cache incomplete: ${wheel_dir}" >&2
-      echo "  Run: bash scripts/green/vendor-wheels.sh ${plat}" >&2
+      echo "  Run: bash desktop/portable/vendor-wheels.sh ${plat}" >&2
       exit 1
     fi
     echo "[package] ${plat}: offline install from ${wheel_dir}"
@@ -202,10 +202,10 @@ assemble_one() {
     echo "[package] install failed for ${plat} (exit ${status})" >&2
     if [[ "$plat" != "$host" && "$plat" == linux-* ]]; then
       echo "  Tip: build Linux zips in Docker:" >&2
-      echo "    bash scripts/green/package-linux-docker.sh ${plat}" >&2
+      echo "    bash desktop/portable/package-linux-docker.sh ${plat}" >&2
     elif [[ "$plat" != "$host" && "$plat" == windows-* ]]; then
       echo "  Tip: build Windows zips on a Windows host (or CI):" >&2
-      echo "    make -f scripts/green/Makefile green GREEN_PLAT=${plat}" >&2
+      echo "    make -f desktop/portable/Makefile green GREEN_PLAT=${plat}" >&2
     fi
     exit "$status"
   fi

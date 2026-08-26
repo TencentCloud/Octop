@@ -8,7 +8,8 @@
 
 ### 新增
 
-- 绿色便携包：`scripts/green/` 用 python-build-standalone + 锁定依赖打出 `Octop-<plat>.zip`（六平台 Actions），解压后经 `launch.py` 启动；不含 OOB/UI 裁剪，首启走上游 setup wizard
+- 绿色便携包：`desktop/portable/` 用 python-build-standalone + 锁定依赖打出 `Octop-<plat>.zip`（六平台 Actions），解压后经 `launch.py` 启动；不含 OOB/UI 裁剪，首启走上游 setup wizard
+- 桌面壳（Wails v3）：`desktop/src/` 从 GitHub Release 下载绿包并启动 Octop；`OCTOP_HOME` 与默认一致（`~/.octop`）；内置升级对绿包使用 `--target packages`
 
 ## [0.9.26] - 2026-08-23
 

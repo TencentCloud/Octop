@@ -2,13 +2,13 @@
 # Prefetch wheels for OCTOP_GREEN_OFFLINE=1 packaging.
 #
 # Usage:
-#   bash scripts/green/vendor-wheels.sh              # host platform
-#   bash scripts/green/vendor-wheels.sh windows-amd64
+#   bash desktop/portable/vendor-wheels.sh              # host platform
+#   bash desktop/portable/vendor-wheels.sh windows-amd64
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=scripts/green/_common.sh
-source "${REPO_ROOT}/scripts/green/_common.sh"
+# shellcheck source=desktop/portable/_common.sh
+source "${REPO_ROOT}/desktop/portable/_common.sh"
 
 require_uv
 

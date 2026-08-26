@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _PACKAGE_NAME = "octop"
 _PYPI_URL = f"https://pypi.org/pypi/{_PACKAGE_NAME}/json"
+_GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 
 _MIRRORS = [
     "https://mirrors.cloud.tencent.com/pypi/simple",
@@ -46,8 +47,20 @@ class UpgradeResult:
     mirror_errors: list[str] = field(default_factory=list)
 
 
+def green_packages_dir() -> Path | None:
+    """Return ``--target`` dir for green portable installs, if configured."""
+    raw = (os.environ.get(_GREEN_PACKAGES_ENV) or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
 def resolve_venv_python() -> str:
     """Return the Python executable for the managed ~/.octop/venv install."""
+    # Green portable: always the interpreter that launched launch.py, never ~/.octop/venv.
+    if green_packages_dir() is not None:
+        return sys.executable
+
     base_prefix = getattr(sys, "base_prefix", sys.prefix)
     if sys.prefix != base_prefix:
         return sys.executable
@@ -205,6 +218,11 @@ def build_upgrade_command(
     *,
     index_url: str = "",
 ) -> list[str] | None:
+    target = green_packages_dir()
+    target_args: list[str] = []
+    if target is not None:
+        target_args = ["--target", str(target)]
+
     if installer == "uv":
         uv_exe = find_uv_executable()
         cmd = [
@@ -213,6 +231,7 @@ def build_upgrade_command(
             "install",
             "--python",
             venv_python,
+            *target_args,
             "--upgrade-package",
             _PACKAGE_NAME,
         ]
@@ -223,16 +242,16 @@ def build_upgrade_command(
 
     upgrade_flags = ["--upgrade", "--upgrade-strategy", "only-if-needed"]
     if has_pip(venv_python):
-        cmd = [venv_python, "-m", "pip", "install", *upgrade_flags]
+        cmd = [venv_python, "-m", "pip", "install", *upgrade_flags, *target_args]
     else:
         venv_pip = find_pip_in_venv(venv_python)
         if venv_pip:
-            cmd = [venv_pip, "install", *upgrade_flags]
+            cmd = [venv_pip, "install", *upgrade_flags, *target_args]
         else:
             standalone = shutil.which("pip3") or shutil.which("pip")
             if not standalone:
                 return None
-            cmd = [standalone, "install", *upgrade_flags]
+            cmd = [standalone, "install", *upgrade_flags, *target_args]
     if index_url:
         cmd.extend(["-i", index_url])
     cmd.append(_PACKAGE_NAME)

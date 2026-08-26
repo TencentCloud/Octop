@@ -15,4 +15,4 @@ rm -rf src/octop/dashboard
 rm -rf green/
 
 make build-frontend
-make -f scripts/green/Makefile green
+make -f desktop/portable/Makefile green

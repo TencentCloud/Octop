@@ -2,13 +2,13 @@
 # Download python-build-standalone into green/runtimes/<plat>.
 #
 # Usage:
-#   bash scripts/green/bootstrap-runtime.sh              # host platform
-#   bash scripts/green/bootstrap-runtime.sh darwin-arm64
+#   bash desktop/portable/bootstrap-runtime.sh              # host platform
+#   bash desktop/portable/bootstrap-runtime.sh darwin-arm64
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=scripts/green/_common.sh
-source "${REPO_ROOT}/scripts/green/_common.sh"
+# shellcheck source=desktop/portable/_common.sh
+source "${REPO_ROOT}/desktop/portable/_common.sh"
 
 download() {
   local url="$1"

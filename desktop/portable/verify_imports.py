@@ -2,7 +2,7 @@
 """Smoke-check a green packages/ tree against frozen requirements.
 
 Usage:
-  python scripts/green/verify_imports.py \\
+  python desktop/portable/verify_imports.py \\
     --packages green/release/Octop-<plat>/packages \\
     --requirements green/requirements-<plat>.txt \\
     [--overrides green/overrides-<plat>.txt]

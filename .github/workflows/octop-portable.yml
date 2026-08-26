@@ -124,7 +124,7 @@ jobs:
         if: steps.want.outputs.build == 'true'
         env:
           GREEN_HOST_PLAT: ${{ matrix.plat }}
-        run: bash scripts/green/bootstrap-runtime.sh "${{ matrix.plat }}"
+        run: bash desktop/portable/bootstrap-runtime.sh "${{ matrix.plat }}"
 
       - name: Assemble green zip
         if: steps.want.outputs.build == 'true'
@@ -133,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "GREEN_HOST_PLAT=${GREEN_HOST_PLAT} RUNNER_ARCH=${RUNNER_ARCH:-} uname=$(uname -ms)"
-          bash scripts/green/package.sh "${{ matrix.plat }}"
+          bash desktop/portable/package.sh "${{ matrix.plat }}"
 
       - name: Smoke import (native host only)
         if: steps.want.outputs.build == 'true'
@@ -162,12 +162,12 @@ jobs:
             verify_args+=(--overrides "$override_file")
           fi
           PYTHONNOUSERSITE=1 \
-            "$py" scripts/green/verify_imports.py \
+            "$py" desktop/portable/verify_imports.py \
               "${verify_args[@]}"
           # macOS: fail if any native extension linked Homebrew/MacPorts paths.
           if [[ "${{ matrix.plat }}" == darwin-* ]]; then
-            REPO_ROOT="$PWD" # shellcheck source=scripts/green/_common.sh
-            source scripts/green/_common.sh
+            REPO_ROOT="$PWD" # shellcheck source=desktop/portable/_common.sh
+            source desktop/portable/_common.sh
             verify_no_homebrew_dylibs "${staging}/packages" "${{ matrix.plat }}"
           fi
 

@@ -6,7 +6,7 @@ path (no system Python, no `PYTHONPATH=packages`).
 
 ## Artifact
 
-CI / `make -f scripts/green/Makefile green` produces:
+CI / `make -f desktop/portable/Makefile green` produces:
 
 ```
 green/release/Octop-<plat>.zip
@@ -30,9 +30,14 @@ Octop-<plat>/
 1. Download the zip for the current OS/arch. Verify checksum if you ship one.
 2. Extract to a writable user directory **outside** `app.asar`.
 3. On macOS, after checksum: `xattr -dr com.apple.quarantine <extractDir>`.
-4. Set `OCTOP_HOME` to a persistent data dir (not inside the zip if you
-   replace the zip on upgrade).
-5. Set `PYTHONNOUSERSITE=1`. **Do not set `PYTHONPATH`.**
+4. Set `OCTOP_HOME` to Octop's default data dir (`~/.octop`, or `$OCTOP_HOME`
+   if already set). Do **not** use the zip's `./data` folder when launching
+   from the Wails desktop shell (`desktop/src`).
+   Extract the zip under `~/.octop/portable/` so runtime files stay next to
+   user data without overwriting `octop.db`.
+5. Set `PYTHONNOUSERSITE=1` and `OCTOP_GREEN_PACKAGES=<extract>/packages`.
+   **Do not set `PYTHONPATH`.**
+
 6. Spawn:
 
    - macOS / Linux: `<extract>/runtime/bin/python3 <extract>/launch.py run --host 127.0.0.1 --port <port>`

@@ -13,7 +13,7 @@ import pytest
 
 
 def _load_launch_module() -> ModuleType:
-    path = Path(__file__).resolve().parents[2] / "scripts" / "green" / "templates" / "launch.py"
+    path = Path(__file__).resolve().parents[2] / "desktop" / "portable" / "templates" / "launch.py"
     spec = importlib.util.spec_from_file_location("green_portable_launch", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

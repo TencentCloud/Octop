@@ -8,7 +8,7 @@
 
 本能力全部落在：
 
-- `scripts/green/**`（脚本 / 模板 / 本目录 Makefile）
+- `desktop/portable/**`（脚本 / 模板 / 本目录 Makefile）
 - `.github/workflows/octop-portable.yml`（多平台 CI）
 - 根 `.gitignore` 一行 `/green`（忽略构建产物）
 - `tests/unit/test_green_launch.py`（launch.py PATH / addsitedir）
@@ -17,11 +17,11 @@
 合并上游时只需留意上述路径；日常用：
 
 ```bash
-make -f scripts/green/Makefile green
+make -f desktop/portable/Makefile green
 ```
 
 依赖版本必须以仓库根目录 `uv.lock` 为准：`package.sh` 使用
-`uv export --frozen`，出包后跑 `scripts/green/verify_imports.py`
+`uv export --frozen`，出包后跑 `desktop/portable/verify_imports.py`
 校验关键包 pin 与 import（含 `langchain-openai` / `langchain-core` 配对），
 避免「同安装、不同环境」因版本错配或原生扩展加载失败而偶发报错。
 平台 overrides（`darwin-amd64` / `windows-arm64` 的 `cryptography==46.x`）
@@ -48,33 +48,33 @@ Octop-<plat>/
 
 ```bash
 # 一键：当前主机平台（前端 + 便携 CPython + zip）
-make -f scripts/green/Makefile green
+make -f desktop/portable/Makefile green
 
 # 或分步：
 make build-frontend                  # 上游已有目标
-bash scripts/green/bootstrap-runtime.sh
-bash scripts/green/package.sh
+bash desktop/portable/bootstrap-runtime.sh
+bash desktop/portable/package.sh
 ```
 
 本地一键重建（nvm 24）：
 
 ```bash
-bash scripts/green/rebuild.sh
+bash desktop/portable/rebuild.sh
 ```
 
 交叉组装其它平台时，**带 C 扩展的包**必须在目标 ABI 上构建：
 
 | 目标 | 推荐方式 |
 |------|----------|
-| 当前主机 | `make -f scripts/green/Makefile green` |
-| Linux（从 macOS/Windows） | `make -f scripts/green/Makefile green-linux` |
+| 当前主机 | `make -f desktop/portable/Makefile green` |
+| Linux（从 macOS/Windows） | `make -f desktop/portable/Makefile green-linux` |
 | Windows | 在 Windows / CI 上执行同上 `green` |
 
 ### 离线包
 
 ```bash
-bash scripts/green/vendor-wheels.sh          # 按当前 uv.lock 预取 wheel
-OCTOP_GREEN_OFFLINE=1 bash scripts/green/package.sh
+bash desktop/portable/vendor-wheels.sh          # 按当前 uv.lock 预取 wheel
+OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 ```
 
 离线缓存必须来自**当前分支**的 `uv.lock`，不要复用旧分叉的 wheel 目录。

@@ -2,13 +2,13 @@
 # Cross-build a Linux green zip inside Docker (native ABI for C extensions).
 #
 # Usage:
-#   bash scripts/green/package-linux-docker.sh
-#   bash scripts/green/package-linux-docker.sh linux-arm64
+#   bash desktop/portable/package-linux-docker.sh
+#   bash desktop/portable/package-linux-docker.sh linux-arm64
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=scripts/green/_common.sh
-source "${REPO_ROOT}/scripts/green/_common.sh"
+# shellcheck source=desktop/portable/_common.sh
+source "${REPO_ROOT}/desktop/portable/_common.sh"
 
 PLAT="${1:-linux-amd64}"
 case "$PLAT" in
@@ -44,6 +44,6 @@ docker run --rm \
       curl -LsSf https://astral.sh/uv/install.sh | sh
       export PATH=\"\$HOME/.local/bin:\$PATH\"
     fi
-    bash scripts/green/bootstrap-runtime.sh '${PLAT}'
-    bash scripts/green/package.sh '${PLAT}'
+    bash desktop/portable/bootstrap-runtime.sh '${PLAT}'
+    bash desktop/portable/package.sh '${PLAT}'
   "

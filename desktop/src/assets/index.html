@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Octop</title>
+  <script type="module" src="/wails/runtime.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0f1115; color: #e8eaed; }
+    body.light { background: #f6f7f9; color: #1a1d23; }
+    .wrap { max-width: 560px; margin: 48px auto; padding: 0 24px; }
+    h1 { font-size: 1.4rem; font-weight: 600; }
+    .status { opacity: .8; min-height: 1.4em; margin: 12px 0 28px; }
+    .row { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+    .row small { display: block; opacity: .65; margin-top: 4px; }
+    select, button { font: inherit; }
+    .mac-only.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="title">Octop</h1>
+    <p class="status" id="status">…</p>
+
+    <div class="row">
+      <div>
+        <div id="l-lang">语言 / Language</div>
+        <small id="h-lang">选择偏好语言 / Choose your preferred language</small>
+      </div>
+      <select id="locale">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div class="row">
+      <div>
+        <div id="l-theme">深色主题</div>
+        <small id="h-theme">切换明暗主题</small>
+      </div>
+      <input type="checkbox" id="theme" />
+    </div>
+    <div class="row">
+      <div>
+        <div id="l-auto">开机启动</div>
+        <small id="h-auto">登录系统后自动启动</small>
+      </div>
+      <input type="checkbox" id="autostart" />
+    </div>
+    <div class="row">
+      <div>
+        <div id="l-tray">最小化到托盘</div>
+        <small id="h-tray">点击最小化时隐藏窗口并保留在系统托盘（关闭窗口仍会进入托盘）</small>
+      </div>
+      <input type="checkbox" id="tray" />
+    </div>
+    <div class="row mac-only" id="mac-row">
+      <div>
+        <div id="l-sleep">防止系统休眠（仅 macOS）</div>
+        <small id="h-sleep">启用后将保持系统唤醒（等效 caffeinate -dimsu）</small>
+      </div>
+      <input type="checkbox" id="sleep" />
+    </div>
+  </div>
+  <script type="module">
+    import { Call, Events } from "/wails/runtime.js";
+
+    const copy = {
+      zh: {
+        statusWait: "正在启动…",
+        lang: "语言",
+        langH: "选择偏好语言 / Choose your preferred language",
+        theme: "深色主题",
+        themeH: "切换明暗主题",
+        auto: "开机启动",
+        autoH: "登录系统后自动启动",
+        tray: "最小化到托盘",
+        trayH: "点击最小化时隐藏窗口并保留在系统托盘（关闭窗口仍会进入托盘）",
+        sleep: "防止系统休眠（仅 macOS）",
+        sleepH: "启用后将保持系统唤醒（等效 caffeinate -dimsu）",
+      },
+      en: {
+        statusWait: "Starting…",
+        lang: "Language",
+        langH: "Choose your preferred language",
+        theme: "Dark theme",
+        themeH: "Toggle light / dark theme",
+        auto: "Launch at login",
+        autoH: "Start automatically after you sign in",
+        tray: "Minimize to tray",
+        trayH: "Hiding on minimize keeps Octop in the tray (closing the window also goes to tray)",
+        sleep: "Prevent sleep (macOS only)",
+        sleepH: "Keeps the system awake (equivalent to caffeinate -dimsu)",
+      },
+    };
+
+    function applyCopy(locale) {
+      const t = copy[locale] || copy.zh;
+      document.getElementById("l-lang").textContent = t.lang;
+      document.getElementById("h-lang").textContent = t.langH;
+      document.getElementById("l-theme").textContent = t.theme;
+      document.getElementById("h-theme").textContent = t.themeH;
+      document.getElementById("l-auto").textContent = t.auto;
+      document.getElementById("h-auto").textContent = t.autoH;
+      document.getElementById("l-tray").textContent = t.tray;
+      document.getElementById("h-tray").textContent = t.trayH;
+      document.getElementById("l-sleep").textContent = t.sleep;
+      document.getElementById("h-sleep").textContent = t.sleepH;
+      document.body.classList.toggle("light", document.getElementById("theme").checked === false);
+    }
+
+    async function call(name, ...args) {
+      return Call.ByName("octop.desktop.App." + name, ...args);
+    }
+
+    function current() {
+      return {
+        locale: document.getElementById("locale").value,
+        theme: document.getElementById("theme").checked ? "dark" : "light",
+        autostart: document.getElementById("autostart").checked,
+        minimizeToTray: document.getElementById("tray").checked,
+        preventSleepMac: document.getElementById("sleep").checked,
+      };
+    }
+
+    async function persist() {
+      const s = await call("GetSettings");
+      const next = { ...s, ...current() };
+      await call("SaveSettings", next);
+      applyCopy(next.locale);
+    }
+
+    const s = await call("GetSettings");
+    const plat = await call("Platform");
+    document.getElementById("locale").value = s.locale || "zh";
+    document.getElementById("theme").checked = s.theme === "dark";
+    document.getElementById("autostart").checked = !!s.autostart;
+    document.getElementById("tray").checked = s.minimizeToTray !== false;
+    document.getElementById("sleep").checked = !!s.preventSleepMac;
+    if (!plat.darwin) document.getElementById("mac-row").classList.add("hidden");
+    applyCopy(s.locale || "zh");
+    document.getElementById("status").textContent = copy[s.locale || "zh"].statusWait;
+
+    for (const id of ["locale", "theme", "autostart", "tray", "sleep"]) {
+      document.getElementById(id).addEventListener("change", persist);
+    }
+
+    Events.On("desktop:status", (ev) => {
+      const msg = typeof ev === "string" ? ev : (ev?.data ?? ev?.payload ?? JSON.stringify(ev));
+      document.getElementById("status").textContent = String(msg);
+    });
+  </script>
+</body>
+</html>
