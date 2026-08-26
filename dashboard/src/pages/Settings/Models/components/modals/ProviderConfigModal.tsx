@@ -7,9 +7,7 @@
  *     with local model list, download, and delete UI
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Divider, Form, Input, Modal, Progress, Select } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App, Button, Divider, Form, Input, Modal, Progress, Select } from "antd";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -77,6 +75,7 @@ export function ProviderConfigModal({
   apiPrefix = "/providers",
 }: ProviderConfigModalProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const [saving, setSaving] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [testing, setTesting] = useState(false);

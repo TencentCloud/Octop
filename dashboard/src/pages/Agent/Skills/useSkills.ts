@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
@@ -94,6 +93,7 @@ export function useSkills(
   options?: { enabled?: boolean },
 ) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const enabled = options?.enabled !== false && !!agentId;
 
   const {

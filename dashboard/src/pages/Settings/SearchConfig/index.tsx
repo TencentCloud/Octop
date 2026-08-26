@@ -1,7 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Button, Form, Input, Typography, Spin, Modal } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App, Button, Form, Input, Typography, Spin, Modal } from "antd";
 
 import {
   Check,
@@ -85,6 +83,7 @@ function ConfigureModal({
   onSaved,
 }: ConfigureModalProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);

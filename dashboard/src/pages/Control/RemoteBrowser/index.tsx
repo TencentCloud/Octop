@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Alert,
+  App,
   Button,
   Drawer,
   Modal,
@@ -20,8 +21,6 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { message as antMessage } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
 
 import {
   Bot,
@@ -311,6 +310,7 @@ export default function RemoteBrowserPage({
   isVisible = true,
 }: RemoteBrowserPageProps) {
   const { t } = useTranslation();
+  const { modal, message: antMessage } = App.useApp();
   const isMobile = useIsMobile();
   const { activeAgent, activeAgentId, agents } = useAgent();
   const [searchParams] = useSearchParams();

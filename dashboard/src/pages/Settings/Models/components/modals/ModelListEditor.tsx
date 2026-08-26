@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import {
+  App,
   Button,
   Form,
   Input,
@@ -14,8 +15,6 @@ import {
   Switch,
   Tooltip,
 } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
 
 import {
   Check,
@@ -76,6 +75,7 @@ export function ModelListEditor({
   onTestModel,
 }: ModelListEditorProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const downloadedSet = (() => {
     if (!localDownload) return null;
     const raw = localDownload.downloadedIds;

@@ -7,8 +7,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { message as antMessage } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App } from "antd";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
@@ -151,6 +150,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     ref,
   ) {
     const { t, i18n } = useTranslation();
+    const { modal, message: antMessage } = App.useApp();
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const isMobile = useIsMobile();
     useKeyboardOffset();

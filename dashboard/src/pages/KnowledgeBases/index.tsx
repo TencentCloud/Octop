@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   Alert,
+  App,
   Button,
   Drawer,
   Empty,
@@ -25,8 +26,6 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
 import { ResizableTable } from "@/components/ResizableTable";
 import {
   Check,
@@ -222,6 +221,7 @@ function ReadinessRow({
 
 export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();

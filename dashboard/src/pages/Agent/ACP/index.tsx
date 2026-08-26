@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Empty, Form, Switch } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App, Button, Empty, Form, Switch } from "antd";
 
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
@@ -26,6 +24,7 @@ const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
 export default function ACPPage() {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const { activeAgentId } = useAgent();
   const [runners, setRunners] =
     useState<Record<string, ACPRunnerConfig>>(EMPTY_RUNNERS);

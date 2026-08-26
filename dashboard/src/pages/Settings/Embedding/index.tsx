@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Select, Input, Button, Spin, Progress, Alert } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App, Select, Input, Button, Spin, Progress, Alert } from "antd";
 
 import { Download, CheckCircle, AlertCircle } from "lucide-react";
 import api from "../../../api";
@@ -17,6 +15,7 @@ import styles from "./index.module.less";
 
 export default function EmbeddingPage() {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
 
   // State management.
   const [config, setConfig] = useState<EmbeddingConfig | null>(null);

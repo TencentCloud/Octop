@@ -1,6 +1,4 @@
-import { Button } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App, Button } from "antd";
 
 import { Activity, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -25,6 +23,7 @@ export function ConnectorInstanceCard({
   onDeleted,
 }: ConnectorInstanceCardProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const accent = catalogEntry ? connectorAccent(catalogEntry) : "#8c8c8c";
 
   const handleTest = async () => {

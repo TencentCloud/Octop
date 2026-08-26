@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dropdown, Tooltip } from "antd";
-import { message } from "@/utils/antdMessage";
-import { modal } from "@/utils/antdModal";
+import { App, Dropdown, Tooltip } from "antd";
 import { Upload } from "lucide-react";
 import {
   publishedExpertsApi,
@@ -28,6 +26,7 @@ export default function PublishTemplateButton({
   buttonClassName = styles.agentCard2NameActionBtn,
 }: PublishTemplateButtonProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"publish" | "refresh">(
