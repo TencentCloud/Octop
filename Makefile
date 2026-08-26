@@ -28,6 +28,8 @@ UV   := $(shell command -v uv 2>/dev/null)
 RUN  := $(if $(UV),uv run,)
 PYTHON := $(if $(UV),uv run python,python3)
 PIP  := $(if $(UV),uv pip,python3 -m pip)
+# Parallel workers for make test / make test-fast (override: make test PYTEST_JOBS=4)
+PYTEST_JOBS ?= auto
 
 # ─── Help ────────────────────────────────────────────────────────────────────
 
@@ -219,8 +221,13 @@ typecheck:
 
 .PHONY: test
 test:
-	@echo "[test] pytest (not live)..."
-	$(RUN) pytest -m "not live"
+	@echo "[test] pytest (not live, -n $(PYTEST_JOBS))..."
+	$(RUN) pytest -n $(PYTEST_JOBS) -m "not live"
+
+.PHONY: test-fast
+test-fast:
+	@echo "[test-fast] pytest (not live, not slow, -n $(PYTEST_JOBS))..."
+	$(RUN) pytest -n $(PYTEST_JOBS) -m "not live and not slow"
 
 .PHONY: test-live
 test-live:

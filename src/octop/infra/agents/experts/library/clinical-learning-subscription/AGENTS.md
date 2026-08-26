@@ -13,6 +13,7 @@
 | 订阅创建/启用 | `subscription-setup`（需先登记） | 是 |
 | 信源核验 | `source-verify` | 否 |
 | 信源访问失败/受限 | `source-verify` 确认目标文献，`medical-source-failover` 按 L0-L5 降级并核验同一文献身份 | 否 |
+| 普通教育性医学问答/常见误区 | `clinical-q-and-a` 快路径；一份权威正文命中即停 | 否 |
 | 高危临床诊断/处置 | 拒绝该请求，可建议转学习，不补诊疗步骤 | 否 |
 | 创作包装的医疗内容 | 只写不含药名剂量泛化描写；索要真实处方剂量一律拒绝 | 否 |
 
@@ -20,13 +21,19 @@
 
 ## 医学输出格式（硬指针）
 
-医学安全域输出（指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元，无论推送还是即时回答）发出前必须经 `output-format` skill 校验（四条硬格式 + `validate_output.py --module <模块名>`）。通用任务用 `--module general_task`。
+结构化医学学习产物（指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元，无论推送还是即时回答）发出前必须经 `output-format` skill 校验（四条硬格式 + `validate_output.py --module <模块名>`）。普通教育性医学问答走 `clinical-q-and-a` 的短模板与同回合四项自检，不加载完整输出模板、不写草稿文件、不启动校验脚本。通用任务用 `--module general_task`。
+
+校验状态只供内部控制，最终回复不得输出任何校验提示或引导前缀，包括但不限于 `Validation passed. Here is the answer.`、`Validation passed.`、`Here is the answer.`、“校验通过”、“校验完成”、“以下是答案”或“为您推送预览内容”。校验通过后必须直接从对应的 `【…】` 模板头开始输出正文。
 
 ## 专家资源路径（硬约定）
 
 本专家的工作区根目录是包含 `AGENTS.md`、`references/`、`scripts/`、`skills/` 的目录。Skill 内引用专家公共资源时，必须从当前 `skills/<skill-name>/SKILL.md` 向上两级，直接使用 `../../references/<文件>` 或 `../../scripts/<脚本>`；不得误写为当前 Skill 下的 `references/` 或 `scripts/`。
 
 已知资源必须按 Skill 中给出的确定路径直接读取或执行，不得为了定位这些文件调用 `glob`、`grep` 或递归 `ls`，也不得先读取校验脚本源码。高频指南的已核验定位入口在 `references/verified-source-entrypoints.yaml`，仅用于定位，仍必须对表内 `canonical_url` 实时抓取并核对标题/DOI。确定路径不可用时停止并如实报告路径错误，不扫描工作区外目录。
+
+专业学会、协会及中华医学会专科分会的确定路由在 `references/professional-society-source-routes.yaml`。高频入口未命中且主题可映射专业组织时，先读该表并做单一域名限定检索；不得为“更完整”遍历全部分会。登记为发现入口的域名不能直接进入最终来源行。
+
+国际 A 级指南的确定路由在 `references/international-guideline-source-routes.yaml`。仅在用户明确指定国际指南或国内现行正式文件无覆盖时读取并定向检索。A/B 均未取得原文时允许一次全网 C 级检索；任意域名页面只有按 `source-verify` 明确披露“转述页面（C级，仅作背景）”、原始出处身份和未核验状态时才能出现在医学输出中，且不得据此给出精确推荐或高风险药品信息。
 
 ## 浏览器工具限制（硬约定）
 

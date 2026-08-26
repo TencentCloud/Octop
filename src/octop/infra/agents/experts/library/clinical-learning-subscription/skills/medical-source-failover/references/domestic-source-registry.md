@@ -20,6 +20,11 @@ This registry routes fact types to candidate authorities and fallback paths. It 
 
 ## Professional societies and formal publication sources
 
+中华医学会 91 个专科分会的官方目录、已确认专属子域，以及独立专业学会的
+分级路由记录在 `../../../references/professional-society-source-routes.yaml`。
+命中专业学会主题时先查该表，避免每次从全网猜测机构官网。表中的
+`official_discovery_pending_fulltext_acceptance` 只允许定位原文，不代表整个域名可作最终证据。
+
 | Source | Canonical domains | Appropriate use | Fallback notes |
 |---|---|---|---|
 | Chinese Medical Association | `cma.org.cn` and verified `*.cma.org.cn` branch sites | Society identity, branch notices, guideline/consensus release information | Prefer the complete formal journal article when the society page contains only news or excerpts. Branch ownership must be verified. |
@@ -27,6 +32,10 @@ This registry routes fact types to candidate authorities and fallback paths. It 
 | CMA journal sites / Yiigle | `yiigle.com`, verified `*.yiigle.com`, official attachment endpoints | Formal journal HTML/PDF and issue metadata | Verify title, DOI, year/version, journal, and completeness across old/new platform URLs. |
 | Chinese Preventive Medicine Association | `cpma.org.cn` | Public-health society documents, standards, professional guidance, branch information | Prefer a complete formal publication; separate society news and popular education from technical documents. |
 | Chinese Society of Clinical Oncology | `csco.org.cn` | CSCO guideline identity and oncology guideline information | Access and edition availability may vary; verify annual edition and use an authorized complete version. Do not infer text from launch news. |
+| Chinese Pharmaceutical Association | `cpa.org.cn` | Formal society standards, guidelines, specifications, and correction notices | Only complete final documents qualify; drafts, project notices, news, and calls for comments remain discovery material. |
+| Chinese Stroke Association | `csa-stroke.com` | Guideline/consensus identity and release discovery | Discovery route pending complete-document acceptance tests; trace release pages to complete formal text. |
+| Chinese Association of Rehabilitation Medicine | `carm.org.cn` | Society and committee standard/guideline identity discovery | Discovery route pending complete-document acceptance tests; reject competitions, popular education, meetings, and reposts as evidence. |
+| Chinese Nursing Association | `cna-cn.com`, `zhhlxh.org.cn` | Nursing standard/guideline identity discovery | Discovery route pending complete-document acceptance tests; member, live-stream, training, and news pages are not final evidence. |
 | Other national specialty societies | Official society domain plus formal publisher | Specialty guidelines and consensus statements within the society's remit | Add only after ownership verification and sample-document checks. “National” in a name is not enough. |
 
 ## Discovery, indexing, and bibliographic services
