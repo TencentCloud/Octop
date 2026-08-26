@@ -259,6 +259,20 @@ def get_installed_version(python_exe: str) -> str | None:
 
 
 def run_upgrade(*, verbose: bool = False) -> UpgradeResult:
+    # [FPK guard] FnOS FPK 部署下禁止内置在线升级：运行时从应用中心托管的
+    # 打包 site-packages 加载（launcher 设置 PYTHONPATH），在线安装到系统
+    # Python 永远无法生效，重启后仍加载旧版；升级请通过飞牛应用中心安装
+    # 新版 FPK。launcher / docker-compose 设置 OCTOP_INSTALL_MODE=fpk-*
+    # 触发本分支。
+    _fpk_mode = os.environ.get("OCTOP_INSTALL_MODE", "").lower()
+    if _fpk_mode.startswith("fpk"):
+        return UpgradeResult(
+            success=False,
+            error=(
+                "当前为飞牛 FPK 安装，内置在线升级不适用于本部署方式；"
+                "请在飞牛应用中心检查并安装新版 FPK 完成升级。"
+            ),
+        )
     installer = detect_installer()
     venv_python = resolve_venv_python()
     local_ver = get_local_version()
