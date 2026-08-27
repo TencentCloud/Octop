@@ -294,6 +294,7 @@ func (a *App) scheduleDragOverlay() {
 		for range 40 {
 			time.Sleep(250 * time.Millisecond)
 			a.installDragOverlay()
+			a.installExternalLinks()
 		}
 	}()
 }
@@ -334,6 +335,7 @@ func main() {
 		},
 	})
 	api.app = app
+	attachOpenURLEventListener(app, api.OpenExternal)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
 		app.SetIcon(trayIcon)
 	})
