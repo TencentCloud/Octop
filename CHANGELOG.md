@@ -12,6 +12,14 @@
 - FnOS FPK 在 Release 成功后自动构建：复用 GHCR 镜像与 Release wheel，不再重复编镜像
 - 修复 Auto Tag → `workflow_dispatch` 时 Docker 镜像可能只有 `:latest`、缺少 `:{version}` 的问题（显式从 tag 解析版本）
 
+### 修复
+
+- 长会话卡死：聊天历史改为独立投影分页加载，并支持后台迁移旧会话（不再同步扫 checkpoint）
+
+### 变更
+
+- 依赖：`orcakit-harness-agent[all]>=0.9.27`、`harness-memory>=0.9.7`、`harness-browser>=0.7.6`（自动 full VACUUM 关闭，空闲维护只走 lifecycle GC + incremental `nudge_vacuum`）
+
 ## [0.9.28] - 2026-08-26
 
 ### 修复

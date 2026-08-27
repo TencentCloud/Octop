@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  App,
   Button,
   Checkbox,
   Divider,
@@ -14,7 +15,6 @@ import {
   Table,
   Upload,
 } from "antd";
-import { message } from "@/utils/antdMessage";
 
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -143,6 +143,7 @@ function BackupFileCard({
 
 export default function BackupRestorePanel() {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const isMobile = useIsMobile();
   const serverTimezone = useServerTimezone();
   const { isRestarting } = useServiceRestartContext();
@@ -304,7 +305,7 @@ export default function BackupRestorePanel() {
 
   const onDelete = (row: BackupFileItem) => {
     if (busy) return;
-    Modal.confirm({
+    modal.confirm({
       title: t("backup.deleteConfirmTitle"),
       content: t("backup.deleteConfirmBody", { name: row.name }),
       okText: t("common.delete"),

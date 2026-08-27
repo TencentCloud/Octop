@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dropdown, Modal, Tooltip } from "antd";
-import { message } from "@/utils/antdMessage";
+import { App, Dropdown, Tooltip } from "antd";
 import { Upload } from "lucide-react";
 import {
   publishedExpertsApi,
@@ -27,6 +26,7 @@ export default function PublishTemplateButton({
   buttonClassName = styles.agentCard2NameActionBtn,
 }: PublishTemplateButtonProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"publish" | "refresh">(
@@ -45,7 +45,7 @@ export default function PublishTemplateButton({
 
   const confirmUnpublish = () => {
     if (!published) return;
-    Modal.confirm({
+    modal.confirm({
       title: t("experts.published.unpublishConfirm"),
       okText: t("experts.published.unpublish"),
       cancelText: t("common.cancel"),

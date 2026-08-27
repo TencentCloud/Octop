@@ -69,6 +69,12 @@ class CreateBaseBody(BaseModel):
     default_open: bool = False
     shared: bool = False
     icon_name: str = Field(default="", max_length=64)
+    max_documents: int | None = Field(
+        default=None,
+        ge=0,
+        le=10_000,
+        description="Per-base document limit. 0 = unlimited, default 100.",
+    )
 
 
 class CreateFolderBody(BaseModel):
@@ -98,6 +104,12 @@ class UpdateBaseBody(BaseModel):
     default_open: bool | None = None
     shared: bool | None = None
     icon_name: str | None = Field(default=None, max_length=64)
+    max_documents: int | None = Field(
+        default=None,
+        ge=0,
+        le=10_000,
+        description="Per-base document limit. 0 = unlimited.",
+    )
 
 
 class RenameDocumentBody(BaseModel):
@@ -418,6 +430,7 @@ async def create_base(
             default_open=body.default_open,
             shared=body.shared,
             icon_name=body.icon_name.strip(),
+            max_documents=body.max_documents if body.max_documents is not None else MAX_DOCS_PER_KB,
         )
         return _base_payload(server, base)
     except Exception as exc:
@@ -480,6 +493,7 @@ async def update_base(
                 default_open=body.default_open,
                 shared=body.shared,
                 icon_name=body.icon_name.strip() if body.icon_name is not None else None,
+                max_documents=body.max_documents,
                 is_admin=_is_admin(user),
             ),
         )

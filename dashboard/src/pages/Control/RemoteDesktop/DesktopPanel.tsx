@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  App,
   Button,
   Drawer,
   Modal,
@@ -11,7 +12,6 @@ import {
   Tag,
   Tooltip,
 } from "antd";
-import { message } from "@/utils/antdMessage";
 
 import {
   CheckCircle2,
@@ -90,6 +90,7 @@ export default function DesktopPanel({
   isVisible = true,
 }: DesktopPanelProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const user = useCurrentUser();
   const canDesktop = userCan(user, "desktop");
   const isMobile = useIsMobile();
@@ -253,7 +254,7 @@ export default function DesktopPanel({
           "remoteDesktop.uninstallConfirmLinux",
           "将停止虚拟桌面服务并移除已安装组件，是否继续？",
         );
-    Modal.confirm({
+    modal.confirm({
       title: t("remoteDesktop.uninstallTitle", "卸载远程桌面"),
       content: confirmText,
       okText: t("remoteDesktop.uninstall", "卸载"),
@@ -394,7 +395,7 @@ export default function DesktopPanel({
   const handleResolutionChange = useCallback(
     (value: DesktopResolution) => {
       if (envStatus?.platform === "linux" && isStreaming) {
-        Modal.confirm({
+        modal.confirm({
           title: t("remoteDesktop.geometryRestartTitle", "切换分辨率"),
           content: t(
             "remoteDesktop.geometryRestartWarning",

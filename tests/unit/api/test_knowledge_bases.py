@@ -39,6 +39,7 @@ class _Base:
     embedding_model: str = "model"
     embedding_dim: int = 0
     doc_count: int = 0
+    max_documents: int = 100
     created_at: int = 1
     updated_at: int = 1
 
@@ -199,6 +200,7 @@ async def test_create_base_uses_selected_model_when_usable(
         "default_open": False,
         "shared": False,
         "icon_name": "",
+        "max_documents": 100,
     }
 
 
@@ -550,3 +552,42 @@ async def test_rename_document_maps_invalid_name(
         )
 
     assert raised.value.code == ErrorCode.KNOWLEDGE_NAME_INVALID
+
+
+@pytest.mark.asyncio
+async def test_update_base_accepts_max_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    received: dict[str, object] = {}
+
+    class _StubSvc:
+        def update_base(self, *_: object, **kw: object) -> object:
+            received.update(kw)
+            return _Base(max_documents=42)
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _s: _StubSvc())
+
+    response = await knowledge_bases.update_base(
+        kb_id="kb-1",
+        body=knowledge_bases.UpdateBaseBody(max_documents=42),
+        request=_request(),
+        server=SimpleNamespace(services=_services()),
+        user=SimpleNamespace(id=1, is_admin=False),
+    )
+    assert received["max_documents"] == 42
+    assert response["max_documents"] == 42
+
+
+@pytest.mark.asyncio
+async def test_update_base_rejects_max_documents_out_of_range() -> None:
+    from pydantic import ValidationError
+
+    from octop.api.routers import knowledge_bases
+
+    with pytest.raises(ValidationError):
+        knowledge_bases.UpdateBaseBody(max_documents=-1)
+    with pytest.raises(ValidationError):
+        knowledge_bases.UpdateBaseBody(max_documents=10_001)
+    assert knowledge_bases.UpdateBaseBody(max_documents=0).max_documents == 0
+    assert knowledge_bases.UpdateBaseBody(max_documents=10_000).max_documents == 10_000
+    assert knowledge_bases.UpdateBaseBody().max_documents is None

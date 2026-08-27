@@ -61,8 +61,10 @@ def _registry(usage: object | None, *, history: list[object] | None = None) -> M
     registry = MagicMock()
     registry.get_row.return_value = MagicMock()
     harness = MagicMock()
-    # None → older harness without aget_context_usage
-    harness.aget_context_usage = None if usage is None else AsyncMock(return_value=usage)
+    harness._context_usage_mw = (
+        None if usage is None else SimpleNamespace(get_snapshot=MagicMock(return_value=usage))
+    )
+    harness.aget_context_usage = AsyncMock(side_effect=AssertionError("must not read checkpoint"))
     harness.aget_history = AsyncMock(return_value=list(history or []))
     registry.get_agent.return_value = harness
     return registry
@@ -149,7 +151,7 @@ async def test_empty_without_stream_tokens() -> None:
 
 
 @pytest.mark.asyncio
-async def test_recovers_response_metadata_token_usage() -> None:
+async def test_does_not_recover_response_metadata_from_checkpoint() -> None:
     empty = _usage(used=0, segments={}, source="empty")
     history = [
         {
@@ -164,13 +166,11 @@ async def test_recovers_response_metadata_token_usage() -> None:
         thread_id="t1",
         max_tokens=128_000,
     )
-    assert result.used_tokens == 8800
-    assert result.segments["conversation"] == 8800
+    assert result.used_tokens == 0
 
 
 @pytest.mark.asyncio
-async def test_reads_additional_kwargs_context_usage_without_source() -> None:
-    """Stock snapshots live on additional_kwargs; older stamps omit source."""
+async def test_does_not_read_checkpoint_context_stamp() -> None:
     empty = _usage(used=0, segments={}, source="empty")
     history = [
         {
@@ -196,14 +196,12 @@ async def test_reads_additional_kwargs_context_usage_without_source() -> None:
         thread_id="t1",
         max_tokens=1_000_000,
     )
-    assert result.max_tokens == 128_000
-    assert result.used_tokens == 15_400
-    assert result.segments["system_prompt"] == 2_000
-    assert result.segments["conversation"] == 13_400
+    assert result.max_tokens == 1_000_000
+    assert result.used_tokens == 0
 
 
 @pytest.mark.asyncio
-async def test_recovers_usage_metadata_when_snapshot_empty() -> None:
+async def test_empty_snapshot_uses_usage_ledger_without_checkpoint() -> None:
     empty = _usage(used=0, segments={}, source="empty")
     history = [
         {"role": "user", "content": "hi"},
@@ -213,14 +211,19 @@ async def test_recovers_usage_metadata_when_snapshot_empty() -> None:
             "usage_metadata": {"input_tokens": 4200, "output_tokens": 12},
         },
     ]
+    registry = _registry(empty, history=history)
+    usage_repo = MagicMock()
+    usage_repo.last_thread_input_tokens.return_value = 4200
     result = await compute_context_breakdown(
-        _registry(empty, history=history),
+        registry,
         agent_id="agt",
         thread_id="t1",
         max_tokens=128_000,
+        usage_repo=usage_repo,
     )
     assert result.used_tokens == 4200
     assert result.segments["conversation"] == 4200
+    registry.get_agent.return_value.aget_history.assert_not_awaited()
 
 
 @pytest.mark.asyncio

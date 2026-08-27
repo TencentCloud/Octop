@@ -34,6 +34,10 @@ export interface OctopThreadHistory {
   has_more?: boolean;
   limit?: number;
   offset?: number;
+  /** Legacy checkpoint is being projected by the bounded background worker. */
+  history_loading?: boolean;
+  history_status?: "pending" | "queued" | "running" | "ready" | "failed";
+  history_retry_after_ms?: number;
   /** True while a turn is still streaming server-side for this thread. */
   turn_active?: boolean;
   /** Pending tool approval for this thread (survives page reload). */
@@ -69,6 +73,18 @@ export interface ContextUsageBreakdown {
   segments: ContextUsageSegment[];
 }
 
+export interface HistoryMigrationStatus {
+  remaining: number;
+  pending: number;
+  queued: number;
+  running: number;
+  failed: number;
+  processing: boolean;
+  agent_busy: boolean;
+  can_start: boolean;
+  accepted?: number;
+}
+
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
 export const octopThreadsApi = {
@@ -80,6 +96,17 @@ export const octopThreadsApi = {
   create: (agentId: string) =>
     request<{ thread_id: string; session_key: string }>(
       `/agents/${encodeURIComponent(agentId)}/threads`,
+      { method: "POST" },
+    ),
+
+  historyMigrationStatus: (agentId: string) =>
+    request<HistoryMigrationStatus>(
+      `/agents/${encodeURIComponent(agentId)}/history-migration/status`,
+    ),
+
+  startHistoryMigration: (agentId: string) =>
+    request<HistoryMigrationStatus>(
+      `/agents/${encodeURIComponent(agentId)}/history-migration/start`,
       { method: "POST" },
     ),
 

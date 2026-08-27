@@ -23,6 +23,7 @@ from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.db.repos.sso import SsoRepo
+from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.users import UserRepo
@@ -42,6 +43,7 @@ class RepoBundle:
     cron_repo: CronJobRepo
     session_repo: SessionRepo
     thread_repo: ThreadRepo
+    thread_message_repo: ThreadMessageRepo
     secret_repo: SecretRepo
     audit_repo: AuditRepo
     usage_repo: UsageRepo
@@ -68,6 +70,7 @@ class RepoBundle:
             cron_repo=CronJobRepo(db),
             session_repo=SessionRepo(db),
             thread_repo=ThreadRepo(db),
+            thread_message_repo=ThreadMessageRepo(db),
             secret_repo=SecretRepo(db),
             audit_repo=AuditRepo(db),
             usage_repo=UsageRepo(db),
@@ -125,6 +128,10 @@ class SharedServices:
     @property
     def thread_repo(self) -> ThreadRepo:
         return self.repos.thread_repo
+
+    @property
+    def thread_message_repo(self) -> ThreadMessageRepo:
+        return self.repos.thread_message_repo
 
     @property
     def secret_repo(self) -> SecretRepo:

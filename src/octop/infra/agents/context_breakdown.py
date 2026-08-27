@@ -1,10 +1,4 @@
-"""Context window usage — thin adapter over harness-agent snapshots.
-
-Prefers ``HarnessAgent.aget_context_usage`` when present. Stock occupancy is
-stored on ``AIMessage.additional_kwargs['context_usage']``; older stamps may
-omit ``source``, which must not be treated as empty. If the live getter
-drops those stamps, this module re-reads the same kwargs from history.
-"""
+"""Context window usage without checkpoint reads on dashboard requests."""
 
 from __future__ import annotations
 
@@ -126,35 +120,6 @@ def _additional_kwargs(msg: Any) -> dict[str, Any] | None:
     return _as_mapping(kwargs)
 
 
-def _breakdown_from_context_stamp(
-    payload: Any, *, max_tokens: int
-) -> ContextBreakdownResult | None:
-    """Rebuild the ring from ``additional_kwargs['context_usage']`` (stock snapshots)."""
-    mapped = _as_mapping(payload)
-    if not mapped:
-        return None
-    segs_raw = _as_mapping(mapped.get("segments")) or {}
-    segments = {key: _token_int(segs_raw.get(key)) for key in SEGMENT_KEYS}
-    used = (
-        _token_int(mapped.get("used_tokens"))
-        or _token_int(mapped.get("input_tokens"))
-        or sum(segments.values())
-    )
-    if used <= 0:
-        return None
-    cap = _token_int(mapped.get("max_tokens"))
-    if cap == 0:
-        cap = max_tokens if max_tokens > 0 else 128_000
-    if not any(segments.values()):
-        segments = dict.fromkeys(SEGMENT_KEYS, 0)
-        segments["conversation"] = min(used, cap)
-    return ContextBreakdownResult(
-        max_tokens=cap,
-        used_tokens=min(used, cap),
-        segments=segments,
-    )
-
-
 def usage_dict_from_message(msg: Any) -> dict[str, Any] | None:
     """Normalize LangChain token counts for history + the context ring.
 
@@ -224,39 +189,6 @@ def usage_dict_from_message(msg: Any) -> dict[str, Any] | None:
     return payload
 
 
-def _message_input_tokens(msg: Any) -> int:
-    usage = usage_dict_from_message(msg)
-    return int(usage["input_tokens"]) if usage else 0
-
-
-async def _load_checkpoint_messages(harness: Any, thread_id: str) -> list[Any]:
-    getter = getattr(harness, "aget_history", None)
-    if getter is None:
-        return []
-    try:
-        return list(await getter(thread_id, limit=40))
-    except Exception:
-        logger.debug(
-            "aget_history failed while recovering context usage thread=%s",
-            thread_id,
-            exc_info=True,
-        )
-        return []
-
-
-def _stamp_breakdown_from_messages(
-    messages: list[Any], *, max_tokens: int
-) -> ContextBreakdownResult | None:
-    for msg in reversed(messages):
-        kwargs = _additional_kwargs(msg)
-        if not kwargs:
-            continue
-        bd = _breakdown_from_context_stamp(kwargs.get("context_usage"), max_tokens=max_tokens)
-        if bd is not None:
-            return bd
-    return None
-
-
 async def compute_context_breakdown(
     registry: Any,
     *,
@@ -268,10 +200,12 @@ async def compute_context_breakdown(
     skills: list[str] | None = None,
     usage_repo: Any | None = None,
 ) -> ContextBreakdownResult:
-    """Return harness context usage, or a stream-token fallback.
+    """Return a non-blocking context snapshot or a token-ledger fallback.
 
     ``mcp_servers`` / ``skills`` are accepted for dashboard query compatibility
-    but unused — the harness snapshot already reflects the filtered request.
+    but unused — the live harness snapshot already reflects the filtered request.
+    This endpoint deliberately never falls back to checkpoint history: opening
+    the context popover must not decode a multi-gigabyte legacy checkpoint.
     """
     del mcp_servers, skills
     row = registry.get_row(agent_id)
@@ -285,15 +219,14 @@ async def compute_context_breakdown(
         logger.debug("no live harness for context usage agent=%s", agent_id, exc_info=True)
 
     usage: Any = None
-    getter = getattr(harness, "aget_context_usage", None) if harness is not None else None
-    if getter is not None:
+    middleware = getattr(harness, "_context_usage_mw", None) if harness is not None else None
+    snapshot_getter = getattr(middleware, "get_snapshot", None)
+    if callable(snapshot_getter):
         try:
-            # The harness snapshot owns the exact routed model capacity. Passing
-            # the dashboard fallback here would overwrite it after model switches.
-            usage = await getter(thread_id)
+            usage = snapshot_getter(thread_id)
         except Exception:
             logger.debug(
-                "harness aget_context_usage failed for thread=%s",
+                "live context snapshot failed for thread=%s",
                 thread_id,
                 exc_info=True,
             )
@@ -302,18 +235,6 @@ async def compute_context_breakdown(
     if _usage_has_segments(usage):
         return _usage_to_breakdown(usage, fallback_max_tokens=max_tokens)
 
-    messages: list[Any] = []
-    if harness is not None:
-        messages = await _load_checkpoint_messages(harness, thread_id)
-        stamped = _stamp_breakdown_from_messages(messages, max_tokens=max_tokens)
-        if stamped is not None:
-            return stamped
-
-    recovered = 0
-    for msg in reversed(messages):
-        recovered = _message_input_tokens(msg)
-        if recovered:
-            break
     logged = 0
     if usage_repo is not None:
         last_fn = getattr(usage_repo, "last_thread_input_tokens", None)
@@ -326,7 +247,7 @@ async def compute_context_breakdown(
                     thread_id,
                     exc_info=True,
                 )
-    fallback = recovered or logged or _token_int(input_tokens)
+    fallback = logged or _token_int(input_tokens)
     if fallback:
         return _from_stream_input_tokens(fallback, max_tokens=max_tokens)
 

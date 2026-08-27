@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import AsyncIterator
@@ -26,6 +27,10 @@ from octop.infra.utils.paths import PathLayout
 # Rootfs-absolute workspace paths (e.g. /.octop/workspaces/<id>) are a
 # Linux/Docker sandbox concept; on Windows they are not absolute paths.
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX rootfs workspace paths")
+
+
+async def _collect_async(iterator: AsyncIterator[Any]) -> list[Any]:
+    return [item async for item in iterator]
 
 
 def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, Any]:
@@ -428,6 +433,70 @@ async def test_stream_applies_bootstrap_refresh_after_turn(manager: AgentManager
     assert chunks == [{"type": "token", "content": "hi"}]
     agent._init_graph.assert_called_once()
     assert agent_id not in manager._bootstrap_graph_refresh_pending
+
+
+@pytest.mark.asyncio
+async def test_history_backfill_refuses_while_agent_stream_is_active(
+    manager: AgentManager,
+) -> None:
+    agent_id = "AGT_BUSY"
+    started = asyncio.Event()
+    release = asyncio.Event()
+    harness_manager = MagicMock()
+
+    async def fake_stream(*_args: Any, **_kwargs: Any) -> AsyncIterator[dict[str, str]]:
+        started.set()
+        await release.wait()
+        yield {"type": "done"}
+
+    harness_manager.stream = fake_stream
+    manager._harness_manager = harness_manager
+
+    task = asyncio.create_task(_collect_async(manager.stream(agent_id, {"thread_id": "thr-busy"})))
+    await started.wait()
+
+    assert manager.is_agent_active(agent_id) is True
+    assert manager.try_begin_history_backfill(agent_id) is False
+
+    release.set()
+    await task
+    assert manager.is_agent_active(agent_id) is False
+
+
+@pytest.mark.asyncio
+async def test_waiting_agent_stream_prevents_next_history_backfill(
+    manager: AgentManager,
+) -> None:
+    agent_id = "AGT_PRIORITY"
+    stream_started = asyncio.Event()
+    stream_release = asyncio.Event()
+    harness_manager = MagicMock()
+
+    async def fake_stream(*_args: Any, **_kwargs: Any) -> AsyncIterator[dict[str, str]]:
+        stream_started.set()
+        await stream_release.wait()
+        yield {"type": "done"}
+
+    harness_manager.stream = fake_stream
+    manager._harness_manager = harness_manager
+    assert manager.try_begin_history_backfill(agent_id) is True
+
+    task = asyncio.create_task(
+        _collect_async(manager.stream(agent_id, {"thread_id": "thr-priority"}))
+    )
+    await asyncio.sleep(0)
+    assert stream_started.is_set() is False
+    assert manager.try_begin_history_backfill(agent_id) is False
+
+    manager.end_history_backfill(agent_id)
+    await stream_started.wait()
+    assert manager.is_agent_active(agent_id) is True
+    assert manager.try_begin_history_backfill(agent_id) is False
+
+    stream_release.set()
+    await task
+    assert manager.try_begin_history_backfill(agent_id) is True
+    manager.end_history_backfill(agent_id)
 
 
 @pytest.mark.asyncio

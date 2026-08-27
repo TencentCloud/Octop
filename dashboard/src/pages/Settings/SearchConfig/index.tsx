@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Button, Form, Input, Typography, Spin, Modal } from "antd";
-import { message } from "@/utils/antdMessage";
+import { App, Button, Form, Input, Typography, Spin, Modal } from "antd";
 
 import {
   Check,
@@ -84,6 +83,7 @@ function ConfigureModal({
   onSaved,
 }: ConfigureModalProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -155,7 +155,7 @@ function ConfigureModal({
   };
 
   const handleRevoke = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("setupWizard.search.revokeTitle", { name: provider.name }),
       content: t("setupWizard.search.revokeConfirm", { name: provider.name }),
       okText: t("setupWizard.search.revoke"),

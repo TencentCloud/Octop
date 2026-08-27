@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  App,
   Tree,
   Empty,
   Spin,
@@ -21,7 +22,6 @@ import {
   Popconfirm,
   Input,
 } from "antd";
-import { message } from "@/utils/antdMessage";
 
 import type { TreeDataNode, TreeProps } from "antd";
 import {
@@ -259,6 +259,7 @@ export default function WorkspaceDrawer({
   onClose,
 }: WorkspaceDrawerProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
   const { agents } = useAgent();
@@ -707,7 +708,7 @@ export default function WorkspaceDrawer({
                   label: t("common.delete"),
                   danger: true,
                   onClick: () => {
-                    Modal.confirm({
+                    modal.confirm({
                       title: target.is_dir
                         ? t("workspace.deleteDirConfirm")
                         : t("workspace.deleteConfirm"),

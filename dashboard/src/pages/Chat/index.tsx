@@ -63,6 +63,8 @@ import ChatComposerChrome from "./components/ChatComposerChrome";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
 import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
+import { useHistoryMigration } from "./hooks/useHistoryMigration";
+import HistoryMigrationBanner from "./components/HistoryMigrationBanner";
 import { apiErrorMessage } from "../../utils/apiError";
 import PwaInstallPrompt from "../../components/PwaInstallPrompt";
 import { promptNeedsUserInput } from "../../utils/quickInputPrefill";
@@ -171,6 +173,10 @@ function ChatPageInner() {
     visible: memoryMaintVisible,
     blocking: memoryMaintBlocking,
   } = useMemoryMaintenance(resolvedAgentId, agentChatReady && !noAgents);
+  const historyMigration = useHistoryMigration(
+    resolvedAgentId,
+    agentChatReady && !noAgents && !sharedExpertViewer,
+  );
 
   useEffect(() => {
     void refreshAgents({ silent: true });
@@ -902,10 +908,12 @@ function ChatPageInner() {
             />
           )}
 
-          {memoryMaintVisible && memoryMaint && (
-            <MemoryMaintenanceBanner
-              status={memoryMaint}
-              blocking={memoryMaintBlocking}
+          {historyMigration.visible && historyMigration.status && (
+            <HistoryMigrationBanner
+              status={historyMigration.status}
+              starting={historyMigration.starting}
+              startFailed={historyMigration.startFailed}
+              onStart={() => void historyMigration.start()}
             />
           )}
 

@@ -12,8 +12,6 @@ import styles from "../index.module.less";
 
 const DEFAULT_MAX = 128_000;
 const BREAKDOWN_CACHE_TTL_MS = 30_000;
-/** Debounce snapshot refresh after stream ``usedTokens`` changes. */
-const HINT_REFRESH_DEBOUNCE_MS = 800;
 
 const SEGMENT_COLORS: Record<ContextUsageSegmentKey, string> = {
   system_prompt: "#9ca3af",
@@ -64,7 +62,6 @@ export default function ContextWindowRing({
   // Stream hint — kept in a ref so prefetch does not re-fire on every token tick.
   const hintUsedRef = useRef(usedTokens ?? 0);
   hintUsedRef.current = usedTokens ?? 0;
-  const lastHintRefreshRef = useRef<number | null>(null);
 
   const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
   const hintUsed = usedTokens ?? 0;
@@ -126,34 +123,15 @@ export default function ContextWindowRing({
     [agentId, threadId, max, selectedConnectors, selectedSkills, cacheKey],
   );
 
-  // Prefetch when the thread / cap / filters change — not when stream hint ticks.
+  // Reset detail cache on thread/filter changes. The ring itself keeps growing
+  // from the live/persisted token hint and never needs a checkpoint read.
   useEffect(() => {
-    if (!agentId || !threadId || isPendingThread(threadId)) {
-      setBreakdown(null);
-      cacheRef.current = null;
-      lastHintRefreshRef.current = null;
-      return;
-    }
-    lastHintRefreshRef.current = null;
-    void loadBreakdown({ silent: true });
-  }, [agentId, threadId, cacheKey, loadBreakdown]);
-
-  // After a turn finishes, ``usedTokens`` settles on last_input_tokens —
-  // soft-refresh once per distinct hint (debounced) for a fresh harness stamp.
-  useEffect(() => {
-    if (!agentId || !threadId || isPendingThread(threadId) || hintUsed <= 0) {
-      return;
-    }
-    if (lastHintRefreshRef.current === hintUsed) return;
-    const timer = window.setTimeout(() => {
-      lastHintRefreshRef.current = hintUsed;
-      cacheRef.current = null;
-      void loadBreakdown({ silent: true, force: true });
-    }, HINT_REFRESH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [hintUsed, agentId, threadId, loadBreakdown]);
+    setBreakdown(null);
+    cacheRef.current = null;
+  }, [cacheKey]);
 
   const ringUsed = useMemo(() => {
+    if (hintUsed > 0) return Math.min(hintUsed, max);
     if (breakdown && breakdown.used_tokens > 0) {
       const breakdownMax =
         breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
@@ -161,7 +139,6 @@ export default function ContextWindowRing({
     }
     // Until prefetch returns, show last-call hint (capped so a stale
     // turn-sum cannot flash a full ring).
-    if (hintUsed > 0) return Math.min(hintUsed, max);
     return 0;
   }, [breakdown, hintUsed, max]);
 
