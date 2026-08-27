@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "0.9.26"
+version = "0.9.29b0"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on harness-agent"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,7 +21,7 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "orcakit-harness-agent[all]>=0.9.25",
+    "orcakit-harness-agent[all]>=0.9.27",
     "harness-memory>=0.9.7",
     "harness-gateway>=0.9.3",
     "cryptography>=41",
@@ -200,4 +200,3 @@ markers = [
 filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
-

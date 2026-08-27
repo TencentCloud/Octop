@@ -908,13 +908,6 @@ function ChatPageInner() {
             />
           )}
 
-          {memoryMaintVisible && memoryMaint && (
-            <MemoryMaintenanceBanner
-              status={memoryMaint}
-              blocking={memoryMaintBlocking}
-            />
-          )}
-
           {historyMigration.visible && historyMigration.status && (
             <HistoryMigrationBanner
               status={historyMigration.status}
