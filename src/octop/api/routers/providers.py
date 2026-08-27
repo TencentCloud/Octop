@@ -8,7 +8,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
@@ -36,6 +36,7 @@ from octop.infra.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
 logger = logging.getLogger(__name__)
@@ -297,6 +298,7 @@ async def admin_delete_provider(
 @admin_router.post("/test-draft", summary="Test unsaved provider draft")
 async def admin_test_provider_draft(
     body: ProviderTestDraftBody,
+    request: Request,
     _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
     """Probe connectivity for a provider draft before it is saved."""
@@ -315,12 +317,18 @@ async def admin_test_provider_draft(
         extra_json=body.extra_json,
         embedding=body.embedding,
     )
-    return await probe_provider_row(row, model_id=model_id, embedding=body.embedding)
+    return await probe_provider_row(
+        row,
+        model_id=model_id,
+        embedding=body.embedding,
+        locale=resolve_request_locale(request),
+    )
 
 
 @admin_router.post("/fetch-models", summary="List models from an OpenAI-compatible draft")
 async def admin_fetch_provider_models(
     body: ProviderFetchModelsBody,
+    request: Request,
     _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
     """Fetch remote model ids via OpenAI-compatible ``GET /models`` (openai kind only)."""
@@ -337,6 +345,7 @@ async def admin_fetch_provider_models(
         base_url=(body.base_url or "").strip() or None,
         api_key=api_key,
         extra_headers=provider_headers(draft) or None,
+        locale=resolve_request_locale(request),
     )
 
 
@@ -456,6 +465,7 @@ async def codex_oauth_logout(
 @admin_router.post("/{provider_id}/test")
 async def admin_test_provider(
     provider_id: int,
+    request: Request,
     body: ProviderTestBody | None = None,
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
@@ -467,4 +477,9 @@ async def admin_test_provider(
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
     embedding = body.embedding if body else None
-    return await probe_provider_row(row, model_id=model_id, embedding=embedding)
+    return await probe_provider_row(
+        row,
+        model_id=model_id,
+        embedding=embedding,
+        locale=resolve_request_locale(request),
+    )

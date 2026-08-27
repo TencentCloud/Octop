@@ -230,6 +230,7 @@ function CronJobsPage() {
     onDelete: handleDelete,
     t,
     timeZone: cronTimezone,
+    stickyColumns: !isMobile,
   });
 
   // Until the user picks an agent there is nothing to fetch and no scope
@@ -354,7 +355,7 @@ function CronJobsPage() {
               dataSource={jobs}
               rowKey="id"
               size="middle"
-              scroll={{ x: "max-content" }}
+              scroll={{ x: 1300 }}
               pagination={{
                 pageSize: 10,
                 showSizeChanger: false,

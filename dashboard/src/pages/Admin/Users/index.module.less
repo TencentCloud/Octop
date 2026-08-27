@@ -993,3 +993,441 @@
   gap: 2px;
   font-size: 12px;
 }
+
+/* ── SSO panel ──────────────────────────────────────────────────── */
+
+.ssoPanel {
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 88px;
+}
+
+.ssoLayout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+
+  @media (min-width: 1100px) {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    gap: 24px;
+  }
+}
+
+.ssoAside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  order: -1;
+
+  @media (min-width: 1100px) {
+    order: 0;
+    position: sticky;
+    top: 8px;
+    /* Place aside in the second column */
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+.ssoForm {
+  min-width: 0;
+
+  @media (min-width: 1100px) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  :global(.ant-form-item) {
+    margin-bottom: 16px;
+  }
+
+  :global(.ant-form-item-label > label) {
+    color: var(--fn-text-secondary);
+    font-weight: 500;
+  }
+}
+
+.ssoAsideTitle {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.ssoAsideCard {
+  padding: 14px 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+}
+
+.ssoFieldGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 16px;
+
+  @media (min-width: 720px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ssoStatusTagOn,
+.ssoStatusTagOff {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  margin: 0 !important;
+  padding: 2px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  border: 1px solid transparent !important;
+}
+
+.ssoStatusTagOn {
+  color: var(--fn-color-brand) !important;
+  background: var(--fn-color-brand-bg) !important;
+  border-color: var(
+    --fn-color-brand-border,
+    color-mix(in srgb, var(--fn-color-brand) 28%, transparent)
+  ) !important;
+}
+
+.ssoStatusTagOff {
+  color: var(--fn-text-tertiary) !important;
+  background: var(--fn-bg-container, rgba(0, 0, 0, 0.04)) !important;
+  border-color: var(--fn-border-primary) !important;
+}
+
+.ssoStatusDotOn,
+.ssoStatusDotOff {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ssoStatusDotOn {
+  background: var(--fn-color-brand);
+}
+
+.ssoStatusDotOff {
+  background: var(--fn-text-tertiary);
+}
+
+.ssoGuide {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+}
+
+.ssoGuideList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssoGuideItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-tertiary);
+}
+
+.ssoGuideCurrent {
+  color: var(--fn-text-primary);
+  font-weight: 500;
+}
+
+.ssoGuideDone {
+  color: var(--fn-text-secondary);
+}
+
+.ssoGuideIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--fn-bg-container, rgba(0, 0, 0, 0.04));
+  color: inherit;
+}
+
+.ssoGuideDone .ssoGuideIndex {
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
+}
+
+.ssoGuideCurrent .ssoGuideIndex {
+  color: #fff;
+  background: var(--fn-color-brand);
+}
+
+.ssoAlert {
+  margin: 0;
+}
+
+.ssoSection {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+}
+
+.ssoSectionHeader {
+  margin-bottom: 14px;
+}
+
+.ssoSectionTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fn-text-primary);
+}
+
+.ssoSectionHint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+}
+
+.ssoEnableRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ssoEnableText {
+  flex: 1;
+  min-width: 0;
+}
+
+.ssoEnableSwitch {
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+
+.ssoPreviewBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 10px;
+  background: var(--fn-bg-elevated, var(--fn-bg-secondary));
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ssoPreviewBtnMuted {
+  opacity: 0.55;
+}
+
+.ssoPreviewHint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.ssoPresets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ssoPresetsLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+}
+
+.ssoPresetChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ssoPresetChip {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 999px;
+  background: var(--fn-bg-elevated, var(--fn-bg-primary));
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    border-color: var(--fn-border-strong, var(--fn-border-primary));
+    color: var(--fn-text-primary);
+  }
+}
+
+.ssoPresetChipActive {
+  border-color: var(
+    --fn-color-brand-border,
+    color-mix(in srgb, var(--fn-color-brand) 45%, transparent)
+  );
+  background: var(--fn-color-brand-bg);
+  color: var(--fn-color-brand);
+}
+
+.ssoSecretLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ssoSecretTag {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  margin: 0 !important;
+  padding: 0 6px !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  line-height: 18px !important;
+  color: var(--fn-color-brand) !important;
+  background: var(--fn-color-brand-bg) !important;
+}
+
+.ssoAdvanced {
+  margin-bottom: 16px;
+
+  :global(.ant-collapse-header) {
+    padding: 10px 4px !important;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fn-text-secondary) !important;
+  }
+
+  :global(.ant-collapse-content-box) {
+    padding: 0 4px 4px !important;
+  }
+}
+
+.ssoRedirectCard {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid
+    var(
+      --fn-color-brand-border,
+      color-mix(in srgb, var(--fn-color-brand) 28%, transparent)
+    );
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(
+    --fn-color-brand-bg,
+    color-mix(in srgb, var(--fn-color-brand) 6%, transparent)
+  );
+}
+
+.ssoRedirectHeader {
+  margin-bottom: 12px;
+}
+
+.ssoRedirectRow {
+  width: 100%;
+}
+
+.ssoRedirectInput {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.ssoRedirectDocs {
+  margin: 10px 0 0 !important;
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+
+.ssoFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 8px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--fn-border-primary);
+  background: linear-gradient(
+    to top,
+    var(--fn-bg-primary) 70%,
+    color-mix(in srgb, var(--fn-bg-primary) 80%, transparent)
+  );
+}
+
+.ssoFooterActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ssoFooterMeta {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ssoDirtyHint {
+  color: #d48806;
+}
+
+.ssoTestHint {
+  color: var(--fn-text-tertiary);
+}
+
+@media (max-width: 640px) {
+  .ssoPanel {
+    padding-bottom: 24px;
+  }
+
+  .ssoEnableRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ssoFooter {
+    position: static;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -33,10 +33,37 @@ def test_classify_rate_limit() -> None:
     )
 
 
+def test_classify_insufficient_balance() -> None:
+    msg = (
+        "Error code: 402 - {'error': {'message': 'Insufficient Balance', "
+        "'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}"
+    )
+    assert classify_stream_error_message(msg) == "octop:stream_errors.insufficient_balance"
+    assert (
+        classify_stream_error_message("HTTP 402 POST https://api.example.com/v1/embeddings: quota")
+        == "octop:stream_errors.insufficient_balance"
+    )
+    assert (
+        classify_stream_error_message("You exceeded your current quota, please check billing")
+        == "octop:stream_errors.insufficient_balance"
+    )
+
+
 def test_classify_auth() -> None:
     assert (
         classify_stream_error_message("Error code: 401 - Incorrect API key provided")
         == "octop:stream_errors.auth"
+    )
+
+
+def test_classify_provider_unavailable_http_status() -> None:
+    assert (
+        classify_stream_error_message("HTTP 503 POST https://api.example.com/v1/embeddings")
+        == "octop:stream_errors.provider_unavailable"
+    )
+    assert (
+        classify_stream_error_message("Error code: 502 - Bad Gateway")
+        == "octop:stream_errors.provider_unavailable"
     )
 
 
@@ -83,6 +110,14 @@ def test_format_stream_error_zh_guidance() -> None:
     assert "重试" in text
     assert "StreamChunkTimeoutError" not in text
     assert "LANGCHAIN" not in text
+
+
+def test_format_insufficient_balance_zh() -> None:
+    msg = "Error code: 402 - {'error': {'message': 'Insufficient Balance'}}"
+    text = format_stream_error(msg, "zh")
+    assert "余额" in text or "额度" in text
+    assert "402" not in text
+    assert "Insufficient Balance" not in text
 
 
 def test_format_recursion_limit_zh_guides_to_config() -> None:

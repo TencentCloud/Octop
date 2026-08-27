@@ -1739,6 +1739,14 @@
 
 .expertsTable {
   margin: 12px 0 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
+  :global(.octop-table-wrapper),
+  :global(.ant-table-wrapper) {
+    max-width: 100%;
+  }
 
   :global(.octop-table-pagination) {
     margin: 12px 0 0 !important;

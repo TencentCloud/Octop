@@ -709,6 +709,104 @@
   max-width: 100%;
 }
 
+.toolUiRendererWrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  /* Normal block flow: cards with maxWidth keep filling up to that cap;
+     cards with width:100% fill the message column. Do not use fit-content /
+     inline-grid here — those shrink to content width. */
+
+  .toolUiDockActions {
+    position: absolute;
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  &:hover .toolUiDockActions,
+  &:focus-within .toolUiDockActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  @media (hover: none) {
+    .toolUiDockActions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+}
+
+.toolUiDockBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fn-bg-primary) 92%, transparent);
+  color: var(--fn-text-secondary);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+
+  &:hover {
+    color: var(--fn-color-brand);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 38%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.toolUiDockPlaceholder {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px dashed var(--fn-border-secondary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fn-bg-secondary) 70%, transparent);
+  color: var(--fn-text-secondary);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--fn-color-brand) 38%, transparent);
+    color: var(--fn-color-brand);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.toolUiDockPlaceholderTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolUiDockPlaceholderHint {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  flex-shrink: 0;
+}
+
 .assistantTurnAnswer {
   min-width: 0;
 }

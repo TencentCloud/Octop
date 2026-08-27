@@ -149,7 +149,16 @@ def _embeddings_url(base_url: str | None) -> str:
     return f"{root}/embeddings"
 
 
-async def _probe_embedding_endpoint(row: Any, *, model_id: str) -> dict[str, Any]:
+def _friendly_probe_error(exc: BaseException | str, *, locale: str) -> str:
+    """Map raw provider exceptions / HTTP bodies to localized guidance when known."""
+    from octop.i18n.domains.stream import stream_error_message
+
+    return stream_error_message(str(exc), locale)
+
+
+async def _probe_embedding_endpoint(
+    row: Any, *, model_id: str, locale: str = "en"
+) -> dict[str, Any]:
     """POST OpenAI-compatible ``{base}/embeddings`` and time the round-trip."""
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
@@ -166,7 +175,7 @@ async def _probe_embedding_endpoint(row: Any, *, model_id: str) -> dict[str, Any
             )
     except Exception as exc:
         logger.info("embedding probe failed for %s: %s", getattr(row, "name", "?"), exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
 
     if response.status_code >= 400:
         detail = response.text.strip()
@@ -175,7 +184,7 @@ async def _probe_embedding_endpoint(row: Any, *, model_id: str) -> dict[str, Any
         error = f"HTTP {response.status_code} POST {url}"
         if detail:
             error = f"{error}: {detail}"
-        return {"ok": False, "error": error}
+        return {"ok": False, "error": _friendly_probe_error(error, locale=locale)}
 
     try:
         payload = response.json()
@@ -198,7 +207,11 @@ async def _probe_embedding_endpoint(row: Any, *, model_id: str) -> dict[str, Any
 
 
 async def probe_provider_row(
-    row: Any, *, model_id: str | None = None, embedding: bool | None = None
+    row: Any,
+    *,
+    model_id: str | None = None,
+    embedding: bool | None = None,
+    locale: str = "en",
 ) -> dict[str, Any]:
     """Probe a provider: chat models get a one-token ping; embedding models POST /embeddings."""
     from octop.infra.agents.providers.model_flags import is_onnx_local_provider
@@ -213,18 +226,20 @@ async def probe_provider_row(
         result = await probe_local_model(_onnx_probe_model_id(row, model_id))
         if result.get("latency_ms") is not None:
             result["latency_ms"] = int(result["latency_ms"])
+        if not result.get("ok") and result.get("error"):
+            result["error"] = _friendly_probe_error(str(result["error"]), locale=locale)
         return result
 
     mid = _probe_model_id(row, model_id)
     if _should_probe_embedding(row, model_id=mid, embedding=embedding):
-        return await _probe_embedding_endpoint(row, model_id=mid)
+        return await _probe_embedding_endpoint(row, model_id=mid, locale=locale)
     started = time.perf_counter()
     try:
         chat = build_probe_chat_model(row, model_id=mid)
         result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
     except Exception as exc:
         logger.info("provider probe failed for %s: %s", getattr(row, "name", "?"), exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
     latency_ms = int((time.perf_counter() - started) * 1000)
     _ = getattr(result, "content", None)
     return {"ok": True, "latency_ms": latency_ms}
@@ -240,6 +255,7 @@ async def fetch_openai_compatible_models(
     base_url: str | None,
     api_key: str,
     extra_headers: dict[str, str] | None = None,
+    locale: str = "en",
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
@@ -251,7 +267,7 @@ async def fetch_openai_compatible_models(
             response = await client.get(url, headers=headers)
     except Exception as exc:
         logger.info("provider fetch-models failed for %s: %s", url, exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
 
     if response.status_code >= 400:
         detail = response.text.strip()
@@ -260,7 +276,7 @@ async def fetch_openai_compatible_models(
         error = f"HTTP {response.status_code}"
         if detail:
             error = f"{error}: {detail}"
-        return {"ok": False, "error": error}
+        return {"ok": False, "error": _friendly_probe_error(error, locale=locale)}
 
     try:
         payload = response.json()

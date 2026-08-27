@@ -38,6 +38,7 @@ import ToolCatalogDrawer from "./ToolCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
+import { useIsMobile } from "../../../hooks/useIsMobile";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
@@ -82,6 +83,7 @@ export default function AgentExpertsTable({
 }: AgentExpertsTableProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
   const [localStates, setLocalStates] = useState<Record<string, string>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export default function AgentExpertsTable({
   const [scrollY, setScrollY] = useState(360);
 
   useLayoutEffect(() => {
+    if (isMobile) return;
     const el = tableWrapRef.current;
     if (!el) return;
 
@@ -130,7 +133,7 @@ export default function AgentExpertsTable({
       ro.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [agents.length]);
+  }, [agents.length, isMobile]);
 
   const openMbtiCatalog = useCallback((agentId: string) => {
     setMbtiAgentId(agentId);
@@ -267,7 +270,7 @@ export default function AgentExpertsTable({
       title: t("experts.table.name", "名称"),
       dataIndex: "name",
       width: 160,
-      fixed: "left",
+      fixed: isMobile ? undefined : "left",
       render: (name: string, row) => (
         <div className={styles.tableNameCell}>
           <span
@@ -385,7 +388,7 @@ export default function AgentExpertsTable({
       title: t("experts.table.actions", "操作"),
       key: "actions",
       width: 370,
-      fixed: "right",
+      fixed: isMobile ? undefined : "right",
       render: (_v, row) => {
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
@@ -559,7 +562,7 @@ export default function AgentExpertsTable({
           rowKey="agent_id"
           dataSource={agents}
           columns={columns}
-          scroll={{ x: 1370, y: scrollY }}
+          scroll={isMobile ? { x: 1370 } : { x: 1370, y: scrollY }}
           pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,

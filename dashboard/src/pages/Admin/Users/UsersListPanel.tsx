@@ -2,7 +2,7 @@
  * Admin → Users page (plan §14.7).
  *
  * List all users with role/disabled toggles, password reset, delete.
- * Card and table views; default is card on mobile, table on desktop. The view switcher + refresh +
+ * Card and table views (default table). The view switcher + refresh +
  * new-user buttons live in a content-area toolbar (mirrors the Experts
  * page layout). Each row/card shows agent count; click opens a drawer
  * with that user's agents.

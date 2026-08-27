@@ -19,8 +19,17 @@ export interface AutoBackupSettings {
   scheduled?: boolean;
 }
 
+export type BackupOperationKind = "create" | "restore" | "auto" | "export";
+
+export interface BackupStatusResponse {
+  busy: boolean;
+  operation: BackupOperationKind | null;
+}
+
 export const backupApi = {
   listBackups: () => request<BackupListResponse>("/admin/backup/list"),
+
+  getStatus: () => request<BackupStatusResponse>("/admin/backup/status"),
 
   getAutoSettings: () => request<AutoBackupSettings>("/admin/backup/auto"),
 

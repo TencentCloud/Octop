@@ -1,6 +1,6 @@
-import { Popconfirm } from "antd";
+import { Popconfirm, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Trash2 } from "lucide-react";
+import { Eye, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SkillPackageSkill } from "../../api/types/skillPackage";
 import { ResizableTable } from "@/components/ResizableTable";
@@ -43,20 +43,23 @@ export default function PackageSkillsTable({
     {
       title: t("skillPackages.tableActions"),
       key: "actions",
-      width: canMutate ? "14%" : "10%",
+      width: canMutate ? 88 : 56,
       align: "center",
       render: (_v, row) => (
         <div className={skillStyles.tableActions}>
-          <button
-            type="button"
-            className={skillStyles.tableActionBtn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onView(row);
-            }}
-          >
-            {t("common.view")}
-          </button>
+          <Tooltip title={t("common.view")} mouseEnterDelay={0.5}>
+            <button
+              type="button"
+              className={skillStyles.tableActionBtn}
+              aria-label={t("common.view")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onView(row);
+              }}
+            >
+              <Eye size={14} />
+            </button>
+          </Tooltip>
           {canMutate && onDelete ? (
             <Popconfirm
               title={t("skillPackages.deleteSkillConfirm")}
@@ -87,6 +90,7 @@ export default function PackageSkillsTable({
       rowKey="slug"
       size="middle"
       pagination={false}
+      scroll={{ x: 720 }}
       dataSource={skills}
       columns={columns}
       onRow={(row) => ({

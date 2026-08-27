@@ -6,6 +6,7 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.stream_stall",
   "stream_errors.rate_limit",
   "stream_errors.auth",
+  "stream_errors.insufficient_balance",
   "stream_errors.context_length",
   "stream_errors.recursion_limit",
   "stream_errors.timeout_network",
@@ -23,6 +24,10 @@ export type StreamErrorAction = {
 const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
   {
     "stream_errors.auth": {
+      path: "/admin/models",
+      labelKey: "modelConfig.configureButton",
+    },
+    "stream_errors.insufficient_balance": {
       path: "/admin/models",
       labelKey: "modelConfig.configureButton",
     },
@@ -64,6 +69,7 @@ export function classifyChatStreamError(
 
   if (
     lower.includes("error code: 429") ||
+    lower.includes("http 429") ||
     lower.includes("rate_limit") ||
     compact.includes("ratelimiterror") ||
     lower.includes("too many requests")
@@ -72,7 +78,25 @@ export function classifyChatStreamError(
   }
 
   if (
+    lower.includes("error code: 402") ||
+    lower.includes("http 402") ||
+    lower.includes("insufficient balance") ||
+    lower.includes("insufficient_quota") ||
+    lower.includes("insufficient credits") ||
+    lower.includes("exceeded your current quota") ||
+    lower.includes("payment_required") ||
+    lower.includes("billing_not_active") ||
+    lower.includes("arrearage") ||
+    msg.includes("余额不足") ||
+    msg.includes("账户余额") ||
+    msg.includes("欠费")
+  ) {
+    return "stream_errors.insufficient_balance";
+  }
+
+  if (
     lower.includes("error code: 401") ||
+    lower.includes("http 401") ||
     lower.includes("invalid_api_key") ||
     lower.includes("incorrect api key") ||
     compact.includes("authenticationerror") ||
@@ -108,7 +132,10 @@ export function classifyChatStreamError(
     lower.includes("service unavailable") ||
     lower.includes("error code: 500") ||
     lower.includes("error code: 502") ||
-    lower.includes("error code: 503")
+    lower.includes("error code: 503") ||
+    lower.includes("http 500") ||
+    lower.includes("http 502") ||
+    lower.includes("http 503")
   ) {
     return "stream_errors.provider_unavailable";
   }

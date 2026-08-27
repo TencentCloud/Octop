@@ -13,6 +13,7 @@ import {
   FilePen,
   FolderOpen,
   Globe,
+  Puzzle,
   RefreshCw,
   Terminal,
   X,
@@ -29,6 +30,7 @@ import { dockFileBasename } from "../utils/dockFilePath";
 import styles from "../index.module.less";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
+import ChatDockToolUiContent from "./ChatDockToolUiContent";
 
 const TerminalPage = lazy(() => import("../../Control/Terminal"));
 
@@ -45,6 +47,8 @@ interface ChatDockPanelProps {
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string) => void;
   browserEnvironment?: DisplayEnvironment;
+  threadId?: string | null;
+  isStreamingTurn?: boolean;
   /**
    * False while the chat dock shell is closed but keep-alive mounted.
    * Mirrors Workbench ``isVisible`` so terminal does not treat hide as a
@@ -70,6 +74,8 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   onCloseTab,
   onOpenFile,
   browserEnvironment = "desktop",
+  threadId = null,
+  isStreamingTurn = false,
   surfaceVisible = true,
 }) => {
   const { t } = useTranslation();
@@ -81,6 +87,10 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   );
   const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
     openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
+  );
+  const [mountedToolUiCallIds, setMountedToolUiCallIds] = useState<string[]>(
+    () =>
+      openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
   );
   const [fileActionsByPath, setFileActionsByPath] = useState<
     Record<string, ReactNode>
@@ -98,12 +108,26 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     const openFilePaths = new Set(
       openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
     );
+    const openToolUiCallIds = new Set(
+      openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
+    );
     setMountedFilePaths((prev) => {
       const next = prev.filter((path) => openFilePaths.has(path));
       let changed = next.length !== prev.length;
       for (const path of openFilePaths) {
         if (!next.includes(path)) {
           next.push(path);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setMountedToolUiCallIds((prev) => {
+      const next = prev.filter((callId) => openToolUiCallIds.has(callId));
+      let changed = next.length !== prev.length;
+      for (const callId of openToolUiCallIds) {
+        if (!next.includes(callId)) {
+          next.push(callId);
           changed = true;
         }
       }
@@ -171,6 +195,15 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <>
               <Terminal size={16} strokeWidth={2} aria-hidden />
               <span>{t("chat.dockTerminalTitle", "终端")}</span>
+            </>
+          ) : tab.kind === "toolUi" ? (
+            <>
+              <Puzzle size={16} strokeWidth={2} aria-hidden />
+              <span title={tab.title ?? tab.toolName}>
+                {tab.title ??
+                  tab.toolName ??
+                  t("chat.dockToolUiTitle", "Plugin tool")}
+              </span>
             </>
           ) : (
             <>
@@ -312,6 +345,26 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             </Suspense>
           </div>
         )}
+
+        {mountedToolUiCallIds.map((callId) => {
+          const isActive =
+            activeTab?.kind === "toolUi" && activeTab.callId === callId;
+          return (
+            <div
+              key={callId}
+              className={styles.dockTabBody}
+              hidden={!isActive}
+              style={{ display: isActive ? "flex" : "none" }}
+            >
+              <ChatDockToolUiContent
+                threadId={threadId}
+                callId={callId}
+                agentId={agentId}
+                isStreamingTurn={isStreamingTurn}
+              />
+            </div>
+          );
+        })}
       </div>
     </ChatDockPanelShell>
   );

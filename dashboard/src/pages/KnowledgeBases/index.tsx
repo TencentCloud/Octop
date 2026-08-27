@@ -1485,7 +1485,8 @@ export default function KnowledgeBasesPage() {
                       <span className={skillStyles.gridCount}>
                         {t("knowledgeBases.documentLimit", {
                           count: fileCount,
-                          max: selected?.max_documents ?? limits.max_docs_per_kb,
+                          max:
+                            selected?.max_documents ?? limits.max_docs_per_kb,
                         })}
                       </span>
                       <div className={skillStyles.gridToolbarRight}>
@@ -1616,7 +1617,8 @@ export default function KnowledgeBasesPage() {
                         type="info"
                         showIcon
                         message={t("knowledgeBases.documentLimitReached", {
-                          count: selected?.max_documents ?? limits.max_docs_per_kb,
+                          count:
+                            selected?.max_documents ?? limits.max_docs_per_kb,
                         })}
                       />
                     ) : null}
@@ -1733,6 +1735,7 @@ export default function KnowledgeBasesPage() {
                         size="small"
                         rowKey="id"
                         pagination={false}
+                        scroll={{ x: 720 }}
                         dataSource={folderEntries}
                         onRow={(document) => ({
                           onClick: document.is_dir

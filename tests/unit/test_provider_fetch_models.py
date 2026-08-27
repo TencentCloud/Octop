@@ -93,7 +93,28 @@ async def test_fetch_models_auth_error() -> None:
         )
 
     assert result["ok"] is False
-    assert "401" in result["error"] or "invalid" in result["error"].lower()
+    assert "API key" in result["error"]
+    assert "401" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_insufficient_balance_zh() -> None:
+    response = _mock_response(402, {"error": {"message": "Insufficient Balance"}})
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+            locale="zh",
+        )
+
+    assert result["ok"] is False
+    assert "余额" in result["error"] or "额度" in result["error"]
+    assert "402" not in result["error"]
 
 
 @pytest.mark.asyncio
@@ -131,3 +152,25 @@ async def test_fetch_models_connection_error() -> None:
 
     assert result["ok"] is False
     assert result["error"]
+    # ConnectError string often includes "connection" → timeout_network guidance
+    assert "401" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_server_error_friendly() -> None:
+    response = _mock_response(503, {"error": {"message": "overloaded"}})
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+            locale="en",
+        )
+
+    assert result["ok"] is False
+    assert "temporarily unavailable" in result["error"].lower()
+    assert "503" not in result["error"]

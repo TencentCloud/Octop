@@ -390,6 +390,7 @@ async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
 @router.post("/setup/test-provider", summary="Test provider draft connectivity")
 async def test_provider_draft(
     body: ProviderTestBody,
+    request: Request,
     server: Any = Depends(get_server),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
@@ -405,7 +406,7 @@ async def test_provider_draft(
         base_url=body.base_url,
         model_id=body.model_id,
     )
-    return await probe_provider_row(row)
+    return await probe_provider_row(row, locale=resolve_request_locale(request))
 
 
 @router.post("/setup/finish", summary="Finish setup wizard")

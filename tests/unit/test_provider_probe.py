@@ -116,8 +116,37 @@ async def test_embedding_probe_reports_http_error() -> None:
         result = await probe_provider_row(_embedding_row())
 
     assert result["ok"] is False
-    assert "401" in result["error"]
-    assert "POST https://api.example.com/v1/embeddings" in result["error"]
+    assert "API key" in result["error"]
+    assert "401" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_maps_insufficient_balance() -> None:
+    row = SimpleNamespace(
+        name="HAI",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "gpt-4o-mini", "name": "gpt-4o-mini"}],
+    )
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(
+        side_effect=RuntimeError(
+            "Error code: 402 - {'error': {'message': 'Insufficient Balance', "
+            "'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}"
+        )
+    )
+    with patch(
+        "octop.infra.agents.providers.probe.build_probe_chat_model",
+        return_value=fake,
+    ):
+        result = await probe_provider_row(row, model_id="gpt-4o-mini", locale="zh")
+
+    assert result["ok"] is False
+    assert "余额" in result["error"] or "额度" in result["error"]
+    assert "402" not in result["error"]
+    assert "Insufficient Balance" not in result["error"]
 
 
 @pytest.mark.asyncio

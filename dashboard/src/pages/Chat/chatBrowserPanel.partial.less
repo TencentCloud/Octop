@@ -221,6 +221,39 @@
   justify-content: center;
 }
 
+.dockToolUiBody {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  padding: 12px;
+  box-sizing: border-box;
+
+  /* Stretch plugin cards that use chat-column maxWidth (often inline). */
+  .toolUiRendererWrap,
+  [data-octop-tool-renderer],
+  [data-octop-plugin-ui],
+  .octop-builtin-ui-fallback {
+    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+}
+
+.dockToolUiMissing {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  text-align: center;
+}
+
 .dockFileList {
   flex: 1;
   min-height: 0;

@@ -13,6 +13,19 @@ import type {
 } from "./types";
 
 let contextOverride: Partial<ToolRenderContext> = {};
+let dockHandlers: {
+  openSidePanel?: (opts: {
+    callId: string;
+    title?: string;
+    toolName?: string;
+  }) => void;
+  closeSidePanel?: (callId: string) => void;
+} = {};
+
+/** Chat page wires dock open/close for plugin ``host.openSidePanel``. */
+export function setPluginUiDockHandlers(handlers: typeof dockHandlers): void {
+  dockHandlers = handlers;
+}
 
 /** Chat page sets agent/thread so plugin UIs can call scoped APIs. */
 export function setPluginUiToolContext(
@@ -55,6 +68,12 @@ function createHost(defaultPluginId: string): OctopPluginUIHost {
     },
     request<T = unknown>(path: string, init?: RequestInit) {
       return request<T>(path, init);
+    },
+    openSidePanel(opts) {
+      dockHandlers.openSidePanel?.(opts);
+    },
+    closeSidePanel(callId) {
+      dockHandlers.closeSidePanel?.(callId);
     },
   };
 }

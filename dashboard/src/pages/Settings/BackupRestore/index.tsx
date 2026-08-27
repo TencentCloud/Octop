@@ -34,6 +34,7 @@ import {
   type AutoBackupSettings,
   type BackupFileItem,
 } from "../../../api/modules/backup";
+import { useBackupOperation } from "../../../context/BackupOperationContext";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
@@ -75,6 +76,7 @@ function parseIntervalSeconds(spec: string): number | null {
 interface BackupFileCardProps {
   row: BackupFileItem;
   downloading: boolean;
+  restoringThis: boolean;
   busy: boolean;
   timeZone: string;
   onDownload: (row: BackupFileItem) => void;
@@ -85,6 +87,7 @@ interface BackupFileCardProps {
 function BackupFileCard({
   row,
   downloading,
+  restoringThis,
   busy,
   timeZone,
   onDownload,
@@ -122,10 +125,11 @@ function BackupFileCard({
         <Button
           size="small"
           icon={<RotateCcw size={14} />}
+          loading={restoringThis}
           disabled={busy}
           onClick={() => onRestore(row)}
         >
-          {t("backup.restoreAction")}
+          {restoringThis ? t("backup.restoring") : t("backup.restoreAction")}
         </Button>
         <Button
           size="small"
@@ -147,15 +151,27 @@ export default function BackupRestorePanel() {
   const isMobile = useIsMobile();
   const serverTimezone = useServerTimezone();
   const { isRestarting } = useServiceRestartContext();
+  const {
+    kind,
+    restoreTarget,
+    uploadPercent,
+    busy: opBusy,
+    creating,
+    restoring,
+    autoRunning,
+    createBackup,
+    runAutoBackup,
+    restoreBackup,
+    uploadBackup,
+    syncFromServer,
+    setOnSettled,
+  } = useBackupOperation();
+
   const [items, setItems] = useState<BackupFileItem[]>([]);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreConfig, setRestoreConfig] = useState(true);
-  const [restoring, setRestoring] = useState(false);
-  const [restoreProgress, setRestoreProgress] = useState(false);
-  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [pendingRestore, setPendingRestore] = useState<BackupFileItem | null>(
     null,
   );
@@ -168,15 +184,10 @@ export default function BackupRestorePanel() {
   const [autoScheduled, setAutoScheduled] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
-  const [autoRunning, setAutoRunning] = useState(false);
 
-  const busy =
-    creating ||
-    restoring ||
-    uploadPercent !== null ||
-    isRestarting ||
-    autoSaving ||
-    autoRunning;
+  const busy = opBusy || isRestarting || autoSaving;
+  const backingUp = creating || autoRunning || kind === "export";
+  const restoringThisName = restoring ? restoreTarget : null;
 
   const customIntervalSeconds = parseIntervalSeconds(autoSchedule);
 
@@ -202,7 +213,7 @@ export default function BackupRestorePanel() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [message, t]);
 
   const refreshAuto = useCallback(async () => {
     setAutoLoading(true);
@@ -214,24 +225,43 @@ export default function BackupRestorePanel() {
     } finally {
       setAutoLoading(false);
     }
-  }, [applyAutoSettings, t]);
+  }, [applyAutoSettings, message, t]);
 
   useEffect(() => {
     void refresh();
     void refreshAuto();
   }, [refresh, refreshAuto]);
 
-  const onCreate = async () => {
-    setCreating(true);
-    try {
-      await backupApi.createBackup();
-      message.success(t("backup.createSuccess"));
-      await refresh();
-    } catch (err: unknown) {
-      message.error(apiErrorMessage(err, t("backup.createFailed"), t));
-    } finally {
-      setCreating(false);
+  useEffect(() => {
+    setOnSettled(() => {
+      void refresh();
+    });
+    return () => setOnSettled(null);
+  }, [refresh, setOnSettled]);
+
+  // Re-attach to in-flight server ops after remount / hard refresh.
+  useEffect(() => {
+    void syncFromServer();
+    const id = window.setInterval(() => {
+      void syncFromServer();
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [syncFromServer]);
+
+  // Keep modal open while a restore for this selection is running (incl. after remount).
+  useEffect(() => {
+    if (restoring && restoreTarget) {
+      setRestoreOpen(true);
+      setPendingRestore((prev) =>
+        prev?.name === restoreTarget
+          ? prev
+          : ({ name: restoreTarget } as BackupFileItem),
+      );
     }
+  }, [restoring, restoreTarget]);
+
+  const onCreate = async () => {
+    await createBackup();
   };
 
   const onSaveAuto = async () => {
@@ -252,16 +282,7 @@ export default function BackupRestorePanel() {
   };
 
   const onRunAuto = async () => {
-    setAutoRunning(true);
-    try {
-      await backupApi.runAutoBackup();
-      message.success(t("backup.autoRunSuccess"));
-      await refresh();
-    } catch (err: unknown) {
-      message.error(apiErrorMessage(err, t("backup.autoRunFailed"), t));
-    } finally {
-      setAutoRunning(false);
-    }
+    await runAutoBackup();
   };
 
   const onDownload = async (row: BackupFileItem) => {
@@ -279,27 +300,11 @@ export default function BackupRestorePanel() {
 
   const confirmRestore = async () => {
     if (!pendingRestore) return;
-    setRestoring(true);
-    setRestoreProgress(true);
-    try {
-      const result = await backupApi.restoreBackup(
-        pendingRestore.name,
-        restoreConfig,
-      );
-      message.success(
-        t("backup.importSuccess", {
-          agents: result.agents,
-          files: result.workspace_files,
-        }),
-      );
+    const name = pendingRestore.name;
+    const ok = await restoreBackup(name, restoreConfig);
+    if (ok) {
       setRestoreOpen(false);
       setPendingRestore(null);
-      await refresh();
-    } catch (err: unknown) {
-      message.error(apiErrorMessage(err, t("backup.importFailed"), t));
-    } finally {
-      setRestoreProgress(false);
-      setRestoring(false);
     }
   };
 
@@ -367,13 +372,16 @@ export default function BackupRestorePanel() {
             type="link"
             size="small"
             icon={<RotateCcw size={14} />}
+            loading={restoringThisName === row.name}
             disabled={busy}
             onClick={() => {
               setPendingRestore(row);
               setRestoreOpen(true);
             }}
           >
-            {t("backup.restoreAction")}
+            {restoringThisName === row.name
+              ? t("backup.restoring")
+              : t("backup.restoreAction")}
           </Button>
           <Button
             type="link"
@@ -416,32 +424,14 @@ export default function BackupRestorePanel() {
             disabled={busy && !creating}
             onClick={() => void onCreate()}
           >
-            {t("backup.createButton")}
+            {creating ? t("backup.creating") : t("backup.createButton")}
           </Button>
           <Upload
             accept=".tar.gz,.tgz,application/gzip,application/x-gzip"
             showUploadList={false}
             disabled={busy}
             beforeUpload={(file) => {
-              void (async () => {
-                setUploadPercent(0);
-                try {
-                  await backupApi.uploadBackup(file, (p) =>
-                    setUploadPercent(p),
-                  );
-                  setUploadPercent(100);
-                  message.success(
-                    t("backup.uploadSuccess", { name: file.name }),
-                  );
-                  await refresh();
-                } catch (err: unknown) {
-                  const detail =
-                    err instanceof Error ? err.message : String(err);
-                  message.error(detail || t("backup.uploadFailed"));
-                } finally {
-                  setUploadPercent(null);
-                }
-              })();
+              void uploadBackup(file);
               return false;
             }}
           >
@@ -457,7 +447,7 @@ export default function BackupRestorePanel() {
             {t("common.refresh")}
           </Button>
         </div>
-        {(uploadPercent !== null || restoreProgress) && (
+        {(uploadPercent !== null || restoring || backingUp) && (
           <div className={styles.progressBlock}>
             {uploadPercent !== null ? (
               <>
@@ -466,10 +456,17 @@ export default function BackupRestorePanel() {
                 </div>
                 <Progress percent={uploadPercent} status="active" />
               </>
-            ) : (
+            ) : restoring ? (
               <>
                 <div className={styles.progressLabel}>
                   {t("backup.restoring")}
+                </div>
+                <Progress percent={100} status="active" showInfo={false} />
+              </>
+            ) : (
+              <>
+                <div className={styles.progressLabel}>
+                  {t("backup.creating")}
                 </div>
                 <Progress percent={100} status="active" showInfo={false} />
               </>
@@ -494,6 +491,7 @@ export default function BackupRestorePanel() {
                     key={row.name}
                     row={row}
                     downloading={downloading === row.name}
+                    restoringThis={restoringThisName === row.name}
                     busy={busy}
                     timeZone={serverTimezone}
                     onDownload={onDownload}
@@ -635,7 +633,7 @@ export default function BackupRestorePanel() {
                 disabled={busy && !autoRunning}
                 onClick={() => void onRunAuto()}
               >
-                {t("backup.autoRunNow")}
+                {autoRunning ? t("backup.creating") : t("backup.autoRunNow")}
               </Button>
             </div>
           </div>
@@ -652,14 +650,16 @@ export default function BackupRestorePanel() {
           }
         }}
         onOk={() => void confirmRestore()}
-        okText={t("backup.importConfirmOk")}
+        okText={restoring ? t("backup.restoring") : t("backup.importConfirmOk")}
         cancelText={t("common.cancel")}
         confirmLoading={restoring}
         okButtonProps={{ danger: true, disabled: busy && !restoring }}
         cancelButtonProps={{ disabled: restoring }}
       >
         <p>
-          {t("backup.importConfirmBody", { name: pendingRestore?.name ?? "" })}
+          {t("backup.importConfirmBody", {
+            name: pendingRestore?.name ?? restoreTarget ?? "",
+          })}
         </p>
         <div className={styles.checkboxRow}>
           <Checkbox

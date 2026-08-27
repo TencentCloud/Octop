@@ -42,7 +42,7 @@ def test_manifest_roundtrip_includes_driver_fields() -> None:
     assert loaded.db_file == "db/octop.dump"
 
 
-def test_roundtrip_backup(layout: PathLayout) -> None:
+def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
     db_path = layout.db
     pool = SqlitePool(db_path)
     run_migrations(pool)
@@ -63,11 +63,13 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
         agent_id = "agent01"
         name = "Test"
 
-    data, _name = create_system_backup(
+    archive = tmp_path / "roundtrip.tar.gz"
+    create_system_backup(
         paths=layout,
         agent_rows=[Row()],
         pool=pool,
         db_config=DatabaseConfig(),
+        dest=archive,
     )
     pool.close()
 
@@ -78,7 +80,7 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     run_migrations(restore_pool)
 
     result = restore_system_backup(
-        data,
+        archive,
         paths=restore_layout,
         pool=restore_pool,
         db_config=DatabaseConfig(),
@@ -98,7 +100,7 @@ def test_roundtrip_backup(layout: PathLayout) -> None:
     )
     assert json.loads(restore_layout.config.read_text(encoding="utf-8"))["port"] == 8088
 
-    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+    with tarfile.open(archive, mode="r:gz") as tf:
         manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
     assert manifest["manifest_version"] == MANIFEST_VERSION
     assert manifest["database_driver"] == "sqlite"
@@ -117,21 +119,54 @@ def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -
         name = "Test"
         config_json = json.dumps({"workspace_dir": str(custom)})
 
-    data, _name = create_system_backup(
+    archive = tmp_path / "custom-ws-backup.tar.gz"
+    create_system_backup(
         paths=layout,
         agent_rows=[Row()],
         pool=pool,
         db_config=DatabaseConfig(),
+        dest=archive,
     )
     pool.close()
 
-    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+    with tarfile.open(archive, mode="r:gz") as tf:
         names = tf.getnames()
     assert "workspaces/agent01/SOUL.md" in names
     assert not (layout.agent_workspace("agent01") / "SOUL.md").exists()
 
 
-def test_restore_replaces_stale_skill_package_files(layout: PathLayout) -> None:
+def test_backup_skips_junk_directories(layout: PathLayout, tmp_path: Path) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    ws = layout.ensure_agent_workspace("agent01")
+    (ws / "keep.txt").write_text("ok", encoding="utf-8")
+    (ws / "node_modules").mkdir()
+    (ws / "node_modules" / "pkg.js").write_text("skip", encoding="utf-8")
+    (ws / ".git").mkdir()
+    (ws / ".git" / "config").write_text("skip", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+
+    archive = tmp_path / "skip-junk.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+    pool.close()
+
+    with tarfile.open(archive, mode="r:gz") as tf:
+        names = set(tf.getnames())
+    assert "workspaces/agent01/keep.txt" in names
+    assert "workspaces/agent01/node_modules/pkg.js" not in names
+    assert "workspaces/agent01/.git/config" not in names
+
+
+def test_restore_replaces_stale_skill_package_files(layout: PathLayout, tmp_path: Path) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)
     with pool.connect() as conn:
@@ -148,11 +183,13 @@ def test_restore_replaces_stale_skill_package_files(layout: PathLayout) -> None:
         agent_id = "agent01"
         name = "Test"
 
-    data, _ = create_system_backup(
+    archive = tmp_path / "packages.tar.gz"
+    create_system_backup(
         paths=layout,
         agent_rows=[Row()],
         pool=pool,
         db_config=DatabaseConfig(),
+        dest=archive,
     )
     pool.close()
 
@@ -164,7 +201,7 @@ def test_restore_replaces_stale_skill_package_files(layout: PathLayout) -> None:
     stale.write_text("---\nname: old\ndescription: stale\n---\n", encoding="utf-8")
 
     restore_system_backup(
-        data,
+        archive,
         paths=restore_layout,
         pool=restore_pool,
         db_config=DatabaseConfig(),
@@ -178,11 +215,12 @@ def test_restore_replaces_stale_skill_package_files(layout: PathLayout) -> None:
 
 def _make_migration_backup(
     layout: PathLayout,
+    dest: Path,
     *,
     username: str = "lc_user",
     jwt_secret: bytes | None = b"foreign-jwt-from-migration-backup!!!!",
-) -> tuple[bytes, SqlitePool]:
-    """Build a fake LightClaw migration backup and return (data, source_pool)."""
+) -> SqlitePool:
+    """Build a fake LightClaw migration backup at *dest*; return source_pool."""
     pool = SqlitePool(layout.db)
     run_migrations(pool)
     with pool.connect() as conn:
@@ -238,15 +276,16 @@ def _make_migration_backup(
         agent_id = "agent-lc"
         name = "LC Agent"
 
-    data, _ = create_system_backup(
+    create_system_backup(
         paths=layout,
         agent_rows=[Row()],
         pool=pool,
         db_config=DatabaseConfig(),
+        dest=dest,
     )
     # Rewrite octop_version to signal a LightClaw migration backup.
     members: dict[str, bytes] = {}
-    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+    with tarfile.open(dest, mode="r:gz") as tf:
         for m in tf.getmembers():
             if m.isfile():
                 f = tf.extractfile(m)
@@ -255,13 +294,12 @@ def _make_migration_backup(
     manifest_obj = json.loads(members["manifest.json"])
     manifest_obj["octop_version"] = manifest_obj["octop_version"] + "-migrated-from-lightclaw"
     members["manifest.json"] = json.dumps(manifest_obj).encode()
-    buf = BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+    with tarfile.open(dest, mode="w:gz") as tf:
         for name, blob in members.items():
             info = tarfile.TarInfo(name=name)
             info.size = len(blob)
             tf.addfile(info, BytesIO(blob))
-    return buf.getvalue(), pool
+    return pool
 
 
 def test_migration_restore_preserves_current_users_and_imported_agents(
@@ -283,7 +321,8 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
     # --- source: simulate a LightClaw migration export with one agent ---
     src_layout = PathLayout(tmp_path / "src")
     src_layout.root.mkdir()
-    migration_data, src_pool = _make_migration_backup(src_layout, username="lc_user")
+    migration_archive = tmp_path / "migration.tar.gz"
+    src_pool = _make_migration_backup(src_layout, migration_archive, username="lc_user")
     src_pool.close()
 
     # --- target: a fresh Octop instance with its own admin user + JWT ---
@@ -303,7 +342,7 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
         )
 
     result = restore_system_backup(
-        migration_data,
+        migration_archive,
         paths=tgt_layout,
         pool=tgt_pool,
         db_config=DatabaseConfig(),
@@ -350,7 +389,8 @@ def test_migration_restore_remaps_ownership_to_admin_user_id_2(tmp_path: Path) -
     """Migration import assigns agents/channels/cron to the restoring admin (id=2)."""
     src_layout = PathLayout(tmp_path / "src")
     src_layout.root.mkdir()
-    migration_data, src_pool = _make_migration_backup(src_layout, username="lc_user")
+    migration_archive = tmp_path / "migration-remap.tar.gz"
+    src_pool = _make_migration_backup(src_layout, migration_archive, username="lc_user")
     src_pool.close()
 
     tgt_layout = PathLayout(tmp_path / "tgt")
@@ -366,7 +406,7 @@ def test_migration_restore_remaps_ownership_to_admin_user_id_2(tmp_path: Path) -
         )
 
     result = restore_system_backup(
-        migration_data,
+        migration_archive,
         paths=tgt_layout,
         pool=tgt_pool,
         db_config=DatabaseConfig(),
@@ -425,7 +465,8 @@ def test_migration_restore_via_none_autodetect(tmp_path: Path) -> None:
     """preserve_users=None auto-detects the migration flag from octop_version."""
     src_layout = PathLayout(tmp_path / "src")
     src_layout.root.mkdir()
-    migration_data, src_pool = _make_migration_backup(src_layout, username="lc_auto")
+    migration_archive = tmp_path / "migration-auto.tar.gz"
+    src_pool = _make_migration_backup(src_layout, migration_archive, username="lc_auto")
     src_pool.close()
 
     tgt_layout = PathLayout(tmp_path / "tgt")
@@ -440,7 +481,7 @@ def test_migration_restore_via_none_autodetect(tmp_path: Path) -> None:
 
     # preserve_users=None — should auto-detect and preserve
     result = restore_system_backup(
-        migration_data,
+        migration_archive,
         paths=tgt_layout,
         pool=tgt_pool,
         db_config=DatabaseConfig(),
@@ -458,7 +499,7 @@ def test_migration_restore_via_none_autodetect(tmp_path: Path) -> None:
     tgt_pool.close()
 
 
-def test_refuse_cross_engine_restore(layout: PathLayout) -> None:
+def test_refuse_cross_engine_restore(layout: PathLayout, tmp_path: Path) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)
 
@@ -466,15 +507,17 @@ def test_refuse_cross_engine_restore(layout: PathLayout) -> None:
         agent_id = "a1"
         name = "n"
 
-    data, _ = create_system_backup(
+    archive = tmp_path / "cross-engine.tar.gz"
+    create_system_backup(
         paths=layout,
         agent_rows=[Row()],
         pool=pool,
         db_config=DatabaseConfig(),
+        dest=archive,
     )
     # Rewrite manifest to pretend it's a postgres dump.
     members: dict[str, bytes] = {}
-    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tf:
+    with tarfile.open(archive, mode="r:gz") as tf:
         for m in tf.getmembers():
             if m.isfile():
                 f = tf.extractfile(m)
@@ -483,15 +526,14 @@ def test_refuse_cross_engine_restore(layout: PathLayout) -> None:
     manifest = json.loads(members["manifest.json"])
     manifest["database_driver"] = "postgresql"
     members["manifest.json"] = json.dumps(manifest).encode()
-    buf = BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+    with tarfile.open(archive, mode="w:gz") as tf:
         for name, blob in members.items():
             info = tarfile.TarInfo(name=name)
             info.size = len(blob)
             tf.addfile(info, BytesIO(blob))
     with pytest.raises(OctopError) as excinfo:
         restore_system_backup(
-            buf.getvalue(),
+            archive,
             paths=layout,
             pool=pool,
             db_config=DatabaseConfig(),

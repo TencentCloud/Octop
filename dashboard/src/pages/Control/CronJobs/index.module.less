@@ -13,16 +13,28 @@
 /* ── Table (aligned with admin/users .userTable) ─────────────── */
 
 .cronTable {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
+  :global(.octop-table-wrapper),
+  :global(.ant-table-wrapper) {
+    max-width: 100%;
+  }
+
+  :global(.octop-table),
   :global(.ant-table) {
     background: transparent;
   }
 
+  :global(.octop-table-container),
   :global(.ant-table-container) {
     border: 1px solid var(--fn-border-primary);
     border-radius: var(--fn-radius-lg, 12px);
     overflow: hidden;
   }
 
+  :global(.octop-table-thead > tr > th),
   :global(.ant-table-thead > tr > th) {
     background: var(--fn-bg-secondary, var(--fn-bg-elevated));
     color: var(--fn-text-tertiary);
@@ -32,21 +44,28 @@
     white-space: nowrap;
   }
 
+  :global(.octop-table-tbody > tr > td),
   :global(.ant-table-tbody > tr > td) {
     padding: 10px 12px;
     vertical-align: middle;
   }
 
+  :global(.octop-table-cell-fix-left),
+  :global(.octop-table-cell-fix-right),
   :global(.ant-table-cell-fix-left),
   :global(.ant-table-cell-fix-right) {
     background: var(--fn-bg-primary, #fff) !important;
   }
 
+  :global(.octop-table-thead .octop-table-cell-fix-left),
+  :global(.octop-table-thead .octop-table-cell-fix-right),
   :global(.ant-table-thead .ant-table-cell-fix-left),
   :global(.ant-table-thead .ant-table-cell-fix-right) {
     background: var(--fn-bg-secondary, #fafafa) !important;
   }
 
+  :global(.octop-table-row:hover > .octop-table-cell-fix-left),
+  :global(.octop-table-row:hover > .octop-table-cell-fix-right),
   :global(.ant-table-row:hover > .ant-table-cell-fix-left),
   :global(.ant-table-row:hover > .ant-table-cell-fix-right) {
     background: var(--fn-bg-hover, rgba(0, 0, 0, 0.02)) !important;
@@ -98,6 +117,9 @@
 .listShell {
   position: relative;
   transition: opacity 0.15s ease;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .listShellBusy {

@@ -3,6 +3,7 @@ export {
   builtinPluginHost,
   createPluginUiHost,
   setPluginUiToolContext,
+  setPluginUiDockHandlers,
 } from "./host";
 export {
   loadInstalledPluginUis,

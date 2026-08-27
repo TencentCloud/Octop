@@ -1,6 +1,6 @@
-import { Popconfirm, Switch, Table, Tag } from "antd";
+import { Popconfirm, Switch, Table, Tag, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Trash2 } from "lucide-react";
+import { Eye, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
@@ -71,20 +71,23 @@ export default function SkillsTable({
     {
       title: t("skills.table.actions", "操作"),
       key: "actions",
-      width: kind === "custom" ? "12%" : "8%",
+      width: kind === "custom" ? 88 : 56,
       align: "center",
       render: (_v, row) => (
         <div className={styles.tableActions}>
-          <button
-            type="button"
-            className={styles.tableActionBtn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onView(row);
-            }}
-          >
-            {t("common.view")}
-          </button>
+          <Tooltip title={t("common.view")} mouseEnterDelay={0.5}>
+            <button
+              type="button"
+              className={styles.tableActionBtn}
+              aria-label={t("common.view")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onView(row);
+              }}
+            >
+              <Eye size={13} />
+            </button>
+          </Tooltip>
           {kind === "custom" && onDelete ? (
             <Popconfirm
               title={t("skills.deleteConfirmContent", { slug: row.slug })}
@@ -116,6 +119,7 @@ export default function SkillsTable({
       dataSource={skills}
       pagination={false}
       size="middle"
+      scroll={{ x: 720 }}
       onRow={(row) => ({
         onClick: () => onView(row),
         style: { cursor: "pointer" },

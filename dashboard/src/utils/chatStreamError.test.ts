@@ -29,6 +29,30 @@ describe("classifyChatStreamError", () => {
     ).toBe("stream_errors.auth");
   });
 
+  it("classifies insufficient balance / 402", () => {
+    const msg =
+      "Error code: 402 - {'error': {'message': 'Insufficient Balance', " +
+      "'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}";
+    expect(classifyChatStreamError(msg)).toBe(
+      "stream_errors.insufficient_balance",
+    );
+    expect(
+      classifyChatStreamError(
+        "HTTP 402 POST https://api.example.com/v1/chat: Insufficient Balance",
+      ),
+    ).toBe("stream_errors.insufficient_balance");
+    expect(chatStreamErrorAction(msg)).toEqual({
+      path: "/admin/models",
+      labelKey: "modelConfig.configureButton",
+    });
+  });
+
+  it("classifies HTTP 5xx as provider_unavailable", () => {
+    expect(classifyChatStreamError("HTTP 503: service overloaded")).toBe(
+      "stream_errors.provider_unavailable",
+    );
+  });
+
   it("classifies LangGraph recursion limit as recursion_limit", () => {
     const msg =
       "Recursion limit of 2 reached without hitting a stop condition. " +

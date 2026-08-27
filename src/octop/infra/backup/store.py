@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -74,18 +75,24 @@ def list_backup_files(paths: PathLayout) -> list[BackupFileInfo]:
             continue
         if not any(path.name.endswith(suffix) for suffix in _BACKUP_SUFFIXES):
             continue
-        stat = path.stat()
-        modified = _iso_utc_from_timestamp(stat.st_mtime)
-        created = resolve_backup_created_at(path.name, path, mtime=stat.st_mtime)
-        out.append(
-            BackupFileInfo(
-                name=path.name,
-                size=stat.st_size,
-                modified_at=modified,
-                created_at=created,
-            )
-        )
+        out.append(backup_file_info(path))
     return out
+
+
+def backup_file_info(path: Path) -> BackupFileInfo:
+    """Build ``BackupFileInfo`` from an existing archive path."""
+    path = Path(path)
+    if not path.is_file():
+        raise OctopError(ErrorCode.NOT_FOUND, f"backup not found: {path.name}")
+    stat = path.stat()
+    modified = _iso_utc_from_timestamp(stat.st_mtime)
+    created = resolve_backup_created_at(path.name, path, mtime=stat.st_mtime)
+    return BackupFileInfo(
+        name=path.name,
+        size=stat.st_size,
+        modified_at=modified,
+        created_at=created,
+    )
 
 
 def write_backup_file(paths: PathLayout, filename: str, data: bytes) -> BackupFileInfo:
@@ -93,30 +100,41 @@ def write_backup_file(paths: PathLayout, filename: str, data: bytes) -> BackupFi
     safe = normalize_backup_filename(filename)
     dest = paths.backup_file(safe)
     dest.write_bytes(data)
-    stat = dest.stat()
-    modified = _iso_utc_from_timestamp(stat.st_mtime)
-    created = resolve_backup_created_at(safe, dest, mtime=stat.st_mtime)
-    return BackupFileInfo(
-        name=safe,
-        size=stat.st_size,
-        modified_at=modified,
-        created_at=created,
-    )
+    return backup_file_info(dest)
+
+
+def place_backup_file(paths: PathLayout, filename: str, src: Path) -> BackupFileInfo:
+    """Move *src* into ``backups_dir`` under *filename* (atomic replace when possible)."""
+    paths.ensure_backups_dir()
+    safe = normalize_backup_filename(filename)
+    dest = paths.backup_file(safe)
+    src = Path(src)
+    if src.resolve() == dest.resolve():
+        return backup_file_info(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        src.replace(dest)
+    except OSError:
+        shutil.copy2(src, dest)
+        src.unlink(missing_ok=True)
+    return backup_file_info(dest)
+
+
+def resolve_backup_path(paths: PathLayout, filename: str) -> Path:
+    """Return the on-disk path for a stored backup (must exist)."""
+    safe = normalize_backup_filename(filename)
+    path = paths.backup_file(safe)
+    if not path.is_file():
+        raise OctopError(ErrorCode.NOT_FOUND, f"backup not found: {safe}")
+    return path
 
 
 def read_backup_file(paths: PathLayout, filename: str) -> bytes:
-    safe = normalize_backup_filename(filename)
-    path = paths.backup_file(safe)
-    if not path.is_file():
-        raise OctopError(ErrorCode.NOT_FOUND, f"backup not found: {safe}")
-    return path.read_bytes()
+    return resolve_backup_path(paths, filename).read_bytes()
 
 
 def delete_backup_file(paths: PathLayout, filename: str) -> None:
-    safe = normalize_backup_filename(filename)
-    path = paths.backup_file(safe)
-    if not path.is_file():
-        raise OctopError(ErrorCode.NOT_FOUND, f"backup not found: {safe}")
+    path = resolve_backup_path(paths, filename)
     path.unlink()
 
 

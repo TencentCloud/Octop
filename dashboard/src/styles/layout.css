@@ -311,16 +311,13 @@ html[data-theme="dark"] .octop-ant-switch-checked {
     padding: 0;
   }
 
-  /* Force tables to scroll horizontally on mobile */
+  /* Tables scroll inside their own wrapper on mobile — do not set
+     min-width on .octop-table (that expands the page and creates a
+     second, page-level horizontal scrollbar). */
   .ant-table-wrapper,
-  [class*="-table-wrapper"] {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .ant-table,
-  [class*="-table"] {
-    min-width: 600px;
+  .octop-table-wrapper {
+    max-width: 100%;
+    min-width: 0;
   }
 
   /* Modal responsive — max width on mobile */

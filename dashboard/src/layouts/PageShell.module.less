@@ -83,7 +83,8 @@
 
   @media (max-width: 767px) {
     flex: none;
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: visible;
 
     :global(.octop-tabs-content-holder),
     :global(.ant-tabs-content-holder),
@@ -92,7 +93,9 @@
     :global(.octop-tabs-tabpane),
     :global(.ant-tabs-tabpane) {
       height: auto !important;
-      overflow: visible;
+      max-width: 100%;
+      overflow-x: hidden;
+      overflow-y: visible;
     }
   }
 }

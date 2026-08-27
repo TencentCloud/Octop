@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import click
 
 from octop.config import load_config
 from octop.infra.backup.auto import create_and_store_auto_backup
+from octop.infra.backup.store import place_backup_file
 from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
 from octop.infra.db.factory import open_database
 from octop.infra.db.migrate import run_migrations
@@ -39,21 +41,29 @@ def create(output: Path | None, home: Path | None) -> None:
     run_migrations(db)
     services = build_shared_services(db=db, paths=paths, config=config)
     rows = services.agent_repo.list_all()
-    data, suggested = create_system_backup(
-        paths=paths,
-        agent_rows=rows,
-        pool=db,
-        db_config=config.database,
-    )
-    db.close()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "backup.tar.gz"
+            suggested = create_system_backup(
+                paths=paths,
+                agent_rows=rows,
+                pool=db,
+                db_config=config.database,
+                dest=tmp_path,
+            )
+            if output is None:
+                entry = place_backup_file(paths, suggested, tmp_path)
+                dest = paths.backup_file(entry.name)
+                size = entry.size
+            else:
+                dest = output
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path.replace(dest)
+                size = dest.stat().st_size
+    finally:
+        db.close()
 
-    if output is None:
-        paths.ensure_backups_dir()
-        dest = paths.backup_file(suggested)
-    else:
-        dest = output
-    dest.write_bytes(data)
-    click.echo(f"wrote {dest} ({len(data)} bytes)")
+    click.echo(f"wrote {dest} ({size} bytes)")
 
 
 @backup.group("auto")
@@ -133,9 +143,8 @@ def restore(
     paths = _paths(home)
     config = load_config(paths.config)
     db = open_database(config, paths)
-    raw = archive.read_bytes()
     result = restore_system_backup(
-        raw,
+        archive,
         paths=paths,
         pool=db,
         db_config=config.database,

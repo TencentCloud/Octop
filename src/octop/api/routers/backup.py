@@ -2,33 +2,43 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import get_server, require_permission
-from octop.config import load_config
+from octop.config import DatabaseConfig, load_config
 from octop.infra.backup.auto import (
     AUTO_BACKUP_JOB_ID,
-    BACKUP_LOCK,
     backup_config_from_payload,
+    backup_status_payload,
+    hold_backup_lock,
+    raise_if_backup_busy,
     run_auto_backup,
     update_server_backup_config,
 )
 from octop.infra.backup.store import (
+    BackupFileInfo,
     delete_backup_file,
     list_backup_files,
     normalize_backup_filename,
-    read_backup_file,
+    place_backup_file,
+    resolve_backup_path,
     write_backup_file,
 )
 from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.audit import ACTOR_ADMIN
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +71,83 @@ def _auto_settings_payload(server: Any) -> dict[str, Any]:
         "retention_count": backup.retention_count,
         "scheduled": scheduled,
     }
+
+
+def _raise_if_backup_busy() -> None:
+    raise_if_backup_busy()
+
+
+def _create_and_store_manual_backup(
+    *,
+    paths: PathLayout,
+    agent_rows: list[Any],
+    pool: DatabasePool,
+    db_config: DatabaseConfig,
+) -> BackupFileInfo:
+    """Sync create + place for ``asyncio.to_thread`` (keeps the event loop free)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / "backup.tar.gz"
+        filename = create_system_backup(
+            paths=paths,
+            agent_rows=agent_rows,
+            pool=pool,
+            db_config=db_config,
+            dest=tmp_path,
+        )
+        return place_backup_file(paths, filename, tmp_path)
+
+
+def _restore_stored_backup(
+    *,
+    paths: PathLayout,
+    filename: str,
+    pool: DatabasePool,
+    db_config: DatabaseConfig,
+    restore_config: bool,
+    owner_user_id: int,
+) -> dict[str, Any]:
+    """Sync path-based restore for ``asyncio.to_thread``."""
+    archive = resolve_backup_path(paths, filename)
+    return restore_system_backup(
+        archive,
+        paths=paths,
+        pool=pool,
+        db_config=db_config,
+        restore_config=restore_config,
+        owner_user_id=owner_user_id,
+    )
+
+
+def _create_ephemeral_backup(
+    *,
+    paths: PathLayout,
+    agent_rows: list[Any],
+    pool: DatabasePool,
+    db_config: DatabaseConfig,
+) -> tuple[Path, str]:
+    """Write a backup to a temp file; caller must delete after the response is sent."""
+    fd, name = tempfile.mkstemp(prefix="octop-export-", suffix=".tar.gz")
+    os.close(fd)
+    tmp_path = Path(name)
+    try:
+        filename = create_system_backup(
+            paths=paths,
+            agent_rows=agent_rows,
+            pool=pool,
+            db_config=db_config,
+            dest=tmp_path,
+        )
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    return tmp_path, filename
+
+
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("failed to remove ephemeral backup %s", path, exc_info=True)
 
 
 async def _rehydrate_runtime_after_restore(server: Any) -> None:
@@ -101,6 +188,14 @@ async def list_backups(
     }
 
 
+@router.get("/backup/status", summary="Whether a backup or restore is in progress")
+async def get_backup_status(
+    _: Any = Depends(require_permission("backup")),
+) -> dict[str, Any]:
+    """Return lock state for dashboard busy UI across navigation / refresh."""
+    return backup_status_payload()
+
+
 @router.get("/backup/auto", summary="Get automatic backup settings")
 async def get_auto_backup_settings(
     _: Any = Depends(require_permission("backup")),
@@ -128,11 +223,7 @@ async def run_auto_backup_now(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create one automatic backup immediately (same path as the scheduled job)."""
-    if BACKUP_LOCK.locked():
-        raise OctopError(
-            ErrorCode.BACKUP_IN_PROGRESS,
-            "a backup is already in progress",
-        )
+    _raise_if_backup_busy()
     entry = await run_auto_backup(server)
     if entry is None:
         raise OctopError(
@@ -149,38 +240,35 @@ async def create_backup(
 ) -> dict[str, Any]:
     """Create a full backup archive and persist it under ``backups_dir``."""
     assert server.services is not None
-    if BACKUP_LOCK.locked():
-        raise OctopError(
-            ErrorCode.BACKUP_IN_PROGRESS,
-            "a backup is already in progress",
-        )
-    async with BACKUP_LOCK:
-        data, filename = create_system_backup(
+    _raise_if_backup_busy()
+    async with hold_backup_lock("create"):
+        entry = await asyncio.to_thread(
+            _create_and_store_manual_backup,
             paths=server.paths,
             agent_rows=_agent_rows(server),
             pool=server.services.db,
             db_config=server.services.config.database,
         )
-        entry = write_backup_file(server.paths, filename, data)
     return {"ok": True, "item": entry.to_dict()}
 
 
 @router.get(
     "/backup/files/{filename}",
     summary="Download a stored backup archive",
-    response_class=StreamingResponse,
+    response_class=FileResponse,
 )
 async def download_backup_file(
     filename: str,
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
-) -> StreamingResponse:
-    """Stream a backup file from ``backups_dir``."""
+) -> FileResponse:
+    """Stream a backup file from ``backups_dir`` without loading it into memory."""
     safe = normalize_backup_filename(filename)
-    data = read_backup_file(server.paths, safe)
-    return StreamingResponse(
-        iter([data]),
+    path = await asyncio.to_thread(resolve_backup_path, server.paths, safe)
+    return FileResponse(
+        path,
         media_type="application/gzip",
+        filename=safe,
         headers={"Content-Disposition": content_disposition(safe)},
     )
 
@@ -200,19 +288,26 @@ async def restore_backup_file(
     Restored ``config.json`` / ``env`` still require a process restart to take effect.
 
     LightClaw migration archives reassign imported ownership to the restoring admin.
+
+    Heavy disk/DB work runs in a worker thread so the asyncio event loop stays
+    responsive; concurrent create/restore/auto backup is rejected via
+    ``BACKUP_LOCK``. SQLite restore still holds the shared DB lock for the
+    merge window, so DB-backed APIs may briefly queue during that phase.
     """
     assert server.services is not None
+    _raise_if_backup_busy()
     safe = normalize_backup_filename(filename)
-    raw = read_backup_file(server.paths, safe)
-    result = restore_system_backup(
-        raw,
-        paths=server.paths,
-        pool=server.services.db,
-        db_config=server.services.config.database,
-        restore_config=restore_config,
-        owner_user_id=int(user.id),
-    )
-    await _rehydrate_runtime_after_restore(server)
+    async with hold_backup_lock("restore"):
+        result = await asyncio.to_thread(
+            _restore_stored_backup,
+            paths=server.paths,
+            filename=safe,
+            pool=server.services.db,
+            db_config=server.services.config.database,
+            restore_config=restore_config,
+            owner_user_id=int(user.id),
+        )
+        await _rehydrate_runtime_after_restore(server)
     server.services.audit_repo.write(
         actor=getattr(user, "username", None) or ACTOR_ADMIN,
         action="backup.restore",
@@ -230,29 +325,35 @@ async def remove_backup_file(
 ) -> None:
     """Remove a backup archive from ``backups_dir``."""
     safe = normalize_backup_filename(filename)
-    delete_backup_file(server.paths, safe)
+    await asyncio.to_thread(delete_backup_file, server.paths, safe)
 
 
 @router.get(
     "/backup/export",
     summary="Download full system backup (ephemeral)",
-    response_class=StreamingResponse,
+    response_class=FileResponse,
 )
 async def export_backup(
+    background_tasks: BackgroundTasks,
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
-) -> StreamingResponse:
+) -> FileResponse:
     """Create and stream a backup without persisting to ``backups_dir``."""
     assert server.services is not None
-    data, filename = create_system_backup(
-        paths=server.paths,
-        agent_rows=_agent_rows(server),
-        pool=server.services.db,
-        db_config=server.services.config.database,
-    )
-    return StreamingResponse(
-        iter([data]),
+    _raise_if_backup_busy()
+    async with hold_backup_lock("export"):
+        tmp_path, filename = await asyncio.to_thread(
+            _create_ephemeral_backup,
+            paths=server.paths,
+            agent_rows=_agent_rows(server),
+            pool=server.services.db,
+            db_config=server.services.config.database,
+        )
+    background_tasks.add_task(_unlink_quiet, tmp_path)
+    return FileResponse(
+        tmp_path,
         media_type="application/gzip",
+        filename=filename,
         headers={"Content-Disposition": content_disposition(filename)},
     )
 
@@ -272,5 +373,5 @@ async def import_backup(
 
     name = file.filename or "uploaded-backup.tar.gz"
     safe = normalize_backup_filename(name)
-    entry = write_backup_file(server.paths, safe, raw)
+    entry = await asyncio.to_thread(write_backup_file, server.paths, safe, raw)
     return {"ok": True, "item": entry.to_dict()}

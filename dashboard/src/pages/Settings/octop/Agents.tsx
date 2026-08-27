@@ -69,7 +69,7 @@ export default function OctopAgentsPage() {
   const { t } = useTranslation();
   const [agents, setAgents] = useState<OctopAgent[]>([]);
   const [loading, setLoading] = useState(true);
-  const { viewMode, setViewMode, showCardView } = useCardTableView(
+  const { isMobile, viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -144,7 +144,7 @@ export default function OctopAgentsPage() {
         title: t("adminAgents.columns.name"),
         dataIndex: "name",
         width: 140,
-        fixed: "left",
+        fixed: isMobile ? undefined : "left",
         render: (name: string, row: OctopAgent) => (
           <button
             type="button"
@@ -256,7 +256,7 @@ export default function OctopAgentsPage() {
         title: t("adminAgents.columns.actions"),
         key: "actions",
         width: 140,
-        fixed: "right",
+        fixed: isMobile ? undefined : "right",
         render: (_, row) => {
           const busy = actionLoadingId === row.agent_id;
           return (
@@ -314,7 +314,7 @@ export default function OctopAgentsPage() {
         },
       },
     ],
-    [actionLoadingId, t, onAct, onDelete],
+    [actionLoadingId, isMobile, t, onAct, onDelete],
   );
 
   return (

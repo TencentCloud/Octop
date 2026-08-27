@@ -53,6 +53,12 @@ export interface ToolRendererRegistration {
   component: ComponentType<ToolRenderProps>;
 }
 
+export interface OpenSidePanelOptions {
+  callId: string;
+  title?: string;
+  toolName?: string;
+}
+
 export interface OctopPluginUIHost {
   registerRenderer(
     reg: Omit<ToolRendererRegistration, "pluginId"> & { pluginId?: string },
@@ -62,6 +68,10 @@ export interface OctopPluginUIHost {
   patchResult(callId: string, nextData: unknown): void;
   /** Authenticated Octop API request (path starts with ``/`` under ``/api``). */
   request<T = unknown>(path: string, init?: RequestInit): Promise<T>;
+  /** Open this tool call's UI in the chat side dock (one tab per callId). */
+  openSidePanel(opts: OpenSidePanelOptions): void;
+  /** Close the side dock tab for this tool call, if open. */
+  closeSidePanel(callId: string): void;
 }
 
 /** Shape expected from ``ui/dist/index.js``. */

@@ -26,6 +26,8 @@ interface ColumnHandlers {
   onDelete: (jobId: string) => void;
   t: TFunction;
   timeZone: string;
+  /** Pin leading/trailing columns (disable on narrow screens). */
+  stickyColumns?: boolean;
 }
 
 function channelLabel(channel: string, t: TFunction): string {
@@ -36,13 +38,14 @@ function channelLabel(channel: string, t: TFunction): string {
 export const createColumns = (
   handlers: ColumnHandlers,
 ): ColumnsType<CronJob> => {
+  const sticky = handlers.stickyColumns !== false;
   return [
     {
       title: handlers.t("cronJobs.col.id"),
       dataIndex: "id",
       key: "id",
       width: 120,
-      fixed: "left",
+      fixed: sticky ? "left" : undefined,
       ellipsis: true,
       onHeaderCell: () => ({ style: { paddingLeft: 28 } }),
       render: (id: string, record: CronJob) => {
@@ -113,7 +116,7 @@ export const createColumns = (
       dataIndex: "enabled",
       key: "enabled",
       width: 100,
-      fixed: "left",
+      fixed: sticky ? "left" : undefined,
       render: (enabled: boolean) => (
         <span
           style={{
@@ -250,7 +253,7 @@ export const createColumns = (
       title: handlers.t("cronJobs.action"),
       key: "action",
       width: 200,
-      fixed: "right",
+      fixed: sticky ? "right" : undefined,
       render: (_: unknown, record: CronJob) => {
         const menuItems: MenuProps["items"] = [
           {

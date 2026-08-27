@@ -18,6 +18,8 @@ interface ChatDockPanelsProps {
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string) => void;
   browserEnvironment: DisplayEnvironment;
+  threadId?: string | null;
+  isStreamingTurn?: boolean;
   onModeChange: (mode: PanelMode) => void;
   onClose: () => void;
   onResizeStart: (
@@ -50,6 +52,8 @@ export default function ChatDockPanels({
   onCloseTab,
   onOpenFile,
   browserEnvironment,
+  threadId = null,
+  isStreamingTurn = false,
   onModeChange,
   onClose,
   onResizeStart,
@@ -84,6 +88,8 @@ export default function ChatDockPanels({
       onCloseTab={onCloseTab}
       onOpenFile={onOpenFile}
       browserEnvironment={browserEnvironment}
+      threadId={threadId}
+      isStreamingTurn={isStreamingTurn}
       surfaceVisible={visible}
     />
   );

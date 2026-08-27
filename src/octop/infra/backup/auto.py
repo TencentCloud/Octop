@@ -5,16 +5,19 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import tempfile
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from octop.config import BackupConfig, OctopConfig, load_config
 from octop.infra.backup.store import (
     BackupFileInfo,
     is_auto_backup_filename,
+    place_backup_file,
     prune_auto_backups,
-    write_backup_file,
 )
 from octop.infra.backup.system_archive import create_system_backup
 from octop.infra.cron.trigger import build_trigger
@@ -34,10 +37,45 @@ AUTO_BACKUP_JOB_ID = "octop_auto_backup"
 _AUTO_FILENAME_PREFIX = "octop-auto-backup-"
 _MANUAL_FILENAME_PREFIX = "octop-backup-"
 
+BackupOperation = Literal["create", "restore", "auto", "export"]
+
 _lock = asyncio.Lock()
+_active_operation: BackupOperation | None = None
 
 # Shared with manual create so concurrent backups do not overlap.
 BACKUP_LOCK = _lock
+
+
+def get_backup_operation() -> BackupOperation | None:
+    """Return the in-flight backup/restore kind, or ``None`` when idle."""
+    if not _lock.locked():
+        return None
+    return _active_operation
+
+
+def backup_status_payload() -> dict[str, Any]:
+    op = get_backup_operation()
+    return {"busy": op is not None, "operation": op}
+
+
+@asynccontextmanager
+async def hold_backup_lock(operation: BackupOperation) -> AsyncIterator[None]:
+    """Acquire ``BACKUP_LOCK`` and publish *operation* for status polling."""
+    global _active_operation
+    async with _lock:
+        _active_operation = operation
+        try:
+            yield
+        finally:
+            _active_operation = None
+
+
+def raise_if_backup_busy() -> None:
+    if _lock.locked():
+        raise OctopError(
+            ErrorCode.BACKUP_IN_PROGRESS,
+            "a backup or restore is already in progress",
+        )
 
 
 def to_auto_backup_filename(suggested: str) -> str:
@@ -105,14 +143,17 @@ def create_and_store_auto_backup(
     retention_count: int,
 ) -> tuple[BackupFileInfo, list[str]]:
     """Create a full system backup with the auto filename prefix and prune."""
-    data, suggested = create_system_backup(
-        paths=paths,
-        agent_rows=agent_rows,
-        pool=pool,
-        db_config=db_config,
-    )
-    filename = to_auto_backup_filename(suggested)
-    entry = write_backup_file(paths, filename, data)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / "backup.tar.gz"
+        suggested = create_system_backup(
+            paths=paths,
+            agent_rows=agent_rows,
+            pool=pool,
+            db_config=db_config,
+            dest=tmp_path,
+        )
+        filename = to_auto_backup_filename(suggested)
+        entry = place_backup_file(paths, filename, tmp_path)
     deleted = prune_auto_backups(paths, keep=retention_count)
     return entry, deleted
 
@@ -123,7 +164,7 @@ async def run_auto_backup(server: OctopServer) -> BackupFileInfo | None:
         logger.info("auto backup skipped: another backup is already running")
         return None
 
-    async with _lock:
+    async with hold_backup_lock("auto"):
         config = load_config(server.paths.config)
         if server.services is None:
             logger.warning("auto backup skipped: server services not ready")

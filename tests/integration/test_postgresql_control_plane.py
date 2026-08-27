@@ -208,17 +208,19 @@ def test_pg_backup_roundtrip(tmp_path: Path) -> None:
             agent_id = "agent01"
             name = "Test"
 
-        data, _ = create_system_backup(
+        archive = tmp_path / "pg-backup.tar.gz"
+        create_system_backup(
             paths=layout,
             agent_rows=[Row()],
             pool=pool,
             db_config=db_config,
+            dest=archive,
         )
 
         _reset_public_schema(pool)
         run_migrations(pool)
         result = restore_system_backup(
-            data,
+            archive,
             paths=layout,
             pool=pool,
             db_config=db_config,

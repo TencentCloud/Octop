@@ -45,9 +45,37 @@ _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
 _MIGRATION_VERSION_SUFFIX = "-migrated-from-lightclaw"
 
+# Align with workspace zip export; keep backups smaller / faster.
+_SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".next",
+        ".turbo",
+        "dist",
+        "build",
+    }
+)
+
 
 def _timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def suggested_backup_filename() -> str:
+    """Canonical basename for a newly created manual backup archive."""
+    return f"octop-backup-{_timestamp()}.tar.gz"
+
+
+def _should_skip_path(rel: Path) -> bool:
+    return any(part in _SKIP_DIR_NAMES for part in rel.parts)
 
 
 def _add_dir(tf: tarfile.TarFile, src: Path, arc_root: str) -> None:
@@ -56,36 +84,26 @@ def _add_dir(tf: tarfile.TarFile, src: Path, arc_root: str) -> None:
     for path in sorted(src.rglob("*")):
         if not path.is_file():
             continue
-        rel = path.relative_to(src).as_posix()
-        tf.add(path, arcname=f"{arc_root}/{rel}")
+        rel = path.relative_to(src)
+        if _should_skip_path(rel):
+            continue
+        tf.add(path, arcname=f"{arc_root}/{rel.as_posix()}")
 
 
-def create_system_backup(
+def _build_manifest(
     *,
     paths: PathLayout,
     agent_rows: list[Any],
     pool: DatabasePool,
-    db_config: DatabaseConfig,
-) -> tuple[bytes, str]:
-    """Build a ``.tar.gz`` archive and return ``(bytes, suggested_filename)``."""
+    db_arc: str,
+    database_driver: str,
+    database_dump_format: str,
+    env_path: Path,
+) -> BackupManifest:
     try:
         schema_version = _current_version(pool)
     except Exception:
         schema_version = 0
-
-    if pool.dialect == "postgresql":
-        db_arc = _PG_DUMP_ARC
-        database_driver = "postgresql"
-        database_dump_format = "pg_custom"
-    else:
-        db_arc = _SQLITE_DB_ARC
-        database_driver = "sqlite"
-        database_dump_format = "sqlite_file"
-        if not isinstance(pool, SqlitePool):
-            raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite backup requires SqlitePool")
-        if not pool.path.is_file():
-            raise OctopError(ErrorCode.NOT_FOUND, f"database not found: {pool.path}")
-
     agents = [
         AgentBackupEntry(
             agent_id=str(row.agent_id),
@@ -94,8 +112,7 @@ def create_system_backup(
         )
         for row in agent_rows
     ]
-    env_path = env_file_path(paths.root)
-    manifest = BackupManifest(
+    return BackupManifest(
         manifest_version=MANIFEST_VERSION,
         octop_version=__version__,
         schema_version=schema_version,
@@ -109,57 +126,106 @@ def create_system_backup(
         includes_env=env_path.is_file(),
     )
 
-    buf = io.BytesIO()
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        db_dest = root / db_arc
-        if pool.dialect == "postgresql":
-            dump_postgres(db_config.postgresql_conninfo(), db_dest)
-        else:
-            assert isinstance(pool, SqlitePool)
-            snapshot_sqlite_file(pool.path, db_dest)
 
-        manifest_path = root / _MANIFEST_NAME
-        manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+def create_system_backup(
+    *,
+    paths: PathLayout,
+    agent_rows: list[Any],
+    pool: DatabasePool,
+    db_config: DatabaseConfig,
+    dest: Path,
+) -> str:
+    """Write a ``.tar.gz`` archive to *dest* (streamed to disk).
 
-        if paths.config.is_file():
-            cfg_dir = root / _CONFIG_DIR
-            cfg_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(paths.config, cfg_dir / "config.json")
-        if env_path.is_file():
-            cfg_dir = root / _CONFIG_DIR
-            cfg_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(env_path, cfg_dir / "env")
+    Returns the suggested basename (``octop-backup-….tar.gz``). Callers that
+    need a different name should rename/move *dest* afterward.
+    """
+    if pool.dialect == "postgresql":
+        db_arc = _PG_DUMP_ARC
+        database_driver = "postgresql"
+        database_dump_format = "pg_custom"
+    else:
+        db_arc = _SQLITE_DB_ARC
+        database_driver = "sqlite"
+        database_dump_format = "sqlite_file"
+        if not isinstance(pool, SqlitePool):
+            raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite backup requires SqlitePool")
+        if not pool.path.is_file():
+            raise OctopError(ErrorCode.NOT_FOUND, f"database not found: {pool.path}")
 
-        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-            tf.add(manifest_path, arcname=_MANIFEST_NAME)
-            tf.add(db_dest, arcname=db_arc)
+    env_path = env_file_path(paths.root)
+    manifest = _build_manifest(
+        paths=paths,
+        agent_rows=agent_rows,
+        pool=pool,
+        db_arc=db_arc,
+        database_driver=database_driver,
+        database_dump_format=database_dump_format,
+        env_path=env_path,
+    )
+    filename = suggested_backup_filename()
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    partial = dest.with_name(dest.name + ".partial")
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_dest = root / db_arc
+            if pool.dialect == "postgresql":
+                dump_postgres(db_config.postgresql_conninfo(), db_dest)
+            else:
+                assert isinstance(pool, SqlitePool)
+                snapshot_sqlite_file(pool.path, db_dest)
+
+            manifest_path = root / _MANIFEST_NAME
+            manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+
             if paths.config.is_file():
-                tf.add(root / _CONFIG_DIR / "config.json", arcname=f"{_CONFIG_DIR}/config.json")
+                cfg_dir = root / _CONFIG_DIR
+                cfg_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(paths.config, cfg_dir / "config.json")
             if env_path.is_file():
-                tf.add(root / _CONFIG_DIR / "env", arcname=f"{_CONFIG_DIR}/env")
-            for row in agent_rows:
-                ws = workspace_dir_from_config_json(
-                    getattr(row, "config_json", None),
-                    paths=paths,
-                    agent_id=str(row.agent_id),
-                )
-                if ws.is_dir():
-                    _add_dir(tf, ws, f"{_WORKSPACES_DIR}/{row.agent_id}")
-            if paths.skill_packages_dir.is_dir():
-                _add_dir(tf, paths.skill_packages_dir, _SKILL_PACKAGES_DIR)
+                cfg_dir = root / _CONFIG_DIR
+                cfg_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(env_path, cfg_dir / "env")
 
-    filename = f"octop-backup-{_timestamp()}.tar.gz"
-    return buf.getvalue(), filename
+            with tarfile.open(partial, mode="w:gz") as tf:
+                tf.add(manifest_path, arcname=_MANIFEST_NAME)
+                tf.add(db_dest, arcname=db_arc)
+                if paths.config.is_file():
+                    tf.add(
+                        root / _CONFIG_DIR / "config.json",
+                        arcname=f"{_CONFIG_DIR}/config.json",
+                    )
+                if env_path.is_file():
+                    tf.add(root / _CONFIG_DIR / "env", arcname=f"{_CONFIG_DIR}/env")
+                for row in agent_rows:
+                    ws = workspace_dir_from_config_json(
+                        getattr(row, "config_json", None),
+                        paths=paths,
+                        agent_id=str(row.agent_id),
+                    )
+                    if ws.is_dir():
+                        _add_dir(tf, ws, f"{_WORKSPACES_DIR}/{row.agent_id}")
+                if paths.skill_packages_dir.is_dir():
+                    _add_dir(tf, paths.skill_packages_dir, _SKILL_PACKAGES_DIR)
+
+        partial.replace(dest)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+
+    return filename
 
 
-def _extract_manifest(members: dict[str, bytes]) -> BackupManifest:
-    raw = members.get(_MANIFEST_NAME)
-    if raw is None:
+def _extract_manifest_from_dir(extracted: Path) -> BackupManifest:
+    manifest_path = extracted / _MANIFEST_NAME
+    if not manifest_path.is_file():
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing manifest.json")
     try:
-        manifest = BackupManifest.load_text(raw.decode("utf-8"))
-    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        manifest = BackupManifest.load_text(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, TypeError, OSError) as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid manifest: {exc}") from exc
     if manifest.manifest_version != MANIFEST_VERSION:
         raise OctopError(
@@ -169,17 +235,18 @@ def _extract_manifest(members: dict[str, bytes]) -> BackupManifest:
     return manifest
 
 
-def _read_tar_members(data: bytes) -> dict[str, bytes]:
-    out: dict[str, bytes] = {}
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf:
-        for member in tf.getmembers():
-            if not member.isfile():
-                continue
-            extracted = tf.extractfile(member)
-            if extracted is None:
-                continue
-            out[member.name.replace("\\", "/")] = extracted.read()
-    return out
+def _extract_archive(source: Path | bytes, dest_dir: Path) -> None:
+    """Extract *source* into *dest_dir* without holding the whole archive in a dict."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    if isinstance(source, bytes):
+        with tarfile.open(fileobj=io.BytesIO(source), mode="r:*") as tf:
+            # Python 3.12+: refuse path traversal / special files.
+            tf.extractall(dest_dir, filter=tarfile.data_filter)
+        return
+    if not Path(source).is_file():
+        raise OctopError(ErrorCode.NOT_FOUND, f"backup not found: {source}")
+    with tarfile.open(source, mode="r:*") as tf:
+        tf.extractall(dest_dir, filter=tarfile.data_filter)
 
 
 def _is_migration_backup(manifest: BackupManifest) -> bool:
@@ -187,8 +254,22 @@ def _is_migration_backup(manifest: BackupManifest) -> bool:
     return manifest.octop_version.endswith(_MIGRATION_VERSION_SUFFIX)
 
 
+def _iter_extracted_files(root: Path, prefix: str) -> list[tuple[str, Path]]:
+    """Return ``(archive-relative-posix, on-disk path)`` under *prefix*."""
+    base = root / prefix
+    if not base.is_dir():
+        return []
+    out: list[tuple[str, Path]] = []
+    for path in sorted(base.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        out.append((rel, path))
+    return out
+
+
 def restore_system_backup(
-    data: bytes,
+    source: Path | bytes,
     *,
     paths: PathLayout,
     pool: DatabasePool,
@@ -198,6 +279,8 @@ def restore_system_backup(
     owner_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Restore database, workspaces, and optional config from a tar.gz archive.
+
+    *source* may be a filesystem path (preferred) or in-memory bytes (tests / legacy).
 
     ``preserve_users`` controls whether the *current* Octop instance's login
     credentials (``users`` rows + ``secrets.jwt``) are written back after the
@@ -215,72 +298,69 @@ def restore_system_backup(
     performing the restore) receives all imported ``user_id`` ownership. When
     omitted, the first preserved admin (else first preserved user) is used.
     """
-    members = _read_tar_members(data)
-    manifest = _extract_manifest(members)
-    is_migration = _is_migration_backup(manifest)
-
-    # Resolve effective preserve_users flag before touching the DB.
-    effective_preserve_users = is_migration if preserve_users is None else preserve_users
-
-    archive_driver = manifest.database_driver or "sqlite"
-    if archive_driver != pool.dialect:
-        raise OctopError(
-            ErrorCode.BACKUP_DRIVER_MISMATCH,
-            f"backup database_driver={archive_driver!r} does not match "
-            f"runtime dialect={pool.dialect!r}; cross-engine restore is refused",
-            status=400,
-            details={"archive_driver": archive_driver, "runtime_driver": pool.dialect},
-        )
-
-    db_blob = members.get(manifest.db_file)
-    if db_blob is None:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
-
-    # Capture current login credentials before overwriting the DB (only when needed).
-    saved_users: list[tuple[object, ...]] = []
-    saved_jwt: bytes | None = None
-    if effective_preserve_users and pool is not None:
-        saved_users = capture_users_from_pool(pool)
-        saved_jwt = capture_jwt_secret_from_pool(pool)
-
-    effective_owner: int | None = None
-    if is_migration:
-        effective_owner = owner_user_id
-        if effective_owner is None:
-            effective_owner = infer_owner_user_id(saved_users)
-        if effective_owner is not None and saved_users:
-            saved_ids = {int(str(row[0])) for row in saved_users}
-            if int(effective_owner) not in saved_ids:
-                raise OctopError(
-                    ErrorCode.SLASH_BAD_ARGS,
-                    f"owner_user_id={effective_owner} is not among current users",
-                    status=400,
-                )
-
-    ownership_remap: dict[str, int] | None = None
     with tempfile.TemporaryDirectory() as tmp:
+        extracted = Path(tmp) / "extracted"
+        _extract_archive(source, extracted)
+        manifest = _extract_manifest_from_dir(extracted)
+        is_migration = _is_migration_backup(manifest)
+
+        # Resolve effective preserve_users flag before touching the DB.
+        effective_preserve_users = is_migration if preserve_users is None else preserve_users
+
+        archive_driver = manifest.database_driver or "sqlite"
+        if archive_driver != pool.dialect:
+            raise OctopError(
+                ErrorCode.BACKUP_DRIVER_MISMATCH,
+                f"backup database_driver={archive_driver!r} does not match "
+                f"runtime dialect={pool.dialect!r}; cross-engine restore is refused",
+                status=400,
+                details={"archive_driver": archive_driver, "runtime_driver": pool.dialect},
+            )
+
+        db_path = extracted / manifest.db_file
+        if not db_path.is_file():
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
+
+        # Capture current login credentials before overwriting the DB (only when needed).
+        saved_users: list[tuple[object, ...]] = []
+        saved_jwt: bytes | None = None
+        if effective_preserve_users and pool is not None:
+            saved_users = capture_users_from_pool(pool)
+            saved_jwt = capture_jwt_secret_from_pool(pool)
+
+        effective_owner: int | None = None
+        if is_migration:
+            effective_owner = owner_user_id
+            if effective_owner is None:
+                effective_owner = infer_owner_user_id(saved_users)
+            if effective_owner is not None and saved_users:
+                saved_ids = {int(str(row[0])) for row in saved_users}
+                if int(effective_owner) not in saved_ids:
+                    raise OctopError(
+                        ErrorCode.SLASH_BAD_ARGS,
+                        f"owner_user_id={effective_owner} is not among current users",
+                        status=400,
+                    )
+
+        ownership_remap: dict[str, int] | None = None
         if pool.dialect == "postgresql":
-            dump_path = Path(tmp) / "octop.dump"
-            dump_path.write_bytes(db_blob)
-            restore_postgres(db_config.postgresql_conninfo(), dump_path)
+            restore_postgres(db_config.postgresql_conninfo(), db_path)
         else:
-            backup_db = Path(tmp) / "octop.db"
-            backup_db.write_bytes(db_blob)
             if isinstance(pool, SqlitePool):
-                restore_sqlite_into_pool(backup_db, pool)
+                restore_sqlite_into_pool(db_path, pool)
             else:
                 raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite restore requires SqlitePool")
 
         if restore_config:
-            cfg_blob = members.get(f"{_CONFIG_DIR}/config.json")
-            if cfg_blob is not None:
+            cfg_path = extracted / _CONFIG_DIR / "config.json"
+            if cfg_path.is_file():
                 paths.config.parent.mkdir(parents=True, exist_ok=True)
-                paths.config.write_bytes(cfg_blob)
-            env_blob = members.get(f"{_CONFIG_DIR}/env")
-            if env_blob is not None:
+                shutil.copy2(cfg_path, paths.config)
+            env_blob_path = extracted / _CONFIG_DIR / "env"
+            if env_blob_path.is_file():
                 env_path = env_file_path(paths.root)
                 env_path.parent.mkdir(parents=True, exist_ok=True)
-                env_path.write_bytes(env_blob)
+                shutil.copy2(env_blob_path, env_path)
 
         # Migration ownership remap must run after the target owner exists and
         # before pruning backup placeholder users (avoids ON DELETE CASCADE).
@@ -303,14 +383,12 @@ def restore_system_backup(
         prefix = f"{_WORKSPACES_DIR}/"
         agent_repo = AgentRepo(pool)
         workspace_by_agent: dict[str, Path] = {}
-        for name, blob in members.items():
-            if not name.startswith(prefix):
+        for rel, src_file in _iter_extracted_files(extracted, _WORKSPACES_DIR):
+            file_rel = rel[len(prefix) :]
+            if "/" not in file_rel:
                 continue
-            rel = name[len(prefix) :]
-            if "/" not in rel:
-                continue
-            agent_id, _, file_rel = rel.partition("/")
-            if not agent_id or not file_rel:
+            agent_id, _, rest = file_rel.partition("/")
+            if not agent_id or not rest:
                 continue
             dest_root = workspace_by_agent.get(agent_id)
             if dest_root is None:
@@ -321,9 +399,9 @@ def restore_system_backup(
                     agent_id=agent_id,
                 )
                 workspace_by_agent[agent_id] = dest_root
-            dest = dest_root / file_rel
+            dest = dest_root / rest
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(blob)
+            shutil.copy2(src_file, dest)
             restored_workspaces += 1
 
         # Replace skill-package files wholesale so leftover package dirs cannot
@@ -333,15 +411,13 @@ def restore_system_backup(
         paths.skill_packages_dir.mkdir(parents=True, exist_ok=True)
         restored_skill_package_files = 0
         skill_packages_prefix = f"{_SKILL_PACKAGES_DIR}/"
-        for name, blob in members.items():
-            if not name.startswith(skill_packages_prefix):
+        for rel, src_file in _iter_extracted_files(extracted, _SKILL_PACKAGES_DIR):
+            rest = rel[len(skill_packages_prefix) :]
+            if not rest:
                 continue
-            rel = name[len(skill_packages_prefix) :]
-            if not rel:
-                continue
-            dest = paths.skill_packages_dir / rel
+            dest = paths.skill_packages_dir / rest
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(blob)
+            shutil.copy2(src_file, dest)
             restored_skill_package_files += 1
 
         # LightClaw migration exports (and older Octop backups) may ship schema v1

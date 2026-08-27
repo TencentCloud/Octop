@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { I18nextProvider } from "react-i18next";
-import i18n from "../../../i18n";
+import userEvent from "@testing-library/user-event";
 
 const { getOidcConfig, putOidcConfig, testOidcConfig } = vi.hoisted(() => ({
   getOidcConfig: vi.fn(),
@@ -14,12 +13,16 @@ vi.mock("../../../api/modules/sso", () => ({
 }));
 
 vi.mock("@/utils/antdMessage", () => ({
-  message: { error: vi.fn(), success: vi.fn() },
+  message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
 import SsoPanel from "./SsoPanel";
 
 describe("<SsoPanel />", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("loads the provider configuration and displays its callback URL", async () => {
     getOidcConfig.mockResolvedValue({
       enabled: true,
@@ -32,11 +35,7 @@ describe("<SsoPanel />", () => {
       redirect_uri: "https://octop.example.com/api/auth/oidc/callback",
     });
 
-    render(
-      <I18nextProvider i18n={i18n}>
-        <SsoPanel />
-      </I18nextProvider>,
-    );
+    render(<SsoPanel />);
 
     await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
     expect(screen.getByDisplayValue("Acme SSO")).toBeInTheDocument();
@@ -45,5 +44,29 @@ describe("<SsoPanel />", () => {
         "https://octop.example.com/api/auth/oidc/callback",
       ),
     ).toBeInTheDocument();
+    // Mocked t() returns the key; interpolation keeps {{name}} unless options used.
+    expect(screen.getByText("adminSso.statusEnabled")).toBeInTheDocument();
+  });
+
+  it("applies an IdP preset into display name", async () => {
+    const user = userEvent.setup();
+    getOidcConfig.mockResolvedValue({
+      enabled: false,
+      display_name: "",
+      issuer: "",
+      client_id: "",
+      scopes: "openid profile email",
+      dashboard_origin: null,
+      has_client_secret: false,
+      redirect_uri: "",
+    });
+
+    render(<SsoPanel />);
+
+    await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
+    await user.click(
+      screen.getByRole("button", { name: "adminSso.presetGoogle" }),
+    );
+    expect(screen.getByDisplayValue("Google")).toBeInTheDocument();
   });
 });

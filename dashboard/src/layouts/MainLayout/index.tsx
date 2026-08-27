@@ -5,6 +5,7 @@ import Sidebar from "../Sidebar";
 import Header from "../Header";
 import RailEdgeControl from "../../components/RailEdgeControl";
 import { ServiceRestartProvider } from "../../context/ServiceRestartContext";
+import { BackupOperationProvider } from "../../context/BackupOperationContext";
 import PwaUpdatePrompt from "../../components/PwaUpdatePrompt";
 import { PwaAutoPrompt } from "../../components/PwaInstallPrompt";
 import {
@@ -187,181 +188,183 @@ export default function MainLayout() {
 
   return (
     <ServiceRestartProvider>
-      <div
-        style={{
-          height: "100dvh",
-          display: "flex",
-          flexDirection: "row",
-          background: "var(--fn-bg-layout)",
-          transition: "background var(--fn-transition)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Mobile overlay backdrop */}
-        {isMobile && !collapsed && (
-          <div
-            onClick={toggleCollapsed}
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0, 0, 0, 0.40)",
-              zIndex: 99,
-            }}
-          />
-        )}
-
+      <BackupOperationProvider>
         <div
           style={{
-            position: "relative",
-            flexShrink: 0,
-            alignSelf: "stretch",
+            height: "100dvh",
             display: "flex",
-            minHeight: 0,
-          }}
-        >
-          <Sidebar
-            selectedKey={selectedKey}
-            collapsed={collapsed}
-            onToggle={toggleCollapsed}
-            isMobile={isMobile}
-          />
-          {!isMobile && (
-            <RailEdgeControl
-              expanded={!collapsed}
-              onToggle={handleNavRailToggle}
-              side="end"
-            />
-          )}
-        </div>
-
-        {isChatRoute && !isMinimalLayout && (
-          <div
-            id={CHAT_HISTORY_RAIL_ID}
-            style={{
-              flexShrink: 0,
-              display: "flex",
-              alignSelf: "stretch",
-              minHeight: 0,
-              height: "100%",
-              position: "relative",
-            }}
-          />
-        )}
-
-        {/* Right column: mobile header (if any) + page content */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
+            flexDirection: "row",
+            background: "var(--fn-bg-layout)",
+            transition: "background var(--fn-transition)",
             overflow: "hidden",
           }}
         >
-          {isMobile &&
-            !(
-              SELF_HEADER_PATHS.has(currentPath) ||
-              [...SELF_HEADER_PATHS].some((p) =>
-                currentPath.startsWith(p + "/"),
-              )
-            ) && (
-              <Header
-                selectedKey={selectedKey}
-                collapsed={collapsed}
-                onToggle={toggleCollapsed}
-                isMobile={isMobile}
-              />
-            )}
+          {/* Mobile overlay backdrop */}
+          {isMobile && !collapsed && (
+            <div
+              onClick={toggleCollapsed}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0, 0, 0, 0.40)",
+                zIndex: 99,
+              }}
+            />
+          )}
 
-          <Layout
+          <div
             style={{
-              background: "transparent",
-              flex: 1,
+              position: "relative",
+              flexShrink: 0,
+              alignSelf: "stretch",
               display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              minWidth: 0,
               minHeight: 0,
             }}
           >
-            <Content
-              className="page-container"
+            <Sidebar
+              selectedKey={selectedKey}
+              collapsed={collapsed}
+              onToggle={toggleCollapsed}
+              isMobile={isMobile}
+            />
+            {!isMobile && (
+              <RailEdgeControl
+                expanded={!collapsed}
+                onToggle={handleNavRailToggle}
+                side="end"
+              />
+            )}
+          </div>
+
+          {isChatRoute && !isMinimalLayout && (
+            <div
+              id={CHAT_HISTORY_RAIL_ID}
               style={{
-                background: "var(--fn-bg-layout)",
-                transition: "background var(--fn-transition)",
+                flexShrink: 0,
+                display: "flex",
+                alignSelf: "stretch",
+                minHeight: 0,
+                height: "100%",
+                position: "relative",
+              }}
+            />
+          )}
+
+          {/* Right column: mobile header (if any) + page content */}
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            {isMobile &&
+              !(
+                SELF_HEADER_PATHS.has(currentPath) ||
+                [...SELF_HEADER_PATHS].some((p) =>
+                  currentPath.startsWith(p + "/"),
+                )
+              ) && (
+                <Header
+                  selectedKey={selectedKey}
+                  collapsed={collapsed}
+                  onToggle={toggleCollapsed}
+                  isMobile={isMobile}
+                />
+              )}
+
+            <Layout
+              style={{
+                background: "transparent",
                 flex: 1,
-                overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
+                overflow: "hidden",
+                minWidth: 0,
                 minHeight: 0,
               }}
             >
-              <PwaUpdatePrompt />
-              <PwaAutoPrompt />
-
-              {workbenchMounted && (
-                <div
-                  style={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: "hidden",
-                    display: onWorkbench ? "flex" : "none",
-                    flexDirection: "column",
-                  }}
-                >
-                  <RequirePermission>
-                    <Suspense
-                      fallback={
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "center",
-                            alignItems: "center",
-                            flex: 1,
-                          }}
-                        >
-                          <Spin size="large" />
-                        </div>
-                      }
-                    >
-                      <WorkbenchPage isVisible={onWorkbench} />
-                    </Suspense>
-                  </RequirePermission>
-                </div>
-              )}
-
-              {/* Keep Routes mounted when visiting Workbench so leaving/re-entering
-                  does not remount every lazy page (lag + lost UI state). */}
-              <div
+              <Content
+                className="page-container"
                 style={{
+                  background: "var(--fn-bg-layout)",
+                  transition: "background var(--fn-transition)",
                   flex: 1,
-                  minHeight: 0,
                   overflow: "hidden",
-                  display: onWorkbench ? "none" : "flex",
+                  display: "flex",
                   flexDirection: "column",
+                  minHeight: 0,
                 }}
               >
-                {isFullscreen ? (
+                <PwaUpdatePrompt />
+                <PwaAutoPrompt />
+
+                {workbenchMounted && (
                   <div
                     style={{
                       flex: 1,
                       minHeight: 0,
                       overflow: "hidden",
-                      display: "flex",
+                      display: onWorkbench ? "flex" : "none",
                       flexDirection: "column",
                     }}
                   >
-                    {routes}
+                    <RequirePermission>
+                      <Suspense
+                        fallback={
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "center",
+                              alignItems: "center",
+                              flex: 1,
+                            }}
+                          >
+                            <Spin size="large" />
+                          </div>
+                        }
+                      >
+                        <WorkbenchPage isVisible={onWorkbench} />
+                      </Suspense>
+                    </RequirePermission>
                   </div>
-                ) : (
-                  <div className="page-content">{routes}</div>
                 )}
-              </div>
-            </Content>
-          </Layout>
+
+                {/* Keep Routes mounted when visiting Workbench so leaving/re-entering
+                  does not remount every lazy page (lag + lost UI state). */}
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: "hidden",
+                    display: onWorkbench ? "none" : "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {isFullscreen ? (
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      {routes}
+                    </div>
+                  ) : (
+                    <div className="page-content">{routes}</div>
+                  )}
+                </div>
+              </Content>
+            </Layout>
+          </div>
         </div>
-      </div>
+      </BackupOperationProvider>
     </ServiceRestartProvider>
   );
 }

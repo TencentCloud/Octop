@@ -170,8 +170,12 @@ function PageShell({
           background: "var(--fn-bg-container, var(--fn-bg-elevated))",
           borderRadius: 8,
           padding: contentPad,
-          overflow: pinBody ? "hidden" : "auto",
+          // Mobile: never create a page-level horizontal scrollbar; wide
+          // tables scroll via antd scroll.x inside their own wrapper.
+          overflowX: pinBody || isMobile ? "hidden" : "auto",
+          overflowY: pinBody ? "hidden" : "auto",
           minHeight: 0,
+          minWidth: 0,
           display: pinBody ? "flex" : undefined,
           flexDirection: pinBody ? "column" : undefined,
         }}

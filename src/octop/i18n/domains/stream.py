@@ -10,6 +10,7 @@ _PREFIX = "octop:"
 STREAM_STALL = f"{_PREFIX}stream_errors.stream_stall"
 RATE_LIMIT = f"{_PREFIX}stream_errors.rate_limit"
 AUTH = f"{_PREFIX}stream_errors.auth"
+INSUFFICIENT_BALANCE = f"{_PREFIX}stream_errors.insufficient_balance"
 CONTEXT_LENGTH = f"{_PREFIX}stream_errors.context_length"
 RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
@@ -19,6 +20,7 @@ MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
+    "INSUFFICIENT_BALANCE",
     "MODEL_CALL_FAILED",
     "PROVIDER_UNAVAILABLE",
     "RATE_LIMIT",
@@ -64,6 +66,7 @@ def classify_stream_error_message(message: str) -> str | None:
 
     if (
         "error code: 429" in lower
+        or "http 429" in lower
         or "rate_limit" in lower
         or "ratelimiterror" in compact
         or "too many requests" in lower
@@ -71,7 +74,24 @@ def classify_stream_error_message(message: str) -> str | None:
         return RATE_LIMIT
 
     if (
+        "error code: 402" in lower
+        or "http 402" in lower
+        or "insufficient balance" in lower
+        or "insufficient_quota" in lower
+        or "insufficient credits" in lower
+        or "exceeded your current quota" in lower
+        or "payment_required" in lower
+        or "billing_not_active" in lower
+        or "arrearage" in lower
+        or "余额不足" in msg
+        or "账户余额" in msg
+        or "欠费" in msg
+    ):
+        return INSUFFICIENT_BALANCE
+
+    if (
         "error code: 401" in lower
+        or "http 401" in lower
         or "invalid_api_key" in lower
         or "incorrect api key" in lower
         or "authenticationerror" in compact
@@ -105,6 +125,9 @@ def classify_stream_error_message(message: str) -> str | None:
         or "error code: 500" in lower
         or "error code: 502" in lower
         or "error code: 503" in lower
+        or "http 500" in lower
+        or "http 502" in lower
+        or "http 503" in lower
     ):
         return PROVIDER_UNAVAILABLE
 

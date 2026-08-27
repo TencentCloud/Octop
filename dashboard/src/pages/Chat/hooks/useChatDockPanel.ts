@@ -6,6 +6,7 @@ import {
   isHostAbsolutePath,
   normalizeDockFilePath,
 } from "../utils/dockFilePath";
+import { dockToolUiTabId } from "../utils/dockToolUiTabId";
 import { usePanelResize, type PanelSizes } from "./usePanelResize";
 
 const PANEL_MODE_KEY = "octop:chat-dock:mode";
@@ -20,7 +21,14 @@ export type DockTab =
   | { id: "files"; kind: "files" }
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
-  | { id: string; kind: "file"; path: string };
+  | { id: string; kind: "file"; path: string }
+  | {
+      id: string;
+      kind: "toolUi";
+      callId: string;
+      title?: string;
+      toolName?: string;
+    };
 
 export type DockTabId = DockTab["id"];
 
@@ -120,6 +128,16 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
 
   const handleClose = useCallback(() => {
     setDockOpen(false);
+    // Closing the dock restores tool UIs to the message stream.
+    setOpenTabs((prev) => {
+      const next = prev.filter((t) => t.kind !== "toolUi");
+      setActiveTabId((current) => {
+        if (current == null) return null;
+        if (next.some((t) => t.id === current)) return current;
+        return next[0]?.id ?? null;
+      });
+      return next;
+    });
   }, []);
 
   const openFileList = useCallback(() => {
@@ -173,6 +191,39 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     setActiveTabId("terminal");
     openDock();
   }, [openDock]);
+
+  const openToolUiTab = useCallback(
+    (opts: { callId: string; title?: string; toolName?: string }) => {
+      const callId = opts.callId?.trim();
+      if (!callId) return;
+      const id = dockToolUiTabId(callId);
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.id === id)) return prev;
+        return [
+          ...prev,
+          {
+            id,
+            kind: "toolUi" as const,
+            callId,
+            title: opts.title,
+            toolName: opts.toolName,
+          },
+        ];
+      });
+      setActiveTabId(id);
+      openDock();
+    },
+    [openDock],
+  );
+
+  const focusToolUiTab = useCallback(
+    (callId: string) => {
+      const id = dockToolUiTabId(callId);
+      setActiveTabId(id);
+      openDock();
+    },
+    [openDock],
+  );
 
   /** Toggle dock open/closed around a dedicated tab (browser / terminal). */
   const toggleDockTab = useCallback(
@@ -263,6 +314,8 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleBrowserPanel,
     openTerminalTab,
     toggleTerminalPanel,
+    openToolUiTab,
+    focusToolUiTab,
     closeTab,
     setActiveTab,
   };
