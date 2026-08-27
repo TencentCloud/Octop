@@ -28,18 +28,22 @@ def test_minimax_token_plan_reasoning_is_always_on() -> None:
 
 
 def test_deepseek_v4_uses_nested_effort_parameter() -> None:
-    capability = reasoning_capability(
-        {
-            "id": "deepseek-v4-pro-202606",
-            "options": {"thinking": {"type": "enabled"}},
-        },
-        base_url="https://api.lkeap.cloud.tencent.com/plan/v3",
-    )
-    assert capability is not None
-    assert capability["efforts"] == ["high", "max"]
-    assert reasoning_request_parameters(capability, mode="enabled", effort="max") == {
-        "extra_body": {"thinking": {"type": "enabled", "reasoning_effort": "max"}}
-    }
+    for base_url in (
+        "https://api.lkeap.cloud.tencent.com/plan/v3",
+        "https://tokenhub.tencentmaas.com/plan/v3",
+    ):
+        capability = reasoning_capability(
+            {
+                "id": "deepseek-v4-pro-202606",
+                "options": {"thinking": {"type": "enabled"}},
+            },
+            base_url=base_url,
+        )
+        assert capability is not None
+        assert capability["efforts"] == ["high", "max"]
+        assert reasoning_request_parameters(capability, mode="enabled", effort="max") == {
+            "extra_body": {"thinking": {"type": "enabled", "reasoning_effort": "max"}}
+        }
 
 
 def test_explicit_capability_filters_unsupported_effort() -> None:

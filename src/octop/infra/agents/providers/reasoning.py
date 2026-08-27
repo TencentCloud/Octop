@@ -45,7 +45,9 @@ def _legacy_adapter(model_id: str, *, base_url: str | None) -> str:
         return "openrouter"
     if "dashscope" in url or "maas.aliyuncs.com" in url:
         return "dashscope"
-    if model_id.startswith("deepseek-v4-") and "lkeap.cloud.tencent.com" in url:
+    if model_id.startswith("deepseek-v4-") and any(
+        host in url for host in ("lkeap.cloud.tencent.com", "tencentmaas.com")
+    ):
         return "thinking_nested_effort"
     if any(host in url for host in ("deepseek.com", "bigmodel.cn", "z.ai", "moonshot")):
         return "thinking"
@@ -92,7 +94,10 @@ def reasoning_capability(
                 {
                     "efforts": ["high", "max"],
                     "adapter": "thinking_nested_effort"
-                    if "lkeap.cloud.tencent.com" in (base_url or "").lower()
+                    if any(
+                        host in (base_url or "").lower()
+                        for host in ("lkeap.cloud.tencent.com", "tencentmaas.com")
+                    )
                     else "thinking",
                 }
             )

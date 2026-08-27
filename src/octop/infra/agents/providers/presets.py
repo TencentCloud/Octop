@@ -71,7 +71,12 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
             return {
                 "supported": True,
                 "adapter": "thinking_nested_effort"
-                if provider in {"tencent-token-plan", "tencent-coding-plan"}
+                if provider
+                in {
+                    "tencent-token-plan",
+                    "tencent-token-plan-enterprise-cn",
+                    "tencent-coding-plan",
+                }
                 else "thinking",
                 "toggle": True,
                 "default_mode": "enabled",
@@ -83,6 +88,13 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
                 "supported": True,
                 "adapter": "thinking",
                 "toggle": True,
+                "default_mode": "enabled",
+            }
+        if provider == "tencent-hy-token-plan" and model.startswith("hy3"):
+            return {
+                "supported": True,
+                "adapter": "status_only",
+                "toggle": False,
                 "default_mode": "enabled",
             }
 
