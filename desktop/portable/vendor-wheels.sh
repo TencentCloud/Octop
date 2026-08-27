@@ -32,9 +32,13 @@ vendor_one() {
     extra+=( --overrides "$override_file" )
   fi
 
+  # Host python3 may be <3.12 (e.g. Xcode 3.9). Download still needs a 3.12
+  # interpreter so requires-python on octop/deps can resolve.
+  uv python install 3.12 >/dev/null
   echo "[wheels] ${plat}: downloading → ${wheel_dir}" >&2
   uv pip download \
     --dest "$wheel_dir" \
+    --python 3.12 \
     --python-platform "$pyplat" \
     --python-version 3.12 \
     --only-binary cryptography \
