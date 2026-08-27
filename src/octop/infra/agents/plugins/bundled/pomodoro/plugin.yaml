@@ -1,0 +1,10 @@
+id: pomodoro
+version: 0.2.0
+name: 番茄钟
+description: 在聊天中启动番茄钟或倒数日卡片
+icon: "🍅"
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

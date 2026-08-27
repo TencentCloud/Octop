@@ -39,3 +39,8 @@
   line-height: 1.55;
   color: var(--fn-text-tertiary);
 }
+
+/* Pi mark is near-black on transparent; invert so it stays visible on dark cards. */
+:global(html[data-theme="dark"]) .invertOnDark {
+  filter: invert(1);
+}

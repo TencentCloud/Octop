@@ -895,14 +895,15 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
         output = _message_content(msg) if isinstance(content, list) else str(content or "")
         if not output.strip():
             return None
-        blocks = [
-            {
-                "type": "tool_result",
-                "id": str(_msg_attr(msg, "tool_call_id") or ""),
-                "name": str(_msg_attr(msg, "name") or ""),
-                "output": output,
-            }
-        ]
+        result_block = {
+            "type": "tool_result",
+            "id": str(_msg_attr(msg, "tool_call_id") or ""),
+            "name": str(_msg_attr(msg, "name") or ""),
+            "output": output,
+        }
+        if _msg_attr(msg, "status") == "error":
+            result_block["error_code"] = "tool_error"
+        blocks = [result_block]
         entry: dict[str, Any] = {"role": "tool", "content": blocks}
         if mid:
             entry["id"] = mid

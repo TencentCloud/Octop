@@ -2,7 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Tooltip } from "antd";
 import { useUpdateStatus } from "../../hooks/useUpdateStatus";
-import { useUserRole } from "../../hooks/useUserRole";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import styles from "./index.module.less";
 
 interface CurrentVersionBadgeProps {
@@ -14,19 +15,19 @@ export default function CurrentVersionBadge({
 }: CurrentVersionBadgeProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const role = useUserRole();
+  const user = useCurrentUser();
   const { status } = useUpdateStatus();
 
   const version = status?.current_version;
   if (!version) return null;
 
-  const isAdmin = role === "admin";
-  const tooltip = isAdmin
+  const canUpdate = userCan(user, "update");
+  const tooltip = canUpdate
     ? t("header.currentVersionAdmin", { version })
     : t("header.currentVersion", { version });
   const label = `v${version}`;
 
-  if (isAdmin) {
+  if (canUpdate) {
     return (
       <Tooltip title={tooltip} mouseEnterDelay={0.35}>
         <button

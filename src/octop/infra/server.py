@@ -169,6 +169,7 @@ class OctopServer:
             plugins_dir=self.paths.plugins_dir,
             config_path=self.paths.config,
         )
+        self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
 
         import time  # noqa: PLC0415

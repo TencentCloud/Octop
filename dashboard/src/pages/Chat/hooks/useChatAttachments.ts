@@ -7,13 +7,12 @@ import type { ChatAttachment } from "./useChat";
 import { message as antMessage } from "@/utils/antdMessage";
 import { apiErrorMessage } from "../../../utils/apiError";
 
-import {
-  CHAT_MAX_ATTACHMENT_BYTES,
-  inferAttachmentKind,
-} from "../utils/chatAttachments";
+import { inferAttachmentKind } from "../utils/chatAttachments";
+import { useServerUploadLimit } from "../../../hooks/useServerUploadLimit";
 
 export function useChatAttachments(agentId: string | null | undefined) {
   const { t } = useTranslation();
+  const { maxUploadBytes, maxUploadMb } = useServerUploadLimit();
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -22,10 +21,11 @@ export function useChatAttachments(agentId: string | null | undefined) {
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
       const fileArr = Array.from(files).filter((f) => {
-        if (f.size > CHAT_MAX_ATTACHMENT_BYTES) {
+        if (f.size > maxUploadBytes) {
           antMessage.error(
-            t("upload.tooLarge", "File too large (max 20MB): {{name}}", {
+            t("upload.tooLarge", "File too large (max {{maxMb}}MB): {{name}}", {
               name: f.name,
+              maxMb: maxUploadMb,
             }),
           );
           return false;
@@ -74,7 +74,7 @@ export function useChatAttachments(agentId: string | null | undefined) {
         setUploading(false);
       }
     },
-    [agentId, t],
+    [agentId, maxUploadBytes, maxUploadMb, t],
   );
 
   const handleFileSelect = useCallback(() => {

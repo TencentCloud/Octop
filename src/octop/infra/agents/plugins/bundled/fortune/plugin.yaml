@@ -1,0 +1,10 @@
+id: fortune
+version: 0.2.0
+name: 抽签运势
+description: 掷骰子、今日运势与抽签，在聊天中展示结果卡片
+icon: "🔮"
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

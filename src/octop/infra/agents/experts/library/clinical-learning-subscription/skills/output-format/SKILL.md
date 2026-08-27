@@ -1,6 +1,6 @@
 ---
 name: output-format
-description: 医学安全域输出的统一格式校验。四条硬格式（模板头/来源行/边界声明/禁编造）与 validate_output.py 调用流程。指南学习、章节展开、学习路径图、学习诊断、备考推荐、医保内容、指南更新提醒、每日单元等医学安全域输出（含定时推送与对话内即时回答）发出前必走此技能校验；通用任务不套用。
+description: 结构化医学学习产物的统一格式校验。四条硬格式与 validate_output.py 单次标准输入流程。指南章节、路径图、诊断、备考、医保、更新和每日单元使用；普通医学问答走 clinical-q-and-a 的轻量自检，通用任务不套用。
 ---
 
 # 医学安全域输出格式校验
@@ -10,6 +10,8 @@ description: 医学安全域输出的统一格式校验。四条硬格式（模�
 以下模块的输出（无论对话内即时回答还是定时推送）必须经本技能校验：
 
 `guideline_learning`、`daily_guideline_learning`、`guideline_section_expansion`、`guideline_learning_pathway`、`guideline_learning_diagnosis`、`guideline_update_reminder`、`professional_update_summary`、`insurance_policy_summary`、`insurance_policy_learning`、`insurance_policy_retrospective`、`exam_material_recommendation`。
+
+**普通教育性医学问答不加载本技能**：由 `clinical-q-and-a` 使用内嵌的短模板和四项自检，避免为一段简短解释加载完整模板、写草稿文件和启动校验脚本。问题一旦涉及精确推荐/定位、药品高风险事实、版本比较、医保监管，立即退出快路径，转入对应专业 skill 与本技能。
 
 **通用任务（写作/翻译/编程/计划/数据整理等）不套用本技能**：不要求模板头、不要求权威来源行、不加医学免责声明。校验时对通用输出使用 `--module general_task`，不要误用医学模块名。
 
@@ -29,6 +31,7 @@ description: 医学安全域输出的统一格式校验。四条硬格式（模�
 
 | 用户请求实质 | module | 模板要求 |
 | --- | --- | --- |
+| 普通概念解释、常见医学误区澄清 | `clinical_q_and_a` | 由 `clinical-q-and-a` 轻量自检，不执行本技能脚本流程 |
 | 总结、展开或讲解指南中的某章、某节、筛查/随访等专题 | `guideline_section_expansion` | 【指南章节展开】；含依据、章节、原文定位、原文要点、学习提示、边界及“不替代原文” |
 | 把整份指南整理为学习顺序或学习路径 | `guideline_learning_pathway` | 【指南学习路径图】；含依据、前置知识、编号学习顺序、边界 |
 | 每日固定学习单元 | `daily_guideline_learning` | 【指南学习单元】；恰好 3 个编号要点及单元进度 |
@@ -49,11 +52,12 @@ description: 医学安全域输出的统一格式校验。四条硬格式（模�
 
 每次医学安全域输出前，严格按顺序：
 
-1. 按对应模板一次生成完整草稿，写入 `../../outbound/.clinical-output-draft.md`。
-2. 直接运行：
+1. 按对应模板一次生成完整草稿，不先写半成品。
+2. 优先把完整草稿通过标准输入交给校验器，在一次工具调用内直接运行：
    ```bash
-   python3 ../../scripts/validate_output.py --module <模块名> --text-file ../../outbound/.clinical-output-draft.md
+   python3 ../../scripts/validate_output.py --module <模块名>
    ```
+   只有当前执行工具无法传标准输入时，才写入 `../../outbound/.clinical-output-draft.md` 并使用 `--text-file`；不得为了同步同一草稿反复读写或复制文件。
    模块名必须与内容实质一致（医学学习内容用医学模块名，普通任务用 `general_task`）。
 3. 校验通过 → 直接输出草稿正文。校验状态仅供内部控制，不得向用户输出“校验通过”“校验完成”“为您推送预览内容”等过程性前缀。
 4. 校验失败 → 只根据校验器返回的 `errors` 修正草稿并再校验一次；不得读取或搜索校验器源码，仍不通过则停止并说明原因，**不得绕过校验直接输出**，也不得省略【】模板头和来源行。
@@ -70,7 +74,6 @@ description: 医学安全域输出的统一格式校验。四条硬格式（模�
 - 不得把链接文字写成"查看原文""官网""点击这里"等其他词；
 - 多个来源分多行列出；
 - 无可靠来源时不得伪造链接，只写"未取得可核验权威来源或需人工核验"。
-- 使用医脉通/丁香园 B+ 或 CNKI/万方/维普 B 正文承载链接时，来源前必须增加：`文档核验：文档标题：…；文档类型：正式指南/正式专家共识；制定机构：…；年份/版本：…；正式出处：…；完整全文核验：已核验；版本状态：…。`。字段不全、只有摘要/题录、或页面属于解读/新闻/访谈等类型时，不得把该链接写入最终来源。
 
 ## 边界
 

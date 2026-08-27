@@ -1,0 +1,12 @@
+id: parcel-tracker
+version: 0.2.0
+name: 快递查询
+description: 查询国内快递轨迹，失败时提供快递 100 链接
+icon: "📦"
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

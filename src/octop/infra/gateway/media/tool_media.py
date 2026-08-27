@@ -54,6 +54,43 @@ _OUTBOUND_IMAGE_PATH_RE = re.compile(
 )
 
 
+def _generated_media_blocks(value: Any) -> list[dict[str, Any]]:
+    """Convert WorkBuddy-style generation envelopes into standard media blocks."""
+    if not isinstance(value, dict):
+        return []
+    result_type = value.get("type")
+    if result_type == "image_gen_tool_result":
+        kind, field = "image", "images"
+    elif result_type == "video_gen_tool_result":
+        kind, field = "video", "videos"
+    else:
+        return []
+    rows = value.get(field)
+    if not isinstance(rows, list):
+        return []
+
+    blocks: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        path = row.get("path")
+        if not isinstance(path, str) or not path.strip():
+            continue
+        mime = row.get("mediaType")
+        source: dict[str, Any] = {"type": "url", "url": path}
+        block: dict[str, Any] = {
+            "type": kind,
+            "path": path,
+            "filename": Path(path).name,
+            "source": source,
+        }
+        if isinstance(mime, str) and mime:
+            block["media_type"] = mime
+            source["media_type"] = mime
+        blocks.append(block)
+    return blocks
+
+
 def iter_media_blocks(content: Any) -> list[dict[str, Any]]:
     candidates: list[Any]
     if isinstance(content, list):
@@ -77,11 +114,12 @@ def iter_media_blocks(content: Any) -> list[dict[str, Any]]:
     else:
         return []
 
-    return [
-        block
-        for block in candidates
-        if isinstance(block, dict) and block.get("type") in _MEDIA_BLOCK_TYPES
-    ]
+    blocks: list[dict[str, Any]] = []
+    for candidate in candidates:
+        blocks.extend(_generated_media_blocks(candidate))
+        if isinstance(candidate, dict) and candidate.get("type") in _MEDIA_BLOCK_TYPES:
+            blocks.append(candidate)
+    return blocks
 
 
 def extract_message_content(message: Any) -> Any:

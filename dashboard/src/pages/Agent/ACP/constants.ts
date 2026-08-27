@@ -4,7 +4,7 @@ import anthropicIcon from "../../../assets/providers/anthropic.png";
 import openaiIcon from "../../../assets/providers/openai.png";
 import moonshotIcon from "../../../assets/acp/moonshot.png";
 import cursorIcon from "../../../assets/acp/cursor.png";
-import piIcon from "../../../assets/acp/pi.svg";
+import piIcon from "../../../assets/acp/pi.png";
 import customRunnerIcon from "../../../assets/providers/custom-provider.svg";
 
 /** Built-in ACP runner ids (order preserved in the grid). */

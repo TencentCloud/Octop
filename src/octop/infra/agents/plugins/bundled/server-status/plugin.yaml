@@ -1,5 +1,5 @@
 id: server-status
-version: 0.1.0
+version: 0.2.0
 name: 服务器状态
 description: 在聊天中展示当前服务器的操作系统、内核与 CPU / 内存 / 磁盘负载
 icon: "🖥️"
@@ -8,5 +8,5 @@ entry: main.py
 requires:
   - psutil>=5.9
 ui:
-  entry: ui/dist/index.js
-  manifest: ui/dist/manifest.json
+  entry: ui/index.js
+  manifest: ui/manifest.json

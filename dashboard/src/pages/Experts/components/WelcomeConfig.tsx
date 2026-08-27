@@ -143,8 +143,8 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
 
     const updateQuickPrompt = (
       index: number,
-      field: keyof QuickPrompt,
-      value: any,
+      field: "color" | "icon_name",
+      value: string | null,
     ) => {
       markDirty();
       const newPrompts = [...quickPrompts];

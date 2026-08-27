@@ -90,7 +90,8 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
             subTitle={
               isChunkError
                 ? i18n.t("errors.outOfDateSubtitle")
-                : this.state.error?.message || i18n.t("errors.unexpectedSubtitle")
+                : this.state.error?.message ||
+                  i18n.t("errors.unexpectedSubtitle")
             }
             extra={
               <Space>

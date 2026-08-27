@@ -98,6 +98,37 @@ async def test_cmd_compact_calls_harness_without_reset(ctx, dispatcher) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cmd_compact_shows_octop_relative_offload_path(ctx, dispatcher) -> None:
+    await ctx.thread_registry.get_or_create_by_key(
+        session_key=ctx.session_key,
+        agent_id=ctx.agent_id,
+        user_id=ctx.user_id,
+        channel_type=ctx.channel_type,
+    )
+    tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
+    assert tid
+
+    harness = MagicMock()
+    harness.acompact_conversation = AsyncMock(
+        return_value=CompactResult(
+            ok=True,
+            summarized_count=3,
+            preserved_count=4,
+            file_path=f"/home/wally/.octop/workspaces/X/.octop/conversation_history/{tid}.md",
+            reason="ok",
+        )
+    )
+    ctx.agent_manager.get_agent = MagicMock(return_value=harness)
+
+    sink = BufferSink()
+    await cmd_compact(dispatcher, SlashCommand("compact", ""), ctx, sink)
+
+    text = "\n".join(sink.lines)
+    assert ".octop/conversation_history/" in text
+    assert "/home/wally" not in text
+
+
+@pytest.mark.asyncio
 async def test_cmd_compact_uses_composer_model_ref(ctx, dispatcher) -> None:
     await ctx.thread_registry.get_or_create_by_key(
         session_key=ctx.session_key,

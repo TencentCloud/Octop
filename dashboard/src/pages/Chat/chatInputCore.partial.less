@@ -694,6 +694,35 @@
   display: block;
 }
 
+.composerMediaItem {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: var(--fn-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--fn-border-secondary);
+  line-height: 0;
+}
+
+.composerMediaVideo {
+  display: block;
+  width: 160px;
+  height: 90px;
+  object-fit: cover;
+  background: #000;
+}
+
+.composerMediaAudio {
+  display: block;
+  width: 220px;
+  height: 32px;
+}
+
+.composerMediaSkeleton {
+  width: 160px;
+  height: 90px;
+  background: var(--fn-bg-secondary);
+}
+
 .imagePreviewRemove {
   position: absolute;
   top: 2px;

@@ -44,6 +44,10 @@ Dashboard live turns use **WebSocket** at `/api/agents/{agent_id}/chat/ws` (pass
 chunks matching the harness stream format, ending with `{"type":"done"}` or
 `{"type":"error","message":"..."}`.
 
+Text-type dashboard pushes (cron reminders, proactive care) also emit
+`{"type":"dashboard_push", ...}` on `/api/notifications/ws` (same `?token=` auth) so the
+SPA can show a toast even when the chat socket is not subscribed.
+
 HITL resume still uses `POST /api/agents/{agent_id}/chat/hitl/resume` (SSE).
 """
 
@@ -61,7 +65,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "chat",
-        "description": "Dashboard chat: SSE streaming, threads, and conversation history.",
+        "description": "Dashboard chat: WebSocket streaming, threads, conversation history, and text-push toasts.",
     },
     {
         "name": "slash",
@@ -89,7 +93,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "settings",
-        "description": "Process-level settings (e.g. default timezone from config.json).",
+        "description": "Process-level settings (timezone, upload size limit from config.json).",
     },
     {
         "name": "envs",

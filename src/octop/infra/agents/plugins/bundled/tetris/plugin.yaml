@@ -1,0 +1,10 @@
+id: tetris
+version: 0.2.0
+name: 俄罗斯方块
+description: 在聊天卡片里玩俄罗斯方块，支持键盘与按钮操作
+icon: "🧱"
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

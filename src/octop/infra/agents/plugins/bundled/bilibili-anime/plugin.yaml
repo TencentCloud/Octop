@@ -1,5 +1,5 @@
 id: bilibili-anime
-version: 0.1.1
+version: 0.2.0
 name: 哔哩哔哩番剧播放器
 description: 在聊天中搜索哔哩哔哩番剧，并支持分集播放与切换
 icon: "📺"
@@ -8,5 +8,5 @@ entry: main.py
 requires:
   - httpx>=0.27
 ui:
-  entry: ui/dist/index.js
-  manifest: ui/dist/manifest.json
+  entry: ui/index.js
+  manifest: ui/manifest.json

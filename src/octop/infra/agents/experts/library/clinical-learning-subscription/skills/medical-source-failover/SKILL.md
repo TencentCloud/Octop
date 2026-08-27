@@ -43,6 +43,16 @@ Retrieve the intended medical document reliably without laundering a secondary s
 8. Extract only claims supported by the retrieved document. For recommendations, preserve population, intervention, conditions, recommendation strength, evidence certainty, and exceptions when reported.
 9. Cite the original issuer or formal publication. If a fallback carried the text, disclose the fallback separately instead of presenting it as a second source.
 
+## Latency-first fast failover
+
+For an ordinary `clinical-q-and-a` request, keep the same identity standard but use the smallest path:
+
+- Enter this skill only after the selected canonical route actually fails; do not preload failover references during a successful direct fetch.
+- `401`/`403`/`412`/CAPTCHA/login/paywall: do not retry the address. Move immediately to the best known L1-L3 route.
+- Timeout/`5xx`: at most one retry or one approved fallback, not both repeatedly. When latency matters, start one hedged fallback after roughly two seconds and cancel the losing request after a valid copy arrives.
+- Try only one fallback carrier for the same document in the fast path. If it is incomplete or identity cannot be established, return a bounded “正文未核验” result instead of exploring the whole ladder.
+- Do not retrieve a second guideline merely to compensate for an access failure. The target remains the same document unless `source-verify` explicitly chooses a new normative document.
+
 ## Failover ladder
 
 - **L0 — Canonical original:** issuing body or formal publisher page and complete attachment.

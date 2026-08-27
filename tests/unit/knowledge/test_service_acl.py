@@ -124,11 +124,10 @@ def test_create_base_enforces_owner_limit(service: KnowledgeService) -> None:
 
 
 def test_upload_enforces_document_byte_limit(service: KnowledgeService) -> None:
-    from octop.infra.knowledge.service import MAX_DOCUMENT_BYTES
-
     users = service._services.user_repo
     owner = users.create(username="owner", password_hash="h", role="user")
     kb = service.create_base(owner_user_id=owner, name="Docs")
+    service._services.config = SimpleNamespace(max_upload_bytes=1024, max_upload_mb=1)
 
     with pytest.raises(ValueError, match="document size"):
         service.upload_document(
@@ -136,7 +135,7 @@ def test_upload_enforces_document_byte_limit(service: KnowledgeService) -> None:
             actor_user_id=owner,
             filename="huge.md",
             content_type="text/markdown",
-            content=b"x" * (MAX_DOCUMENT_BYTES + 1),
+            content=b"x" * 1025,
         )
 
 

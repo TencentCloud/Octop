@@ -141,6 +141,7 @@ because each request is a one-shot continuation.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/settings/timezone` | user | process-level `{timezone}` from `default_timezone` |
+| `GET`    | `/settings/upload` | user | `{max_upload_mb, max_upload_bytes}` from `max_upload_mb` |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
 | `GET`    | `/agents/{aid}/cron` | owner | list of cron rows |
 | `POST`   | `/agents/{aid}/cron` | owner | body `{trigger, prompt, session_key?, fresh_thread?, model?, task_type?}` → `201` |
@@ -177,6 +178,18 @@ documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
 | `GET` | `/models` | user | resolved models across enabled providers |
 | `GET` | `/models/active` | user | `{provider_name, model}` |
 | `PUT` | `/models/active` | admin | body `{provider_name, model}` |
+
+### Media generation models
+
+These instance-wide endpoints require the `providers` permission (administrators bypass
+permission checks). The Ark API key is write-only and encrypted at rest. Saving settings
+reloads running agents so the image and video tools receive the new configuration.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/admin/media-generation` | providers | Return Volcengine Ark image/video settings; never returns the API key |
+| `PUT` | `/admin/media-generation` | providers | Save enabled tools and Seedream/Seedance model IDs; an included API key is verified before saving |
+| `POST` | `/admin/media-generation/test` | providers | Test credentials or a selected image/video model; model tests submit real, potentially billable requests |
 
 ## Voice
 
@@ -225,7 +238,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `PUT`    | `/agents/{aid}/workspace/file` | owner | write a content file (via `BackendWorkspace`) |
 | `DELETE` | `/agents/{aid}/workspace/file` | owner | delete a content file |
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
-| `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend |
+| `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |

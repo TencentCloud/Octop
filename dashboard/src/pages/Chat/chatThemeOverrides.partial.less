@@ -726,6 +726,37 @@
   margin-bottom: 8px;
 }
 
+.messageMediaList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-width: 100%;
+}
+
+.messageMediaVideo {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  max-height: 280px;
+  border-radius: 12px;
+  background: #000;
+}
+
+.messageMediaAudio {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+}
+
+.messageMediaSkeleton {
+  width: 100%;
+  max-width: 420px;
+  height: 160px;
+  border-radius: 12px;
+  background: var(--fn-bg-secondary);
+}
+
 .messageFileCard {
   display: inline-flex;
   align-items: center;

@@ -6,13 +6,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import quote
 
-from octop.infra.gateway.media.attachment_hints import is_image_media_type
+from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.inbound_store import InboundFile, write_inbound
 
 if TYPE_CHECKING:
     from harness_agent.backends.workspace import BackendWorkspace
-
-MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -43,7 +41,7 @@ def dashboard_inbound_preview_url(
     """JWT-protected preview/download URL for dashboard UI (not for LLM)."""
     rel = workspace_path.lstrip("/")
     aid = quote(agent_id, safe="")
-    if is_image_media_type(media_type) or media_type.startswith("video/"):
+    if is_preview_media_type(media_type):
         params = f"source={quote(rel, safe='')}"
         if media_type:
             params += f"&mime_type={quote(media_type, safe='')}"
@@ -58,6 +56,7 @@ async def save_attachment(
     filename: str,
     media_type: str,
     data: bytes,
+    max_bytes: int | None = None,
 ) -> StoredAttachment:
     del owner_id  # access control is JWT + agent scope at download time
     inbound = await write_inbound(
@@ -65,5 +64,6 @@ async def save_attachment(
         data,
         filename=filename,
         media_type=media_type,
+        max_bytes=max_bytes,
     )
     return _stored_from_inbound(inbound)

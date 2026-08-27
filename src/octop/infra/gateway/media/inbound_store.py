@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.agents.workspace_dir import (
     agent_facing_workspace_root,
     join_agent_facing,
@@ -19,7 +20,7 @@ from octop.infra.gateway.media.constants import INBOUND_DIR
 if TYPE_CHECKING:
     from harness_agent.backends.workspace import BackendWorkspace
 
-MAX_INBOUND_BYTES = 20 * 1024 * 1024
+MAX_INBOUND_BYTES = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
 
 # Used when the reported MIME is outside ALLOWED_INBOUND_MEDIA_TYPES (e.g. Windows
 # registry types like ``application/x-zip-compressed``, or browsers sending
@@ -73,6 +74,26 @@ INBOUND_EXTENSION_MEDIA_TYPES = {
     ".tgz": "application/gzip",
     ".bz2": "application/x-bzip2",
     ".xz": "application/x-xz",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".m4v": "video/mp4",
+    ".ogg": "audio/ogg",
+    ".ogv": "video/ogg",
+    ".opus": "audio/ogg",
+    ".avi": "video/x-msvideo",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
+    ".weba": "audio/webm",
+    ".exe": "application/x-msdownload",
+    ".dmg": "application/x-apple-diskimage",
+    ".apk": "application/vnd.android.package-archive",
     ".py": "text/x-python",
     ".pyi": "text/x-python",
     ".pyw": "text/x-python",
@@ -149,43 +170,53 @@ INBOUND_EXTENSION_MEDIA_TYPES = {
     ".dockerfile": "text/plain",
 }
 
-# Browser / OS registry types that are not the canonical stored MIME.
-_INBOUND_MEDIA_TYPE_ALIASES = frozenset(
-    {
-        "application/javascript",
-        "application/x-javascript",
-        "application/typescript",
-        "text/typescript",
-        "application/x-sh",
-        "application/x-shellscript",
-        "text/x-sh",
-        "application/x-python",
-        "text/x-script.python",
-        "application/x-yaml",
-        "text/x-yaml",
-        "text/yaml",
-        "text/xml",
-        "application/x-httpd-php",
-        "text/x-sql",
-        "application/x-ipynb+json",
-        "text/rtf",
-        "application/x-rtf",
-        "application/x-gzip",
-        "application/x-gtar",
-        "application/x-rar-compressed",
-        "application/x-rar",
-        "application/x-bzip",
-        "image/x-icon",
-        "image/vnd.xmind.workbook",
-        "application/x-xmind",
-        "application/xmind",
-    }
-)
+# Browser / OS registry types → canonical stored MIME (keys are not stored).
+_INBOUND_MEDIA_TYPE_ALIASES = {
+    "application/javascript": "text/javascript",
+    "application/x-javascript": "text/javascript",
+    "application/typescript": "text/x-typescript",
+    "text/typescript": "text/x-typescript",
+    "application/x-sh": "text/x-shellscript",
+    "application/x-shellscript": "text/x-shellscript",
+    "text/x-sh": "text/x-shellscript",
+    "application/x-python": "text/x-python",
+    "text/x-script.python": "text/x-python",
+    "application/x-yaml": "application/yaml",
+    "text/x-yaml": "application/yaml",
+    "text/yaml": "application/yaml",
+    "text/xml": "application/xml",
+    "application/x-httpd-php": "text/x-php",
+    "text/x-sql": "application/sql",
+    "application/x-ipynb+json": "application/json",
+    "text/rtf": "application/rtf",
+    "application/x-rtf": "application/rtf",
+    "application/x-gzip": "application/gzip",
+    "application/x-gtar": "application/x-tar",
+    "application/x-rar-compressed": "application/vnd.rar",
+    "application/x-rar": "application/vnd.rar",
+    "application/x-bzip": "application/x-bzip2",
+    "image/x-icon": "image/vnd.microsoft.icon",
+    "image/vnd.xmind.workbook": "application/vnd.xmind.workbook",
+    "application/x-xmind": "application/vnd.xmind.workbook",
+    "application/xmind": "application/vnd.xmind.workbook",
+    "audio/mp3": "audio/mpeg",
+    "audio/x-mp3": "audio/mpeg",
+    "audio/x-wav": "audio/wav",
+    "audio/wave": "audio/wav",
+    "audio/vnd.wave": "audio/wav",
+    "audio/x-flac": "audio/flac",
+    "audio/x-aac": "audio/aac",
+    "application/vnd.microsoft.portable-executable": "application/x-msdownload",
+    "application/x-msdos-program": "application/x-msdownload",
+    "application/x-dosexec": "application/x-msdownload",
+}
+
+_OCTET_STREAM = "application/octet-stream"
 
 ALLOWED_INBOUND_MEDIA_TYPES = frozenset(
     {
-        "application/octet-stream",
-        *_INBOUND_MEDIA_TYPE_ALIASES,
+        _OCTET_STREAM,
+        *_INBOUND_MEDIA_TYPE_ALIASES.values(),
         *INBOUND_EXTENSION_MEDIA_TYPES.values(),
     }
 )
@@ -288,9 +319,10 @@ def resolve_inbound_attachment_path(workspace: BackendWorkspace, path: str) -> s
     return agent_facing_workspace_path(workspace, path)
 
 
-def validate_inbound_size(data: bytes) -> None:
-    if len(data) > MAX_INBOUND_BYTES:
-        max_mb = MAX_INBOUND_BYTES // (1024 * 1024)
+def validate_inbound_size(data: bytes, *, max_bytes: int | None = None) -> None:
+    limit = MAX_INBOUND_BYTES if max_bytes is None else max_bytes
+    if len(data) > limit:
+        max_mb = max(1, limit // (1024 * 1024))
         raise OctopError(
             ErrorCode.ATTACHMENT_TOO_LARGE,
             f"file too large (max {max_mb}MB)",
@@ -298,14 +330,29 @@ def validate_inbound_size(data: bytes) -> None:
         )
 
 
+def canonicalize_inbound_media_type(media_type: str) -> str:
+    """Map browser/OS aliases to the MIME we persist."""
+    normalized = normalize_inbound_media_type(media_type)
+    return _INBOUND_MEDIA_TYPE_ALIASES.get(normalized, normalized)
+
+
+def _is_av_media_type(media_type: str) -> bool:
+    return media_type.startswith(("video/", "audio/"))
+
+
 def validate_inbound_media_type(media_type: str, filename: str = "") -> str:
     normalized_type = normalize_inbound_media_type(media_type)
-    if normalized_type in ALLOWED_INBOUND_MEDIA_TYPES:
-        return normalized_type
+    canonical = canonicalize_inbound_media_type(normalized_type)
     ext = Path(filename or "").suffix.lower()
     mapped = INBOUND_EXTENSION_MEDIA_TYPES.get(ext)
+    if canonical != _OCTET_STREAM and canonical in ALLOWED_INBOUND_MEDIA_TYPES:
+        return canonical
     if mapped is not None:
         return mapped
+    if _is_av_media_type(canonical):
+        return canonical
+    if canonical == _OCTET_STREAM:
+        return canonical
     reason = f"unsupported media type {normalized_type!r}"
     raise OctopError(ErrorCode.ATTACHMENT_UNSUPPORTED_TYPE, reason, details={"reason": reason})
 
@@ -356,9 +403,10 @@ async def write_inbound(
     *,
     filename: str,
     media_type: str,
+    max_bytes: int | None = None,
 ) -> InboundFile:
     """Persist bytes under ``inbound/{unix_ts}_{original}``."""
-    validate_inbound_size(data)
+    validate_inbound_size(data, max_bytes=max_bytes)
     normalized_type = validate_inbound_media_type(media_type, filename)
 
     display_name = sanitize_inbound_filename(filename)

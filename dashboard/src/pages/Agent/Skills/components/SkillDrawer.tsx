@@ -49,10 +49,14 @@ export const OCTOP_EMOJI_META_KEY = "octop.emoji";
  * filesystem-hostile characters are rejected - CJK and other Unicode
  * letters are allowed.
  */
-const SKILL_NAME_PATTERN = /^(?!\.)[^\\/:*?"<>|\x00-\x1f]{1,64}$/;
+const SKILL_NAME_PATTERN = /^(?!\.)[^\\/:*?"<>|]{1,64}$/;
 
 export function isValidSkillName(name: string): boolean {
-  return SKILL_NAME_PATTERN.test(name.trim());
+  const trimmed = name.trim();
+  return (
+    SKILL_NAME_PATTERN.test(trimmed) &&
+    !Array.from(trimmed).some((char) => char.charCodeAt(0) <= 0x1f)
+  );
 }
 
 function yamlQuote(value: string): string {

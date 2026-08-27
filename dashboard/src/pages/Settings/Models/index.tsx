@@ -11,8 +11,9 @@
  */
 import { useMemo, useState } from "react";
 import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
-import { Plus, RefreshCw } from "lucide-react";
+import { Images, MessageSquareText, Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import PageShell from "../../../layouts/PageShell";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
@@ -29,6 +30,7 @@ import {
   ProviderCard,
 } from "./components";
 import styles from "./index.module.less";
+import { MediaGenerationSettingsPanel } from "../MediaGeneration";
 
 const { Title } = Typography;
 
@@ -50,6 +52,17 @@ export default function ModelsPage() {
   } = useProviders();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modelCategory =
+    canProviders && searchParams.get("tab") === "generation"
+      ? "generation"
+      : "chat";
+  const setModelCategory = (next: string) => {
+    const updated = new URLSearchParams(searchParams);
+    if (next === "generation") updated.set("tab", "generation");
+    else updated.delete("tab");
+    setSearchParams(updated, { replace: true });
+  };
 
   const cloudPresets = useMemo(
     () => groupPresets(presets.filter((p) => !isLocalPreset(p))),
@@ -130,17 +143,49 @@ export default function ModelsPage() {
       title={t("pageShell.models.title")}
       subtitle={t("pageShell.models.subtitle")}
       actions={
-        <Space>
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={() => void fetchAll()}
-          >
-            {t("common.refresh")}
-          </Button>
-        </Space>
+        modelCategory === "chat" ? (
+          <Space>
+            <Button
+              icon={<RefreshCw size={14} />}
+              onClick={() => void fetchAll()}
+            >
+              {t("common.refresh")}
+            </Button>
+          </Space>
+        ) : null
       }
     >
-      {loading ? (
+      <Tabs
+        activeKey={modelCategory}
+        onChange={setModelCategory}
+        items={[
+          {
+            key: "chat",
+            label: (
+              <Space size={6}>
+                <MessageSquareText size={15} />
+                {t("models.chatModelsTab")}
+              </Space>
+            ),
+          },
+          ...(canProviders
+            ? [
+                {
+                  key: "generation",
+                  label: (
+                    <Space size={6}>
+                      <Images size={15} />
+                      {t("models.generationModelsTab")}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+      {modelCategory === "generation" ? (
+        <MediaGenerationSettingsPanel />
+      ) : loading ? (
         <LoadingState message={t("models.loadingProviders")} />
       ) : error ? (
         <LoadingState message={error} error onRetry={() => void fetchAll()} />
@@ -240,12 +285,14 @@ export default function ModelsPage() {
         </>
       )}
 
-      <CustomProviderModal
-        open={addOpen && canProviders}
-        onClose={() => setAddOpen(false)}
-        onSaved={fetchAll}
-        apiPrefix="/admin/providers"
-      />
+      {modelCategory === "chat" && (
+        <CustomProviderModal
+          open={addOpen && canProviders}
+          onClose={() => setAddOpen(false)}
+          onSaved={fetchAll}
+          apiPrefix="/admin/providers"
+        />
+      )}
     </PageShell>
   );
 }

@@ -1,0 +1,12 @@
+id: qrcode
+version: 0.2.0
+name: 二维码
+description: 把文本或链接生成二维码图片卡片
+icon: "🔳"
+kind: tool
+entry: main.py
+requires:
+  - segno>=1.6
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

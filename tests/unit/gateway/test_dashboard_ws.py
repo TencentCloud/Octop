@@ -33,6 +33,75 @@ async def test_ws_hub_push() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ws_hub_push_to_user_delivers_only_to_that_user() -> None:
+    hub = WebSocketHub()
+    alice: list[dict[str, Any]] = []
+    bob: list[dict[str, Any]] = []
+    chat: list[dict[str, Any]] = []
+
+    async def capture_alice(frame: dict[str, Any]) -> None:
+        alice.append(frame)
+
+    async def capture_bob(frame: dict[str, Any]) -> None:
+        bob.append(frame)
+
+    async def capture_chat(frame: dict[str, Any]) -> None:
+        chat.append(frame)
+
+    hub.register("a1", capture_alice, user_id=1)
+    hub.register("b1", capture_bob, user_id=2)
+    hub.register("chat", capture_chat)
+
+    await hub.push_to_user(1, {"type": "dashboard_push", "text": "hi"})
+
+    assert alice == [{"type": "dashboard_push", "text": "hi"}]
+    assert bob == []
+    assert chat == []
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_push_to_user_fans_out_to_all_connections() -> None:
+    hub = WebSocketHub()
+    frames_a: list[dict[str, Any]] = []
+    frames_b: list[dict[str, Any]] = []
+
+    async def capture_a(frame: dict[str, Any]) -> None:
+        frames_a.append(frame)
+
+    async def capture_b(frame: dict[str, Any]) -> None:
+        frames_b.append(frame)
+
+    hub.register("c1", capture_a, user_id=7)
+    hub.register("c2", capture_b, user_id=7)
+
+    await hub.push_to_user(7, {"type": "dashboard_push", "text": "ping"})
+
+    assert frames_a == [{"type": "dashboard_push", "text": "ping"}]
+    assert frames_b == [{"type": "dashboard_push", "text": "ping"}]
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_unregister_stops_user_delivery() -> None:
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    hub.register("c1", capture, user_id=3)
+    hub.unregister("c1")
+    await hub.push_to_user(3, {"type": "dashboard_push", "text": "gone"})
+
+    assert frames == []
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_push_to_user_with_no_subscribers_is_noop() -> None:
+    hub = WebSocketHub()
+    await hub.push_to_user(99, {"type": "dashboard_push", "text": "nobody"})
+
+
+@pytest.mark.asyncio
 async def test_ws_hub_subscribe_push_to_thread_fans_out() -> None:
     hub = WebSocketHub()
     a_frames: list[dict[str, Any]] = []

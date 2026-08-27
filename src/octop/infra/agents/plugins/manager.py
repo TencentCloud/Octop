@@ -20,7 +20,6 @@ from harness_agent.plugins import (
     PluginManifest,
     PluginRegistry,
     discover_plugin_dirs,
-    load_all,
     load_plugin_dir,
     unload_plugin,
 )
@@ -193,14 +192,42 @@ class PluginManager:
     def global_enabled_map(self) -> dict[str, bool]:
         return _read_global_plugins(self._config_path)
 
+    def seed_bundled(self) -> list[str]:
+        """Copy packaged plugins into ``plugins_dir`` with ``enabled: false``."""
+        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+        from octop.infra.agents.plugins.seed import seed_bundled_plugins
+
+        return seed_bundled_plugins(
+            bundled_root=default_bundled_plugins_root(),
+            plugins_dir=self._plugins_dir,
+            config_path=self._config_path,
+        )
+
     def load_installed(self, *, install_deps: bool = True) -> list[LoadedPlugin]:
         enabled = self.global_enabled_map()
-        loaded = load_all(self._plugins_dir, install_deps=install_deps)
-        # Drop globally disabled plugins from registry
+        PluginRegistry().clear()
+        loaded: list[LoadedPlugin] = []
+        for plugin_dir in discover_plugin_dirs(self._plugins_dir):
+            try:
+                manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
+            except Exception as exc:
+                logger.error("skip plugin dir %s: %s", plugin_dir, exc)
+                continue
+            if enabled.get(manifest.id, True) is False:
+                continue
+            try:
+                loaded.append(load_plugin_dir(plugin_dir, install_deps=install_deps))
+            except Exception as exc:
+                logger.error(
+                    "failed to load plugin from %s: %s",
+                    plugin_dir,
+                    exc,
+                    exc_info=True,
+                )
         for plugin_id, is_on in enabled.items():
             if not is_on:
                 unload_plugin(plugin_id)
-        return [p for p in loaded if enabled.get(p.manifest.id, True)]
+        return [p for p in loaded if enabled.get(p.manifest.id, True) is not False]
 
     def load_missing(self, *, install_deps: bool = False) -> list[LoadedPlugin]:
         """Load any on-disk plugins that are not yet in the process registry.

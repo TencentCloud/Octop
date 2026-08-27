@@ -28,6 +28,7 @@ import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
 
@@ -132,15 +133,6 @@ def is_allowed_host_temp_path(resolved: Path) -> bool:
             continue
     norm = str(resolved).replace("\\", "/")
     return norm.startswith(("/tmp/", "/private/tmp/"))
-
-
-_PREVIEW_IMAGE = frozenset(
-    {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/svg+xml"}
-)
-_PREVIEW_VIDEO = frozenset({"video/mp4", "video/webm", "video/quicktime", "video/ogg"})
-_PREVIEW_AUDIO = frozenset(
-    {"audio/mpeg", "audio/wav", "audio/webm", "audio/ogg", "audio/flac", "audio/aac", "audio/x-wav"}
-)
 
 
 def file_url_to_abs_path(file_url: str) -> str:
@@ -287,8 +279,7 @@ def _guess_mime(path: str, hint: str = "") -> str:
 
 
 def is_previewable_mime(mime: str) -> bool:
-    base = mime.split(";", 1)[0].strip().lower()
-    return base in _PREVIEW_IMAGE or base in _PREVIEW_VIDEO or base in _PREVIEW_AUDIO
+    return is_preview_media_type(mime)
 
 
 def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:

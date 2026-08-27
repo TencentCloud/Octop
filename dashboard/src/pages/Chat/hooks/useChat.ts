@@ -25,8 +25,11 @@ import {
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
-import { isImageAttachment } from "../utils/chatAttachments";
-import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
+import { inferKindFromNameAndMime } from "../utils/chatAttachments";
+import {
+  agentAttachmentAccessUrl,
+  parseToolExecutionFeedback,
+} from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
 import type {
   ChatAttachment,
@@ -233,7 +236,13 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         };
       }
 
-      if (type !== "image" && type !== "file") return null;
+      if (
+        type !== "image" &&
+        type !== "file" &&
+        type !== "video" &&
+        type !== "audio"
+      )
+        return null;
 
       const previewUrl = anyBlock.preview_url as string | undefined;
       const source = anyBlock.source as
@@ -263,13 +272,13 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
           filename,
           mediaType: source.media_type,
           workspacePath,
-          kind: isImageAttachment({
-            kind: type === "image" ? "image" : "file",
-            filename,
+          kind: inferKindFromNameAndMime(
             mediaType,
-          })
-            ? "image"
-            : "file",
+            filename,
+            type === "image" || type === "video" || type === "audio"
+              ? type
+              : "file",
+          ),
         };
       }
 
@@ -293,13 +302,13 @@ export function extractAttachments(content: unknown): ChatAttachment[] {
         filename,
         mediaType,
         workspacePath,
-        kind: isImageAttachment({
-          kind: type === "image" ? "image" : "file",
-          filename,
+        kind: inferKindFromNameAndMime(
           mediaType,
-        })
-          ? "image"
-          : "file",
+          filename,
+          type === "image" || type === "video" || type === "audio"
+            ? type
+            : "file",
+        ),
       };
     })
     .filter(Boolean) as ChatAttachment[];
@@ -320,10 +329,13 @@ function attachmentsFromInboundMeta(
       const filename = String(row.filename || "attachment");
       const mediaType = String(row.media_type || row.mediaType || "");
       const kindRaw = String(row.kind || "");
-      const kind: ChatAttachment["kind"] =
-        kindRaw === "image" || mediaType.startsWith("image/")
-          ? "image"
-          : "file";
+      const kind = inferKindFromNameAndMime(
+        mediaType,
+        filename,
+        kindRaw === "image" || kindRaw === "video" || kindRaw === "audio"
+          ? kindRaw
+          : "file",
+      );
       if (!workspacePath) return null;
       return {
         url: "",
@@ -369,6 +381,8 @@ function enrichAttachmentPreviewUrls(
 function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   const raw: InternalChatMessage[] = entries.map((entry, index) => {
     const tool = extractToolData(entry.content);
+    const toolFeedback = parseToolExecutionFeedback(tool?.data.output);
+    const toolErrorCode = toolFeedback?.code || tool?.data.errorCode;
     const fromMeta =
       entry.role === "user"
         ? attachmentsFromInboundMeta(
@@ -431,8 +445,20 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
       toolData: tool?.data,
       usage: normalizeTokenUsage(entry.usage ?? undefined) ?? undefined,
       metadata: normalizeMessageMetadata(entry.metadata ?? undefined),
+      errorInfo:
+        tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
+          ? {
+              message: toolFeedback?.message || tool?.data.output,
+              code: toolErrorCode || "tool_error",
+              source: "tool_result",
+              retryable: toolFeedback?.retryable,
+            }
+          : undefined,
       _toolKind: tool?.kind,
-      status: "done",
+      status:
+        tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
+          ? "error"
+          : "done",
       timestamp: resolveEntryTimestamp(entry),
     };
   });
@@ -460,7 +486,8 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
           },
-          status: "done",
+          status: current.status,
+          errorInfo: current.errorInfo,
         };
         continue;
       }

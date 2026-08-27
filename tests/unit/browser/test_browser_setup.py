@@ -111,7 +111,7 @@ def test_recover_stale_profile_renames_and_recreates(tmp_path: Path) -> None:
 
 
 @posix_only
-def test_ensure_chrome_runtime_env_forces_tmp_dir(
+def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/0")

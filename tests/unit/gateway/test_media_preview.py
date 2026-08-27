@@ -11,9 +11,19 @@ from deepagents.backends.local_shell import LocalShellBackend
 from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.gateway.media.backend_files import (
+    is_previewable_mime,
     media_preview_url,
     resolve_preview_payload,
 )
+
+
+def test_image_and_av_mime_prefixes_are_previewable() -> None:
+    assert is_previewable_mime("image/heic")
+    assert is_previewable_mime("video/x-matroska")
+    assert is_previewable_mime("audio/ogg")
+    assert is_previewable_mime("audio/x-wav")
+    assert not is_previewable_mime("application/pdf")
+    assert not is_previewable_mime("application/x-msdownload")
 
 
 def test_media_preview_url_encodes_source() -> None:

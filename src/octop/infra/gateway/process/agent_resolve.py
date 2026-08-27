@@ -35,4 +35,6 @@ def media_backend_for_agent(
     workspace = harness_workspace_for_agent(agent_manager, agent_id)
     if workspace is None:
         return None
-    return AgentBackedMediaBackend(workspace)
+    config = agent_manager.octop_config
+    max_bytes = int(config.max_upload_bytes)
+    return AgentBackedMediaBackend(workspace, max_bytes=max_bytes)

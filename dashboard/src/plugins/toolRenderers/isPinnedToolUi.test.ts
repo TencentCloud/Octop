@@ -47,6 +47,23 @@ describe("isPinnedToolUiMessage", () => {
     } as ChatMessage;
     expect(isPinnedToolUiMessage(msg)).toBe(false);
   });
+
+  it("does not pin empty or failed hot-list cards", () => {
+    const msg = {
+      id: "3",
+      role: "assistant",
+      content: "",
+      timestamp: 0,
+      toolData: {
+        name: "get_hot_topics",
+        output: JSON.stringify({
+          octop_ui: { renderer: "hot_topics_list" },
+          data: { source: "weibo", items: [], error: "403 Forbidden" },
+        }),
+      },
+    } as ChatMessage;
+    expect(isPinnedToolUiMessage(msg)).toBe(false);
+  });
 });
 
 describe("partitionPinnedTools + process summary counts", () => {

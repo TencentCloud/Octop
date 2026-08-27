@@ -18,6 +18,8 @@ import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
 import UserMessageComposerTags from "./UserMessageComposerTags";
 import { deriveMessageContent } from "../utils/messageContent";
+import { inferKindFromNameAndMime } from "../utils/chatAttachments";
+import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import {
   agentAttachmentAccessUrl,
@@ -557,10 +559,36 @@ function MessageBubble({
   const errorAction = isError ? chatStreamErrorAction(textContent) : null;
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
-    (attachment) => attachment.kind === "image",
+    (attachment) =>
+      inferKindFromNameAndMime(
+        attachment.mediaType,
+        attachment.filename,
+        attachment.kind,
+      ) === "image",
+  );
+  const videoAttachments = attachments.filter(
+    (attachment) =>
+      inferKindFromNameAndMime(
+        attachment.mediaType,
+        attachment.filename,
+        attachment.kind,
+      ) === "video",
+  );
+  const audioAttachments = attachments.filter(
+    (attachment) =>
+      inferKindFromNameAndMime(
+        attachment.mediaType,
+        attachment.filename,
+        attachment.kind,
+      ) === "audio",
   );
   const fileAttachments = attachments.filter(
-    (attachment) => attachment.kind === "file",
+    (attachment) =>
+      inferKindFromNameAndMime(
+        attachment.mediaType,
+        attachment.filename,
+        attachment.kind,
+      ) === "file",
   );
   const hasAttachments = attachments.length > 0;
 
@@ -642,6 +670,36 @@ function MessageBubble({
                 <div className={styles.userText}>
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
+                  )}
+                  {videoAttachments.length > 0 && (
+                    <div className={styles.messageMediaList}>
+                      {videoAttachments.map((attachment, idx) => (
+                        <ChatMediaPlayer
+                          key={`${attachment.url}-${idx}`}
+                          url={attachment.url}
+                          filename={attachment.filename}
+                          workspacePath={attachment.workspacePath}
+                          mediaType={attachment.mediaType}
+                          kind="video"
+                          agentId={agentId}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {audioAttachments.length > 0 && (
+                    <div className={styles.messageMediaList}>
+                      {audioAttachments.map((attachment, idx) => (
+                        <ChatMediaPlayer
+                          key={`${attachment.url}-${idx}`}
+                          url={attachment.url}
+                          filename={attachment.filename}
+                          workspacePath={attachment.workspacePath}
+                          mediaType={attachment.mediaType}
+                          kind="audio"
+                          agentId={agentId}
+                        />
+                      ))}
+                    </div>
                   )}
                   {fileAttachments.length > 0 && (
                     <FileAttachmentList
@@ -726,6 +784,36 @@ function MessageBubble({
               <div className={`${styles.assistantText} ${groupCls}`}>
                 {imageAttachments.length > 0 && (
                   <ImageGallery images={imageAttachments} agentId={agentId} />
+                )}
+                {videoAttachments.length > 0 && (
+                  <div className={styles.messageMediaList}>
+                    {videoAttachments.map((attachment, idx) => (
+                      <ChatMediaPlayer
+                        key={`${attachment.url}-${idx}`}
+                        url={attachment.url}
+                        filename={attachment.filename}
+                        workspacePath={attachment.workspacePath}
+                        mediaType={attachment.mediaType}
+                        kind="video"
+                        agentId={agentId}
+                      />
+                    ))}
+                  </div>
+                )}
+                {audioAttachments.length > 0 && (
+                  <div className={styles.messageMediaList}>
+                    {audioAttachments.map((attachment, idx) => (
+                      <ChatMediaPlayer
+                        key={`${attachment.url}-${idx}`}
+                        url={attachment.url}
+                        filename={attachment.filename}
+                        workspacePath={attachment.workspacePath}
+                        mediaType={attachment.mediaType}
+                        kind="audio"
+                        agentId={agentId}
+                      />
+                    ))}
+                  </div>
                 )}
                 {fileAttachments.length > 0 && (
                   <FileAttachmentList

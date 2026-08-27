@@ -6,6 +6,11 @@ Sample plugins for Octop / harness-agent `kind` values, plus a **dual
 frontend + backend** demo that renders tool results in chat.
 Layout inspired by [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/main/octop-toolkit).
 
+Product plugins shipped with the wheel live in
+`src/octop/infra/agents/plugins/bundled/`. `octop init` and `octop run`
+copy missing ones into `~/.octop/plugins/` and set them **globally off**
+in `config.json`. Uninstalled ids are not re-copied.
+
 ## Demos
 
 | Directory | `kind` | What it shows |
@@ -14,8 +19,6 @@ Layout inspired by [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/
 | [`demo-greeting-skill`](./demo-greeting-skill/) | `skill` | Sync a sample Skill into the agent workspace |
 | [`demo-turn-logger`](./demo-turn-logger/) | `hook` | Register `AgentMiddleware` that logs before/after model calls |
 | [`demo-ui-card`](./demo-ui-card/) | `tool` + `ui/` | Backend returns `octop_ui` JSON; frontend renders an interactive card |
-| [`bilibili-anime`](./bilibili-anime/) | `tool` + `ui/` | Search Bilibili bangumi; in-chat iframe player + episode nav |
-| [`server-status`](./server-status/) | `tool` + `ui/` | Host OS/kernel + CPU/memory/disk load card in chat |
 
 ## Plugin layout
 
