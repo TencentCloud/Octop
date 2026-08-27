@@ -1,7 +1,7 @@
-//go:build !(windows && production)
+//go:build !production || darwin
 
 package main
 
-// Dev / non-Windows builds look for Octop-<plat>.zip beside the executable
-// (or under Contents/Resources on macOS). Windows production embeds the zip.
+// Development builds look for Octop-<plat>.zip beside the executable. macOS
+// production keeps the zip in the signed .app Resources directory.
 var embeddedPortable []byte

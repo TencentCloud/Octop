@@ -21,24 +21,29 @@ tasks:
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
 
   package:
-    summary: Packages the production binary with its matching portable runtime
-    deps:
+    summary: Packages one production binary with its portable runtime embedded
+    cmds:
+      - task: stage:portable
+        vars:
+          PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
       - task: build
         vars:
           PRODUCTION: "true"
-    cmds:
-      - test -f {{.PORTABLE_ZIP}}
-      - rm -rf {{.PACKAGE_DIR}}
-      - mkdir -p {{.PACKAGE_DIR}}
-      - cp {{.BIN_DIR}}/{{.APP_NAME}} {{.PACKAGE_DIR}}/
-      - cp {{.PORTABLE_ZIP}} {{.PACKAGE_DIR}}/
-      - rm -f {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-linux-{{.ARCH}}.tar.gz
-      - tar -C {{.BIN_DIR}} -cf {{.ARCHIVE}} {{.APP_NAME}}-Desktop-linux-{{.ARCH}}
+      - rm -f {{.ARCHIVE}} bundled/portable.zip
+      - tar -C {{.BIN_DIR}} -cf {{.ARCHIVE}} {{.APP_NAME}}
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-linux-%s.zip" .ARCH)}}'
-      PACKAGE_DIR: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-linux-{{.ARCH}}'
-      ARCHIVE: '{{.PACKAGE_DIR}}.tar'
+      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-linux-{{.ARCH}}.tar'
+
+  stage:portable:
+    summary: Copies the matching green zip for go:embed
+    cmds:
+      - test -f {{.PORTABLE_ZIP}}
+      - mkdir -p bundled
+      - cp {{.PORTABLE_ZIP}} bundled/portable.zip
+    vars:
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-linux-%s.zip" (.ARCH | default ARCH))}}'
 
   run:
     cmds:

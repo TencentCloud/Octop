@@ -68,13 +68,14 @@ OCTOP_DESKTOP_URL=http://127.0.0.1:8088 wails3 dev
 
 Without `OCTOP_DESKTOP_URL`, first launch uses `~/.octop/portable/` if valid,
 otherwise extracts the matching zip shipped with the desktop package (embedded
-in the Windows `.exe`, under `Contents/Resources` on macOS, beside the binary
-on Linux). The Wails shell never downloads Octop. For local runtime debugging, set
+in the Windows and Linux binaries, under `Contents/Resources` on macOS). The
+Wails shell never downloads Octop. For local runtime debugging, set
 `OCTOP_DESKTOP_PORTABLE_ZIP=/absolute/path/Octop-<plat>.zip`.
 
-Desktop outputs are uncompressed native packages: `Octop-Desktop-<plat>.dmg`
-(macOS), `Octop-Desktop-<plat>.exe` (Windows), and `Octop-Desktop-<plat>.tar`
-(Linux). Runtime upgrades remain owned by Octop:
+Desktop outputs are native GUI packages: `Octop-Desktop-<plat>.dmg` (macOS),
+`Octop-Desktop-<plat>.exe` (Windows), and `Octop-Desktop-<plat>.tar` (Linux).
+The Linux tar contains only the GUI binary; it has no separate portable zip or
+server terminal process. Runtime upgrades remain owned by Octop:
 the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
 `packages/` directory through Octop's existing `--target` logic.
 
