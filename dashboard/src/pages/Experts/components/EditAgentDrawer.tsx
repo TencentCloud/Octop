@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Alert,
+  App,
   Button,
   Collapse,
   Drawer,
@@ -12,9 +14,7 @@ import {
   Select,
   Spin,
   Switch,
-  Alert,
 } from "antd";
-import { message } from "@/utils/antdMessage";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
@@ -208,6 +208,7 @@ function EditAgentDrawerBody({
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
@@ -548,7 +549,7 @@ function EditAgentDrawerBody({
   };
 
   const confirmDeleteConfigFile = (path: string) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("workspace.deleteConfirm"),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),
@@ -563,7 +564,7 @@ function EditAgentDrawerBody({
 
   const confirmDeleteSkill = (skill: SkillSummary) => {
     const slug = skill.slug ?? skill.name;
-    Modal.confirm({
+    modal.confirm({
       title: t("skills.deleteConfirmContent", { slug }),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),
@@ -579,7 +580,7 @@ function EditAgentDrawerBody({
   };
 
   const confirmDeleteSubagent = (subagent: SubagentSummary) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("workspace.deleteConfirm"),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),

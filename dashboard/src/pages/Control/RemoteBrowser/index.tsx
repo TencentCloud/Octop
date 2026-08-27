@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Alert,
+  App,
   Button,
   Drawer,
   Modal,
@@ -20,7 +21,6 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { message as antMessage } from "@/utils/antdMessage";
 
 import {
   Bot,
@@ -310,6 +310,7 @@ export default function RemoteBrowserPage({
   isVisible = true,
 }: RemoteBrowserPageProps) {
   const { t } = useTranslation();
+  const { modal, message: antMessage } = App.useApp();
   const isMobile = useIsMobile();
   const { activeAgent, activeAgentId, agents } = useAgent();
   const [searchParams] = useSearchParams();
@@ -610,7 +611,7 @@ export default function RemoteBrowserPage({
 
   const handleUninstall = useCallback(() => {
     if (!envStatus?.playwright_chromium || uninstalling) return;
-    Modal.confirm({
+    modal.confirm({
       title: t("remoteBrowser.uninstallTitle", "卸载远程浏览器"),
       content: t(
         "remoteBrowser.uninstallConfirm",

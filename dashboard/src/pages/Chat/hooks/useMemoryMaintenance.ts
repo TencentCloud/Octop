@@ -34,20 +34,26 @@ export function useMemoryMaintenance(
       return;
     }
     let stop = false;
-    const pull = () => {
-      request<{ memory_maintenance?: MemoryMaintenanceStatus | null }>(
-        `/agents/${agentId}/status`,
-      )
-        .then((row) => {
-          if (!stop) setStatus(row.memory_maintenance ?? null);
-        })
-        .catch(() => {});
+    let timer: number | null = null;
+    const pull = async () => {
+      let nextDelay = 10_000;
+      try {
+        const row = await request<{
+          memory_maintenance?: MemoryMaintenanceStatus | null;
+        }>(`/agents/${agentId}/status`);
+        const next = row.memory_maintenance ?? null;
+        if (!stop) setStatus(next);
+        if (next && VISIBLE.has(next.phase)) nextDelay = 2000;
+      } catch {
+        // Keep the last known state; a later single-flight poll can recover.
+      } finally {
+        if (!stop) timer = window.setTimeout(pull, nextDelay);
+      }
     };
-    pull();
-    const timer = setInterval(pull, 2000);
+    void pull();
     return () => {
       stop = true;
-      clearInterval(timer);
+      if (timer != null) window.clearTimeout(timer);
     };
   }, [agentId, enabled]);
 

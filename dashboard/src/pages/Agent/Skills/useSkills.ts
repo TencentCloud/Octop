@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
-import { Modal } from "antd";
-import { message } from "@/utils/antdMessage";
+import { App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
@@ -94,6 +93,7 @@ export function useSkills(
   options?: { enabled?: boolean },
 ) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const enabled = options?.enabled !== false && !!agentId;
 
   const {
@@ -209,7 +209,7 @@ export function useSkills(
     async (skill: SkillSpec): Promise<boolean> => {
       if (!agentId) return false;
       const confirmed = await new Promise<boolean>((resolve) => {
-        Modal.confirm({
+        modal.confirm({
           title: t("common.delete"),
           content: t("skills.deleteConfirmContent", { slug: skill.slug }),
           okText: t("common.delete"),

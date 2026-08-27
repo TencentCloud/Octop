@@ -9,7 +9,11 @@ set -euo pipefail
 
 # 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
 # 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
-_OCTOP_COMMON=""$(dirname "$0")/../cmd/common.sh""
+# 注意：FPK 解包后 cmd/ 落在 /var/apps/octop-native/cmd（管理目录），而本文件位于
+# 负载目录 $TRIM_APPDEST/bin，`$0/../cmd` 指向载荷内不存在的位置，故需回退到
+# 外层 cmd 的实际落点。
+_OCTOP_COMMON="$(dirname "$0")/../cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop-native/cmd/common.sh"
 [ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
 APPDEST="${TRIM_APPDEST:-/var/apps/octop-native}"
@@ -46,6 +50,21 @@ PY="$(find_python312)" || {
 
 SITE_PACKAGES="$APPDEST/site-packages"
 export PYTHONPATH="${SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
+
+# 内置在线升级优先使用 uv（pip 对 orcakit-harness-agent[all] 依赖树解析会卡死）。
+# 系统无 uv 且当前为 root 时自动安装一次（装到系统 Python bin，软链到 /usr/local/bin）。
+if [ "$(id -u)" = "0" ] && ! command -v uv >/dev/null 2>&1; then
+    "$PY" -m pip install -q --disable-pip-version-check uv 2>/dev/null || true
+    if [ -x "$(dirname "$PY")/uv" ]; then
+        ln -sf "$(dirname "$PY")/uv" /usr/local/bin/uv 2>/dev/null || true
+    fi
+fi
+
+# 飞牛 FPK 部署标识 + 打包 site-packages 路径：内置在线升级安装到此目录
+# （launcher 实际加载的位置），重启服务后即加载新版，升级真正生效
+# （见 src/octop/infra/setup/self_update.py 的 _run_fpk_upgrade）。
+export OCTOP_INSTALL_MODE="fpk-native"
+export OCTOP_FPK_SITE_PACKAGES="$SITE_PACKAGES"
 
 # 兜底：若包内 site-packages 中未检测到 octop（升级异常 / 损坏等），
 # 用内置核心 whl 就地离线安装，避免用户联网下载。

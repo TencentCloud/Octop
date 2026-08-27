@@ -1,7 +1,6 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dropdown, Modal } from "antd";
-import { message } from "@/utils/antdMessage";
+import { App, Dropdown } from "antd";
 import { MoreHorizontal } from "lucide-react";
 import { iconForName } from "./iconForName";
 import {
@@ -25,11 +24,12 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
   onChanged,
 }: PublishedExpertCardProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const accent = expert.color || "var(--fn-color-brand)";
 
   const confirmUnpublish = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("experts.published.unpublishConfirm"),
       okText: t("experts.published.unpublish"),
       cancelText: t("common.cancel"),

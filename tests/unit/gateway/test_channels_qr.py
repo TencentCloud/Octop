@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from fastapi.testclient import TestClient
 def mock_server_and_user():
     """Minimal server/user mock for channel QR endpoints."""
     user = MagicMock()
-    user.id = "user1"
+    user.id = 1
     user.is_admin = True
 
     registry = MagicMock()
@@ -136,6 +137,160 @@ def test_qq_qrcode_poll_returns_credentials(mock_server_and_user):
 
     assert resp.status_code == 200
     assert resp.json() == result
+
+
+def test_dingtalk_qrcode_generate_keeps_device_code_server_side(mock_server_and_user):
+    """Only an opaque Octop registration ID and public QR metadata reach the browser."""
+    server, user = mock_server_and_user
+    from octop.api.routers import channels as ch_module
+
+    ch_module._dingtalk_registration_sessions.clear()
+    result = {
+        "device_code": "device-secret",
+        "user_code": "ABCD-EFGH-IJKL",
+        "verification_uri_complete": "https://open-dev.dingtalk.com/scan?code=public",
+        "expires_in": 7200,
+        "interval": 5,
+    }
+    with patch(
+        "octop.api.routers.channels.dingtalk_registration.generate",
+        new=AsyncMock(return_value=result),
+    ):
+        client = TestClient(_make_app(server, user))
+        resp = client.post("/agents/agent1/channels/dingtalk/qrcode/generate")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["qrcode_url"] == result["verification_uri_complete"]
+    assert data["user_code"] == result["user_code"]
+    assert data["interval"] == 5
+    assert "device_code" not in data
+    stored = ch_module._dingtalk_registration_sessions[data["registration_id"]]
+    assert stored.device_code == "device-secret"
+
+
+def test_dingtalk_qrcode_poll_creates_channel_without_returning_secret(
+    mock_server_and_user,
+):
+    """Successful authorization probes and persists credentials only on the server."""
+    server, user = mock_server_and_user
+    from octop.api.routers import channels as ch_module
+
+    ch_module._dingtalk_registration_sessions.clear()
+    gateway = server.app_runtime.gateway
+    gateway.probe_config = AsyncMock(return_value={"ok": True})
+    gateway.create_channel = AsyncMock(return_value=MagicMock(channel_id="channel-1"))
+    generated = {
+        "device_code": "device-secret",
+        "user_code": "ABCD-EFGH-IJKL",
+        "verification_uri_complete": "https://open-dev.dingtalk.com/scan?code=public",
+        "expires_in": 7200,
+        "interval": 5,
+    }
+    authorized = {
+        "status": "SUCCESS",
+        "client_id": "ding-client",
+        "client_secret": "ding-secret",
+    }
+    with (
+        patch(
+            "octop.api.routers.channels.dingtalk_registration.generate",
+            new=AsyncMock(return_value=generated),
+        ),
+        patch(
+            "octop.api.routers.channels.dingtalk_registration.poll",
+            new=AsyncMock(return_value=authorized),
+        ),
+    ):
+        client = TestClient(_make_app(server, user))
+        generated_resp = client.post("/agents/agent1/channels/dingtalk/qrcode/generate")
+        registration_id = generated_resp.json()["registration_id"]
+        resp = client.post(
+            "/agents/agent1/channels/dingtalk/qrcode/poll",
+            json={"registration_id": registration_id},
+        )
+        repeated_resp = client.post(
+            "/agents/agent1/channels/dingtalk/qrcode/poll",
+            json={"registration_id": registration_id},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "success", "channel_id": "channel-1"}
+    assert repeated_resp.json() == resp.json()
+    assert "ding-secret" not in resp.text
+    probe_config = gateway.probe_config.await_args.kwargs["config"]
+    assert probe_config["client_id"] == "ding-client"
+    assert probe_config["client_secret"] == "ding-secret"
+    spec = gateway.create_channel.await_args.args[0]
+    assert spec.kind == "dingtalk"
+    assert spec.config["client_secret"] == "ding-secret"
+    gateway.create_channel.assert_awaited_once()
+    session = ch_module._dingtalk_registration_sessions[registration_id]
+    assert session.credentials is None
+    assert session.device_code == ""
+
+
+def test_dingtalk_qrcode_poll_rejects_different_user(mock_server_and_user):
+    server, user = mock_server_and_user
+    from octop.api.routers import channels as ch_module
+
+    ch_module._dingtalk_registration_sessions.clear()
+    generated = {
+        "device_code": "device-secret",
+        "user_code": "ABCD-EFGH-IJKL",
+        "verification_uri_complete": "https://open-dev.dingtalk.com/scan?code=public",
+        "expires_in": 7200,
+        "interval": 5,
+    }
+    with patch(
+        "octop.api.routers.channels.dingtalk_registration.generate",
+        new=AsyncMock(return_value=generated),
+    ):
+        client = TestClient(_make_app(server, user))
+        generated_resp = client.post("/agents/agent1/channels/dingtalk/qrcode/generate")
+        registration_id = generated_resp.json()["registration_id"]
+
+    user.id = 2
+    resp = client.post(
+        "/agents/agent1/channels/dingtalk/qrcode/poll",
+        json={"registration_id": registration_id},
+    )
+    assert resp.status_code == 404
+
+
+def test_dingtalk_registration_client_uses_official_device_flow_endpoints():
+    from octop.infra.gateway.channels import dingtalk_registration
+
+    init_response = MagicMock()
+    init_response.json.return_value = {
+        "errcode": 0,
+        "errmsg": "ok",
+        "nonce": "nonce-1",
+        "expires_in": 300,
+    }
+    begin_response = MagicMock()
+    begin_response.json.return_value = {
+        "errcode": 0,
+        "errmsg": "ok",
+        "device_code": "device-1",
+        "user_code": "ABCD-EFGH-IJKL",
+        "verification_uri_complete": "https://open-dev.dingtalk.com/scan",
+        "expires_in": 7200,
+        "interval": 5,
+    }
+    post = AsyncMock(side_effect=[init_response, begin_response])
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=MagicMock(post=post))
+    context.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(dingtalk_registration.httpx, "AsyncClient", return_value=context):
+        result = asyncio.run(dingtalk_registration.generate())
+
+    assert result["device_code"] == "device-1"
+    assert post.await_args_list == [
+        call("/app/registration/init", json={}),
+        call("/app/registration/begin", json={"nonce": "nonce-1"}),
+    ]
 
 
 def test_pkill_chrome_profile_accepts_resolved_path(monkeypatch: pytest.MonkeyPatch, tmp_path):

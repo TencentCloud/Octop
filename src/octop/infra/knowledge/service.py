@@ -24,6 +24,8 @@ from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path
 MAX_DOCS_PER_KB = 100
 MAX_BASES_PER_OWNER = 20
 MAX_DOCUMENT_BYTES = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
+# Upper bound for the per-base max_documents field. Mirrors Field(le=10000).
+MAX_KB_MAX_DOCUMENTS = 10_000
 _MAX_PREVIEW_CHARS = 200_000
 _EXT_TO_CONTENT_TYPE = {
     ".txt": "text/plain",
@@ -73,10 +75,13 @@ class KnowledgeService:
         default_open: bool = False,
         shared: bool = False,
         icon_name: str = "",
+        max_documents: int = MAX_DOCS_PER_KB,
     ) -> KnowledgeBaseRow:
         assert_knowledge_usable(
             self._services.settings_repo.get, getattr(self._services, "provider_repo", None)
         )
+        if max_documents < 0 or max_documents > MAX_KB_MAX_DOCUMENTS:
+            raise ValueError(f"max_documents must be between 0 and {MAX_KB_MAX_DOCUMENTS}")
         owned = self._repo.count_bases_for_owner(owner_user_id)
         if owned >= MAX_BASES_PER_OWNER:
             raise ValueError(f"a user can own at most {MAX_BASES_PER_OWNER} knowledge bases")
@@ -91,6 +96,7 @@ class KnowledgeService:
                 shared=shared,
                 icon_name=icon_name,
                 embedding_model=model,
+                max_documents=max_documents,
             ),
         )
 
@@ -111,9 +117,14 @@ class KnowledgeService:
         default_open: bool | None = None,
         shared: bool | None = None,
         icon_name: str | None = None,
+        max_documents: int | None = None,
         is_admin: bool = False,
     ) -> KnowledgeBaseRow:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        if max_documents is not None and (
+            max_documents < 0 or max_documents > MAX_KB_MAX_DOCUMENTS
+        ):
+            raise ValueError(f"max_documents must be between 0 and {MAX_KB_MAX_DOCUMENTS}")
         self._repo.update_base(
             kb_id,
             name=name,
@@ -121,6 +132,7 @@ class KnowledgeService:
             default_open=default_open,
             shared=shared,
             icon_name=icon_name,
+            max_documents=max_documents,
         )
         return self._require_base(kb_id)
 
@@ -294,7 +306,7 @@ class KnowledgeService:
         assert_knowledge_usable(
             self._services.settings_repo.get, getattr(self._services, "provider_repo", None)
         )
-        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        base = self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
         limit = self._max_document_bytes()
         if len(content) > limit:
             raise ValueError(f"knowledge document size exceeds maximum of {limit} bytes")
@@ -305,13 +317,14 @@ class KnowledgeService:
         resolved_type = _resolve_content_type(name, content_type)
         if resolved_type not in _ALLOWED_CONTENT_TYPES:
             raise ValueError(f"unsupported knowledge document content type: {content_type}")
+        # The per-base limit lives on the KB row (schema v10). 0 = unlimited.
         document = self._repo.create_document(
             kb_id=kb_id,
             filename=name,
             path=rel,
             content_type=resolved_type,
             byte_size=len(content),
-            max_documents=MAX_DOCS_PER_KB,
+            max_documents=base.max_documents,
         )
         try:
             write_document(kb_id, document.id, name, content)

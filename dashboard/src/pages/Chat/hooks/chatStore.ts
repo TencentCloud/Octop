@@ -2024,6 +2024,17 @@ export async function sendTurn(
 ): Promise<void> {
   const state = getOrCreate(sessionId);
 
+  if (sessionId === "__pending__" || threadId === "__pending__") {
+    appendErrorBubble(
+      state,
+      "Thread is still being created. Please retry shortly.",
+    );
+    clearStreamingFlags(state);
+    notify(state);
+    onStreamEnd?.();
+    return;
+  }
+
   if (!agentId) {
     appendErrorBubble(state, "No agent selected. Pick one from the top bar.");
     clearStreamingFlags(state);

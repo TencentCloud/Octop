@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Alert, Button, Input, Modal, Select, Switch } from "antd";
+import { Alert, App, Button, Input, Select, Switch } from "antd";
 import {
   Activity,
   Cable,
@@ -48,6 +48,7 @@ export function CustomMcpServerCard({
   onDefaultOpenChange,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const isHttp = card.transport === "streamable_http";
   const label = friendlyServerLabel(card);
   const accent = accentForServerName(card.name.trim() || label);
@@ -64,7 +65,7 @@ export function CustomMcpServerCard({
         .join(" ") || "npx / uvx / python";
 
   const handleRemove = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("connectors.customMcp.deleteConfirm", {
         name: label,
         defaultValue: `确定删除 MCP 服务器「${label}」？`,

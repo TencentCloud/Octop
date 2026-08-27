@@ -9,8 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Alert, Empty, Form, Input, Modal, Spin, Tabs } from "antd";
-import { message } from "@/utils/antdMessage";
+import { Alert, App, Empty, Form, Input, Spin, Tabs } from "antd";
 
 import { CircleCheck, Download, Plus, RefreshCw, Search } from "lucide-react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
@@ -70,6 +69,7 @@ export default function SubagentManager({
   fillHeight = false,
 }: SubagentManagerProps) {
   const { t, i18n } = useTranslation();
+  const { modal, message } = App.useApp();
   const lang = normalizeUiLocale(i18n.language);
   const [divisions, setDivisions] = useState<SubagentCatalogDivision[]>([]);
   const [allItems, setAllItems] = useState<SubagentCatalogItem[]>([]);
@@ -339,7 +339,7 @@ export default function SubagentManager({
   };
 
   const confirmDeleteSubagent = (subagent: AgentSubagentSummary) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("workspace.deleteConfirm"),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),

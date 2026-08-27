@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Empty, Form, Modal, Switch } from "antd";
-import { message } from "@/utils/antdMessage";
+import { App, Button, Empty, Form, Switch } from "antd";
 
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
@@ -25,6 +24,7 @@ const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
 export default function ACPPage() {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const { activeAgentId } = useAgent();
   const [runners, setRunners] =
     useState<Record<string, ACPRunnerConfig>>(EMPTY_RUNNERS);
@@ -232,7 +232,7 @@ export default function ACPPage() {
 
   const handleDelete = () => {
     if (!activeKey || isBuiltinRunner(activeKey)) return;
-    Modal.confirm({
+    modal.confirm({
       title: t("acp.deleteTitle", { name: activeKey }),
       content: t("acp.deleteConfirm"),
       okText: t("common.delete"),

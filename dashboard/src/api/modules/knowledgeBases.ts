@@ -37,6 +37,7 @@ export interface KnowledgeBase {
   embedding_model: string;
   embedding_dim: number;
   doc_count: number;
+  max_documents: number;
   created_at: number;
   updated_at: number;
 }
@@ -151,6 +152,7 @@ export const knowledgeBasesApi = {
     default_open?: boolean;
     shared?: boolean;
     icon_name?: string;
+    max_documents?: number;
   }) =>
     request<KnowledgeBase>("/knowledge-bases", {
       method: "POST",
@@ -165,6 +167,7 @@ export const knowledgeBasesApi = {
       default_open?: boolean;
       shared?: boolean;
       icon_name?: string;
+      max_documents?: number;
     },
   ) =>
     request<KnowledgeBase>(`/knowledge-bases/${id}`, {

@@ -637,6 +637,8 @@ def _ensure_knowledge_bases_schema(db: DatabasePool) -> None:
     """Create or rebuild knowledge tables to the integer-PK identity schema."""
     _rebuild_knowledge_identity_schema(db)
     _drop_knowledge_base_members(db)
+    # Schema v10: per-knowledge-base configurable document limit.
+    _ensure_column(db, "knowledge_bases", "max_documents", "INTEGER NOT NULL DEFAULT 100")
 
 
 def _ensure_sso_oidc_schema(db: DatabasePool) -> None:
@@ -946,8 +948,10 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     (idempotent); PostgreSQL runs the ``.pg.sql`` file then the same helpers
     as a no-op safety net. ``config_json`` profile keys are backfilled in
     Python either way.
-    Version 8 adds cache-aware usage buckets and model call counts.
-    Version 9 adds one-time ``user_invites`` codes.
+        Version 8 adds cache-aware usage buckets and model call counts.
+        Version 9 adds one-time ``user_invites`` codes.
+        Version 10 adds the dashboard thread-message projection when the legacy
+        database actually contains conversation tables.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1019,6 +1023,13 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 10 and not _table_exists(db, "threads"):
+        # Some very old/partial installs only contain ``users``. They still
+        # need the version watermark to advance, but there is no history to
+        # project and the migration's INSERT ... SELECT threads cannot run.
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1027,13 +1038,20 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
 def run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)
+    by_version: dict[int, list[Path]] = {}
     for version, path in _discover(db.dialect):
+        by_version.setdefault(version, []).append(path)
+    for version in sorted(by_version):
         if version <= _current_version(db):
             continue
+        for path in by_version[version]:
+            if db.dialect == "postgresql":
+                sql = path.read_text(encoding="utf-8")
+                with db.connect() as conn, conn.transaction():
+                    _apply_postgresql_migration(conn, sql)
+            else:
+                _apply_sqlite_migration(db, version, path)
         if db.dialect == "postgresql":
-            sql = path.read_text(encoding="utf-8")
-            with db.connect() as conn, conn.transaction():
-                _apply_postgresql_migration(conn, sql)
             if version == 3:
                 from octop.infra.db.repos.threads import repair_all_legacy_thread_titles
 
@@ -1045,8 +1063,6 @@ def run_migrations(db: DatabasePool) -> None:
                 _collapse_legacy_agent_welcome_columns(db)
                 _ensure_skill_packages_schema(db)
                 _ensure_published_experts_schema(db)
-        else:
-            _apply_sqlite_migration(db, version, path)
     _reconcile_pre_squash_schema_version(db)
     _ensure_skill_packages_schema(db)
     _ensure_published_experts_schema(db)

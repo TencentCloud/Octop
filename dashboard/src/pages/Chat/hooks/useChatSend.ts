@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import type { TFunction } from "i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
-import type { Session } from "./useSessions";
+import { isPendingThread, type Session } from "./useSessions";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
 import { clipThreadTitle } from "../utils/threadTitle";
@@ -165,6 +165,10 @@ export function useChatSend({
         overrides?.threadId !== undefined ? overrides.threadId : activeThreadId;
 
       if (targetThreadId) {
+        if (isPendingThread(targetThreadId)) {
+          message.info(t("chat.creatingSession", "正在创建会话，请稍候"));
+          return false;
+        }
         const hadMessages =
           targetThreadId === activeThreadId
             ? messagesLength > 0

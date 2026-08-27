@@ -1,16 +1,19 @@
 import { App } from "antd";
 import { useEffect, type ReactNode } from "react";
 import { bindAntdMessage, unbindAntdMessage } from "../utils/antdMessage";
+import { bindAntdModal, unbindAntdModal } from "../utils/antdModal";
 
-/** Captures App.useApp() APIs for non-hook call sites (utils, hooks, callbacks). */
+/** Captures App.useApp() APIs for non-hook call sites (utils). */
 function AntdAppApiBinder() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   useEffect(() => {
     bindAntdMessage(message);
+    bindAntdModal(modal);
     return () => {
       unbindAntdMessage();
+      unbindAntdModal();
     };
-  }, [message]);
+  }, [message, modal]);
   return null;
 }
 

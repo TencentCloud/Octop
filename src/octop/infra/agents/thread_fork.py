@@ -187,6 +187,7 @@ async def fork_dashboard_thread(
     content: str | None = None,
     assistant_turns_from_end: int | None = None,
     locale: str = "en",
+    thread_message_repo: Any | None = None,
 ) -> dict[str, Any]:
     """Create a dashboard thread seeded through the selected assistant reply."""
     messages = await load_checkpoint_messages(harness, source.thread_id)
@@ -198,6 +199,17 @@ async def fork_dashboard_thread(
     )
     # Include the selected assistant message (and any tool traffic before it).
     prefix = messages[: idx + 1]
+    prefix_projection_inputs: list[Any] | None = None
+    if thread_message_repo is not None:
+        from octop.infra.gateway.process.history_projection import (  # noqa: PLC0415
+            message_inputs,
+        )
+
+        projection_inputs = message_inputs(messages)
+        prefix_projection_inputs = message_inputs(prefix)
+        # A fork already paid the explicit full-history read cost. Reuse it to
+        # heal an empty read model instead of decoding the source again later.
+        thread_message_repo.append_if_ready(source.thread_id, projection_inputs)
 
     session_key = ThreadRegistry.dashboard_key(agent_id=source.agent_id, user_id=user_id)
     dest_id = thread_registry.create_thread(
@@ -210,6 +222,9 @@ async def fork_dashboard_thread(
     )
     try:
         await write_checkpoint_messages(harness, thread_id=dest_id, messages=prefix)
+        if thread_message_repo is not None:
+            assert prefix_projection_inputs is not None
+            thread_message_repo.append_if_ready(dest_id, prefix_projection_inputs)
     except Exception:
         thread_registry.delete_thread(dest_id)
         raise

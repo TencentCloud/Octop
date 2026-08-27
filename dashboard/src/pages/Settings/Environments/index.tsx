@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Button, Modal } from "antd";
-import { message } from "@/utils/antdMessage";
+import { App, Button } from "antd";
 
 import { useTranslation } from "react-i18next";
 
@@ -39,6 +38,7 @@ function shiftIndices(prev: Set<number>, removedIdx: number): Set<number> {
 
 function EnvironmentsPage() {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const isMobile = useIsMobile();
   const { envVars, loading, error, fetchAll } = useEnvVars();
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -137,7 +137,7 @@ function EnvironmentsPage() {
         return;
       }
 
-      Modal.confirm({
+      modal.confirm({
         title: t("environments.deleteVariable"),
         content: t("environments.deleteConfirm", { name: row.key }),
         okText: t("common.delete"),
@@ -171,7 +171,7 @@ function EnvironmentsPage() {
         ? names.map((n) => `"${n}"`).join(", ")
         : `${names.length} variables`;
 
-    Modal.confirm({
+    modal.confirm({
       title: t("environments.deleteSelected"),
       content: t("environments.deleteSelectedConfirm", { label }),
       okText: t("common.delete"),

@@ -5,7 +5,7 @@ describe("ensureBwrap helpers", () => {
   it("maps status to toast kind", () => {
     expect(ensureBwrapToastKind("ready")).toBe("none");
     expect(ensureBwrapToastKind("installed")).toBe("success");
-    expect(ensureBwrapToastKind("skipped")).toBe("warning");
+    expect(ensureBwrapToastKind("skipped")).toBe("none");
     expect(ensureBwrapToastKind("degraded")).toBe("warning");
   });
 

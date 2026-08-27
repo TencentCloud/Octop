@@ -6,16 +6,15 @@
  */
 import { useState } from "react";
 import {
+  App,
   Button,
   Form,
   Input,
   InputNumber,
-  Modal,
   Select,
   Switch,
   Tooltip,
 } from "antd";
-import { message } from "@/utils/antdMessage";
 
 import {
   Check,
@@ -76,6 +75,7 @@ export function ModelListEditor({
   onTestModel,
 }: ModelListEditorProps) {
   const { t } = useTranslation();
+  const { modal, message } = App.useApp();
   const downloadedSet = (() => {
     if (!localDownload) return null;
     const raw = localDownload.downloadedIds;
@@ -120,7 +120,7 @@ export function ModelListEditor({
   };
 
   const handleRemoveModel = (modelId: string, modelName: string) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("models.removeModel"),
       content: t("models.removeModelConfirm", {
         name: modelName,

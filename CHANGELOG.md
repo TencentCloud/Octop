@@ -10,6 +10,16 @@
 
 - 自定义 MCP 连接器支持 OAuth：从 MCP URL 自动发现授权端点，统一 `POST /connectors/oauth/start` 启动授权；保存后可探测、一键授权，Bearer 注入 harness spec；Custom Connectors UI 支持启用与「对话默认选中」分离、保存后可选探测
 
+## [0.9.29] - 2026-08-27
+
+### 修复
+
+- 长会话卡死：聊天历史改为独立投影分页加载，并支持后台迁移旧会话（不再同步扫 checkpoint）
+
+### 变更
+
+- 依赖：`orcakit-harness-agent[all]>=0.9.27`、`harness-memory>=0.9.7`、`harness-browser>=0.7.6`（自动 full VACUUM 关闭，空闲维护只走 lifecycle GC + incremental `nudge_vacuum`）
+
 ## [0.9.28] - 2026-08-26
 
 ### 修复

@@ -8,6 +8,7 @@ import logging
 import re
 import shutil
 from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -333,6 +334,9 @@ class AgentManager:
         self._team_processor: Any | None = None
         self._harness_manager: HarnessAgentManager | None = None
         self._lock = asyncio.Lock()
+        self._active_invocations: dict[str, int] = {}
+        self._invocation_waiters: dict[str, int] = {}
+        self._history_backfills: dict[str, asyncio.Event] = {}
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
         self._bootstrap_graph_refresh_pending: set[str] = set()
@@ -872,25 +876,76 @@ class AgentManager:
     # Chat / invoke — stream, call, HITL, thread model overrides
     # ------------------------------------------------------------------
 
+    def is_agent_active(self, agent_id: str) -> bool:
+        """Whether the agent is currently executing a user-visible invocation."""
+        return self._active_invocations.get(agent_id, 0) > 0
+
+    def try_begin_history_backfill(self, agent_id: str) -> bool:
+        """Reserve an idle agent for one history backfill without racing a new turn."""
+        if (
+            self.is_agent_active(agent_id)
+            or self._invocation_waiters.get(agent_id, 0) > 0
+            or agent_id in self._history_backfills
+        ):
+            return False
+        self._history_backfills[agent_id] = asyncio.Event()
+        return True
+
+    def end_history_backfill(self, agent_id: str) -> None:
+        """Release one history-backfill reservation and wake waiting invocations."""
+        event = self._history_backfills.pop(agent_id, None)
+        if event is not None:
+            event.set()
+
+    async def _begin_invocation(self, agent_id: str) -> None:
+        self._invocation_waiters[agent_id] = self._invocation_waiters.get(agent_id, 0) + 1
+        try:
+            while event := self._history_backfills.get(agent_id):
+                await event.wait()
+        finally:
+            waiting = self._invocation_waiters.get(agent_id, 1) - 1
+            if waiting > 0:
+                self._invocation_waiters[agent_id] = waiting
+            else:
+                self._invocation_waiters.pop(agent_id, None)
+        self._active_invocations[agent_id] = self._active_invocations.get(agent_id, 0) + 1
+
+    def _end_invocation(self, agent_id: str) -> None:
+        active = self._active_invocations.get(agent_id, 1) - 1
+        if active > 0:
+            self._active_invocations[agent_id] = active
+        else:
+            self._active_invocations.pop(agent_id, None)
+
+    @asynccontextmanager
+    async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
+        await self._begin_invocation(agent_id)
+        try:
+            yield
+        finally:
+            self._end_invocation(agent_id)
+
     async def stream(self, agent_id: str, request: dict[str, Any]) -> AsyncIterator[Any]:
         """Stream harness chunks (Langfuse tracing handled inside harness-agent)."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
 
-        self._apply_pending_bootstrap_graph_refresh(agent_id)
-        req = self._prepare_stream_request(agent_id, request)
-        async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-            yield chunk
-        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        async with self._track_invocation(agent_id):
+            self._apply_pending_bootstrap_graph_refresh(agent_id)
+            req = self._prepare_stream_request(agent_id, request)
+            async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
+                yield chunk
+            self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
         """Non-streaming harness invocation (one-shot agent call)."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
-        self._apply_pending_bootstrap_graph_refresh(agent_id)
-        req = self._prepare_stream_request(agent_id, request)
-        result = await self._harness_manager.call(agent_id, cast(Any, req))
-        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        async with self._track_invocation(agent_id):
+            self._apply_pending_bootstrap_graph_refresh(agent_id)
+            req = self._prepare_stream_request(agent_id, request)
+            result = await self._harness_manager.call(agent_id, cast(Any, req))
+            self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
             return {"result": result}
         return result
@@ -904,10 +959,11 @@ class AgentManager:
         """Resume a paused HITL interrupt for *thread_id*."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
-        self._apply_pending_bootstrap_graph_refresh(agent_id)
-        async for chunk in self._harness_manager.resume_hitl(agent_id, thread_id, decisions):
-            yield chunk
-        self._apply_pending_bootstrap_graph_refresh(agent_id)
+        async with self._track_invocation(agent_id):
+            self._apply_pending_bootstrap_graph_refresh(agent_id)
+            async for chunk in self._harness_manager.resume_hitl(agent_id, thread_id, decisions):
+                yield chunk
+            self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
         """Signal harness-agent to stop the active stream for *(agent_id, thread_id)*."""

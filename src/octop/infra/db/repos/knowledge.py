@@ -31,11 +31,16 @@ class KnowledgeBaseRow:
     embedding_model: str
     embedding_dim: int
     doc_count: int
+    max_documents: int
     created_at: int
     updated_at: int
 
     @classmethod
     def from_row(cls, r: DbRow) -> KnowledgeBaseRow:
+        # Schema v10 adds max_documents. Fall back to 100 for pre-v10 DBs.
+        # sqlite3.Row has no __contains__; use keys() (like users.py).
+        keys = frozenset(r.keys()) if hasattr(r, "keys") else frozenset()
+        max_doc = int(r["max_documents"]) if "max_documents" in keys else 100
         return cls(
             id=str(r["knowledge_base_id"]),
             pk=int(r["id"]),
@@ -48,6 +53,7 @@ class KnowledgeBaseRow:
             embedding_model=r["embedding_model"],
             embedding_dim=r["embedding_dim"],
             doc_count=r["doc_count"],
+            max_documents=max_doc,
             created_at=r["created_at"],
             updated_at=r["updated_at"],
         )
@@ -112,29 +118,54 @@ class KnowledgeRepo:
         icon_name: str = "",
         embedding_model: str = "",
         embedding_dim: int = 0,
+        max_documents: int | None = None,
     ) -> KnowledgeBaseRow:
         kb_id = self._allocate_base_id()
         ts = now_ts()
         with self._db.transaction() as conn:
-            conn.execute(
-                "INSERT INTO knowledge_bases("
-                "knowledge_base_id, owner_user_id, name, description, default_open, shared, "
-                "icon_name, embedding_model, embedding_dim, doc_count, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
-                (
-                    kb_id,
-                    owner_user_id,
-                    name,
-                    description,
-                    bool_int(default_open),
-                    bool_int(shared),
-                    icon_name,
-                    embedding_model,
-                    embedding_dim,
-                    ts,
-                    ts,
-                ),
-            )
+            if max_documents is None:
+                # Rely on the column DEFAULT (100) for max_documents.
+                conn.execute(
+                    "INSERT INTO knowledge_bases("
+                    "knowledge_base_id, owner_user_id, name, description, default_open, shared, "
+                    "icon_name, embedding_model, embedding_dim, doc_count, created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                    (
+                        kb_id,
+                        owner_user_id,
+                        name,
+                        description,
+                        bool_int(default_open),
+                        bool_int(shared),
+                        icon_name,
+                        embedding_model,
+                        embedding_dim,
+                        ts,
+                        ts,
+                    ),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO knowledge_bases("
+                    "knowledge_base_id, owner_user_id, name, description, default_open, shared, "
+                    "icon_name, embedding_model, embedding_dim, doc_count, max_documents, "
+                    "created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                    (
+                        kb_id,
+                        owner_user_id,
+                        name,
+                        description,
+                        bool_int(default_open),
+                        bool_int(shared),
+                        icon_name,
+                        embedding_model,
+                        embedding_dim,
+                        max_documents,
+                        ts,
+                        ts,
+                    ),
+                )
         row = self.get_base(kb_id)
         if row is None:
             raise RuntimeError(f"knowledge base insert failed: {kb_id}")
@@ -183,6 +214,7 @@ class KnowledgeRepo:
         embedding_model: str | None = None,
         embedding_dim: int | None = None,
         doc_count: int | None = None,
+        max_documents: int | None = None,
     ) -> None:
         fields, params = partial_updates(
             [
@@ -194,6 +226,7 @@ class KnowledgeRepo:
                 ("embedding_model", embedding_model),
                 ("embedding_dim", embedding_dim),
                 ("doc_count", doc_count),
+                ("max_documents", max_documents),
             ]
         )
         if not fields:
@@ -264,8 +297,12 @@ class KnowledgeRepo:
             self.ensure_folder(kb_id, folder)
         doc_id = new_ulid()
         ts = now_ts()
+        # Treat both None (caller did not specify) and 0 (per-base "unlimited"
+        # sentinel) as unbounded. Otherwise 0 would be enforced literally as
+        # "at most 0 documents" and reject every create.
+        enforce_limit = max_documents is not None and max_documents > 0
         with self._db.transaction() as conn:
-            if max_documents is not None:
+            if enforce_limit:
                 cursor = conn.execute(
                     "UPDATE knowledge_bases SET doc_count = doc_count + 1, updated_at = ? "
                     "WHERE knowledge_base_id = ? AND doc_count < ?",
@@ -280,7 +317,7 @@ class KnowledgeRepo:
                 ") VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, '', 0, ?, ?)",
                 (doc_id, kb_id, rel, name, content_type, byte_size, content_hash, status, ts, ts),
             )
-            if max_documents is None:
+            if not enforce_limit:
                 conn.execute(
                     "UPDATE knowledge_bases SET doc_count = doc_count + 1, updated_at = ? "
                     "WHERE knowledge_base_id = ?",
