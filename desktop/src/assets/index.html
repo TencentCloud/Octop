@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Octop</title>
+    <script type="module" src="/wails/runtime.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg-primary: #ffffff;
+        --bg-layout: #f5f6f8;
+        --bg-secondary: #f7f8fa;
+        --text-primary: #111827;
+        --text-secondary: #4b5563;
+        --text-tertiary: #9ca3af;
+        --border: #e5e7eb;
+        --brand: #e85d75;
+        --brand-hover: #d14a62;
+        --brand-soft: #fde8ec;
+        --on-brand: #ffffff;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+        --radius: 12px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+          "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+        margin: 0;
+        background: var(--bg-layout);
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 420px;
+        margin: 0 auto;
+        padding: 28px 24px 24px;
+      }
+      h1 {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin: 0 0 6px;
+      }
+      .subtitle {
+        margin: 0 0 20px;
+        font-size: 13px;
+        color: var(--text-tertiary);
+      }
+      .card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        padding: 14px 16px;
+      }
+      .row + .row {
+        border-top: 1px solid var(--border);
+      }
+      .row .label {
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .row small {
+        display: block;
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--text-tertiary);
+        margin-top: 4px;
+      }
+      select {
+        font: inherit;
+        font-size: 13px;
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px 10px;
+        min-width: 108px;
+        outline: none;
+      }
+      select:focus {
+        border-color: var(--brand);
+        box-shadow: 0 0 0 3px rgba(232, 93, 117, 0.12);
+      }
+      .switch {
+        position: relative;
+        width: 40px;
+        height: 24px;
+        flex-shrink: 0;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .switch span {
+        position: absolute;
+        inset: 0;
+        background: #e5e7eb;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: background 0.18s ease;
+      }
+      .switch span::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        background: #fff;
+        border-radius: 50%;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+        transition: transform 0.18s ease;
+      }
+      .switch input:checked + span {
+        background: var(--brand);
+      }
+      .switch input:checked + span::after {
+        transform: translateX(16px);
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .actions button {
+        flex: 1;
+        padding: 9px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .actions .primary {
+        background: var(--brand);
+        color: var(--on-brand);
+        border: 0;
+      }
+      .actions .primary:hover {
+        background: var(--brand-hover);
+      }
+      .actions .ghost {
+        background: var(--bg-primary);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+      }
+      .actions .ghost:hover {
+        background: var(--bg-secondary);
+      }
+      .status {
+        min-height: 1.4em;
+        margin: 12px 0 0;
+        font-size: 13px;
+        color: #b91c1c;
+      }
+      .loading {
+        min-height: 100vh;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        text-align: center;
+        background: var(--bg-layout);
+        padding: 24px;
+      }
+      .loading img {
+        width: 132px;
+        aspect-ratio: 352 / 320;
+        height: auto;
+        object-fit: contain;
+        background: transparent;
+        cursor: pointer;
+        user-select: none;
+        transition: transform 0.18s ease;
+      }
+      .loading img:hover {
+        transform: scale(1.04) translateY(-2px);
+      }
+      .loading img:active {
+        transform: scale(0.94);
+      }
+      .spinner {
+        width: 22px;
+        height: 22px;
+        margin-top: 22px;
+        border: 2px solid var(--brand-soft);
+        border-top-color: var(--brand);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      .loading .status {
+        margin: 14px 0 0;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+      .loading small {
+        max-width: 280px;
+        margin-top: 8px;
+        color: var(--text-tertiary);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loading" id="loading-panel">
+      <img
+        id="mascot"
+        src="/octop-mascot-peek.webp"
+        alt="Octop"
+        draggable="false"
+      />
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="status" id="status">正在启动，请稍候…</p>
+      <small>正在检查运行环境，可能需要几分钟。</small>
+    </div>
+
+    <div id="settings-panel" class="hidden">
+      <div class="wrap">
+        <h1 id="title">Octop 设置</h1>
+        <p class="subtitle" id="subtitle">桌面端偏好</p>
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="label" id="l-lang">语言 / Language</div>
+              <small id="h-lang"
+                >选择偏好语言 / Choose your preferred language</small
+              >
+            </div>
+            <select id="locale">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div class="row">
+            <div>
+              <div class="label" id="l-auto">开机启动</div>
+              <small id="h-auto">登录系统后自动启动</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="autostart" />
+              <span></span>
+            </label>
+          </div>
+          <div class="row">
+            <div>
+              <div class="label" id="l-tray">最小化到托盘</div>
+              <small id="h-tray"
+                >点击最小化时隐藏窗口并保留在系统托盘</small
+              >
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="tray" />
+              <span></span>
+            </label>
+          </div>
+          <div class="row">
+            <div>
+              <div class="label" id="l-sleep">防止系统休眠</div>
+              <small id="h-sleep">应用运行期间阻止系统自动休眠</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="sleep" />
+              <span></span>
+            </label>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="show-main">显示 Octop</button>
+          <button class="ghost" id="quit">退出</button>
+        </div>
+        <p class="status hidden" id="settings-status"></p>
+      </div>
+    </div>
+    <script type="module">
+      import { Call, Events } from "/wails/runtime.js";
+
+      const copy = {
+        zh: {
+          statusWait: "正在启动…",
+          title: "Octop 设置",
+          subtitle: "桌面端偏好",
+          lang: "语言",
+          langH: "选择偏好语言 / Choose your preferred language",
+          auto: "开机启动",
+          autoH: "登录系统后自动启动",
+          tray: "最小化到托盘",
+          trayH: "点击最小化时隐藏窗口并保留在系统托盘",
+          sleep: "防止系统休眠",
+          sleepH: "应用运行期间阻止系统自动休眠",
+          showMain: "显示 Octop",
+          quit: "退出",
+        },
+        en: {
+          statusWait: "Starting…",
+          title: "Octop Settings",
+          subtitle: "Desktop preferences",
+          lang: "Language",
+          langH: "Choose your preferred language",
+          auto: "Launch at login",
+          autoH: "Start automatically after you sign in",
+          tray: "Minimize to tray",
+          trayH: "Hide the window on minimize and keep Octop in the tray",
+          sleep: "Prevent system sleep",
+          sleepH: "Keeps the system awake while Octop is running",
+          showMain: "Show Octop",
+          quit: "Quit",
+        },
+      };
+
+      function applyCopy(locale) {
+        const t = copy[locale] || copy.zh;
+        document.getElementById("title").textContent = t.title;
+        document.getElementById("subtitle").textContent = t.subtitle;
+        document.getElementById("l-lang").textContent = t.lang;
+        document.getElementById("h-lang").textContent = t.langH;
+        document.getElementById("l-auto").textContent = t.auto;
+        document.getElementById("h-auto").textContent = t.autoH;
+        document.getElementById("l-tray").textContent = t.tray;
+        document.getElementById("h-tray").textContent = t.trayH;
+        document.getElementById("l-sleep").textContent = t.sleep;
+        document.getElementById("h-sleep").textContent = t.sleepH;
+        document.getElementById("show-main").textContent = t.showMain;
+        document.getElementById("quit").textContent = t.quit;
+      }
+
+      async function call(name, ...args) {
+        return Call.ByName("main.App." + name, ...args);
+      }
+
+      const MASCOT_IMAGES = [
+        "/octop-mascot-peek.webp",
+        "/octop-mascot-type.webp",
+      ];
+      const mascotEl = document.getElementById("mascot");
+      let mascotSrc = MASCOT_IMAGES[0];
+      function pickMascot(current) {
+        let next = current;
+        while (next === current) {
+          next = MASCOT_IMAGES[Math.floor(Math.random() * MASCOT_IMAGES.length)];
+        }
+        return next;
+      }
+      mascotSrc = pickMascot(mascotSrc);
+      mascotEl.src = mascotSrc;
+      mascotEl.addEventListener("click", () => {
+        mascotSrc = pickMascot(mascotSrc);
+        mascotEl.src = mascotSrc;
+      });
+
+      function current() {
+        return {
+          locale: document.getElementById("locale").value,
+          autostart: document.getElementById("autostart").checked,
+          minimizeToTray: document.getElementById("tray").checked,
+          preventSleep: document.getElementById("sleep").checked,
+        };
+      }
+
+      function settingsStatusEl() {
+        return document.getElementById("settings-status");
+      }
+
+      async function persist() {
+        let savedBefore;
+        const errEl = settingsStatusEl();
+        try {
+          savedBefore = await call("GetSettingsStatus");
+          const saved = await call("SaveSettings", {
+            ...savedBefore,
+            ...current(),
+          });
+          document.getElementById("autostart").checked = !!saved.autostart;
+          document.getElementById("sleep").checked = !!saved.preventSleep;
+          errEl.classList.add("hidden");
+          applyCopy(saved.locale);
+        } catch (error) {
+          if (savedBefore) {
+            document.getElementById("autostart").checked =
+              !!savedBefore.autostart;
+            document.getElementById("sleep").checked =
+              !!savedBefore.preventSleep;
+          }
+          errEl.textContent = String(error);
+          errEl.classList.remove("hidden");
+        }
+      }
+
+      const settingsMode =
+        new URLSearchParams(window.location.search).get("settings") === "1";
+      const s = await call("GetSettingsStatus");
+      document.getElementById("status").textContent =
+        copy[s.locale || "zh"].statusWait;
+
+      if (settingsMode) {
+        document.getElementById("loading-panel").classList.add("hidden");
+        document.getElementById("settings-panel").classList.remove("hidden");
+        document.getElementById("locale").value = s.locale || "zh";
+        document.getElementById("autostart").checked = !!s.autostart;
+        document.getElementById("tray").checked = s.minimizeToTray !== false;
+        document.getElementById("sleep").checked = !!s.preventSleep;
+        applyCopy(s.locale || "zh");
+
+        for (const id of ["locale", "autostart", "tray", "sleep"]) {
+          document.getElementById(id).addEventListener("change", persist);
+        }
+        document
+          .getElementById("show-main")
+          .addEventListener("click", () => call("ShowMain"));
+        document
+          .getElementById("quit")
+          .addEventListener("click", () => call("Quit"));
+      }
+
+      Events.On("desktop:status", (ev) => {
+        const msg =
+          typeof ev === "string"
+            ? ev
+            : ev?.data ?? ev?.payload ?? JSON.stringify(ev);
+        document.getElementById("status").textContent = String(msg);
+      });
+    </script>
+  </body>
+</html>

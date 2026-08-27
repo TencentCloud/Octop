@@ -80,6 +80,36 @@ def test_build_upgrade_command_uses_managed_venv_python() -> None:
     assert "--upgrade-package" in cmd
     assert "octop" in cmd
     assert "https://mirror.example/simple" in cmd
+    assert "--target" not in cmd
+
+
+def test_build_upgrade_command_green_packages_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    packages = tmp_path / "packages"
+    packages.mkdir()
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(packages))
+    python = "/opt/octop/runtime/bin/python3"
+    cmd = self_update.build_upgrade_command("uv", python)
+    assert cmd is not None
+    assert "--target" in cmd
+    assert str(packages) in cmd
+
+
+def test_resolve_venv_python_green_uses_current_interpreter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    packages = tmp_path / "packages"
+    packages.mkdir()
+    venv_python = tmp_path / "venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(packages))
+    monkeypatch.setattr(self_update.sys, "executable", "/bundled/python3")
+    monkeypatch.setattr(self_update.sys, "prefix", "/usr")
+    monkeypatch.setattr(self_update.sys, "base_prefix", "/usr")
+    assert self_update.resolve_venv_python() == "/bundled/python3"
 
 
 def test_resolve_venv_python_prefers_octop_home(

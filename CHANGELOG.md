@@ -10,6 +10,18 @@
 
 - 自定义 MCP 连接器支持 OAuth：从 MCP URL 自动发现授权端点，统一 `POST /connectors/oauth/start` 启动授权；保存后可探测、一键授权，Bearer 注入 harness spec；Custom Connectors UI 支持启用与「对话默认选中」分离、保存后可选探测
 
+### 变更
+
+- Docker / FnOS 镜像对外统一为 `ghcr.io/tencentcloud/octop`（仍同步推送 Docker Hub；移除 vanilla 镜像标签）
+- FnOS FPK 在 Release 成功后自动构建：复用 GHCR 镜像与 Release wheel，不再重复编镜像
+- 正式发版时 Auto Tag 同步触发桌面客户端打包，产物挂到同一 `v*` GitHub Release（不再对任意分支 push 跑六平台矩阵）
+- 修复 Auto Tag → `workflow_dispatch` 时 Docker 镜像可能只有 `:latest`、缺少 `:{version}` 的问题（显式从 tag 解析版本）
+
+### 修复
+
+- 合并冲突的双份 schema v10 迁移：投影表不再被 `010_kb_max_documents` 抢先抬版本而跳过；启动时幂等补建 `thread_messages` / `thread_history_projection`
+- Windows CI：`test_create_keeps_user_workspace_dir` 等真实 Harness 单测关闭 memory，避免 GC 线程与 `close()` 争用 SQLite 触发 access violation
+
 ## [0.9.29] - 2026-08-27
 
 ### 修复
