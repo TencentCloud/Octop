@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-## [0.9.27b0] - 2026-08-27
+## [0.9.29] - 2026-08-27
 
 ### 修复
 
@@ -14,7 +14,7 @@
 
 ### 变更
 
-- 依赖对齐 `origin/main` 0.9.28：`orcakit-harness-agent[all]>=0.9.27`、`harness-memory>=0.9.7`、`harness-browser>=0.7.6`（自动 full VACUUM 关闭，空闲维护只走 lifecycle GC + incremental `nudge_vacuum`）
+- 依赖：`orcakit-harness-agent[all]>=0.9.27`、`harness-memory>=0.9.7`、`harness-browser>=0.7.6`（自动 full VACUUM 关闭，空闲维护只走 lifecycle GC + incremental `nudge_vacuum`）
 
 ## [0.9.28] - 2026-08-26
 
