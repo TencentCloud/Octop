@@ -9,6 +9,7 @@
 ### 修复
 
 - 合并冲突的双份 schema v10 迁移：投影表不再被 `010_kb_max_documents` 抢先抬版本而跳过；启动时幂等补建 `thread_messages` / `thread_history_projection`
+- Windows CI：`test_create_keeps_user_workspace_dir` 等真实 Harness 单测关闭 memory，避免 GC 线程与 `close()` 争用 SQLite 触发 access violation
 
 ## [0.9.29] - 2026-08-27
 
