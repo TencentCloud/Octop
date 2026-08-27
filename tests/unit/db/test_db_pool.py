@@ -285,6 +285,31 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
     assert "permissions" in cols
 
 
+def test_schema_v10_without_projection_tables_is_repaired(tmp_path: Path) -> None:
+    """DBs that bumped to v10 via a colliding 010 file still get projection tables."""
+    db_path = tmp_path / "octop.db"
+    pool = SqlitePool(db_path)
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("UPDATE _schema_version SET version = 10")
+    run_migrations(pool)
+    with pool.connect() as conn:
+        version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        table_names = {
+            r["name"]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        kb_cols = {r["name"] for r in conn.execute("PRAGMA table_info(knowledge_bases)").fetchall()}
+    assert version == 10
+    assert {"thread_messages", "thread_history_projection"}.issubset(table_names)
+    assert "max_documents" in kb_cols
+
+
 def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
     """A DB whose watermark is ahead of discovered migrations clamps on boot.
 
