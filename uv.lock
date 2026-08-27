@@ -2570,7 +2570,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.27" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=0.9.28" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },

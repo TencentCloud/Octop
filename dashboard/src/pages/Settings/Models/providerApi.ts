@@ -1,4 +1,20 @@
 import { request } from "../../../api/request";
+import type { ProviderModel } from "./useProviders";
+
+export type ProviderProbeModel = Omit<ProviderModel, "max_tokens"> & {
+  max_output_tokens?: number;
+};
+
+/** Convert the persisted model shape into the metadata shape used by probes. */
+export function toProviderProbeModel(model: ProviderModel): ProviderProbeModel {
+  const { max_tokens, ...probeModel } = model;
+  return {
+    ...probeModel,
+    ...(probeModel.max_output_tokens != null || max_tokens == null
+      ? {}
+      : { max_output_tokens: max_tokens }),
+  };
+}
 
 export interface TestProviderDraftParams {
   name: string;
@@ -6,6 +22,7 @@ export interface TestProviderDraftParams {
   api_key?: string;
   base_url?: string | null;
   model_id: string;
+  model: ProviderProbeModel;
   extra_json?: string | null;
   embedding?: boolean;
 }
@@ -27,6 +44,7 @@ export async function testProviderDraft(
       api_key: params.api_key?.trim() || null,
       base_url: params.base_url?.trim() || null,
       model_id: params.model_id,
+      model: params.model,
       extra_json: params.extra_json ?? null,
       embedding: params.embedding === true,
     }),

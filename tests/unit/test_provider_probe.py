@@ -33,6 +33,33 @@ def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     assert model.name == "MiniMax-M2.7"
 
 
+def test_build_chat_model_preserves_mixed_protocol_model_metadata() -> None:
+    row = SimpleNamespace(
+        name="opencode-go",
+        kind="openai",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key="sk-test",
+        get_models=lambda: [
+            {
+                "id": "qwen3.8-max",
+                "name": "Qwen 3.8 Max",
+                "wire_api": "anthropic_messages",
+                "endpoint_base_url": "https://opencode.ai/zen/go",
+                "max_tokens": 131_072,
+            }
+        ],
+    )
+
+    with patch("harness_agent.llm.factory.build_chat_model") as mock_build:
+        mock_build.return_value = object()
+        _build_chat_model(row, model_id="qwen3.8-max")
+
+    _provider, model = mock_build.call_args[0]
+    assert model.wire_api == "anthropic_messages"
+    assert model.endpoint_base_url == "https://opencode.ai/zen/go"
+    assert model.max_output_tokens == 131_072
+
+
 def _embedding_row(**overrides: Any) -> SimpleNamespace:
     models = overrides.pop(
         "models",

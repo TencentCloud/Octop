@@ -10,7 +10,11 @@ import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
-import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import {
+  fetchProviderModels,
+  testProviderDraft,
+  toProviderProbeModel,
+} from "../../providerApi";
 import { ModelListEditor } from "./ModelListEditor";
 import styles from "../../index.module.less";
 
@@ -83,13 +87,18 @@ export function CustomProviderModal({
     if (!key) {
       return { ok: false, error: t("models.pleaseEnterApiKey") };
     }
+    const model = models.find((item) => item.id === modelId);
+    if (!model) {
+      return { ok: false, error: t("models.testDraftNeedModel") };
+    }
     return testProviderDraft({
       name: (values.name || "draft").trim(),
       kind: values.kind,
       api_key: key,
       base_url: values.base_url?.trim() || null,
       model_id: modelId,
-      embedding: isEmbeddingModel(models.find((m) => m.id === modelId)),
+      model: toProviderProbeModel(model),
+      embedding: isEmbeddingModel(model),
     });
   };
 
@@ -156,16 +165,14 @@ export function CustomProviderModal({
       setSaving(true);
 
       const modelEntries = models.map((m) => {
+        const { max_output_tokens, ...persisted } = m;
         const entry: Record<string, unknown> = {
-          id: m.id,
-          name: m.name,
-          enabled: m.enabled,
+          ...persisted,
           input: m.input?.length ? m.input : ["text"],
-          thinking: null,
+          thinking: m.thinking ?? null,
         };
-        if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
-        if (m.context_window != null) entry.context_window = m.context_window;
-        if (m.reasoning) entry.reasoning = true;
+        const maxOutput = m.max_tokens ?? max_output_tokens;
+        if (maxOutput != null) entry.max_tokens = maxOutput;
         if (isEmbeddingModel(m)) {
           entry.embedding = true;
           entry.task = "embedding";

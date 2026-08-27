@@ -35,15 +35,36 @@ interface LocalServiceCardProps {
 }
 
 function presetModelsToRows(preset: ProviderPreset): ProviderModel[] {
-  return preset.models.map((m) => ({
-    id: m.id,
-    name: m.name,
-    enabled: false,
-    embedding: preset.id === "onnx" ? true : undefined,
-    task: preset.id === "onnx" ? "embedding" : undefined,
-    input: m.input?.length ? m.input : ["text"],
-    thinking: null,
-  }));
+  return preset.models.map((m) => {
+    const row: ProviderModel = {
+      id: m.id,
+      name: m.name,
+      enabled: false,
+      embedding: preset.id === "onnx" ? true : undefined,
+      task: preset.id === "onnx" ? "embedding" : undefined,
+      input: m.input?.length ? m.input : ["text"],
+      thinking: null,
+    };
+    if (m.context_window != null) row.context_window = m.context_window;
+    if (m.max_input_tokens != null) {
+      row.max_input_tokens = m.max_input_tokens;
+    }
+    const maxOutput = m.max_output_tokens ?? m.max_tokens;
+    if (maxOutput != null) row.max_tokens = maxOutput;
+    if (m.reasoning != null) row.reasoning = m.reasoning;
+    if (m.reasoning_config !== undefined) {
+      row.reasoning_config = m.reasoning_config;
+    }
+    if (m.wire_api != null) row.wire_api = m.wire_api;
+    if (m.endpoint_base_url != null) {
+      row.endpoint_base_url = m.endpoint_base_url;
+    }
+    if (m.native_tool_search != null) {
+      row.native_tool_search = m.native_tool_search;
+    }
+    if (m.options !== undefined) row.options = m.options;
+    return row;
+  });
 }
 
 export function LocalServiceCard({

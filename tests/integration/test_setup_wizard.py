@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -255,6 +256,60 @@ async def test_test_provider_returns_error_for_bad_key(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
+async def test_test_provider_forwards_selected_model_wire_metadata(env: Any) -> None:
+    c, _srv, _home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    probe = AsyncMock(return_value={"ok": True, "latency_ms": 1})
+    with patch("octop.api.routers.setup.probe_provider_row", probe):
+        r = await c.post(
+            "/api/setup/test-provider",
+            json={
+                "name": "opencode-go",
+                "type": "openai",
+                "api_key": "sk-test",
+                "base_url": "https://opencode.ai/zen/go/v1",
+                "model_id": "qwen3.8-max",
+                "model": {
+                    "id": "qwen3.8-max",
+                    "name": "Qwen 3.8 Max",
+                    "wire_api": "anthropic_messages",
+                    "endpoint_base_url": "https://opencode.ai/zen/go",
+                },
+            },
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+
+    assert r.status_code == 200, r.text
+    row = probe.await_args.args[0]
+    assert row.get_models()[0]["wire_api"] == "anthropic_messages"
+    assert row.get_models()[0]["endpoint_base_url"] == "https://opencode.ai/zen/go"
+
+
+async def test_test_provider_rejects_unknown_wire_api(env: Any) -> None:
+    c, _srv, _home = env
+    pw = read_password(Path.home())
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    r = await c.post(
+        "/api/setup/test-provider",
+        json={
+            "name": "opencode-go",
+            "type": "openai",
+            "api_key": "sk-test",
+            "base_url": "https://opencode.ai/zen/go/v1",
+            "model_id": "qwen3.8-max",
+            "model": {
+                "id": "qwen3.8-max",
+                "name": "Qwen 3.8 Max",
+                "wire_api": "anthropic-messages",
+            },
+        },
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+
+    assert r.status_code == 422
+
+
 async def test_resume_wizard_after_admin_created(env: Any) -> None:
     c, _srv, home = env
     pw = read_password(Path.home())
@@ -324,6 +379,15 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
                         "name": "MiniMax",
                         "enabled": True,
                         "input": ["text"],
+                        "wire_api": "openai_chat_completions",
+                        "context_window": 204_800,
+                        "max_tokens": 131_072,
+                        "reasoning_config": {
+                            "supported": True,
+                            "adapter": "status_only",
+                            "toggle": False,
+                            "default_mode": "enabled",
+                        },
                     }
                 ],
             }
@@ -334,6 +398,11 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
     providers = srv.services.provider_repo.list_all()
     assert len(providers) == 1
     assert providers[0].api_key == "sk-test"
+    saved_model = providers[0].get_models()[0]
+    assert saved_model["wire_api"] == "openai_chat_completions"
+    assert saved_model["context_window"] == 204_800
+    assert saved_model["max_tokens"] == 131_072
+    assert saved_model["reasoning_config"]["adapter"] == "status_only"
     provider_name, model_id = srv.services.settings_repo.get_active_model()
     assert provider_name == "HAI"
     assert model_id == "MiniMax-M2.7"

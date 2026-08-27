@@ -145,6 +145,66 @@ def test_build_harness_configs_maps_context_window_to_max_input_tokens(
     assert providers[0].models[0].max_input_tokens == 1_000_000
 
 
+def test_build_harness_configs_preserves_model_wire_and_output_metadata(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="opencode-go",
+        kind="openai",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "qwen3.8-max",
+                    "name": "Qwen 3.8 Max",
+                    "enabled": True,
+                    "wire_api": "anthropic_messages",
+                    "endpoint_base_url": "https://opencode.ai/zen/go",
+                    "context_window": 1_000_000,
+                    # OCTOP persists this UI alias for output capacity.
+                    "max_tokens": 131_072,
+                }
+            ]
+        ),
+    )
+
+    model = store.build_harness_configs()[0].models[0]
+    assert model.wire_api == "anthropic_messages"
+    assert model.endpoint_base_url == "https://opencode.ai/zen/go"
+    assert model.context_window == 1_000_000
+    assert model.max_output_tokens == 131_072
+
+
+@pytest.mark.parametrize(
+    ("model_id", "expected_wire", "expected_endpoint"),
+    [
+        ("grok-4.5", "openai_responses", ""),
+        ("grok-4.6", "openai_responses", ""),
+        ("qwen3.8-max", "anthropic_messages", "https://opencode.ai/zen/go"),
+        ("minimax-m3", "anthropic_messages", "https://opencode.ai/zen/go"),
+        ("deepseek-v4-pro", None, ""),
+    ],
+)
+def test_build_harness_configs_infers_legacy_opencode_go_routes(
+    store: ProviderStore,
+    model_id: str,
+    expected_wire: str | None,
+    expected_endpoint: str,
+) -> None:
+    store._provider_repo.create(
+        name="legacy-opencode-go",
+        kind="openai",
+        base_url="https://opencode.ai/zen/go/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": model_id, "name": model_id, "enabled": True}]),
+    )
+
+    model = store.build_harness_configs()[0].models[0]
+    assert model.wire_api == expected_wire
+    assert model.endpoint_base_url == expected_endpoint
+
+
 def test_resolve_default_model_returns_none_when_stale(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="hai",

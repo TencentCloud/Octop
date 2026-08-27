@@ -23,6 +23,24 @@ KIND_TO_PROTOCOL: dict[str, str] = {
     "gemini": "openai",
 }
 
+_OPENCODE_GO_RESPONSES_MODELS = frozenset(
+    {
+        # Grok 4.5 is kept for already-persisted OpenCode Go rows.  The
+        # current bundled catalog exposes Grok 4.6 instead.
+        "grok-4.5",
+        "grok-4.6",
+        "gpt-5.6-luna",
+        "muse-spark-1.2-contributor",
+    }
+)
+
+_OPENCODE_GO_ANTHROPIC_PREFIXES = (
+    "minimax-",
+    "qwen3.6-",
+    "qwen3.7-",
+    "qwen3.8-",
+)
+
 
 def _infer_model_input_modalities(
     model_id: str,
@@ -52,6 +70,42 @@ def _model_dict_supports_image(model: dict[str, Any]) -> bool:
     raw = model.get("input")
     explicit = list(raw) if isinstance(raw, list) else None
     return "image" in _infer_model_input_modalities(model_id, explicit)
+
+
+def model_config_from_provider_entry(
+    raw: dict[str, object],
+    *,
+    provider_base_url: str | None = None,
+) -> ModelConfig:
+    """Build a harness model config without dropping model-level wire metadata.
+
+    ``max_tokens`` is OCTOP's persisted/UI alias for the provider's maximum
+    output tokens.  Older OpenCode Go rows predate ``wire_api``; infer only the
+    documented exceptional routes so those rows keep working without a DB
+    migration or an automatic production-provider rewrite.
+    """
+    data = dict(raw)
+    model_id = str(data.get("id") or "")
+    explicit = data.get("input")
+    inputs = list(explicit) if isinstance(explicit, list) else ["text"]
+    data["input"] = _infer_model_input_modalities(model_id, inputs)
+
+    if not data.get("max_output_tokens") and data.get("max_tokens"):
+        data["max_output_tokens"] = data["max_tokens"]
+
+    base_url = (provider_base_url or "").rstrip("/")
+    if not data.get("wire_api") and "opencode.ai/zen/go" in base_url.lower():
+        lower_model = model_id.lower()
+        if lower_model in _OPENCODE_GO_RESPONSES_MODELS:
+            data["wire_api"] = "openai_responses"
+        elif lower_model.startswith(_OPENCODE_GO_ANTHROPIC_PREFIXES):
+            data["wire_api"] = "anthropic_messages"
+            if not data.get("endpoint_base_url"):
+                data["endpoint_base_url"] = base_url.removesuffix("/v1")
+
+    # ModelConfig keeps total context, prompt cap, and output cap distinct,
+    # while still accepting legacy rows that only contain one context key.
+    return ModelConfig.from_dict(data)
 
 
 def enabled_model_refs(
@@ -136,7 +190,7 @@ class ProviderStore:
             protocol = KIND_TO_PROTOCOL.get(row.kind, "openai")
             raw_models = json.loads(row.models_json) if getattr(row, "models_json", None) else []
             models = [
-                self._model_config_from_row(m)
+                model_config_from_provider_entry(m, provider_base_url=row.base_url)
                 for m in raw_models
                 if is_chat_eligible_model(m, provider_name=row.name, provider_api_key=row.api_key)
             ]
@@ -165,14 +219,8 @@ class ProviderStore:
 
     @staticmethod
     def _model_config_from_row(raw: dict[str, object]) -> ModelConfig:
-        data = dict(raw)
-        model_id = str(data.get("id") or "")
-        explicit = data.get("input")
-        inputs = list(explicit) if isinstance(explicit, list) else ["text"]
-        data["input"] = _infer_model_input_modalities(model_id, inputs)
-        # ModelConfig keeps total context, prompt cap, and output cap distinct,
-        # while still accepting legacy rows that only contain one context key.
-        return ModelConfig.from_dict(data)
+        """Compatibility wrapper for callers/tests using the old helper."""
+        return model_config_from_provider_entry(raw)
 
     def is_model_ref_multimodal(self, ref: str) -> bool:
         """True when *ref* resolves to a model that accepts images."""
@@ -303,4 +351,5 @@ __all__ = [
     "ProviderStore",
     "clear_stale_pins_for_provider",
     "enabled_model_refs",
+    "model_config_from_provider_entry",
 ]

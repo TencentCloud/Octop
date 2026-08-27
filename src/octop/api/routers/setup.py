@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request
+from harness_agent.config import WireAPIName
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
@@ -46,6 +47,14 @@ class ProviderModelDraft(BaseModel):
     input: list[str] = Field(default_factory=list)
     thinking: Any | None = None
     reasoning: bool | None = None
+    reasoning_config: dict[str, Any] | None = None
+    wire_api: WireAPIName | None = None
+    endpoint_base_url: str | None = None
+    max_input_tokens: int | None = None
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    max_tokens: int | None = None
+    native_tool_search: bool | None = None
 
 
 class ProviderDraftBody(BaseModel):
@@ -67,6 +76,7 @@ class ProviderTestBody(BaseModel):
     api_key: str = ""
     base_url: str | None = None
     model_id: str = Field(min_length=1)
+    model: ProviderModelDraft | None = None
 
 
 class DatabaseSetupBody(BaseModel):
@@ -180,16 +190,7 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "base_url is required", status=400)
 
     def _model_entry(m: ProviderModelDraft) -> dict[str, Any]:
-        entry: dict[str, Any] = {
-            "id": m.id,
-            "name": m.name,
-            "enabled": m.enabled,
-            "input": m.input,
-            "thinking": m.thinking,
-        }
-        if m.reasoning:
-            entry["reasoning"] = True
-        return entry
+        return m.model_dump(exclude_none=True)
 
     models = [_model_entry(m) for m in draft.models if m.enabled]
     if not models and draft.models:
@@ -404,6 +405,7 @@ async def test_provider_draft(
         api_key=body.api_key or None,
         base_url=body.base_url,
         model_id=body.model_id,
+        model_metadata=body.model.model_dump(exclude_none=True) if body.model else None,
     )
     return await probe_provider_row(row)
 

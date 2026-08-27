@@ -9,7 +9,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from harness_agent.config import WireAPIName
+from pydantic import BaseModel, TypeAdapter, field_validator
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
@@ -42,6 +43,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_WIRE_API_ADAPTER: TypeAdapter[WireAPIName] = TypeAdapter(WireAPIName)
+
+
+def _validate_model_wire_api(model: dict[str, Any]) -> dict[str, Any]:
+    """Reject unknown wire protocol names at the API boundary."""
+    wire_api = model.get("wire_api")
+    if wire_api is not None:
+        _WIRE_API_ADAPTER.validate_python(wire_api)
+    return model
+
+
+def _validate_models_wire_api(
+    models: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if models is not None:
+        for model in models:
+            _validate_model_wire_api(model)
+    return models
+
 
 class ProviderCreateBody(BaseModel):
     name: str
@@ -52,6 +72,14 @@ class ProviderCreateBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
 
+    @field_validator("models")
+    @classmethod
+    def validate_models_wire_api(
+        cls,
+        models: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        return _validate_models_wire_api(models)
+
 
 class ProviderPatchBody(BaseModel):
     kind: str | None = None
@@ -61,6 +89,14 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+
+    @field_validator("models")
+    @classmethod
+    def validate_models_wire_api(
+        cls,
+        models: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        return _validate_models_wire_api(models)
 
 
 # Fields that affect harness factory / agent runtime when patched.
@@ -87,6 +123,15 @@ class ProviderTestDraftBody(BaseModel):
     model_id: str
     extra_json: str | None = None
     embedding: bool = False
+    model: dict[str, Any] | None = None
+
+    @field_validator("model")
+    @classmethod
+    def validate_model_wire_api(
+        cls,
+        model: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        return _validate_model_wire_api(model) if model is not None else None
 
 
 class ProviderFetchModelsBody(BaseModel):
@@ -314,6 +359,7 @@ async def admin_test_provider_draft(
         model_id=model_id,
         extra_json=body.extra_json,
         embedding=body.embedding,
+        model_metadata=body.model,
     )
     return await probe_provider_row(row, model_id=model_id, embedding=body.embedding)
 

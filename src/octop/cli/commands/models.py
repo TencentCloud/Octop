@@ -118,15 +118,20 @@ def config_models() -> None:
             base_url = _prompts.text("Base URL:", default=base_url)
         kind = str(preset.get("kind") or preset.get("protocol") or preset_id)
         raw_models = preset.get("models") or []
-        models_payload = [
-            {
-                "id": m.get("id") or m.get("model_id"),
-                "name": m.get("name") or m.get("id"),
-                "enabled": True,
-            }
-            for m in raw_models
-            if m.get("id") or m.get("model_id")
-        ]
+        models_payload = []
+        for model in raw_models:
+            model_id = model.get("id") or model.get("model_id")
+            if not model_id:
+                continue
+            # Keep preset protocol/capability metadata.  Mixed-protocol
+            # providers such as OpenCode Go cannot be reconstructed from the
+            # provider kind and model id alone.
+            entry = dict(model)
+            entry.pop("model_id", None)
+            entry["id"] = model_id
+            entry["name"] = model.get("name") or model_id
+            entry["enabled"] = True
+            models_payload.append(entry)
         body = {
             "name": display_name,
             "kind": kind,

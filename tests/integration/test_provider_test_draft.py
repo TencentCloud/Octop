@@ -40,6 +40,57 @@ async def test_admin_test_draft_requires_model_id(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
+async def test_admin_test_draft_forwards_selected_model_wire_metadata(env: Any) -> None:
+    client, _srv, auth = env
+    probe = AsyncMock(return_value={"ok": True, "latency_ms": 1})
+    with patch("octop.api.routers.providers.probe_provider_row", probe):
+        r = await client.post(
+            "/api/admin/providers/test-draft",
+            headers=auth,
+            json={
+                "name": "opencode-go",
+                "kind": "openai",
+                "api_key": "sk-test",
+                "base_url": "https://opencode.ai/zen/go/v1",
+                "model_id": "qwen3.8-max",
+                "model": {
+                    "id": "qwen3.8-max",
+                    "name": "Qwen 3.8 Max",
+                    "wire_api": "anthropic_messages",
+                    "endpoint_base_url": "https://opencode.ai/zen/go",
+                },
+            },
+        )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
+    row = probe.await_args.args[0]
+    assert row.get_models()[0]["wire_api"] == "anthropic_messages"
+    assert row.get_models()[0]["endpoint_base_url"] == "https://opencode.ai/zen/go"
+
+
+async def test_admin_test_draft_rejects_unknown_wire_api(env: Any) -> None:
+    client, _srv, auth = env
+    r = await client.post(
+        "/api/admin/providers/test-draft",
+        headers=auth,
+        json={
+            "name": "opencode-go",
+            "kind": "openai",
+            "api_key": "sk-test",
+            "base_url": "https://opencode.ai/zen/go/v1",
+            "model_id": "qwen3.8-max",
+            "model": {
+                "id": "qwen3.8-max",
+                "name": "Qwen 3.8 Max",
+                "wire_api": "anthropic-messages",
+            },
+        },
+    )
+
+    assert r.status_code == 422
+
+
 async def test_admin_codex_oauth_start(env: Any) -> None:
     client, _srv, auth = env
     fake_info = {

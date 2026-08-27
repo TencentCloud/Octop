@@ -12,6 +12,12 @@ import type { ResolvedModel } from "../../../api/types";
 
 export type { ResolvedModel };
 
+export type ModelWireApi =
+  | "openai_chat_completions"
+  | "openai_responses"
+  | "anthropic_messages"
+  | "bedrock_converse";
+
 export interface ProviderModel {
   id: string;
   name: string;
@@ -21,7 +27,17 @@ export interface ProviderModel {
   reasoning?: boolean;
   reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
+  max_input_tokens?: number;
   max_tokens?: number;
+  /** Preset/probe alias. Persisted provider rows use max_tokens. */
+  max_output_tokens?: number;
+  /** Concrete wire protocol for this model when it differs from provider.kind. */
+  wire_api?: ModelWireApi | null;
+  /** Concrete API root for this model when it differs from provider.base_url. */
+  endpoint_base_url?: string | null;
+  native_tool_search?: boolean | null;
+  /** Legacy/provider-specific model options kept opaque by the editor. */
+  options?: Record<string, unknown> | null;
   /** Embedding-only: excluded from chat picker and auto-route. */
   embedding?: boolean;
   task?: string;
@@ -40,8 +56,14 @@ export interface ProviderPresetModel {
   max_input_tokens?: number | null;
   context_window?: number | null;
   max_tokens?: number | null;
+  max_output_tokens?: number | null;
   input?: string[];
   reasoning?: boolean | null;
+  reasoning_config?: ResolvedModel["reasoning_config"];
+  wire_api?: ModelWireApi | null;
+  endpoint_base_url?: string | null;
+  native_tool_search?: boolean | null;
+  options?: Record<string, unknown> | null;
   description?: string | null;
 }
 

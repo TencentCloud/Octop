@@ -42,29 +42,8 @@ import type { ProviderPreset as AdminProviderPreset } from "../../Settings/Model
 
 const { Text } = Typography;
 
-interface ProviderPresetModel {
-  id: string;
-  name: string;
-  max_input_tokens?: number | null;
-  context_window?: number | null;
-  max_tokens?: number | null;
-  input?: string[];
-  reasoning?: boolean | null;
-  description?: string | null;
-}
-
-interface ProviderPreset {
-  id: string;
-  name: string;
-  base_url: string;
-  protocol: string;
-  api_key_prefix: string;
-  models: ProviderPresetModel[];
-  provider_group?: string;
-  provider_group_name?: string;
-  provider_variant?: string;
-  logo_id?: string;
-}
+type ProviderPreset = AdminProviderPreset;
+type ProviderPresetModel = ProviderPreset["models"][number];
 
 type PresetDisplayItem =
   | { kind: "single"; preset: ProviderPreset }
@@ -89,8 +68,14 @@ interface CustomModelEntry {
   name: string;
   input: string[];
   context_window?: number;
-  max_tokens?: number;
+  max_input_tokens?: number;
+  max_output_tokens?: number;
   reasoning?: boolean;
+  reasoning_config?: ProviderPresetModel["reasoning_config"];
+  wire_api?: ProviderPresetModel["wire_api"];
+  endpoint_base_url?: string | null;
+  native_tool_search?: boolean | null;
+  options?: Record<string, unknown> | null;
 }
 
 interface Props {
@@ -288,7 +273,16 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       id: string;
       name: string;
       input?: string[];
-      reasoning?: boolean;
+      reasoning?: boolean | null;
+      reasoning_config?: ProviderPresetModel["reasoning_config"];
+      max_input_tokens?: number | null;
+      context_window?: number | null;
+      max_tokens?: number | null;
+      max_output_tokens?: number | null;
+      wire_api?: ProviderPresetModel["wire_api"];
+      endpoint_base_url?: string | null;
+      native_tool_search?: boolean | null;
+      options?: Record<string, unknown> | null;
     }>,
   ): WizardProviderModel[] =>
     entries.map((m) => {
@@ -300,6 +294,27 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
         thinking: null,
       };
       if (m.reasoning) model.reasoning = true;
+      if (m.reasoning_config !== undefined) {
+        model.reasoning_config = m.reasoning_config;
+      }
+      if (m.max_input_tokens != null) {
+        model.max_input_tokens = m.max_input_tokens;
+      }
+      if (m.context_window != null) {
+        model.context_window = m.context_window;
+      }
+      const maxOutput = m.max_output_tokens ?? m.max_tokens;
+      if (maxOutput != null) {
+        model.max_output_tokens = maxOutput;
+      }
+      if (m.wire_api !== undefined) model.wire_api = m.wire_api;
+      if (m.endpoint_base_url !== undefined) {
+        model.endpoint_base_url = m.endpoint_base_url;
+      }
+      if (m.native_tool_search !== undefined) {
+        model.native_tool_search = m.native_tool_search;
+      }
+      if (m.options !== undefined) model.options = m.options;
       return model;
     });
 
@@ -344,8 +359,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
         .map((m) => {
           const meta = enrichWizardModel(m, t);
           return {
-            id: m.id,
-            name: m.name,
+            ...m,
             input: meta.input,
             ...(meta.reasoning ? { reasoning: true } : {}),
           };
@@ -515,6 +529,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
           api_key: draft.api_key,
           base_url: draft.base_url,
           model_id: draft.models[0].id,
+          model: draft.models[0],
         },
         probeToken,
       );
@@ -601,7 +616,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       entry.context_window = values.context_window as number;
     }
     if (values.max_tokens != null) {
-      entry.max_tokens = values.max_tokens as number;
+      entry.max_output_tokens = values.max_tokens as number;
     }
     if (values.reasoning) {
       entry.reasoning = true;
@@ -629,7 +644,7 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
       entry.context_window = values.context_window as number;
     }
     if (values.max_tokens != null) {
-      entry.max_tokens = values.max_tokens as number;
+      entry.max_output_tokens = values.max_tokens as number;
     }
     if (values.reasoning) {
       entry.reasoning = true;
@@ -729,7 +744,9 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
     context_window?: number | null;
     max_input_tokens?: number | null;
     max_tokens?: number | null;
+    max_output_tokens?: number | null;
     reasoning?: boolean | null;
+    reasoning_config?: ProviderPresetModel["reasoning_config"];
     description?: string | null;
   }) => {
     const meta = enrichWizardModel(m, t);
