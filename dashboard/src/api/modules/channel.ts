@@ -150,6 +150,29 @@ export const channelApi = {
       body: JSON.stringify({ qrcode_token }),
     }),
 
+  /** Start DingTalk one-click application registration. */
+  dingtalkQrcodeGenerate: (agentId: string) =>
+    request<{
+      registration_id: string;
+      qrcode_url: string;
+      user_code: string;
+      expires_in: number;
+      interval: number;
+    }>(`/agents/${agentId}/channels/dingtalk/qrcode/generate`, {
+      method: "POST",
+    }),
+
+  /** Poll DingTalk registration; credentials are persisted by the backend. */
+  dingtalkQrcodePoll: (agentId: string, registration_id: string) =>
+    request<{
+      status: "waiting" | "success" | "failed" | "expired";
+      channel_id?: string;
+      message?: string;
+    }>(`/agents/${agentId}/channels/dingtalk/qrcode/poll`, {
+      method: "POST",
+      body: JSON.stringify({ registration_id }),
+    }),
+
   /** Start the Feishu bot auto-creation flow. */
   feishuBotCreatorStart: (
     agentId: string,

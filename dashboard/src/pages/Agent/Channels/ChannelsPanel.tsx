@@ -240,6 +240,14 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
     setDrawerInitialValues(undefined);
   }, []);
 
+  const handleProvisioned = useCallback(() => {
+    message.success(t("channels.dingtalkBindSuccess"));
+    setDrawerOpen(false);
+    setEditing(null);
+    setDrawerInitialValues(undefined);
+    void fetchChannels();
+  }, [fetchChannels, t]);
+
   const handleSubmit = useCallback(
     async (
       kind: ChannelKey,
@@ -435,6 +443,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         onDelete={editing ? handleDeleteFromDrawer : undefined}
         onClose={handleDrawerClose}
         onSubmit={handleSubmit}
+        onProvisioned={handleProvisioned}
         onTest={handleTestFromDrawer}
         testing={
           testState.loadingKey !== null &&

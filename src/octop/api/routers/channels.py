@@ -8,8 +8,11 @@ import logging
 import os
 import platform as _platform
 import re
+import secrets
 import subprocess
 import sys
+import time
+from dataclasses import dataclass, field
 from pathlib import Path as _FsPath
 from typing import Any, Literal, cast
 
@@ -19,7 +22,7 @@ from pydantic import BaseModel, ValidationError
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.gateway.channels import qr_bind
+from octop.infra.gateway.channels import dingtalk_registration, qr_bind
 from octop.infra.gateway.gateway import ChannelKind
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_request_locale
 from octop.infra.utils.subprocess_io import parse_subprocess_json_lines
@@ -56,6 +59,10 @@ class FeishuBotCreatorStartBody(BaseModel):
 class YuanbaoBotCreatorStartBody(BaseModel):
     instance_id: str = ""
     ip: str = ""
+
+
+class DingTalkRegistrationPollBody(BaseModel):
+    registration_id: str
 
 
 def _parse_bot_creator_body(model: type[BaseModel], raw: dict[str, Any] | None) -> BaseModel:
@@ -406,7 +413,186 @@ def _get_plat_code() -> int:
     return 0
 
 
-# ─── WeCom QR code ──────────────────────────────────────────────────────────
+# ─── DingTalk application registration ─────────────────────────────────────
+
+
+_DINGTALK_MAX_EXPIRES_IN = 2 * 60 * 60
+_DINGTALK_MAX_SESSIONS = 256
+
+
+@dataclass
+class _DingTalkRegistrationSession:
+    agent_id: str
+    actor_id: str
+    device_code: str
+    expires_at: float
+    interval: int
+    credentials: tuple[str, str] | None = None
+    channel_id: str | None = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+_dingtalk_registration_sessions: dict[str, _DingTalkRegistrationSession] = {}
+
+
+def _prune_dingtalk_registration_sessions(now: float) -> None:
+    expired = [
+        key for key, session in _dingtalk_registration_sessions.items() if session.expires_at <= now
+    ]
+    for key in expired:
+        _dingtalk_registration_sessions.pop(key, None)
+    if len(_dingtalk_registration_sessions) < _DINGTALK_MAX_SESSIONS:
+        return
+    oldest = min(
+        _dingtalk_registration_sessions,
+        key=lambda key: _dingtalk_registration_sessions[key].expires_at,
+    )
+    _dingtalk_registration_sessions.pop(oldest, None)
+
+
+@router.post("/agents/{agent_id}/channels/dingtalk/qrcode/generate")
+async def dingtalk_qrcode_generate(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("channels")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Start DingTalk Device Flow while retaining the device code server-side."""
+    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    try:
+        result = await dingtalk_registration.generate()
+    except Exception as exc:
+        logger.exception("Failed to start DingTalk application registration")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to start DingTalk application registration.",
+        ) from exc
+
+    expires_in = max(
+        1,
+        min(int(result.get("expires_in") or 600), _DINGTALK_MAX_EXPIRES_IN),
+    )
+    interval = max(1, min(int(result.get("interval") or 5), 30))
+    registration_id = secrets.token_urlsafe(32)
+    now = time.monotonic()
+    _prune_dingtalk_registration_sessions(now)
+    _dingtalk_registration_sessions[registration_id] = _DingTalkRegistrationSession(
+        agent_id=agent_id,
+        actor_id=str(as_user if as_user is not None else user.id),
+        device_code=str(result["device_code"]),
+        expires_at=now + expires_in,
+        interval=interval,
+    )
+    return {
+        "registration_id": registration_id,
+        "qrcode_url": str(result["verification_uri_complete"]),
+        "user_code": str(result["user_code"]),
+        "expires_in": expires_in,
+        "interval": interval,
+    }
+
+
+@router.post("/agents/{agent_id}/channels/dingtalk/qrcode/poll")
+async def dingtalk_qrcode_poll(
+    agent_id: str,
+    body: DingTalkRegistrationPollBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("channels")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Poll DingTalk registration and create the channel without exposing secrets."""
+    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    registration_id = _sanitize_token(body.registration_id, "registration_id")
+    session = _dingtalk_registration_sessions.get(registration_id)
+    actor_id = str(as_user if as_user is not None else user.id)
+    if session is None or session.agent_id != agent_id or session.actor_id != actor_id:
+        raise HTTPException(status_code=404, detail="DingTalk registration session not found.")
+
+    async with session.lock:
+        if session.channel_id is not None:
+            return {"status": "success", "channel_id": session.channel_id}
+        if time.monotonic() >= session.expires_at:
+            _dingtalk_registration_sessions.pop(registration_id, None)
+            return {"status": "expired"}
+
+        if session.credentials is None:
+            try:
+                result = await dingtalk_registration.poll(session.device_code)
+            except Exception as exc:
+                logger.exception("Failed to poll DingTalk application registration")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Failed to poll DingTalk application registration.",
+                ) from exc
+
+            status = str(result.get("status") or "").upper()
+            if status == "WAITING":
+                return {"status": "waiting"}
+            if status == "EXPIRED":
+                _dingtalk_registration_sessions.pop(registration_id, None)
+                return {"status": "expired"}
+            if status == "FAIL":
+                _dingtalk_registration_sessions.pop(registration_id, None)
+                return {
+                    "status": "failed",
+                    "message": str(result.get("fail_reason") or "DingTalk authorization failed."),
+                }
+            if status != "SUCCESS":
+                raise HTTPException(
+                    status_code=502,
+                    detail="DingTalk returned an unknown registration status.",
+                )
+
+            client_id = result.get("client_id")
+            client_secret = result.get("client_secret")
+            if not isinstance(client_id, str) or not client_id:
+                raise HTTPException(status_code=502, detail="DingTalk did not return client_id.")
+            if not isinstance(client_secret, str) or not client_secret:
+                raise HTTPException(
+                    status_code=502, detail="DingTalk did not return client_secret."
+                )
+            session.credentials = (client_id, client_secret)
+
+        client_id, client_secret = session.credentials
+        config = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "response_mode": "invoke",
+            "show_thinking": False,
+            "show_tool_hints": False,
+        }
+        probe = await server.app_runtime.gateway.probe_config(
+            agent_id=agent_id,
+            kind="dingtalk",
+            config=config,
+            locale=resolve_request_locale(request),
+        )
+        if not probe.get("ok"):
+            return {
+                "status": "failed",
+                "message": str(probe.get("error") or "DingTalk connection check failed."),
+            }
+
+        from octop.infra.gateway.gateway import ChannelCreateSpec  # noqa: PLC0415
+        from octop.infra.utils.ulid import new_ulid as _new_ulid  # noqa: PLC0415
+
+        spec = ChannelCreateSpec(
+            channel_id=_new_ulid(),
+            agent_id=agent_id,
+            user_id=_acting_user_id(user, as_user),
+            kind="dingtalk",
+            name="dingtalk",
+            config=config,
+        )
+        row = await server.app_runtime.gateway.create_channel(spec)
+        session.channel_id = row.channel_id
+        session.credentials = None
+        session.device_code = ""
+        return {"status": "success", "channel_id": row.channel_id}
+
+
+# ─── WeCom QR code ─────────────────────────────────
 
 
 @router.post("/agents/{agent_id}/channels/wecom/qrcode/generate")
