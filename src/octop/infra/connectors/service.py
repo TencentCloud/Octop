@@ -14,11 +14,17 @@ from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentia
 from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_DISPLAY_NAME,
     CUSTOM_MCP_KIND,
+    build_oauth_storage,
     enabled_harness_configs,
     expand_custom_instances,
     extract_servers,
     is_custom_mcp_kind,
+    merge_preserved_oauth,
+    oauth_configured,
+    oauth_tokens_from_spec,
+    redact_servers_for_api,
     server_enabled,
+    set_oauth_required_in_spec,
     validate_servers_map,
     wrap_servers,
 )
@@ -29,6 +35,7 @@ from octop.infra.connectors.gateway.feishu_user_auth import (
     start_user_device_login,
 )
 from octop.infra.connectors.oauth import refresh_oauth_credentials
+from octop.infra.connectors.oauth.registry import refresh_custom_mcp_oauth
 from octop.infra.db.repos.connectors import ConnectorRepo, ConnectorRow
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
@@ -140,7 +147,15 @@ class ConnectorService:
             return {}
         return extract_servers(self.decrypt(row.instance_id))
 
+    def get_custom_servers_for_api(self, user_id: int) -> dict[str, Any]:
+        return redact_servers_for_api(self.get_custom_servers(user_id))
+
     def put_custom_servers(self, user_id: int, servers: dict[str, Any]) -> dict[str, Any]:
+        existing = self.get_custom_servers(user_id)
+        merged = merge_preserved_oauth(servers, existing)
+        return self._save_custom_servers(user_id, merged)
+
+    def _save_custom_servers(self, user_id: int, servers: dict[str, Any]) -> dict[str, Any]:
         normalized = validate_servers_map(
             servers,
             reserved_names=self.reserved_builtin_mcp_names(user_id),
@@ -167,6 +182,55 @@ class ConnectorService:
         )
         return normalized
 
+    def apply_custom_server_oauth(
+        self,
+        user_id: int,
+        server_name: str,
+        tokens: dict[str, Any],
+        *,
+        issuer: str,
+        resource: str | None,
+    ) -> dict[str, Any]:
+        servers = dict(self.get_custom_servers(user_id))
+        if server_name not in servers:
+            raise KeyError(server_name)
+        access = str(tokens.get("access_token") or "").strip()
+        if not access:
+            raise ValueError("missing access_token")
+        spec = dict(servers[server_name])
+        spec["oauth"] = build_oauth_storage(tokens, issuer=issuer, resource=resource)
+        spec = set_oauth_required_in_spec(spec, required=False)
+        servers[server_name] = spec
+        return self._save_custom_servers(user_id, servers)
+
+    async def ensure_fresh_custom_servers(self, user_id: int) -> dict[str, Any]:
+        servers = dict(self.get_custom_servers(user_id))
+        changed = False
+        now = int(time.time())
+        for name, raw in list(servers.items()):
+            if not isinstance(raw, dict):
+                continue
+            oauth = oauth_tokens_from_spec(raw)
+            if not oauth_configured(raw):
+                continue
+            expires_at = oauth.get("expires_at")
+            refresh = str(oauth.get("refresh_token") or "").strip()
+            if not refresh:
+                continue
+            if expires_at and int(expires_at) > now + 120:
+                continue
+            try:
+                refreshed = await refresh_custom_mcp_oauth(oauth)
+            except Exception:
+                continue
+            spec = dict(raw)
+            spec["oauth"] = refreshed
+            servers[name] = spec
+            changed = True
+        if not changed:
+            return servers
+        return self._save_custom_servers(user_id, servers)
+
     def patch_custom_server_enabled(
         self,
         user_id: int,
@@ -174,13 +238,45 @@ class ConnectorService:
         *,
         enabled: bool,
     ) -> dict[str, Any]:
+        return self.patch_custom_server(user_id, server_name, enabled=enabled)
+
+    def patch_custom_server(
+        self,
+        user_id: int,
+        server_name: str,
+        *,
+        enabled: bool | None = None,
+        default_open: bool | None = None,
+    ) -> dict[str, Any]:
         servers = dict(self.get_custom_servers(user_id))
         if server_name not in servers:
             raise KeyError(server_name)
         spec = dict(servers[server_name])
-        spec["enabled"] = enabled
+        if enabled is not None:
+            spec["enabled"] = enabled
+            if not enabled:
+                spec.pop("default_open", None)
+        if default_open is not None:
+            if default_open:
+                spec["default_open"] = True
+            else:
+                spec.pop("default_open", None)
         servers[server_name] = spec
         return self.put_custom_servers(user_id, servers)
+
+    def note_custom_server_oauth_required(
+        self,
+        user_id: int,
+        server_name: str,
+        *,
+        required: bool,
+    ) -> dict[str, Any]:
+        servers = dict(self.get_custom_servers(user_id))
+        if server_name not in servers:
+            raise KeyError(server_name)
+        spec = dict(servers[server_name])
+        servers[server_name] = set_oauth_required_in_spec(spec, required=required)
+        return self._save_custom_servers(user_id, servers)
 
     def patch_custom_server_default_open(
         self,
@@ -189,16 +285,7 @@ class ConnectorService:
         *,
         default_open: bool,
     ) -> dict[str, Any]:
-        servers = dict(self.get_custom_servers(user_id))
-        if server_name not in servers:
-            raise KeyError(server_name)
-        spec = dict(servers[server_name])
-        if default_open:
-            spec["default_open"] = True
-        else:
-            spec.pop("default_open", None)
-        servers[server_name] = spec
-        return self.put_custom_servers(user_id, servers)
+        return self.patch_custom_server(user_id, server_name, default_open=default_open)
 
     def list_instances_for_api(self, user_id: int) -> list[dict[str, Any]]:
         """Built-in rows + expanded custom servers (hide parent custom-mcp row)."""
@@ -307,6 +394,7 @@ class ConnectorService:
                 creds=creds,
                 config=self._config,
             )
+        await self.ensure_fresh_custom_servers(user_id)
         configs.update(self.custom_harness_configs(user_id))
         return configs
 

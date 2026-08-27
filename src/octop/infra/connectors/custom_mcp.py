@@ -13,6 +13,9 @@ CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _META_KEYS = frozenset({"enabled", "display_name", "default_open"})
+_OAUTH_KEY = "oauth"
+_SECRET_KEYS = frozenset({_OAUTH_KEY})
+_HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS
 _DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
 
@@ -164,6 +167,10 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         if env:
             spec["env"] = env
 
+    oauth = raw.get(_OAUTH_KEY)
+    if isinstance(oauth, dict) and str(oauth.get("access_token") or "").strip():
+        spec[_OAUTH_KEY] = dict(oauth)
+
     return spec
 
 
@@ -199,15 +206,127 @@ def validate_servers_map(
     return out
 
 
+def oauth_tokens_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    raw = spec.get(_OAUTH_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def oauth_configured(spec: dict[str, Any]) -> bool:
+    oauth = oauth_tokens_from_spec(spec)
+    return bool(str(oauth.get("access_token") or "").strip())
+
+
+def oauth_required(spec: dict[str, Any]) -> bool:
+    if oauth_configured(spec):
+        return False
+    oauth = oauth_tokens_from_spec(spec)
+    return oauth.get("required") is True
+
+
+def set_oauth_required_in_spec(spec: dict[str, Any], *, required: bool) -> dict[str, Any]:
+    """Persist or clear the dashboard hint that OAuth is needed (no tokens)."""
+    out = dict(spec)
+    if oauth_configured(out):
+        return out
+    oauth = dict(oauth_tokens_from_spec(out))
+    if required:
+        oauth["required"] = True
+        oauth.pop("access_token", None)
+        oauth.pop("refresh_token", None)
+        out[_OAUTH_KEY] = oauth
+        return out
+    oauth.pop("required", None)
+    if str(oauth.get("access_token") or "").strip():
+        out[_OAUTH_KEY] = oauth
+    else:
+        out.pop(_OAUTH_KEY, None)
+    return out
+
+
+def build_oauth_storage(
+    tokens: dict[str, Any],
+    *,
+    issuer: str,
+    resource: str | None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "access_token": str(tokens["access_token"]),
+        "oauth_issuer": issuer.rstrip("/"),
+    }
+    refresh = str(tokens.get("refresh_token") or "").strip()
+    if refresh:
+        out["refresh_token"] = refresh
+    if tokens.get("expires_at") is not None:
+        out["expires_at"] = int(tokens["expires_at"])
+    if resource:
+        out["oauth_resource"] = resource
+    client_id = str(tokens.get("oauth_client_id") or "").strip()
+    if client_id:
+        out["oauth_client_id"] = client_id
+    client_secret = tokens.get("oauth_client_secret")
+    if client_secret:
+        out["oauth_client_secret"] = str(client_secret)
+    return out
+
+
+def redact_server_for_api(spec: dict[str, Any]) -> dict[str, Any]:
+    """Remove secrets; expose oauth preview for the dashboard."""
+    out = {k: v for k, v in spec.items() if k != _OAUTH_KEY}
+    if oauth_configured(spec):
+        oauth = oauth_tokens_from_spec(spec)
+        preview: dict[str, Any] = {"configured": True}
+        if oauth.get("expires_at") is not None:
+            preview["expires_at"] = oauth["expires_at"]
+        out[_OAUTH_KEY] = preview
+    elif oauth_required(spec):
+        out[_OAUTH_KEY] = {"configured": False, "required": True}
+    return out
+
+
+def redact_servers_for_api(servers: dict[str, Any]) -> dict[str, Any]:
+    return {
+        name: redact_server_for_api(spec)
+        for name, spec in servers.items()
+        if isinstance(spec, dict)
+    }
+
+
+def merge_preserved_oauth(
+    new_servers: dict[str, Any],
+    existing: dict[str, Any],
+) -> dict[str, Any]:
+    """Drop client-supplied oauth blobs; keep stored tokens per server name."""
+    out: dict[str, Any] = {}
+    for name, raw in new_servers.items():
+        if not isinstance(raw, dict):
+            out[name] = raw
+            continue
+        spec = dict(raw)
+        spec.pop(_OAUTH_KEY, None)
+        old = existing.get(name)
+        if isinstance(old, dict):
+            old_oauth = old.get(_OAUTH_KEY)
+            if isinstance(old_oauth, dict) and str(old_oauth.get("access_token") or "").strip():
+                spec[_OAUTH_KEY] = dict(old_oauth)
+            elif isinstance(old_oauth, dict) and old_oauth.get("required") is True:
+                spec[_OAUTH_KEY] = {"required": True}
+        out[name] = spec
+    return out
+
+
 def harness_spec_for_server(spec: dict[str, Any]) -> dict[str, Any]:
     """Strip Octop meta keys; keep langchain-mcp-adapters connection fields."""
-    out = {k: v for k, v in spec.items() if k not in _META_KEYS}
+    out = {k: v for k, v in spec.items() if k not in _HARNESS_STRIP_KEYS}
     # Ensure stdio always has args list for adapters.
     if out.get("transport") == "stdio" and "args" not in out:
         out["args"] = []
     # Streamable HTTP MCP requires both content types (same as built-in remote).
     if out.get("transport") == "streamable_http":
         headers = {str(k): str(v) for k, v in dict(out.get("headers") or {}).items()}
+        oauth = oauth_tokens_from_spec(spec)
+        token = str(oauth.get("access_token") or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         headers.setdefault("Accept", _MCP_STREAMABLE_HTTP_ACCEPT)
         out["headers"] = headers
     return out

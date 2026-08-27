@@ -21,23 +21,31 @@ import styles from "./index.module.less";
 interface CustomMcpServerCardProps {
   card: ServerCardState;
   probing: boolean;
+  authorizing?: boolean;
+  oauthAvailable?: boolean;
   probeTools?: { name: string; description: string }[];
   transportOptions: { value: string; label: string }[];
   onUpdate: (key: string, patch: Partial<ServerCardState>) => void;
   onToggleEnabled: (enabled: boolean) => void;
-  onRemove: () => void;
+  onRemove: () => void | Promise<void>;
   onProbe: () => void;
+  onAuthorize?: () => void;
+  onDefaultOpenChange?: (defaultOpen: boolean) => void;
 }
 
 export function CustomMcpServerCard({
   card,
   probing,
+  authorizing = false,
+  oauthAvailable = false,
   probeTools,
   transportOptions,
   onUpdate,
   onToggleEnabled,
   onRemove,
   onProbe,
+  onAuthorize,
+  onDefaultOpenChange,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
   const isHttp = card.transport === "streamable_http";
@@ -63,20 +71,36 @@ export function CustomMcpServerCard({
       }),
       content: t(
         "connectors.customMcp.deleteConfirmHint",
-        "删除后需点击保存才会生效。",
+        "已保存的服务器将立即删除；尚未保存的配置只会从当前编辑中移除。",
       ),
       okText: t("common.delete"),
       okButtonProps: { danger: true },
       cancelText: t("common.cancel"),
-      onOk: onRemove,
+      onOk: () => Promise.resolve(onRemove()),
     });
+  };
+
+  const authPending = isHttp && oauthAvailable && !card.oauthConfigured;
+  const effectiveEnabled = !authPending && card.enabled;
+  const showOAuthConnectLink =
+    isHttp && card.collapsed && authPending && onAuthorize;
+  const connectLabel = t("connectors.clickToConnect", "点击连接");
+
+  const handleConnectClick = () => {
+    if (oauthAvailable && onAuthorize) {
+      onAuthorize();
+    }
   };
 
   return (
     <div
       className={`${styles.customMcpServerCard}${
         card.collapsed ? "" : ` ${styles.customMcpServerCardOpen}`
-      }${card.enabled ? "" : ` ${styles.customMcpServerCardDisabled}`}`}
+      }${
+        card.enabled && !authPending
+          ? ""
+          : ` ${styles.customMcpServerCardDisabled}`
+      }`}
       style={
         {
           "--mcp-accent": accent,
@@ -111,11 +135,17 @@ export function CustomMcpServerCard({
           </div>
         </div>
         <div className={styles.customMcpServerControls}>
-          <Switch
-            checked={card.enabled}
-            onChange={onToggleEnabled}
-            size="small"
-          />
+          <div className={styles.customMcpEnableControl}>
+            <span className={styles.customMcpEnableLabel}>
+              {t("connectors.customMcp.enable", "启用连接器")}
+            </span>
+            <Switch
+              checked={authPending ? false : card.enabled}
+              disabled={authPending}
+              onChange={onToggleEnabled}
+              size="small"
+            />
+          </div>
           <Button
             type="text"
             size="small"
@@ -137,6 +167,21 @@ export function CustomMcpServerCard({
           />
         </div>
       </div>
+
+      {showOAuthConnectLink ? (
+        <div className={styles.customMcpCardFooter}>
+          <button
+            type="button"
+            className={styles.customMcpConnectLink}
+            onClick={handleConnectClick}
+            disabled={authorizing}
+          >
+            {authorizing
+              ? t("connectors.customMcp.authorizing", "授权中…")
+              : connectLabel}
+          </button>
+        </div>
+      ) : null}
 
       {!card.collapsed ? (
         <div className={styles.customMcpCardBody}>
@@ -262,46 +307,100 @@ export function CustomMcpServerCard({
           )}
 
           <div className={styles.customMcpField}>
-            <label>{t("connectors.defaultOpen", "是否默认打开")}</label>
+            <label>
+              {t("connectors.customMcp.defaultOpen", "对话默认选中")}
+            </label>
             <div className={styles.customMcpDefaultOpenRow}>
               <Switch
                 checked={card.defaultOpen}
-                onChange={(checked) =>
-                  onUpdate(card.key, { defaultOpen: checked })
-                }
+                disabled={!effectiveEnabled}
+                onChange={(checked) => {
+                  if (onDefaultOpenChange) {
+                    onDefaultOpenChange(checked);
+                    return;
+                  }
+                  onUpdate(card.key, { defaultOpen: checked });
+                }}
               />
-              {!card.defaultOpen ? (
+              {!effectiveEnabled ? (
                 <span className={styles.customMcpFieldHint}>
                   {t(
-                    "connectors.defaultOpenHint",
-                    "关闭时需在对话中手动勾选才会注入工具。",
+                    "connectors.customMcp.defaultOpenRequiresEnable",
+                    "需先启用连接器。",
+                  )}
+                </span>
+              ) : !card.defaultOpen ? (
+                <span className={styles.customMcpFieldHint}>
+                  {t(
+                    "connectors.customMcp.defaultOpenHint",
+                    "开启后，你的 Dashboard、IM 与 Cron（未手动选连接器时）会默认带上此 MCP。",
                   )}
                 </span>
               ) : null}
             </div>
-            {card.defaultOpen ? (
+            {effectiveEnabled && card.defaultOpen ? (
               <Alert
                 type="warning"
                 showIcon
                 message={t(
                   "connectors.defaultOpenWarning",
-                  "开启后默认会在 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
+                  "开启后默认会在你的 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
                 )}
               />
             ) : null}
           </div>
 
-          <div className={styles.customMcpCardActions}>
-            <Button
-              icon={<Activity size={14} />}
-              loading={probing}
-              onClick={onProbe}
-            >
-              {t("connectors.probe", "探测")}
-            </Button>
-          </div>
+          {isHttp && card.oauthConfigured ? (
+            <Alert
+              type="success"
+              showIcon
+              message={t(
+                "connectors.customMcp.oauthConfigured",
+                "已完成 OAuth 授权",
+              )}
+            />
+          ) : null}
 
-          {probeTools !== undefined ? (
+          {isHttp && oauthAvailable && !card.oauthConfigured ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                "connectors.customMcp.probeNeedsOAuth",
+                "此 MCP 需要 OAuth 授权才能访问",
+              )}
+              description={t(
+                "connectors.customMcp.oauthAuthorizeHint",
+                "点击「一键授权」完成登录；完成后我们会自动再次验证连接。",
+              )}
+              action={
+                onAuthorize ? (
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={authorizing}
+                    onClick={onAuthorize}
+                  >
+                    {t("connectors.oneClickOAuth", "一键授权")}
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : null}
+
+          {isHttp ? (
+            <div className={styles.customMcpCardActions}>
+              <Button
+                icon={<Activity size={14} />}
+                loading={probing}
+                onClick={onProbe}
+              >
+                {t("connectors.probe", "探测")}
+              </Button>
+            </div>
+          ) : null}
+
+          {isHttp && probeTools !== undefined ? (
             <div className={styles.probeResult}>
               <div className={styles.probeResultHeader}>
                 <CheckCircle2

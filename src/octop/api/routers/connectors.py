@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
@@ -23,13 +23,14 @@ from octop.infra.connectors.builder import (
 from octop.infra.connectors.catalog import (
     catalog_entry_to_dict,
     get_catalog_entry,
-    get_mcp_oauth_remote,
     list_catalog,
 )
 from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_KIND,
     is_custom_mcp_kind,
+    oauth_configured,
     parse_synthetic_instance_id,
+    redact_servers_for_api,
 )
 from octop.infra.connectors.default_open import (
     build_instance_config_json,
@@ -50,7 +51,11 @@ from octop.infra.connectors.oauth import (
     load_oauth_ctx,
     oauth_ready_for_kind,
     save_oauth_ctx,
-    start_oauth,
+    start_oauth_for_target,
+)
+from octop.infra.connectors.oauth.registry import (
+    oauth_state_kind_for_target,
+    oauth_target_requires_https,
 )
 from octop.infra.connectors.probe import (
     prepare_probe_credentials,
@@ -95,6 +100,15 @@ class PatchInstanceBody(BaseModel):
 
 class OAuthStartBody(BaseModel):
     redirect_after: str | None = None
+    target: dict[str, Any] | None = Field(
+        default=None,
+        description='OAuth target, e.g. {"type":"catalog","kind":"notion"} or '
+        '{"type":"custom_mcp","server_name":"my-server"}',
+    )
+
+
+class OAuthStartLegacyBody(BaseModel):
+    redirect_after: str | None = None
 
 
 class ExchangeAuthCodeBody(BaseModel):
@@ -127,7 +141,14 @@ class CustomMcpPutBody(BaseModel):
 
 
 class CustomMcpServerPatchBody(BaseModel):
-    enabled: bool
+    enabled: bool | None = None
+    default_open: bool | None = None
+
+    @model_validator(mode="after")
+    def _require_one_field(self) -> CustomMcpServerPatchBody:
+        if self.enabled is None and self.default_open is None:
+            raise ValueError("provide enabled and/or default_open")
+        return self
 
 
 class CustomMcpTestBody(BaseModel):
@@ -135,6 +156,94 @@ class CustomMcpTestBody(BaseModel):
 
     name: str | None = None
     server: dict[str, Any] | None = None
+
+
+def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: str) -> str:
+    saved = svc.get_custom_servers(user_id)
+    raw = saved.get(server_name)
+    if not isinstance(raw, dict):
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND,
+            f"custom MCP server {server_name!r} not found; save configuration before OAuth",
+        )
+    if str(raw.get("transport") or "") not in ("streamable_http", "http"):
+        raise OctopError(
+            ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
+            "OAuth is only supported for streamable HTTP custom MCP servers",
+        )
+    mcp_url = str(raw.get("url") or "").strip()
+    if not mcp_url:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "server url is required")
+    return mcp_url
+
+
+async def _begin_oauth_flow(
+    *,
+    request: Request,
+    user: Any,
+    server: Any,
+    target: dict[str, Any],
+    redirect_after: str | None,
+) -> dict[str, Any]:
+    target_type = str(target.get("type") or "").strip()
+    if target_type == "catalog":
+        kind = str(target.get("kind") or "").strip()
+        if not oauth_ready_for_kind(kind, server.services.settings_repo):
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                f"OAuth for {kind} is not available",
+            )
+    elif target_type != "custom_mcp":
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "unsupported oauth target")
+
+    state = secrets.token_urlsafe(24)
+    state_id = new_ulid()
+    base = resolve_public_base(request)
+    redirect_uri = f"{base}/api/connectors/oauth/callback"
+    if oauth_target_requires_https(target) and _is_public_http_uri(redirect_uri):
+        label = str(target.get("kind") or target.get("server_name") or "MCP")
+        raise OctopError(
+            ErrorCode.CONNECTOR_OAUTH_HTTPS_REQUIRED,
+            f"{label} OAuth callbacks require HTTPS for non-loopback addresses",
+        )
+
+    mcp_url: str | None = None
+    if target_type == "custom_mcp":
+        server_name = str(target.get("server_name") or "").strip()
+        if not server_name:
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                "custom_mcp target requires server_name",
+            )
+        mcp_url = _resolve_custom_mcp_url(_connector_service(server), user.id, server_name)
+
+    try:
+        authorize_url, verifier, ctx = await start_oauth_for_target(
+            target=target,
+            redirect_uri=redirect_uri,
+            state=state,
+            settings_repo=server.services.settings_repo,
+            mcp_url=mcp_url,
+        )
+    except ValueError as exc:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("oauth start failed for target %s", target)
+        raise OctopError(
+            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+            f"无法启动 OAuth: {exc}",
+        ) from exc
+
+    server.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state,
+        user_id=user.id,
+        kind=oauth_state_kind_for_target(target),
+        code_verifier=verifier,
+        redirect_after=redirect_after,
+    )
+    save_oauth_ctx(server.services.settings_repo, state_id, ctx)
+    return {"authorize_url": authorize_url, "state_id": state_id}
 
 
 def _connector_service(server: Any) -> ConnectorService:
@@ -322,7 +431,7 @@ async def get_custom_mcp(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return the user's custom MCP server map (langchain-mcp-adapters shape)."""
-    servers = _connector_service(server).get_custom_servers(user.id)
+    servers = _connector_service(server).get_custom_servers_for_api(user.id)
     return {"servers": servers}
 
 
@@ -345,12 +454,12 @@ async def put_custom_mcp(
         payload=str(len(servers)),
     )
     _schedule_connector_reload(server, user.id)
-    return {"servers": servers}
+    return {"servers": redact_servers_for_api(servers)}
 
 
 @router.patch(
     "/connectors/custom-mcp/servers/{server_name}",
-    summary="Enable or disable one custom MCP server",
+    summary="Patch one custom MCP server",
 )
 async def patch_custom_mcp_server(
     server_name: str,
@@ -358,10 +467,15 @@ async def patch_custom_mcp_server(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Toggle ``enabled`` for a single custom MCP server without rewriting others."""
+    """Update ``enabled`` and/or ``default_open`` for one custom MCP server."""
     svc = _connector_service(server)
     try:
-        servers = svc.patch_custom_server_enabled(user.id, server_name, enabled=body.enabled)
+        servers = svc.patch_custom_server(
+            user.id,
+            server_name,
+            enabled=body.enabled,
+            default_open=body.default_open,
+        )
     except KeyError as exc:
         raise OctopError(
             ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
@@ -369,7 +483,7 @@ async def patch_custom_mcp_server(
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     _schedule_connector_reload(server, user.id)
-    return {"servers": servers}
+    return {"servers": redact_servers_for_api(servers)}
 
 
 @router.post("/connectors/custom-mcp/test", summary="Probe a custom MCP server")
@@ -396,7 +510,16 @@ async def test_custom_mcp(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             "provide name or server spec to probe",
         )
-    return await probe_custom_mcp_server(spec)
+    result = await probe_custom_mcp_server(spec)
+    if body.name:
+        try:
+            if result.get("oauth", {}).get("available") and not oauth_configured(spec):
+                svc.note_custom_server_oauth_required(user.id, body.name, required=True)
+            elif result.get("ok") or not result.get("oauth", {}).get("available"):
+                svc.note_custom_server_oauth_required(user.id, body.name, required=False)
+        except KeyError:
+            pass
+    return result
 
 
 @router.get("/connector-instances/{instance_id}", summary="Get connector instance")
@@ -946,57 +1069,41 @@ async def auth_exchange_code(
     return {"credentials": tokens}
 
 
-@router.post("/connectors/oauth/{kind}/start", summary="Start OAuth flow")
-async def oauth_start(
-    kind: str,
+@router.post("/connectors/oauth/start", summary="Start OAuth flow (unified)")
+async def oauth_start_unified(
     body: OAuthStartBody,
     request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Begin browser OAuth: returns `authorize_url` and `state_id` to poll after redirect."""
-    if not oauth_ready_for_kind(kind, server.services.settings_repo):
-        raise OctopError(
-            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
-            f"OAuth for {kind} is not available",
-        )
-
-    state = secrets.token_urlsafe(24)
-    state_id = new_ulid()
-    base = resolve_public_base(request)
-    redirect_uri = f"{base}/api/connectors/oauth/callback"
-    if get_mcp_oauth_remote(kind) is not None and _is_public_http_uri(redirect_uri):
-        raise OctopError(
-            ErrorCode.CONNECTOR_OAUTH_HTTPS_REQUIRED,
-            f"{kind} OAuth callbacks require HTTPS for non-loopback addresses",
-        )
-
-    try:
-        authorize_url, verifier, ctx = await start_oauth(
-            kind=kind,
-            redirect_uri=redirect_uri,
-            state=state,
-            settings_repo=server.services.settings_repo,
-        )
-    except ValueError as exc:
-        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
-    except Exception as exc:
-        logger.exception("oauth start failed for %s", kind)
-        raise OctopError(
-            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
-            f"无法启动 OAuth: {exc}",
-        ) from exc
-
-    server.services.repos.connector_repo.create_oauth_state(
-        state_id=state_id,
-        state=state,
-        user_id=user.id,
-        kind=kind,
-        code_verifier=verifier,
+    """Begin browser OAuth for a catalog connector or custom MCP server."""
+    if not body.target or not isinstance(body.target, dict):
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "oauth target is required")
+    return await _begin_oauth_flow(
+        request=request,
+        user=user,
+        server=server,
+        target=body.target,
         redirect_after=body.redirect_after,
     )
-    save_oauth_ctx(server.services.settings_repo, state_id, ctx)
-    return {"authorize_url": authorize_url, "state_id": state_id}
+
+
+@router.post("/connectors/oauth/{kind}/start", summary="Start OAuth flow (legacy)")
+async def oauth_start_legacy(
+    kind: str,
+    body: OAuthStartLegacyBody,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Legacy catalog-only alias for :func:`oauth_start_unified`."""
+    return await _begin_oauth_flow(
+        request=request,
+        user=user,
+        server=server,
+        target={"type": "catalog", "kind": kind},
+        redirect_after=body.redirect_after,
+    )
 
 
 @router.get("/connectors/oauth/callback", summary="OAuth callback")
@@ -1040,11 +1147,39 @@ async def oauth_callback(
         logger.exception("oauth callback failed for %s", row.kind)
         return HTMLResponse(f"<html><body>Token 交换失败: {exc}</body></html>", status_code=400)
 
+    pending_payload: dict[str, Any] = {
+        "user_id": row.user_id,
+        "kind": row.kind,
+        "tokens": tokens,
+    }
+    if row.kind == CUSTOM_MCP_KIND:
+        server_name = str(ctx.get("server_name") or "")
+        issuer = str(ctx.get("issuer") or "")
+        resource = str(ctx.get("resource") or "").strip() or None
+        try:
+            svc = _connector_service(server)
+            svc.apply_custom_server_oauth(
+                row.user_id,
+                server_name,
+                tokens,
+                issuer=issuer,
+                resource=resource,
+            )
+            _schedule_connector_reload(server, row.user_id)
+            pending_payload["server_name"] = server_name
+            pending_payload["applied"] = True
+        except Exception as exc:
+            logger.exception("custom MCP oauth apply failed for %s", server_name)
+            return HTMLResponse(
+                f"<html><body>保存授权失败: {exc}</body></html>",
+                status_code=400,
+            )
+
     # Store tokens in a short-lived settings key for frontend pickup, or auto-create instance.
     pending_key = f"connector.oauth.pending.{row.state_id}"
     server.services.settings_repo.set(
         pending_key,
-        json.dumps({"user_id": row.user_id, "kind": row.kind, "tokens": tokens}),
+        json.dumps(pending_payload),
     )
     redirect = row.redirect_after or "/connectors"
     html = f"""<!DOCTYPE html><html><body>
@@ -1079,7 +1214,12 @@ async def oauth_pending(
     if int(data.get("user_id") or 0) != user.id:
         raise OctopError(ErrorCode.FORBIDDEN, "not your oauth session")
     server.services.settings_repo.delete(key)
-    return {"kind": data.get("kind"), "tokens": data.get("tokens") or {}}
+    return {
+        "kind": data.get("kind"),
+        "tokens": data.get("tokens") or {},
+        "server_name": data.get("server_name"),
+        "applied": data.get("applied"),
+    }
 
 
 async def validate_chat_mcp_servers(

@@ -785,7 +785,7 @@ function ConnectorConfigDrawer({
 
     try {
       const { authorize_url, state_id } = await connectorsApi.oauthStart(
-        entry.kind,
+        { type: "catalog", kind: entry.kind },
         "/connectors",
       );
       stateId = state_id;

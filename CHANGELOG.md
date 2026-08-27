@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 自定义 MCP 连接器支持 OAuth：从 MCP URL 自动发现授权端点，统一 `POST /connectors/oauth/start` 启动授权；保存后可探测、一键授权，Bearer 注入 harness spec；Custom Connectors UI 支持启用与「对话默认选中」分离、保存后可选探测
+
 ## [0.9.28] - 2026-08-26
 
 ### 修复

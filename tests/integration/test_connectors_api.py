@@ -206,7 +206,7 @@ async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home
         await bootstrap_admin(c, tmp_octop_home)
         auth = await auth_header(c)
         mocked_start = AsyncMock()
-        with patch("octop.api.routers.connectors.start_oauth", mocked_start):
+        with patch("octop.api.routers.connectors.start_oauth_for_target", mocked_start):
             r = await c.post(
                 "/api/connectors/oauth/notion/start",
                 headers={**auth, "host": "58.87.70.170"},
@@ -305,3 +305,39 @@ async def test_cli_status_available_to_non_admin(env, monkeypatch: pytest.Monkey
     r = await c.get("/api/connectors/feishu-cli/cli-status", headers=user_auth)
     assert r.status_code == 200
     assert r.json()["installed"] is False
+
+
+async def test_patch_custom_mcp_server_default_open_only(env):
+    c, _, auth, _ = env
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={
+            "servers": {
+                "linear": {
+                    "transport": "streamable_http",
+                    "url": "https://mcp.linear.app/mcp",
+                    "enabled": True,
+                }
+            }
+        },
+    )
+    assert put.status_code == 200
+
+    patch = await c.patch(
+        "/api/connectors/custom-mcp/servers/linear",
+        headers=auth,
+        json={"default_open": True},
+    )
+    assert patch.status_code == 200
+    servers = patch.json()["servers"]
+    assert servers["linear"]["default_open"] is True
+    assert servers["linear"]["enabled"] is True
+
+    patch_off = await c.patch(
+        "/api/connectors/custom-mcp/servers/linear",
+        headers=auth,
+        json={"default_open": False},
+    )
+    assert patch_off.status_code == 200
+    assert "default_open" not in patch_off.json()["servers"]["linear"]

@@ -13,6 +13,7 @@ from octop.infra.connectors.oauth.registry import (
     refresh_oauth_credentials,
     save_oauth_ctx,
     start_oauth,
+    start_oauth_for_target,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "refresh_oauth_credentials",
     "save_oauth_ctx",
     "start_oauth",
+    "start_oauth_for_target",
 ]
