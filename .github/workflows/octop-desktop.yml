@@ -1,11 +1,14 @@
 name: Octop Desktop Package
 
+# 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch（GITHUB_TOKEN
+# 打的 tag 不会触发 push workflow）。产物由本 workflow 的 release job upsert 到同一
+# GitHub Release。workflow_dispatch 保留给手工补包 / 按平台重跑。
+# 不要对任意分支 push 跑六平台矩阵。
+
 on:
   push:
     tags:
-      - "*"
-    branches:
-      - "*"
+      - "v*"
   workflow_dispatch:
     inputs:
       platforms:
