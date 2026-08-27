@@ -6,13 +6,19 @@
 
 ## [Unreleased]
 
+### 变更
+
+- Docker / FnOS 镜像对外统一为 `ghcr.io/tencentcloud/octop`（仍同步推送 Docker Hub；移除 vanilla 镜像标签）
+- FnOS FPK 在 Release 成功后自动构建：复用 GHCR 镜像与 Release wheel，不再重复编镜像
+- 修复 Auto Tag → `workflow_dispatch` 时 Docker 镜像可能只有 `:latest`、缺少 `:{version}` 的问题（显式从 tag 解析版本）
+
 ## [0.9.28] - 2026-08-26
 
 ### 修复
 
 - 无更新权限时隐藏检查更新入口
 - `/compact` 兼容 `.octop/conversation_history/` 卸载路径
-- FnOS 镜像改为 Docker Hub `jubaoliang/octop`
+- FnOS 镜像发布流程调整
 
 ### 新增
 

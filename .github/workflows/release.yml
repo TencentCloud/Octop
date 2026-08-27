@@ -1,5 +1,11 @@
 name: Release
 
+# 版本标签 v* → 测包、发 PyPI、建 GitHub Release，再级联：
+#   - Sync Main Into Develop
+#   - Build Octop FPK（复用本 Release 的 wheel；等待 docker-publish 的 GHCR 镜像）
+#
+# 与 docker-publish.yml 并行（由 Auto Tag 同时 dispatch，或人工 push tag 同时触发）。
+
 on:
   push:
     tags:
@@ -20,6 +26,7 @@ jobs:
   build:
     name: Build distributions
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -141,3 +148,20 @@ jobs:
           gh workflow run sync-main-to-develop.yml \
             --repo "${{ github.repository }}" \
             --ref main
+
+  # FnOS FPK：复用本 Release 的 wheel + docker-publish 的 GHCR 镜像。
+  # 与 sync-develop 并行；失败不阻断发版。
+  trigger-fnos:
+    name: Trigger FnOS FPK build
+    needs: github-release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Dispatch Build Octop FPK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --ref 用版本 tag，保证 FPK 打在与 PyPI / 镜像相同的 commit 上
+          gh workflow run fnos-build-fpk.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"

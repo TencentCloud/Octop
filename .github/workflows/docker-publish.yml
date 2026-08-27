@@ -1,25 +1,58 @@
 name: Docker Publish
 
-# 仅在推送版本标签（v*）时构建并发布镜像到 Docker Hub。
-# 与 .github/workflows/release.yml（发 PyPI）相互独立、可并行。
-# 普通 push / PR 不会触发，CI 开销保持在最低。
+# 仅在版本标签（v*）上构建并同步发布镜像到 Docker Hub 与 GHCR。
+# 文档与对外引用统一使用：ghcr.io/tencentcloud/octop
+# （Hub 仍用 DOCKERHUB_* secrets 同步推送。）
+#
+# 触发路径：
+#   1. 人工推送 v* tag → on.push.tags
+#   2. Auto Tag 用 GITHUB_TOKEN 推 tag 后显式 workflow_dispatch（token push 不会触发 push 工作流）
+#
+# 注意：workflow_dispatch 下 metadata-action 的 type=semver 不可靠，
+# 必须从 GITHUB_REF_NAME 显式解析版本号。
+#
+# FnOS FPK 由 Release 成功后自动 dispatch，并等待本工作流推送的 :{version} 就绪。
+#
+# 拉取示例：
+#   docker pull ghcr.io/tencentcloud/octop:latest
+#   docker pull ghcr.io/tencentcloud/octop:0.9.28
 on:
   push:
     tags:
       - "v*"
-  # Allow Auto Tag On Release Merge to cascade after a GITHUB_TOKEN tag push
-  # (token-authored pushes do not retrigger push workflows).
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   docker:
     name: Build and push image
     runs-on: ubuntu-latest
+    # 拒绝在非 v* ref 上误跑（例如 UI 里对 main 点 Run workflow）
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Resolve version from tag ref
+        id: ver
+        run: |
+          set -euo pipefail
+          ref="${GITHUB_REF_NAME}"
+          case "$ref" in
+            v*)
+              echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+              echo "tag=$ref" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Expected refs/tags/v*, got ref_name=$ref"
+              exit 1
+              ;;
+          esac
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -30,16 +63,29 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image names
+        id: image
+        run: |
+          echo "ghcr=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "hub=${{ secrets.DOCKERHUB_USERNAME }}/octop" >> "$GITHUB_OUTPUT"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # 镜像名 = <DOCKERHUB_USERNAME>/octop（个人或组织命名空间均可）。
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/octop
+          images: |
+            ${{ steps.image.outputs.hub }}
+            ${{ steps.image.outputs.ghcr }}
+          # 显式 raw tag：兼容 push.tags 与 Auto Tag 的 workflow_dispatch
           tags: |
-            # v1.2.3 -> 1.2.3
-            type=semver,pattern={{version}}
-            # 每个 tag 同时打 latest
+            type=raw,value=${{ steps.ver.outputs.version }}
             type=raw,value=latest
 
       - name: Build and push
@@ -48,11 +94,8 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: true
-          # 默认仅 amd64，构建最快最稳。如需 ARM64（Apple Silicon / Graviton），
-          # 改为 "linux/amd64,linux/arm64" 并加上 docker/setup-qemu-action@v3 步骤。
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # 复用 GitHub Actions 缓存加速后续构建
           cache-from: type=gha
           cache-to: type=gha,mode=max
