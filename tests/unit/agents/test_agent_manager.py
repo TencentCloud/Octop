@@ -28,6 +28,12 @@ from octop.infra.utils.paths import PathLayout
 # Linux/Docker sandbox concept; on Windows they are not absolute paths.
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX rootfs workspace paths")
 
+# Real HarnessAgentManager starts memory maintenance (GC/vacuum) on a daemon
+# thread. Closing the agent while that tick holds the SQLite handle races on
+# Windows (access violation under pytest-xdist). Unit tests here only need
+# workspace/config behavior — keep memory off.
+_MEMORY_OFF: dict[str, Any] = {"memory": {"memory_enabled": False}}
+
 
 async def _collect_async(iterator: AsyncIterator[Any]) -> list[Any]:
     return [item async for item in iterator]
@@ -775,7 +781,12 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
     )
-    row = manager._repos.agent_repo.create(agent_id="REAL01", user_id=None, name="real")
+    row = manager._repos.agent_repo.create(
+        agent_id="REAL01",
+        user_id=None,
+        name="real",
+        config_json=json.dumps(_MEMORY_OFF),
+    )
     row = manager._repos.agent_repo.get("REAL01")
     assert row is not None
 
@@ -800,7 +811,12 @@ async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
     )
-    manager._repos.agent_repo.create(agent_id="STOP01", user_id=None, name="stop-me")
+    manager._repos.agent_repo.create(
+        agent_id="STOP01",
+        user_id=None,
+        name="stop-me",
+        config_json=json.dumps(_MEMORY_OFF),
+    )
     row = manager.get_row("STOP01")
     assert row is not None
     await manager._start_agent(row)
@@ -830,7 +846,12 @@ async def test_save_security_rebuilds_running_harness_agent(manager: AgentManage
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
     )
-    manager._repos.agent_repo.create(agent_id="SEC01", user_id=None, name="sec")
+    manager._repos.agent_repo.create(
+        agent_id="SEC01",
+        user_id=None,
+        name="sec",
+        config_json=json.dumps(_MEMORY_OFF),
+    )
     row = manager.get_row("SEC01")
     assert row is not None
     await manager._start_agent(row)
@@ -853,7 +874,12 @@ async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
     )
-    manager._repos.agent_repo.create(agent_id="SKIP01", user_id=None, name="skip")
+    manager._repos.agent_repo.create(
+        agent_id="SKIP01",
+        user_id=None,
+        name="skip",
+        config_json=json.dumps(_MEMORY_OFF),
+    )
     row = manager.get_row("SKIP01")
     assert row is not None
     await manager._start_agent(row)
@@ -880,7 +906,7 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
     )
-    row = await manager.create(AgentCreateSpec(name="seeded"))
+    row = await manager.create(AgentCreateSpec(name="seeded", config=dict(_MEMORY_OFF)))
     agent = manager.get_agent(row.agent_id)
     assert agent.workspace.exists("BOOTSTRAP.md")
     assert agent.workspace.exists("AGENTS.md")
@@ -919,6 +945,7 @@ async def test_create_keeps_user_workspace_dir(
             AgentCreateSpec(
                 name="user-ws",
                 config={
+                    **_MEMORY_OFF,
                     "backend": {
                         "type": "local_shell",
                         "root_dir": str(tmp_path),
@@ -958,11 +985,12 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
             AgentCreateSpec(
                 name="scoped-ws",
                 config={
+                    **_MEMORY_OFF,
                     "backend": {
                         "type": "local_shell",
                         "root_dir": str(tmp_path),
                         "virtual_mode": True,
-                    }
+                    },
                 },
             )
         )
@@ -1023,7 +1051,11 @@ async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager
         providers=manager.providers.build_harness_configs(),
     )
     row = await manager.create(
-        AgentCreateSpec(name="tpl-bot", template_name="general-assistant"),
+        AgentCreateSpec(
+            name="tpl-bot",
+            template_name="general-assistant",
+            config=dict(_MEMORY_OFF),
+        ),
     )
     agent = manager.get_agent(row.agent_id)
     expected_soul = (default_library_root() / "general-assistant" / "SOUL.md").read_text(
