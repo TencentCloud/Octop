@@ -7,14 +7,27 @@
  *     with local model list, download, and delete UI
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Divider, Form, Input, Modal, Progress, Select } from "antd";
+import {
+  App,
+  Button,
+  Divider,
+  Form,
+  Input,
+  Modal,
+  Progress,
+  Select,
+} from "antd";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
-import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import {
+  fetchProviderModels,
+  testProviderDraft,
+  toProviderProbeModel,
+} from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
@@ -767,9 +780,12 @@ export function ProviderConfigModal({
         return;
       }
 
-      const embedding = isEmbeddingModel(
-        draftModels.find((m) => m.id === modelId),
-      );
+      const selectedModel = draftModels.find((m) => m.id === modelId);
+      if (!selectedModel) {
+        message.warning(t("models.testDraftNeedModel"));
+        return;
+      }
+      const embedding = isEmbeddingModel(selectedModel);
       const result =
         useDraft || !hasApiKey
           ? await testProviderDraft({
@@ -778,6 +794,7 @@ export function ProviderConfigModal({
               api_key: draftApiKey || provider.api_key || undefined,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
+              model: toProviderProbeModel(selectedModel),
               embedding,
             })
           : await request<{

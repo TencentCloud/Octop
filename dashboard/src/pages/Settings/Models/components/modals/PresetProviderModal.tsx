@@ -17,7 +17,11 @@ import type {
 } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
-import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import {
+  fetchProviderModels,
+  testProviderDraft,
+  toProviderProbeModel,
+} from "../../providerApi";
 import { ModelListEditor } from "./ModelListEditor";
 import styles from "../../index.module.less";
 
@@ -81,8 +85,23 @@ export function PresetProviderModal({
           thinking: null,
         };
         if (meta.reasoning) entry.reasoning = true;
-        if (ctx) entry.context_window = ctx;
-        if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
+        if (m.reasoning_config !== undefined) {
+          entry.reasoning_config = m.reasoning_config;
+        }
+        if (ctx != null) entry.context_window = ctx;
+        if (m.max_input_tokens != null) {
+          entry.max_input_tokens = m.max_input_tokens;
+        }
+        const maxOutput = m.max_output_tokens ?? m.max_tokens;
+        if (maxOutput != null) entry.max_tokens = maxOutput;
+        if (m.wire_api != null) entry.wire_api = m.wire_api;
+        if (m.endpoint_base_url != null) {
+          entry.endpoint_base_url = m.endpoint_base_url;
+        }
+        if (m.native_tool_search != null) {
+          entry.native_tool_search = m.native_tool_search;
+        }
+        if (m.options !== undefined) entry.options = m.options;
         return entry;
       });
       setDraftModels(baseModels);
@@ -157,13 +176,18 @@ export function PresetProviderModal({
     if (!key) {
       return { ok: false, error: t("models.pleaseEnterApiKey") };
     }
+    const model = draftModels.find((item) => item.id === modelId);
+    if (!model) {
+      return { ok: false, error: t("models.testDraftNeedModel") };
+    }
     return testProviderDraft({
       name: values.name.trim(),
       kind: preset.protocol,
       api_key: key,
       base_url: values.base_url?.trim() || preset.base_url,
       model_id: modelId,
-      embedding: isEmbeddingModel(draftModels.find((m) => m.id === modelId)),
+      model: toProviderProbeModel(model),
+      embedding: isEmbeddingModel(model),
     });
   };
 

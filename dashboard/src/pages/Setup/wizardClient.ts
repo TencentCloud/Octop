@@ -7,6 +7,8 @@
  */
 
 import { request } from "../../api/request";
+import type { ReasoningCapability } from "../../api/types/provider";
+import type { ModelWireApi } from "../Settings/Models/useProviders";
 
 export interface VerifyResponse {
   wizard_token: string;
@@ -29,6 +31,14 @@ export interface WizardProviderModel {
   input: string[];
   thinking: null;
   reasoning?: boolean;
+  reasoning_config?: ReasoningCapability | null;
+  max_input_tokens?: number;
+  context_window?: number;
+  max_output_tokens?: number;
+  wire_api?: ModelWireApi | null;
+  endpoint_base_url?: string | null;
+  native_tool_search?: boolean | null;
+  options?: Record<string, unknown> | null;
 }
 
 export interface ProviderDraft {
@@ -181,6 +191,7 @@ export const wizardApi = {
       api_key: string;
       base_url?: string;
       model_id: string;
+      model: WizardProviderModel;
     },
     wizardToken: string,
   ) =>

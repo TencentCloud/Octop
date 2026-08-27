@@ -10,6 +10,7 @@ export interface ModelMetaSource {
   context_window?: number | null;
   max_input_tokens?: number | null;
   max_tokens?: number | null;
+  max_output_tokens?: number | null;
   reasoning?: boolean | null;
 }
 
@@ -28,6 +29,7 @@ export function ModelMetaTags({
   context_window,
   max_input_tokens,
   max_tokens,
+  max_output_tokens,
   reasoning,
   className,
   includeText = false,
@@ -74,7 +76,7 @@ export function ModelMetaTags({
     );
   }
 
-  const out = formatTokenCount(max_tokens);
+  const out = formatTokenCount(max_output_tokens ?? max_tokens);
   if (out) {
     tags.push(
       <Tag key="max-out" className={styles.capabilityTag}>

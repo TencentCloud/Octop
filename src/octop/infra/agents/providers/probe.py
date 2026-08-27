@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
+from octop.infra.agents.providers.store import model_config_from_provider_entry
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def _is_codex_base_url(base_url: str | None) -> bool:
 
 def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     """Construct a chat model from a provider row for probing."""
-    from harness_agent.config import ModelConfig, ProviderConfig
+    from harness_agent.config import ProviderConfig
     from harness_agent.llm.factory import build_chat_model
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
@@ -49,8 +50,10 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
-    display_name = (entry or {}).get("name") or mid
-    model = ModelConfig(id=mid, name=display_name)
+    model_data = dict(entry or {})
+    model_data["id"] = mid
+    model_data.setdefault("name", mid)
+    model = model_config_from_provider_entry(model_data, provider_base_url=base_url)
 
     if _is_codex_base_url(base_url):
         from langchain_openai import ChatOpenAI
@@ -85,9 +88,12 @@ def make_probe_provider_row(
     model_id: str,
     extra_json: str | None = None,
     embedding: bool = False,
+    model_metadata: dict[str, Any] | None = None,
 ) -> Any:
     """Build a ProviderRow-like object for connectivity probes."""
-    model: dict[str, Any] = {"id": model_id, "name": model_id}
+    model: dict[str, Any] = dict(model_metadata or {})
+    model["id"] = model_id
+    model.setdefault("name", model_id)
     if embedding:
         model["embedding"] = True
         model["task"] = "embedding"

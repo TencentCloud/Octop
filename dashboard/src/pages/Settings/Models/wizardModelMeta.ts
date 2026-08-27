@@ -1,4 +1,6 @@
 import type { TFunction } from "i18next";
+import type { ReasoningCapability } from "../../../api/types/provider";
+import type { ModelWireApi } from "./useProviders";
 import { formatTokenCount } from "./modelMeta";
 
 export interface WizardModelSource {
@@ -7,8 +9,14 @@ export interface WizardModelSource {
   max_input_tokens?: number | null;
   context_window?: number | null;
   max_tokens?: number | null;
+  max_output_tokens?: number | null;
   input?: string[];
   reasoning?: boolean | null;
+  reasoning_config?: ReasoningCapability | null;
+  wire_api?: ModelWireApi | null;
+  endpoint_base_url?: string | null;
+  native_tool_search?: boolean | null;
+  options?: Record<string, unknown> | null;
   description?: string | null;
 }
 
@@ -53,7 +61,9 @@ export function enrichWizardModel(
 ): WizardModelDisplayMeta {
   const context = model.context_window ?? model.max_input_tokens ?? null;
   const input = inferInputModalities(model.id, model.input);
-  const reasoning = inferReasoning(model.id, model.reasoning);
+  const reasoning =
+    model.reasoning_config?.supported === true ||
+    inferReasoning(model.id, model.reasoning);
 
   let description = model.description?.trim() || undefined;
   if (!description) {
@@ -74,7 +84,7 @@ export function enrichWizardModel(
     input,
     reasoning: reasoning || undefined,
     context_window: context,
-    max_tokens: model.max_tokens ?? null,
+    max_tokens: model.max_output_tokens ?? model.max_tokens ?? null,
     description,
   };
 }

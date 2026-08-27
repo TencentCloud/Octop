@@ -48,6 +48,7 @@ const VARIANT_LABELS: Record<string, string> = {
   international: "International",
   zen_compatible: "Zen · Compatible",
   zen_anthropic: "Zen · Anthropic",
+  go: "Go",
   go_compatible: "Go · Compatible",
   go_anthropic: "Go · Anthropic",
 };

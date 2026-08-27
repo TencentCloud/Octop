@@ -260,6 +260,13 @@ def load_provider_presets() -> list[dict[str, Any]]:
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:
+            # Harness templates are the source of truth for model-specific
+            # request semantics.  The local table below is only a compatibility
+            # fallback for older/custom templates that expose ``reasoning`` but
+            # not the normalized capability payload.
+            if isinstance(model.get("reasoning_config"), dict):
+                model["reasoning"] = True
+                continue
             profile = _reasoning_profile(provider_id, str(model.get("id") or ""))
             if profile is not None:
                 model["reasoning"] = True

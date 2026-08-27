@@ -33,6 +33,7 @@ import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
 import { ModelMetaTags } from "../../modelMeta";
+import { buildProviderModelEntry } from "../../modelEntry";
 import styles from "../../index.module.less";
 
 export interface LocalModelDownloadControl {
@@ -230,63 +231,12 @@ export function ModelListEditor({
     }
   };
 
-  const buildModelEntry = (values: Record<string, unknown>): ProviderModel => {
-    const id = (values.id as string).trim();
-    const name = (values.name as string | undefined)?.trim() || id;
-    const isOnnx = isOnnxProviderRow(provider);
-    const embedding = isOnnx || values.embedding === true;
-    const entry: ProviderModel = {
-      id,
-      name,
-      enabled: true,
-      input: ["text"],
-      thinking: null,
-    };
-    if (embedding) {
-      entry.embedding = true;
-      entry.task = "embedding";
-      return entry;
-    }
-    if (values.input != null) {
-      entry.input = (values.input as string[] | undefined) || ["text"];
-    }
-    if (values.context_window != null)
-      entry.context_window = values.context_window as number;
-    if (values.max_tokens != null)
-      entry.max_tokens = values.max_tokens as number;
-    if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
-    if (values.reasoning === true) {
-      const efforts = (values.reasoning_efforts as string[] | undefined) || [];
-      entry.reasoning_config = {
-        supported: true,
-        toggle: values.reasoning_toggle !== false,
-        default_mode:
-          (values.reasoning_default_mode as "auto" | "enabled" | "disabled") ||
-          "auto",
-        efforts,
-        default_effort:
-          (values.reasoning_default_effort as string | undefined) || null,
-        effort_type:
-          (values.reasoning_effort_type as "enum" | "token_budget") || "enum",
-        adapter:
-          (values.reasoning_adapter as
-            | "status_only"
-            | "thinking"
-            | "thinking_nested_effort"
-            | "openai_reasoning_effort"
-            | "anthropic_adaptive"
-            | "anthropic_budget"
-            | "dashscope"
-            | "openrouter") || "thinking",
-      };
-    }
-    return entry;
-  };
-
   const handleAddModel = async () => {
     try {
       const values = await form.validateFields();
-      const entry = buildModelEntry(values as Record<string, unknown>);
+      const entry = buildProviderModelEntry(values as Record<string, unknown>, {
+        isOnnx,
+      });
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
         return;
@@ -306,8 +256,11 @@ export function ModelListEditor({
     if (!editingModelId) return;
     try {
       const values = await form.validateFields();
-      const entry = buildModelEntry(values as Record<string, unknown>);
       const existing = models.find((m) => m.id === editingModelId);
+      const entry = buildProviderModelEntry(values as Record<string, unknown>, {
+        existing,
+        isOnnx,
+      });
       if (existing) {
         entry.enabled = existing.enabled;
       }
@@ -327,7 +280,7 @@ export function ModelListEditor({
       name: model.name,
       context_window:
         (model as Record<string, unknown>).context_window ?? undefined,
-      max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
+      max_tokens: model.max_tokens ?? model.max_output_tokens ?? undefined,
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
       reasoning_toggle: model.reasoning_config?.toggle ?? true,
       reasoning_efforts: model.reasoning_config?.efforts ?? [],
@@ -342,6 +295,7 @@ export function ModelListEditor({
     const hasAdvanced =
       (model as Record<string, unknown>).context_window != null ||
       (model as Record<string, unknown>).max_tokens != null ||
+      (model as Record<string, unknown>).max_output_tokens != null ||
       (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
   };
@@ -421,7 +375,7 @@ export function ModelListEditor({
                       includeText
                       input={m.input}
                       context_window={m.context_window}
-                      max_tokens={m.max_tokens}
+                      max_tokens={m.max_tokens ?? m.max_output_tokens}
                       reasoning={m.reasoning}
                     />
                   )}

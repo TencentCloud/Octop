@@ -55,13 +55,8 @@ def test_load_provider_presets_integration() -> None:
     assert "DeepSeek-V4-Flash" in coding_ids
     assert "kimi-k2.6" in coding_ids
 
-    opencode_ids = {
-        "opencode-zen-openai",
-        "opencode-zen-anthropic",
-        "opencode-go-openai",
-        "opencode-go-anthropic",
-    }
-    assert opencode_ids <= ids
+    assert {"opencode-zen-openai", "opencode-zen-anthropic", "opencode-go"} <= ids
+    assert {"opencode-go-openai", "opencode-go-anthropic"}.isdisjoint(ids)
 
     zen_oai = next(p for p in presets if p["id"] == "opencode-zen-openai")
     assert zen_oai["base_url"] == "https://opencode.ai/zen/v1"
@@ -73,8 +68,65 @@ def test_load_provider_presets_integration() -> None:
     assert zen_ant["base_url"] == "https://opencode.ai/zen"
     assert zen_ant.get("protocol") == "anthropic"
 
-    go_oai = next(p for p in presets if p["id"] == "opencode-go-openai")
-    assert go_oai["base_url"] == "https://opencode.ai/zen/go/v1"
+    go = next(p for p in presets if p["id"] == "opencode-go")
+    assert go["name"] == "opencode-go"
+    assert go["base_url"] == "https://opencode.ai/zen/go/v1"
+    assert go.get("protocol") == "openai"
+    assert go.get("provider_group") == "opencode"
+    assert go.get("provider_variant") == "go"
 
-    go_ant = next(p for p in presets if p["id"] == "opencode-go-anthropic")
-    assert go_ant["base_url"] == "https://opencode.ai/zen/go"
+    by_wire: dict[str, set[str]] = {}
+    for model in go["models"]:
+        by_wire.setdefault(model["wire_api"], set()).add(model["id"])
+    assert by_wire == {
+        "openai_responses": {
+            "grok-4.6",
+            "gpt-5.6-luna",
+            "muse-spark-1.2-contributor",
+        },
+        "openai_chat_completions": {
+            "glm-5.3-flash",
+            "glm-5.3",
+            "glm-5.2",
+            "glm-5.1",
+            "kimi-k3",
+            "kimi-k2.7-code",
+            "kimi-k2.6",
+            "longcat-2.0",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+            "mimo-v2.5",
+            "mimo-v2.5-pro",
+            "hy3",
+        },
+        "anthropic_messages": {
+            "minimax-m3",
+            "minimax-m2.7",
+            "qwen3.8-max",
+            "qwen3.7-max",
+            "qwen3.7-plus",
+            "qwen3.6-plus",
+        },
+    }
+    assert len(go["models"]) == 23
+    assert not any(model["id"] == "minimax-m2.5" for model in go["models"])
+
+    grok = next(m for m in go["models"] if m["id"] == "grok-4.6")
+    assert grok["context_window"] == 500_000
+    assert grok["max_output_tokens"] == 500_000
+    assert grok["input"] == ["text", "image"]
+    assert grok["reasoning_config"]["adapter"] == "openai_reasoning_effort"
+
+    luna = next(m for m in go["models"] if m["id"] == "gpt-5.6-luna")
+    assert luna["max_input_tokens"] == 922_000
+
+    glm52 = next(m for m in go["models"] if m["id"] == "glm-5.2")
+    assert glm52["max_input_tokens"] == 262_144
+    assert glm52["context_window"] == 1_000_000
+
+    minimax_m3 = next(m for m in go["models"] if m["id"] == "minimax-m3")
+    assert minimax_m3.get("input", ["text"]) == ["text"]
+
+    qwen = next(m for m in go["models"] if m["id"] == "qwen3.8-max")
+    assert "endpoint_base_url" not in qwen
