@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+## [0.9.28] - 2026-08-26
+
+### 修复
+
+- 无更新权限时隐藏检查更新入口
+- `/compact` 兼容 `.octop/conversation_history/` 卸载路径
+- FnOS 镜像改为 Docker Hub `jubaoliang/octop`
+
 ### 新增
 
 - 基层医生学习助手增加普通医学问答快路径、国内专业学会/专科分会与国际指南精确路由，并完善受控信源降级和检索预算。
