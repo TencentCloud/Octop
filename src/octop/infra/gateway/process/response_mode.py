@@ -14,6 +14,8 @@ from harness_gateway.models import (
     TextContent,
 )
 
+from octop.infra.utils.llm_text import strip_thinking
+
 ChannelResponseMode = Literal["invoke", "stream"]
 
 DEFAULT_CHANNEL_RESPONSE_MODE: ChannelResponseMode = "invoke"
@@ -81,7 +83,7 @@ async def collapse_to_invoke_response(
 
         if event.type == MessageEventType.COMPLETED:
             content: list[ContentPart] = []
-            final_text = text_buffer.strip()
+            final_text = strip_thinking(text_buffer)
             if final_text:
                 content.append(TextContent(text=final_text))
             content.extend(media_buffer)

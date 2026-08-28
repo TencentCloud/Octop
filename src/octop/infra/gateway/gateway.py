@@ -34,6 +34,7 @@ from octop.infra.gateway.ws import (
     WebSocketChannel,
     WebSocketHub,
 )
+from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
@@ -452,7 +453,7 @@ class Gateway:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 if chunk.get("type") in ("token", "delta"):
                     parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-            outbound = "".join(parts).strip() or "(empty)"
+            outbound = strip_thinking("".join(parts)) or "(empty)"
 
         if virtual_stream:
             self._bump_dashboard_session(session, session_key, text)
