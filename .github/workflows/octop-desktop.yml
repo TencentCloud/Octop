@@ -4,7 +4,7 @@ name: Octop Desktop Package
 # 打的 tag 不会触发 push workflow）。产物由本 workflow 的 release job upsert 到同一
 # GitHub Release。workflow_dispatch 保留给手工补包 / 按平台重跑。
 # 不要对任意分支 push 跑六平台矩阵。
-# pull_request（desktop/**）只打 darwin-*，避免 PR 上跑满六平台。
+# pull_request（desktop/**）打 darwin-* + windows-*，不跑 linux。
 
 on:
   push:
@@ -75,7 +75,7 @@ jobs:
           retention-days: 7
 
   # Job-level `if` cannot read `matrix.*` (GitHub 422). Filter here so only
-  # selected runners start — PRs → darwin-*; dispatch honors `platforms`.
+  # selected runners start — PRs → darwin-* + windows-*; dispatch honors `platforms`.
   select-platforms:
     name: Select platforms
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
@@ -102,7 +102,7 @@ jobs:
               {"plat": "windows-arm64", "arch": "arm64", "os": "windows-11-arm"},
           ]
           if os.environ["EVENT_NAME"] == "pull_request":
-              sel = "darwin-arm64,darwin-amd64"
+              sel = "darwin-arm64,darwin-amd64,windows-amd64,windows-arm64"
           else:
               sel = os.environ.get("PLATFORMS", "all").lower().replace(" ", "")
           known = {row["plat"] for row in all_plats}
