@@ -80,37 +80,40 @@ def init(
     apply_env_file(env_file_path(paths.root))
     config = load_config(paths.config)
     db = open_database(config, paths)
-    run_migrations(db)
+    try:
+        run_migrations(db)
 
-    username = admin_username
-    password = admin_password
-    display_name = admin_display_name
+        username = admin_username
+        password = admin_password
+        display_name = admin_display_name
 
-    if not non_interactive:
-        from octop.cli.support import prompts as _prompts
+        if not non_interactive:
+            from octop.cli.support import prompts as _prompts
+
+            if not username:
+                username = _prompts.text("Admin username:")
+            if not password:
+                password = _prompts.password("Admin password:")
+            if display_name is None:
+                display_name = _prompts.text("Display name (optional):", default="") or None
 
         if not username:
-            username = _prompts.text("Admin username:")
-        if not password:
-            password = _prompts.password("Admin password:")
-        if display_name is None:
-            display_name = _prompts.text("Display name (optional):", default="") or None
+            click.echo("error: admin username is required", err=True)
+            raise SystemExit(1)
+        try:
+            validate_password_policy(password or "")
+        except OctopError as exc:
+            click.echo(f"error: {exc.message}", err=True)
+            raise SystemExit(1) from None
 
-    if not username:
-        click.echo("error: admin username is required", err=True)
-        raise SystemExit(1)
-    try:
-        validate_password_policy(password or "")
-    except OctopError as exc:
-        click.echo(f"error: {exc.message}", err=True)
-        raise SystemExit(1) from None
-
-    UserRepo(db).create(
-        username=username,
-        password_hash=hash_password(password or ""),
-        role="admin",
-        display_name=display_name,
-    )
+        UserRepo(db).create(
+            username=username,
+            password_hash=hash_password(password or ""),
+            role="admin",
+            display_name=display_name,
+        )
+    finally:
+        db.close()
 
     click.echo(f"\u2705 Octop bootstrapped at {home}")
     click.echo(f"   admin user: {username}")
