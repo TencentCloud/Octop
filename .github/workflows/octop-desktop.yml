@@ -4,11 +4,16 @@ name: Octop Desktop Package
 # 打的 tag 不会触发 push workflow）。产物由本 workflow 的 release job upsert 到同一
 # GitHub Release。workflow_dispatch 保留给手工补包 / 按平台重跑。
 # 不要对任意分支 push 跑六平台矩阵。
+# pull_request（desktop/**）只打 darwin-*，避免 PR 上跑满六平台。
 
 on:
   push:
     tags:
       - "v*"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/octop-desktop.yml"
   workflow_dispatch:
     inputs:
       platforms:
@@ -72,6 +77,8 @@ jobs:
   package:
     name: "${{ matrix.plat }}"
     needs: frontend
+    # PRs only start the two macOS runners; linux/windows stay in the matrix for tags/dispatch.
+    if: github.event_name != 'pull_request' || startsWith(matrix.plat, 'darwin-')
     runs-on: ${{ matrix.os }}
     # Matrix runners are native for each plat; pin host detection so x64 Git Bash
     # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
@@ -109,8 +116,12 @@ jobs:
         id: want
         run: |
           set -euo pipefail
-          sel="${{ github.event.inputs.platforms || 'all' }}"
-          sel="$(echo "$sel" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            sel="darwin-arm64,darwin-amd64"
+          else
+            sel="${{ github.event.inputs.platforms || 'all' }}"
+            sel="$(echo "$sel" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+          fi
           plat="${{ matrix.plat }}"
           if [[ "$sel" == "all" || ",$sel," == *",$plat,"* ]]; then
             echo "build=true" >> "$GITHUB_OUTPUT"

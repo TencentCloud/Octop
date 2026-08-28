@@ -25,9 +25,10 @@ From repo root:
 make -f desktop/portable/Makefile green
 ```
 
-CI: `.github/workflows/octop-portable.yml` builds all six native platform/arch
-variants. Each job first creates the green zip and then packages the matching
-Wails application.
+CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants.
+`v*` tags and `workflow_dispatch` (platforms=`all`) run all six; pull requests
+that touch `desktop/` build `darwin-arm64` / `darwin-amd64` only. Each job
+first creates the green zip and then packages the matching Wails application.
 
 ## Build a complete desktop release
 
