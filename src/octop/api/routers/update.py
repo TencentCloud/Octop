@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
 import time
 from typing import Any
 
@@ -25,6 +27,7 @@ from octop.infra.setup.self_update import (
     fetch_pypi_info,
     get_editable_path,
     get_local_version,
+    green_packages_dir,
     is_newer,
     parse_changelog_for_version,
     run_upgrade,
@@ -58,6 +61,7 @@ def _build_status(
         "has_update": has_update,
         "is_editable": get_editable_path() is not None,
         "service_mode": detect_service_mode(),
+        "desktop": _is_desktop_process(),
         "error": error,
         "last_check_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "release_notes": release_notes if has_update else None,
@@ -146,6 +150,19 @@ async def upgrade_progress(
     }
 
 
+def _is_desktop_process() -> bool:
+    if green_packages_dir() is not None:
+        return True
+    raw = (os.environ.get("OCTOP_DESKTOP") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _restart_desktop_process() -> None:
+    time.sleep(0.4)
+    argv = list(getattr(sys, "orig_argv", None) or [sys.executable, *sys.argv])
+    os.execv(argv[0], argv)
+
+
 def _restart_service_task(runtime: ServiceRuntime) -> None:
     try:
         restart_service(runtime)
@@ -158,6 +175,9 @@ async def restart_service_endpoint(
     background_tasks: BackgroundTasks,
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
+    if _is_desktop_process():
+        background_tasks.add_task(_restart_desktop_process)
+        return {"status": "restarting", "service_mode": "desktop"}
     mode = detect_service_mode()
     if mode is None:
         raise OctopError(

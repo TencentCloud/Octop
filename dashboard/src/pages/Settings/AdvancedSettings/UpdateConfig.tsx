@@ -150,9 +150,10 @@ export default function UpdateConfig() {
   const [checking, setChecking] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [progress, setProgress] = useState<UpgradeProgress | null>(null);
-  const { restartPhase, isRestarting, requestRestart } =
+  const { restartPhase, isRestarting, requestRestart, executeRestart } =
     useServiceRestartContext();
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRestartedRef = useRef(false);
 
   useEffect(() => {
     updateApi
@@ -166,6 +167,13 @@ export default function UpdateConfig() {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (progress?.status !== "complete" || !status?.desktop) return;
+    if (restartPhase !== "idle" || autoRestartedRef.current) return;
+    autoRestartedRef.current = true;
+    void executeRestart();
+  }, [progress?.status, status?.desktop, restartPhase, executeRestart]);
 
   const handleCheck = useCallback(async () => {
     setChecking(true);
@@ -207,6 +215,7 @@ export default function UpdateConfig() {
   const handleUpgrade = useCallback(async () => {
     setUpgrading(true);
     setProgress(null);
+    autoRestartedRef.current = false;
     try {
       const started = await updateApi.triggerUpgrade();
       setProgress({
@@ -394,6 +403,7 @@ export default function UpdateConfig() {
                   </div>
 
                   {restartPhase === "idle" &&
+                    !status?.desktop &&
                     (isServiceMode ? (
                       <div className={`${styles.alert} ${styles.alertInfo}`}>
                         <AlertTriangle size={15} />
