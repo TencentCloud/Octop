@@ -58,6 +58,7 @@ from octop.infra.connectors.oauth.registry import (
     oauth_target_requires_https,
 )
 from octop.infra.connectors.probe import (
+    detect_local_weknora,
     prepare_probe_credentials,
     probe_connector,
     probe_custom_mcp_server,
@@ -381,6 +382,14 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
             preview["sdk_id"] = str(creds["sdk_id"])
         if str(creds.get("secret_key") or "").strip():
             preview["secret_key_configured"] = True
+    elif entry.auth_kind == "custom_fields":
+        for field in entry.credential_fields:
+            value = creds.get(field.key)
+            if field.secret:
+                if str(value or "").strip():
+                    preview[f"{field.key}_configured"] = True
+            elif value not in (None, "", []):
+                preview[field.key] = value
     return preview
 
 
@@ -414,6 +423,15 @@ async def get_catalog(
         catalog_entry_to_dict(e, oauth_ready=oauth_ready_for_kind(e.kind, settings))
         for e in list_catalog()
     ]
+
+
+@router.get("/connectors/weknora/detect-local", summary="Detect local WeKnora")
+async def detect_weknora_on_octop_host(
+    user: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Check WeKnora's fixed default loopback health endpoint (no persistence)."""
+    del user
+    return await detect_local_weknora()
 
 
 @router.get("/connector-instances", summary="List connector instances")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import secrets
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from octop.config import OctopConfig
 from octop.infra.connectors.catalog import (
@@ -13,6 +13,7 @@ from octop.infra.connectors.catalog import (
     get_catalog_entry,
     is_mcp_oauth_remote,
 )
+from octop.infra.connectors.custom_mcp import validate_mcp_http_url
 from octop.infra.connectors.mail_servers import resolve_mail_servers
 from octop.infra.utils.ulid import new_ulid
 
@@ -36,6 +37,18 @@ def normalize_weiyun_mcp_token(raw: str) -> str:
     if match:
         return match.group(1).strip()
     return text
+
+
+def normalize_weknora_base_url(raw: str) -> str:
+    """Normalize a WeKnora origin or API base to its `/api/v1` root."""
+    url = validate_mcp_http_url(raw)
+    parsed = urlsplit(url)
+    if parsed.query or parsed.fragment:
+        raise ValueError("base_url must not contain a query string or fragment")
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/api/v1"):
+        path = f"{path}/api/v1"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
 def mcp_server_name(kind: str, instance_id: str) -> str:
@@ -73,6 +86,13 @@ def build_http_mcp_spec(
 
 
 def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> dict[str, Any]:
+    if entry.kind == "dify":
+        url = validate_mcp_http_url(str(creds.get("mcp_url") or ""))
+        return {
+            "transport": "http",
+            "url": url,
+            "headers": _mcp_http_headers(),
+        }
     if entry.kind == "tencent-docs":
         token = str(creds.get("token") or "")
         spec: dict[str, Any] = {
@@ -362,6 +382,34 @@ def validate_create_credentials(
             "internal_token": internal_token,
         }
 
+    if entry.auth_kind == "custom_fields":
+        if entry.kind == "weknora":
+            base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
+            out = {
+                "base_url": base_url,
+                "internal_token": new_internal_token(),
+            }
+            api_key = str(credentials.get("api_key") or "").strip()
+            tenant_id = str(credentials.get("tenant_id") or "").strip()
+            raw_ids = credentials.get("knowledge_base_ids")
+            if api_key:
+                out["api_key"] = api_key
+            if tenant_id:
+                out["tenant_id"] = tenant_id
+            if isinstance(raw_ids, list):
+                ids = [str(item).strip() for item in raw_ids if str(item).strip()]
+            else:
+                ids = [part.strip() for part in str(raw_ids or "").split(",") if part.strip()]
+            if ids:
+                out["knowledge_base_ids"] = list(dict.fromkeys(ids))
+            return out
+        if entry.kind == "dify":
+            mcp_url = validate_mcp_http_url(str(credentials.get("mcp_url") or ""))
+            if "/mcp/server/" not in mcp_url or not mcp_url.rstrip("/").endswith("/mcp"):
+                raise ValueError("mcp_url must be a Dify MCP Server URL ending in /mcp")
+            return {"mcp_url": mcp_url}
+        raise ValueError(f"unsupported custom_fields connector kind: {kind}")
+
     raise ValueError(f"unsupported auth_kind: {entry.auth_kind}")
 
 
@@ -375,6 +423,8 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
         url = str(entry.get("url") or "")
         if "token=" in url:
             entry["url"] = url.split("token=", 1)[0] + "token=***"
+        elif "/mcp/server/" in url:
+            entry["url"] = re.sub(r"(/mcp/server/)[^/?#]+", r"\1***", url)
         headers = entry.get("headers")
         if isinstance(headers, dict):
             redacted = dict(headers)

@@ -44,6 +44,12 @@ import {
   mailProviderById,
 } from "./connectorDefs";
 import { notifyConnectorsChanged } from "./customMcpUtils";
+import {
+  consoleUrlFromServiceUrl,
+  extractHttpUrl,
+  isDifyMcpServerUrl,
+  isGuidedConnector,
+} from "./guidedConnectorUtils";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
 
@@ -109,6 +115,18 @@ function buildCredentials(
     credentials.sdk_id = values.sdk_id;
     const secret_key = String(values.secret_key ?? "").trim();
     if (secret_key) credentials.secret_key = secret_key;
+  } else if (entry.auth_kind === "custom_fields") {
+    for (const field of entry.credential_fields ?? []) {
+      const text = String(values[field.key] ?? "").trim();
+      if (!text) continue;
+      credentials[field.key] =
+        field.field_type === "tags"
+          ? text
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          : text;
+    }
   }
   return credentials;
 }
@@ -146,6 +164,17 @@ function previewToFormValues(
   if (entry.auth_kind === "oauth2" && preview.oauth_configured) {
     values.access_token = "__configured__";
   }
+  if (entry.auth_kind === "custom_fields") {
+    for (const field of entry.credential_fields ?? []) {
+      if (field.secret) continue;
+      const value = preview[field.key];
+      if (Array.isArray(value)) {
+        values[field.key] = value.join(", ");
+      } else if (value !== undefined && value !== null) {
+        values[field.key] = value;
+      }
+    }
+  }
   return values;
 }
 
@@ -178,7 +207,30 @@ function hasFreshCredentialInput(
   if (entry.auth_kind === "api_credentials") {
     return Boolean(String(values.secret_key ?? "").trim());
   }
+  if (entry.auth_kind === "custom_fields") {
+    return (entry.credential_fields ?? []).some(
+      (field) =>
+        field.secret && Boolean(String(values[field.key] ?? "").trim()),
+    );
+  }
   return false;
+}
+
+function customCredentialConfigChanged(
+  entry: ConnectorCatalogEntry,
+  values: Record<string, unknown>,
+  preview: ConnectorCredentialsPreview,
+): boolean {
+  if (entry.auth_kind !== "custom_fields") return false;
+  return (entry.credential_fields ?? []).some((field) => {
+    if (field.secret) return false;
+    const current = String(values[field.key] ?? "").trim();
+    const storedValue = preview[field.key];
+    const stored = Array.isArray(storedValue)
+      ? storedValue.join(", ")
+      : String(storedValue ?? "").trim();
+    return current !== stored;
+  });
 }
 
 function openAuthorizeLabel(
@@ -216,7 +268,7 @@ function secretFieldRules(required: boolean) {
 
 function configuredExtra(
   preview: ConnectorCredentialsPreview | undefined,
-  key: keyof ConnectorCredentialsPreview,
+  key: string,
   t: (key: string, fallback: string) => string,
 ) {
   if (!preview?.[key]) return undefined;
@@ -260,6 +312,10 @@ function ConnectorConfigDrawer({
     null,
   );
   const [installingCli, setInstallingCli] = useState(false);
+  const [detectingLocalWeKnora, setDetectingLocalWeKnora] = useState(false);
+  const [detectedWeKnoraConsole, setDetectedWeKnoraConsole] = useState<
+    string | null
+  >(null);
   const [feishuUserAuth, setFeishuUserAuth] =
     useState<FeishuUserAuthStartResult | null>(null);
   const [feishuUserAuthBusy, setFeishuUserAuthBusy] = useState(false);
@@ -272,6 +328,8 @@ function ConnectorConfigDrawer({
   const hasStoredCredentials = Boolean(instance?.has_credentials);
   const mailProvider = Form.useWatch("mail_provider", form) ?? "qq";
   const defaultOpen = Form.useWatch("default_open", form) === true;
+  const weknoraBaseUrl = String(Form.useWatch("base_url", form) ?? "");
+  const difyMcpUrl = String(Form.useWatch("mcp_url", form) ?? "");
   const selectedMailProvider = mailProviderById(String(mailProvider));
   const draftScope = entry
     ? instance
@@ -296,6 +354,7 @@ function ConnectorConfigDrawer({
     setInstanceDetail(null);
     setProbeResult(null);
     setCliInfo(null);
+    setDetectedWeKnoraConsole(null);
     setFeishuUserAuth(null);
     setFeishuUserReady(false);
     setFeishuAuthNeedsReauth(false);
@@ -685,6 +744,87 @@ function ConnectorConfigDrawer({
     }
   };
 
+  const handleGuidedPaste = async () => {
+    if (!entry || !isGuidedConnector(entry.kind)) return;
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (!text) {
+        message.warning(t("connectors.clipboardEmpty", "剪贴板为空"));
+        return;
+      }
+      const pastedUrl = extractHttpUrl(text);
+      if (entry.kind === "dify") {
+        if (!pastedUrl) {
+          message.warning(
+            t("connectors.difyPasteUrlRequired", "剪贴板中没有 MCP URL"),
+          );
+          return;
+        }
+        form.setFieldValue("mcp_url", pastedUrl);
+        await form.validateFields(["mcp_url"]);
+      } else if (pastedUrl) {
+        form.setFieldValue("base_url", pastedUrl);
+      } else {
+        form.setFieldValue("api_key", text);
+      }
+      saveFormDraft(
+        draftScope,
+        form.getFieldsValue() as Record<string, unknown>,
+      );
+      message.success(t("connectors.pasteSuccess", "已粘贴"));
+    } catch (error) {
+      if (error && typeof error === "object" && "errorFields" in error) {
+        message.warning(
+          t(
+            "connectors.difyMcpUrlInvalid",
+            "请粘贴 Dify 访问点提供的完整 MCP Server URL",
+          ),
+        );
+        return;
+      }
+      message.error(
+        t("connectors.clipboardDenied", "无法读取剪贴板，请手动粘贴"),
+      );
+    }
+  };
+
+  const handleDetectLocalWeKnora = async () => {
+    if (detectingLocalWeKnora) return;
+    setDetectingLocalWeKnora(true);
+    try {
+      const result = await connectorsApi.detectLocalWeKnora();
+      if (!result.found || !result.base_url) {
+        message.warning(
+          t(
+            "connectors.weknoraNotFound",
+            "未在 OCTOP 主机的 127.0.0.1:8080 检测到 WeKnora",
+          ),
+        );
+        return;
+      }
+      form.setFieldValue("base_url", result.base_url);
+      setDetectedWeKnoraConsole(result.console_url ?? null);
+      saveFormDraft(
+        draftScope,
+        form.getFieldsValue() as Record<string, unknown>,
+      );
+      message.success(
+        t("connectors.weknoraFound", "已检测到本机 WeKnora 并填入地址"),
+      );
+    } catch (error) {
+      console.error(error);
+      message.error(
+        apiErrorMessage(
+          error,
+          t("connectors.weknoraDetectFailed", "检测本机 WeKnora 失败"),
+          t,
+        ),
+      );
+    } finally {
+      setDetectingLocalWeKnora(false);
+    }
+  };
+
   const handleOAuth = async () => {
     if (!entry || authorizing) return;
     const popup = window.open("", "octop-oauth", "width=520,height=720");
@@ -843,17 +983,35 @@ function ConnectorConfigDrawer({
       Boolean(preview.bot_id) &&
       String(values.bot_id ?? "").trim() !==
         String(preview.bot_id ?? "").trim();
-    const identityChanged = feishuAppIdChanged || wecomBotIdChanged;
-    if (identityChanged && !freshSecret) {
+    const customConfigChanged = customCredentialConfigChanged(
+      entry,
+      values,
+      preview,
+    );
+    const customHasStoredSecret = (entry.credential_fields ?? []).some(
+      (field) => field.secret && preview[`${field.key}_configured`] === true,
+    );
+    const identityChanged =
+      feishuAppIdChanged || wecomBotIdChanged || customConfigChanged;
+    if (
+      identityChanged &&
+      !freshSecret &&
+      (entry.auth_kind !== "custom_fields" || customHasStoredSecret)
+    ) {
       message.warning(
         entry.kind === "feishu-cli"
           ? t(
               "connectors.probeNeedSecretAfterAppIdChange",
               "App ID 已修改，请填写 App Secret 后再探测",
             )
-          : t(
+          : entry.kind === "wecom-cli"
+          ? t(
               "connectors.probeNeedSecretAfterBotIdChange",
               "Bot ID 已修改，请填写 Secret 后再探测",
+            )
+          : t(
+              "connectors.probeNeedSecretAfterConfigChange",
+              "连接配置已修改，请重新填写密钥后再探测",
             ),
       );
       return;
@@ -959,6 +1117,15 @@ function ConnectorConfigDrawer({
   const guideUrl = authInfo?.guide_url ?? entry.guide_url ?? entry.doc_url;
   const manualUrl = authInfo?.manual_url ?? entry.manual_url ?? guideUrl;
   const authHint = authInfo?.auth_hint ?? entry.auth_hint;
+  const guidedKind = isGuidedConnector(entry.kind) ? entry.kind : null;
+  const guidedServiceUrl =
+    guidedKind === "weknora" ? weknoraBaseUrl : difyMcpUrl;
+  const guidedConsoleUrl =
+    detectedWeKnoraConsole ??
+    (guidedKind
+      ? consoleUrlFromServiceUrl(guidedKind, guidedServiceUrl)
+      : null) ??
+    guideUrl;
 
   const preview = instanceDetail?.credentials_preview;
   const secretRequired = !hasStoredCredentials;
@@ -1018,6 +1185,45 @@ function ConnectorConfigDrawer({
 
         {authHint && <div className={styles.authHint}>{authHint}</div>}
 
+        {guidedKind && (
+          <div className={styles.guidedSetup}>
+            <div className={styles.guidedSetupTitle}>
+              {t("connectors.guidedSetup", "快速接入")}
+            </div>
+            {guidedKind === "weknora" ? (
+              <ol>
+                <li>
+                  {t("connectors.weknoraStep1", "打开 WeKnora 并创建 API Key")}
+                </li>
+                <li>
+                  {t(
+                    "connectors.weknoraStep2",
+                    "检测本机服务，或手动填写部署地址",
+                  )}
+                </li>
+                <li>
+                  {t("connectors.guidedStepProbe", "粘贴凭证后探测并保存")}
+                </li>
+              </ol>
+            ) : (
+              <ol>
+                <li>
+                  {t("connectors.difyStep1", "在 Dify 中发布应用或工作流")}
+                </li>
+                <li>
+                  {t(
+                    "connectors.difyStep2",
+                    "在访问点启用 MCP 并复制完整 Server URL",
+                  )}
+                </li>
+                <li>
+                  {t("connectors.guidedStepProbe", "粘贴凭证后探测并保存")}
+                </li>
+              </ol>
+            )}
+          </div>
+        )}
+
         {guideUrl && !hideGuideLink && (
           <div className={styles.guideLinks}>
             <a href={guideUrl} target="_blank" rel="noreferrer">
@@ -1027,6 +1233,35 @@ function ConnectorConfigDrawer({
         )}
 
         <div className={styles.quickAuthBar}>
+          {guidedKind && (
+            <>
+              <Button
+                icon={<ExternalLink size={14} />}
+                onClick={() => openUrl(guidedConsoleUrl)}
+              >
+                {guidedKind === "weknora"
+                  ? t("connectors.openWeKnora", "打开 WeKnora")
+                  : t("connectors.openDify", "打开 Dify")}
+              </Button>
+              {guidedKind === "weknora" && (
+                <Button
+                  icon={<RefreshCw size={14} />}
+                  loading={detectingLocalWeKnora}
+                  onClick={() => void handleDetectLocalWeKnora()}
+                >
+                  {t("connectors.detectLocal", "检测本机服务")}
+                </Button>
+              )}
+              <Button
+                icon={<ClipboardPaste size={14} />}
+                onClick={() => void handleGuidedPaste()}
+              >
+                {guidedKind === "dify"
+                  ? t("connectors.pasteMcpUrl", "粘贴 MCP 地址")
+                  : t("connectors.smartPaste", "智能粘贴")}
+              </Button>
+            </>
+          )}
           {entry && isHostCliConnector(entry.kind) && (
             <>
               {canInstallCli && (
@@ -1234,6 +1469,57 @@ function ConnectorConfigDrawer({
           >
             <Input placeholder={entry.name} />
           </Form.Item>
+
+          {entry.auth_kind === "custom_fields" &&
+            (entry.credential_fields ?? []).map((field) => {
+              const isSecret = field.secret || field.field_type === "password";
+              const input = isSecret ? (
+                <Input.Password
+                  placeholder={
+                    hasStoredCredentials && field.secret
+                      ? t("connectors.secretPlaceholder", "留空表示不修改")
+                      : field.placeholder ?? undefined
+                  }
+                />
+              ) : (
+                <Input placeholder={field.placeholder ?? undefined} />
+              );
+              return (
+                <Form.Item
+                  key={field.key}
+                  name={field.key}
+                  label={field.label}
+                  rules={[
+                    ...(isSecret
+                      ? secretFieldRules(field.required && secretRequired)
+                      : [{ required: field.required }]),
+                    ...(entry.kind === "dify" && field.key === "mcp_url"
+                      ? [
+                          {
+                            validator: (_: unknown, value: unknown) =>
+                              !value || isDifyMcpServerUrl(String(value))
+                                ? Promise.resolve()
+                                : Promise.reject(
+                                    new Error(
+                                      t(
+                                        "connectors.difyMcpUrlInvalid",
+                                        "请粘贴 Dify 访问点提供的完整 MCP Server URL",
+                                      ),
+                                    ),
+                                  ),
+                          },
+                        ]
+                      : []),
+                  ]}
+                  extra={
+                    configuredExtra(preview, `${field.key}_configured`, t) ??
+                    field.help
+                  }
+                >
+                  {input}
+                </Form.Item>
+              );
+            })}
 
           {entry.auth_kind === "personal_token" && (
             <Form.Item

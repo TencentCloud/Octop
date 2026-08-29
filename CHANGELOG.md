@@ -9,6 +9,8 @@
 ### 新增
 
 - 自定义 MCP 连接器支持 OAuth：从 MCP URL 自动发现授权端点，统一 `POST /connectors/oauth/start` 启动授权；保存后可探测、一键授权，Bearer 注入 harness spec；Custom Connectors UI 支持启用与「对话默认选中」分离、保存后可选探测
+- 连接器新增 WeKnora 与 Dify：WeKnora 提供只读知识库列表、检索和文档阅读工具；Dify 直接接入应用发布的 Streamable HTTP MCP。连接器目录支持声明式凭证字段，Dashboard、IM 与 Cron 复用现有 MCP 注入链路
+- WeKnora / Dify 增加引导式接入：控制台入口、智能剪贴板粘贴、Dify MCP URL 即时校验，以及 WeKnora 默认本机部署只读检测
 
 ### 变更
 

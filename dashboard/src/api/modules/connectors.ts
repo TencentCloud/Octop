@@ -18,6 +18,17 @@ export interface ConnectorCatalogEntry {
   supports_quick_auth?: boolean;
   oauth_mode?: "dynamic" | "configured" | null;
   oauth_ready?: boolean;
+  credential_fields?: ConnectorCredentialField[];
+}
+
+export interface ConnectorCredentialField {
+  key: string;
+  label: string;
+  field_type: "text" | "password" | "url" | "tags";
+  required: boolean;
+  placeholder?: string | null;
+  help?: string | null;
+  secret: boolean;
 }
 
 export interface ConnectorAuthInfo {
@@ -42,6 +53,7 @@ export interface ConnectorInstance {
 }
 
 export interface ConnectorCredentialsPreview {
+  [key: string]: unknown;
   token_configured?: boolean;
   oauth_configured?: boolean;
   expires_at?: number;
@@ -89,6 +101,12 @@ export interface ConnectorProbeResult {
     issuer?: string;
     resource?: string;
   };
+}
+
+export interface WeKnoraLocalDetection {
+  found: boolean;
+  base_url?: string;
+  console_url?: string;
 }
 
 export type CustomMcpTransport = "streamable_http" | "stdio";
@@ -157,6 +175,9 @@ export interface FeishuUserAuthCompleteResult {
 
 export const connectorsApi = {
   catalog: () => request<ConnectorCatalogEntry[]>("/connectors/catalog"),
+
+  detectLocalWeKnora: () =>
+    request<WeKnoraLocalDetection>("/connectors/weknora/detect-local"),
 
   listInstances: () => request<ConnectorInstance[]>("/connector-instances"),
 

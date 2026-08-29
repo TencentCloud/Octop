@@ -102,7 +102,12 @@ def _normalize_args(raw: Any) -> list[str]:
     return [str(item) for item in raw]
 
 
-def _validate_http_url(url: str) -> str:
+def validate_mcp_http_url(url: str) -> str:
+    """Validate a user-configured MCP/connector URL.
+
+    Local loopback deployments may use HTTP. Remote deployments must use
+    public HTTPS and pass the shared SSRF guard.
+    """
     text = url.strip()
     if not text:
         raise ValueError("url is required")
@@ -150,7 +155,7 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         spec["display_name"] = display_name
 
     if transport == "streamable_http":
-        url = _validate_http_url(str(raw.get("url") or ""))
+        url = validate_mcp_http_url(str(raw.get("url") or ""))
         spec["url"] = url
         headers = _normalize_headers(raw.get("headers"))
         if headers:

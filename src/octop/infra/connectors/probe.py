@@ -28,6 +28,34 @@ from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request
 
 logger = logging.getLogger(__name__)
 
+_LOCAL_WEKNORA_API_URL = "http://127.0.0.1:8080"
+_LOCAL_WEKNORA_CONSOLE_URL = "http://127.0.0.1"
+
+
+async def detect_local_weknora() -> dict[str, Any]:
+    """Detect a default host-side WeKnora deployment without persisting data.
+
+    The target is deliberately fixed to loopback.  This keeps the convenience
+    endpoint from becoming an arbitrary server-side URL fetch while matching
+    WeKnora's default Docker ports (UI 80, API 8080).
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(2.0),
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            response = await client.get(f"{_LOCAL_WEKNORA_API_URL}/health")
+    except httpx.HTTPError:
+        return {"found": False}
+    if not response.is_success:
+        return {"found": False}
+    return {
+        "found": True,
+        "base_url": f"{_LOCAL_WEKNORA_API_URL}/api/v1",
+        "console_url": _LOCAL_WEKNORA_CONSOLE_URL,
+    }
+
 
 def normalize_tools(raw: list[Any] | None) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
@@ -384,7 +412,7 @@ async def probe_connector(
     headers = dict(spec.get("headers") or {})
     url = str(spec["url"])
 
-    if is_mcp_oauth_remote(entry):
+    if is_mcp_oauth_remote(entry) or entry.remote_transport == "streamable_http":
         return await probe_streamable_http_mcp(url, headers, kind=entry.kind)
 
     try:

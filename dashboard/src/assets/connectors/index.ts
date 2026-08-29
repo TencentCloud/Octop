@@ -2,6 +2,7 @@ import tencentArdot from "./tencent-ardot.png";
 import baiduMap from "./baidu-map.png";
 import ctripWendao from "./ctrip-wendao.png";
 import dida365 from "./dida365.png";
+import dify from "./dify.svg";
 import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
@@ -16,6 +17,7 @@ import tencentLexiang from "./tencent-lexiang.png";
 import tencentWeiyun from "./tencent-weiyun.png";
 import wechatReading from "./wechat-reading.png";
 import wecomCli from "./wecom-cli.png";
+import weknora from "./weknora.svg";
 import youdaoNote from "./youdao-note.png";
 import yuandian from "./yuandian.png";
 
@@ -36,10 +38,12 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "tencent-meeting": tencentMeeting,
   notion,
   dida365: dida365,
+  dify,
   "tencent-news": tencentNews,
   "wechat-reading": wechatReading,
   "youdao-note": youdaoNote,
   "tencent-weiyun": tencentWeiyun,
+  weknora,
 };
 
 export function getConnectorLogo(kind: string): string | undefined {

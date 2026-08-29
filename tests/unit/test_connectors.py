@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -168,6 +169,241 @@ def test_build_dida365_remote_spec():
     assert spec["url"] == "https://mcp.dida365.com"
     assert spec["headers"]["Authorization"] == "Bearer dida-tok"
     assert spec["headers"]["Accept"] == "application/json, text/event-stream"
+
+
+def test_weknora_catalog_and_credentials():
+    from octop.infra.connectors.catalog import catalog_entry_to_dict
+
+    entry = get_catalog_entry("weknora")
+    assert entry is not None
+    assert entry.mcp_mode == "gateway"
+    data = catalog_entry_to_dict(entry)
+    fields = {item["key"]: item for item in data["credential_fields"]}
+    assert fields["base_url"]["field_type"] == "url"
+    assert fields["api_key"]["secret"] is True
+
+    payload = validate_create_credentials(
+        "weknora",
+        {
+            "base_url": "http://127.0.0.1:8080/",
+            "api_key": "sk-secret",
+            "tenant_id": "tenant-1",
+            "knowledge_base_ids": "kb-1, kb-2, kb-1",
+        },
+    )
+    assert payload["base_url"] == "http://127.0.0.1:8080/api/v1"
+    assert payload["api_key"] == "sk-secret"
+    assert payload["tenant_id"] == "tenant-1"
+    assert payload["knowledge_base_ids"] == ["kb-1", "kb-2"]
+    assert payload["internal_token"]
+
+
+def test_weknora_rejects_non_https_remote_url():
+    with pytest.raises(ValueError, match="non-local url must use https"):
+        validate_create_credentials(
+            "weknora",
+            {"base_url": "http://weknora.example.com", "api_key": "sk-secret"},
+        )
+    with pytest.raises(ValueError, match="query string or fragment"):
+        validate_create_credentials(
+            "weknora",
+            {"base_url": "https://weknora.example.com?token=secret"},
+        )
+
+
+def test_dify_builds_streamable_http_spec():
+    entry = get_catalog_entry("dify")
+    assert entry is not None
+    assert entry.remote_transport == "streamable_http"
+    creds = validate_create_credentials(
+        "dify",
+        {"mcp_url": "https://dify.example.com/mcp/server/server-code/mcp"},
+    )
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds=creds,
+        config=OctopConfig(),
+    )
+    assert spec == {
+        "transport": "http",
+        "url": "https://dify.example.com/mcp/server/server-code/mcp",
+        "headers": {"Accept": "application/json, text/event-stream"},
+    }
+
+
+def test_dify_rejects_non_server_url():
+    with pytest.raises(ValueError, match="Dify MCP Server URL"):
+        validate_create_credentials("dify", {"mcp_url": "https://dify.example.com/v1/chat"})
+
+
+def test_dify_server_code_is_redacted_from_logs():
+    from octop.infra.connectors.builder import _redact_mcp_configs_for_log
+
+    redacted = _redact_mcp_configs_for_log(
+        {
+            "dify__x": {
+                "transport": "http",
+                "url": "https://dify.example.com/mcp/server/secret-code/mcp",
+            }
+        }
+    )
+    assert redacted["dify__x"]["url"] == "https://dify.example.com/mcp/server/***/mcp"
+
+
+def test_custom_field_preview_redacts_secrets():
+    from octop.api.routers.connectors import _credentials_preview
+
+    weknora = _credentials_preview(
+        "weknora",
+        {
+            "base_url": "https://weknora.example.com/api/v1",
+            "api_key": "sk-secret",
+            "tenant_id": "tenant-1",
+            "knowledge_base_ids": ["kb-1"],
+        },
+    )
+    assert weknora == {
+        "base_url": "https://weknora.example.com/api/v1",
+        "api_key_configured": True,
+        "tenant_id": "tenant-1",
+        "knowledge_base_ids": ["kb-1"],
+    }
+    dify = _credentials_preview(
+        "dify",
+        {"mcp_url": "https://dify.example.com/mcp/server/secret-code/mcp"},
+    )
+    assert dify == {"mcp_url_configured": True}
+
+
+def test_gateway_weknora_tools_and_search(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.gateway.adapters import weknora
+
+    calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+    def _fake_request(
+        _creds: dict[str, object],
+        method: str,
+        path: str,
+        *,
+        params: dict[str, object] | None = None,
+        body: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        calls.append((method, path, body))
+        if path == "/knowledge-bases":
+            return {"success": True, "data": [{"id": "kb-1", "name": "Docs"}]}
+        assert params == {"resource_urls": "handle"}
+        return {
+            "success": True,
+            "data": [
+                {
+                    "knowledge_id": "doc-1",
+                    "knowledge_title": "Guide",
+                    "chunk_index": 2,
+                    "score": 0.9,
+                    "content": "x" * 1300,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(weknora, "_request", _fake_request)
+    listed = handle_mcp_request(
+        kind="weknora",
+        creds={"base_url": "http://127.0.0.1:8080/api/v1"},
+        body={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+    )
+    assert [tool["name"] for tool in listed["result"]["tools"]] == [
+        "list_knowledge_bases",
+        "search",
+        "read_document",
+    ]
+    result = json.loads(
+        weknora.call_tool(
+            {"base_url": "http://127.0.0.1:8080/api/v1"},
+            "search",
+            {"query": "install"},
+        )
+    )
+    assert result["knowledge_base_ids"] == ["kb-1"]
+    assert len(result["passages"][0]["content"]) == 1200
+    assert result["passages"][0]["truncated"] is True
+    assert calls[-1][2] == {"query": "install", "knowledge_base_ids": ["kb-1"]}
+
+
+@pytest.mark.asyncio
+async def test_dify_probe_uses_streamable_http(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    seen: dict[str, object] = {}
+
+    async def _probe(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        seen.update(url=url, headers=headers, kind=kind)
+        return {"ok": True, "tool_count": 1, "tools": [{"name": "run", "description": ""}]}
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _probe)
+    entry = get_catalog_entry("dify")
+    assert entry is not None
+    result = await probe_connector(
+        entry,
+        {"mcp_url": "https://dify.example.com/mcp/server/code/mcp"},
+        instance_id="probe",
+        config=OctopConfig(),
+    )
+    assert result["ok"] is True
+    assert seen == {
+        "url": "https://dify.example.com/mcp/server/code/mcp",
+        "headers": {"Accept": "application/json, text/event-stream"},
+        "kind": "dify",
+    }
+
+
+@pytest.mark.asyncio
+async def test_detect_local_weknora_uses_fixed_loopback(monkeypatch: pytest.MonkeyPatch):
+    import httpx
+
+    from octop.infra.connectors import probe
+
+    seen: list[str] = []
+    real_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"status": "ok"})
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        kwargs.pop("trust_env", None)
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(probe.httpx, "AsyncClient", client_factory)
+    result = await probe.detect_local_weknora()
+
+    assert result == {
+        "found": True,
+        "base_url": "http://127.0.0.1:8080/api/v1",
+        "console_url": "http://127.0.0.1",
+    }
+    assert seen == ["http://127.0.0.1:8080/health"]
+
+
+@pytest.mark.asyncio
+async def test_detect_local_weknora_returns_not_found_on_unhealthy_host(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import httpx
+
+    from octop.infra.connectors import probe
+
+    real_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request)
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        kwargs.pop("trust_env", None)
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(probe.httpx, "AsyncClient", client_factory)
+    assert await probe.detect_local_weknora() == {"found": False}
 
 
 def test_gateway_tools_list():
