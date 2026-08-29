@@ -12,6 +12,7 @@
 
 ### 变更
 
+- 自定义 MCP OAuth：token 刷新失败且已过期时自动标记需重新授权；OAuth 发现结果进程内缓存；callback 页与 OAuth 启动错误 i18n 化
 - Docker / FnOS 镜像对外统一为 `ghcr.io/tencentcloud/octop`（仍同步推送 Docker Hub；移除 vanilla 镜像标签）
 - FnOS FPK 在 Release 成功后自动构建：复用 GHCR 镜像与 Release wheel，不再重复编镜像
 - 正式发版时 Auto Tag 同步触发桌面客户端打包，产物挂到同一 `v*` GitHub Release（不再对任意分支 push 跑六平台矩阵）

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
+from octop.i18n import tr
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -65,6 +66,7 @@ from octop.infra.connectors.probe import (
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
 logger = logging.getLogger(__name__)
@@ -158,6 +160,18 @@ class CustomMcpTestBody(BaseModel):
     server: dict[str, Any] | None = None
 
 
+def _oauth_callback_html(
+    request: Request,
+    message_key: str,
+    *,
+    status_code: int = 200,
+    **fmt: Any,
+) -> HTMLResponse:
+    locale = resolve_request_locale(request)
+    message = tr(f"connector.oauth.{message_key}", locale, **fmt)
+    return HTMLResponse(f"<html><body>{message}</body></html>", status_code=status_code)
+
+
 def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: str) -> str:
     saved = svc.get_custom_servers(user_id)
     raw = saved.get(server_name)
@@ -229,10 +243,7 @@ async def _begin_oauth_flow(
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     except Exception as exc:
         logger.exception("oauth start failed for target %s", target)
-        raise OctopError(
-            ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
-            f"无法启动 OAuth: {exc}",
-        ) from exc
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
 
     server.services.repos.connector_repo.create_oauth_state(
         state_id=state_id,
@@ -1116,14 +1127,27 @@ async def oauth_callback(
 ) -> HTMLResponse:
     """OAuth redirect target. Exchanges the code and stores credentials. No JWT required."""
     if error:
-        return HTMLResponse(f"<html><body>授权失败: {error}</body></html>", status_code=400)
+        return _oauth_callback_html(
+            request,
+            "callback_auth_failed",
+            status_code=400,
+            error=error,
+        )
     if not code or not state:
-        return HTMLResponse("<html><body>缺少 code 或 state</body></html>", status_code=400)
+        return _oauth_callback_html(
+            request,
+            "callback_missing_params",
+            status_code=400,
+        )
 
     repo = server.services.repos.connector_repo
     row = repo.consume_oauth_state(state)
     if row is None:
-        return HTMLResponse("<html><body>无效或过期的 state</body></html>", status_code=400)
+        return _oauth_callback_html(
+            request,
+            "callback_invalid_state",
+            status_code=400,
+        )
 
     base = resolve_public_base(request)
     redirect_uri = f"{base}/api/connectors/oauth/callback"
@@ -1145,7 +1169,12 @@ async def oauth_callback(
         delete_oauth_ctx(server.services.settings_repo, row.state_id)
     except Exception as exc:
         logger.exception("oauth callback failed for %s", row.kind)
-        return HTMLResponse(f"<html><body>Token 交换失败: {exc}</body></html>", status_code=400)
+        return _oauth_callback_html(
+            request,
+            "callback_token_exchange_failed",
+            status_code=400,
+            detail=str(exc),
+        )
 
     pending_payload: dict[str, Any] = {
         "user_id": row.user_id,
@@ -1170,9 +1199,11 @@ async def oauth_callback(
             pending_payload["applied"] = True
         except Exception as exc:
             logger.exception("custom MCP oauth apply failed for %s", server_name)
-            return HTMLResponse(
-                f"<html><body>保存授权失败: {exc}</body></html>",
+            return _oauth_callback_html(
+                request,
+                "callback_save_failed",
                 status_code=400,
+                detail=str(exc),
             )
 
     # Store tokens in a short-lived settings key for frontend pickup, or auto-create instance.
@@ -1182,6 +1213,8 @@ async def oauth_callback(
         json.dumps(pending_payload),
     )
     redirect = row.redirect_after or "/connectors"
+    locale = resolve_request_locale(request)
+    success_message = tr("connector.oauth.callback_success", locale)
     html = f"""<!DOCTYPE html><html><body>
 <script>
   if (window.opener) {{
@@ -1191,7 +1224,7 @@ async def oauth_callback(
     window.location.href = '{redirect}?oauth_state={row.state_id}';
   }}
 </script>
-<p>授权完成，可关闭此窗口。</p>
+<p>{success_message}</p>
 </body></html>"""
     return HTMLResponse(html)
 

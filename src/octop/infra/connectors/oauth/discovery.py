@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -13,6 +14,14 @@ _RESOURCE_METADATA_PARAM = re.compile(
     r'resource_metadata\s*=\s*"([^"]+)"',
     re.IGNORECASE,
 )
+
+_DISCOVERY_CACHE_TTL_SEC = 3600.0
+_discovery_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def clear_oauth_discovery_cache() -> None:
+    """Clear the in-process OAuth discovery cache (tests only)."""
+    _discovery_cache.clear()
 
 
 def _mcp_url_host(url: str) -> str:
@@ -126,7 +135,11 @@ def _normalize_issuer(raw: str, *, mcp_url: str) -> str:
     return urljoin(base, text).rstrip("/")
 
 
-async def discover_oauth_from_mcp_url(mcp_url: str) -> dict[str, Any]:
+async def discover_oauth_from_mcp_url(
+    mcp_url: str,
+    *,
+    use_cache: bool = True,
+) -> dict[str, Any]:
     """Return OAuth discovery details for a remote MCP HTTP endpoint.
 
     Result shape::
@@ -141,6 +154,17 @@ async def discover_oauth_from_mcp_url(mcp_url: str) -> dict[str, Any]:
         }
     """
     url = mcp_url.strip()
+    if use_cache:
+        cached = _discovery_cache.get(url)
+        if cached is not None and cached[0] > time.time():
+            return cached[1]
+    result = await _discover_oauth_from_mcp_url_uncached(url)
+    if use_cache and result.get("available"):
+        _discovery_cache[url] = (time.time() + _DISCOVERY_CACHE_TTL_SEC, result)
+    return result
+
+
+async def _discover_oauth_from_mcp_url_uncached(url: str) -> dict[str, Any]:
     if not url:
         return {"available": False, "error": "empty mcp url"}
     if _is_loopback_mcp_url(url):

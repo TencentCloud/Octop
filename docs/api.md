@@ -314,9 +314,18 @@ for non-`/` paths.
 | `GET`    | `/connectors/auth/{kind}/info` | user | auth flow info |
 | `GET`    | `/connectors/auth/{kind}/authorize-url` | user | build the authorize URL |
 | `POST`   | `/connectors/auth/{kind}/exchange-code` | user | exchange auth code |
-| `POST`   | `/connectors/oauth/{kind}/start` | user | start an OAuth flow |
+| `POST`   | `/connectors/oauth/start` | user | start OAuth (catalog or custom MCP via `target`) |
+| `POST`   | `/connectors/oauth/{kind}/start` | user | legacy catalog OAuth start |
+| `PUT`    | `/connectors/custom-mcp` | user | save custom MCP server map |
+| `PATCH`  | `/connectors/custom-mcp/servers/{name}` | user | patch `enabled` / `default_open` on one server |
+| `POST`   | `/connectors/custom-mcp/test` | user | probe a custom MCP server (inline spec or saved name) |
 | `GET`    | `/connectors/oauth/callback` | public | OAuth redirect target |
 | `GET`    | `/connectors/oauth/pending/{state_id}` | user | poll the OAuth result |
+
+Custom MCP OAuth (streamable HTTP, public HTTPS URL only): Octop discovers the authorization
+server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires dynamic client
+registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
+Bearer` when loading tools. Loopback MCP URLs do not use remote OAuth discovery.
 
 ## Internal MCP (harness agents)
 

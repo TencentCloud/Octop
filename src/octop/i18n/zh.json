@@ -280,6 +280,16 @@
       }
     }
   },
+  "connector": {
+    "oauth": {
+      "callback_auth_failed": "授权失败：{error}",
+      "callback_missing_params": "缺少 code 或 state。",
+      "callback_invalid_state": "无效或过期的 state。",
+      "callback_token_exchange_failed": "Token 交换失败：{detail}",
+      "callback_save_failed": "保存授权失败：{detail}",
+      "callback_success": "授权完成，可关闭此窗口。"
+    }
+  },
   "errors": {
     "AUTH_FAILED": "认证失败。",
     "TOKEN_EXPIRED": "登录已过期，请重新登录。",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from octop.infra.connectors.custom_mcp import (
     expand_custom_instances,
     extract_servers,
     is_custom_mcp_kind,
+    mark_oauth_reauth_required,
     merge_preserved_oauth,
     oauth_configured,
     oauth_tokens_from_spec,
@@ -41,6 +43,10 @@ from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.ulid import new_ulid
+
+logger = logging.getLogger(__name__)
+
+_OAUTH_REFRESH_SKEW_SEC = 120
 
 
 def list_user_connector_instances(
@@ -213,15 +219,29 @@ class ConnectorService:
             oauth = oauth_tokens_from_spec(raw)
             if not oauth_configured(raw):
                 continue
-            expires_at = oauth.get("expires_at")
+            expires_at_raw = oauth.get("expires_at")
+            expires_at = int(expires_at_raw) if expires_at_raw is not None else None
             refresh = str(oauth.get("refresh_token") or "").strip()
+            if expires_at is not None and expires_at <= now and not refresh:
+                servers[name] = mark_oauth_reauth_required(dict(raw))
+                changed = True
+                continue
             if not refresh:
                 continue
-            if expires_at and int(expires_at) > now + 120:
+            if expires_at is not None and expires_at > now + _OAUTH_REFRESH_SKEW_SEC:
                 continue
             try:
                 refreshed = await refresh_custom_mcp_oauth(oauth)
             except Exception:
+                logger.warning(
+                    "custom MCP oauth refresh failed for %r (user_id=%s)",
+                    name,
+                    user_id,
+                    exc_info=True,
+                )
+                if expires_at is not None and expires_at <= now:
+                    servers[name] = mark_oauth_reauth_required(dict(raw))
+                    changed = True
                 continue
             spec = dict(raw)
             spec["oauth"] = refreshed
