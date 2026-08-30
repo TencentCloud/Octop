@@ -65,16 +65,23 @@ async def test_weixin_ilink_token_accepted() -> None:
                 f"(bot_uin={bot_uin!r} base_url={base_url!r}): "
                 f"ret={exc.ret} errcode={exc.errcode} errmsg={exc.errmsg}"
             )
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            # GitHub-hosted runners often cannot finish iLink long-poll within
+            # the client timeout; that is reachability, not a bad token.
+            pytest.skip(f"weixin getUpdates unreachable ({base_url}): {exc}")
 
     manager = ChannelManager(processor=_noop_processor)
-    await manager.probe_channel(
-        "weixin",
-        {
-            "bot_uin": bot_uin,
-            "token": token,
-            "base_url": base_url,
-            "account_id": bot_uin,
-        },
-        tenant_id="live-probe",
-        channel_id="live-weixin-probe",
-    )
+    try:
+        await manager.probe_channel(
+            "weixin",
+            {
+                "bot_uin": bot_uin,
+                "token": token,
+                "base_url": base_url,
+                "account_id": bot_uin,
+            },
+            tenant_id="live-probe",
+            channel_id="live-weixin-probe",
+        )
+    except (TimeoutError, aiohttp.ClientError) as exc:
+        pytest.skip(f"weixin probe_channel unreachable ({base_url}): {exc}")

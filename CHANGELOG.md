@@ -19,6 +19,7 @@
 - FnOS FPK 在 Release 成功后自动构建：复用 GHCR 镜像与 Release wheel，不再重复编镜像
 - 正式发版时 Auto Tag 同步触发桌面客户端打包，产物挂到同一 `v*` GitHub Release（不再对任意分支 push 跑六平台矩阵）
 - 修复 Auto Tag → `workflow_dispatch` 时 Docker 镜像可能只有 `:latest`、缺少 `:{version}` 的问题（显式从 tag 解析版本）
+- 依赖：`orcakit-harness-agent[all]>=1.0.1`（技能 catalog 透出 `metadata.octop` 展示字段）
 
 ### 修复
 
