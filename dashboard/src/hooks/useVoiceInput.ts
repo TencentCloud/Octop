@@ -1,23 +1,41 @@
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { voiceApi, type ActiveVoice } from "../api/modules/voice";
+import { speechLocaleFromUi } from "../utils/localePrefs";
 import { cachedActiveVoice, fetchActiveVoice } from "./useVoiceConfig";
 
 import { message as antMessage } from "@/utils/antdMessage";
 
+interface BrowserSpeechRecognitionAlternative {
+  transcript?: string;
+}
+
+interface BrowserSpeechRecognitionResult {
+  isFinal: boolean;
+  length: number;
+  [index: number]: BrowserSpeechRecognitionAlternative;
+}
+
 interface BrowserSpeechRecognitionResultEvent {
-  results: ArrayLike<{ [index: number]: { transcript?: string } }>;
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult> & { length: number };
+}
+
+interface BrowserSpeechRecognitionErrorEvent {
+  error?: string;
 }
 
 interface BrowserSpeechRecognition {
   lang: string;
+  continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   onresult: ((event: BrowserSpeechRecognitionResultEvent) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop?: () => void;
+  abort?: () => void;
 }
 
 type SpeechRecognitionCtor = new () => BrowserSpeechRecognition;
@@ -49,6 +67,12 @@ function pickRecorderMimeType(): string {
   return "";
 }
 
+/**
+ * Native Web Speech API transcription.
+ *
+ * Important: settle only on `onend` / error / timeout. Resolving in `onresult`
+ * races Chrome's `onend` and often yields empty text for Chinese utterances.
+ */
 async function transcribeWithBrowser(language: string): Promise<string> {
   const Ctor = getSpeechRecognition();
   if (!Ctor) {
@@ -57,7 +81,11 @@ async function transcribeWithBrowser(language: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const rec = new Ctor();
     let settled = false;
+    let finalText = "";
+    let interimText = "";
     let timer = 0;
+    let lastError: string | undefined;
+
     const settle = (fn: () => void) => {
       if (settled) return;
       settled = true;
@@ -67,23 +95,62 @@ async function transcribeWithBrowser(language: string): Promise<string> {
       rec.onend = null;
       fn();
     };
+
     rec.lang = language;
-    rec.interimResults = false;
+    rec.continuous = false;
+    rec.interimResults = true;
     rec.maxAlternatives = 1;
+
     rec.onresult = (event) => {
-      const text = event.results[0]?.[0]?.transcript?.trim() ?? "";
-      settle(() => resolve(text));
+      let finals = "";
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const piece = result?.[0]?.transcript ?? "";
+        if (result?.isFinal) finals += piece;
+        else interim += piece;
+      }
+      if (finals) finalText += finals;
+      interimText = interim;
     };
-    rec.onerror = () => settle(() => reject(new Error("browser STT failed")));
-    rec.onend = () => settle(() => resolve(""));
+
+    rec.onerror = (event) => {
+      lastError = event.error;
+      // no-speech / aborted: let onend resolve with whatever we have.
+      if (event.error === "no-speech" || event.error === "aborted") return;
+      settle(() => {
+        if (event.error === "network") {
+          reject(new Error("browser STT network"));
+          return;
+        }
+        reject(new Error(`browser STT failed: ${event.error ?? "unknown"}`));
+      });
+    };
+
+    rec.onend = () => {
+      const text = (finalText || interimText).trim();
+      settle(() => {
+        if (!text && lastError && lastError !== "no-speech" && lastError !== "aborted") {
+          reject(new Error(`browser STT failed: ${lastError}`));
+          return;
+        }
+        resolve(text);
+      });
+    };
+
     timer = window.setTimeout(() => {
       try {
         rec.stop?.();
       } catch {
         // Browser implementations differ; the timeout still settles below.
       }
-      settle(() => reject(new Error("browser STT timed out")));
+      settle(() => {
+        const text = (finalText || interimText).trim();
+        if (text) resolve(text);
+        else reject(new Error("browser STT timed out"));
+      });
     }, BROWSER_STT_TIMEOUT_MS);
+
     try {
       rec.start();
     } catch (err) {
@@ -102,17 +169,19 @@ export function canRecordAudio(): boolean {
 /** Check whether any STT method is available. */
 export function isSttAvailable(): boolean {
   if (canRecordAudio()) return true; // server STT via MediaRecorder
-  return browserSttAvailable(); // browser STT (Android Chrome only)
+  return browserSttAvailable(); // browser STT (Chrome / Edge)
 }
 
 export function useVoiceInput(onText: (text: string) => void) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const language = navigator.language || "zh-CN";
+  // Follow dashboard UI locale — not navigator.language (often en-US on
+  // machines used with Chinese UI / Chinese speech).
+  const language = speechLocaleFromUi(i18n.language);
 
   const stopRecording = useCallback(async () => {
     const recorder = mediaRecorderRef.current;
@@ -136,37 +205,24 @@ export function useVoiceInput(onText: (text: string) => void) {
     setTranscribing(true);
     try {
       const active = await fetchActiveVoice();
-      let text = "";
-      if (active.stt === "browser" && browserSttAvailable()) {
-        text = await transcribeWithBrowser(language);
-      } else {
-        try {
-          const result = await voiceApi.transcribe(blob, language);
-          text = result.text?.trim() ?? "";
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "";
-          if (msg.includes("VOICE_BROWSER_ONLY") || msg.includes("422")) {
-            if (browserSttAvailable()) {
-              text = await transcribeWithBrowser(language);
-            } else {
-              antMessage.error(t("voice.sttProviderRequired"));
-              return;
-            }
-          } else {
-            // Server STT failed — try browser fallback if available.
-            if (browserSttAvailable()) {
-              antMessage.warning(t("voice.sttFallback"));
-              text = await transcribeWithBrowser(language);
-            } else {
-              throw err;
-            }
-          }
-        }
+      // SpeechRecognition cannot consume a recorded blob. If STT is still
+      // "browser", ask the user to configure a server provider (or use the
+      // click-to-talk browser path from a cold start).
+      if (active.stt === "browser") {
+        antMessage.error(t("voice.sttProviderRequired"));
+        return;
       }
+      const result = await voiceApi.transcribe(blob, language);
+      const text = result.text?.trim() ?? "";
       if (text) onText(text);
       else antMessage.info(t("voice.sttEmpty"));
-    } catch {
-      antMessage.error(t("voice.sttFailed"));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("VOICE_BROWSER_ONLY") || msg.includes("422")) {
+        antMessage.error(t("voice.sttProviderRequired"));
+      } else {
+        antMessage.error(t("voice.sttFailed"));
+      }
     } finally {
       setTranscribing(false);
     }
@@ -183,6 +239,13 @@ export function useVoiceInput(onText: (text: string) => void) {
         const text = await transcribeWithBrowser(language);
         if (text) onText(text);
         else antMessage.info(t("voice.sttEmpty"));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("network")) {
+          antMessage.error(t("voice.sttNetworkFailed"));
+        } else {
+          antMessage.error(t("voice.sttFailed"));
+        }
       } finally {
         setTranscribing(false);
       }

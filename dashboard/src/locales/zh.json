@@ -2139,6 +2139,7 @@
     "sttFailed": "语音识别失败",
     "sttFallback": "服务端识别失败，已切换浏览器识别",
     "sttProviderRequired": "当前浏览器不支持原生语音识别，请配置腾讯云或 OpenAI STT",
+    "sttNetworkFailed": "浏览器语音识别无法联网（常依赖 Google）。请在设置 → 语音服务中配置腾讯云、小米 Mimo 或 OpenAI STT",
     "ttsFailed": "语音合成失败",
     "nothingToRead": "没有可朗读的正文（代码块等内容已跳过）",
     "browserNoChineseVoice": "Chrome 没有中文语音，已改用 Edge TTS 朗读",
