@@ -65,11 +65,12 @@ def test_write_and_delete_skill_updates_disk_summaries_and_count(
     assert store.list_skill_summaries(row.id) == [
         {
             "slug": "pdf",
-            "name": "PDF Reader",
+            "name": "PDF",
             "description": "",
             "path": "skills/pdf/SKILL.md",
             "kind": "package",
             "package_id": row.id,
+            "display_name": "PDF Reader",
             "emoji": "\U0001f4c4",
             "icon_url": "https://cdn.example.com/pdf.png",
         }
@@ -132,6 +133,39 @@ def test_write_skill_recreates_empty_directories(store: SkillPackageStore) -> No
     assert (skill_dir / "data").is_dir()
     assert (skill_dir / "scripts").is_dir()
     assert list((skill_dir / "ai").iterdir()) == []
+
+
+def test_list_skill_summaries_localizes_octop_metadata(store: SkillPackageStore) -> None:
+    row = store.create(name="P", description="", created_by="42")
+    store.write_skill(
+        row.id,
+        "pdf-reader",
+        [
+            (
+                "SKILL.md",
+                (
+                    "---\n"
+                    "name: pdf-reader\n"
+                    "description: Agent trigger\n"
+                    "metadata:\n"
+                    "  octop:\n"
+                    "    label:\n"
+                    "      zh: PDF 阅读\n"
+                    "      en: PDF Reader\n"
+                    "    summary:\n"
+                    "      zh: 读取 PDF\n"
+                    "      en: Read PDFs\n"
+                    "---\n"
+                ).encode(),
+            )
+        ],
+    )
+
+    zh = store.list_skill_summaries(row.id, locale="zh")[0]
+    en = store.list_skill_summaries(row.id, locale="en")[0]
+
+    assert (zh["name"], zh["description"]) == ("PDF 阅读", "读取 PDF")
+    assert (en["name"], en["description"]) == ("PDF Reader", "Read PDFs")
 
 
 def test_skill_count_excludes_skills_hidden_from_summaries(store: SkillPackageStore) -> None:

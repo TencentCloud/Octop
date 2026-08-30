@@ -46,9 +46,11 @@ def with_skillhub_presentation_metadata(
     *,
     display_name: str,
     icon_url: str,
+    label: dict[str, str] | None = None,
+    summary: dict[str, str] | None = None,
 ) -> str:
     """Persist SkillHub presentation fields without changing the stable skill id."""
-    if not display_name and not icon_url:
+    if not display_name and not icon_url and not label and not summary:
         return content
 
     meta, body = parse_frontmatter(content)
@@ -58,10 +60,14 @@ def with_skillhub_presentation_metadata(
     octop_meta = {} if not isinstance(octop_meta, dict) else dict(octop_meta)
 
     octop_meta["source"] = "skillhub"
-    if display_name:
-        octop_meta["display_name"] = display_name
     if icon_url:
         octop_meta["icon_url"] = icon_url
+    if label:
+        octop_meta["label"] = {key: value for key, value in label.items() if value}
+    elif display_name:
+        octop_meta["display_name"] = display_name
+    if summary:
+        octop_meta["summary"] = {key: value for key, value in summary.items() if value}
     metadata["octop"] = octop_meta
     meta["metadata"] = metadata
 
@@ -85,6 +91,8 @@ def prepare_skillhub_package(
     *,
     display_name: str = "",
     icon_url: str = "",
+    label: dict[str, str] | None = None,
+    summary: dict[str, str] | None = None,
 ) -> ResolvedSkillPackage:
     """Normalize SkillHub download files into a canonical package."""
     safe_name = validate_skill_slug(skill_name)
@@ -102,6 +110,8 @@ def prepare_skillhub_package(
                     manifest,
                     display_name=display_name,
                     icon_url=icon_url,
+                    label=label,
+                    summary=summary,
                 ).encode("utf-8")
         transformed.append((normalized, content))
     return resolve_skill_package(
@@ -169,6 +179,8 @@ async def install_skill_from_skillhub(
     files: list[tuple[str, bytes]],
     display_name: str = "",
     icon_url: str = "",
+    label: dict[str, str] | None = None,
+    summary: dict[str, str] | None = None,
     overwrite: bool = False,
     enable: bool | None = None,
 ) -> ResolvedSkillPackage:
@@ -180,6 +192,8 @@ async def install_skill_from_skillhub(
         files,
         display_name=display_name,
         icon_url=icon_url,
+        label=label,
+        summary=summary,
     )
     return await commit_skill_install(
         target,

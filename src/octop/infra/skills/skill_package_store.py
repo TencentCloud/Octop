@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover - optional PostgreSQL driver
 
 from octop.infra.db.repos.skill_packages import SkillPackageRepo, SkillPackageRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.skills.install import valid_skillhub_icon_url
+from octop.infra.skills.presentation import apply_skill_presentation
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
     normalize_skill_files,
@@ -22,6 +22,7 @@ from octop.infra.skills.skill_packages import (
 )
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
+from octop.infra.utils.locale import Locale
 from octop.infra.utils.ulid import new_short_id
 
 
@@ -42,28 +43,6 @@ def raise_skill_package_name_taken(name: str) -> None:
         name=name,
         details={"name": name},
     )
-
-
-def _apply_presentation_metadata(summary: dict[str, Any], metadata: dict[str, Any]) -> None:
-    """Apply display_name / emoji / icon_url from SKILL.md extension namespaces."""
-    extensions = metadata.get("metadata")
-    if not isinstance(extensions, dict):
-        return
-    has_display_name = False
-    for key in ("octop", "lightclaw", "orca", "harness", "openclaw"):
-        extension = extensions.get(key)
-        if not isinstance(extension, dict):
-            continue
-        display_name = str(extension.get("display_name") or "").strip()
-        if display_name and not has_display_name:
-            summary["name"] = display_name
-            has_display_name = True
-        emoji = str(extension.get("emoji") or "").strip()
-        if emoji and "emoji" not in summary:
-            summary["emoji"] = emoji
-        icon_url = str(extension.get("icon_url") or "").strip()
-        if icon_url and "icon_url" not in summary and valid_skillhub_icon_url(icon_url):
-            summary["icon_url"] = icon_url
 
 
 def _allocate_package_id(repo: SkillPackageRepo) -> str:
@@ -104,7 +83,12 @@ class SkillPackageStore:
     def package_skills_dir(self, pack_id: str) -> Path:
         return self.root / pack_id / "skills"
 
-    def list_skill_summaries(self, pack_id: str) -> list[dict[str, Any]]:
+    def list_skill_summaries(
+        self,
+        pack_id: str,
+        *,
+        locale: Locale | None = None,
+    ) -> list[dict[str, Any]]:
         skills_dir = self.package_skills_dir(pack_id)
         if not skills_dir.is_dir():
             return []
@@ -129,8 +113,7 @@ class SkillPackageStore:
                 "kind": "package",
                 "package_id": pack_id,
             }
-            _apply_presentation_metadata(summary, metadata)
-            summaries.append(summary)
+            summaries.append(apply_skill_presentation(summary, metadata, locale=locale))
         return summaries
 
     def write_skill(

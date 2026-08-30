@@ -12,7 +12,7 @@ import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import ContextChip from "./ContextChip";
-import { skillChipLabel } from "../utils/skillChipLabel";
+import { skillChipIcon } from "../utils/skillChipIcon";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import { modelShortLabel } from "../../../utils/modelOptions";
 import styles from "../index.module.less";
@@ -247,7 +247,7 @@ export default function ChatInputPreviewBar({
             <ContextChip
               key={slug}
               variant="skill"
-              icon={skillChipLabel(skill)}
+              icon={skillChipIcon(skill)}
               label={skillDisplayName(skill)}
               onRemove={() =>
                 onSkillsChange(selectedSkills.filter((n) => n !== slug))

@@ -13,7 +13,6 @@ import { PackageIcon } from "../../../SkillPackages/PackageIcon";
 import { showApiError } from "../../../../utils/showApiToast";
 import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
 import type { SkillSpec } from "../useSkills";
-import { hubInfoBySlugFromCache } from "./skillHubCache";
 import styles from "../index.module.less";
 
 interface SkillPackagesTabProps {
@@ -26,10 +25,8 @@ interface SkillPackagesTabProps {
 function resolvePackageSkillIcon(
   packageSkill: SkillPackageSkill,
   installed: SkillSpec | undefined,
-  hubIconUrl?: string | null,
 ): { iconUrl?: string; emoji?: string } {
-  const iconUrl =
-    hubIconUrl || packageSkill.icon_url || installed?.iconUrl || undefined;
+  const iconUrl = packageSkill.icon_url || installed?.iconUrl || undefined;
   const emoji = packageSkill.emoji || installed?.emoji;
   return { iconUrl, emoji };
 }
@@ -76,8 +73,6 @@ export default function SkillPackagesTab({
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
-
-  const hubSkillsBySlug = useMemo(() => hubInfoBySlugFromCache(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -302,18 +297,13 @@ export default function SkillPackagesTab({
               <div className={styles.packageSkillRowList}>
                 {detailPackage.skills.map((packageSkill) => {
                   const installed = skillsBySlug.get(packageSkill.slug);
-                  const hubInfo = hubSkillsBySlug.get(packageSkill.slug);
                   const { iconUrl, emoji } = resolvePackageSkillIcon(
                     packageSkill,
                     installed,
-                    hubInfo?.iconUrl,
                   );
-                  const displayName =
-                    hubInfo?.name || packageSkill.name || packageSkill.slug;
+                  const displayName = packageSkill.name || packageSkill.slug;
                   const displayDesc =
-                    hubInfo?.description_zh ||
-                    packageSkill.description ||
-                    t("skills.noDescription");
+                    packageSkill.description || t("skills.noDescription");
                   const shadows = workspaceSlugs.has(packageSkill.slug);
                   const canToggle = detailMounted && !!installed && !shadows;
 

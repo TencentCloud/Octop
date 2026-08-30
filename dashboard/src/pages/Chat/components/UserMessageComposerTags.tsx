@@ -9,7 +9,7 @@ import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import ContextChip, { type ContextChipVariant } from "./ContextChip";
-import { skillChipLabel } from "../utils/skillChipLabel";
+import { skillChipIcon } from "../utils/skillChipIcon";
 import { modelShortLabel } from "../../../utils/modelOptions";
 import styles from "../index.module.less";
 
@@ -46,7 +46,7 @@ export default function UserMessageComposerTags({
       items.push({
         key: `skill-${slug}`,
         variant: "skill",
-        icon: skill ? skillChipLabel(skill) : "✦",
+        icon: skill ? skillChipIcon(skill) : "✦",
         label: skill?.name || slug,
       });
     }

@@ -49,6 +49,41 @@ function skillDesc(skill: SkillHubSkill): string {
   return skill.description_zh || skill.description || "";
 }
 
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function localizedPair(
+  zh: string,
+  en: string,
+): { zh?: string; en?: string } | undefined {
+  const pair: { zh?: string; en?: string } = {};
+  if (zh) pair.zh = zh;
+  if (en && en !== zh) pair.en = en;
+  return Object.keys(pair).length > 0 ? pair : undefined;
+}
+
+function hubInstallPresentation(skill: SkillHubSkill): {
+  label?: { zh?: string; en?: string };
+  summary?: { zh?: string; en?: string };
+} {
+  const raw = skill as SkillHubSkill & Record<string, unknown>;
+  return {
+    label: localizedPair(
+      firstText(raw.display_name_zh, raw.displayName, skill.name),
+      firstText(raw.display_name_en, raw.displayNameEn),
+    ),
+    summary: localizedPair(
+      firstText(skill.description_zh, raw.summary_zh, skill.description),
+      firstText(raw.description_en, raw.summary_en),
+    ),
+  };
+}
+
 function normalizeHubSkill(raw: Record<string, unknown>): SkillHubSkill {
   const slug = String(raw.slug ?? raw.name ?? "");
   return {
@@ -226,10 +261,12 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
       setDrawerOpen(false);
       setInstallingSlug(skill.slug);
       try {
+        const presentation = hubInstallPresentation(skill);
         const body: Record<string, unknown> = {
           skill_name: skill.slug,
-          display_name: skill.name,
           icon_url: skill.iconUrl ?? null,
+          label: presentation.label,
+          summary: presentation.summary,
           overwrite: true,
         };
         if (installTarget.type === "agent") {

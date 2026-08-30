@@ -16,7 +16,20 @@ interface SkillPickerPopoverProps {
   onNavigateAway?: () => void;
 }
 
-function skillAvatarLabel(skill: SkillSpec): string {
+function SkillAvatar({ skill }: { skill: SkillSpec }) {
+  const iconUrl = skill.iconUrl?.trim();
+  return (
+    <span className={styles.skillPickerAvatar}>
+      {iconUrl ? (
+        <img src={iconUrl} alt="" className={styles.skillPickerAvatarImg} />
+      ) : (
+        skillAvatarFallback(skill)
+      )}
+    </span>
+  );
+}
+
+function skillAvatarFallback(skill: SkillSpec): string {
   if (skill.emoji) return skill.emoji;
   const name = skill.name || skill.slug;
   return name.charAt(0).toUpperCase();
@@ -79,9 +92,7 @@ export default function SkillPickerPopover({
               onSkillsChange(next);
             }}
           >
-            <span className={styles.skillPickerAvatar}>
-              {skillAvatarLabel(skill)}
-            </span>
+            <SkillAvatar skill={skill} />
             <span className={pickerStyles.itemText}>
               <span className={pickerStyles.itemName}>
                 {skillDisplayName(skill)}

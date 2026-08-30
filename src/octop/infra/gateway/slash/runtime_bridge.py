@@ -41,7 +41,12 @@ async def build_runtime_ctx(cmd: SlashCommand, ctx: SlashCtx) -> RuntimeSlashCtx
         cancel_stream = _cancel
 
         async def _list_skills() -> list[dict[str, Any]]:
-            return await am.list_skill_summaries(ctx.agent_id)
+            from octop.infra.utils.locale import normalize_locale
+
+            return await am.list_skill_summaries(
+                ctx.agent_id,
+                locale=normalize_locale(ctx.locale),
+            )
 
         list_skills = _list_skills
 
