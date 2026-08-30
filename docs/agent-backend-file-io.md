@@ -234,7 +234,7 @@ create(agent)
 
 ## 12. 局部 root_dir 与 execute jail（补充）
 
-当 agent backend 为本地 `local_shell`，且同时满足 **Linux + `virtual_mode=True` + `root_dir` 非主机 `/` + 宿主机有 `bwrap`** 时，harness 在 **构造 backend 之前** 路由到 `BubbledLocalShellBackend`，将 `execute`（含 Skill 脚本）包进 bubblewrap：工作根绑到 `/`，与文件工具虚拟路径对齐。其余情况（宿主根、非 Linux、无 bwrap、`filesystem`）走普通 `HarnessLocalShellBackend` / deepagents `local_shell`，**不再**对 execute 做虚拟路径改写。
+当 agent backend 为本地 `local_shell`，且同时满足 **Linux + `virtual_mode=True` + `root_dir` 非主机 `/` + 宿主机有 `bwrap`** 时，harness 在 **构造 backend 之前** 路由到 `BubbledLocalShellBackend`，将 `execute`（含 Skill 脚本）包进 bubblewrap：工作根绑到 `/`，与文件工具虚拟路径对齐。其余情况（宿主根、非 Linux、无 bwrap、`filesystem`）走普通 `HarnessLocalShellBackend`：无目录狱，但在 **harness-agent >= 1.0** 且 `virtual_mode` + 非宿主 `root_dir` 时，仍会把 `execute` 命令里的虚拟绝对路径改写到该 `root_dir` 下再在宿主机执行。
 
 `scripts/install.sh`（及 desktop Linux 安装脚本）会在 **Linux** 上尽力安装 `bubblewrap`；保存局部 `root_dir` 时仪表盘也会调用 `POST /api/filesystem/ensure-bwrap` 做同样的尽力安装。macOS / 无 bwrap 时无目录狱，文件工具仍靠 deepagents `virtual_mode`；`BackendWorkspace` 读/物化路径 failback 不变：绝对路径先 virtual 映到 `root_dir` 再原始宿主机路径；相对路径先 `{root_dir}/{rel}` 再 `{workspace_dir}/{rel}`。Dashboard path I/O: use ``dashboard/src/utils/workspaceIoPath.ts`` for download/file API paths
 (host absolute stays ``file://…``). Dock tab identity may still ``canonicalizeDockFilePath``;
