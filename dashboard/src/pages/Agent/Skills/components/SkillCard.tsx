@@ -14,18 +14,8 @@ import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
 import styles from "../index.module.less";
 
-/** SkillHub metadata matched by slug — used to show the marketplace's
- * Chinese name / description / icon for installed skills (falls back to the
- * local SKILL.md values when absent). */
-export interface SkillHubInfo {
-  name?: string;
-  description_zh?: string;
-  iconUrl?: string | null;
-}
-
 interface SkillCardProps {
   skill: SkillSpec;
-  hubInfo?: SkillHubInfo;
   isHover: boolean;
   onClick: () => void;
   onMouseEnter: () => void;
@@ -186,7 +176,6 @@ const renderSkillIcon = (skill: SkillSpec) => {
 
 export function SkillCard({
   skill,
-  hubInfo,
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -201,11 +190,9 @@ export function SkillCard({
   const iconColor = DEFAULT_COLOR;
   const iconBg = `${iconColor}18`; // ~10% opacity tint
 
-  // Prefer the SkillHub marketplace's Chinese name / description / icon when
-  // this installed skill matches a hub skill by slug; fall back to SKILL.md.
-  const displayName = hubInfo?.name || skillDisplayName(skill);
-  const displayDesc = hubInfo?.description_zh || skill.description;
-  const hubIcon = hubInfo?.iconUrl || skill.iconUrl;
+  const displayName = skillDisplayName(skill);
+  const displayDesc = skill.description;
+  const hubIcon = skill.iconUrl;
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();

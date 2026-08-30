@@ -1,6 +1,15 @@
 ---
 name: skill-manager
 description: 必须用于通过对话管理当前专家实例的 Skill，包括查找、检查、安装、导入、更新、编辑、列出、恢复或删除。支持 skillhub.cn/skills/... 页面 URL、SkillHub CLI、本地及上传文件、SKILL.md、ZIP/TAR、Git/GitHub 和普通下载 URL；也用于把 PDF、Markdown、文档、代码、图片等任意资料整理成新 Skill。Must use for conversational Skill management from files, URLs, Git repositories, archives, or SkillHub.
+metadata:
+  octop:
+    emoji: "🧩"
+    label:
+      zh: "技能管理"
+      en: "Skill Manager"
+    summary:
+      zh: "在当前实例中查找、安装、导入、更新或删除技能。"
+      en: "Find, install, import, update, or delete skills on this instance."
 ---
 
 # Skill Manager

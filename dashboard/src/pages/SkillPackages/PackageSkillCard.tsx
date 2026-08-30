@@ -1,9 +1,7 @@
-import { useMemo } from "react";
 import { Popconfirm } from "antd";
 import { FileCode2, Info, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SkillPackageSkill } from "../../api/types/skillPackage";
-import { hubInfoBySlugFromCache } from "../Agent/Skills/components/skillHubCache";
 import skillStyles from "../Agent/Skills/index.module.less";
 
 interface PackageSkillCardProps {
@@ -22,15 +20,10 @@ export function PackageSkillCard({
   onDelete,
 }: PackageSkillCardProps) {
   const { t } = useTranslation();
-  const hubInfo = useMemo(
-    () => hubInfoBySlugFromCache().get(skill.slug),
-    [skill.slug],
-  );
-  const iconUrl = hubInfo?.iconUrl || skill.icon_url || undefined;
+  const iconUrl = skill.icon_url || undefined;
   const emoji = skill.emoji;
-  const displayName = hubInfo?.name || skill.name;
-  const displayDesc =
-    hubInfo?.description_zh || skill.description || t("skills.noDescription");
+  const displayName = skill.name;
+  const displayDesc = skill.description || t("skills.noDescription");
   const iconBg = `${DEFAULT_COLOR}18`;
 
   return (

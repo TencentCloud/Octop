@@ -13,7 +13,22 @@ AuthKind = Literal[
     "imap_app_password",
     "session_cookie",
     "api_credentials",
+    "custom_fields",
 ]
+
+CredentialFieldType = Literal["text", "password", "url", "tags"]
+RemoteTransport = Literal["raw_http", "streamable_http", "sse"]
+
+
+@dataclass(frozen=True)
+class ConnectorCredentialField:
+    key: str
+    label: str
+    field_type: CredentialFieldType = "text"
+    required: bool = True
+    placeholder: str | None = None
+    help: str | None = None
+    secret: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +58,8 @@ class ConnectorCatalogEntry:
     oauth_resource: str | None = None
     oauth_scopes: str | None = None
     mcp_user_agent: str | None = None
+    credential_fields: tuple[ConnectorCredentialField, ...] = ()
+    remote_transport: RemoteTransport = "raw_http"
 
 
 def is_mcp_oauth_remote(entry: ConnectorCatalogEntry) -> bool:
@@ -67,6 +84,73 @@ def get_mcp_oauth_remote(kind: str) -> ConnectorCatalogEntry | None:
 
 
 _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
+    ConnectorCatalogEntry(
+        kind="weknora",
+        name="WeKnora",
+        description="连接 WeKnora 私有知识库，提供只读检索与文档阅读",
+        auth_kind="custom_fields",
+        doc_url="https://github.com/Tencent/WeKnora",
+        icon="weknora",
+        color="#0052d9",
+        phase="available",
+        mcp_mode="gateway",
+        guide_url="https://github.com/Tencent/WeKnora/blob/main/docs/api/README.md",
+        auth_hint="填写 WeKnora 服务地址；API Key 与 Tenant ID 按部署的鉴权设置填写。",
+        credential_fields=(
+            ConnectorCredentialField(
+                key="base_url",
+                label="服务地址",
+                field_type="url",
+                placeholder="http://127.0.0.1:8080 或 https://weknora.example.com",
+                help="未包含 /api/v1 时会自动补齐",
+            ),
+            ConnectorCredentialField(
+                key="api_key",
+                label="API Key",
+                field_type="password",
+                required=False,
+                placeholder="sk-...（无鉴权部署可留空）",
+                secret=True,
+            ),
+            ConnectorCredentialField(
+                key="tenant_id",
+                label="Tenant ID",
+                required=False,
+                help="平台级 API Key 需要指定工作空间时填写",
+            ),
+            ConnectorCredentialField(
+                key="knowledge_base_ids",
+                label="默认知识库 ID",
+                field_type="tags",
+                required=False,
+                placeholder="kb-123, kb-456",
+                help="留空时检索当前凭证可见的全部知识库",
+            ),
+        ),
+    ),
+    ConnectorCatalogEntry(
+        kind="dify",
+        name="Dify",
+        description="连接 Dify 已发布应用或工作流的 MCP 服务",
+        auth_kind="custom_fields",
+        doc_url="https://docs.dify.ai/",
+        icon="dify",
+        color="#1c64f2",
+        phase="available",
+        mcp_mode="remote",
+        auth_hint="在 Dify 应用的访问点中启用 MCP，然后粘贴完整的 MCP Server URL。",
+        credential_fields=(
+            ConnectorCredentialField(
+                key="mcp_url",
+                label="MCP Server URL",
+                field_type="url",
+                placeholder="https://dify.example.com/mcp/server/<server_code>/mcp",
+                help="完整 URL 含访问标识，将按密钥加密保存",
+                secret=True,
+            ),
+        ),
+        remote_transport="streamable_http",
+    ),
     ConnectorCatalogEntry(
         kind="tencent-docs",
         name="腾讯文档",
@@ -432,5 +516,17 @@ def catalog_entry_to_dict(
         "auth_hint": entry.auth_hint,
         "oauth_mode": oauth_mode,
         "oauth_ready": oauth_ready,
+        "credential_fields": [
+            {
+                "key": field.key,
+                "label": field.label,
+                "field_type": field.field_type,
+                "required": field.required,
+                "placeholder": field.placeholder,
+                "help": field.help,
+                "secret": field.secret,
+            }
+            for field in entry.credential_fields
+        ],
         "supports_quick_auth": entry.phase == "available" and entry.auth_kind != "api_credentials",
     }

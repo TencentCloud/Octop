@@ -9,13 +9,17 @@
 ### 新增
 
 - 自定义 MCP 连接器支持 OAuth：从 MCP URL 自动发现授权端点，统一 `POST /connectors/oauth/start` 启动授权；保存后可探测、一键授权，Bearer 注入 harness spec；Custom Connectors UI 支持启用与「对话默认选中」分离、保存后可选探测
+- 连接器新增 WeKnora 与 Dify：WeKnora 提供只读知识库列表、检索和文档阅读工具；Dify 直接接入应用发布的 Streamable HTTP MCP。连接器目录支持声明式凭证字段，Dashboard、IM 与 Cron 复用现有 MCP 注入链路
+- WeKnora / Dify 增加引导式接入：控制台入口、智能剪贴板粘贴、Dify MCP URL 即时校验，以及 WeKnora 默认本机部署只读检测
 
 ### 变更
 
+- 自定义 MCP OAuth：token 刷新失败且已过期时自动标记需重新授权；OAuth 发现结果进程内缓存；callback 页与 OAuth 启动错误 i18n 化
 - Docker / FnOS 镜像对外统一为 `ghcr.io/tencentcloud/octop`（仍同步推送 Docker Hub；移除 vanilla 镜像标签）
 - FnOS FPK 在 Release 成功后自动构建：复用 GHCR 镜像与 Release wheel，不再重复编镜像
 - 正式发版时 Auto Tag 同步触发桌面客户端打包，产物挂到同一 `v*` GitHub Release（不再对任意分支 push 跑六平台矩阵）
 - 修复 Auto Tag → `workflow_dispatch` 时 Docker 镜像可能只有 `:latest`、缺少 `:{version}` 的问题（显式从 tag 解析版本）
+- 依赖：`orcakit-harness-agent[all]>=1.0.1`（技能 catalog 透出 `metadata.octop` 展示字段）
 
 ### 修复
 

@@ -89,6 +89,48 @@ async def test_create_then_list(env: Any) -> None:
     assert "file-reader" in names
 
 
+async def test_list_localizes_octop_presentation_metadata(env: Any) -> None:
+    c, _srv, auth, aid = env
+    content = """---
+name: pdf-reader
+description: Agent trigger description
+metadata:
+  octop:
+    label:
+      zh: PDF 阅读
+      en: PDF Reader
+    summary:
+      zh: 阅读和处理 PDF
+      en: Read and process PDFs
+    emoji: 📄
+---
+"""
+    created = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "pdf-reader", "content": content},
+    )
+    assert created.status_code == 201, created.text
+
+    zh_rows = (
+        await c.get(
+            f"/api/agents/{aid}/skills",
+            headers={**auth, "Accept-Language": "zh-CN"},
+        )
+    ).json()
+    en_rows = (
+        await c.get(
+            f"/api/agents/{aid}/skills",
+            headers={**auth, "Accept-Language": "en-US"},
+        )
+    ).json()
+
+    zh = next(row for row in zh_rows if row["slug"] == "pdf-reader")
+    en = next(row for row in en_rows if row["slug"] == "pdf-reader")
+    assert (zh["name"], zh["description"]) == ("PDF 阅读", "阅读和处理 PDF")
+    assert (en["name"], en["description"]) == ("PDF Reader", "Read and process PDFs")
+
+
 async def test_list_empty_when_no_workspace_skills(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.get(f"/api/agents/{aid}/skills", headers=auth)
@@ -111,9 +153,10 @@ async def test_list_includes_builtin_skills(env: Any) -> None:
     assert ws["enabled"] is True
     assert ws["emoji"] == "🔍"
 
-    manager = next(row for row in builtin if row["name"] == "skill-manager")
+    manager = next(row for row in builtin if row["slug"] == "skill-manager")
     assert manager["enabled"] is True
-    assert "SkillHub" in manager["description"]
+    assert manager["name"] in {"技能管理", "Skill Manager"}
+    assert manager["description"]
 
 
 async def test_get_builtin_skill_detail(env: Any) -> None:

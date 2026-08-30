@@ -357,3 +357,90 @@ def test_list_default_open_mcp_server_names(svc: ConnectorService, db: SqlitePoo
     assert mcp_server_name("tencent-docs", iid) in names
     assert "always" in names
     assert "opt" not in names
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_custom_servers_marks_reauth_when_refresh_fails_expired(
+    svc: ConnectorService,
+    db: SqlitePool,
+) -> None:
+    import time
+    from unittest.mock import AsyncMock, patch
+
+    uid = _ensure_user(db)
+    expired_at = int(time.time()) - 60
+    svc.put_custom_servers(
+        uid,
+        {
+            "srv": {
+                "transport": "streamable_http",
+                "url": "https://example.com/mcp",
+            }
+        },
+    )
+    svc.apply_custom_server_oauth(
+        uid,
+        "srv",
+        {
+            "access_token": "old",
+            "refresh_token": "refresh-me",
+            "expires_at": expired_at,
+            "oauth_client_id": "cid",
+        },
+        issuer="https://example.com",
+        resource="https://example.com/mcp",
+    )
+    with patch(
+        "octop.infra.connectors.service.refresh_custom_mcp_oauth",
+        new_callable=AsyncMock,
+        side_effect=ValueError("refresh failed"),
+    ):
+        await svc.ensure_fresh_custom_servers(uid)
+
+    preview = svc.get_custom_servers_for_api(uid)
+    assert preview["srv"]["oauth"] == {"configured": False, "required": True}
+    stored = svc.get_custom_servers(uid)["srv"]["oauth"]
+    assert stored == {"required": True}
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_custom_servers_keeps_valid_token_when_refresh_fails(
+    svc: ConnectorService,
+    db: SqlitePool,
+) -> None:
+    import time
+    from unittest.mock import AsyncMock, patch
+
+    uid = _ensure_user(db)
+    expires_at = int(time.time()) + 60
+    svc.put_custom_servers(
+        uid,
+        {
+            "srv": {
+                "transport": "streamable_http",
+                "url": "https://example.com/mcp",
+            }
+        },
+    )
+    svc.apply_custom_server_oauth(
+        uid,
+        "srv",
+        {
+            "access_token": "still-valid",
+            "refresh_token": "refresh-me",
+            "expires_at": expires_at,
+            "oauth_client_id": "cid",
+        },
+        issuer="https://example.com",
+        resource="https://example.com/mcp",
+    )
+    with patch(
+        "octop.infra.connectors.service.refresh_custom_mcp_oauth",
+        new_callable=AsyncMock,
+        side_effect=ValueError("refresh failed"),
+    ):
+        await svc.ensure_fresh_custom_servers(uid)
+
+    preview = svc.get_custom_servers_for_api(uid)
+    assert preview["srv"]["oauth"]["configured"] is True
+    assert svc.get_custom_servers(uid)["srv"]["oauth"]["access_token"] == "still-valid"

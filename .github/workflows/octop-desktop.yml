@@ -4,11 +4,16 @@ name: Octop Desktop Package
 # 打的 tag 不会触发 push workflow）。产物由本 workflow 的 release job upsert 到同一
 # GitHub Release。workflow_dispatch 保留给手工补包 / 按平台重跑。
 # 不要对任意分支 push 跑六平台矩阵。
+# pull_request（desktop/**）打 darwin-* + windows-*，不跑 linux。
 
 on:
   push:
     tags:
       - "v*"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/octop-desktop.yml"
   workflow_dispatch:
     inputs:
       platforms:
@@ -69,9 +74,57 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Job-level `if` cannot read `matrix.*` (GitHub 422). Filter here so only
+  # selected runners start — PRs → darwin-* + windows-*; dispatch honors `platforms`.
+  select-platforms:
+    name: Select platforms
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PLATFORMS: ${{ github.event.inputs.platforms || 'all' }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+
+          all_plats = [
+              {"plat": "linux-amd64", "arch": "amd64", "os": "ubuntu-latest"},
+              {"plat": "linux-arm64", "arch": "arm64", "os": "ubuntu-24.04-arm"},
+              {"plat": "darwin-arm64", "arch": "arm64", "os": "macos-14"},
+              {"plat": "darwin-amd64", "arch": "amd64", "os": "macos-15-intel"},
+              {"plat": "windows-amd64", "arch": "amd64", "os": "windows-latest"},
+              {"plat": "windows-arm64", "arch": "arm64", "os": "windows-11-arm"},
+          ]
+          if os.environ["EVENT_NAME"] == "pull_request":
+              sel = "darwin-arm64,darwin-amd64,windows-amd64,windows-arm64"
+          else:
+              sel = os.environ.get("PLATFORMS", "all").lower().replace(" ", "")
+          known = {row["plat"] for row in all_plats}
+          if sel == "all":
+              include = all_plats
+          else:
+              wanted = {part for part in sel.split(",") if part}
+              unknown = wanted - known
+              if unknown:
+                  raise SystemExit(f"unknown platform(s): {', '.join(sorted(unknown))}")
+              include = [row for row in all_plats if row["plat"] in wanted]
+          if not include:
+              raise SystemExit(f"no platforms selected: {sel}")
+          matrix = json.dumps({"include": include}, separators=(",", ":"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"matrix={matrix}\n")
+          print(matrix)
+          PY
+
   package:
     name: "${{ matrix.plat }}"
-    needs: frontend
+    needs: [frontend, select-platforms]
     runs-on: ${{ matrix.os }}
     # Matrix runners are native for each plat; pin host detection so x64 Git Bash
     # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
@@ -79,61 +132,25 @@ jobs:
       GREEN_HOST_PLAT: ${{ matrix.plat }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - plat: linux-amd64
-            arch: amd64
-            os: ubuntu-latest
-          - plat: linux-arm64
-            arch: arm64
-            os: ubuntu-24.04-arm
-          - plat: darwin-arm64
-            arch: arm64
-            os: macos-14
-          - plat: darwin-amd64
-            arch: amd64
-            os: macos-15-intel
-          - plat: windows-amd64
-            arch: amd64
-            os: windows-latest
-          - plat: windows-arm64
-            arch: arm64
-            os: windows-11-arm
+      matrix: ${{ fromJSON(needs.select-platforms.outputs.matrix) }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v5
 
-      - name: Decide whether to build this platform
-        id: want
-        run: |
-          set -euo pipefail
-          sel="${{ github.event.inputs.platforms || 'all' }}"
-          sel="$(echo "$sel" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
-          plat="${{ matrix.plat }}"
-          if [[ "$sel" == "all" || ",$sel," == *",$plat,"* ]]; then
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "build=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping ${plat} (selection=${sel})"
-          fi
-
       - uses: actions/download-artifact@v5
-        if: steps.want.outputs.build == 'true'
         with:
           name: dashboard-dist
           path: src/octop/dashboard
 
       - uses: astral-sh/setup-uv@v6
-        if: steps.want.outputs.build == 'true'
         with:
           enable-cache: true
           python-version: "3.12"
 
       # GitHub Cache outages must not fail the build — PBS download is cheap enough.
       - name: Cache python-build-standalone downloads
-        if: steps.want.outputs.build == 'true'
         continue-on-error: true
         uses: actions/cache@v5
         with:
@@ -141,13 +158,11 @@ jobs:
           key: pbs-${{ env.PBS_TAG }}-${{ env.PBS_PY }}-${{ matrix.plat }}
 
       - name: Bootstrap portable CPython
-        if: steps.want.outputs.build == 'true'
         env:
           GREEN_HOST_PLAT: ${{ matrix.plat }}
         run: bash desktop/portable/bootstrap-runtime.sh "${{ matrix.plat }}"
 
       - name: Assemble green zip
-        if: steps.want.outputs.build == 'true'
         env:
           GREEN_HOST_PLAT: ${{ matrix.plat }}
         run: |
@@ -156,7 +171,6 @@ jobs:
           bash desktop/portable/package.sh "${{ matrix.plat }}"
 
       - name: Smoke import (native host only)
-        if: steps.want.outputs.build == 'true'
         run: |
           set -euo pipefail
           staging="desktop/portable/release/Octop-${{ matrix.plat }}"
@@ -192,23 +206,20 @@ jobs:
           fi
 
       - uses: actions/setup-go@v6
-        if: steps.want.outputs.build == 'true'
         with:
           go-version: "1.25.x"
           cache-dependency-path: desktop/src/go.sum
 
       - name: Install Linux desktop build dependencies
-        if: steps.want.outputs.build == 'true' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
 
       - name: Install Wails v3 CLI
-        if: steps.want.outputs.build == 'true'
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
 
       - name: Package desktop app with bundled portable runtime
-        if: steps.want.outputs.build == 'true'
         working-directory: desktop/src
         run: >-
           wails3 task package
@@ -220,7 +231,6 @@ jobs:
       # (Octop-<plat>.zip containing another Octop-<plat>.zip). Affects every plat.
       # With archive:false, artifact name is the filename (name: is ignored).
       - uses: actions/upload-artifact@v7
-        if: steps.want.outputs.build == 'true'
         with:
           path: desktop/portable/release/Octop-${{ matrix.plat }}.zip
           archive: false
@@ -228,7 +238,6 @@ jobs:
           retention-days: 14
 
       - name: Upload bundled desktop package
-        if: steps.want.outputs.build == 'true'
         uses: actions/upload-artifact@v7
         with:
           path: desktop/src/bin/Octop-Desktop-${{ matrix.plat }}.*

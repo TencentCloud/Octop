@@ -487,6 +487,31 @@
   border-radius: var(--fn-radius-md);
 }
 
+.guidedSetup {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: var(--fn-radius-md);
+  background: color-mix(
+    in srgb,
+    var(--connector-accent, var(--fn-color-brand)) 4%,
+    var(--fn-bg-primary)
+  );
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+
+  ol {
+    margin: 6px 0 0;
+    padding-left: 20px;
+    line-height: 1.65;
+  }
+}
+
+.guidedSetupTitle {
+  color: var(--fn-text-primary);
+  font-weight: 600;
+}
+
 .guideLinks {
   display: flex;
   flex-wrap: wrap;

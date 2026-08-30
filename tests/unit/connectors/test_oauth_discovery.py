@@ -7,11 +7,14 @@ import pytest
 from octop.infra.connectors.custom_mcp import (
     build_oauth_storage,
     harness_spec_for_server,
+    mark_oauth_reauth_required,
     merge_preserved_oauth,
     redact_server_for_api,
 )
 from octop.infra.connectors.oauth.discovery import (
     build_protected_resource_metadata_urls,
+    clear_oauth_discovery_cache,
+    discover_oauth_from_mcp_url,
     parse_www_authenticate_resource_metadata,
 )
 from octop.infra.connectors.oauth.registry import (
@@ -104,3 +107,54 @@ def test_harness_spec_injects_oauth_bearer():
 def test_oauth_state_kind_invalid():
     with pytest.raises(ValueError, match="unsupported oauth target"):
         oauth_state_kind_for_target({"type": "unknown"})
+
+
+def test_mark_oauth_reauth_required_clears_tokens():
+    spec = {
+        "transport": "streamable_http",
+        "url": "https://example.com/mcp",
+        "oauth": build_oauth_storage(
+            {"access_token": "secret", "refresh_token": "r", "expires_at": 1},
+            issuer="https://example.com",
+            resource="https://example.com/mcp",
+        ),
+    }
+    marked = mark_oauth_reauth_required(spec)
+    assert marked["oauth"] == {"required": True}
+    preview = redact_server_for_api(marked)
+    assert preview["oauth"] == {"configured": False, "required": True}
+
+
+@pytest.mark.asyncio
+async def test_discover_oauth_from_mcp_url_uses_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    clear_oauth_discovery_cache()
+    calls = 0
+    cached_result = {
+        "available": True,
+        "issuer": "https://auth.example.com",
+        "resource": "https://example.com/mcp",
+        "metadata": {"registration_endpoint": "https://auth.example.com/reg"},
+        "scopes_supported": None,
+        "error": None,
+    }
+
+    async def fake_uncached(url: str) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        assert url == "https://example.com/mcp"
+        return cached_result
+
+    monkeypatch.setattr(
+        "octop.infra.connectors.oauth.discovery._discover_oauth_from_mcp_url_uncached",
+        fake_uncached,
+    )
+
+    first = await discover_oauth_from_mcp_url("https://example.com/mcp")
+    second = await discover_oauth_from_mcp_url("https://example.com/mcp")
+    assert first == cached_result
+    assert second == cached_result
+    assert calls == 1
+
+    bypass = await discover_oauth_from_mcp_url("https://example.com/mcp", use_cache=False)
+    assert bypass == cached_result
+    assert calls == 2

@@ -68,6 +68,7 @@ async def test_restart_endpoint_schedules_background_restart(
     )()
 
     monkeypatch.setattr(update_router, "detect_service_mode", lambda: "systemd")
+    monkeypatch.setattr(update_router, "_is_desktop_process", lambda: False)
     monkeypatch.setattr(update_router, "build_runtime", lambda mode: fake_runtime)
     monkeypatch.setattr(update_router, "is_service_installed", lambda *_, **__: True)
     monkeypatch.setattr(
@@ -102,6 +103,7 @@ async def test_restart_endpoint_rejects_when_service_not_installed(
     )()
 
     monkeypatch.setattr(update_router, "detect_service_mode", lambda: "systemd")
+    monkeypatch.setattr(update_router, "_is_desktop_process", lambda: False)
     monkeypatch.setattr(update_router, "build_runtime", lambda mode: fake_runtime)
     monkeypatch.setattr(update_router, "is_service_installed", lambda *_, **__: False)
     monkeypatch.setattr(
@@ -119,6 +121,30 @@ async def test_restart_endpoint_rejects_when_service_not_installed(
     assert exc_info.value.code == ErrorCode.INTERNAL_ERROR
     assert restarted == []
     assert bg.tasks == []
+
+
+@pytest.mark.asyncio
+async def test_restart_endpoint_desktop_schedules_process_exec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: list[bool] = []
+    monkeypatch.setattr(update_router, "_is_desktop_process", lambda: True)
+    monkeypatch.setattr(
+        update_router,
+        "_restart_desktop_process",
+        lambda: called.append(True),
+    )
+
+    from fastapi import BackgroundTasks
+
+    bg = BackgroundTasks()
+    result = await update_router.restart_service_endpoint(bg, _=None)
+
+    assert result == {"status": "restarting", "service_mode": "desktop"}
+    assert called == []
+    for task in bg.tasks:
+        await task()
+    assert called == [True]
 
 
 @pytest.mark.asyncio

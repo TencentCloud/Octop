@@ -230,6 +230,48 @@ async def test_push_text_from_session_cron_agent_im_pushes_reply(gateway: Gatewa
 
 
 @pytest.mark.asyncio
+async def test_push_text_from_session_cron_agent_strips_orphan_thinking_prefix(
+    gateway: Gateway,
+) -> None:
+    sk = ThreadRegistry.make_key(
+        agent_id="a1",
+        channel_type="weixin",
+        channel_subject_id="wx_1",
+    )
+    gateway.thread_registry._threads.insert(
+        thread_id="thr_weixin_cron",
+        agent_id="a1",
+        user_id=1,
+        channel_type="weixin",
+        session_key=sk,
+    )
+    gateway.thread_registry._sessions.upsert(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type="weixin",
+        chat_type="dm",
+        thread_id="thr_weixin_cron",
+        channel_subject_id="wx_1",
+        channel_chat_type="dm",
+        channel_metadata={"channel_type": "weixin"},
+        channel_id="ch-1",
+    )
+
+    async def stream_with_thinking_leak(_agent_id, _request):
+        yield {"type": "token", "content": "internal reasoning"}
+        yield {"type": "token", "content": "</think>"}
+        yield {"type": "token", "content": "最终学习内容"}
+
+    gateway._agent_manager.stream = stream_with_thinking_leak
+
+    await gateway.push_text_from_session("a1", sk, "run agent", task_type="agent")
+
+    gateway._channel_manager.push_text.assert_awaited_once()
+    assert gateway._channel_manager.push_text.await_args.args[2] == "最终学习内容"
+
+
+@pytest.mark.asyncio
 async def test_push_text_from_session_dashboard_agent_pushes_ws(gateway: Gateway) -> None:
     sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
     gateway.thread_registry._threads.insert(

@@ -107,6 +107,16 @@ def test_strip_thinking_removes_redacted_block() -> None:
     assert _strip_thinking(raw) == "Polished prompt"
 
 
+def test_strip_thinking_removes_orphan_closing_prefix() -> None:
+    raw = "internal reasoning without an opening tag</think>\nVisible answer"
+    assert _strip_thinking(raw) == "Visible answer"
+
+
+def test_strip_thinking_removes_unclosed_thinking_suffix() -> None:
+    raw = "Visible answer\n<thinking>truncated internal reasoning"
+    assert _strip_thinking(raw) == "Visible answer"
+
+
 def test_llm_text_content_strips_thinking_from_string_message() -> None:
     class Msg:
         content = "<think>plan</think>Final text"

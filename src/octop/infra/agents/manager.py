@@ -58,8 +58,10 @@ from octop.infra.connectors.builder import (
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.skills.presentation import apply_skill_presentation, localize_skill_summary
 from octop.infra.skills.skill_package_store import SkillPackageStore
 from octop.infra.skills.workspace_catalog import list_workspace_skill_summaries
+from octop.infra.utils.locale import Locale
 from octop.infra.utils.ulid import new_short_id
 
 if TYPE_CHECKING:
@@ -1735,7 +1737,12 @@ class AgentManager:
         """Return the configured context cap for *agent_id* (``max_input_length``)."""
         return config_context_max_tokens(self.get_config(agent_id), fallback=fallback)
 
-    async def list_skill_summaries(self, agent_id: str) -> list[dict[str, Any]]:
+    async def list_skill_summaries(
+        self,
+        agent_id: str,
+        *,
+        locale: Locale | None = None,
+    ) -> list[dict[str, Any]]:
         """Installed skills for *agent_id* (harness catalog + package ``kind`` labels).
 
         Harness lists builtin / workspace / ``skills_dir`` entries (all non-builtin as
@@ -1762,8 +1769,28 @@ class AgentManager:
                     skills_disabled=skills_disabled_set(cfg),
                 )
             )
+        from harness_agent.skills import catalog as harness_skill_catalog  # noqa: PLC0415
+
+        if getattr(harness_skill_catalog, "SKILL_PRESENTATION_METADATA_VERSION", 0) < 1:
+            workspace = getattr(agent, "workspace", None)
+            aread = getattr(workspace, "aread_text", None)
+            if callable(aread):
+                for index, row in enumerate(harness_rows):
+                    if row.get("label") or row.get("display_name"):
+                        continue
+                    slug = str(row.get("slug") or "").strip()
+                    if not slug:
+                        continue
+                    root = "_builtin_skills" if row.get("kind") == "builtin" else "skills"
+                    manifest = await aread(f"{root}/{slug}/SKILL.md")
+                    if manifest is None:
+                        continue
+                    meta, _body = parse_frontmatter(manifest)
+                    harness_rows[index] = apply_skill_presentation(row, meta)
         package_ids = skill_package_ids_list(cfg)
         if not package_ids:
+            if locale is not None:
+                return [localize_skill_summary(row, locale) for row in harness_rows]
             return harness_rows
 
         disabled = skills_disabled_set(cfg)
@@ -1810,13 +1837,16 @@ class AgentManager:
             merged[slug] = package_row
 
         kind_order = {"builtin": 0, "package": 1, "workspace": 2}
-        return sorted(
+        rows = sorted(
             merged.values(),
             key=lambda row: (
                 kind_order.get(str(row.get("kind")), 99),
                 str(row.get("slug", "")),
             ),
         )
+        if locale is not None:
+            return [localize_skill_summary(row, locale) for row in rows]
+        return rows
 
     async def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
         """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""

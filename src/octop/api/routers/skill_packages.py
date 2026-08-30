@@ -28,7 +28,7 @@ from octop.infra.skills.skill_package_store import (
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
-from octop.infra.utils.locale import resolve_request_locale
+from octop.infra.utils.locale import Locale, resolve_request_locale
 
 router = APIRouter(prefix="/skill-packages")
 
@@ -114,10 +114,17 @@ def _package_skill_exists(store: SkillPackageStore, package_id: str, slug: str) 
     return (store.package_skills_dir(package_id) / slug / "SKILL.md").is_file()
 
 
+class LocalizedSkillCopy(BaseModel):
+    zh: str | None = None
+    en: str | None = None
+
+
 class HubInstallPackageSkillBody(BaseModel):
     skill_name: str
     display_name: str | None = None
     icon_url: str | None = None
+    label: LocalizedSkillCopy | None = None
+    summary: LocalizedSkillCopy | None = None
     overwrite: bool = False
 
 
@@ -148,8 +155,16 @@ def _row_public_dict(row: SkillPackageRow) -> dict[str, Any]:
     return payload
 
 
-def _package_payload(store: SkillPackageStore, row: SkillPackageRow) -> dict[str, Any]:
-    return {**_row_public_dict(row), "skills": store.list_skill_summaries(row.id)}
+def _package_payload(
+    store: SkillPackageStore,
+    row: SkillPackageRow,
+    *,
+    locale: Locale | None = None,
+) -> dict[str, Any]:
+    return {
+        **_row_public_dict(row),
+        "skills": store.list_skill_summaries(row.id, locale=locale),
+    }
 
 
 def _creator_fields(server: OctopServer, created_by: str) -> dict[str, str | None]:
@@ -171,9 +186,11 @@ def _package_payload_with_creator(
     server: OctopServer,
     store: SkillPackageStore,
     row: SkillPackageRow,
+    *,
+    locale: Locale | None = None,
 ) -> dict[str, Any]:
     return {
-        **_package_payload(store, row),
+        **_package_payload(store, row, locale=locale),
         **_creator_fields(server, row.created_by),
     }
 
@@ -220,8 +237,13 @@ def _package_skill_or_404(
     store: SkillPackageStore,
     package_id: str,
     slug: str,
+    *,
+    locale: Locale | None = None,
 ) -> dict[str, Any]:
-    for skill in store.list_skill_summaries(package_id):
+    for skill in store.list_skill_summaries(
+        package_id,
+        locale=locale,
+    ):
         if skill["slug"] == slug:
             return skill
     raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
@@ -342,7 +364,12 @@ async def get_skill_package(
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload_with_creator(server, store, row)
+    return _package_payload_with_creator(
+        server,
+        store,
+        row,
+        locale=resolve_request_locale(request),
+    )
 
 
 @router.patch("/{package_id}", summary="Update global skill package metadata")
@@ -373,7 +400,12 @@ async def update_skill_package(
             raise_skill_package_name_taken(name)
         raise
     updated = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload_with_creator(server, store, updated)
+    return _package_payload_with_creator(
+        server,
+        store,
+        updated,
+        locale=resolve_request_locale(request),
+    )
 
 
 @router.delete(
@@ -402,7 +434,10 @@ async def list_package_skills(
 ) -> list[dict[str, Any]]:
     store = _store(server)
     _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return store.list_skill_summaries(package_id)
+    return store.list_skill_summaries(
+        package_id,
+        locale=resolve_request_locale(request),
+    )
 
 
 @router.get("/{package_id}/skills/{slug}", summary="Get a global package skill")
@@ -415,7 +450,12 @@ async def get_package_skill(
 ) -> dict[str, Any]:
     store = _store(server)
     _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    skill = _package_skill_or_404(store, package_id, slug)
+    skill = _package_skill_or_404(
+        store,
+        package_id,
+        slug,
+        locale=resolve_request_locale(request),
+    )
     raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
     frontmatter, body = parse_frontmatter(raw)
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
@@ -653,8 +693,22 @@ async def hub_install_package_skill(
 
     display_name = (body.display_name or "").strip()
     icon_url = (body.icon_url or "").strip()
+    label = (
+        {key: value.strip() for key, value in body.label.model_dump().items() if value}
+        if body.label
+        else {}
+    )
+    summary = (
+        {key: value.strip() for key, value in body.summary.model_dump().items() if value}
+        if body.summary
+        else {}
+    )
     if len(display_name) > 200:
         raise HTTPException(status_code=400, detail="display_name is too long")
+    if any(len(value) > 200 for value in label.values()):
+        raise HTTPException(status_code=400, detail="localized skill label is too long")
+    if any(len(value) > 1024 for value in summary.values()):
+        raise HTTPException(status_code=400, detail="localized skill summary is too long")
     if len(icon_url) > 2048 or (icon_url and not valid_skillhub_icon_url(icon_url)):
         raise HTTPException(status_code=400, detail="icon_url must be an HTTP(S) URL")
 
@@ -686,6 +740,8 @@ async def hub_install_package_skill(
             files=files,
             display_name=display_name,
             icon_url=icon_url,
+            label=label,
+            summary=summary,
             overwrite=body.overwrite,
         )
     except SkillAlreadyExistsError as exc:
@@ -703,5 +759,5 @@ async def hub_install_package_skill(
         "installed": True,
         "name": skill_name,
         "transport": transport,
-        "skill": _package_skill_or_404(store, package_id, skill_name),
+        "skill": _package_skill_or_404(store, package_id, skill_name, locale=locale),
     }

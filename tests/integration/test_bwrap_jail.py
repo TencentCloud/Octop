@@ -2,8 +2,9 @@
 
 ``BubbledLocalShellBackend`` is constructed only when Linux + ``virtual_mode`` +
 non-host ``root_dir`` + ``bwrap`` are available (factory routes before any
-backend I/O). Otherwise ``HarnessLocalShellBackend`` (deepagents local shell +
-workspace ``.env`` refresh) is used — no execute path rewrite.
+backend I/O). Otherwise ``HarnessLocalShellBackend`` runs on the host; with
+``virtual_mode`` and a scoped ``root_dir`` it still rewrites virtual absolute
+paths in ``execute`` onto that root (harness-agent >= 1.0).
 
 Cross-platform cases run on Windows, macOS, and Linux. POSIX-shell and real
 ``bwrap`` jail cases are skipped where the host cannot run them (see markers).
@@ -115,11 +116,16 @@ def test_read_virtual_path_from_scoped_root(tmp_path: Path) -> None:
     assert "read-me" in read.file_data.get("content", "")
 
 
-def test_execute_without_jail_does_not_rewrite_command(tmp_path: Path) -> None:
-    """Non-jail local shell passes the command through unchanged (no path rewrite)."""
-    from deepagents.backends.local_shell import LocalShellBackend
+def test_execute_without_jail_rewrites_virtual_command_paths(tmp_path: Path) -> None:
+    """Non-jail scoped shell still maps virtual absolute paths onto ``root_dir``.
 
-    spec, _scoped, workspace = _scoped_spec(tmp_path)
+    harness-agent 1.0 no longer delegates ``execute`` to deepagents
+    ``LocalShellBackend.execute``; it rewrites then calls ``_execute_on_host``.
+    Env mapping is stubbed so inaccessible ``PATH`` entries (common on CI)
+    cannot raise ``PermissionError`` from ``Path.exists``.
+    """
+    spec, scoped, workspace = _scoped_spec(tmp_path)
+    (scoped / "out").mkdir()
     with patch(
         "harness_agent.backends.bwrap_shell.resolve_bubbled_bwrap",
         return_value=None,
@@ -127,15 +133,22 @@ def test_execute_without_jail_does_not_rewrite_command(tmp_path: Path) -> None:
         backend = resolve_backend(spec, workspace_dir=workspace)
     assert isinstance(backend, HarnessLocalShellBackend)
 
-    with patch.object(
-        LocalShellBackend,
-        "execute",
-        return_value=ExecuteResponse(output="ok", exit_code=0, truncated=False),
-    ) as base_exec:
+    expected = str((scoped / "out" / "mapped.txt").resolve())
+    with (
+        patch.object(
+            HarnessLocalShellBackend,
+            "_execute_on_host",
+            return_value=ExecuteResponse(output="ok", exit_code=0, truncated=False),
+        ) as host_exec,
+        patch(
+            "harness_agent.backends.local_shell.map_virtual_paths_in_env",
+            side_effect=lambda env, *_a, **_k: env,
+        ),
+    ):
         result = backend.execute("echo x > /out/mapped.txt")
 
     assert result.exit_code == 0
-    assert base_exec.call_args.args[0] == "echo x > /out/mapped.txt"
+    assert host_exec.call_args.args[0] == f"echo x > {expected}"
 
 
 # ---------------------------------------------------------------------------

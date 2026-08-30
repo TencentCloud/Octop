@@ -280,6 +280,16 @@
       }
     }
   },
+  "connector": {
+    "oauth": {
+      "callback_auth_failed": "Authorization failed: {error}",
+      "callback_missing_params": "Missing authorization code or state.",
+      "callback_invalid_state": "Invalid or expired authorization state.",
+      "callback_token_exchange_failed": "Token exchange failed: {detail}",
+      "callback_save_failed": "Failed to save authorization: {detail}",
+      "callback_success": "Authorization complete. You may close this window."
+    }
+  },
   "errors": {
     "AUTH_FAILED": "Authentication failed.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",

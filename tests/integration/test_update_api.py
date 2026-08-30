@@ -16,6 +16,7 @@ async def test_update_status_shape(env_admin_client: Any) -> None:
         "has_update",
         "is_editable",
         "service_mode",
+        "desktop",
         "error",
         "last_check_time",
         "release_notes",

@@ -53,6 +53,7 @@ from octop.infra.agents.manager import (
     skills_disabled_set as _disabled_set,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.skills.presentation import apply_skill_presentation
 from octop.infra.skills.skill_package_store import SkillPackageStore
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
@@ -61,7 +62,7 @@ from octop.infra.skills.skill_packages import (
     resolve_skill_package,
     validate_skill_slug,
 )
-from octop.infra.utils.locale import resolve_request_locale
+from octop.infra.utils.locale import Locale, resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -140,39 +141,24 @@ def _summary_dict(
     *,
     enabled: bool,
     kind: str,
+    locale: Locale | None = None,
 ) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        # ``slug`` is the directory name — the stable identifier used for all
-        # by-name operations (detail / enable / disable / delete / install
-        # check). ``name`` is the frontmatter display name, which may differ
-        # from the slug (e.g. dir "tencent-meeting-skill" with frontmatter
-        # name "tencent-meeting-mcp"); using ``name`` as the id 404s.
-        "slug": name,
-        "name": str(meta.get("name") or name),
-        "description": str(meta.get("description") or ""),
-        "enabled": enabled,
-        "kind": kind,
-    }
-    # Presentation metadata is kept separate from the stable directory slug and
-    # the skill's own frontmatter name. Octop-authored metadata wins, while
-    # upstream formats remain supported for already-installed marketplace skills.
-    metadata = meta.get("metadata") or {}
-    if isinstance(metadata, dict):
-        has_display_name = False
-        for namespace in ("octop", "lightclaw", "orca", "openclaw"):
-            ext = metadata.get(namespace) or {}
-            if not isinstance(ext, dict):
-                continue
-            display_name = str(ext.get("display_name") or "").strip()
-            if display_name and not has_display_name:
-                out["name"] = display_name
-                has_display_name = True
-            emoji = str(ext.get("emoji") or "").strip()
-            if emoji and "emoji" not in out:
-                out["emoji"] = emoji
-            icon_url = str(ext.get("icon_url") or "").strip()
-            if icon_url and "icon_url" not in out and _valid_skillhub_icon_url(icon_url):
-                out["icon_url"] = icon_url
+    out = apply_skill_presentation(
+        {
+            # ``slug`` is the directory name — the stable identifier used for all
+            # by-name operations (detail / enable / disable / delete / install
+            # check). ``name`` is the frontmatter display name, which may differ
+            # from the slug (e.g. dir "tencent-meeting-skill" with frontmatter
+            # name "tencent-meeting-mcp"); using ``name`` as the id 404s.
+            "slug": name,
+            "name": str(meta.get("name") or name),
+            "description": str(meta.get("description") or ""),
+            "enabled": enabled,
+            "kind": kind,
+        },
+        meta,
+        locale=locale,
+    )
     return out
 
 
@@ -180,23 +166,6 @@ def _valid_skillhub_icon_url(value: str) -> bool:
     from octop.infra.skills.install import valid_skillhub_icon_url  # noqa: PLC0415
 
     return valid_skillhub_icon_url(value)
-
-
-def _with_skillhub_presentation_metadata(
-    content: str,
-    *,
-    display_name: str,
-    icon_url: str,
-) -> str:
-    from octop.infra.skills.install import (  # noqa: PLC0415
-        with_skillhub_presentation_metadata,
-    )
-
-    return with_skillhub_presentation_metadata(
-        content,
-        display_name=display_name,
-        icon_url=icon_url,
-    )
 
 
 def _skill_manifest_path(name: str, kind: str, workspace: Any) -> str:
@@ -476,6 +445,7 @@ async def validate_chat_skills(
 @router.get("/agents/{agent_id}/skills")
 async def list_skills(
     agent_id: str,
+    request: Request,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -484,7 +454,10 @@ async def list_skills(
     assert server.app_runtime is not None
     return cast(
         list[dict[str, Any]],
-        await server.app_runtime.agent_registry.list_skill_summaries(agent_id),
+        await server.app_runtime.agent_registry.list_skill_summaries(
+            agent_id,
+            locale=resolve_request_locale(request),
+        ),
     )
 
 
@@ -498,6 +471,7 @@ class SkillPackageMountBody(BaseModel):
 )
 async def list_skill_package_mounts(
     agent_id: str,
+    request: Request,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -510,6 +484,7 @@ async def list_skill_package_mounts(
         repo=server.services.skill_package_repo,
         root=server.paths.skill_packages_dir,
     )
+    locale = resolve_request_locale(request)
     packages: list[dict[str, Any]] = []
     for package_id in package_ids:
         package = store.repo.get(package_id)
@@ -520,7 +495,7 @@ async def list_skill_package_mounts(
                 "id": package.id,
                 "name": package.name,
                 "description": package.description,
-                "skills": store.list_skill_summaries(package_id),
+                "skills": store.list_skill_summaries(package_id, locale=locale),
             }
         )
     return {"package_ids": package_ids, "packages": packages}
@@ -548,6 +523,7 @@ async def replace_skill_package_mounts(
 async def get_skill(
     agent_id: str,
     name: str,
+    request: Request,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -562,7 +538,13 @@ async def get_skill(
     meta, body = _parse_frontmatter(manifest)
     disabled = _disabled_set(ctx.config)
     return {
-        **_summary_dict(name, meta, enabled=name not in disabled, kind=kind),
+        **_summary_dict(
+            name,
+            meta,
+            enabled=name not in disabled,
+            kind=kind,
+            locale=resolve_request_locale(request),
+        ),
         "frontmatter": meta,
         "body": body,
         "raw": manifest,
@@ -957,28 +939,18 @@ async def disable_skill(
     await _persist_disabled(server, agent_id, disabled)
 
 
+class LocalizedSkillCopy(BaseModel):
+    zh: str | None = None
+    en: str | None = None
+
+
 class HubInstallBody(BaseModel):
     skill_name: str
     enable: bool = True
     display_name: str | None = None
     icon_url: str | None = None
-
-
-def _skillhub_uploads(
-    skill_name: str,
-    files: list[tuple[str, bytes]],
-    *,
-    display_name: str,
-    icon_url: str,
-) -> list[tuple[str, bytes]]:
-    from octop.infra.skills.install import prepare_skillhub_package  # noqa: PLC0415
-
-    return prepare_skillhub_package(
-        skill_name,
-        files,
-        display_name=display_name,
-        icon_url=icon_url,
-    ).workspace_uploads()
+    label: LocalizedSkillCopy | None = None
+    summary: LocalizedSkillCopy | None = None
 
 
 async def _download_skillhub_package_via_cli(
@@ -1232,8 +1204,22 @@ async def hub_install_skill(
         ) from None
     display_name = (body.display_name or "").strip()
     icon_url = (body.icon_url or "").strip()
+    label = (
+        {key: value.strip() for key, value in body.label.model_dump().items() if value}
+        if body.label
+        else {}
+    )
+    summary = (
+        {key: value.strip() for key, value in body.summary.model_dump().items() if value}
+        if body.summary
+        else {}
+    )
     if len(display_name) > 200:
         raise HTTPException(status_code=400, detail="display_name is too long")
+    if any(len(value) > 200 for value in label.values()):
+        raise HTTPException(status_code=400, detail="localized skill label is too long")
+    if any(len(value) > 1024 for value in summary.values()):
+        raise HTTPException(status_code=400, detail="localized skill summary is too long")
     if len(icon_url) > 2048 or (icon_url and not valid_skillhub_icon_url(icon_url)):
         raise HTTPException(status_code=400, detail="icon_url must be an HTTP(S) URL")
 
@@ -1272,6 +1258,8 @@ async def hub_install_skill(
             files=files,
             display_name=display_name,
             icon_url=icon_url,
+            label=label,
+            summary=summary,
             overwrite=True,
             enable=body.enable,
         )

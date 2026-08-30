@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.infra.agents.workspace_dir import skills_discovery_roots
+from octop.infra.skills.presentation import apply_skill_presentation
 from octop.infra.utils.frontmatter import parse_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -19,13 +20,16 @@ def _summary_dict(
     *,
     enabled: bool,
 ) -> dict[str, Any]:
-    return {
-        "slug": slug,
-        "name": str(meta.get("name") or slug),
-        "description": str(meta.get("description") or ""),
-        "enabled": enabled,
-        "kind": "workspace",
-    }
+    return apply_skill_presentation(
+        {
+            "slug": slug,
+            "name": str(meta.get("name") or slug),
+            "description": str(meta.get("description") or ""),
+            "enabled": enabled,
+            "kind": "workspace",
+        },
+        meta,
+    )
 
 
 def _read_manifest(skill_dir: Path) -> str | None:

@@ -201,6 +201,8 @@ async def test_hub_install_persists_market_name_and_icon(
             "enable": True,
             "display_name": "中文展示名称",
             "icon_url": icon_url,
+            "label": {"zh": "中文展示名称", "en": "Friendly Name"},
+            "summary": {"zh": "中文短描述", "en": "Short description"},
         },
     )
     assert r.status_code == 201, r.text
@@ -219,8 +221,9 @@ async def test_hub_install_persists_market_name_and_icon(
     assert payload["frontmatter"]["name"] == "english-package-name"
     assert payload["frontmatter"]["metadata"]["octop"] == {
         "source": "skillhub",
-        "display_name": "中文展示名称",
         "icon_url": icon_url,
+        "label": {"zh": "中文展示名称", "en": "Friendly Name"},
+        "summary": {"zh": "中文短描述", "en": "Short description"},
     }
 
 
