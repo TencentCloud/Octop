@@ -167,29 +167,46 @@ export default function AgentBackendFields({
                 : undefined
             }
           >
-            <RootDirSelect treeRoot={treeRoot} />
+            <RootDirSelect
+              treeRoot={treeRoot}
+              disabled={rootDirMode === "edit"}
+            />
           </Form.Item>
           <div style={{ margin: "-8px 0 12px" }}>
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--fn-text-tertiary)",
-                margin: 0,
-              }}
-            >
-              {t("experts.backendRootDirDesc", {
-                home: fsDefaults?.home ?? "~",
-              })}
-            </p>
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--fn-text-tertiary)",
-                margin: "4px 0 0",
-              }}
-            >
-              {t("experts.backendRootDirJailHint")}
-            </p>
+            {rootDirMode === "edit" ? (
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--fn-text-tertiary)",
+                  margin: 0,
+                }}
+              >
+                {t("experts.backendRootDirImmutableHint")}
+              </p>
+            ) : (
+              <>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--fn-text-tertiary)",
+                    margin: 0,
+                  }}
+                >
+                  {t("experts.backendRootDirDesc", {
+                    home: fsDefaults?.home ?? "~",
+                  })}
+                </p>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--fn-text-tertiary)",
+                    margin: "4px 0 0",
+                  }}
+                >
+                  {t("experts.backendRootDirJailHint")}
+                </p>
+              </>
+            )}
           </div>
         </>
       )}

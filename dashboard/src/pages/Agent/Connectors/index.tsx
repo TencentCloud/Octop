@@ -45,7 +45,6 @@ import {
 } from "./connectorDefs";
 import { notifyConnectorsChanged } from "./customMcpUtils";
 import {
-  consoleUrlFromServiceUrl,
   extractHttpUrl,
   isDifyMcpServerUrl,
   isGuidedConnector,
@@ -313,9 +312,6 @@ function ConnectorConfigDrawer({
   );
   const [installingCli, setInstallingCli] = useState(false);
   const [detectingLocalWeKnora, setDetectingLocalWeKnora] = useState(false);
-  const [detectedWeKnoraConsole, setDetectedWeKnoraConsole] = useState<
-    string | null
-  >(null);
   const [feishuUserAuth, setFeishuUserAuth] =
     useState<FeishuUserAuthStartResult | null>(null);
   const [feishuUserAuthBusy, setFeishuUserAuthBusy] = useState(false);
@@ -328,8 +324,6 @@ function ConnectorConfigDrawer({
   const hasStoredCredentials = Boolean(instance?.has_credentials);
   const mailProvider = Form.useWatch("mail_provider", form) ?? "qq";
   const defaultOpen = Form.useWatch("default_open", form) === true;
-  const weknoraBaseUrl = String(Form.useWatch("base_url", form) ?? "");
-  const difyMcpUrl = String(Form.useWatch("mcp_url", form) ?? "");
   const selectedMailProvider = mailProviderById(String(mailProvider));
   const draftScope = entry
     ? instance
@@ -354,7 +348,6 @@ function ConnectorConfigDrawer({
     setInstanceDetail(null);
     setProbeResult(null);
     setCliInfo(null);
-    setDetectedWeKnoraConsole(null);
     setFeishuUserAuth(null);
     setFeishuUserReady(false);
     setFeishuAuthNeedsReauth(false);
@@ -803,7 +796,6 @@ function ConnectorConfigDrawer({
         return;
       }
       form.setFieldValue("base_url", result.base_url);
-      setDetectedWeKnoraConsole(result.console_url ?? null);
       saveFormDraft(
         draftScope,
         form.getFieldsValue() as Record<string, unknown>,
@@ -1118,14 +1110,6 @@ function ConnectorConfigDrawer({
   const manualUrl = authInfo?.manual_url ?? entry.manual_url ?? guideUrl;
   const authHint = authInfo?.auth_hint ?? entry.auth_hint;
   const guidedKind = isGuidedConnector(entry.kind) ? entry.kind : null;
-  const guidedServiceUrl =
-    guidedKind === "weknora" ? weknoraBaseUrl : difyMcpUrl;
-  const guidedConsoleUrl =
-    detectedWeKnoraConsole ??
-    (guidedKind
-      ? consoleUrlFromServiceUrl(guidedKind, guidedServiceUrl)
-      : null) ??
-    guideUrl;
 
   const preview = instanceDetail?.credentials_preview;
   const secretRequired = !hasStoredCredentials;
@@ -1235,14 +1219,6 @@ function ConnectorConfigDrawer({
         <div className={styles.quickAuthBar}>
           {guidedKind && (
             <>
-              <Button
-                icon={<ExternalLink size={14} />}
-                onClick={() => openUrl(guidedConsoleUrl)}
-              >
-                {guidedKind === "weknora"
-                  ? t("connectors.openWeKnora", "打开 WeKnora")
-                  : t("connectors.openDify", "打开 Dify")}
-              </Button>
               {guidedKind === "weknora" && (
                 <Button
                   icon={<RefreshCw size={14} />}

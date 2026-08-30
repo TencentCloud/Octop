@@ -36,6 +36,8 @@ interface RootDirSelectProps {
   onChange?: (value: string) => void;
   /** Tree browse root: host ``/`` (or drive root). Default value is still home. */
   treeRoot?: string;
+  /** When true, shows the current path but blocks picking / mkdir / rename. */
+  disabled?: boolean;
 }
 
 type DisplayTreeNode = Omit<DirTreeNode, "title" | "children"> & {
@@ -73,6 +75,7 @@ export default function RootDirSelect({
   value,
   onChange,
   treeRoot = HOST_FS_ROOT,
+  disabled = false,
 }: RootDirSelectProps) {
   const { t } = useTranslation();
   const normalizedRoot = normalizeTreeRoot(treeRoot);
@@ -312,6 +315,14 @@ export default function RootDirSelect({
         );
       }
 
+      if (disabled) {
+        return (
+          <span className={styles.rootDirTitle}>
+            <span className={styles.rootDirTitleLabel}>{name}</span>
+          </span>
+        );
+      }
+
       return (
         <span className={styles.rootDirTitle}>
           <span className={styles.rootDirTitleLabel}>{name}</span>
@@ -363,6 +374,7 @@ export default function RootDirSelect({
       beginEditing,
       busy,
       commitRename,
+      disabled,
       editingName,
       editingPath,
       handleMkdir,
@@ -383,13 +395,16 @@ export default function RootDirSelect({
       className={styles.rootDirSelect}
       popupClassName={styles.rootDirDropdown}
       classNames={{ popup: { root: styles.rootDirDropdown } }}
-      open={open}
+      disabled={disabled}
+      open={disabled ? false : open}
       onDropdownVisibleChange={(next) => {
+        if (disabled) return;
         if (!next && editingPathRef.current) return;
         setOpen(next);
       }}
       value={value}
       onChange={(next) => {
+        if (disabled) return;
         setOpen(false);
         onChange?.(next);
       }}
