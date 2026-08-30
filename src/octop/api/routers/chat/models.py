@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Decision types understood by langchain's HumanInTheLoopMiddleware.
+_DECISION_TYPES: frozenset[str] = frozenset({"approve", "edit", "reject", "respond"})
+# One decision per interrupted tool call; the model cannot fan out further.
+_MAX_DECISIONS = 16
+_MAX_DECISION_MESSAGE_CHARS = 8000
 
 
 class ChatTurnBody(BaseModel):
@@ -148,5 +154,40 @@ class HitlResumeBody(BaseModel):
     thread_id: str = Field(..., description="Conversation thread awaiting approval.")
     decisions: list[dict[str, Any]] = Field(
         ...,
-        description='Human decisions, e.g. [{"type": "approve"}] or [{"type": "reject", "message": "..."}].',
+        min_length=1,
+        max_length=_MAX_DECISIONS,
+        description=(
+            'Human decisions, e.g. [{"type": "approve"}], '
+            '[{"type": "reject", "message": "..."}] or '
+            '[{"type": "respond", "message": "<answer>"}].'
+        ),
     )
+
+    @field_validator("decisions")
+    @classmethod
+    def _validate_decisions(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Reject malformed decisions before they reach the agent graph.
+
+        ``respond``/``reject`` messages are injected into the model context
+        verbatim, so their payload is validated here rather than downstream.
+        """
+        for decision in value:
+            kind = decision.get("type")
+            if kind not in _DECISION_TYPES:
+                msg = f"unsupported decision type: {kind!r}"
+                raise ValueError(msg)
+            if kind == "edit" and not isinstance(decision.get("edited_action"), dict):
+                msg = "edit decision requires an 'edited_action' object"
+                raise ValueError(msg)
+            message = decision.get("message")
+            if kind == "respond" and (not isinstance(message, str) or not message.strip()):
+                msg = "respond decision requires a non-empty 'message'"
+                raise ValueError(msg)
+            if message is not None:
+                if not isinstance(message, str):
+                    msg = "decision 'message' must be a string"
+                    raise ValueError(msg)
+                if len(message) > _MAX_DECISION_MESSAGE_CHARS:
+                    msg = f"decision 'message' exceeds {_MAX_DECISION_MESSAGE_CHARS} characters"
+                    raise ValueError(msg)
+        return value

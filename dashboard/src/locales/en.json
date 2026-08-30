@@ -1159,6 +1159,22 @@
       "rejectedLabel": "Rejected",
       "rejected": "Rejected by user"
     },
+    "ask": {
+      "title": "A few questions first",
+      "other": "Something else…",
+      "freeTextPlaceholder": "Type your answer",
+      "next": "Next",
+      "review": "Review & send",
+      "reviewTag": "Review",
+      "back": "Back",
+      "submit": "Send answers",
+      "skip": "You decide",
+      "skipMessage": "You decide — pick the best default and tell me what you assumed.",
+      "answered": "Answered",
+      "answeredSummary": "Answered {{count}} question(s)",
+      "dismissedSummary": "Closed {{count}} question(s)",
+      "expand": "View"
+    },
     "modifiedFiles": "Modified files ({{count}})",
     "openBrowser": "View browser",
     "openBrowserHint": "Agent is browsing the web",
@@ -1231,6 +1247,7 @@
     "mobile_handoff_to_user": "Hand off to user (mobile)",
     "read_env_file": "Read env file",
     "write_env_file": "Write env file",
+    "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video"
   },
@@ -1250,6 +1267,7 @@
     "categories": {
       "filesystem": "Files & shell",
       "orchestration": "Planning & sub-agents",
+      "interaction": "User interaction",
       "web": "Web & browser",
       "media": "Media generation",
       "memory": "Memory",

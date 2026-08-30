@@ -55,6 +55,7 @@ import styles from "./ToolsPanel.module.less";
 const CATEGORY_ORDER = [
   "filesystem",
   "orchestration",
+  "interaction",
   "web",
   "media",
   "memory",
@@ -70,6 +71,7 @@ const CATEGORY_ORDER = [
 const CATEGORY_ACCENT: Record<string, string> = {
   filesystem: "#3B82F6",
   orchestration: "#8B5CF6",
+  interaction: "#14B8A6",
   web: "#22C55E",
   media: "#EC4899",
   memory: "#F59E0B",

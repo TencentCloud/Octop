@@ -71,6 +71,22 @@
       "pending_line": "`{pending_id}` — {count} tool(s)",
       "dashboard_hint": "Tool approval in chat uses the approval card in the dashboard, or `/approve` / `/reject` in IM channels."
     },
+    "ask": {
+      "card_title": "❓ I need you to decide",
+      "progress": "Question {current} of {total}",
+      "question_line": "**{index}. {question}**",
+      "question_line_headed": "**{index}. [{header}] {question}**",
+      "option_line": "   {opt}) {label}",
+      "option_line_desc": "   {opt}) {label} — {description}",
+      "multi_hint": "   (multiple allowed, e.g. `a,c`)",
+      "open_hint": "   (answer in a sentence)",
+      "card_footer": "Reply with a letter (e.g. `a`) or type your own answer.",
+      "card_pending_id": "Question ID: `{pending_id}` (valid for 30 minutes)",
+      "answer_ack": "Got it. Continuing…",
+      "answer_recorded": "✅ Recorded. Here is the next question.",
+      "not_owner": "Only the user who was asked can answer.",
+      "answered_prefix": "User answered: "
+    },
     "title": {
       "usage": "Usage: /title <text>",
       "done": "Title set: {title}"
@@ -492,6 +508,7 @@
     "mobile_handoff_to_user": "Hand off to user (mobile)",
     "read_env_file": "Read env file",
     "write_env_file": "Write env file",
+    "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video"
   },

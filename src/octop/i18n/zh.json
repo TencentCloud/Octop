@@ -71,6 +71,22 @@
       "pending_line": "`{pending_id}` — {count} 个工具",
       "dashboard_hint": "控制台聊天请使用审批卡片；IM 通道请使用 `/approve` 或 `/reject`。"
     },
+    "ask": {
+      "card_title": "❓ 有个地方需要你拍板",
+      "progress": "第 {current}/{total} 个问题",
+      "question_line": "**{index}. {question}**",
+      "question_line_headed": "**{index}. [{header}] {question}**",
+      "option_line": "   {opt}) {label}",
+      "option_line_desc": "   {opt}) {label} —— {description}",
+      "multi_hint": "   （可多选，如 `a,c`）",
+      "open_hint": "   （直接用一句话回答）",
+      "card_footer": "直接回复序号（如 `a`），或输入你自己的答案。",
+      "card_pending_id": "提问 ID：`{pending_id}`（30 分钟内有效）",
+      "answer_ack": "收到，继续处理…",
+      "answer_recorded": "✅ 已记录，下面是下一个问题。",
+      "not_owner": "仅被提问的用户可以回答。",
+      "answered_prefix": "用户回答："
+    },
     "title": {
       "usage": "用法：/title <标题>",
       "done": "标题已设置：{title}"
@@ -492,6 +508,7 @@
     "mobile_handoff_to_user": "交给用户操作（手机）",
     "read_env_file": "读取环境变量",
     "write_env_file": "写入环境变量",
+    "ask_user_question": "向你提问",
     "generate_image": "生成图片",
     "generate_video": "生成视频"
   },

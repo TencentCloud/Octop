@@ -64,6 +64,8 @@ import {
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import ChatComposerChrome from "./components/ChatComposerChrome";
+import AskQuestionCard from "./components/AskQuestionCard";
+import { extractAskQuestions, isAskHitl } from "../../api/types/hitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
 import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
@@ -672,6 +674,24 @@ function ChatPageInner() {
     () => messages.some((message) => message.hitlData?.status === "pending"),
     [messages],
   );
+  const pendingAsk = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      const hitl = message.hitlData;
+      if (
+        !hitl ||
+        (hitl.status ?? "pending") !== "pending" ||
+        !isAskHitl(hitl.action_requests)
+      ) {
+        continue;
+      }
+      const questions = extractAskQuestions(hitl.action_requests);
+      if (questions.length > 0) {
+        return { id: message.id, actions: hitl.action_requests, questions };
+      }
+    }
+    return null;
+  }, [messages]);
   const forkDisabled = forking || isStreaming || hasPendingHitl;
   const forkDisabledHint =
     !forking && (isStreaming || hasPendingHitl)
@@ -1152,6 +1172,25 @@ function ChatPageInner() {
               )}
 
             <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
+            {pendingAsk ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <AskQuestionCard
+                    key={pendingAsk.id}
+                    questions={pendingAsk.questions}
+                    status="pending"
+                    onSubmit={(answer) =>
+                      handleHitlDecision(
+                        pendingAsk.actions.map(() => ({
+                          type: "respond",
+                          message: answer,
+                        })),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}

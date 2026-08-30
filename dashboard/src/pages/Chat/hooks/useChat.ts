@@ -962,54 +962,59 @@ export function useChat(
    * Used when the user overscrolls at the bottom to recover from a dropped WS
    * stream that left the last assistant turn incomplete in memory.
    */
-  const refreshHistory = useCallback(async () => {
-    const key = stableSessionId;
-    const snap = chatStore.getSnapshot(key);
-    if (
-      refreshInFlightRef.current ||
-      historyRefreshing ||
-      historyLoading ||
-      shouldBlockHistoryRefresh({
-        isStreaming: snap.isStreaming,
-        hasLiveSocket: chatStore.hasLiveSocket(key),
-      }) ||
-      !agentId ||
-      key === "__empty__"
-    ) {
-      return;
-    }
+  const refreshHistory = useCallback(
+    async (targetSessionId?: string) => {
+      const key = targetSessionId || stableSessionId;
+      const snap = chatStore.getSnapshot(key);
+      if (
+        refreshInFlightRef.current ||
+        historyRefreshing ||
+        historyLoading ||
+        shouldBlockHistoryRefresh({
+          isStreaming: snap.isStreaming,
+          hasLiveSocket: chatStore.hasLiveSocket(key),
+        }) ||
+        !agentId ||
+        key === "__empty__"
+      ) {
+        return;
+      }
 
-    refreshInFlightRef.current = true;
-    // Separate from loadGenRef: loadHistory may bump loadGen while we fetch.
-    // Always clear the refreshing flag in finally so the footer cannot stick.
-    const gen = ++loadGenRef.current;
-    setHistoryRefreshing(true);
+      refreshInFlightRef.current = true;
+      // Separate from loadGenRef: loadHistory may bump loadGen while we fetch.
+      // Always clear the refreshing flag in finally so the footer cannot stick.
+      const gen = ++loadGenRef.current;
+      setHistoryRefreshing(true);
 
-    try {
-      const {
-        messages: latest,
-        hasMore,
-        nextOffset,
-      } = await loadThreadHistory(agentId, key, { offset: 0 });
-      // Stale after a concurrent loadHistory / newer refresh — drop apply only.
-      if (loadGenRef.current !== gen) return;
+      try {
+        const {
+          messages: latest,
+          hasMore,
+          nextOffset,
+        } = await loadThreadHistory(agentId, key, { offset: 0 });
+        // Stale after a concurrent loadHistory / newer refresh — drop apply only.
+        if (loadGenRef.current !== gen) return;
 
-      // Keep older pages the user already scrolled in; replace the overlapping
-      // latest-page window with the server copy so truncated WS turns heal.
-      const latestIds = new Set(latest.map((m) => m.id));
-      const firstOverlap = snap.messages.findIndex((m) => latestIds.has(m.id));
-      const olderPrefix =
-        firstOverlap > 0 ? snap.messages.slice(0, firstOverlap) : [];
-      chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
-        hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
-        nextOffset:
-          olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
-      });
-    } finally {
-      refreshInFlightRef.current = false;
-      setHistoryRefreshing(false);
-    }
-  }, [agentId, stableSessionId, historyRefreshing, historyLoading]);
+        // Keep older pages the user already scrolled in; replace the overlapping
+        // latest-page window with the server copy so truncated WS turns heal.
+        const latestIds = new Set(latest.map((m) => m.id));
+        const firstOverlap = snap.messages.findIndex((m) =>
+          latestIds.has(m.id),
+        );
+        const olderPrefix =
+          firstOverlap > 0 ? snap.messages.slice(0, firstOverlap) : [];
+        chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
+          hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
+          nextOffset:
+            olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
+        });
+      } finally {
+        refreshInFlightRef.current = false;
+        setHistoryRefreshing(false);
+      }
+    },
+    [agentId, stableSessionId, historyRefreshing, historyLoading],
+  );
 
   /**
    * Edit a historical user message: truncate everything from that message
@@ -1059,9 +1064,11 @@ export function useChat(
       const threadId =
         storeKey || (stableSessionId !== "__empty__" ? stableSessionId : "");
       if (!threadId || threadId === "__empty__") return;
-      void chatStore.resumeHitl(key, agentId, threadId, decisions);
+      void chatStore.resumeHitl(key, agentId, threadId, decisions, () => {
+        void refreshHistory(threadId);
+      });
     },
-    [agentId, stableSessionId],
+    [agentId, stableSessionId, refreshHistory],
   );
 
   return {

@@ -16,6 +16,8 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "unknown",
         "current_time",
         "write_todos",
+        # Its own HITL channel — approving an approval prompt makes no sense.
+        "ask_user_question",
         # Memory
         "memory_search",
         "memory_get",

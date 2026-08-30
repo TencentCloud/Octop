@@ -18,6 +18,22 @@
   }
 }
 
+.askQuestionDock {
+  flex-shrink: 0;
+  padding: 0 20px 8px;
+  background: var(--fn-bg-elevated, #fff);
+
+  @media (max-width: 767px) {
+    padding: 0 12px 6px;
+  }
+}
+
+.askQuestionDockInner {
+  width: 100%;
+  max-width: var(--chat-column-max, 960px);
+  margin: 0 auto;
+}
+
 .chatInput {
   flex-shrink: 0;
   padding: 16px 24px 20px;

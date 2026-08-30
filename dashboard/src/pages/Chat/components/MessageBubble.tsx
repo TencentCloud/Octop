@@ -38,6 +38,8 @@ import {
   isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
+import AskQuestionCard from "./AskQuestionCard";
+import { extractAskQuestions, isAskHitl } from "../../../api/types/hitl";
 import styles from "../index.module.less";
 import {
   DefaultToolRenderer,
@@ -582,6 +584,32 @@ function MessageBubble({
   if (message.hitlData) {
     const actions = message.hitlData.action_requests ?? [];
     const hitlStatus = message.hitlData.status ?? "pending";
+    if (isAskHitl(actions)) {
+      // Pending questions are rendered in ChatPage's composer dock so they
+      // stay immediately above the input even when message history scrolls.
+      if (hitlStatus === "pending") return null;
+      const questions = extractAskQuestions(actions);
+      return (
+        <div
+          className={`${styles.bubble} ${styles.assistantBubble} ${
+            compact ? styles.compact : ""
+          }`}
+        >
+          <AskQuestionCard
+            questions={questions}
+            status={hitlStatus}
+            onSubmit={
+              onHitlDecision
+                ? (answer) =>
+                    onHitlDecision(
+                      actions.map(() => ({ type: "respond", message: answer })),
+                    )
+                : undefined
+            }
+          />
+        </div>
+      );
+    }
     return (
       <div
         className={`${styles.bubble} ${styles.assistantBubble} ${

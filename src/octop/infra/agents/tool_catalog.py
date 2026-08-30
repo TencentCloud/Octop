@@ -68,6 +68,7 @@ BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     BuiltinToolEntry("send_file_to_user", "misc"),
     BuiltinToolEntry("read_env_file", "misc"),
     BuiltinToolEntry("write_env_file", "misc"),
+    BuiltinToolEntry("ask_user_question", "interaction"),
     BuiltinToolEntry("tavily_search", "web"),
     BuiltinToolEntry("brave_search", "web"),
     BuiltinToolEntry("google_search", "web"),

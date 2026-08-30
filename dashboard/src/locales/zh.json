@@ -1159,6 +1159,22 @@
       "rejectedLabel": "已拒绝",
       "rejected": "用户已拒绝"
     },
+    "ask": {
+      "title": "先问几个问题",
+      "other": "其他…",
+      "freeTextPlaceholder": "输入你的答案",
+      "next": "下一个",
+      "review": "确认并提交",
+      "reviewTag": "回顾",
+      "back": "返回",
+      "submit": "提交回答",
+      "skip": "你决定",
+      "skipMessage": "你决定吧——按最优默认方案继续，并告诉我你依据的假设。",
+      "answered": "已回答",
+      "answeredSummary": "已回答 {{count}} 个问题",
+      "dismissedSummary": "已关闭 {{count}} 个问题",
+      "expand": "查看"
+    },
     "modifiedFiles": "已修改文件（{{count}}）",
     "openBrowser": "查看浏览器",
     "openBrowserHint": "Agent 正在网页中操作",
@@ -1231,6 +1247,7 @@
     "mobile_handoff_to_user": "交给用户操作（手机）",
     "read_env_file": "读取环境变量",
     "write_env_file": "写入环境变量",
+    "ask_user_question": "向你提问",
     "generate_image": "生成图片",
     "generate_video": "生成视频"
   },
@@ -1250,6 +1267,7 @@
     "categories": {
       "filesystem": "文件与终端",
       "orchestration": "规划与子智能体",
+      "interaction": "用户交互",
       "web": "网页与浏览器",
       "media": "媒体生成",
       "memory": "记忆",

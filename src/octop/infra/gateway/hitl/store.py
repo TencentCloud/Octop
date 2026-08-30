@@ -24,6 +24,8 @@ class HitlPendingRecord:
     review_configs: list[dict[str, Any]] | None
     created_at: float
     status: HitlPendingStatus = "pending"
+    ask_question_index: int = 0
+    ask_answers: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -164,6 +166,15 @@ class HitlPendingStore:
         record = self._records.get(pending_id)
         if record is not None:
             record.status = status
+
+    def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
+        """Record one IM answer and advance to the next question."""
+        record = self.get(pending_id)
+        if record is None or record.status != "pending":
+            return None
+        record.ask_answers.append(answer)
+        record.ask_question_index += 1
+        return record
 
     def _gc(self) -> None:
         now = time.time()

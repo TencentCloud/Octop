@@ -20,6 +20,7 @@ from harness_gateway.models import (
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.gateway.hitl.coordinator import (
+    HitlAnswerOutcome,
     HitlChannelCoordinator,
     HitlSlashOutcome,
     HitlStreamContext,
@@ -391,6 +392,41 @@ class GlobalProcessor:
             yield MessageEvent.completed()
             return
 
+        # An open ``ask_user_question`` pause turns the user's next message into
+        # the answer for that paused turn instead of starting a new one.
+        if cmd is None and msg.text.strip():
+            ask_record = self._hitl.resolve_ask_pending(
+                session_key,
+                agent_id=agent_id,
+                user_id=user_id,
+            )
+            if ask_record is not None:
+                usage_tracker = UsageTracker()
+                history_tracker = TurnHistoryTracker()
+                answer_outcome = HitlAnswerOutcome()
+                async for ev in self._hitl.iter_answer_resolution(
+                    ask_record,
+                    msg.text,
+                    agent_manager=self._agent_manager,
+                    locale=locale,
+                    usage_tracker=usage_tracker,
+                    history_tracker=history_tracker,
+                    outcome=answer_outcome,
+                ):
+                    yield ev
+                if answer_outcome.completed_turn:
+                    self._touch_thread_after_turn(ask_record.thread_id, msg.text)
+                    if usage_tracker.usage:
+                        self._record_turn_usage(
+                            agent_id=agent_id,
+                            user_id=user_id,
+                            thread_id=ask_record.thread_id,
+                            usage=usage_tracker.usage,
+                        )
+                    self._record_turn_history(ask_record.thread_id, history_tracker)
+                yield MessageEvent.completed()
+                return
+
         if cmd is not None:
             sink = _MessageEventSink()
             handled = await self._dispatcher.handle(
@@ -662,6 +698,39 @@ class GlobalProcessor:
             )
             self._record_turn_history(thread_id, history_tracker)
         yield {"type": "done"}
+
+    async def iter_hitl_resume_chunks(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        user_id: int,
+        decisions: list[dict[str, Any]],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Resume a dashboard HITL turn with the normal history bookkeeping."""
+        usage_tracker = UsageTracker()
+        history_tracker = TurnHistoryTracker()
+        completed = False
+        try:
+            async for chunk in self._agent_manager.resume_hitl(
+                agent_id,
+                thread_id,
+                decisions,
+            ):
+                usage_tracker.observe(chunk)
+                history_tracker.observe(chunk)
+                yield chunk
+            completed = True
+        finally:
+            if completed:
+                self._touch_thread_after_turn(thread_id, None)
+                self._record_turn_usage(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    usage=usage_tracker.usage,
+                )
+                self._record_turn_history(thread_id, history_tracker)
 
     async def _build_dashboard_request(
         self,

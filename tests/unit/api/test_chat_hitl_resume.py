@@ -43,8 +43,8 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
             },
         }
 
-    agent_registry = MagicMock()
-    agent_registry.resume_hitl = _resume
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
     hitl = HitlChannelCoordinator()
     first = hitl.store.register(
         thread_id="thr-follow",
@@ -58,7 +58,7 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
 
     frames: list[str] = []
     async for frame in iter_dashboard_hitl_resume_sse(
-        agent_registry=agent_registry,
+        processor=processor,
         hitl_coordinator=hitl,
         agent_id="agent-1",
         thread_id="thr-follow",
@@ -98,12 +98,12 @@ async def test_dashboard_hitl_resume_registers_without_prior_pending() -> None:
             },
         }
 
-    agent_registry = MagicMock()
-    agent_registry.resume_hitl = _resume
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
     hitl = HitlChannelCoordinator()
 
     async for _ in iter_dashboard_hitl_resume_sse(
-        agent_registry=agent_registry,
+        processor=processor,
         hitl_coordinator=hitl,
         agent_id="agent-1",
         thread_id="thr-orphan",
@@ -124,3 +124,37 @@ async def test_dashboard_hitl_resume_registers_without_prior_pending() -> None:
     )
     assert pending is not None
     assert pending.action_requests[0]["args"]["command"] == "echo hi"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_finishes_after_client_disconnect() -> None:
+    completed = False
+
+    async def _resume(*_args: object, **_kwargs: object):
+        nonlocal completed
+        yield {"type": "token", "content": "hidden after disconnect"}
+        completed = True
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            processor=processor,
+            hitl_coordinator=hitl,
+            agent_id="agent-1",
+            thread_id="thr-disconnected",
+            user_id=9,
+            decisions=[{"type": "respond", "message": "answer"}],
+            pending=None,
+            session_key="sk-disconnected",
+            channel_type="dashboard",
+            locale="en",
+            is_disconnected=AsyncMock(return_value=True),
+        )
+    ]
+
+    assert completed is True
+    assert frames == []
