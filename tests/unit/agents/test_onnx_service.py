@@ -344,6 +344,9 @@ def test_is_downloaded_finds_nested_onnx_weights(tmp_path, monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
     mid = "jinaai/jina-clip-v1"
+    # Keep this cache-layout regression independent of whether the optional
+    # fastembed package is installed and contributes this model to the catalog.
+    monkeypatch.setattr(mod, "list_onnx_catalog_models", lambda: [{"id": mid}])
     snap = mod.model_cache_dir(mid) / "snapshots" / "abc123"
     (snap / "onnx").mkdir(parents=True)
     (snap / "config.json").write_text("{}", encoding="utf-8")
