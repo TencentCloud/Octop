@@ -244,14 +244,16 @@ async def test_patch_instance_status(env):
     assert r2.json()["status"] == "disabled"
 
 
-async def test_catalog_cli_connectors_last(env):
+async def test_catalog_weknora_dify_last(env):
     c, _, auth, _ = env
     r = await c.get("/api/connectors/catalog", headers=auth)
     assert r.status_code == 200
     kinds = [e["kind"] for e in r.json()]
     assert "feishu-cli" in kinds
     assert "wecom-cli" in kinds
-    assert kinds[-2:] == ["feishu-cli", "wecom-cli"]
+    assert kinds.index("feishu-cli") < kinds.index("weknora")
+    assert kinds.index("wecom-cli") < kinds.index("dify")
+    assert kinds[-2:] == ["weknora", "dify"]
 
 
 async def test_install_cli_forbidden_for_non_admin(env):
