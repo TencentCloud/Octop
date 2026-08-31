@@ -251,39 +251,7 @@ func (a *App) installDragOverlay() {
 	if a.window == nil {
 		return
 	}
-	a.window.ExecJS(`(function(){
-		if (!document.body || !window._wails || typeof window._wails.invoke !== 'function') return;
-		var bar = document.getElementById('octop-window-drag-overlay');
-		if (!bar) {
-			bar = document.createElement('div');
-			bar.id = 'octop-window-drag-overlay';
-			bar.setAttribute('aria-hidden', 'true');
-			bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:32px;z-index:2147483647;background:transparent;user-select:none;';
-			document.body.appendChild(bar);
-		}
-		if (bar.dataset.octopDragReady === '1') return;
-		bar.dataset.octopDragReady = '1';
-		var armed = false, startX = 0, startY = 0;
-		bar.addEventListener('mousedown', function(event) {
-			if (event.button !== 0) return;
-			armed = true;
-			startX = event.screenX;
-			startY = event.screenY;
-		}, true);
-		window.addEventListener('mousemove', function(event) {
-			if (!armed) return;
-			if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) < 4) return;
-			armed = false;
-			window._wails.invoke('wails:drag');
-		}, true);
-		window.addEventListener('mouseup', function() { armed = false; }, true);
-		bar.addEventListener('dblclick', function(event) {
-			event.preventDefault();
-			event.stopPropagation();
-			armed = false;
-			window._wails.invoke('wails:event:emit:desktop:toggle-maximise');
-		}, true);
-	})();`)
+	a.window.ExecJS(dragOverlayJS())
 }
 
 func (a *App) scheduleDragOverlay() {
@@ -345,13 +313,16 @@ func main() {
 		Frameless:            true,
 		AllowSimpleEventEmit: true,
 		BackgroundColour:     application.NewRGB(247, 248, 250),
-		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 32,
-		},
 	})
 	api.window = win
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
+	})
+	app.Event.On("desktop:minimise", func(_ *application.CustomEvent) {
+		win.Minimise()
+	})
+	app.Event.On("desktop:close", func(_ *application.CustomEvent) {
+		api.hideToTray()
 	})
 	installDragOverlay := func(_ *application.WindowEvent) { api.scheduleDragOverlay() }
 	win.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, installDragOverlay)

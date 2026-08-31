@@ -6,6 +6,12 @@
     "collapsePanel": "Collapse panel",
     "expandPanel": "Expand panel"
   },
+  "desktopChrome": {
+    "group": "Window controls",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "close": "Close"
+  },
   "common": {
     "save": "Save",
     "saveSuccess": "Saved successfully",

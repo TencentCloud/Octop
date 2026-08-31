@@ -39,7 +39,7 @@
 
 .chatFloatActions {
   position: absolute;
-  right: 14px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   z-index: 5;
@@ -47,12 +47,28 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  /* Extra padding is the approach zone: fade in before the pointer hits icons. */
+  padding: 40px 14px 40px 40px;
+  box-sizing: border-box;
+  opacity: 0;
+  transition: opacity var(--fn-transition-fast, 0.15s ease);
+
+  &:hover,
+  &:focus-within {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    opacity: 1;
+  }
 
   @media (max-width: 767px) {
     right: 10px;
     top: auto;
     bottom: 88px;
     transform: none;
+    padding: 0;
+    opacity: 1;
   }
 }
 

@@ -14,6 +14,7 @@ import { showConfirmModal } from "../../../utils/confirmModal";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
 import styles from "../index.module.less";
+import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
 
 interface ChatTitleBarProps {
   session: Session;
@@ -110,8 +111,10 @@ export default function ChatTitleBar({
     ],
   );
 
+  const [moreOpen, setMoreOpen] = useState(false);
+
   return (
-    <div className={styles.chatTitleBar}>
+    <div className={`${styles.chatTitleBar} ${DESKTOP_DRAG_REGION_CLASS}`}>
       <div className={styles.chatTitleLeft}>
         <SessionChannelIcon
           channelType={session.channelType}
@@ -155,24 +158,24 @@ export default function ChatTitleBar({
             >
               <Pencil size={14} strokeWidth={2} aria-hidden />
             </button>
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomLeft"
+              onOpenChange={setMoreOpen}
+            >
+              <button
+                type="button"
+                className={`${styles.chatTitleEditBtn} ${
+                  moreOpen ? styles.chatTitleHoverShown : ""
+                }`}
+                aria-label={t("common.more", "更多")}
+              >
+                <MoreVertical size={14} strokeWidth={2} aria-hidden />
+              </button>
+            </Dropdown>
           </div>
         )}
-      </div>
-
-      <div className={styles.chatTitleActions}>
-        <Dropdown
-          menu={{ items: menuItems }}
-          trigger={["click"]}
-          placement="bottomRight"
-        >
-          <button
-            type="button"
-            className={styles.chatTitleIconBtn}
-            aria-label={t("common.more", "更多")}
-          >
-            <MoreVertical size={16} strokeWidth={1.8} />
-          </button>
-        </Dropdown>
       </div>
     </div>
   );

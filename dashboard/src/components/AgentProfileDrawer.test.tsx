@@ -7,7 +7,23 @@ import type { OctopAgent } from "../context/AgentContext";
 vi.mock("../api/request", () => ({
   request: vi.fn(async (path: string) => {
     if (path.endsWith("/skills")) {
-      return [{ slug: "demo-skill", name: "Demo skill", kind: "workspace" }];
+      return [
+        {
+          slug: "demo-skill",
+          name: "Demo skill",
+          description: "A demo skill",
+          kind: "workspace",
+          emoji: "🎯",
+          enabled: true,
+        },
+        {
+          slug: "hub-skill",
+          name: "Hub skill",
+          kind: "workspace",
+          icon_url: "https://cdn.example/skill.png",
+          enabled: false,
+        },
+      ];
     }
     return { name: "Demo agent", description: "Description" };
   }),
@@ -19,6 +35,7 @@ vi.mock("../api/modules/subagents", () => ({
       slug: "demo-subagent",
       name: "Demo subagent",
       description: "Subagent description",
+      emoji: "🤖",
     },
   ]),
 }));
@@ -100,5 +117,49 @@ describe("AgentProfileDrawer sections", () => {
     expect(configHeader).toHaveAttribute("aria-expanded", "false");
     expect(skillHeader).toHaveAttribute("aria-expanded", "true");
     expect(subagentHeader).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows skill icons the same way the subagent list does", async () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AgentProfileDrawer open agent={agent} onClose={vi.fn()} />
+      </I18nextProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("🎯")).toBeInTheDocument();
+      expect(screen.getByText("🤖")).toBeInTheDocument();
+    });
+
+    const hubIcon = screen.getByRole("img", { name: "Hub skill" });
+    expect(hubIcon).toHaveAttribute("src", "https://cdn.example/skill.png");
+  });
+
+  it("puts skill status and subagent id on the title row above the description", async () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AgentProfileDrawer open agent={agent} onClose={vi.fn()} />
+      </I18nextProvider>,
+    );
+
+    const skillTitle = await screen.findByText("Demo skill");
+    const skillStatus = screen.getByText("common.enabled");
+    const skillDesc = screen.getByText("A demo skill");
+    const skillIcon = screen.getByText("🎯");
+    const skillHeader = skillTitle.parentElement;
+    expect(skillHeader).toContainElement(skillIcon);
+    expect(skillHeader).toContainElement(skillStatus);
+    expect(skillHeader).not.toContainElement(skillDesc);
+    expect(skillHeader?.nextElementSibling).toBe(skillDesc);
+
+    const subTitle = screen.getByText("Demo subagent");
+    const subId = screen.getByText("demo-subagent");
+    const subDesc = screen.getByText("Subagent description");
+    const subIcon = screen.getByText("🤖");
+    const subHeader = subTitle.parentElement;
+    expect(subHeader).toContainElement(subIcon);
+    expect(subHeader).toContainElement(subId);
+    expect(subHeader).not.toContainElement(subDesc);
+    expect(subHeader?.nextElementSibling).toBe(subDesc);
   });
 });

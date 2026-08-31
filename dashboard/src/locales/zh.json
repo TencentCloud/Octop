@@ -6,6 +6,12 @@
     "collapsePanel": "收起面板",
     "expandPanel": "展开面板"
   },
+  "desktopChrome": {
+    "group": "窗口控制",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "close": "关闭"
+  },
   "common": {
     "save": "保存",
     "saveSuccess": "保存成功",
