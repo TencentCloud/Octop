@@ -82,9 +82,7 @@ def _make_screencast_handler(sess: Any, ws: WebSocket) -> Any:
         # subsequent screencast frames.
         if sid is not None:
             with contextlib.suppress(Exception):
-                await sess._internal.client.send_no_wait(  # noqa: SLF001
-                    "Page.screencastFrameAck", {"sessionId": sid}
-                )
+                await _cdp_send_fast(sess, "Page.screencastFrameAck", {"sessionId": sid})
 
     return _on_frame
 
@@ -287,6 +285,23 @@ def _cdp_buttons(msg: dict[str, Any], *, button: str, event: str) -> int:
     return _CDP_BUTTON_MASK.get(button, 0)
 
 
+
+async def _cdp_send_fast(sess: Any, method: str, params: dict[str, Any] | None = None) -> None:
+    """Send a CDP command without waiting for its response, when supported.
+
+    harness-browser >= 0.7.7 exposes ``CDPClient.send_no_wait`` for
+    fire-and-forget high-frequency commands (input events, screencast acks).
+    Fall back to the awaiting ``send`` on older versions so the stream keeps
+    working without a hard dependency bump.
+    """
+    client = sess._internal.client  # noqa: SLF001
+    fn = getattr(client, "send_no_wait", None)
+    if fn is not None:
+        await fn(method, params)
+    else:
+        await client.send(method, params)
+
+
 async def _dispatch_mouse(
     sess: Any,
     *,
@@ -306,9 +321,7 @@ async def _dispatch_mouse(
     }
     if click_count:
         params["clickCount"] = click_count
-    await sess._internal.client.send_no_wait(  # noqa: SLF001
-        "Input.dispatchMouseEvent", params
-    )
+    await _cdp_send_fast(sess, "Input.dispatchMouseEvent", params)
 
 
 def _cdp_click_count(msg: dict[str, Any]) -> int:
@@ -379,7 +392,8 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         if abs(delta_x) > 0.5 or abs(delta_y) > 0.5:
             with contextlib.suppress(Exception):
                 await _dispatch_mouse(sess, event_type="mouseMoved", x=x, y=y)
-                await sess._internal.client.send_no_wait(  # noqa: SLF001
+                await _cdp_send_fast(
+                    sess,
                     "Input.dispatchMouseEvent",
                     {
                         "type": "mouseWheel",
@@ -416,7 +430,8 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         h = int(msg.get("height") or 0)
         if w > 0 and h > 0:
             with contextlib.suppress(Exception):
-                await sess._internal.client.send_no_wait(  # noqa: SLF001
+                await _cdp_send_fast(
+                    sess,
                     "Emulation.setDeviceMetricsOverride",
                     {
                         "width": w,
