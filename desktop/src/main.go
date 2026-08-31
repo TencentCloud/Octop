@@ -33,6 +33,9 @@ type App struct {
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
 	trayClickTimer *time.Timer
+
+	runtimeReady     chan struct{}
+	runtimeReadyOnce sync.Once
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -182,10 +185,31 @@ func (a *App) boot() {
 	a.showDashboard(base)
 }
 
+func (a *App) signalRuntimeReady() {
+	a.runtimeReadyOnce.Do(func() {
+		if a.runtimeReady != nil {
+			close(a.runtimeReady)
+		}
+	})
+}
+
+func (a *App) waitRuntimeReady(timeout time.Duration) {
+	if a.runtimeReady == nil {
+		return
+	}
+	select {
+	case <-a.runtimeReady:
+	case <-time.After(timeout):
+	}
+}
+
 func (a *App) showDashboard(base string) {
 	if a.window == nil {
 		return
 	}
+	// ExecJS is queued until wails:runtime:ready. Dashboard never sends that
+	// handshake; wait for the shell page so overlay injects work after SetURL.
+	a.waitRuntimeReady(8 * time.Second)
 	a.window.SetURL(base)
 	a.scheduleDragOverlay()
 	s := a.store.get()
@@ -308,8 +332,9 @@ func (a *App) requestQuit() {
 func main() {
 	store := &settingsStore{cur: loadSettings()}
 	api := &App{
-		store: store,
-		sleep: &sleepGuard{},
+		store:        store,
+		sleep:        &sleepGuard{},
+		runtimeReady: make(chan struct{}),
 	}
 
 	app := application.New(application.Options{
@@ -347,6 +372,9 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		api.signalRuntimeReady()
+	})
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
 	})
