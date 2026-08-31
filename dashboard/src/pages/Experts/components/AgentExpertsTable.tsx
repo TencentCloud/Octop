@@ -181,6 +181,10 @@ export default function AgentExpertsTable({
       setActionLoadingId(agent.agent_id);
       try {
         if (checked) {
+          const current = localStates[agent.agent_id] ?? agent.state;
+          if (current === "running" || current === "starting") {
+            return;
+          }
           await request(`/agents/${agent.agent_id}/start`, { method: "POST" });
           setLocalStates((prev) => ({ ...prev, [agent.agent_id]: "starting" }));
           onStateChange(agent.agent_id, "starting");
@@ -201,7 +205,7 @@ export default function AgentExpertsTable({
         setActionLoadingId(null);
       }
     },
-    [t, onStateChange],
+    [localStates, t, onStateChange],
   );
 
   const handleDelete = useCallback(

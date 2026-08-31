@@ -197,6 +197,9 @@ export const AgentCard = memo(function AgentCard({
       setActionLoading(true);
       try {
         if (checked) {
+          if (localState === "running" || localState === "starting") {
+            return;
+          }
           await request(`/agents/${agent.agent_id}/start`, { method: "POST" });
           setLocalState("starting");
           onStateChange(agent.agent_id, "starting");
@@ -217,7 +220,7 @@ export const AgentCard = memo(function AgentCard({
         setActionLoading(false);
       }
     },
-    [agent.agent_id, agent.name, t, onStateChange],
+    [agent.agent_id, agent.name, localState, t, onStateChange],
   );
 
   const handleDelete = useCallback(async () => {

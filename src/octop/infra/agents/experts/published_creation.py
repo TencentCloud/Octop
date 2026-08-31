@@ -21,6 +21,10 @@ from octop.infra.agents.experts.publish import (
     resolve_published_expert_slug,
 )
 from octop.infra.agents.manager import AgentCreateSpec
+from octop.infra.agents.memory_backend import (
+    memory_config_for_choice,
+    probe_memory_postgres_dsn,
+)
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
@@ -40,6 +44,8 @@ class PublishedExpertInstallOptions:
     icon_url: str | None = None
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
+    memory_backend: str | None = None
+    memory_dsn: str | None = None
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -292,6 +298,15 @@ async def install_published_expert(
         config_extra["providers"] = list(options.providers)
     if options.backend:
         config_extra["backend"] = options.backend
+    memory = memory_config_for_choice(
+        options.memory_backend, services.config, dsn=options.memory_dsn
+    )
+    backend = memory.get("backend") if isinstance(memory, dict) else None
+    raw_dsn = backend.get("dsn") if isinstance(backend, dict) else None
+    if raw_dsn:
+        probe_memory_postgres_dsn(str(raw_dsn))
+    if memory:
+        config_extra["memory"] = memory
 
     created = await registry.create(
         AgentCreateSpec(

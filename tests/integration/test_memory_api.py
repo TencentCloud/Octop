@@ -410,3 +410,47 @@ async def test_unauthenticated(env_with_main_agent) -> None:
     # No auth headers → must be rejected by the auth middleware.
     r = await client.get(f"/api/agents/{aid}/memory/stats/counts")
     assert r.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_memory_store_empty_then_has_data(env_with_main_agent) -> None:
+    client, srv, auth, aid = env_with_main_agent
+
+    empty = await client.get(f"/api/agents/{aid}/memory/store", headers=auth)
+    assert empty.status_code == 200, empty.text
+    body = empty.json()
+    assert body["choice"] == "follow"
+    assert body["control_plane"] == "sqlite"
+    assert body["resolved"]["type"] == "sqlite"
+    assert body["resolved"]["namespace"] == f"agent_{aid}"
+    assert body["has_data"] is False
+
+    _seed_memory(srv, aid)
+    invalidate_cached_memory(aid)
+
+    filled = await client.get(f"/api/agents/{aid}/memory/store", headers=auth)
+    assert filled.status_code == 200, filled.text
+    assert filled.json()["has_data"] is True
+
+
+@pytest.mark.asyncio
+async def test_patch_memory_backend_sqlite_then_store(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    detail = await client.get(f"/api/agents/{aid}", headers=auth)
+    assert detail.status_code == 200, detail.text
+    config = dict(detail.json().get("config") or {})
+    memory = dict(config.get("memory") or {})
+    memory["backend"] = {"type": "sqlite"}
+    config["memory"] = memory
+
+    patched = await client.patch(
+        f"/api/agents/{aid}",
+        headers=auth,
+        json={"config": config},
+    )
+    assert patched.status_code == 200, patched.text
+
+    store = await client.get(f"/api/agents/{aid}/memory/store", headers=auth)
+    assert store.status_code == 200, store.text
+    assert store.json()["choice"] == "sqlite"
+    assert store.json()["resolved"]["type"] == "sqlite"

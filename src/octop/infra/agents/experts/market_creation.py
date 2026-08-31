@@ -19,6 +19,10 @@ from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketErrorKind,
     install_skillset_template,
 )
+from octop.infra.agents.memory_backend import (
+    memory_config_for_choice,
+    probe_memory_postgres_dsn,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
 
@@ -48,6 +52,8 @@ class SkillHubMarketAgentCreateOptions:
     color: str | None = None
     agent_id: str | None = None
     welcome_message: str | None = None
+    memory_backend: str | None = None
+    memory_dsn: str | None = None
     max_iters: int | None = None
     max_input_length: int | None = None
     temperature: float | None = None
@@ -281,6 +287,15 @@ async def create_agent_from_skillhub_skillset(
         config_extra["providers"] = list(options.providers)
     if options.backend:
         config_extra["backend"] = options.backend
+    memory = memory_config_for_choice(
+        options.memory_backend, server.services.config, dsn=options.memory_dsn
+    )
+    backend = memory.get("backend") if isinstance(memory, dict) else None
+    raw_dsn = backend.get("dsn") if isinstance(backend, dict) else None
+    if raw_dsn:
+        probe_memory_postgres_dsn(str(raw_dsn))
+    if memory:
+        config_extra["memory"] = memory
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

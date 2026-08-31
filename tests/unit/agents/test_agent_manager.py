@@ -835,6 +835,43 @@ async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_is_idempotent_when_already_running(manager: AgentManager) -> None:
+    from harness_agent import HarnessAgentManager
+
+    _seed_test_provider(manager)
+    manager._harness_manager = HarnessAgentManager(
+        providers=manager.providers.build_harness_configs(),
+    )
+    manager._repos.agent_repo.create(
+        agent_id="IDEM01",
+        user_id=None,
+        name="already-up",
+        config_json=json.dumps(_MEMORY_OFF),
+    )
+    await manager.start("IDEM01")
+    assert manager.get_row("IDEM01").last_state == "running"
+
+    await manager.start("IDEM01")
+    row = manager.get_row("IDEM01")
+    assert row is not None
+    assert row.last_state == "running"
+    assert not row.last_error
+    manager.get_agent("IDEM01")
+
+    manager._repos.agent_repo.set_state(
+        "IDEM01", "failed", error="Agent 'IDEM01' already exists in the registry."
+    )
+    await manager.start("IDEM01")
+    recovered = manager.get_row("IDEM01")
+    assert recovered is not None
+    assert recovered.last_state == "running"
+    assert not recovered.last_error
+    manager.get_agent("IDEM01")
+
+    manager._harness_manager.close()
+
+
+@pytest.mark.asyncio
 async def test_save_security_rebuilds_running_harness_agent(manager: AgentManager) -> None:
     from harness_agent import HarnessAgentManager
 

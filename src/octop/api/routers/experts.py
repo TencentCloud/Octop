@@ -12,7 +12,7 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
@@ -58,6 +58,10 @@ from octop.infra.agents.experts.skillhub_market import (
     browse_skillsets,
     fetch_skillset,
 )
+from octop.infra.agents.memory_backend import (
+    memory_config_for_choice,
+    probe_memory_postgres_dsn,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_user_locale
 
@@ -89,6 +93,8 @@ class FromExpertBody(AgentRuntimeFields):
         description="Optional custom agent id; auto-generated when omitted",
     )
     welcome_message: str | None = None
+    memory_backend: Literal["follow", "sqlite", "postgres"] | None = None
+    memory_dsn: str | None = None
 
 
 class PublishExpertBody(BaseModel):
@@ -122,11 +128,24 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
         description="Optional custom agent id; auto-generated when omitted",
     )
     welcome_message: str | None = None
+    memory_backend: Literal["follow", "sqlite", "postgres"] | None = None
+    memory_dsn: str | None = None
 
 
 class LocalizedTextResponse(BaseModel):
     zh: str = ""
     en: str = ""
+
+
+def _memory_config_extra(
+    choice: str | None, server: Any, *, dsn: str | None = None
+) -> dict[str, Any]:
+    mem = memory_config_for_choice(choice, server.services.config, dsn=dsn)
+    backend = mem.get("backend") if isinstance(mem, dict) else None
+    raw_dsn = backend.get("dsn") if isinstance(backend, dict) else None
+    if raw_dsn:
+        probe_memory_postgres_dsn(str(raw_dsn))
+    return {"memory": mem} if mem else {}
 
 
 class QuickPromptResponse(BaseModel):
@@ -468,6 +487,8 @@ async def install_published_expert(
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
+            memory_backend=body.memory_backend,
+            memory_dsn=body.memory_dsn,
         ),
     )
 
@@ -557,6 +578,8 @@ async def install_expert_hub_item(
                 color=body.color,
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
+                memory_backend=body.memory_backend,
+                memory_dsn=body.memory_dsn,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -628,6 +651,9 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
+    config_extra.update(
+        _memory_config_extra(body.memory_backend, server, dsn=body.memory_dsn)
+    )
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

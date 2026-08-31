@@ -38,6 +38,8 @@ export interface InstallPublishedExpertBody {
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  memory_backend?: "follow" | "sqlite" | "postgres";
+  memory_dsn?: string;
 }
 
 export interface InstalledPublishedExpert {

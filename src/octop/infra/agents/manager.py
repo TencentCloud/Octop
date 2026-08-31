@@ -86,6 +86,12 @@ _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
 _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
 
+_ALREADY_REGISTERED_MARK = "already exists in the registry"
+
+
+def _is_already_registered_error(exc: BaseException) -> bool:
+    return isinstance(exc, ValueError) and _ALREADY_REGISTERED_MARK in str(exc)
+
 
 def _memory_namespace(agent_id: str) -> str:
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
@@ -673,6 +679,9 @@ class AgentManager:
             row = self._repos.agent_repo.get(agent_id)
             if row is None:
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+            live = self._adopt_live_harness_agent(agent_id)
+            if live is not None:
+                return
             await self._start_agent(row, init_workspace=False)
 
     async def stop(self, agent_id: str) -> None:
@@ -1931,6 +1940,22 @@ class AgentManager:
         except Exception:
             logger.exception("Deferred bootstrap failed for agent %s", row.agent_id)
 
+    def _adopt_live_harness_agent(self, agent_id: str) -> HarnessAgent | None:
+        """If the harness already has this agent, mark it running and return it.
+
+        Save → background reload → a second Start used to call ``acreate_agent``
+        again, raise ``already exists``, and persist ``failed`` even though the
+        expert was already up.
+        """
+        if self._harness_manager is None:
+            return None
+        try:
+            agent = self._harness_manager.get_agent(agent_id).agent
+        except KeyError:
+            return None
+        self._repos.agent_repo.set_state(agent_id, "running", error=None)
+        return agent
+
     async def _start_agent(
         self, row: AgentRow, *, init_workspace: bool = True
     ) -> HarnessAgent | None:
@@ -1938,6 +1963,9 @@ class AgentManager:
         if self._harness_manager.shared_factory is None:
             self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
             return None
+        live = self._adopt_live_harness_agent(row.agent_id)
+        if live is not None:
+            return live
         try:
             cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
             entry = await self._harness_manager.acreate_agent(
@@ -1952,6 +1980,17 @@ class AgentManager:
             logger.info("Agent %s (%s) started", row.agent_id, row.name)
             return entry.agent
         except Exception as exc:
+            if _is_already_registered_error(exc):
+                live = self._adopt_live_harness_agent(row.agent_id)
+                logger.info(
+                    "Agent %s already running; treating start as success",
+                    row.agent_id,
+                )
+                if live is None:
+                    self._repos.agent_repo.set_state(
+                        row.agent_id, "running", error=None
+                    )
+                return live
             logger.exception("Failed to start agent %s", row.agent_id)
             self._repos.agent_repo.set_state(
                 row.agent_id,
@@ -2186,30 +2225,42 @@ class AgentManager:
 
     async def _reload_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
-        self._bootstrap_graph_refresh_pending.discard(agent_id)
-        row = self._repos.agent_repo.get(agent_id)
-        if not row or not row.enabled or row.last_state == "stopped":
-            await self._harness_manager.aremove_agent(agent_id)
-            return
-        if self._harness_manager.shared_factory is None:
-            return
-        try:
-            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
-            entry = await self._harness_manager.arebuild_agent(
-                agent_id,
-                cfg,
-                metadata=metadata,
-                tags=tags,
-            )
-            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
-            self._repos.agent_repo.set_state(agent_id, "running", error=None)
-        except Exception as exc:
-            logger.exception("Background reload failed for agent %s", agent_id)
-            self._repos.agent_repo.set_state(
-                agent_id,
-                "failed",
-                error=format_agent_start_error(exc),
-            )
+        async with self._lock:
+            self._bootstrap_graph_refresh_pending.discard(agent_id)
+            row = self._repos.agent_repo.get(agent_id)
+            if not row or not row.enabled or row.last_state == "stopped":
+                await self._harness_manager.aremove_agent(agent_id)
+                return
+            if self._harness_manager.shared_factory is None:
+                return
+            try:
+                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                entry = await self._harness_manager.arebuild_agent(
+                    agent_id,
+                    cfg,
+                    metadata=metadata,
+                    tags=tags,
+                )
+                await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+                self._repos.agent_repo.set_state(agent_id, "running", error=None)
+            except Exception as exc:
+                if _is_already_registered_error(exc):
+                    live = self._adopt_live_harness_agent(agent_id)
+                    logger.info(
+                        "Agent %s already running; treating reload as success",
+                        agent_id,
+                    )
+                    if live is None:
+                        self._repos.agent_repo.set_state(
+                            agent_id, "running", error=None
+                        )
+                    return
+                logger.exception("Background reload failed for agent %s", agent_id)
+                self._repos.agent_repo.set_state(
+                    agent_id,
+                    "failed",
+                    error=format_agent_start_error(exc),
+                )
 
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""

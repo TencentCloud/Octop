@@ -17,6 +17,11 @@ import {
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import { MemoryBackendFields } from "../../../components/MemoryBackendFields";
+import {
+  memoryPostgresDsnFromForm,
+  type MemoryBackendChoice,
+} from "../../../utils/memoryBackendChoice";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
@@ -160,6 +165,13 @@ export default function CreateFromExpertDrawer({
       composite_default: string;
       root_dir?: string;
       skill_package_ids?: string[];
+      memory_backend?: MemoryBackendChoice;
+      memory_pg_host?: string;
+      memory_pg_port?: number;
+      memory_pg_database?: string;
+      memory_pg_user?: string;
+      memory_pg_password?: string;
+      memory_pg_tested?: boolean;
     } & AgentRuntimeFormValues
   >();
   const [submitting, setSubmitting] = useState(false);
@@ -218,6 +230,7 @@ export default function CreateFromExpertDrawer({
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
+      memory_backend: "follow",
     });
 
     if (source.kind === "market") {
@@ -278,6 +291,14 @@ export default function CreateFromExpertDrawer({
   const handleCreate = async () => {
     if (!source) return;
     const values = await form.validateFields();
+    if (
+      values.memory_backend === "postgres" &&
+      memoryPostgresDsnFromForm(values) &&
+      values.memory_pg_tested !== true
+    ) {
+      message.error(t("experts.memoryStore.testRequired"));
+      return;
+    }
     const stored = form.getFieldsValue(true) as {
       welcome_message?: string;
     };
@@ -331,6 +352,14 @@ export default function CreateFromExpertDrawer({
           ? expertPaletteColor(colorPalette)
           : colorPalette,
         ...(welcomeText ? { welcome_message: welcomeText } : {}),
+        ...(values.memory_backend && values.memory_backend !== "follow"
+          ? {
+              memory_backend: values.memory_backend,
+              ...(values.memory_backend === "postgres"
+                ? { memory_dsn: memoryPostgresDsnFromForm(values) }
+                : {}),
+            }
+          : {}),
         ...buildAgentRuntimeRequest(values),
       };
 
@@ -601,7 +630,12 @@ export default function CreateFromExpertDrawer({
             {
               key: "advanced",
               label: t("experts.advancedOptions"),
-              children: <AgentAdvancedConfigFields />,
+              children: (
+                <>
+                  <AgentAdvancedConfigFields />
+                  <MemoryBackendFields mode="create" />
+                </>
+              ),
             },
           ]}
         />

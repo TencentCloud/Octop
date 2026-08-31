@@ -21,6 +21,11 @@ from octop.infra.agents.avatar import (
     read_workspace_avatar,
     write_workspace_avatar,
 )
+from octop.infra.agents.memory_backend import (
+    memory_backend_from_agent_config,
+    probe_memory_postgres_dsn,
+    stored_memory_dsn,
+)
 from octop.infra.agents.profile import (
     parse_config_json,
     parse_skill_package_ids_json,
@@ -253,6 +258,7 @@ async def create_agent(
     assert server.app_runtime is not None
     if isinstance(body.config, dict):
         assert_user_backend_root_dirs(user, body.config.get("backend"))
+        memory_backend_from_agent_config(body.config, octop_config=server.services.config)
     spec = AgentCreateSpec(
         name=body.name,
         user_id=user.id,
@@ -333,6 +339,10 @@ async def patch_agent(
     _assert_agent_owner(row, user)
     if body.config is not None and isinstance(body.config, dict):
         assert_user_backend_root_dirs(user, body.config.get("backend"))
+        memory_backend_from_agent_config(body.config, octop_config=server.services.config)
+        new_dsn = stored_memory_dsn(body.config)
+        if new_dsn and new_dsn != stored_memory_dsn(parse_config_json(row.config_json)):
+            probe_memory_postgres_dsn(new_dsn)
     updates = {
         key: value
         for key, value in body.model_dump(exclude_unset=True).items()

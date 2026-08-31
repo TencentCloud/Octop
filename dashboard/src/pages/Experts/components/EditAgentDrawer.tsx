@@ -19,6 +19,16 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import { MemoryBackendFields } from "../../../components/MemoryBackendFields";
+import {
+  applyMemoryBackendChoice,
+  memoryPostgresDsnFromForm,
+  parseMemoryBackendChoice,
+  parsePostgresMemoryDsn,
+  postgresFormMatchesStored,
+  storedPostgresDsn,
+  type MemoryBackendChoice,
+} from "../../../utils/memoryBackendChoice";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
@@ -130,6 +140,13 @@ interface EditFormValues {
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
+  memory_backend?: MemoryBackendChoice;
+  memory_pg_host?: string;
+  memory_pg_port?: number;
+  memory_pg_database?: string;
+  memory_pg_user?: string;
+  memory_pg_password?: string;
+  memory_pg_tested?: boolean;
 }
 
 interface EditAgentDrawerProps {
@@ -285,6 +302,7 @@ function EditAgentDrawerBody({
         );
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
+        const storedPg = parsePostgresMemoryDsn(storedPostgresDsn(cfg));
 
         form.setFieldsValue({
           name: ag.name,
@@ -296,6 +314,15 @@ function EditAgentDrawerBody({
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
+          memory_backend: parseMemoryBackendChoice(cfg),
+          ...(storedPg
+            ? {
+                memory_pg_host: storedPg.host,
+                memory_pg_port: storedPg.port,
+                memory_pg_database: storedPg.database,
+                memory_pg_user: storedPg.user,
+              }
+            : {}),
           ...readAgentRuntimeFormValues(ag),
         });
         setLoading(false);
@@ -350,6 +377,25 @@ function EditAgentDrawerBody({
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();
+    const memoryChoice = values.memory_backend ?? "follow";
+    const formDsn =
+      memoryChoice === "postgres"
+        ? memoryPostgresDsnFromForm(values)
+        : undefined;
+    const storedDsn = storedPostgresDsn(agentConfig);
+    const keepStoredPostgres =
+      memoryChoice === "postgres" &&
+      Boolean(storedDsn) &&
+      (postgresFormMatchesStored(values, storedDsn) || !formDsn);
+    if (
+      memoryChoice === "postgres" &&
+      formDsn &&
+      !keepStoredPostgres &&
+      values.memory_pg_tested !== true
+    ) {
+      message.error(t("experts.memoryStore.testRequired"));
+      return;
+    }
     if (values.backend_choice === "composite") {
       const pathError = validatePathMappings(pathMappings, t);
       if (pathError) {
@@ -393,6 +439,15 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
       });
+      Object.assign(
+        nextConfig,
+        applyMemoryBackendChoice(nextConfig, memoryChoice, {
+          dsn:
+            memoryChoice === "postgres" && !keepStoredPostgres
+              ? formDsn
+              : undefined,
+        }),
+      );
       delete nextConfig.color;
       delete nextConfig.icon_name;
       delete nextConfig.icon_url;
@@ -812,6 +867,10 @@ function EditAgentDrawerBody({
                   children: (
                     <Form form={form} layout="vertical" size="middle">
                       <AgentAdvancedConfigFields />
+                      <MemoryBackendFields
+                        mode="edit"
+                        agentId={agent.agent_id}
+                      />
                     </Form>
                   ),
                 },

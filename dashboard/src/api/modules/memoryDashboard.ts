@@ -342,6 +342,27 @@ export interface ListJournalBody {
   limit?: number;
 }
 
+export interface MemoryStoreConnection {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+}
+
+export interface MemoryStoreStatus {
+  choice: "follow" | "sqlite" | "postgres";
+  control_plane: "sqlite" | "postgresql";
+  resolved: {
+    type: "sqlite" | "postgres";
+    location: string;
+    namespace: string;
+  };
+  has_data: boolean;
+  has_data_unknown?: boolean;
+  has_custom_dsn?: boolean;
+  connection?: MemoryStoreConnection | null;
+}
+
 export interface ListCandidatesBody {
   status?: CandidateStatus;
   candidate_type?: AtomKind;
@@ -475,6 +496,21 @@ export const memoryDashboardApi = {
     request<TerminalEntityResponse>(
       `${base(aid)}/terminal/entities?limit=${limit}`,
     ),
+
+  getStore: (aid: string) =>
+    request<MemoryStoreStatus>(`${base(aid)}/store`),
+
+  probeStore: (body: {
+    host: string;
+    port?: number;
+    database: string;
+    user: string;
+    password?: string;
+  }) =>
+    request<{ ok: boolean }>("/memory/store/probe", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // extraction-trigger config
   getExtractConfig: (aid: string) =>

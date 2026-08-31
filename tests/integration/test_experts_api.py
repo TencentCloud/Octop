@@ -318,3 +318,67 @@ async def test_create_from_expert_stores_backend(env: Any) -> None:
     rows = (await c.get("/api/agents", headers=auth)).json()
     agent = next(a for a in rows if a["id"] == agent_id)
     assert agent["config"].get("backend") == backend_spec
+
+
+async def test_create_agent_from_expert_explicit_sqlite_memory(env: Any) -> None:
+    c, _srv, auth = env
+    r = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "sqlite-memory-bot", "memory_backend": "sqlite"},
+    )
+    assert r.status_code == 201, r.text
+    agent_id = r.json()["agent_id"]
+
+    detail = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert detail["config"]["memory"]["backend"] == {"type": "sqlite"}
+
+    store = await c.get(f"/api/agents/{agent_id}/memory/store", headers=auth)
+    assert store.status_code == 200, store.text
+    assert store.json()["choice"] == "sqlite"
+    assert store.json()["has_data"] is False
+
+
+async def test_create_agent_from_expert_postgres_memory_requires_dsn_on_sqlite(
+    env: Any,
+) -> None:
+    c, _srv, auth = env
+    r = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "pg-memory-bot", "memory_backend": "postgres"},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_create_agent_from_expert_postgres_memory_probes_dsn(env: Any) -> None:
+    c, _srv, auth = env
+    r = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "pg-dsn-memory-bot",
+            "memory_backend": "postgres",
+            "memory_dsn": "postgresql://octop:x@127.0.0.1:1/octop",
+        },
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_probe_memory_store_rejects_unreachable_postgres(env: Any) -> None:
+    c, _srv, auth = env
+    r = await c.post(
+        "/api/memory/store/probe",
+        headers=auth,
+        json={
+            "host": "127.0.0.1",
+            "port": 1,
+            "database": "octop",
+            "user": "octop",
+            "password": "x",
+        },
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"

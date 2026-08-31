@@ -40,8 +40,15 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner, require_agent_owner_row
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.memory_client import call_memory_rpc
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.memory_backend import (
+    build_memory_postgres_dsn,
+    describe_memory_store,
+    probe_memory_postgres_dsn,
+)
+from octop.infra.agents.profile import parse_config_json
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -676,6 +683,57 @@ router.add_api_route(
     _terminal_endpoint("terminal_entities"),
     methods=["GET"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Memory store location (SQLite file vs control-plane Postgres)
+# ---------------------------------------------------------------------------
+
+
+class MemoryPostgresProbeBody(BaseModel):
+    host: str | None = None
+    port: int = Field(default=5432, ge=1, le=65535)
+    database: str | None = None
+    user: str | None = None
+    password: str | None = None
+    dsn: str | None = None
+
+
+@router.post("/memory/store/probe")
+async def probe_memory_store(
+    body: MemoryPostgresProbeBody,
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Test a PostgreSQL DSN for per-expert memory. Does not persist config."""
+    dsn = (body.dsn or "").strip()
+    if not dsn:
+        dsn = build_memory_postgres_dsn(
+            host=str(body.host or ""),
+            port=body.port,
+            database=str(body.database or ""),
+            user=str(body.user or ""),
+            password=body.password,
+        )
+    probe_memory_postgres_dsn(dsn)
+    return {"ok": True}
+
+
+@router.get("/agents/{agent_id}/memory/store")
+async def get_memory_store(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Return where this agent's memory lives and whether it already has rows."""
+    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    workspace = resolve_agent_workspace_dir(server, agent_id)
+    return describe_memory_store(
+        agent_id=agent_id,
+        cfg=parse_config_json(row.config_json),
+        octop_config=server.services.config,
+        workspace_dir=workspace,
+    )
 
 
 # ---------------------------------------------------------------------------
