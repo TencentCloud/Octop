@@ -7,8 +7,8 @@ import {
 } from "./constants";
 
 describe("channel display defaults", () => {
-  it("uses invoke delivery for external IM channels", () => {
-    expect(DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode).toBe("invoke");
+  it("uses stream delivery for new external IM channels", () => {
+    expect(DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode).toBe("stream");
   });
 });
 

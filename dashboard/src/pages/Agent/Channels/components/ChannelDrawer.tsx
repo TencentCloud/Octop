@@ -1754,7 +1754,11 @@ export function ChannelDrawer({
               style={{ width: 22, height: 22 }}
             />
           )}
-          <span>{isEdit ? `${kindLabel} 频道设置` : "新建频道"}</span>
+          <span>
+            {isEdit
+              ? `${kindLabel} ${t("channels.channelSettings")}`
+              : t("channels.createChannel")}
+          </span>
         </div>
       }
       open={open}
@@ -1873,7 +1877,7 @@ export function ChannelDrawer({
 
               <Form.Item
                 name="kind"
-                label="频道类型"
+                label={t("channels.channelType")}
                 rules={[{ required: true }]}
               >
                 <Select

@@ -371,7 +371,7 @@ export const CHANNEL_DISPLAY_CONFIG_KEYS = [
 
 /** Default per-channel display settings (harness-gateway ChannelConfig). */
 export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
-  response_mode: "invoke" as const,
+  response_mode: "stream" as const,
   show_thinking: false,
   show_tool_hints: false,
 } as const;

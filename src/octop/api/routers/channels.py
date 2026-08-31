@@ -558,7 +558,7 @@ async def dingtalk_qrcode_poll(
         config = {
             "client_id": client_id,
             "client_secret": client_secret,
-            "response_mode": "invoke",
+            "response_mode": "stream",
             "show_thinking": False,
             "show_tool_hints": False,
         }
