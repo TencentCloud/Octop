@@ -11,11 +11,23 @@ export function getCanvasCoords(
   if (!canvas) return { x: 0, y: 0 };
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  // The canvas element is rendered with object-fit: contain — the bitmap is
+  // scaled to fit while preserving aspect ratio and centered, leaving
+  // letterbox whitespace on the sides (or top/bottom). The old mapping
+  // (canvas.width / rect.width) ignored that whitespace, so pointer
+  // coordinates drifted toward the right/bottom. Compute the actual drawn
+  // area (drawW/drawH) and compensate for the centered offsets first, then
+  // map by the uniform scale factor.
+  const imgW = canvas.width;
+  const imgH = canvas.height;
+  const scale = Math.min(rect.width / imgW, rect.height / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  const offsetX = rect.left + (rect.width - drawW) / 2;
+  const offsetY = rect.top + (rect.height - drawH) / 2;
   return {
-    x: Math.round((e.clientX - rect.left) * scaleX),
-    y: Math.round((e.clientY - rect.top) * scaleY),
+    x: Math.round((e.clientX - offsetX) / scale),
+    y: Math.round((e.clientY - offsetY) / scale),
   };
 }
 
