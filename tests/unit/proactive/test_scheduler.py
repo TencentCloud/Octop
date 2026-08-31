@@ -231,6 +231,27 @@ def test_config_repo_list_enabled(db: SqlitePool, config_repo: ProactiveCareConf
     assert aid2 not in enabled_ids
 
 
+def test_config_repo_list_enabled_includes_default_on_agents(
+    db: SqlitePool, config_repo: ProactiveCareConfigRepo
+):
+    """Agents with no config row default to enabled and must be scheduled."""
+    uid = UserRepo(db).create(username="carol", password_hash="h", role="admin")
+    aid_default = new_ulid()
+    aid_off = new_ulid()
+    AgentRepo(db).create(agent_id=aid_default, user_id=uid, name="default-on")
+    AgentRepo(db).create(agent_id=aid_off, user_id=uid, name="opted-out")
+    config_repo.upsert(ProactiveCareConfig(agent_id=aid_off, enabled=False))
+
+    enabled = config_repo.list_enabled()
+    enabled_ids = {c.agent_id for c in enabled}
+    assert aid_default in enabled_ids
+    assert aid_off not in enabled_ids
+    default_cfg = next(c for c in enabled if c.agent_id == aid_default)
+    assert default_cfg.enabled is True
+    assert default_cfg.min_interval_hours == 5
+    assert default_cfg.max_interval_hours == 24
+
+
 # ---------------------------------------------------------------------------
 # ProactiveCareScheduler tests
 # ---------------------------------------------------------------------------
@@ -314,3 +335,24 @@ async def test_scheduler_start_all_no_enabled(
     )
     await scheduler.start_all()
     assert len(scheduler._tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_scheduler_start_all_includes_default_on_agent(
+    agent_id: str,
+    config_repo: ProactiveCareConfigRepo,
+    db: SqlitePool,
+):
+    """start_all should schedule agents that never saved a proactive-care row."""
+    from octop.infra.db.repos.sessions import SessionRepo
+
+    care_service = AsyncMock()
+    scheduler = ProactiveCareScheduler(
+        care_service=care_service,
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+    )
+    await scheduler.start_all()
+    assert agent_id in scheduler._tasks
+    scheduler.cancel(agent_id)
+    await asyncio.sleep(0.01)
