@@ -55,7 +55,7 @@ router = APIRouter()
 _FRAME_INTERVAL_S = 0.25  # ~4 fps (poll fallback only)
 # screencast is event-driven; the frame rate follows page changes. This is just
 # an upper throttle so scrolling/animations do not flood the WS and the client.
-_SCREENCAST_MIN_INTERVAL_S = 0.033  # ~30fps cap
+_SCREENCAST_MIN_INTERVAL_S = 0.05  # ~20fps cap (bounds bandwidth for remote clients)
 # Registered screencast listeners keyed by CDP client id, so the old listener
 # can be detached after a tab switch replaces the client.
 _screencast_handlers: dict[int, Any] = {}
@@ -82,7 +82,7 @@ def _make_screencast_handler(sess: Any, ws: WebSocket) -> Any:
         # subsequent screencast frames.
         if sid is not None:
             with contextlib.suppress(Exception):
-                await sess._internal.client.send(  # noqa: SLF001
+                await sess._internal.client.send_no_wait(  # noqa: SLF001
                     "Page.screencastFrameAck", {"sessionId": sid}
                 )
 
@@ -114,7 +114,7 @@ async def _start_screencast(sess: Any, ws: WebSocket, width: int, height: int) -
             "Page.startScreencast",
             {
                 "format": "jpeg",
-                "quality": 80,
+                "quality": 60,
                 "everyNthFrame": 1,
             },
         )
@@ -155,7 +155,7 @@ async def _capture_jpeg(sess: Any) -> str | None:
         result = await asyncio.wait_for(
             sess._internal.client.send(  # noqa: SLF001
                 "Page.captureScreenshot",
-                {"format": "jpeg", "quality": 80},
+                {"format": "jpeg", "quality": 60},
             ),
             timeout=1.5,
         )
@@ -306,7 +306,9 @@ async def _dispatch_mouse(
     }
     if click_count:
         params["clickCount"] = click_count
-    await sess._internal.client.send("Input.dispatchMouseEvent", params)  # noqa: SLF001
+    await sess._internal.client.send_no_wait(  # noqa: SLF001
+        "Input.dispatchMouseEvent", params
+    )
 
 
 def _cdp_click_count(msg: dict[str, Any]) -> int:
@@ -377,7 +379,7 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         if abs(delta_x) > 0.5 or abs(delta_y) > 0.5:
             with contextlib.suppress(Exception):
                 await _dispatch_mouse(sess, event_type="mouseMoved", x=x, y=y)
-                await sess._internal.client.send(  # noqa: SLF001
+                await sess._internal.client.send_no_wait(  # noqa: SLF001
                     "Input.dispatchMouseEvent",
                     {
                         "type": "mouseWheel",
@@ -414,7 +416,7 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         h = int(msg.get("height") or 0)
         if w > 0 and h > 0:
             with contextlib.suppress(Exception):
-                await sess._internal.client.send(  # noqa: SLF001
+                await sess._internal.client.send_no_wait(  # noqa: SLF001
                     "Emulation.setDeviceMetricsOverride",
                     {
                         "width": w,
