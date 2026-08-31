@@ -370,6 +370,9 @@ func main() {
 		Frameless:            true,
 		AllowSimpleEventEmit: true,
 		BackgroundColour:     application.NewRGB(247, 248, 250),
+		Mac: application.MacWindow{
+			InvisibleTitleBarHeight: 32,
+		},
 	})
 	api.window = win
 	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {

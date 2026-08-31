@@ -66,7 +66,7 @@ fnos/
 1. **发版链路**：`v*` tag → `release.yml`（PyPI + GitHub Release）与 `docker-publish.yml`（GHCR / Hub）并行；Release 成功后自动 `workflow_dispatch` 本工作流。
 2. **镜像复用**：不再重新 build 镜像；`ensure-image` 轮询等待 `ghcr.io/tencentcloud/octop:{version}`（由 docker-publish 推送）。Docker 版 `.fpk` 仅打包 compose，运行时拉取该镜像。
 3. **Wheel 复用**：Native 版优先从同版本 GitHub Release（`v*`）下载 `octop-*.whl`；若缺失再回退源码构建前端 + wheel。
-4. **安装包构建**：`fpk` / `native` job 用 `scripts/build-fpk.sh` 打包，并以滚动发布 `fnos-vanilla-latest` 提供下载。
+4. **安装包构建**：`fpk` / `native` job 用 `scripts/build-fpk.sh` 打包，产物按版本号发布为 `Octop-fnos-docker-<ver>.fpk` / `Octop-fnos-native-<ver>.fpk`（Release tag `fnos-<ver>`）。
 
 ## 本地构建 .fpk（无需 Docker）
 
