@@ -345,6 +345,9 @@ func main() {
 		Frameless:            true,
 		AllowSimpleEventEmit: true,
 		BackgroundColour:     application.NewRGB(247, 248, 250),
+		Mac: application.MacWindow{
+			InvisibleTitleBarHeight: 32,
+		},
 	})
 	api.window = win
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
