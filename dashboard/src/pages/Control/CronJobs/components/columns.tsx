@@ -44,7 +44,7 @@ export const createColumns = (
       title: handlers.t("cronJobs.col.id"),
       dataIndex: "id",
       key: "id",
-      width: 120,
+      width: 118,
       fixed: sticky ? "left" : undefined,
       ellipsis: true,
       onHeaderCell: () => ({ style: { paddingLeft: 28 } }),
@@ -112,11 +112,32 @@ export const createColumns = (
       },
     },
     {
+      title: handlers.t("cronJobs.col.name"),
+      dataIndex: "name",
+      key: "name",
+      width: 180,
+      fixed: sticky ? "left" : undefined,
+      ellipsis: true,
+      render: (name: string, record: CronJob) => {
+        const text = name?.trim() || record.id;
+        return (
+          <Tooltip title={text}>
+            <button
+              type="button"
+              className={styles.nameCellButton}
+              onClick={() => handlers.onDetail(record)}
+            >
+              {text}
+            </button>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: handlers.t("common.enabled"),
       dataIndex: "enabled",
       key: "enabled",
       width: 100,
-      fixed: sticky ? "left" : undefined,
       render: (enabled: boolean) => (
         <span
           style={{
@@ -155,6 +176,7 @@ export const createColumns = (
     {
       title: handlers.t("cronJobs.col.taskType"),
       key: "task_type",
+      width: 180,
       render: (_: unknown, record: CronJob) => {
         const taskType = record.task_type === "text" ? "text" : "agent";
         return (
@@ -169,7 +191,7 @@ export const createColumns = (
     {
       title: handlers.t("cronJobs.col.prompt"),
       key: "prompt",
-      width: 200,
+      width: 240,
       ellipsis: true,
       render: (_: unknown, record: CronJob) => {
         const content = extractPromptFromJob(record);
@@ -252,8 +274,9 @@ export const createColumns = (
     {
       title: handlers.t("cronJobs.action"),
       key: "action",
-      width: 200,
+      width: 220,
       fixed: sticky ? "right" : undefined,
+      className: styles.actionCell,
       render: (_: unknown, record: CronJob) => {
         const menuItems: MenuProps["items"] = [
           {
@@ -272,7 +295,7 @@ export const createColumns = (
         ];
 
         return (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className={styles.tableActionGroup}>
             <Button
               type="link"
               size="small"

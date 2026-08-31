@@ -1,14 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Button,
-  Card,
-  Empty,
-  Form,
-  Segmented,
-  Spin,
-  Table,
-  Tooltip,
-} from "antd";
+import { Button, Card, Empty, Form, Segmented, Spin, Tooltip } from "antd";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import type { CronJobSpecOutput } from "../../../api/types";
 import { useTranslation } from "react-i18next";
@@ -26,6 +17,7 @@ import type { CronJobFormValues } from "./useCronJobs";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
+import { ResizableTable } from "../../../components/ResizableTable";
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
 import styles from "./index.module.less";
@@ -349,13 +341,16 @@ function CronJobsPage() {
               ))}
             </div>
           ) : (
-            <Table
+            <ResizableTable
               className={styles.cronTable}
               columns={columns}
               dataSource={jobs}
               rowKey="id"
               size="middle"
-              scroll={{ x: 1300 }}
+              tableLayout="fixed"
+              scroll={{ x: 1562 }}
+              storageKey="cron-jobs-table-widths"
+              minWidth={72}
               pagination={{
                 pageSize: 10,
                 showSizeChanger: false,

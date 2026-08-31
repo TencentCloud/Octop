@@ -17,6 +17,7 @@ type CronJob = CronJobSpecOutput;
 /** Octop-aligned form values for create / edit drawer. */
 export interface CronJobFormValues {
   id?: string;
+  name: string;
   enabled: boolean;
   schedule: {
     type: "cron";
@@ -48,7 +49,7 @@ function fromOctop(row: OctopCronRow, timezone: string): CronJob {
 
   return {
     id: row.id,
-    name: promptLabel(row.prompt, row.id),
+    name: row.name?.trim() || promptLabel(row.prompt, row.id),
     enabled: row.enabled,
     schedule: {
       type: "cron",
@@ -111,6 +112,7 @@ export function jobToFormValues(
   const matchedPreset = cronToPreset(cronExpr);
   return {
     id: job.id,
+    name: job.name || "",
     enabled: Boolean(job.enabled),
     schedule: {
       type: "cron",
@@ -147,11 +149,13 @@ function resolveCronExpression(values: CronJobFormValues): string {
 
 function toOctopCreateBody(values: CronJobFormValues) {
   return {
+    name: (values.name || "").trim(),
     trigger: resolveCronExpression(values),
     prompt: values.prompt.trim(),
     task_type: values.task_type,
     session_key: values.fresh_thread ? null : values.session_key || null,
     fresh_thread: Boolean(values.fresh_thread),
+    enabled: Boolean(values.enabled),
     model: defaultModelFromForm(values.model),
     mcp_servers: values.mcp_servers ?? [],
   };
@@ -339,6 +343,7 @@ export function useCronJobs() {
     const original = jobs.find((j) => j.id === jobId);
     const optimistic = {
       ...original,
+      name: (values.name || "").trim(),
       enabled: values.enabled,
       task_type: values.task_type,
       model: values.model ?? undefined,

@@ -11,6 +11,7 @@ from pydantic import Field
 
 from octop.infra.cron.manager import CronCreateSpec
 from octop.infra.cron.task_type import (
+    require_cron_name,
     require_cron_prompt,
     require_cron_task_type,
 )
@@ -117,6 +118,10 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
                 ),
             ),
         ],
+        name: Annotated[
+            str | None,
+            Field(description="Optional display name for this cron job."),
+        ] = None,
         fresh_thread: Annotated[
             bool,
             Field(description="If true, reset conversation context before each agent run."),
@@ -132,12 +137,15 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
     ) -> str:
         try:
             agent_id, user_id, session_key = _tool_ctx()
+            cron_id = new_cron_id()
+            cleaned_prompt = require_cron_prompt(prompt)
             spec = CronCreateSpec(
-                cron_id=new_cron_id(),
+                cron_id=cron_id,
                 agent_id=agent_id,
                 user_id=user_id,
+                name=require_cron_name(name, prompt=cleaned_prompt, cron_id=cron_id),
                 trigger=trigger,
-                prompt=require_cron_prompt(prompt),
+                prompt=cleaned_prompt,
                 fresh_thread=fresh_thread,
                 session_key=session_key,
                 enabled=enabled,
@@ -150,6 +158,7 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
 
     async def cronjob_update(
         cron_id: str,
+        name: Annotated[str | None, Field(description="New display name.")] = None,
         trigger: Annotated[str | None, Field(description=f"New schedule. {_TRIGGER_HELP}")] = None,
         prompt: Annotated[
             str | None,
@@ -161,11 +170,21 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
     ) -> str:
         try:
             agent_id, user_id, _session_key = _tool_ctx()
-            _get_owned(mgr, cron_id, agent_id, user_id)
+            existing = _get_owned(mgr, cron_id, agent_id, user_id)
+            cleaned_prompt = require_cron_prompt(prompt) if prompt is not None else None
             row = await mgr.update(
                 cron_id,
+                name=(
+                    require_cron_name(
+                        name,
+                        prompt=cleaned_prompt or existing.prompt,
+                        cron_id=cron_id,
+                    )
+                    if name is not None
+                    else None
+                ),
                 trigger=trigger,
-                prompt=require_cron_prompt(prompt) if prompt is not None else None,
+                prompt=cleaned_prompt,
                 fresh_thread=fresh_thread,
                 enabled=int(enabled) if enabled is not None else None,
                 task_type=require_cron_task_type(task_type) if task_type is not None else None,
