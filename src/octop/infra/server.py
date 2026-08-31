@@ -274,6 +274,7 @@ class OctopServer:
             config_repo=self.services.repos.proactive_care_config_repo,
             session_repo=self.services.repos.session_repo,
         )
+        registry.set_proactive_scheduler(proactive_scheduler)
 
         await registry.boot()
         await gateway.refresh_media_backends()
