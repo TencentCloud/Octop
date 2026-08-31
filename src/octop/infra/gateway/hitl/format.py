@@ -17,7 +17,7 @@ ASK_USER_TOOL_NAME = "ask_user_question"
 _OPTION_KEYS = string.ascii_lowercase
 
 # `1`, `a`, `1,3`, `a c`, `b、d` — a pure selection reply.
-_SELECTION_RE = re.compile(r"^[0-9a-z]+(?:\s*[,，、/\s]\s*[0-9a-z]+)*$")
+_SELECTION_RE = re.compile(r"^[0-9a-z]+(?:[,，、/\s]+[0-9a-z]+)*$")
 
 
 def parse_action_requests(raw: dict[str, Any]) -> list[dict[str, Any]]:

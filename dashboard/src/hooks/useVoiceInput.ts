@@ -130,7 +130,12 @@ async function transcribeWithBrowser(language: string): Promise<string> {
     rec.onend = () => {
       const text = (finalText || interimText).trim();
       settle(() => {
-        if (!text && lastError && lastError !== "no-speech" && lastError !== "aborted") {
+        if (
+          !text &&
+          lastError &&
+          lastError !== "no-speech" &&
+          lastError !== "aborted"
+        ) {
           reject(new Error(`browser STT failed: ${lastError}`));
           return;
         }

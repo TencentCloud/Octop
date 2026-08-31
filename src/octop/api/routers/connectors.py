@@ -1216,7 +1216,7 @@ async def oauth_callback(
             pending_payload["server_name"] = server_name
             pending_payload["applied"] = True
         except Exception as exc:
-            logger.exception("custom MCP oauth apply failed for %s", server_name)
+            logger.exception("custom MCP oauth apply failed")
             return _oauth_callback_html(
                 request,
                 "callback_save_failed",
