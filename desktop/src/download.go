@@ -34,11 +34,15 @@ func pythonExe(root string) string {
 
 func ensurePortable(status func(string)) error {
 	root := portableDir()
-	if launchReady(root) {
-		status("正在使用已有运行环境…")
+	if launchReady(root) && !portableNeedsReplace(root) {
+		status("正在加载运行环境…")
 		return nil
 	}
-	status("首次启动，正在解压内置运行环境…")
+	if launchReady(root) {
+		status("正在升级运行环境…")
+	} else {
+		status("正在准备运行环境…")
+	}
 	if err := extractPortable(root); err != nil {
 		return err
 	}
@@ -67,6 +71,69 @@ func extractPortable(root string) error {
 		return err
 	}
 	return unzipGreen(zipPath, root)
+}
+
+func portableNeedsReplace(root string) bool {
+	bundled := bundledVERSION()
+	if len(bundled) == 0 {
+		return false
+	}
+	local, err := os.ReadFile(filepath.Join(root, "VERSION.txt"))
+	if err != nil {
+		return true
+	}
+	return !bytes.Equal(bytes.TrimSpace(local), bytes.TrimSpace(bundled))
+}
+
+func bundledVERSION() []byte {
+	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") != "" {
+		path, err := bundledPortableZip()
+		if err != nil {
+			return nil
+		}
+		return zipPathVERSION(path)
+	}
+	if len(embeddedPortable) > 0 {
+		r, err := zip.NewReader(bytes.NewReader(embeddedPortable), int64(len(embeddedPortable)))
+		if err != nil {
+			return nil
+		}
+		return zipFilesVERSION(r.File)
+	}
+	path, err := bundledPortableZip()
+	if err != nil {
+		return nil
+	}
+	return zipPathVERSION(path)
+}
+
+func zipPathVERSION(zipPath string) []byte {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+	return zipFilesVERSION(r.File)
+}
+
+func zipFilesVERSION(files []*zip.File) []byte {
+	for _, f := range files {
+		parts := strings.SplitN(f.Name, "/", 2)
+		if len(parts) < 2 || parts[1] != "VERSION.txt" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil
+		}
+		return data
+	}
+	return nil
 }
 
 func bundledPortableZip() (string, error) {
