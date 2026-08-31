@@ -108,6 +108,16 @@ def clip_thread_title(title: str, *, max_len: int = 40) -> str:
     return f"{text[: max_len - 1].rstrip()}…"
 
 
+def is_auto_thread_title(stored: str | None, user_source: str) -> bool:
+    """True when the stored title still matches the clipped first user message."""
+    auto = clip_thread_title(user_source)
+    if not auto:
+        return stored is None or not str(stored or "").strip()
+    if stored is None:
+        return True
+    return str(stored) == auto
+
+
 def repair_legacy_thread_title(title: str | None, *, max_len: int = 40) -> str | None:
     """Rewrite hard-cut titles that hit the cap without an ellipsis.
 
@@ -246,6 +256,31 @@ class ThreadRepo:
                 "UPDATE threads SET title = ? WHERE thread_id = ?",
                 (clip_thread_title(title), thread_id),
             )
+
+    def replace_auto_thread_title(
+        self,
+        thread_id: str,
+        user_source: str,
+        new_title: str,
+    ) -> bool:
+        """Replace a title only if it is still the auto-clipped first user message."""
+        clipped = clip_thread_title(new_title)
+        if not clipped:
+            return False
+        auto = clip_thread_title(user_source)
+        with self._db.transaction() as conn:
+            if auto:
+                cur = conn.execute(
+                    "UPDATE threads SET title = ? "
+                    "WHERE thread_id = ? AND (title IS NULL OR title = ?)",
+                    (clipped, thread_id, auto),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE threads SET title = ? WHERE thread_id = ? AND title IS NULL",
+                    (clipped, thread_id),
+                )
+        return bool(cur.rowcount)
 
     def set_pinned(self, thread_id: str, pinned: bool) -> None:
         with self._db.transaction() as conn:

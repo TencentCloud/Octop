@@ -20,6 +20,7 @@ import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import SessionChannelIcon from "./SessionChannelIcon";
+import { SessionRowTitle } from "./SessionRowTitle";
 import styles from "../index.module.less";
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -79,6 +80,7 @@ const SessionItem = memo(function SessionItem({
 }: SessionItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
+  const [rowHovered, setRowHovered] = useState(false);
   const [editValue, setEditValue] = useState(session.name);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -165,6 +167,8 @@ const SessionItem = memo(function SessionItem({
       className={`${styles.sessionRow} ${
         isActive ? styles.sessionRowActive : ""
       } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      onMouseEnter={() => !isEditing && setRowHovered(true)}
+      onMouseLeave={() => setRowHovered(false)}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}
@@ -197,7 +201,11 @@ const SessionItem = memo(function SessionItem({
         />
       ) : (
         <>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
+          <SessionRowTitle
+            text={session.name}
+            className={styles.sessionRowTitle}
+            hovered={rowHovered}
+          />
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}

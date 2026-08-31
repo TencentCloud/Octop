@@ -19,6 +19,8 @@ from harness_gateway.models import (
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
+from octop.infra.db.repos.thread_messages import ThreadMessageInput
+from octop.infra.db.repos.threads import is_auto_thread_title
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
     HitlChannelCoordinator,
@@ -53,6 +55,12 @@ from octop.infra.gateway.process.stream_project import (
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
+from octop.infra.gateway.title_distill import (
+    TitleDistillQueue,
+    distill_thread_title,
+    first_turn_snippet_for_title,
+    snippet_from_tracker,
+)
 from octop.infra.knowledge.default_open import merge_knowledge_base_ids
 from octop.infra.knowledge.hint import catalog_for_selected_bases
 from octop.infra.users.preferences import (
@@ -107,6 +115,7 @@ class GlobalProcessor:
         thread_message_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
+        title_distill: TitleDistillQueue | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -128,6 +137,7 @@ class GlobalProcessor:
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
+        self._title_distill = title_distill or TitleDistillQueue()
 
     @property
     def hitl_coordinator(self) -> HitlChannelCoordinator:
@@ -424,6 +434,11 @@ class GlobalProcessor:
                             usage=usage_tracker.usage,
                         )
                     self._record_turn_history(ask_record.thread_id, history_tracker)
+                    self._schedule_title_distill(
+                        thread_id=ask_record.thread_id,
+                        agent_id=agent_id,
+                        tracker=history_tracker,
+                    )
                 yield MessageEvent.completed()
                 return
 
@@ -554,6 +569,11 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 self._record_turn_history(thread_id, history_tracker)
+                self._schedule_title_distill(
+                    thread_id=thread_id,
+                    agent_id=agent_id,
+                    tracker=history_tracker,
+                )
         yield MessageEvent.completed()
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
@@ -697,6 +717,11 @@ class GlobalProcessor:
                 usage=usage_tracker.usage,
             )
             self._record_turn_history(thread_id, history_tracker)
+            self._schedule_title_distill(
+                thread_id=thread_id,
+                agent_id=agent_id,
+                tracker=history_tracker,
+            )
         yield {"type": "done"}
 
     async def iter_hitl_resume_chunks(
@@ -731,6 +756,11 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 self._record_turn_history(thread_id, history_tracker)
+                self._schedule_title_distill(
+                    thread_id=thread_id,
+                    agent_id=agent_id,
+                    tracker=history_tracker,
+                )
 
     async def _build_dashboard_request(
         self,
@@ -947,6 +977,108 @@ class GlobalProcessor:
         self._thread_registry.touch_last_active(thread_id)
         if title_source:
             self._thread_registry.set_title_if_null(thread_id, title_source)
+
+    def _title_distill_snippet(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+    ) -> tuple[str, str] | None:
+        """First-turn user+assistant text; prefer persisted history for retries."""
+        if self._thread_message_repo is not None:
+            try:
+                rows, _ = self._thread_message_repo.page(thread_id, limit=50)
+            except (TypeError, ValueError):
+                rows = []
+            persisted = [
+                ThreadMessageInput(
+                    message_id=row.message_id,
+                    role=row.role,
+                    message_json=row.message_json,
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ]
+            snippet = first_turn_snippet_for_title(persisted)
+            if snippet is not None:
+                return snippet
+        return snippet_from_tracker(tracker)
+
+    async def _try_title_distill_once(
+        self,
+        *,
+        thread_id: str,
+        agent_id: str,
+        user_source: str,
+        user_text: str,
+        assistant_text: str,
+    ) -> bool:
+        """Run one distill attempt. True when done (applied or title no longer auto)."""
+        row = self._thread_registry.get_thread(thread_id)
+        if row is None or not is_auto_thread_title(row.title, user_source):
+            return True
+        try:
+            harness = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "skip title distill for thread=%s agent=%s (not running)",
+                thread_id,
+                agent_id,
+                exc_info=True,
+            )
+            return False
+        model_ref = harness.config.pick_default_model_ref()
+        llm = harness.model_factory.get(model_ref)
+        distilled = await distill_thread_title(
+            llm,
+            user_text=user_text,
+            assistant_text=assistant_text,
+        )
+        if not distilled:
+            distilled = await distill_thread_title(
+                llm,
+                user_text=user_text,
+                assistant_text=assistant_text,
+                timeout=60.0,
+            )
+        if not distilled:
+            return False
+        if self._thread_registry.replace_auto_thread_title(thread_id, user_source, distilled):
+            return True
+        row = self._thread_registry.get_thread(thread_id)
+        return row is None or not is_auto_thread_title(row.title, user_source)
+
+    def _schedule_title_distill(
+        self,
+        *,
+        thread_id: str,
+        agent_id: str,
+        tracker: TurnHistoryTracker,
+    ) -> None:
+        snippet = self._title_distill_snippet(thread_id, tracker)
+        if snippet is None:
+            return
+        user_text, assistant_text = snippet
+        source = user_text.strip()
+        if not source:
+            return
+        row = self._thread_registry.get_thread(thread_id)
+        if row is None or not is_auto_thread_title(row.title, source):
+            return
+
+        async def work() -> None:
+            try:
+                await self._try_title_distill_once(
+                    thread_id=thread_id,
+                    agent_id=agent_id,
+                    user_source=source,
+                    user_text=user_text,
+                    assistant_text=assistant_text,
+                )
+            except Exception:
+                logger.exception("thread title distill failed: %s", thread_id)
+
+        if not self._title_distill.enqueue(thread_id, work):
+            logger.warning("title distill queue full; skipped for %s", thread_id)
 
     def _record_turn_usage(
         self,

@@ -17,9 +17,16 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { isAgentChatReady } from "../../../utils/agentError";
-import { sortSessions, toSession, type Session } from "../hooks/useSessions";
+import {
+  sortSessions,
+  toSession,
+  type Session,
+  scheduleSessionTitleRefresh,
+  TITLE_REFRESH_DELAYS_MS,
+} from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
-import { onSessionEvent } from "../hooks/chatStore";
+import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
+import { SessionRowTitle } from "./SessionRowTitle";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -101,6 +108,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
 }) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
+  const [rowHovered, setRowHovered] = useState(false);
   const [editValue, setEditValue] = useState(session.name);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -187,6 +195,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       className={`${styles.sessionRow} ${styles.sessionRowCompact} ${
         isActive ? styles.sessionRowActive : ""
       } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      onMouseEnter={() => !isEditing && setRowHovered(true)}
+      onMouseLeave={() => setRowHovered(false)}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}
@@ -214,7 +224,11 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
         />
       ) : (
         <>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
+          <SessionRowTitle
+            text={session.name}
+            className={styles.sessionRowTitle}
+            hovered={rowHovered}
+          />
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -366,6 +380,39 @@ export default function MinimalAgentSessionNav({
       ),
     }));
   }, [activeAgentId, activeSessions]);
+
+  const refreshAgentPreview = useCallback(async (agentId: string) => {
+    if (!agentId) return;
+    try {
+      const rows = await octopThreadsApi.list(
+        agentId,
+        MINIMAL_AGENT_SESSION_PREVIEW,
+      );
+      setByAgent((prev) => ({
+        ...prev,
+        [agentId]: sortSessions(rows.map(toSession)).slice(
+          0,
+          MINIMAL_AGENT_SESSION_PREVIEW,
+        ),
+      }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Distilled titles arrive async (often 30–60s); refetch preview list after each turn.
+  useEffect(() => {
+    if (!activeAgentId) return;
+    return onStreamEvent((event) => {
+      if (event.kind !== "streamEnd") return;
+      scheduleSessionTitleRefresh(activeAgentId, event.sessionId);
+      for (const delay of TITLE_REFRESH_DELAYS_MS) {
+        window.setTimeout(() => {
+          void refreshAgentPreview(activeAgentId);
+        }, delay);
+      }
+    });
+  }, [activeAgentId, refreshAgentPreview]);
 
   useEffect(() => {
     return onSessionEvent((event) => {
