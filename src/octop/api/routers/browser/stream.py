@@ -150,6 +150,37 @@ async def _stream_loop(
         await asyncio.sleep(_FRAME_INTERVAL_S)
 
 
+
+
+def _stream_monitor(ws: WebSocket) -> Any | None:
+    """Locate the BrowserIdleMonitor from the WebSocket's app state."""
+    server = getattr(ws, "app", None)
+    if server is None:
+        return None
+    server = getattr(server, "state", None)
+    if server is None:
+        return None
+    server = getattr(server, "octop_server", None)
+    if server is None:
+        return None
+    rt = getattr(server, "app_runtime", None)
+    return getattr(rt, "browser_idle_monitor", None) if rt is not None else None
+
+
+def _notify_stream_open(ws: WebSocket) -> None:
+    monitor = _stream_monitor(ws)
+    if monitor is not None:
+        with contextlib.suppress(Exception):
+            monitor.notify_stream_open()
+
+
+def _notify_stream_close(ws: WebSocket) -> None:
+    monitor = _stream_monitor(ws)
+    if monitor is not None:
+        with contextlib.suppress(Exception):
+            monitor.notify_stream_close()
+
+
 async def _listen_state_loop(ws: WebSocket, profile: str) -> None:
     """Push session_update events without launching Chrome or capturing frames.
 
@@ -341,6 +372,7 @@ async def browser_stream_ws(
         return
 
     await websocket.accept()
+    _notify_stream_open(websocket)
     sess: Any | None = None
     profile = "default"
     stream_task: asyncio.Task[None] | None = None
@@ -423,6 +455,7 @@ async def browser_stream_ws(
             await _send_json(websocket, {"type": "error", "message": str(exc)})
             await _send_json(websocket, {"type": "status", "status": "error"})
     finally:
+        _notify_stream_close(websocket)
         if stream_task is not None:
             stream_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

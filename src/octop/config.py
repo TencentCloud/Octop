@@ -134,6 +134,9 @@ class OctopConfig:
     backup: BackupConfig = field(default_factory=BackupConfig)
     capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
     max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB
+    # 浏览器闲置回收: 无活跃页面/无 WS 流连接且超过该分钟数后关闭 Chrome
+    # 进程（下次使用自动拉起）。0 = 禁用。
+    browser_idle_timeout_minutes: int = 0
 
     @property
     def max_upload_bytes(self) -> int:
@@ -417,6 +420,10 @@ def load_config(path: Path) -> OctopConfig:
         merged["login_lockout_seconds"] = _coerce_int(
             "OCTOP_LOGIN_LOCKOUT_SECONDS", v, merged.get("login_lockout_seconds", 900)
         )
+    if v := os.environ.get("OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES"):
+        merged["browser_idle_timeout_minutes"] = _coerce_int(
+            "OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES", v, 0
+        )
     if (v := os.environ.get("OCTOP_DEFAULT_TIMEZONE")) or (
         v := os.environ.get("OCTOP_CRON_TIMEZONE")
     ):
@@ -514,4 +521,7 @@ def load_config(path: Path) -> OctopConfig:
         backup=backup,
         capabilities=capabilities,
         max_upload_mb=int(merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)),
+        browser_idle_timeout_minutes=int(
+            merged.get("browser_idle_timeout_minutes", 0)
+        ),
     )

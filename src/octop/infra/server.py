@@ -85,6 +85,7 @@ class AppRuntime:
     cron_manager: CronManager
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
+    browser_idle_monitor: Any = None  # BrowserIdleMonitor | None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
         """Retarget all runtime singletons onto a new SharedServices / config.
@@ -282,12 +283,30 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
+        # 浏览器闲置回收（#485 配套）: 配置 browser_idle_timeout_minutes > 0 时启用
+        browser_idle_monitor = None
+        timeout_minutes = int(config.browser_idle_timeout_minutes or 0)
+        if timeout_minutes > 0:
+            try:
+                from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
+
+                from octop.infra.browser.idle import BrowserIdleMonitor  # noqa: PLC0415
+
+                browser_idle_monitor = BrowserIdleMonitor(
+                    timeout_minutes=timeout_minutes,
+                    profiles_dir=Path(hb_settings.profiles_dir),
+                )
+                browser_idle_monitor.start()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("browser idle monitor not started: %s", exc)
+
         self.app_runtime = AppRuntime(
             agent_registry=registry,
             gateway=gateway,
             cron_manager=cron_mgr,
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
+            browser_idle_monitor=browser_idle_monitor,
         )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 
@@ -329,6 +348,8 @@ class OctopServer:
         try:
             if self.app_runtime is not None:
                 rt = self.app_runtime
+                if rt.browser_idle_monitor is not None:
+                    await rt.browser_idle_monitor.shutdown()
                 await rt.proactive_scheduler.shutdown()
                 await rt.cron_manager.shutdown()
                 await rt.gateway.shutdown()

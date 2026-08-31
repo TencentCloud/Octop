@@ -108,6 +108,11 @@ async def resolve_harness_session(
         if cached is None:
             continue
         if await _is_session_alive(cached):
+            # 仅真实使用（create=True，如打开面板/发起浏览器操作）刷新 idle 计时；
+            # create=False 是 dashboard 状态轮询（listen_state_loop 每 2s 一次），
+            # 打点会导致浏览器永不回收。
+            if create:
+                _notify_browser_activity(server)
             return cached
         logger.warning(
             "harness session %r is dead (stale CDP connection); discarding%s",
@@ -202,7 +207,19 @@ async def resolve_harness_session(
                 status=503,
             ) from exc
     _registry[profile] = sess
+    _notify_browser_activity(server)
     return sess
+
+
+def _notify_browser_activity(server: Any | None) -> None:
+    """刷新浏览器闲置计时（#485 idle monitor 打点）。"""
+    if server is None:
+        return
+    rt = getattr(server, "app_runtime", None)
+    monitor = getattr(rt, "browser_idle_monitor", None) if rt is not None else None
+    if monitor is not None:
+        with contextlib.suppress(Exception):
+            monitor.notify_activity()
 
 
 async def harness_page_url(sess: Any) -> str:
