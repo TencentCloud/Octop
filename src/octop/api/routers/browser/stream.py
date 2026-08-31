@@ -55,7 +55,7 @@ router = APIRouter()
 _FRAME_INTERVAL_S = 0.25  # ~4 fps (poll fallback only)
 # screencast is event-driven; the frame rate follows page changes. This is just
 # an upper throttle so scrolling/animations do not flood the WS and the client.
-_SCREENCAST_MIN_INTERVAL_S = 0.05  # ~20fps cap
+_SCREENCAST_MIN_INTERVAL_S = 0.033  # ~30fps cap
 # Registered screencast listeners keyed by CDP client id, so the old listener
 # can be detached after a tab switch replaces the client.
 _screencast_handlers: dict[int, Any] = {}
