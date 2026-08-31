@@ -200,7 +200,20 @@ class BrowserIdleMonitor:
                 timeout=5,
                 check=False,
             ).stdout
-            dirs = {Path(d) for d in re.findall(r"user-data-dir=([^\s]+)", out)}
+            # Only kill Chrome instances backed by harness-managed profiles
+            # (Octop relocates them under /tmp/harness-browser-profiles-* or
+            # ~/.octop/browser-profiles) -- never user-launched browsers such
+            # as a dedicated workstation instance.
+            markers = (
+                "harness-browser-profiles",
+                ".octop/browser-profiles",
+                ".harness-browser/profiles",
+            )
+            dirs = {
+                Path(d)
+                for d in re.findall(r"user-data-dir=([^\s]+)", out)
+                if any(m in d for m in markers)
+            }
             for d in dirs:
                 await asyncio.to_thread(pkill_chrome_profile, d)
                 await asyncio.to_thread(clear_profile_locks, d)
