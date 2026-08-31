@@ -1106,7 +1106,7 @@ export default function RemoteAndroidPage({
           )}
           description={t(
             "remoteAndroid.needsInstallDesc",
-            "此主机使用容器 Android 后端。可一键拉取并启动容器（需本机已安装 Docker）。",
+            "此主机使用容器 Android 后端。可一键拉取并启动容器；若未安装 Docker 将自动尝试安装（失败时需手动安装）。",
           )}
           action={
             <Button
