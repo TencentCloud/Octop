@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
@@ -31,11 +31,21 @@ function AssistantProcessSummary({
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(isStreaming);
+  const prevStreaming = useRef(isStreaming);
   const { toolCount, thinkingCount } = useMemo(
     () => countProcessStats(statsSplit ?? split),
     [statsSplit, split],
   );
+
+  // Follow the stream: expand while generating, collapse once the turn ends.
+  // Manual toggles hold until the next streaming transition; history renders
+  // with isStreaming=false and therefore stays collapsed.
+  useEffect(() => {
+    if (prevStreaming.current === isStreaming) return;
+    prevStreaming.current = isStreaming;
+    setExpanded(isStreaming);
+  }, [isStreaming]);
 
   if (toolCount === 0 && thinkingCount === 0) return null;
 
