@@ -313,7 +313,7 @@ def test_pkill_chrome_profile_accepts_resolved_path(monkeypatch: pytest.MonkeyPa
 
 
 def test_feishu_bot_creator_start_without_pkill_mock(mock_server_and_user):
-    """feishu/bot-creator/start must pass profile_dir validation before pkill."""
+    """feishu/bot-creator/start launches the scan-to-create subprocess."""
     server, user = mock_server_and_user
 
     mock_proc = MagicMock()
@@ -353,7 +353,6 @@ def test_feishu_bot_creator_start_returns_pid(mock_server_and_user):
             "octop.api.routers.channels._bot_creator_script",
             return_value="/fake/feishu_bot_creator.py",
         ),
-        patch("octop.api.routers.channels._pkill_chrome_profile", new_callable=AsyncMock),
         patch("octop.api.routers.channels.asyncio.to_thread", new_callable=AsyncMock),
     ):
         app = _make_app(server, user)

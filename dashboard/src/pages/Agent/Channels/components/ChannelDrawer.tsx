@@ -122,7 +122,7 @@ type QrPhase =
     }
   | { phase: "dingtalk_success"; channelId: string }
   | { phase: "feishu_creating"; message: string }
-  | { phase: "feishu_qr"; qrToken: string }
+  | { phase: "feishu_qr"; qrUrl: string }
   | { phase: "feishu_progress"; message: string }
   | {
       phase: "feishu_done";
@@ -710,7 +710,7 @@ export function ChannelDrawer({
     async (platform: "feishu" | "lark" = "feishu") => {
       setQrState({
         phase: "feishu_creating",
-        message: "启动飞书机器人创建流程...",
+        message: t("channels.feishuCreating"),
       });
       try {
         await channelApi.feishuBotCreatorStart(agentId, { platform });
@@ -724,34 +724,11 @@ export function ChannelDrawer({
       const timer = setInterval(async () => {
         try {
           const poll = await channelApi.feishuBotCreatorPoll(agentId);
-          let enteredProgress = false;
-          for (const ev of poll.events) {
-            if (
-              ev.action === "progress" &&
-              ev.message !== "Waiting for scan..."
-            ) {
-              enteredProgress = true;
-              setQrState({ phase: "feishu_progress", message: ev.message });
-            }
-            if (
-              ev.action === "log" &&
-              ev.step === "login" &&
-              (ev.message.includes("Scanned") || ev.level === "success")
-            ) {
-              enteredProgress = true;
-              setQrState({
-                phase: "feishu_progress",
-                message: ev.message.includes("Scanned")
-                  ? "已扫码，请在手机上确认登录"
-                  : "登录成功，正在自动创建机器人，请稍候…",
-              });
-            }
-          }
-          if (poll.qr_token && !enteredProgress) {
+          if (poll.qr_url) {
             setQrState((prev) =>
-              prev.phase === "feishu_progress"
+              prev.phase === "feishu_progress" || prev.phase === "feishu_done"
                 ? prev
-                : { phase: "feishu_qr", qrToken: poll.qr_token! },
+                : { phase: "feishu_qr", qrUrl: poll.qr_url! },
             );
           }
           if (poll.status === "finished" && poll.app_id && poll.app_secret) {
@@ -774,7 +751,7 @@ export function ChannelDrawer({
             );
             setQrState({
               phase: "error",
-              reason: errEvent?.message ?? "飞书机器人创建失败",
+              reason: errEvent?.message ?? t("channels.feishuCreateFailed"),
             });
           }
         } catch {
@@ -783,7 +760,7 @@ export function ChannelDrawer({
       }, 1500);
       pollTimerRef.current = timer;
     },
-    [agentId, stopPolling],
+    [agentId, stopPolling, t],
   );
 
   // ── YuanBao Flow ────────────────────────────────────────────────────────
@@ -1536,30 +1513,30 @@ export function ChannelDrawer({
       );
     }
     if (s.phase === "feishu_qr") {
-      const qrContent = JSON.stringify({ qrlogin: { token: s.qrToken } });
       return (
         <div className={styles.qrPanel}>
           <div className={styles.qrSteps}>
             <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>打开飞书 App
+              <span className={styles.qrDot}>1</span>
+              {t("channels.feishuQrStep1")}
             </span>
             <span className={styles.qrStepDivider} />
             <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>扫码登录
+              <span className={styles.qrDot}>2</span>
+              {t("channels.feishuQrStep2")}
             </span>
             <span className={styles.qrStepDivider} />
             <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>自动创建机器人
+              <span className={styles.qrDot}>3</span>
+              {t("channels.feishuQrStep3")}
             </span>
           </div>
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
-              <QRCodeSVG value={qrContent} size={200} />
+              <QRCodeSVG value={s.qrUrl} size={200} />
             </div>
           </div>
-          <p className={styles.qrScanHint}>
-            扫码后将自动完成机器人创建和配置（约 1-2 分钟）
-          </p>
+          <p className={styles.qrScanHint}>{t("channels.feishuQrScanHint")}</p>
         </div>
       );
     }
@@ -1578,7 +1555,11 @@ export function ChannelDrawer({
         <div className={styles.qrPanel}>
           <Alert
             type="success"
-            message={`飞书机器人「${s.botName ?? ""}」创建成功`}
+            message={
+              s.botName
+                ? t("channels.feishuCreateSuccessNamed", { name: s.botName })
+                : t("channels.feishuCreateSuccess")
+            }
             style={{ width: "100%", marginBottom: 12 }}
           />
           {s.manageUrl && (
@@ -1588,7 +1569,7 @@ export function ChannelDrawer({
               rel="noopener noreferrer"
               style={{ fontSize: 13, marginBottom: 12, display: "block" }}
             >
-              前往管理后台 →
+              {t("channels.feishuManageBot")}
             </a>
           )}
           {renderQrAutoSaveStatus(retrySave)}
@@ -1603,7 +1584,9 @@ export function ChannelDrawer({
             message={s.reason}
             style={{ width: "100%", marginBottom: 12 }}
           />
-          <Button onClick={() => void startFeishuCreator()}>重试</Button>
+          <Button onClick={() => void startFeishuCreator()}>
+            {t("channels.qrRetry")}
+          </Button>
         </div>
       );
     }
@@ -1612,14 +1595,15 @@ export function ChannelDrawer({
         <div className={styles.quickConfigSteps}>
           <div className={styles.quickConfigStep}>
             <span className={styles.stepNumber}>1</span>
-            点击按钮，启动自动创建流程
+            {t("channels.feishuQrIntro1")}
           </div>
           <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>扫码登录飞书账号
+            <span className={styles.stepNumber}>2</span>
+            {t("channels.feishuQrIntro2")}
           </div>
           <div className={styles.quickConfigStep}>
             <span className={styles.stepNumber}>3</span>
-            自动完成机器人注册和权限配置
+            {t("channels.feishuQrIntro3")}
           </div>
         </div>
         <Button
@@ -1628,7 +1612,7 @@ export function ChannelDrawer({
           block
           onClick={() => void startFeishuCreator("feishu")}
         >
-          一键创建飞书机器人
+          {t("channels.feishuCreateButton")}
         </Button>
       </div>
     );

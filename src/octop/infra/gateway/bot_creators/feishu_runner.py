@@ -12,10 +12,6 @@ from typing import Any
 from octop.infra.utils.subprocess_io import parse_subprocess_json_lines
 
 ALLOWED_PLATFORMS = frozenset({"feishu", "lark"})
-PROFILE_NAMES = {
-    "feishu": "octop-feishu-bot",
-    "lark": "octop-lark-bot",
-}
 
 
 def bot_creator_script(name: str) -> Path:
@@ -28,37 +24,6 @@ def bot_creator_script(name: str) -> Path:
     return script
 
 
-def resolve_profiles_root() -> Path:
-    """Shared Octop profiles root; honor env overrides when present."""
-    raw = (os.environ.get("BROWSER_USE_PROFILES_DIR") or "").strip()
-    if not raw:
-        raw = (os.environ.get("HARNESS_BROWSER_PROFILES_DIR") or "").strip()
-    if raw and len(raw) <= 2048:
-        return Path(raw).expanduser()
-    from octop.infra.utils.browser_media import octop_browser_profiles_dir  # noqa: PLC0415
-
-    return octop_browser_profiles_dir()
-
-
-def feishu_profile_dir(platform: str) -> Path:
-    if platform not in ALLOWED_PLATFORMS:
-        raise ValueError(f"platform must be one of {sorted(ALLOWED_PLATFORMS)}")
-    root = resolve_profiles_root().resolve()
-    profile = (root / PROFILE_NAMES[platform]).resolve()
-    profile.relative_to(root)
-    return profile
-
-
-def clear_profile_locks(profile_dir: Path) -> None:
-    for lock_name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
-        try:
-            (profile_dir / lock_name).unlink()
-        except FileNotFoundError:
-            pass
-        except OSError:
-            pass
-
-
 def start_feishu_creator(
     *,
     platform: str,
@@ -67,7 +32,6 @@ def start_feishu_creator(
 ) -> subprocess.Popen[bytes]:
     if platform not in ALLOWED_PLATFORMS:
         raise ValueError(f"platform must be one of {sorted(ALLOWED_PLATFORMS)}")
-    clear_profile_locks(feishu_profile_dir(platform))
     script_path = bot_creator_script("feishu_bot_creator.py")
     cmd = [sys.executable, str(script_path), "create", "--platform", platform]
     if avatar_url:
@@ -84,25 +48,38 @@ def start_feishu_creator(
     )
 
 
+def _qr_url_from_event(ev: dict[str, Any]) -> str | None:
+    content = ev.get("content", "")
+    if isinstance(content, str) and content.startswith("http"):
+        return content
+    try:
+        qr_data = json.loads(content) if isinstance(content, str) else content
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(qr_data, dict):
+        return None
+    url = qr_data.get("url")
+    return str(url) if url else None
+
+
 def extract_feishu_credentials(
     lines: list[dict[str, Any]],
 ) -> tuple[str | None, str | None, str | None]:
-    qr_token = None
+    """Return ``(qr_url, app_id, app_secret)`` from creator stdout events."""
+    qr_url = None
     app_id = None
     app_secret = None
     for ev in lines:
         if ev.get("action") == "show_qrcode":
-            content = ev.get("content", "")
-            try:
-                qr_data = json.loads(content) if isinstance(content, str) else content
-                qr_token = qr_data.get("qrlogin", {}).get("token")
-            except (json.JSONDecodeError, AttributeError):
-                pass
+            parsed = _qr_url_from_event(ev)
+            if parsed:
+                qr_url = parsed
         if ev.get("action") == "finish" and ev.get("level") == "success":
             data = ev.get("data", {})
-            app_id = data.get("app_id")
-            app_secret = data.get("app_secret")
-    return qr_token, app_id, app_secret
+            if isinstance(data, dict):
+                app_id = data.get("app_id")
+                app_secret = data.get("app_secret")
+    return qr_url, app_id, app_secret
 
 
 def poll_feishu_creator(
@@ -127,11 +104,11 @@ def poll_feishu_creator(
     status = "running"
     if finished:
         status = "finished" if return_code == 0 else "failed"
-    qr_token, app_id, app_secret = extract_feishu_credentials(lines)
+    qr_url, app_id, app_secret = extract_feishu_credentials(lines)
     return {
         "status": status,
         "events": new_lines,
-        "qr_token": qr_token,
+        "qr_url": qr_url,
         "app_id": app_id,
         "app_secret": app_secret,
         "return_code": return_code,

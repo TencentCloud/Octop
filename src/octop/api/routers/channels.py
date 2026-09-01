@@ -22,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.gateway.bot_creators.feishu_runner import extract_feishu_credentials
 from octop.infra.gateway.channels import dingtalk_registration, qr_bind
 from octop.infra.gateway.gateway import ChannelKind
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_request_locale
@@ -808,19 +809,6 @@ async def feishu_bot_creator_start(
     if greeting:
         _sanitize_subprocess_arg(greeting, "greeting")
 
-    profile_dir = _safe_profile_directory(target_platform)
-    await _pkill_chrome_profile(profile_dir)
-
-    # Remove stale Chrome singleton lock files
-    for lock_name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
-        lock_path = profile_dir / lock_name
-        try:
-            await asyncio.to_thread(lock_path.unlink)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            logger.warning("Failed to remove stale %s: %s", lock_name, exc)
-
     script_path = _bot_creator_script("feishu_bot_creator.py")
 
     cmd = [sys.executable, script_path, "create", "--platform", target_platform]
@@ -888,26 +876,12 @@ async def feishu_bot_creator_poll(
         if finished:
             status = "finished" if return_code == 0 else "failed"
 
-        qr_token = None
-        app_id = None
-        app_secret = None
-        for ev in state["lines"]:
-            if ev.get("action") == "show_qrcode":
-                content = ev.get("content", "")
-                try:
-                    qr_data = json.loads(content) if isinstance(content, str) else content
-                    qr_token = qr_data.get("qrlogin", {}).get("token")
-                except (json.JSONDecodeError, AttributeError):
-                    pass
-            if ev.get("action") == "finish" and ev.get("level") == "success":
-                data = ev.get("data", {})
-                app_id = data.get("app_id")
-                app_secret = data.get("app_secret")
+        qr_url, app_id, app_secret = extract_feishu_credentials(state["lines"])
 
         return {
             "status": status,
             "events": new_lines,
-            "qr_token": qr_token,
+            "qr_url": qr_url,
             "app_id": app_id,
             "app_secret": app_secret,
             "return_code": return_code,
