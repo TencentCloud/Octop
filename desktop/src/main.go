@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"time"
 
@@ -149,9 +150,13 @@ func (a *App) setStatus(msg string) {
 }
 
 func (a *App) boot() {
+	locale := LocaleZH
+	if a.store != nil {
+		locale = a.store.get().Locale
+	}
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
-		a.setStatus("正在连接 Octop…")
-		if err := waitHealth(url, 60*time.Second); err != nil {
+		a.setStatus(desktopText(locale, "正在连接 Octop…", "Connecting to Octop…"))
+		if err := waitHealth(locale, url, 60*time.Second); err != nil {
 			a.setStatus(err.Error())
 			return
 		}
@@ -159,8 +164,8 @@ func (a *App) boot() {
 		return
 	}
 	s := a.store.get()
-	a.setStatus("正在检查运行环境…")
-	if err := ensurePortable(a.setStatus); err != nil {
+	a.setStatus(desktopText(locale, "正在检查运行环境…", "Checking the runtime…"))
+	if err := ensurePortable(locale, a.setStatus); err != nil {
 		a.setStatus(err.Error())
 		return
 	}
@@ -175,8 +180,8 @@ func (a *App) boot() {
 		return
 	}
 	base := dashboardURL(s.Port)
-	a.setStatus("正在启动 Octop 服务…")
-	if err := waitHealth(base, 2*time.Minute); err != nil {
+	a.setStatus(desktopText(locale, "正在启动 Octop 服务…", "Starting the Octop service…"))
+	if err := waitHealth(locale, base, 2*time.Minute); err != nil {
 		a.setStatus(err.Error())
 		return
 	}
@@ -194,7 +199,7 @@ func (a *App) showDashboard(base string) {
 		time.Sleep(800 * time.Millisecond)
 		a.applyDashboardPrefs(s)
 	}()
-	a.setStatus("Octop 已就绪")
+	a.setStatus(desktopText(s.Locale, "Octop 已就绪", "Octop is ready"))
 }
 
 func (a *App) hideToTray() {
@@ -331,8 +336,8 @@ func main() {
 	win.OnWindowEvent(events.Linux.WindowLoadFinished, installDragOverlay)
 	settingsWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Octop 设置",
-		Width:            400,
-		Height:           500,
+		Width:            settingsWindowWidth,
+		Height:           settingsWindowHeight,
 		URL:              "/?settings=1",
 		Hidden:           true,
 		Frameless:        true,
@@ -376,8 +381,13 @@ func main() {
 	applyTrayIcon(tray)
 	tray.SetTooltip("Octop")
 	tray.AttachWindow(settingsWin).WindowOffset(6)
-	tray.OnClick(func() { api.onTrayLeftClick() })
-	tray.OnRightClick(func() { tray.ShowWindow() })
+	showSettings := func() { tray.ShowWindow() }
+	if trayLeftClickShowsSettings(runtime.GOOS) {
+		tray.OnClick(showSettings)
+	} else {
+		tray.OnClick(func() { api.onTrayLeftClick() })
+	}
+	tray.OnRightClick(showSettings)
 
 	if _, err := api.setAutostart(store.get().Autostart); err != nil {
 		log.Printf("sync autostart: %v", err)

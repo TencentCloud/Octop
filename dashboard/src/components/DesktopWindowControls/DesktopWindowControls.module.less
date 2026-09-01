@@ -30,6 +30,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 0;
 
   &:focus-visible {
     outline: 2px solid currentColor;
@@ -39,11 +40,13 @@
 
 .glyph {
   opacity: 0;
+  display: block;
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
   color: inherit;
   pointer-events: none;
+  transform: translateY(-0.5px);
 }
 
 .mac:hover .glyph {
