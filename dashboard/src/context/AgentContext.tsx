@@ -76,7 +76,7 @@ interface AgentContextValue {
 
 export interface EnabledExpertsOptions {
   /**
-   * When ``true`` (default — kept for API stability), keep the
+   * When ``true`` (opt-in; the default is ``false``), keep the
    * ``resolvedAgentId`` expert in the returned list even if it does not
    * match the predicate. Today every caller passes ``false`` so a disabled
    * expert disappears from the sidebar / @-picker the moment the user stops
