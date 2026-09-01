@@ -550,7 +550,9 @@ class AgentManager:
                 row = self._repos.agent_repo.get(agent_id)
                 assert row is not None
             if spec.template_name:
-                await self._seed_expert_template(row, spec.template_name)
+                seeded = await self._seed_expert_template(row, spec.template_name)
+                if seeded > 0:
+                    self._mark_template_bootstrapped(row)
             if defer_bootstrap:
                 self._repos.agent_repo.set_state(agent_id, "starting")
                 asyncio.create_task(
@@ -2130,15 +2132,39 @@ class AgentManager:
             system_files_path=system_files_path_from_config(cfg),
         )
 
-    async def _seed_expert_template(self, row: AgentRow, template_name: str) -> None:
-        """Copy bundled expert files into the agent workspace before harness start."""
+    def _mark_template_bootstrapped(self, row: AgentRow) -> None:
+        """Write the bootstrap-completion marker for a template-seeded agent.
+
+        Expert templates carry a predefined persona (``SOUL.md`` / ``IDENTITY.md``
+        under ``prompt_files``). Without the marker, ``BootstrapMiddleware`` would
+        replace the very first system prompt with ``BOOTSTRAP.md`` and the agent
+        would answer "I'm a blank slate" instead of acting as its assigned
+        identity. The marker skips that ritual so identity is present from turn 1.
+
+        A marker write failure is non-fatal: the agent still starts and identity
+        simply loads from the second turn (normal bootstrap path).
+        """
+        try:
+            workspace = self._backend_workspace_for_row(row)
+            workspace.write_text(".bootstrapped", "", force=True)
+        except Exception:
+            logger.exception(
+                "Failed to write bootstrap marker for template agent %s",
+                row.agent_id,
+            )
+
+    async def _seed_expert_template(self, row: AgentRow, template_name: str) -> int:
+        """Copy bundled expert files into the agent workspace before harness start.
+
+        Returns the number of files seeded (``0`` when skipped/failed).
+        """
         if self._expert_catalog is None:
             logger.warning(
                 "Agent %s: template_name=%r set but no expert_catalog configured; skipping",
                 row.agent_id,
                 template_name,
             )
-            return
+            return 0
 
         expert = self._expert_catalog.get(template_name)
         if expert is None:
@@ -2147,7 +2173,7 @@ class AgentManager:
                 row.agent_id,
                 template_name,
             )
-            return
+            return 0
 
         from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
             MANIFEST_FILENAME,
@@ -2156,7 +2182,7 @@ class AgentManager:
 
         expert_dir = self._expert_catalog.expert_dir(template_name)
         if not expert.files and not (expert_dir / MANIFEST_FILENAME).is_file():
-            return
+            return 0
 
         workspace = self._backend_workspace_for_row(row)
         try:
@@ -2172,13 +2198,14 @@ class AgentManager:
                 template_name,
                 exc,
             )
-            return
+            return 0
         logger.info(
             "Agent %s: seeded expert template %r (%d files)",
             row.agent_id,
             template_name,
             count,
         )
+        return count
 
     # ------------------------------------------------------------------
     # Internal — background reload worker
