@@ -14,7 +14,7 @@ from harness_gateway.models import (
     TextContent,
 )
 
-from octop.infra.utils.llm_text import strip_thinking
+from octop.infra.utils.llm_text import is_silent_reply, strip_thinking
 
 ChannelResponseMode = Literal["invoke", "stream"]
 
@@ -37,6 +37,9 @@ async def collapse_to_invoke_response(
     usage tracking, HITL, and tool media extraction. Text emitted before a tool
     call is treated as progress narration and discarded. The remaining final
     text and any generated media are delivered together when the turn completes.
+    A final text ending with a silent-output marker (NO_REPLY / SKIP, see
+    ``is_silent_reply``) suppresses the whole delivery: no MESSAGE event is
+    emitted and generated media is dropped with it.
     """
     text_buffer = ""
     media_buffer: list[ContentPart] = []
@@ -84,6 +87,11 @@ async def collapse_to_invoke_response(
         if event.type == MessageEventType.COMPLETED:
             content: list[ContentPart] = []
             final_text = strip_thinking(text_buffer)
+            if is_silent_reply(final_text):
+                # Model requested silent output: drop the final text and any
+                # generated media so the channel delivers nothing this turn.
+                final_text = ""
+                media_buffer.clear()
             if final_text:
                 content.append(TextContent(text=final_text))
             content.extend(media_buffer)
@@ -102,6 +110,9 @@ def processor_for_response_mode(
 ) -> MessageProcessor:
     """Wrap *processor* with invoke-style delivery when requested."""
     if mode == "stream":
+        # Stream mode intentionally bypasses silent-marker suppression: deltas
+        # are delivered live, so a trailing NO_REPLY/SKIP cannot be withdrawn
+        # and must pass through as plain text.
         return processor
 
     async def _invoke_processor(message: InboundMessage) -> AsyncIterator[MessageEvent]:

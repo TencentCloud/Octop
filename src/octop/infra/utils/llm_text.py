@@ -17,6 +17,17 @@ _THINKING_RE = re.compile(
 _THINKING_OPEN_RE = re.compile(r"<(?:think|thinking)>", re.IGNORECASE)
 _THINKING_CLOSE_RE = re.compile(r"</(?:think|thinking)>", re.IGNORECASE)
 
+SILENT_REPLY_MARKERS: tuple[str, ...] = ("NO_REPLY", "SKIP")
+
+# Silent-output marker must be a standalone trailing word: start of text,
+# whitespace, or sentence punctuation before it; only trailing whitespace /
+# punctuation after it. Loose on purpose — the model is just instructed to end
+# its reply with the marker, e.g. "不用回复。 NO_REPLY" or "好的。SKIP！".
+_SILENT_REPLY_RE = re.compile(
+    r"(?:^|[\s。.、,，!！?？;；])(?:NO_REPLY|SKIP)[\s。.、,，!！?？;；~～)）\]]*$",
+    re.IGNORECASE,
+)
+
 
 def strip_thinking(text: str) -> str:
     """Remove tagged or malformed thinking prefixes from model output.
@@ -41,6 +52,17 @@ def strip_thinking(text: str) -> str:
     if open_match is not None:
         cleaned = cleaned[: open_match.start()]
     return cleaned.strip()
+
+
+def is_silent_reply(text: str) -> bool:
+    """Return True when *text* ends with a silent-output marker.
+
+    Agents can end a reply with ``NO_REPLY`` (or ``SKIP``) to signal that the
+    message must not be forwarded to the session-bound channel. Matching is
+    loose: case-insensitive, marker is the final standalone word, trailing
+    whitespace/punctuation tolerated.
+    """
+    return bool(_SILENT_REPLY_RE.search(text.rstrip()))
 
 
 def llm_text_content(result: Any) -> str:
