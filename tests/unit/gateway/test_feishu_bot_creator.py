@@ -78,11 +78,12 @@ def test_register_feishu_app_maps_sdk_result(monkeypatch: pytest.MonkeyPatch) ->
     assert finish["manage_url"] == "https://open.feishu.cn/app/cli_new"
     assert captured["create_only"] is True
     assert captured["source"] == "octop"
+    assert "name" not in captured["app_preset"]
+    assert "avatar" not in captured["app_preset"]
     assert sent["open_id"] == "ou_1"
     assert sent["greeting"] == "hello"
-    addons = captured["addons"]
-    assert "im:message:send_as_bot" in addons["scopes"]["tenant"]
-    assert addons["events"]["items"]["tenant"] == ["im.message.receive_v1"]
+    # No addons: the scan page skips the extra scope-confirmation step.
+    assert "addons" not in captured
 
 
 def test_cmd_create_denied(
@@ -100,6 +101,13 @@ def test_cmd_create_denied(
     assert payload["action"] == "finish"
     assert payload["level"] == "error"
     assert "denied" in payload["message"].lower()
+
+
+def test_register_feishu_app_rejects_none_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(creator.lark, "register_app", lambda **_kwargs: None)
+    monkeypatch.setattr(creator, "_save_state", lambda _data: None)
+    with pytest.raises(RegisterAppError, match=r"missing_credentials"):
+        creator.register_feishu_app()
 
 
 def test_cmd_create_register_error(

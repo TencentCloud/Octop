@@ -38,8 +38,9 @@ from lark_oapi.scene.registration.errors import (
     RegisterAppError,
 )
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(write_through=True)
+_reconfigure = getattr(sys.stdout, "reconfigure", None)
+if callable(_reconfigure):
+    _reconfigure(write_through=True)
 
 PLATFORM = "feishu"
 
@@ -49,7 +50,6 @@ _PLATFORM_CONFIGS = {
         "accounts_domain": "https://accounts.feishu.cn",
         "lark_domain": "https://accounts.larksuite.com",
         "default_greeting": "Hi，我是你刚刚使用 Octop 创建的飞书机器人，你现在可以跟我聊天了！",
-        "app_name": "Octop机器人-{user}",
         "app_desc": "由 Octop 一键创建的飞书机器人",
         "state_file_prefix": "octop-feishu-bot",
     },
@@ -58,44 +58,13 @@ _PLATFORM_CONFIGS = {
         "accounts_domain": "https://accounts.larksuite.com",
         "lark_domain": "https://accounts.larksuite.com",
         "default_greeting": "Hi, I'm the bot you just created with Octop. You can chat with me now!",
-        "app_name": "Octop Bot-{user}",
         "app_desc": "Lark bot created by Octop",
         "state_file_prefix": "octop-lark-bot",
     },
 }
 
-DEFAULT_AVATAR_URL = "https://cloudcache.tencent-cloud.com/qcloud/ui/static/other_external_resource/4e9ca8c5-0ce4-44a2-8c7c-4f8f43f9e73a.png"
 STATE_DIR = "/tmp"
 MIN_LARK_OAPI = (1, 5, 5)
-
-BOT_SCOPES = [
-    "im:message",
-    "im:message.p2p_msg:readonly",
-    "im:message.group_at_msg:readonly",
-    "im:message:send_as_bot",
-    "im:resource",
-    "im:message.group_msg",
-    "im:message:readonly",
-    "im:message:update",
-    "im:message:recall",
-    "im:message.reactions:read",
-    "contact:user.base:readonly",
-    "contact:contact.base:readonly",
-    "docx:document:readonly",
-    "docx:document",
-    "docx:document.block:convert",
-    "wiki:wiki:readonly",
-    "wiki:wiki",
-    "bitable:app:readonly",
-    "bitable:app",
-    "task:task:read",
-    "task:task:write",
-    "drive:drive:readonly",
-    "drive:drive",
-]
-
-BOT_EVENTS = ["im.message.receive_v1"]
-BOT_CALLBACKS = ["card.action.trigger"]
 
 
 def _pcfg(key: str) -> Any:
@@ -255,26 +224,24 @@ def _on_status_change(info: dict[str, Any]) -> None:
 
 def register_feishu_app(*, avatar_url: str = "", greeting: str = "") -> dict[str, Any]:
     """Run ``lark.register_app`` and return finish data (app_id / app_secret / …)."""
-    avatar = avatar_url.strip() or DEFAULT_AVATAR_URL
+    avatar = avatar_url.strip()
     greeting_text = greeting.strip() or str(_pcfg("default_greeting"))
+    app_preset: dict[str, Any] = {"desc": str(_pcfg("app_desc"))}
+    if avatar:
+        app_preset["avatar"] = avatar
     result = lark.register_app(
         on_qr_code=_on_qr_code,
         on_status_change=_on_status_change,
         source="octop",
         domain=str(_pcfg("accounts_domain")),
         lark_domain=str(_pcfg("lark_domain")),
-        app_preset={
-            "avatar": avatar,
-            "name": str(_pcfg("app_name")),
-            "desc": str(_pcfg("app_desc")),
-        },
-        addons={
-            "scopes": {"tenant": list(BOT_SCOPES)},
-            "events": {"items": {"tenant": list(BOT_EVENTS)}},
-            "callbacks": {"items": list(BOT_CALLBACKS)},
-        },
+        app_preset=app_preset,
         create_only=True,
     )
+    if not isinstance(result, dict):
+        raise RegisterAppError(
+            "missing_credentials", "register_app returned empty client_id/client_secret"
+        )
     app_id = str(result.get("client_id") or "")
     app_secret = str(result.get("client_secret") or "")
     if not app_id or not app_secret:
@@ -282,11 +249,12 @@ def register_feishu_app(*, avatar_url: str = "", greeting: str = "") -> dict[str
             "missing_credentials", "register_app returned empty client_id/client_secret"
         )
 
-    user_info = result.get("user_info") if isinstance(result.get("user_info"), dict) else {}
+    raw_user_info = result.get("user_info")
+    user_info = raw_user_info if isinstance(raw_user_info, dict) else {}
     open_id = str(user_info.get("open_id") or "")
     tenant_brand = str(user_info.get("tenant_brand") or PLATFORM)
     open_base = _open_base_for_brand(tenant_brand)
-    bot_name = str(_pcfg("app_name")).replace("{user}", "").rstrip("-")
+    bot_name = str(result.get("app_name") or result.get("name") or "")
     manage_url = f"{open_base}/app/{app_id}"
 
     if open_id:
@@ -341,8 +309,9 @@ def cmd_create(avatar_url: str = "", greeting: str = "") -> None:
     bot_name = str(finish.get("bot_name") or "")
     manage_url = str(finish.get("manage_url") or "")
     _log_success("create_app", "App created", app_id=finish["app_id"])
+    created = f"Bot「{bot_name}」created" if bot_name else "Bot created"
     _emit_finish(
-        f"✅ Bot「{bot_name}」created. Manage URL: {manage_url}",
+        f"✅ {created}. Manage URL: {manage_url}",
         finish,
     )
 
