@@ -1152,6 +1152,16 @@
         "conversation": "对话"
       }
     },
+    "tokenCounter": {
+      "label": "当前输入框 {{tokens}} tokens",
+      "popoverTitle": "本轮用量",
+      "input": "输入",
+      "output": "输出",
+      "cacheRead": "缓存命中",
+      "cacheWrite": "缓存写入",
+      "total": "合计",
+      "modelCalls": "模型调用"
+    },
     "polish": {
       "tooltip": "AI 润色提示词",
       "failed": "润色失败，请稍后重试",
