@@ -81,3 +81,19 @@ the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
 `packages/` directory through Octop's existing `--target` logic.
 
 Linux also needs GTK4 + WebKitGTK 6 to link. macOS 12+.
+
+## Icons
+
+| File | Used for | Rule |
+|------|----------|------|
+| `src/build/appicon.png` | Windows `.ico`, Linux | Full-bleed 512x512 artwork |
+| `src/build/appicon-macos.png` | macOS `.icns` | 1024x1024 canvas, artwork 824x824 centred |
+| `src/assets/tray-icon.png` | Tray + app icon on Windows/Linux | Full-bleed |
+| `src/assets/tray-icon-template.png` | macOS menu bar | 88px canvas, 64px black-on-transparent glyph |
+
+macOS sizes both surfaces to a fixed box, so the padding has to live in the
+artwork: the Dock follows Apple's 824/1024 icon grid, and Wails scales the menu
+bar image to the full `NSStatusBar` thickness (22pt) where the glyph should be
+~16pt. Full-bleed sources on either surface render a size bigger than every
+other app. On macOS the Dock icon comes from the bundle's `icons.icns` only —
+see `applyAppIcon` in `src/icons_darwin.go`.

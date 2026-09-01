@@ -29,7 +29,7 @@ export default function Header({ onToggle, isMobile }: HeaderProps) {
     <AntHeader
       style={{
         height: "var(--fn-header-height)",
-        padding: "0 12px",
+        padding: "0 calc(12px + var(--window-controls-inset-end, 0px)) 0 12px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",

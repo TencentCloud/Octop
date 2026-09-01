@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Collapse, Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
@@ -15,9 +21,14 @@ import { CopyableResourceId } from "./CopyableResourceId";
 import { metaForFile } from "../pages/Experts/components/iconForName";
 import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups";
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
+import { DEFAULT_SKILL_EMOJI } from "../pages/Agent/Skills/skillMarkdown";
 import SubagentCatalogDrawer from "../pages/Experts/components/SubagentCatalogDrawer";
 import SkillCatalogDrawer from "../pages/Experts/components/SkillCatalogDrawer";
 import WorkspaceDrawer from "../pages/Agent/Workspace/components/WorkspaceDrawer";
+import {
+  resolveSubagentAccent,
+  subagentAccentIconStyle,
+} from "../utils/expertColor";
 import expertStyles from "../pages/Experts/index.module.less";
 import styles from "./AgentProfileDrawer.module.less";
 
@@ -32,10 +43,55 @@ interface SkillSummary {
   description?: string;
   enabled?: boolean;
   kind?: "builtin" | "workspace";
+  emoji?: string;
+  icon_url?: string;
 }
 
 function workspaceSkills(skills: SkillSummary[]): SkillSummary[] {
   return skills.filter((s) => s.kind !== "builtin");
+}
+
+const SKILL_ICON_ACCENT = "#8B5CF6";
+
+function skillIconStyle(hasImage: boolean): {
+  color: string;
+  background: string;
+} {
+  return {
+    color: SKILL_ICON_ACCENT,
+    background: hasImage ? "transparent" : `${SKILL_ICON_ACCENT}1a`,
+  };
+}
+
+function ProfileEntityCard({
+  icon,
+  title,
+  trailing,
+  description,
+}: {
+  icon: ReactNode;
+  title: ReactNode;
+  trailing: ReactNode;
+  description?: ReactNode;
+}) {
+  return (
+    <div className={expertStyles.fileItem}>
+      <div className={styles.entityCard}>
+        <div className={styles.entityCardHeader}>
+          {icon}
+          <div
+            className={`${expertStyles.fileLabel} ${styles.entityCardTitle}`}
+          >
+            {title}
+          </div>
+          {trailing}
+        </div>
+        {description ? (
+          <div className={expertStyles.filePath}>{description}</div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 interface AgentProfileDrawerProps {
@@ -409,30 +465,40 @@ export default function AgentProfileDrawer({
                           {t("experts.noSkillFiles")}
                         </div>
                       ) : (
-                        agentSkills.map((skill) => (
-                          <div
-                            key={skill.slug ?? skill.name}
-                            className={expertStyles.fileItem}
-                          >
-                            <div className={styles.skillItemRow}>
-                              <div className={expertStyles.fileMeta}>
-                                <div className={expertStyles.fileLabel}>
-                                  {skillDisplayName(skill)}
+                        agentSkills.map((skill) => {
+                          const iconUrl = skill.icon_url?.trim();
+                          const label = skillDisplayName(skill);
+                          return (
+                            <ProfileEntityCard
+                              key={skill.slug ?? skill.name}
+                              icon={
+                                <div
+                                  className={expertStyles.fileIcon}
+                                  style={skillIconStyle(Boolean(iconUrl))}
+                                >
+                                  {iconUrl ? (
+                                    <img
+                                      src={iconUrl}
+                                      alt={label}
+                                      className={expertStyles.fileIconImg}
+                                    />
+                                  ) : (
+                                    skill.emoji?.trim() || DEFAULT_SKILL_EMOJI
+                                  )}
                                 </div>
-                                {skill.description ? (
-                                  <div className={expertStyles.filePath}>
-                                    {skill.description}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <span className={expertStyles.fileHint}>
-                                {skill.enabled === false
-                                  ? t("common.disabled")
-                                  : t("common.enabled")}
-                              </span>
-                            </div>
-                          </div>
-                        ))
+                              }
+                              title={label}
+                              trailing={
+                                <span className={expertStyles.fileHint}>
+                                  {skill.enabled === false
+                                    ? t("common.disabled")
+                                    : t("common.enabled")}
+                                </span>
+                              }
+                              description={skill.description}
+                            />
+                          );
+                        })
                       )}
                     </div>
                   </>
@@ -493,23 +559,20 @@ export default function AgentProfileDrawer({
                         </div>
                       ) : (
                         subagents.map((sub) => (
-                          <div key={sub.slug} className={expertStyles.fileItem}>
-                            <div className={styles.skillItemRow}>
-                              <div className={expertStyles.fileMeta}>
-                                <div className={expertStyles.fileLabel}>
-                                  {sub.emoji ? (
-                                    <span style={{ marginRight: 6 }}>
-                                      {sub.emoji}
-                                    </span>
-                                  ) : null}
-                                  {sub.name}
-                                </div>
-                                {sub.description ? (
-                                  <div className={expertStyles.filePath}>
-                                    {sub.description}
-                                  </div>
-                                ) : null}
+                          <ProfileEntityCard
+                            key={sub.slug}
+                            icon={
+                              <div
+                                className={expertStyles.fileIcon}
+                                style={subagentAccentIconStyle(
+                                  resolveSubagentAccent(sub.color),
+                                )}
+                              >
+                                {sub.emoji ?? "🤖"}
                               </div>
+                            }
+                            title={sub.name}
+                            trailing={
                               <Tag
                                 color="blue"
                                 style={{
@@ -520,8 +583,9 @@ export default function AgentProfileDrawer({
                               >
                                 {sub.slug}
                               </Tag>
-                            </div>
-                          </div>
+                            }
+                            description={sub.description}
+                          />
                         ))
                       )}
                     </div>

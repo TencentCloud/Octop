@@ -3,6 +3,8 @@ import { ConfigProvider, theme as antdTheme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
 import { useEffect } from "react";
+import DesktopWindowControls from "./components/DesktopWindowControls";
+import { useDesktopChrome } from "./hooks/useDesktopChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import MainLayout from "./layouts/MainLayout";
@@ -36,6 +38,7 @@ function ThemedApp() {
   const { isDark, palette, customColor } = useTheme();
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
+  const desktopChrome = useDesktopChrome();
   const brandTokens = brandTokensFor(palette, isDark, customColor);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
   // Pagination, DatePicker, Table… ) follow the current UI language.
@@ -110,6 +113,9 @@ function ThemedApp() {
   return (
     <ConfigProvider theme={themeConfig} prefixCls="octop" locale={antdLocale}>
       <AntdAppProvider>
+        {desktopChrome ? (
+          <DesktopWindowControls chrome={desktopChrome} />
+        ) : null}
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/login/oidc/complete" element={<OidcComplete />} />

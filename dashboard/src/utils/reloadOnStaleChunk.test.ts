@@ -30,6 +30,28 @@ describe("isChunkLoadError", () => {
     ).toBe(true);
   });
 
+  it("matches MIME rejections when the SPA shell answers a deleted chunk", () => {
+    expect(
+      isChunkLoadError(
+        new TypeError("'text/html' is not a valid JavaScript MIME type."),
+      ),
+    ).toBe(true);
+    expect(
+      isChunkLoadError(
+        new TypeError(
+          'Failed to load module script: Expected a JavaScript module script but the server responded with a MIME type of "text/html".',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isChunkLoadError(
+        new TypeError(
+          "Loading module from “https://x/assets/Foo.js” was blocked because of a disallowed MIME type (“text/html”).",
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("matches ChunkLoadError name", () => {
     const err = new Error("Loading chunk 3 failed.");
     err.name = "ChunkLoadError";

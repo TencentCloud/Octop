@@ -44,7 +44,9 @@ export interface InstalledPublishedExpert {
   agent_id: string;
   name: string;
   description: string | null;
+  state: string;
   published_expert_id: string;
+  bootstrap_pending: boolean;
 }
 
 const publishedPath = (expertId: string) =>

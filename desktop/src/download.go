@@ -32,13 +32,13 @@ func pythonExe(root string) string {
 	return filepath.Join(root, "runtime", "bin", "python3")
 }
 
-func ensurePortable(status func(string)) error {
+func ensurePortable(locale Locale, status func(string)) error {
 	root := portableDir()
 	if launchReady(root) {
-		status("正在使用已有运行环境…")
+		status(desktopText(locale, "正在使用已有运行环境…", "Using the existing runtime…"))
 		return nil
 	}
-	status("首次启动，正在解压内置运行环境…")
+	status(desktopText(locale, "首次启动，正在解压内置运行环境…", "First launch: unpacking the bundled runtime…"))
 	if err := extractPortable(root); err != nil {
 		return err
 	}
@@ -178,18 +178,76 @@ func unzipGreenFiles(files []*zip.File, dest string) error {
 	return nil
 }
 
-func waitHealth(base string, timeout time.Duration) error {
+func waitHealth(locale Locale, base string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	url := strings.TrimRight(base, "/") + "/api/health"
+	var lastErr error
+	var lastStatus int
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
 		if err == nil {
+			lastStatus = resp.StatusCode
+			lastErr = nil
 			resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 500 {
 				return nil
 			}
+		} else {
+			lastErr = err
+			lastStatus = 0
 		}
 		time.Sleep(400 * time.Millisecond)
 	}
-	return fmt.Errorf("octop did not become healthy at %s", url)
+	return formatHealthWaitError(locale, base, timeout, lastErr, lastStatus)
+}
+
+func formatWaitDuration(locale Locale, d time.Duration) string {
+	sec := int(d.Round(time.Second) / time.Second)
+	if sec < 1 {
+		sec = 1
+	}
+	minutes := sec%60 == 0
+	n := sec
+	if minutes {
+		n = sec / 60
+	}
+	if locale == LocaleEN {
+		unit := "seconds"
+		if minutes {
+			unit = "minutes"
+		}
+		if n == 1 {
+			if minutes {
+				return "1 minute"
+			}
+			return "1 second"
+		}
+		return fmt.Sprintf("%d %s", n, unit)
+	}
+	if minutes {
+		return fmt.Sprintf("%d 分钟", n)
+	}
+	return fmt.Sprintf("%d 秒", n)
+}
+
+func formatHealthWaitError(locale Locale, base string, timeout time.Duration, lastErr error, lastStatus int) error {
+	addr := strings.TrimRight(base, "/")
+	wait := formatWaitDuration(locale, timeout)
+	switch {
+	case lastStatus >= 500:
+		return fmt.Errorf("%s", desktopText(locale,
+			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。服务已响应但尚未就绪，请稍后再试，或查看终端日志。", wait, addr),
+			fmt.Sprintf("Octop did not become ready within %s (%s). The service responded but is not ready yet. Try again, or check the terminal logs.", wait, addr),
+		))
+	case lastErr != nil:
+		return fmt.Errorf("%s", desktopText(locale,
+			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。目前无法连接该地址，请确认 Octop 正在运行。", wait, addr),
+			fmt.Sprintf("Octop did not become ready within %s (%s). Could not connect — make sure Octop is running.", wait, addr),
+		))
+	default:
+		return fmt.Errorf("%s", desktopText(locale,
+			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。请确认本机已启动 Octop，且地址、端口正确；也可查看终端日志。", wait, addr),
+			fmt.Sprintf("Octop did not become ready within %s (%s). Make sure Octop is running at this address, or check the terminal logs.", wait, addr),
+		))
+	}
 }

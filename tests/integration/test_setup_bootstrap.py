@@ -102,24 +102,26 @@ async def test_main_agent_seeds_general_assistant_workspace(patched_app_client: 
     """Finish creates main with expert files even when no provider is configured yet."""
     c, _srv, home = patched_app_client
     await bootstrap_admin(c, home)
-    ws = home / "agents" / "main"
+    ws = home / "workspaces" / "main"
     assert (ws / "SOUL.md").is_file()
     # New agents use system_files_path=.octop — BackendWorkspace remaps skills/.
     assert (ws / ".octop" / "skills" / "octop-assistant" / "SKILL.md").is_file()
 
 
-async def test_main_agent_config_has_no_workspace_scoped_backend(patched_app_client: Any) -> None:
-    """Default main must use harness DEFAULT_BACKEND_SPEC (no virtual root = workspace_dir)."""
+async def test_main_agent_uses_home_scoped_backend(patched_app_client: Any) -> None:
+    """Default main uses the same home-scoped local backend as dashboard-created agents."""
     c, srv, home = patched_app_client
     await bootstrap_admin(c, home)
     assert srv.app_runtime is not None
     row = srv.app_runtime.agent_registry.get_row("main")
     assert row is not None
     cfg = json.loads(row.config_json or "{}")
-    assert cfg.get("backend") is None
-    ws = home / "agents" / "main"
-    nested = list(ws.glob("Users")) + list(ws.glob("private"))
-    assert not nested, f"unexpected nested workspace under main: {nested}"
+    assert cfg["backend"] == {
+        "type": "local_shell",
+        "root_dir": home.parent.resolve().as_posix(),
+        "virtual_mode": True,
+    }
+    assert cfg["workspace_dir"] == "/.octop/workspaces/main"
 
 
 async def test_main_agent_uses_general_assistant_template(patched_app_client: Any) -> None:

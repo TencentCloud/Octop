@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octop</title>
+    <script>
+      document.documentElement.dataset.chrome = /Mac|iPhone|iPad/.test(
+        navigator.userAgent,
+      )
+        ? "mac"
+        : "windows";
+      document.documentElement.style.setProperty(
+        "--window-controls-inset-end",
+        document.documentElement.dataset.chrome === "mac" ? "80px" : "138px",
+      );
+      if (new URLSearchParams(location.search).get("settings") === "1") {
+        document.documentElement.dataset.mode = "settings";
+      }
+    </script>
     <script type="module" src="/wails/runtime.js"></script>
     <style>
       :root {
@@ -21,6 +35,7 @@
         --on-brand: #ffffff;
         --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
         --radius: 12px;
+        --window-controls-inset-end: 80px;
       }
       * {
         box-sizing: border-box;
@@ -37,10 +52,130 @@
         color: var(--text-primary);
         -webkit-font-smoothing: antialiased;
       }
+      .window-chrome {
+        position: fixed;
+        inset: 0 0 auto 0;
+        z-index: 20;
+        height: 32px;
+        --wails-draggable: drag;
+      }
+      .window-controls {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 30;
+        display: none;
+        align-items: center;
+        height: 32px;
+        user-select: none;
+        -webkit-app-region: no-drag;
+      }
+      html[data-chrome="mac"] .ctrl-mac,
+      html[data-chrome="windows"] .ctrl-win {
+        display: flex;
+      }
+      html[data-mode="settings"],
+      html[data-mode="settings"] body {
+        overflow: hidden;
+        height: 100%;
+        background: var(--bg-primary);
+        --window-controls-inset-end: 36px;
+      }
+      html[data-mode="settings"] .window-controls [data-action="minimise"],
+      html[data-mode="settings"] .window-controls [data-action="toggle-maximise"] {
+        display: none;
+      }
+      html[data-mode="settings"] .wrap {
+        max-width: none;
+        padding: 44px 20px 28px;
+      }
+      html[data-mode="settings"] #title {
+        padding-right: var(--window-controls-inset-end);
+      }
+      html[data-mode="settings"] .subtitle {
+        margin-bottom: 16px;
+      }
+      html[data-mode="settings"] .actions {
+        margin-top: 14px;
+      }
+      .ctrl-mac {
+        gap: 8px;
+        padding: 0 12px 0 8px;
+      }
+      .light {
+        width: 12px;
+        height: 12px;
+        padding: 0;
+        border: 0.5px solid transparent;
+        border-radius: 50%;
+        cursor: pointer;
+        appearance: none;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+      .light:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+      }
+      .glyph {
+        opacity: 0;
+        display: block;
+        font-size: 9px;
+        font-weight: 700;
+        line-height: 1;
+        color: inherit;
+        pointer-events: none;
+        transform: translateY(-0.5px);
+      }
+      .ctrl-mac:hover .glyph {
+        opacity: 0.85;
+      }
+      .zoom {
+        background: #28c840;
+        border-color: #12a12a;
+        color: #003a08;
+      }
+      .min {
+        background: #febc2e;
+        border-color: #d89e19;
+        color: #5c3b00;
+      }
+      .close {
+        background: #ff5f57;
+        border-color: #e0443e;
+        color: #4d0000;
+      }
+      .win-btn {
+        width: 46px;
+        height: 32px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .win-btn:hover {
+        background: rgba(0, 0, 0, 0.06);
+        color: var(--text-primary);
+      }
+      .win-btn:focus-visible {
+        outline: 2px solid #1677ff;
+        outline-offset: -2px;
+      }
+      .win-close:hover {
+        background: #e81123;
+        color: #fff;
+      }
       .wrap {
         max-width: 420px;
         margin: 0 auto;
-        padding: 28px 24px 24px;
+        padding: 56px max(24px, var(--window-controls-inset-end)) 24px 24px;
       }
       h1 {
         font-size: 18px;
@@ -175,11 +310,23 @@
         place-content: center;
         justify-items: center;
         text-align: center;
-        background: var(--bg-layout);
-        padding: 24px;
+        background:
+          radial-gradient(
+            1200px 420px at 50% 110%,
+            var(--brand-soft) 0%,
+            transparent 62%
+          ),
+          var(--bg-layout);
+        padding: 56px 24px 40px;
+      }
+      .loading-stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: min(360px, 100%);
       }
       .loading img {
-        width: 132px;
+        width: 148px;
         aspect-ratio: 352 / 320;
         height: auto;
         object-fit: contain;
@@ -194,26 +341,51 @@
       .loading img:active {
         transform: scale(0.94);
       }
+      .loading-brand {
+        margin: 10px 0 0;
+        font-size: 22px;
+        font-weight: 650;
+        letter-spacing: -0.03em;
+        color: var(--text-primary);
+      }
       .spinner {
-        width: 22px;
-        height: 22px;
-        margin-top: 22px;
+        width: 18px;
+        height: 18px;
+        margin-top: 18px;
         border: 2px solid var(--brand-soft);
         border-top-color: var(--brand);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
       }
-      .loading .status {
-        margin: 14px 0 0;
+      .loading-status {
+        margin: 16px 0 0;
+        max-width: 28em;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
         color: var(--text-secondary);
-        font-size: 14px;
+        font-size: 13px;
+        line-height: 1.55;
       }
-      .loading small {
+      .loading.is-error .spinner {
+        display: none;
+      }
+      .loading.is-error .loading-status {
+        border-color: #fecaca;
+        background: #fef2f2;
+        color: #991b1b;
+      }
+      .loading-hint {
         max-width: 280px;
-        margin-top: 8px;
+        margin: 10px 0 0;
         color: var(--text-tertiary);
         font-size: 12px;
         line-height: 1.5;
+      }
+      .loading.is-error .loading-hint {
+        display: none;
       }
       @keyframes spin {
         to {
@@ -226,16 +398,87 @@
     </style>
   </head>
   <body>
+    <div class="window-chrome octop-desktop-drag" id="window-chrome"></div>
+    <div
+      class="window-controls ctrl-mac"
+      data-chrome="mac"
+      data-octop-no-drag="true"
+      aria-label="窗口控制"
+    >
+      <button
+        type="button"
+        class="light zoom"
+        data-action="toggle-maximise"
+        aria-label="最大化"
+      >
+        <span class="glyph" aria-hidden>+</span>
+      </button>
+      <button
+        type="button"
+        class="light min"
+        data-action="minimise"
+        aria-label="最小化"
+      >
+        <span class="glyph" aria-hidden>–</span>
+      </button>
+      <button
+        type="button"
+        class="light close"
+        data-action="close"
+        aria-label="关闭"
+      >
+        <span class="glyph" aria-hidden>×</span>
+      </button>
+    </div>
+    <div
+      class="window-controls ctrl-win"
+      data-chrome="windows"
+      data-octop-no-drag="true"
+      aria-label="Window controls"
+    >
+      <button type="button" class="win-btn" data-action="minimise" aria-label="Minimize">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M5 12h14" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="win-btn"
+        data-action="toggle-maximise"
+        aria-label="Maximize"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="win-btn win-close"
+        data-action="close"
+        aria-label="Close"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </svg>
+      </button>
+    </div>
+
     <div class="loading" id="loading-panel">
-      <img
-        id="mascot"
-        src="/octop-mascot-peek.webp"
-        alt="Octop"
-        draggable="false"
-      />
-      <div class="spinner" aria-hidden="true"></div>
-      <p class="status" id="status">正在启动，请稍候…</p>
-      <small>正在检查运行环境，可能需要几分钟。</small>
+      <div class="loading-stage">
+        <img
+          id="mascot"
+          src="/octop-mascot-peek.webp"
+          alt="Octop"
+          draggable="false"
+        />
+        <p class="loading-brand" id="loading-brand">Octop</p>
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="loading-status" id="status">正在启动，请稍候…</p>
+        <p class="loading-hint" id="loading-hint">
+          正在检查运行环境，可能需要几分钟。
+        </p>
+      </div>
     </div>
 
     <div id="settings-panel" class="hidden">
@@ -301,6 +544,7 @@
       const copy = {
         zh: {
           statusWait: "正在启动…",
+          loadingHint: "正在检查运行环境，可能需要几分钟。",
           title: "Octop 设置",
           subtitle: "桌面端偏好",
           lang: "语言",
@@ -313,9 +557,14 @@
           sleepH: "应用运行期间阻止系统自动休眠",
           showMain: "显示 Octop",
           quit: "退出",
+          winGroup: "窗口控制",
+          winMin: "最小化",
+          winMax: "最大化",
+          winClose: "关闭",
         },
         en: {
           statusWait: "Starting…",
+          loadingHint: "Checking the runtime. This may take a few minutes.",
           title: "Octop Settings",
           subtitle: "Desktop preferences",
           lang: "Language",
@@ -328,8 +577,25 @@
           sleepH: "Keeps the system awake while Octop is running",
           showMain: "Show Octop",
           quit: "Quit",
+          winGroup: "Window controls",
+          winMin: "Minimize",
+          winMax: "Maximize",
+          winClose: "Close",
         },
       };
+
+      function applyWindowCopy(t) {
+        for (const group of document.querySelectorAll(".window-controls")) {
+          group.setAttribute("aria-label", t.winGroup);
+        }
+        for (const btn of document.querySelectorAll("[data-action]")) {
+          const action = btn.getAttribute("data-action");
+          if (action === "minimise") btn.setAttribute("aria-label", t.winMin);
+          if (action === "toggle-maximise")
+            btn.setAttribute("aria-label", t.winMax);
+          if (action === "close") btn.setAttribute("aria-label", t.winClose);
+        }
+      }
 
       function applyCopy(locale) {
         const t = copy[locale] || copy.zh;
@@ -345,7 +611,32 @@
         document.getElementById("h-sleep").textContent = t.sleepH;
         document.getElementById("show-main").textContent = t.showMain;
         document.getElementById("quit").textContent = t.quit;
+        document.getElementById("loading-hint").textContent = t.loadingHint;
+        applyWindowCopy(t);
       }
+
+      function emitWindowAction(action) {
+        const invoke = window._wails?.invoke;
+        if (typeof invoke === "function") {
+          invoke(`wails:event:emit:desktop:${action}`);
+          return;
+        }
+        Events.Emit("desktop:" + action);
+      }
+
+      document.body.addEventListener("click", (event) => {
+        const btn = event.target.closest("[data-action]");
+        if (!btn) return;
+        const action = btn.getAttribute("data-action");
+        if (
+          document.documentElement.dataset.mode === "settings" &&
+          action === "close"
+        ) {
+          call("HideSettings");
+          return;
+        }
+        emitWindowAction(action);
+      });
 
       async function call(name, ...args) {
         return Call.ByName("main.App." + name, ...args);
@@ -412,17 +703,18 @@
       const settingsMode =
         new URLSearchParams(window.location.search).get("settings") === "1";
       const s = await call("GetSettingsStatus");
+      const locale = s.locale || "zh";
       document.getElementById("status").textContent =
-        copy[s.locale || "zh"].statusWait;
+        copy[locale].statusWait;
+      applyCopy(locale);
 
       if (settingsMode) {
         document.getElementById("loading-panel").classList.add("hidden");
         document.getElementById("settings-panel").classList.remove("hidden");
-        document.getElementById("locale").value = s.locale || "zh";
+        document.getElementById("locale").value = locale;
         document.getElementById("autostart").checked = !!s.autostart;
         document.getElementById("tray").checked = s.minimizeToTray !== false;
         document.getElementById("sleep").checked = !!s.preventSleep;
-        applyCopy(s.locale || "zh");
 
         for (const id of ["locale", "autostart", "tray", "sleep"]) {
           document.getElementById(id).addEventListener("change", persist);
@@ -440,7 +732,12 @@
           typeof ev === "string"
             ? ev
             : ev?.data ?? ev?.payload ?? JSON.stringify(ev);
-        document.getElementById("status").textContent = String(msg);
+        const text = String(msg);
+        document.getElementById("status").textContent = text;
+        const stuck = /未就绪|did not become ready|无法连接|Could not connect/.test(
+          text,
+        );
+        document.getElementById("loading-panel").classList.toggle("is-error", stuck);
       });
     </script>
   </body>

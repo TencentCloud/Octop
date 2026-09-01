@@ -29,8 +29,8 @@ def test_default_agent_backend_spec_posix_uses_host_root(tmp_path: Path) -> None
     assert spec == {"type": "local_shell", "root_dir": "/", "virtual_mode": True}
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX host-root default + workspace artifacts")
-def test_default_agent_backend_resolve_scopes_artifacts_to_workspace(tmp_path: Path) -> None:
+@pytest.mark.skipif(os.name != "posix", reason="POSIX host-root default cwd is '/'")
+def test_default_agent_backend_resolve_host_root_wraps_artifacts(tmp_path: Path) -> None:
     ws = tmp_path / "agents" / "AGT001"
     ws.mkdir(parents=True)
     backend = resolve_backend(default_agent_backend_spec(ws), workspace_dir=ws)
@@ -45,6 +45,17 @@ def test_default_agent_backend_resolve_scopes_artifacts_to_workspace(tmp_path: P
     assert result.error is None
     assert history.read_text(encoding="utf-8") == "context summary"
 
+
+def test_default_agent_backend_resolve_workspace_file_ops(tmp_path: Path) -> None:
+    """Workspace mkdir/move/delete via BackendWorkspace — both host-root and scoped defaults."""
+    ws = tmp_path / "agents" / "AGT001"
+    ws.mkdir(parents=True)
+    backend = resolve_backend(default_agent_backend_spec(ws), workspace_dir=ws)
+    cwd = getattr(backend, "cwd", None)
+    if os.name == "nt":
+        assert Path(str(cwd)).resolve() == ws.resolve()
+    else:
+        assert str(cwd) == "/"
     workspace = BackendWorkspace(backend, ws)
     workspace.mkdir("source")
     (ws / "source" / "note.txt").write_text("ok", encoding="utf-8")

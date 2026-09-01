@@ -85,7 +85,6 @@ async def test_hint_uses_agent_facing_absolute_path() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.name != "posix", reason="Scoped virtual root_dir path mapping")
 async def test_hint_remaps_scoped_root_to_agent_facing() -> None:
     with tempfile.TemporaryDirectory() as root_dir:
         host_ws = Path(root_dir) / ".octop" / "workspaces" / "ABC123"
@@ -131,6 +130,36 @@ async def test_octop_default_backend_tool_path_misses_uploaded_file() -> None:
         # Octop ingress layer can still read the same attachment
         data = await workspace.adownload_bytes(stored.path)
         assert data == b"%PDF-1.4"
+
+
+@pytest.mark.asyncio
+async def test_workspace_scoped_backend_tool_path_hits_uploaded_file() -> None:
+    """Windows default (and any scoped ``root_dir``) maps ``/inbound/…`` onto the workspace."""
+    with tempfile.TemporaryDirectory() as ws_dir:
+        ws_path = Path(ws_dir).resolve()
+        backend = resolve_backend(
+            {
+                "type": "local_shell",
+                "root_dir": str(ws_path),
+                "virtual_mode": True,
+            },
+            workspace_dir=ws_path,
+        )
+        workspace = BackendWorkspace(backend, ws_path)
+        stored = await write_inbound(
+            workspace,
+            b"%PDF-1.4",
+            filename="report.pdf",
+            media_type="application/pdf",
+        )
+        disk_path = ws_path / stored.path
+        assert disk_path.is_file()
+
+        tool_path = validate_path(stored.path)
+        assert tool_path == f"/{stored.path}"
+        read_result = backend.read(tool_path, offset=0, limit=100)
+        assert read_result.error is None
+        assert read_result.file_data is not None
 
 
 @pytest.mark.asyncio

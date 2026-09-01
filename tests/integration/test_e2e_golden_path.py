@@ -215,8 +215,8 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     body = r.json()
     agent_id = body["agent_id"]
     assert body["expert_id"] == "general-assistant"
-    # Agent starts in non-running state (autostart=False)
-    assert body["state"] in {"running", "failed", "stopped", "unknown"}
+    assert body["state"] == "starting"
+    assert body["bootstrap_pending"] is True
 
     # Verify config stored correctly
     rows = (await c.get("/api/agents", headers=bob_auth)).json()

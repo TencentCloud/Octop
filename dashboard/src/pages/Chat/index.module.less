@@ -56,9 +56,11 @@
   height: var(--fn-chat-chrome-height, 57px);
   min-height: var(--fn-chat-chrome-height, 57px);
   max-height: var(--fn-chat-chrome-height, 57px);
-  /* Match .chatInput horizontal padding so the title column lines up with
-     the message input box (max-width + outer gutters). */
-  padding: 0 var(--chat-column-pad-x);
+  /* Match .chatInput gutters on the left; on desktop grow the right pad so
+     long titles do not sit under the frameless window controls. */
+  --chat-title-pad-x: var(--chat-column-pad-x);
+  padding: 0 max(var(--chat-title-pad-x), var(--window-controls-inset-end, 0px))
+    0 var(--chat-title-pad-x);
   border-bottom: none;
   background: var(--fn-bg-primary);
   color: var(--fn-text-primary);
@@ -67,12 +69,12 @@
   z-index: 2;
 
   @media (max-width: 767px) {
-    padding: 0 var(--chat-column-pad-x-narrow);
+    --chat-title-pad-x: var(--chat-column-pad-x-narrow);
   }
 
   /* Match chatInput padding when a side dock narrows the column. */
   @container chat-main (max-width: 560px) {
-    padding: 0 var(--chat-column-pad-x-narrow);
+    --chat-title-pad-x: var(--chat-column-pad-x-narrow);
   }
 
   /* Inset divider — slight gap from the vertical rails (match dock toolbar). */
@@ -104,8 +106,6 @@
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  /* Room for trailing more menu (absolute right of the bar). */
-  padding-right: 40px;
   box-sizing: border-box;
 }
 
@@ -116,7 +116,7 @@
 }
 
 .chatTitleHeading {
-  /* Content-sized row: [title…][pin?][edit] sits together; shrinks with ellipsis. */
+  /* Content-sized row: [title…][pin?][edit][more]; shrinks with ellipsis. */
   display: flex;
   align-items: center;
   gap: 4px;
@@ -188,6 +188,11 @@
   }
 }
 
+.chatTitleHoverShown {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .chatTitleInput {
   width: min(420px, 100%);
   height: 30px;
@@ -206,47 +211,6 @@
     box-shadow: 0 0 0 2px
       color-mix(in srgb, var(--fn-color-brand) 18%, transparent);
   }
-}
-
-.chatTitleActions {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  z-index: 1;
-}
-
-.chatTitleIconBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--fn-text-secondary);
-  cursor: pointer;
-  padding: 0;
-
-  &:hover {
-    color: var(--fn-text-primary);
-    background: var(--fn-bg-secondary);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--fn-color-brand);
-    outline-offset: 2px;
-  }
-}
-
-.chatTitleIconBtnDanger:hover {
-  color: #cf1322;
-  background: rgba(255, 77, 79, 0.08);
 }
 
 .mobileHeader {

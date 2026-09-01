@@ -12,6 +12,27 @@ body {
   overscroll-behavior: none;
 }
 
+html {
+  --window-controls-inset-end: 0px;
+}
+
+/* Wails v3 frameless drag: the element under the cursor must set this. */
+html[data-octop-desktop-chrome] .octop-desktop-drag {
+  --wails-draggable: drag;
+  user-select: none;
+}
+
+html[data-octop-desktop-chrome] .octop-desktop-no-drag,
+html[data-octop-desktop-chrome] .octop-desktop-drag button,
+html[data-octop-desktop-chrome] .octop-desktop-drag a,
+html[data-octop-desktop-chrome] .octop-desktop-drag input,
+html[data-octop-desktop-chrome] .octop-desktop-drag textarea,
+html[data-octop-desktop-chrome] .octop-desktop-drag select,
+html[data-octop-desktop-chrome] .octop-desktop-drag [role="button"],
+html[data-octop-desktop-chrome] [data-octop-no-drag] {
+  --wails-draggable: no-drag;
+}
+
 #root {
   height: 100%;
   overflow: hidden;
