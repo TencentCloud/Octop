@@ -22,6 +22,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from octop.i18n import tr
+from octop.infra.utils.posix_compat import geteuid
 
 # Official source first; latency race decides (no region detection).
 _DOCKER_CE_SOURCES = (
@@ -105,7 +106,7 @@ async def select_download_source() -> tuple[str | None, float | None]:
 
 def can_install_without_password() -> bool:
     """Whether this process may install packages (root or passwordless sudo)."""
-    if os.geteuid() == 0:
+    if geteuid() == 0:
         return True
     if shutil.which("sudo") is None:
         return False
