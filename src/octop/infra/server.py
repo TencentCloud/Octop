@@ -221,6 +221,12 @@ class OctopServer:
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
 
+        from octop.infra.utils.browser_media import (  # noqa: PLC0415
+            configure_browser_idle_timeout,
+        )
+
+        configure_browser_idle_timeout(config.browser_idle_timeout_minutes)
+
         registry = AgentManager(
             repos=self.services.repos,
             paths=self.paths,

@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 # --- env-status -------------------------------------------------------------
 
@@ -292,6 +292,29 @@ async def test_session_404_for_other_user(env: Any) -> None:
         json={"url": "https://example.com"},
     )
     assert r.status_code == 404
+
+
+async def test_shutdown_requires_auth(env: Any) -> None:
+    c, _srv, _auth = env
+    r = await c.post("/api/browser/shutdown")
+    assert r.status_code == 401
+
+
+async def test_shutdown_stops_named_profile(env: Any) -> None:
+    c, _srv, auth = env
+    result = SimpleNamespace(success=True, error=None)
+    with patch(
+        "harness_browser.tool_interface.browser_tool",
+        new=AsyncMock(return_value=result),
+    ) as tool:
+        r = await c.post("/api/browser/shutdown?profile=work", headers=auth)
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "profile": "work"}
+    tool.assert_awaited_once_with(
+        action="close_session",
+        profile="work",
+        kill=True,
+    )
 
 
 # --- install spawn ---------------------------------------------------------
