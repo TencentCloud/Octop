@@ -36,7 +36,11 @@ interface UseSlashMentionInputParams {
     label: string;
     kind: string;
   }[];
-  availableAgents: ChatAgentOption[];
+  /**
+   * Subset of experts the user can currently pick — already filtered by the
+   * caller (only running experts). The hook itself doesn't filter further.
+   */
+  availableExperts: ChatAgentOption[];
   agentId?: string | null;
   selectedSkills: string[];
   selectedConnectors: string[];
@@ -62,7 +66,7 @@ export function useSlashMentionInput({
   locale,
   availableSkills,
   availableConnectors,
-  availableAgents,
+  availableExperts,
   agentId,
   selectedSkills,
   selectedConnectors,
@@ -85,8 +89,8 @@ export function useSlashMentionInput({
   const [mentionAtIndex, setMentionAtIndex] = useState(-1);
 
   const mentionAgents = useMemo(
-    () => availableAgents.filter((a) => a.agent_id !== agentId),
-    [availableAgents, agentId],
+    () => availableExperts.filter((a) => a.agent_id !== agentId),
+    [availableExperts, agentId],
   );
 
   const mentionItems = useMemo(
