@@ -74,7 +74,73 @@ interface AgentContextValue {
   refresh: (options?: { silent?: boolean; force?: boolean }) => Promise<void>;
 }
 
+export interface EnabledExpertsOptions {
+  /**
+   * When ``true`` (default — kept for API stability), keep the
+   * ``resolvedAgentId`` expert in the returned list even if it does not
+   * match the predicate. Today every caller passes ``false`` so a disabled
+   * expert disappears from the sidebar / @-picker the moment the user stops
+   * it, including when it is the currently focused expert. The main panel
+   * still renders ``AgentNotReadyScreen`` on the same URL so users get a
+   * clear path to ``/experts`` to restart it.
+   */
+  pinActive?: boolean;
+}
+
 const STORAGE_KEY = "octop:active-agent";
+
+/**
+ * Pure helper: narrow ``agents`` down to those that are "enabled" for the
+ * chat surface (running experts). The same predicate is reused by:
+ *   • the chat page left sidebar (``Chat/index.tsx``)
+ *   • the minimal-layout records pane (``MinimalRecordsHost`` — non-/chat
+ *     routes like ``/experts`` show expert folders here)
+ *   • the chat composer's ``@``-mention picker + slash menu
+ *
+ * Keep this helper in sync with ``isAgentChatReady`` so disabled experts
+ * never leak into any chat-side surface.
+ */
+export function selectEnabledExperts(
+  agents: OctopAgent[],
+  resolvedAgentId: string | null | undefined,
+  options: EnabledExpertsOptions = {},
+): OctopAgent[] {
+  const { pinActive = false } = options;
+  const enabled = agents.filter((a) => a.state === "running");
+  if (!pinActive || !resolvedAgentId) return enabled;
+  if (enabled.some((a) => a.agent_id === resolvedAgentId)) return enabled;
+  const pinnedActive = agents.find((a) => a.agent_id === resolvedAgentId);
+  if (!pinnedActive) return enabled;
+  return [pinnedActive, ...enabled];
+}
+
+/**
+ * Shared projection used by the chat composer (`ChatInput` /
+ * ``composerLookups``). Keeps the lightweight ``ChatAgentOption`` shape
+ * consistent across surfaces — name/icon for the chip, shared badge for
+ * the picker, owner_username for the current-user indicator.
+ */
+export function projectChatAgentOption(agent: OctopAgent): {
+  agent_id: string;
+  name: string;
+  icon_name: string | null;
+  icon_url: string | null;
+  color: string | null;
+  is_shared: boolean;
+  is_owner: boolean;
+  owner_username: string | null;
+} {
+  return {
+    agent_id: agent.agent_id,
+    name: agent.name,
+    icon_name: agent.icon_name,
+    icon_url: agent.icon_url,
+    color: agent.color,
+    is_shared: Boolean(agent.is_shared),
+    is_owner: Boolean(agent.is_owner),
+    owner_username: agent.owner_username ?? null,
+  };
+}
 
 const defaultValue: AgentContextValue = {
   agents: [],
