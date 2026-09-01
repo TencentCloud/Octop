@@ -53,6 +53,7 @@ from octop.infra.backend.resolver import (
 )
 from octop.infra.connectors.builder import (
     build_mcp_server_configs_for_user,
+    gateway_mcp_server_names,
     inject_missing_gateway_tools,
 )
 from octop.infra.connectors.service import ConnectorService
@@ -1358,6 +1359,23 @@ class AgentManager:
                         continue
                 agent.config.mcp_server_configs[name] = dict(spec)
 
+        gateway_missing: list[str] = []
+        if builtin_missing and uid is not None:
+            gateway_names = gateway_mcp_server_names(
+                connector_repo=self._repos.connector_repo,
+                user_id=uid,
+            )
+            gateway_missing = [n for n in builtin_missing if n in gateway_names]
+            builtin_missing = [n for n in builtin_missing if n not in gateway_names]
+
+        if gateway_missing and uid is not None:
+            await self._attach_gateway_tools(
+                agent,
+                agent_id=agent_id,
+                user_id=uid,
+                server_names=gateway_missing,
+            )
+
         if builtin_missing:
             logger.info(
                 "Reloading agent %s MCP tools (builtin_missing=%s)",
@@ -1439,6 +1457,43 @@ class AgentManager:
                 still_missing,
             )
         return still_missing
+
+    async def _attach_gateway_tools(
+        self,
+        agent: HarnessAgent,
+        *,
+        agent_id: str,
+        user_id: int,
+        server_names: list[str],
+    ) -> None:
+        """Add gateway connector tools to the running agent without rebuilding it.
+
+        A rebuild would drop the harness instance (and with it the checkpointer
+        pool an in-flight turn still writes to) only to run the very same
+        in-process injection at the end of ``_post_start_agent``.
+        """
+        repo = self._repos.connector_repo
+        for inst in repo.list_by_user(user_id):
+            if inst.status != "active" or inst.mcp_server_name not in server_names:
+                continue
+            try:
+                await self._connector_svc.ensure_fresh_credentials(inst.instance_id, inst.kind)
+            except Exception:
+                logger.exception(
+                    "prepare_chat_mcp agent=%s: credential refresh failed for %s",
+                    agent_id,
+                    inst.mcp_server_name,
+                )
+        inject_missing_gateway_tools(
+            agent,
+            svc=self._connector_svc,
+            connector_repo=repo,
+            user_id=user_id,
+            agent_id=agent_id,
+            mcp_server_configs=agent.config.mcp_server_configs,
+        )
+        for name in server_names:
+            agent.config.mcp_server_configs.setdefault(name, {})
 
     # ------------------------------------------------------------------
     # Settings persistence — push global policy into harness runtime
