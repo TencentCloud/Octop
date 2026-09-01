@@ -115,6 +115,7 @@ interface CreateValues {
 }
 
 interface EditValues {
+  username: string;
   display_name?: string;
   email?: string;
   role: "admin" | "user";
@@ -997,6 +998,7 @@ export default function UsersListPanel() {
   const openEdit = (row: UserRow) => {
     setEditTarget(row);
     editForm.setFieldsValue({
+      username: row.username,
       display_name: row.display_name ?? "",
       email: row.email ?? "",
       role: row.role,
@@ -1038,6 +1040,7 @@ export default function UsersListPanel() {
       await request(`/users/${editTarget.id}`, {
         method: "PATCH",
         body: JSON.stringify({
+          username: values.username.trim(),
           display_name: values.display_name?.trim() || null,
           email: values.email?.trim() || null,
           role: values.role,
@@ -1664,6 +1667,19 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccount")}
             </div>
+            <Form.Item
+              label={t("adminUsers.formUsername")}
+              name="username"
+              rules={[
+                { required: true, message: t("adminUsers.formUsername") },
+                {
+                  pattern: /^[a-zA-Z0-9_-]{1,64}$/,
+                  message: t("wizard.admin.usernameRule"),
+                },
+              ]}
+            >
+              <Input prefix={<User {...FIELD_ICON_PROPS} />} />
+            </Form.Item>
             <Form.Item
               label={t("adminUsers.formDisplayName")}
               name="display_name"
