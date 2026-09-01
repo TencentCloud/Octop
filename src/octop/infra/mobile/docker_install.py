@@ -4,7 +4,10 @@ Design notes:
 - No geo detection: the install source is picked by a pure latency race that
   includes the official https://download.docker.com (fastest wins; when the
   official source wins, no ``DOWNLOAD_URL`` override is passed).
-- Installs via the official get.docker.com script only.
+- Installs via the bundled official get.docker.com script (vendored copy at
+  scripts/linux/v1.0/install-docker.sh) so hosts the online script does not
+  support (TencentOS / OpenCloudOS releasever mapping, offline curl failures,
+  etc.) still install, and we never pipe the network straight into ``sh``.
 - Registry-mirror config probes Tencent Cloud's mirror reachability (again no
   geo check) and runs only right after a fresh install, so a daemon that may
   already be running user containers is never restarted.
@@ -16,6 +19,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import AsyncIterator
@@ -33,7 +37,6 @@ _DOCKER_CE_SOURCES = (
     "https://mirrors.cernet.edu.cn/docker-ce",
 )
 _OFFICIAL_SOURCE = "https://download.docker.com"
-_INSTALL_SCRIPT_URL = "https://get.docker.com"
 _TENCENT_MIRROR_HOST = "mirror.ccs.tencentyun.com"
 _TENCENT_MIRROR_URL = f"https://{_TENCENT_MIRROR_HOST}/"
 _DAEMON_JSON = Path("/etc/docker/daemon.json")
@@ -44,11 +47,56 @@ _PROBE_TIMEOUT = 3.0
 _DAEMON_READY_TIMEOUT = 10.0
 _DAEMON_WAIT_AFTER_RESTART = 30.0
 _DAEMON_WAIT_INTERVAL = 2.0
+# The vendored script sleeps 20s when docker already exists, and package
+# manager steps can take minutes on slow links; keep the read patient.
+_SCRIPT_READLINE_TIMEOUT = 600.0
+_SCRIPT_TAIL_LINES = 40
+
+# Known fatal script outputs → friendly localized hints. Matched
+# case-insensitively against the tail of the script output.
+_SCRIPT_ERROR_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"unsupported (?:operating system|distribution)", re.I),
+        "docker_hint_unsupported_distro",
+    ),
+    (re.compile(r"needs the ability to run commands as root", re.I), "docker_hint_no_root"),
+    (re.compile(r"unable to find either .sudo. or .su.", re.I), "docker_hint_no_root"),
+    (re.compile(r"command appears to already exist", re.I), "docker_hint_already_installed"),
+    (re.compile(r"curl", re.I), "docker_hint_network"),
+    (
+        re.compile(r"(?:apt|apt-get|dpkg|dnf|yum).*?(?:error|failed|lock)", re.I),
+        "docker_hint_pkg_manager",
+    ),
+    (
+        re.compile(r"^E: .*(?:lock|unable to locate|not available)", re.I | re.M),
+        "docker_hint_pkg_manager",
+    ),
+    (re.compile(r"key.*(?:expired|not found|rejected)", re.I), "docker_hint_gpg_key"),
+    (re.compile(r"no space left on device", re.I), "docker_hint_disk_full"),
+)
 
 
 def _log(locale: str, key: str, **kwargs: object) -> str:
     text = tr(f"mobile.{key}", locale)
     return text.format(**kwargs) if kwargs else text
+
+
+def bundled_scripts_dir() -> Path:
+    return Path(__file__).resolve().parent / "scripts" / "linux" / "v1.0"
+
+
+def bundled_install_script() -> Path:
+    """Path of the vendored official Docker install script."""
+    return bundled_scripts_dir() / "install-docker.sh"
+
+
+def _classify_script_error(lines: list[str]) -> str | None:
+    """Map the tail of script output onto a friendly hint key, if any."""
+    tail = "\n".join(lines[-_SCRIPT_TAIL_LINES:])
+    for pattern, key in _SCRIPT_ERROR_HINTS:
+        if pattern.search(tail):
+            return key
+    return None
 
 
 async def _measure_source_delay(url: str) -> float | None:
@@ -228,6 +276,12 @@ async def auto_install_docker_stream(*, locale: str = "en") -> AsyncIterator[str
     Success is judged by the caller via :func:`docker_daemon_ready`, so this
     generator only reports what happened.
     """
+    # 0) The vendored official script must ship with this Octop install.
+    script = bundled_install_script()
+    if not script.is_file():
+        yield _log(locale, "docker_install_script_missing")
+        return
+
     # 1) Latency-race install sources (official included, no geo detection).
     source, delay = await select_download_source()
     if delay is not None and source is None:
@@ -237,30 +291,45 @@ async def auto_install_docker_stream(*, locale: str = "en") -> AsyncIterator[str
     else:
         yield _log(locale, "docker_source_fallback")
 
-    # 2) Run the official install script; a winning mirror rides on DOWNLOAD_URL.
+    # 2) Run the bundled official install script; a winning mirror rides on
+    #    DOWNLOAD_URL (the script honours a preset DOWNLOAD_URL env var).
     env = {k: v for k, v in os.environ.items() if k != "DOWNLOAD_URL"}
     if source is not None:
         env["DOWNLOAD_URL"] = source
     yield _log(locale, "docker_install_log_start")
-    proc = await asyncio.create_subprocess_exec(
-        "sh",
-        "-c",
-        f"curl -fsSL {_INSTALL_SCRIPT_URL} | sh",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=env,
-    )
+    output_lines: list[str] = []
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sh",
+            str(script),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
+    except OSError as exc:
+        yield _log(locale, "docker_install_spawn_failed", error=str(exc))
+        return
     assert proc.stdout is not None
     while True:
-        line = await proc.stdout.readline()
+        try:
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=_SCRIPT_READLINE_TIMEOUT)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            yield _log(locale, "docker_install_stalled")
+            return
         if not line:
             break
         text = line.decode("utf-8", errors="replace").strip()
         if text:
+            output_lines.append(text)
             yield text
     code = await proc.wait()
     if code != 0:
         yield _log(locale, "docker_install_script_failed", exit_code=code)
+        hint_key = _classify_script_error(output_lines)
+        if hint_key is not None:
+            yield _log(locale, hint_key)
         return
 
     # 3) Registry mirror: only probe reachability, only for this fresh install.
