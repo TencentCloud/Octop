@@ -230,6 +230,69 @@ async def test_push_text_from_session_cron_agent_im_pushes_reply(gateway: Gatewa
 
 
 @pytest.mark.asyncio
+async def test_push_text_from_session_cron_agent_silent_marker_skips_push(
+    gateway: Gateway,
+) -> None:
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")
+    gateway.thread_registry._threads.insert(
+        thread_id="thr_silent",
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        session_key=sk,
+    )
+    gateway.thread_registry._sessions.upsert(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        chat_type="dm",
+        thread_id="thr_silent",
+        channel_subject_id="ou_1",
+        channel_chat_type="dm",
+        channel_metadata={"channel_type": "feishu"},
+        channel_id="ch-1",
+    )
+
+    async def stream_with_silent_marker(_agent_id, _request):
+        yield {"type": "token", "content": "本轮巡检没有新情况,无需打扰用户。NO_REPLY"}
+
+    gateway._agent_manager.stream = stream_with_silent_marker
+
+    await gateway.push_text_from_session("a1", sk, "run agent", task_type="agent")
+    gateway._channel_manager.push_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_push_text_from_session_text_task_silent_marker_skips_push(
+    gateway: Gateway,
+) -> None:
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")
+    gateway.thread_registry._threads.insert(
+        thread_id="thr_text_silent",
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        session_key=sk,
+    )
+    gateway.thread_registry._sessions.upsert(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        chat_type="dm",
+        thread_id="thr_text_silent",
+        channel_subject_id="ou_1",
+        channel_chat_type="dm",
+        channel_metadata={"channel_type": "feishu"},
+        channel_id="ch-1",
+    )
+
+    await gateway.push_text_from_session("a1", sk, "今天没有值得提醒的内容 SKIP", task_type="text")
+    gateway._channel_manager.push_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_push_text_from_session_cron_agent_strips_orphan_thinking_prefix(
     gateway: Gateway,
 ) -> None:
