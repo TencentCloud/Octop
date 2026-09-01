@@ -10,6 +10,12 @@ metadata:
   octop:
     emoji: "⚙️"
     requires: {}
+    label:
+      zh: "Octop 配置助手"
+      en: "Octop Assistant"
+    summary:
+      zh: "通过 CLI 配置模型、通道、Skill、定时任务，以及备份与升级。"
+      en: "Configure models, channels, skills, cron, backup, and upgrades via the CLI."
 ---
 
 # Octop Assistant ⚙️

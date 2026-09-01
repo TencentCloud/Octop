@@ -789,6 +789,7 @@ function EditAgentDrawerBody({
                 backendChoice={backendChoice}
                 pathMappings={pathMappings}
                 rootDirMode="edit"
+                disabled
                 onAddPathMapping={addPathMapping}
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}

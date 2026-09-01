@@ -11,12 +11,22 @@ from typing import Any
 
 from octop.infra.agents.experts.catalog import ExpertCatalog, build_create_spec_from_expert
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.host_dirs import host_home_dir, host_path_text
 from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_EXPERT_ID = "general-assistant"
 SETUP_DEFAULT_AGENT_ID = "main"
+
+
+def default_home_local_backend() -> dict[str, Any]:
+    """Same local backend as the dashboard create-from-expert default (home-scoped)."""
+    return {
+        "type": "local_shell",
+        "root_dir": host_path_text(host_home_dir()),
+        "virtual_mode": True,
+    }
 
 
 async def bootstrap_default_agent(
@@ -51,6 +61,7 @@ async def bootstrap_default_agent(
         user_id=user_id,
         agent_id=agent_id,
         locale=loc,
+        config_extra={"backend": default_home_local_backend()},
     )
     return await registry.create(spec, defer_bootstrap=True)
 

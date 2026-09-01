@@ -20,13 +20,6 @@ export interface WriteTodosMessageSource {
   status?: string;
 }
 
-const STATUS_ORDER: Record<string, number> = {
-  in_progress: 0,
-  pending: 1,
-  completed: 2,
-  cancelled: 3,
-};
-
 function toolNameBase(name: string): string {
   const trimmed = name.trim();
   const slash = trimmed.lastIndexOf("/");
@@ -165,11 +158,9 @@ export function countCompletedTodos(items: readonly TodoListItem[]): number {
   return items.filter((item) => item.status === "completed").length;
 }
 
+/** Keep plan order: numeric ids (``2`` before ``10``), not status. */
 export function sortTodoItems(items: TodoListItem[]): TodoListItem[] {
-  return [...items].sort((a, b) => {
-    const left = STATUS_ORDER[a.status] ?? 99;
-    const right = STATUS_ORDER[b.status] ?? 99;
-    if (left !== right) return left - right;
-    return a.id.localeCompare(b.id);
-  });
+  return [...items].sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" }),
+  );
 }

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
+from octop.infra.agents.default_agent import default_home_local_backend
+from octop.infra.utils.host_dirs import host_home_dir, host_path_text
+
 
 async def test_invite_create_list_redeem_and_one_time(env) -> None:
-    c, _srv, auth = env
+    c, srv, auth = env
 
     r = await c.post(
         "/api/users/invites",
@@ -62,6 +67,13 @@ async def test_invite_create_list_redeem_and_one_time(env) -> None:
     assert len(bob_agents) == 1
     assert bob_agents[0]["template_name"] == "general-assistant"
     assert bob_agents[0]["agent_id"] != "main"
+    assert srv.app_runtime is not None
+    bob_row = srv.app_runtime.agent_registry.get_row(bob_agents[0]["agent_id"])
+    assert bob_row is not None
+    bob_cfg = json.loads(bob_row.config_json or "{}")
+    assert bob_cfg["backend"] == default_home_local_backend()
+    assert bob_cfg["backend"]["root_dir"] == host_path_text(host_home_dir())
+    assert bob_cfg["workspace_dir"] == f"/.octop/workspaces/{bob_agents[0]['agent_id']}"
 
     again = await c.post(
         "/api/auth/invite/redeem",
