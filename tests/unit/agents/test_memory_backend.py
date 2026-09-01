@@ -175,9 +175,7 @@ def test_memory_config_for_choice_follow_is_none() -> None:
 
 
 def test_memory_config_for_choice_sqlite() -> None:
-    assert memory_config_for_choice("sqlite", OctopConfig()) == {
-        "backend": {"type": "sqlite"}
-    }
+    assert memory_config_for_choice("sqlite", OctopConfig()) == {"backend": {"type": "sqlite"}}
 
 
 def test_memory_config_for_choice_postgres_requires_dsn_on_sqlite() -> None:

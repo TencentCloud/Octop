@@ -36,8 +36,9 @@ export function MemoryBackendFields({
   const { t } = useTranslation();
   const form = Form.useFormInstance();
   const choice =
-    (Form.useWatch("memory_backend", form) as MemoryBackendChoice | undefined) ??
-    "follow";
+    (Form.useWatch("memory_backend", form) as
+      | MemoryBackendChoice
+      | undefined) ?? "follow";
 
   const [controlPlane, setControlPlane] = useState<string | null>(null);
   const [store, setStore] = useState<MemoryStoreStatus | null>(null);
@@ -92,10 +93,11 @@ export function MemoryBackendFields({
   const original = store?.choice ?? "follow";
   const changed = mode === "edit" && choice !== original;
   const occupied = Boolean(store?.has_data || store?.has_data_unknown);
-  const showSwitchWarn =
-    mode === "edit" && changed && (occupied || loadFailed);
+  const showSwitchWarn = mode === "edit" && changed && (occupied || loadFailed);
   const canKeepExistingDsn =
-    mode === "edit" && store?.has_custom_dsn === true && original === "postgres";
+    mode === "edit" &&
+    store?.has_custom_dsn === true &&
+    original === "postgres";
   const needsDsn = choice === "postgres" && !postgresOk;
   const markUntested = () => {
     setTestedOk(false);
@@ -131,9 +133,7 @@ export function MemoryBackendFields({
       if (err && typeof err === "object" && "errorFields" in err) {
         return;
       }
-      setTestError(
-        apiErrorMessage(err, t("wizard.database.testFailed"), t),
-      );
+      setTestError(apiErrorMessage(err, t("wizard.database.testFailed"), t));
     } finally {
       setTesting(false);
     }
@@ -169,7 +169,9 @@ export function MemoryBackendFields({
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message={`${t("experts.memoryStore.currentLocation")}: ${locationLabel}${
+          message={`${t(
+            "experts.memoryStore.currentLocation",
+          )}: ${locationLabel}${
             store.resolved.location ? ` · ${store.resolved.location}` : ""
           } · ${t("experts.memoryStore.namespace", {
             namespace: store.resolved.namespace,

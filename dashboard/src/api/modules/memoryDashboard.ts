@@ -497,8 +497,7 @@ export const memoryDashboardApi = {
       `${base(aid)}/terminal/entities?limit=${limit}`,
     ),
 
-  getStore: (aid: string) =>
-    request<MemoryStoreStatus>(`${base(aid)}/store`),
+  getStore: (aid: string) => request<MemoryStoreStatus>(`${base(aid)}/store`),
 
   probeStore: (body: {
     host: string;

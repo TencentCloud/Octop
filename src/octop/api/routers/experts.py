@@ -651,9 +651,7 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
-    config_extra.update(
-        _memory_config_extra(body.memory_backend, server, dsn=body.memory_dsn)
-    )
+    config_extra.update(_memory_config_extra(body.memory_backend, server, dsn=body.memory_dsn))
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

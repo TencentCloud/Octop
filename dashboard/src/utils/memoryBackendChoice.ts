@@ -5,9 +5,7 @@ export type MemoryBackendChoice = (typeof MEMORY_BACKEND_CHOICES)[number];
 export function isMemoryBackendChoice(
   value: unknown,
 ): value is MemoryBackendChoice {
-  return (
-    value === "follow" || value === "sqlite" || value === "postgres"
-  );
+  return value === "follow" || value === "sqlite" || value === "postgres";
 }
 
 export function parseMemoryBackendChoice(
@@ -17,9 +15,9 @@ export function parseMemoryBackendChoice(
   if (!memory || typeof memory !== "object") return "follow";
   const backend = (memory as { backend?: unknown }).backend;
   if (!backend || typeof backend !== "object") return "follow";
-  const type = String(
-    (backend as { type?: unknown }).type || "",
-  ).trim().toLowerCase();
+  const type = String((backend as { type?: unknown }).type || "")
+    .trim()
+    .toLowerCase();
   if (type === "sqlite") return "sqlite";
   if (type === "postgres") return "postgres";
   return "follow";

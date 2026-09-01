@@ -222,9 +222,7 @@ def memory_config_for_choice(
         )
     if normalized == "follow":
         return None
-    applied = apply_memory_backend_choice(
-        {}, normalized, octop_config=octop_config, dsn=dsn
-    )
+    applied = apply_memory_backend_choice({}, normalized, octop_config=octop_config, dsn=dsn)
     mem = applied.get("memory")
     return dict(mem) if isinstance(mem, dict) else None
 
@@ -251,8 +249,8 @@ def apply_memory_backend_choice(
     normalized_dsn = normalize_memory_dsn(dsn)
 
     out = dict(cfg)
-    existing_mem = out.get("memory") if isinstance(out.get("memory"), dict) else {}
-    mem = dict(existing_mem)
+    existing_mem = out.get("memory")
+    mem = dict(existing_mem) if isinstance(existing_mem, dict) else {}
     if normalized == "follow":
         mem.pop("backend", None)
     elif normalized == "sqlite":

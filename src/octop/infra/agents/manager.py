@@ -1997,9 +1997,7 @@ class AgentManager:
                     row.agent_id,
                 )
                 if live is None:
-                    self._repos.agent_repo.set_state(
-                        row.agent_id, "running", error=None
-                    )
+                    self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
                 return live
             logger.exception("Failed to start agent %s", row.agent_id)
             self._repos.agent_repo.set_state(
@@ -2261,9 +2259,7 @@ class AgentManager:
                         agent_id,
                     )
                     if live is None:
-                        self._repos.agent_repo.set_state(
-                            agent_id, "running", error=None
-                        )
+                        self._repos.agent_repo.set_state(agent_id, "running", error=None)
                     return
                 logger.exception("Background reload failed for agent %s", agent_id)
                 self._repos.agent_repo.set_state(

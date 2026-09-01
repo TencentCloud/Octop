@@ -94,9 +94,9 @@ describe("parsePostgresMemoryDsn", () => {
 
   it("matches a hydrated form to the stored DSN when password is blank", () => {
     const dsn = "postgresql://yingningchen@127.0.0.1:5432/octop_test";
-    expect(storedPostgresDsn({ memory: { backend: { type: "postgres", dsn } } })).toBe(
-      dsn,
-    );
+    expect(
+      storedPostgresDsn({ memory: { backend: { type: "postgres", dsn } } }),
+    ).toBe(dsn);
     expect(
       postgresFormMatchesStored(
         {
