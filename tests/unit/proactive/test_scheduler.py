@@ -356,3 +356,42 @@ async def test_scheduler_start_all_includes_default_on_agent(
     assert agent_id in scheduler._tasks
     scheduler.cancel(agent_id)
     await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cancels_long_sleep_quickly(
+    agent_id: str,
+    config_repo: ProactiveCareConfigRepo,
+    db: SqlitePool,
+) -> None:
+    """A default-on loop sleeps for hours; shutdown must not wait that out."""
+    from octop.infra.db.repos.sessions import SessionRepo
+
+    scheduler = ProactiveCareScheduler(
+        care_service=AsyncMock(),
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+    )
+    scheduler.ensure_scheduled(agent_id)
+    assert agent_id in scheduler._tasks
+    await asyncio.wait_for(scheduler.shutdown(), timeout=2)
+    assert scheduler._tasks == {}
+
+
+@pytest.mark.asyncio
+async def test_suspend_skips_new_schedules(
+    agent_id: str,
+    config_repo: ProactiveCareConfigRepo,
+    db: SqlitePool,
+) -> None:
+    from octop.infra.db.repos.sessions import SessionRepo
+
+    scheduler = ProactiveCareScheduler(
+        care_service=AsyncMock(),
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+    )
+    scheduler.suspend()
+    scheduler.ensure_scheduled(agent_id)
+    await scheduler.start_all()
+    assert scheduler._tasks == {}

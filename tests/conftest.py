@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -41,6 +42,31 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     return _REPO_ROOT
+
+
+# Creating an agent now starts a multi-hour asyncio.sleep (proactive care
+# defaults to on). pytest-asyncio waits for leftover tasks before fixture
+# teardown, so any test that boots OctopServer without going through
+# ``octop_client`` would hang the suite. Scheduler unit tests opt out.
+_PROACTIVE_SCHEDULER_TESTS = "tests/unit/proactive/test_scheduler.py"
+
+
+@pytest.fixture(autouse=True)
+def _suspend_proactive_care_loops(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if _module_path(request.node.nodeid) == _PROACTIVE_SCHEDULER_TESTS:
+        return
+    from octop.infra.proactive.scheduler import ProactiveCareScheduler
+
+    monkeypatch.setattr(ProactiveCareScheduler, "ensure_scheduled", lambda self, _id: None)
+
+    async def _start_all(self: Any) -> None:
+        return None
+
+    monkeypatch.setattr(ProactiveCareScheduler, "start_all", _start_all)
+    monkeypatch.setattr(ProactiveCareScheduler, "_schedule", lambda self, _id: None)
 
 
 @pytest.fixture(autouse=True)
