@@ -72,14 +72,18 @@ func TestSettingsHTMLFitsWithoutScrollbar(t *testing.T) {
 			t.Fatalf("settings HTML missing %q", needle)
 		}
 	}
-	if strings.Contains(body, `html[data-mode="settings"] .window-controls`) {
-		t.Fatal("settings popover must keep caption buttons visible")
-	}
 	if !strings.Contains(body, `padding: 44px 20px 28px`) {
 		t.Fatal("settings wrap must keep a 28px bottom gap, matching the visual side inset")
 	}
 	if !strings.Contains(body, `.glyph`) || !strings.Contains(body, `translateY(-0.5px)`) {
 		t.Fatal("traffic-light glyphs must be optically centered in the lights")
+	}
+	if !strings.Contains(body, `html[data-mode="settings"] .window-controls [data-action="minimise"]`) ||
+		!strings.Contains(body, `html[data-mode="settings"] .window-controls [data-action="toggle-maximise"]`) {
+		t.Fatal("settings popover should show only the close button")
+	}
+	if !strings.Contains(body, `"HideSettings"`) {
+		t.Fatal("settings close must hide the settings window, not the main window")
 	}
 }
 

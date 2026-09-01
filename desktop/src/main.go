@@ -101,6 +101,13 @@ func (a *App) ShowMain() {
 	a.showWindow()
 }
 
+func (a *App) HideSettings() {
+	if a.settingsWindow == nil {
+		return
+	}
+	a.settingsWindow.Hide()
+}
+
 func (a *App) Quit() {
 	a.requestQuit()
 }

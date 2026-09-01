@@ -79,6 +79,11 @@
         overflow: hidden;
         height: 100%;
         background: var(--bg-primary);
+        --window-controls-inset-end: 36px;
+      }
+      html[data-mode="settings"] .window-controls [data-action="minimise"],
+      html[data-mode="settings"] .window-controls [data-action="toggle-maximise"] {
+        display: none;
       }
       html[data-mode="settings"] .wrap {
         max-width: none;
@@ -622,7 +627,15 @@
       document.body.addEventListener("click", (event) => {
         const btn = event.target.closest("[data-action]");
         if (!btn) return;
-        emitWindowAction(btn.getAttribute("data-action"));
+        const action = btn.getAttribute("data-action");
+        if (
+          document.documentElement.dataset.mode === "settings" &&
+          action === "close"
+        ) {
+          call("HideSettings");
+          return;
+        }
+        emitWindowAction(action);
       });
 
       async function call(name, ...args) {
