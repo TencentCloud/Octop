@@ -22,13 +22,14 @@ const trayDoubleClick = 400 * time.Millisecond
 
 // App is the Wails service bound to the shell UI.
 type App struct {
-	app      *application.App
-	window   *application.WebviewWindow
-	store    *settingsStore
-	sleep    *sleepGuard
-	cmd      *exec.Cmd
-	mu       sync.Mutex
-	quitting bool
+	app            *application.App
+	window         *application.WebviewWindow
+	settingsWindow *application.WebviewWindow
+	store          *settingsStore
+	sleep          *sleepGuard
+	cmd            *exec.Cmd
+	mu             sync.Mutex
+	quitting       bool
 
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
@@ -341,6 +342,11 @@ func main() {
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: true,
 		},
+	})
+	api.settingsWindow = settingsWin
+	app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(event *application.ApplicationEvent) {
+		event.Cancel()
+		restoreMainAfterDockClick(api.window, api.settingsWindow)
 	})
 
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
