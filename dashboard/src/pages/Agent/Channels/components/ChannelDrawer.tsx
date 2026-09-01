@@ -534,6 +534,7 @@ export function ChannelDrawer({
 
   // ── QQ Bot Flow ────────────────────────────────────────────────────────
   const startQqQr = useCallback(async () => {
+    stopPolling();
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.qqQrcodeGenerate(agentId);
@@ -574,6 +575,7 @@ export function ChannelDrawer({
 
   // ── WeCom Flow ─────────────────────────────────────────────────────────
   const startWecomQr = useCallback(async () => {
+    stopPolling();
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.wecomQrcodeGenerate(agentId);
@@ -611,6 +613,7 @@ export function ChannelDrawer({
 
   // ── WeChat Flow ─────────────────────────────────────────────────────────
   const startWeixinQr = useCallback(async () => {
+    stopPolling();
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.weixinQrcodeGenerate(agentId);
@@ -652,6 +655,7 @@ export function ChannelDrawer({
 
   // ── DingTalk Flow ───────────────────────────────────────────────────────
   const startDingtalkQr = useCallback(async () => {
+    stopPolling();
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.dingtalkQrcodeGenerate(agentId);
@@ -708,6 +712,7 @@ export function ChannelDrawer({
   // ── Feishu Flow ─────────────────────────────────────────────────────────
   const startFeishuCreator = useCallback(
     async (platform: "feishu" | "lark" = "feishu") => {
+      stopPolling();
       setQrState({
         phase: "feishu_creating",
         message: t("channels.feishuCreating"),
@@ -765,6 +770,7 @@ export function ChannelDrawer({
 
   // ── YuanBao Flow ────────────────────────────────────────────────────────
   const startYuanbaoCreator = useCallback(async () => {
+    stopPolling();
     setQrState({
       phase: "yuanbao_creating",
       message: "启动元宝扫码绑定流程...",
@@ -1145,7 +1151,11 @@ export function ChannelDrawer({
             </div>
           </div>
           <p className={styles.qrScanHint}>{t("channels.qqQrScanHint")}</p>
-          <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
+          <Button
+            size="small"
+            onClick={() => void startQqQr()}
+            style={{ marginTop: 4 }}
+          >
             {t("channels.qrRetry")}
           </Button>
         </div>
@@ -1243,7 +1253,11 @@ export function ChannelDrawer({
             </div>
           </div>
           <p className={styles.qrScanHint}>扫码后自动跳转下一步</p>
-          <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
+          <Button
+            size="small"
+            onClick={() => void startWecomQr()}
+            style={{ marginTop: 4 }}
+          >
             {t("channels.qrRegenerate")}
           </Button>
         </div>
@@ -1349,7 +1363,11 @@ export function ChannelDrawer({
             </div>
           </div>
           <p className={styles.qrScanHint}>使用微信扫码登录个人账号</p>
-          <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
+          <Button
+            size="small"
+            onClick={() => void startWeixinQr()}
+            style={{ marginTop: 4 }}
+          >
             {t("channels.qrRegenerate")}
           </Button>
         </div>
@@ -1446,7 +1464,11 @@ export function ChannelDrawer({
           <p className={styles.qrScanHint}>
             {t("channels.dingtalkUserCode")}: <code>{s.userCode}</code>
           </p>
-          <Button size="small" onClick={resetQr} style={{ marginTop: 4 }}>
+          <Button
+            size="small"
+            onClick={() => void startDingtalkQr()}
+            style={{ marginTop: 4 }}
+          >
             {t("channels.qrRegenerate")}
           </Button>
         </div>
@@ -1537,6 +1559,13 @@ export function ChannelDrawer({
             </div>
           </div>
           <p className={styles.qrScanHint}>{t("channels.feishuQrScanHint")}</p>
+          <Button
+            size="small"
+            onClick={() => void startFeishuCreator()}
+            style={{ marginTop: 4 }}
+          >
+            {t("channels.qrRegenerate")}
+          </Button>
         </div>
       );
     }
@@ -1659,6 +1688,13 @@ export function ChannelDrawer({
             </div>
           </div>
           <p className={styles.qrScanHint}>扫码后在元宝 App 确认绑定</p>
+          <Button
+            size="small"
+            onClick={() => void startYuanbaoCreator()}
+            style={{ marginTop: 4 }}
+          >
+            {t("channels.qrRegenerate")}
+          </Button>
         </div>
       );
     }
