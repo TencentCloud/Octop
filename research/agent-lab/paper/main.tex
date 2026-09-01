@@ -1,0 +1,381 @@
+\documentclass{article}
+
+\usepackage{iclr2026_conference,times}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{hyperref}
+
+\title{Memory as an Evidence Lifecycle: Context-Isolated Orchestration for Long-Term Agents}
+
+% Anonymous submission. Replace only for the camera-ready version.
+\author{Anonymous authors}
+
+\newcommand{\method}{\textsc{EviLife}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Long-term memory for language-model agents is commonly framed as a storage and
+retrieval problem: interaction histories are compressed into an external store,
+relevant items are retrieved, and the retrieved text is appended to the model
+context. We argue that this framing misses a central failure mode. For questions
+that require temporal reasoning, state updates, or evidence from multiple
+sessions, the relevant records are often retrievable but are not organized into
+a representation that a bounded-context agent can reliably read. We introduce
+\method, a training-free memory-agent architecture that treats memory use as an
+\emph{evidence lifecycle}. Immutable raw memories are exposed through a bounded
+navigation catalog; a parent agent decomposes the query into evidence tasks;
+read-only subagents inspect disjoint source scopes in isolated context windows;
+their full outputs are stored in a result ledger; and an evidence compiler
+reconciles provenance, dates, conflicts, exclusions, and coverage into a compact
+answer contract. The parent receives references and bounded summaries rather
+than raw subagent transcripts. The same agent loop is used for all question
+types and receives no gold question-type label, abstention marker, embedding, or
+reranker. In a preliminary evaluation on a balanced 180-episode subset of
+LongMemEval, our current prototype answers 162 episodes correctly (90.0\%) under
+an independent LLM judge. Failure analysis identifies incomplete cross-source
+coverage and malformed child reports, rather than lexical retrieval, as the
+dominant remaining bottlenecks. These findings motivate a shift from optimizing
+memory volume or top-$k$ recall alone toward optimizing evidence organization,
+context isolation, and coverage-aware control flow.
+\end{abstract}
+
+\section{Introduction}
+
+Language-model agents do not possess memory outside the tokens and state made
+available at inference time. As an interaction history grows, an agent must
+therefore decide what to preserve, what to retrieve, and how to fit retrieved
+information into a finite context window. Long-context models reduce but do not
+remove this difficulty: relevant evidence can be diluted by unrelated content,
+especially when it occurs far from the query or between distractors
+\citep{liu2024lost}. Retrieval-augmented generation reduces the amount of text
+presented to the model \citep{lewis2020rag}, but a ranked list of similar chunks
+is not yet a coherent account of what happened.
+
+This distinction is consequential in long-term conversational memory. A simple
+fact lookup may be answered from one turn. In contrast, a temporal question may
+require anchoring a relative expression to the question date, a knowledge-update
+question may require selecting the newest valid state, and a multi-session
+question may require a complete census across several weakly related sources.
+In these cases, increasing $k$ can improve evidence recall while simultaneously
+making the reader's task harder. The system has found the evidence but has not
+made it readable.
+
+Our experiments expose a second limitation of the standard retriever--reader
+pipeline: the agent must recognize \emph{when} a query needs evidence
+organization. In an early strict evaluation on all 500 LongMemEval episodes, a
+generic agent without benchmark-provided routing priors invoked its evidence
+reader on only 6 episodes. It performed well on short, single-source paths but
+repeated searches on difficult episodes until exhausting its tool budget. This
+diagnostic result suggests that reader quality alone is insufficient; memory
+reasoning requires an explicit control loop for task decomposition, source
+coverage, and stopping.
+
+We propose \method, an architecture in which the parent agent acts as an
+orchestrator rather than a bulk reader. It maintains an explicit task list,
+delegates bounded evidence questions to isolated read-only subagents, stores
+their full reports outside the parent context, and invokes a separate compiler
+to construct a provenance-preserving evidence packet. The architecture is
+inspired by tool-using coding agents, where model turns and tool-result turns
+alternate in a stateful loop, but it adapts that control flow to the distinct
+requirements of persistent conversational memory.
+
+The central hypothesis of this work is:
+
+\begin{quote}
+For long-term memory reasoning, the principal systems bottleneck is often not
+whether relevant text can be retrieved, but whether distributed evidence can be
+organized into a compact, trustworthy, and update-aware state before final
+answer generation.
+\end{quote}
+
+We make the following contributions:
+\begin{itemize}
+    \item We formulate long-term memory use as an \emph{evidence lifecycle}
+    spanning navigation, scoped reading, result isolation, evidence compilation,
+    and final answer projection, rather than as a single top-$k$ retrieval call.
+    \item We introduce a context-isolated parent--subagent architecture. Full
+    child transcripts remain in sidechains and a result ledger, while the parent
+    sees only a result identifier and a bounded summary.
+    \item We define provenance- and coverage-aware evidence contracts that
+    preserve source references, dates, speakers, state transitions, exclusions,
+    conflicts, and unresolved information across compression boundaries.
+    \item We evaluate a single no-type-prior agent loop across six LongMemEval
+    question types. A preliminary balanced 180-episode experiment reaches
+    90.0\% judged accuracy without embeddings or a reranker, and provides an
+    auditable taxonomy of remaining evidence-lifecycle failures.
+\end{itemize}
+
+The present result is a development-stage finding, not yet a claim of
+state-of-the-art performance. The final evaluation will freeze the method and
+add full-dataset, cross-model, cross-benchmark, cost, and component-ablation
+experiments.
+
+\section{Related Work}
+
+\subsection{Long-context models and retrieval-augmented generation}
+
+Retrieval-augmented generation augments a parametric language model with
+non-parametric evidence selected from an external corpus
+\citep{lewis2020rag}. Long-context models instead expose more source tokens
+directly, but their effective use of information can degrade with position and
+interference \citep{liu2024lost}. Both approaches primarily determine
+\emph{which text} reaches the model. Our work addresses a subsequent systems
+problem: how an agent should divide, validate, reconcile, and compress evidence
+when the answer depends on several sources or evolving states.
+
+\subsection{Persistent memory for language-model agents}
+
+Several systems give agents writable memory beyond the active context window.
+MemoryBank records and updates user information with an importance- and
+time-dependent forgetting mechanism \citep{zhong2023memorybank}. MemGPT frames
+context management as virtual memory and lets an agent move information between
+memory tiers \citep{packer2023memgpt}. Mem0 extracts and consolidates salient
+facts into scalable semantic and graph memories \citep{chhikara2025mem0}, while
+A-MEM dynamically links and evolves structured notes
+\citep{xu2025amem}. HippoRAG uses a graph and personalized PageRank to support
+multi-hop retrieval \citep{gutierrez2024hipporag}.
+
+These methods chiefly innovate in memory representation, curation, or retrieval.
+\method{} is complementary: it focuses on the execution path between memory and
+the final answer. In particular, it isolates raw reading from parent-agent
+planning and makes cross-source evidence compilation a first-class operation.
+
+\subsection{Hierarchical and agent-native memory}
+
+ByteRover proposes an agent-native, file-based Context Tree in which the LLM
+curates hierarchical knowledge and progressively escalates retrieval without a
+vector database \citep{nguyen2026byterover}. HiGMem similarly uses high-level
+event summaries to guide selective reading of underlying turns
+\citep{cao2026higmem}. APEX-MEM combines append-only history, temporally grounded
+property graphs, and a multi-tool retrieval agent for resolving evolving
+information \citep{banerjee2026apex}.
+
+Our navigation catalog is related to hierarchical disclosure, but the proposed
+unit of organization differs. Rather than treating a hierarchy or graph as the
+final memory interface, we create ephemeral, query-specific evidence tasks and
+store each child's complete result outside the parent's context. This design
+targets coordination loss, context contamination, and incomplete source
+coverage during inference. It can in principle operate over a file hierarchy,
+a graph, a lexical index, or another underlying memory store.
+
+\subsection{Long-term conversational memory benchmarks}
+
+LoCoMo evaluates question answering and generation over long multi-session
+dialogues \citep{maharana2024locomo}. LongMemEval evaluates information
+extraction, temporal reasoning, knowledge updates, multi-session reasoning, and
+abstention over 500 timestamped histories \citep{wu2025longmemeval}. These
+benchmarks show that long context and conventional retrieval remain below human
+performance. We use LongMemEval because its source annotations and heterogeneous
+question types allow retrieval coverage to be separated from downstream
+evidence-reading failures. Unlike type-aware evaluation pipelines, our runtime
+does not receive the benchmark's question type or infer abstention from a
+question identifier.
+
+\section{Method}
+
+\subsection{Problem formulation}
+
+Let a conversational memory be a set of immutable source records
+$\mathcal{M}=\{m_j\}_{j=1}^{N}$. Each record contains content $x_j$, timestamp
+$t_j$, speaker $s_j$, and a stable source reference $p_j$. Given a question
+$q$ and question date $t_q$, an agent must produce answer $y$ under an active
+context budget $B$:
+\begin{equation}
+    y \sim f_\theta\!\left(q,t_q,\mathcal{E}_q\right),
+    \qquad |\mathcal{E}_q| \leq B,
+\end{equation}
+where $\mathcal{E}_q$ is not a raw top-$k$ list but a compiled evidence state.
+The method must construct $\mathcal{E}_q$ without access to a gold question
+type or evidence-session annotation.
+
+We distinguish three notions of completeness. \emph{Retrieval coverage} asks
+whether relevant source records appear among candidates. \emph{task-scope
+coverage} asks whether a delegated child inspected all sources assigned to it.
+\emph{answer coverage} asks whether the combined evidence supports every operand
+and boundary in the requested answer. A child can complete its local scope
+without establishing global answer coverage.
+
+\subsection{Four-layer memory interface}
+
+\method{} exposes memory through four layers, each retaining references to the
+layer below:
+
+\paragraph{Raw memory.}
+The raw layer is an append-preserving record of the original interaction. Raw
+content is never overwritten by summaries. Corrections create a revision or a
+new state event, preserving the evidence needed to audit earlier conclusions.
+
+\paragraph{Navigation catalog.}
+A bounded catalog exposes lightweight frontmatter: memory identifiers, source
+references, dates, speakers, short descriptions, and structural links. The
+catalog is a map of available evidence, not evidence itself. It lets the parent
+plan complementary reading tasks without ingesting full records.
+
+\paragraph{Event and state ledger.}
+Derived entries organize dated events, entities, relations, and state
+transitions while pointing back to raw sources. This layer makes chronology and
+supersession explicit but remains revisable when new evidence arrives.
+
+\paragraph{Query-specific evidence results.}
+For each question, subagents produce ephemeral evidence results containing
+supported candidates, exclusions, missing information, conflicts, source
+coverage, and provenance. These results serve the current decision and are not
+silently promoted to durable memory.
+
+\subsection{Parent-agent orchestration}
+
+The parent receives $(q,t_q)$ and the bounded catalog. It maintains an explicit
+todo list $\mathcal{T}$ and alternates model and tool turns. Its available
+operations are deliberately narrow:
+\begin{equation}
+\textsc{TodoWrite},\quad \textsc{ForkSubagent},\quad
+\textsc{CompileEvidence}.
+\end{equation}
+The parent does not directly read large raw memories in the orchestrator-only
+configuration. Instead, it converts unresolved parts of the question into one
+or more bounded evidence tasks. Examples include locating all candidate sources
+for a predicate, reconstructing a dated update chain, or checking whether two
+sources refer to the same event. These are operational tasks inferred from the
+question and current evidence state, not benchmark question-type labels.
+
+At turn $k$, the parent state is
+\begin{equation}
+    z_k = (q,t_q,\mathcal{T}_k,\mathcal{C},\mathcal{R}^{\mathrm{brief}}_k),
+\end{equation}
+where $\mathcal{C}$ is the navigation catalog and
+$\mathcal{R}^{\mathrm{brief}}_k$ contains only child result identifiers and
+bounded summaries. The parent chooses to delegate, compile, or answer based on
+unresolved todos, source coverage, conflicts, and remaining turn budget.
+
+\subsection{Context-isolated evidence subagents}
+
+A fork request is a tuple
+\begin{equation}
+    a_i=(d_i, u_i, A_i, P_i, K_i),
+\end{equation}
+where $d_i$ is a short description, $u_i$ is the evidence objective, $A_i$ is a
+tool allowlist, $P_i$ is a set of source or catalog references, and $K_i$ is a
+turn budget. Each child receives only the task, required references, and
+read-only tools such as \textsc{MemorySearch} and \textsc{MemoryRead}. Recursive
+forking and memory mutation are disabled.
+
+The child transcript is written to a separate sidechain. After completion, the
+runtime validates the report schema and writes the full result $r_i$ to a
+result ledger:
+\begin{equation}
+    \mathcal{L}[\mathrm{id}_i] \leftarrow
+    (u_i,r_i,P_i,\mathrm{coverage}_i,\mathrm{status}_i).
+\end{equation}
+The parent receives only $(\mathrm{id}_i,\mathrm{summary}_{200}(r_i))$. This
+prevents natural-language reports and intermediate tool traces from consuming
+the parent's planning context, while preserving full evidence for later
+compilation. Tool outputs retain stable source references so compression never
+turns a claim into unsupported prose.
+
+\subsection{Evidence compilation}
+
+When sufficient child results are available, the parent calls
+\textsc{CompileEvidence} with a set of result identifiers. An isolated compiler
+reads the corresponding full records and constructs
+\begin{equation}
+    \mathcal{E}_q = \Gamma(q,t_q,r_1,\ldots,r_m).
+\end{equation}
+The compiler cannot call retrieval tools or answer the user directly. It must
+produce a bounded evidence contract containing:
+\begin{itemize}
+    \item answerability and the requested answer operation;
+    \item included and excluded claims with source references;
+    \item dates, speakers, temporal boundaries, and state transitions;
+    \item cross-source coverage, conflicts, unexplored sources, and missing
+    information; and
+    \item a compact answer projection, such as a fact, list, count, duration,
+    latest state, preference, or abstention decision.
+\end{itemize}
+
+The runtime validates structural invariants before returning the packet to the
+parent. For example, a count must equal the number of included task-level units,
+and each included unit must carry provenance. A deterministic fallback preserves
+valid child claims when the compiler output is truncated or malformed. The
+final paper will separately ablate generic schema validation from any
+predicate-specific projection rules present in the development prototype.
+
+\subsection{Progressive disclosure and context compression}
+
+The architecture treats every context boundary as a lossy channel and therefore
+defines what must survive it. Raw records are disclosed only after catalog
+navigation; child transcripts are replaced by ledger receipts in the parent;
+and the compiler emits a final packet bounded by a fixed character or token
+budget. Compression preserves user--assistant and tool-call--tool-result pairs,
+canonicalizes streamed model output, and keeps reasoning content separate from
+answer and tool-input channels. When a packet exceeds its budget, optional
+explanations are removed before claims, dates, decisions, or provenance.
+
+This design yields a simple division of responsibility:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Component & Sees & Responsibility \\
+\midrule
+Parent agent & question, catalog, result receipts & goals and decisions \\
+Evidence child & bounded task and raw sources & scoped discovery and reading \\
+Result ledger & complete child reports & lossless intermediate storage \\
+Compiler & selected full reports & reconciliation and answer contract \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Runtime contract}
+
+All benchmark question types use the same model loop and tool set. At answer
+time, the system receives only the conversation history, source timestamps,
+question, and question date. It does not receive \texttt{question\_type}, inspect
+question-ID suffixes, use gold evidence annotations, or force a type-specific
+reader. The current implementation uses lexical and structural navigation and
+does not require embeddings, a vector database, or a learned reranker. This
+restriction is a design choice rather than a claim that semantic retrieval is
+unnecessary; the orchestration layer is intended to be compatible with stronger
+underlying stores.
+
+\section{Experimental Plan}
+
+\paragraph{Current preliminary result.}
+On a fixed balanced subset of 180 LongMemEval episodes (30 per runtime-hidden
+question type), the current prototype achieves 162/180 judged correct (90.0\%).
+Single-session assistant, preference, user, knowledge-update, temporal, and
+multi-session accuracy are 100.0\%, 96.7\%, 96.7\%, 90.0\%, 86.7\%, and 70.0\%,
+respectively. Only 50.0\% of 332 child reports are structurally valid, and 16 of
+18 judged failures contain at least one invalid child report. These diagnostics
+support the evidence-lifecycle hypothesis but also show that multi-session
+coverage and report reliability remain unresolved.
+
+\paragraph{Required final experiments.}
+The submission will report a frozen full-500 LongMemEval run, LoCoMo and at
+least one unseen agentic-memory benchmark, multiple backbone models, independent
+judges with human agreement checks, token/latency/tool-call cost, and controlled
+ablations of the catalog, context isolation, result ledger, compiler, coverage
+contract, and deterministic validation. We will compare against full context,
+standard lexical and embedding retrieval, a direct parent-only tool agent, and
+representative persistent-memory systems. \todo{Run and insert the frozen
+publication-grade experiments before making comparative performance claims.}
+
+\section{Limitations}
+
+The present prototype has been iteratively developed on LongMemEval, so the
+balanced subset is a regression gate rather than an untouched test set. Its
+accuracy is measured by an LLM judge from the same model family as generation,
+although calls are independent. The architecture also spends additional model
+calls on child reading and compilation. Cross-benchmark generalization,
+cross-model robustness, human-judge agreement, and the accuracy--cost frontier
+must therefore be established before drawing broad conclusions.
+
+\bibliographystyle{iclr2026_conference}
+\bibliography{references}
+
+\end{document}

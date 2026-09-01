@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "source": "balanced-180-v51-fixed v2 regression gate",
+  "count": 11,
+  "runtime_contract": {
+    "question_type_passed_to_agent": false,
+    "abs_suffix_checked_at_runtime": false,
+    "gold_labels_in_memory_tags": false
+  },
+  "items": [
+    {
+      "question_id": "01493427",
+      "question_type": "knowledge-update"
+    },
+    {
+      "question_id": "0a34ad58",
+      "question_type": "single-session-preference"
+    },
+    {
+      "question_id": "1a1907b4",
+      "question_type": "single-session-preference"
+    },
+    {
+      "question_id": "28dc39ac",
+      "question_type": "multi-session"
+    },
+    {
+      "question_id": "38146c39",
+      "question_type": "single-session-preference"
+    },
+    {
+      "question_id": "6d550036",
+      "question_type": "multi-session"
+    },
+    {
+      "question_id": "c4a1ceb8",
+      "question_type": "multi-session"
+    },
+    {
+      "question_id": "d24813b1",
+      "question_type": "single-session-preference"
+    },
+    {
+      "question_id": "gpt4_15e38248",
+      "question_type": "multi-session"
+    },
+    {
+      "question_id": "gpt4_468eb063",
+      "question_type": "temporal-reasoning"
+    },
+    {
+      "question_id": "gpt4_d12ceb0e",
+      "question_type": "multi-session"
+    }
+  ]
+}

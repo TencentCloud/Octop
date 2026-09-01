@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "source": "regression11 turn-ref retry",
+  "count": 1,
+  "runtime_contract": {
+    "question_type_passed_to_agent": false,
+    "abs_suffix_checked_at_runtime": false,
+    "gold_labels_in_memory_tags": false
+  },
+  "items": [
+    {
+      "question_id": "d24813b1",
+      "question_type": "single-session-preference"
+    }
+  ]
+}

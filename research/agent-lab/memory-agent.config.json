@@ -1,0 +1,18 @@
+{
+  "memoryRoot": "./memory-data",
+  "context": {
+    "maxItems": 6,
+    "maxChars": 8000,
+    "minScore": 0.05
+  },
+  "compression": {
+    "maxChars": 80000,
+    "preserveRecentChars": 24000,
+    "summaryMaxChars": 12000
+  },
+  "curator": {
+    "enabled": false,
+    "maxTurns": 5,
+    "maxContextChars": 40000
+  }
+}

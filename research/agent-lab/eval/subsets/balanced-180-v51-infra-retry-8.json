@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "source": "balanced-180-v51-fixed infrastructure-timeout retry",
+  "count": 8,
+  "runtime_contract": {
+    "question_type_passed_to_agent": false,
+    "abs_suffix_checked_at_runtime": false,
+    "gold_labels_in_memory_tags": false
+  },
+  "items": [
+    {
+      "question_id": "07741c44",
+      "question_type": "knowledge-update"
+    },
+    {
+      "question_id": "830ce83f",
+      "question_type": "knowledge-update"
+    },
+    {
+      "question_id": "d7c942c3",
+      "question_type": "knowledge-update"
+    },
+    {
+      "question_id": "gpt4_1d4ab0c9",
+      "question_type": "temporal-reasoning"
+    },
+    {
+      "question_id": "gpt4_45189cb4",
+      "question_type": "temporal-reasoning"
+    },
+    {
+      "question_id": "gpt4_4fc4f797",
+      "question_type": "temporal-reasoning"
+    },
+    {
+      "question_id": "gpt4_6dc9b45b",
+      "question_type": "temporal-reasoning"
+    },
+    {
+      "question_id": "gpt4_b5700ca9",
+      "question_type": "temporal-reasoning"
+    }
+  ]
+}

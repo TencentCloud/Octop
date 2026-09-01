@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Lab Code Viewer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101114;
+        --panel: #181a20;
+        --panel-2: #20232b;
+        --text: #e7eaf0;
+        --muted: #9aa3b2;
+        --accent: #7cc4ff;
+        --border: #2f3440;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 650;
+        letter-spacing: 0;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+        height: calc(100vh - 53px);
+      }
+
+      nav {
+        overflow: auto;
+        border-right: 1px solid var(--border);
+        background: #13151a;
+        padding: 10px;
+      }
+
+      button {
+        width: 100%;
+        display: block;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        text-align: left;
+        padding: 9px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button:hover,
+      button.active {
+        background: var(--panel-2);
+        color: var(--text);
+        border-color: var(--border);
+      }
+
+      button.active {
+        color: var(--accent);
+      }
+
+      section {
+        min-width: 0;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .file-title {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: #151820;
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+      }
+
+      pre {
+        margin: 0;
+        overflow: auto;
+        padding: 18px;
+        tab-size: 2;
+        font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        white-space: pre;
+      }
+
+      code {
+        color: #f0f3f8;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Agent Lab Code Viewer</h1>
+      <div class="status" id="status">Loading...</div>
+    </header>
+    <main>
+      <nav id="files"></nav>
+      <section>
+        <div class="file-title" id="title"></div>
+        <pre><code id="code"></code></pre>
+      </section>
+    </main>
+
+    <script>
+      const filesNode = document.querySelector('#files')
+      const titleNode = document.querySelector('#title')
+      const codeNode = document.querySelector('#code')
+      const statusNode = document.querySelector('#status')
+      let activePath = 'src/core/agent-loop.ts'
+      let latestFiles = []
+
+      function escapeHtml(value) {
+        return value
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+      }
+
+      function render() {
+        filesNode.innerHTML = ''
+        for (const file of latestFiles) {
+          const button = document.createElement('button')
+          button.textContent = file.path
+          button.className = file.path === activePath ? 'active' : ''
+          button.addEventListener('click', () => {
+            activePath = file.path
+            render()
+          })
+          filesNode.appendChild(button)
+        }
+
+        const active = latestFiles.find(file => file.path === activePath) ?? latestFiles[0]
+        if (!active) return
+        activePath = active.path
+        titleNode.textContent = active.path
+        codeNode.innerHTML = escapeHtml(active.content)
+      }
+
+      async function refresh() {
+        try {
+          const response = await fetch('/api/files', { cache: 'no-store' })
+          const payload = await response.json()
+          latestFiles = payload.files
+          statusNode.textContent = `Updated ${new Date(payload.updatedAt).toLocaleTimeString()}`
+          render()
+        } catch (error) {
+          statusNode.textContent = `Disconnected: ${error.message}`
+        }
+      }
+
+      refresh()
+      setInterval(refresh, 1000)
+    </script>
+  </body>
+</html>

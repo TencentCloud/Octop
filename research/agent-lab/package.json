@@ -1,0 +1,24 @@
+{
+  "name": "agent-lab",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "demo": "npm run build && node dist/examples/basic-loop.js",
+    "memory-demo": "npm run build && node dist/examples/memory-agent.js",
+    "eval:lme:smoke": "npm run build && node dist/eval/longmemeval-smoke.js",
+    "eval:lme:judge": "npm run build && node dist/eval/longmemeval-judge.js",
+    "eval:lme:merge": "npm run build && node dist/eval/merge-longmemeval-shards.js",
+    "eval:lme:analyze": "npm run build && node dist/eval/analyze-orchestrator.js",
+    "eval:lme:subset": "npm run build && node dist/eval/create-longmemeval-subset.js",
+    "eval:lme:bundle": "npm run build && node dist/eval/evidence-bundle-diagnostic.js",
+    "eval:lme:formation": "npm run build && node dist/eval/memory-formation-diagnostic.js",
+    "view": "node viewer/server.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
