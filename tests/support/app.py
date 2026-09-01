@@ -66,8 +66,9 @@ async def octop_client(
                 transport=httpx.ASGITransport(app=app),
                 base_url="http://testserver",
             ) as client:
-                # Expose the ASGI app so tests can open WebSocket sessions via
-                # starlette's sync TestClient (httpx removed AsyncClient.websocket_connect).
+                # Expose the ASGI app so tests can open WebSocket sessions on
+                # this same event loop (tests.support.http.ws_connect); httpx
+                # removed AsyncClient.websocket_connect.
                 client._octop_app = app  # type: ignore[attr-defined]
                 yield client, srv
         finally:

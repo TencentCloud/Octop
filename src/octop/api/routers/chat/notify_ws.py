@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import logging
@@ -46,19 +45,12 @@ async def dashboard_notifications_ws(
     connection_id = uuid.uuid4().hex
     await websocket.accept()
 
-    # Harness/gateway workers run on the server loop; this handler may run on
-    # another (e.g. Starlette TestClient). Marshal frames onto the socket loop.
-    ws_loop = asyncio.get_running_loop()
-
-    async def _emit_frame(frame: dict[str, Any]) -> None:
+    async def send_frame(frame: dict[str, Any]) -> None:
         if websocket.application_state != WebSocketState.CONNECTED:
             return
         await websocket.send_text(
             json.dumps(frame, ensure_ascii=False, default=json_chunk_default),
         )
-
-    async def send_frame(frame: dict[str, Any]) -> None:
-        await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(_emit_frame(frame), ws_loop))
 
     hub.register(connection_id, send_frame, user_id=user.id)
 
