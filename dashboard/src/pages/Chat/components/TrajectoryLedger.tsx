@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 import { laneForKind, toLedgerRow } from "../utils/trajectoryModel";
 import styles from "./TrajectoryLedger.module.less";
@@ -39,6 +39,18 @@ export default function TrajectoryLedger({
   focusEventIds,
   searchMatchIds,
 }: TrajectoryLedgerProps) {
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+
+  useEffect(() => {
+    if (selectedEventId == null) return;
+    const node = rowRefs.current.get(selectedEventId);
+    if (typeof node?.scrollIntoView !== "function") return;
+    node.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [selectedEventId]);
+
   return (
     <ol className={styles.ledger}>
       {events.map((event, index) => {
@@ -58,6 +70,10 @@ export default function TrajectoryLedger({
               </li>
             ) : null}
             <li
+              ref={(node) => {
+                if (node) rowRefs.current.set(row.id, node);
+                else rowRefs.current.delete(row.id);
+              }}
               className={rowClass(row.kind, row.isError, selected)}
               data-kind={row.kind}
               data-focus-match={matchAttr(focusEventIds, row.id)}

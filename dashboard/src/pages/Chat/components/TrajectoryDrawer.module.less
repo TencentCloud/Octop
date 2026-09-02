@@ -53,7 +53,6 @@
 
 .ledgerPane,
 .inspectorPane {
-  flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -61,12 +60,20 @@
   overflow: hidden;
 }
 
+.ledgerPane {
+  flex: 1;
+}
+
 .inspectorPane {
+  flex: 0 0 38%;
+  max-width: 40%;
   border-left: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
   padding-left: 12px;
 }
 
 .splitMobile .inspectorPane {
+  flex: 0 0 auto;
+  max-width: none;
   border-left: none;
   border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
   padding-left: 0;

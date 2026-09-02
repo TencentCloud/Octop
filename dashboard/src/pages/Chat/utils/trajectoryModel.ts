@@ -15,12 +15,13 @@ export interface TrajectoryLedgerRow {
   isError: boolean;
 }
 
-const INPUT_KINDS = new Set<string>(["user", "system", "unknown"]);
-const MODEL_KINDS = new Set<string>(["assistant", "context", "compacted"]);
+/** Match DeepSeek Harness ui-trajectory lanes: Input / Model / Tools. */
+const INPUT_KINDS = new Set<string>(["user", "system", "context", "unknown"]);
+const MODEL_KINDS = new Set<string>(["assistant", "compacted"]);
 
 export function laneForKind(kind: string): TrajectoryLane {
-  if (MODEL_KINDS.has(kind)) return "model";
   if (kind === "tool") return "tools";
+  if (MODEL_KINDS.has(kind)) return "model";
   if (INPUT_KINDS.has(kind)) return "input";
   return "input";
 }
@@ -87,15 +88,18 @@ export function collapseTurns(events: TrajectoryEvent[]): TrajectoryEvent[][] {
   return groups;
 }
 
+/** Fold tool rows under the preceding assistant (DSH “Calls”). Orphan tools drop. */
 export function collapseCalls(events: TrajectoryEvent[]): TrajectoryEvent[][] {
   const groups: TrajectoryEvent[][] = [];
   for (const event of events) {
     const last = groups[groups.length - 1];
-    if (event.kind === "tool" && last?.[0]?.kind === "tool") {
-      last.push(event);
-    } else {
-      groups.push([event]);
+    if (event.kind === "tool") {
+      if (last?.[0]?.kind === "assistant") {
+        last.push(event);
+      }
+      continue;
     }
+    groups.push([event]);
   }
   return groups;
 }

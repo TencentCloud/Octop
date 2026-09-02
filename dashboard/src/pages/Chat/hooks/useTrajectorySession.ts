@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   trajectoryApi,
   type TrajectoryEvent,
+  type TrajectoryMetrics,
 } from "../../../api/modules/trajectory";
 
 interface UseTrajectorySessionOptions {
@@ -12,6 +13,7 @@ interface UseTrajectorySessionOptions {
 
 interface TrajectorySessionState {
   events: TrajectoryEvent[];
+  metrics: TrajectoryMetrics | null;
   loading: boolean;
   error: boolean;
   hasMore: boolean;
@@ -26,12 +28,38 @@ function isTrajectoryEvent(value: unknown): value is TrajectoryEvent {
   return typeof record.event_id === "string" && typeof record.kind === "string";
 }
 
+function isTrajectoryMetrics(value: unknown): value is TrajectoryMetrics {
+  if (value == null || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.turns === "number" && typeof record.steps === "number";
+}
+
+function parseSseData(raw: MessageEvent<string>): unknown {
+  try {
+    return JSON.parse(raw.data);
+  } catch {
+    return undefined;
+  }
+}
+
+function upsertByEventId(
+  prev: TrajectoryEvent[],
+  incoming: TrajectoryEvent,
+): TrajectoryEvent[] {
+  const index = prev.findIndex((row) => row.event_id === incoming.event_id);
+  if (index === -1) return [...prev, incoming];
+  const next = prev.slice();
+  next[index] = incoming;
+  return next;
+}
+
 export function useTrajectorySession({
   agentId,
   threadId,
   visible = true,
 }: UseTrajectorySessionOptions): TrajectorySessionState {
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
+  const [metrics, setMetrics] = useState<TrajectoryMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -46,6 +74,7 @@ export function useTrajectorySession({
   const refresh = useCallback(() => {
     sessionGenRef.current += 1;
     setEvents([]);
+    setMetrics(null);
     setHasMore(false);
     setNextBeforeSeq(null);
     setReloadToken((token) => token + 1);
@@ -72,6 +101,7 @@ export function useTrajectorySession({
   useEffect(() => {
     sessionGenRef.current += 1;
     setEvents([]);
+    setMetrics(null);
     setError(false);
     setHasMore(false);
     setNextBeforeSeq(null);
@@ -91,21 +121,14 @@ export function useTrajectorySession({
         trajectoryApi.streamUrl(agentId, threadId, afterSeq),
       );
       source.addEventListener("event", (raw) => {
-        const message = raw as MessageEvent<string>;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(message.data);
-        } catch {
-          return;
-        }
+        const parsed = parseSseData(raw as MessageEvent<string>);
         if (!isTrajectoryEvent(parsed)) return;
-        const incoming = parsed;
-        setEvents((prev) => {
-          if (prev.some((row) => row.event_id === incoming.event_id)) {
-            return prev;
-          }
-          return [...prev, incoming];
-        });
+        setEvents((prev) => upsertByEventId(prev, parsed));
+      });
+      source.addEventListener("metrics", (raw) => {
+        const parsed = parseSseData(raw as MessageEvent<string>);
+        if (!isTrajectoryMetrics(parsed)) return;
+        setMetrics(parsed);
       });
     };
 
@@ -134,5 +157,14 @@ export function useTrajectorySession({
     };
   }, [visible, agentId, threadId, reloadToken]);
 
-  return { events, loading, error, hasMore, retry, loadEarlier, refresh };
+  return {
+    events,
+    metrics,
+    loading,
+    error,
+    hasMore,
+    retry,
+    loadEarlier,
+    refresh,
+  };
 }

@@ -2,10 +2,10 @@ import { Button, Drawer, Empty, Space, Spin } from "antd";
 import { Download, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { message } from "@/utils/antdMessage";
 import {
   trajectoryApi,
   type TrajectoryEvent,
-  type TrajectoryMetrics,
 } from "../../../api/modules/trajectory";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useTrajectorySession } from "../hooks/useTrajectorySession";
@@ -61,19 +61,26 @@ export default function TrajectoryDrawer({
 }: TrajectoryDrawerProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
-  const { events, loading, error, retry, hasMore, loadEarlier, refresh } =
-    useTrajectorySession({
-      agentId,
-      threadId,
-      visible: open,
-    });
+  const {
+    events,
+    metrics,
+    loading,
+    error,
+    retry,
+    hasMore,
+    loadEarlier,
+    refresh,
+  } = useTrajectorySession({
+    agentId,
+    threadId,
+    visible: open,
+  });
   const [durationOn, setDurationOn] = useState(false);
   const [collapseTurn, setCollapseTurn] = useState(false);
   const [collapseCall, setCollapseCall] = useState(false);
   const [query, setQuery] = useState("");
   const [range, setRange] = useState<TrajectoryTimeRange | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<TrajectoryMetrics | null>(null);
 
   useEffect(() => {
     setRange(null);
@@ -84,23 +91,6 @@ export default function TrajectoryDrawer({
     setDurationOn(false);
   }, [agentId, threadId]);
 
-  useEffect(() => {
-    setMetrics(null);
-    if (!open || !threadId) return;
-    let cancelled = false;
-    void trajectoryApi
-      .metrics(agentId, threadId)
-      .then((next) => {
-        if (!cancelled) setMetrics(next);
-      })
-      .catch(() => {
-        if (!cancelled) setMetrics(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, agentId, threadId, events.length]);
-
   const mode = durationOn ? "duration" : "sequence";
   const ledgerEvents = useMemo(
     () => collapsedEvents(events, collapseTurn, collapseCall),
@@ -109,9 +99,9 @@ export default function TrajectoryDrawer({
   const searchMatchIds = useMemo(() => {
     if (!query.trim()) return null;
     return new Set(
-      filterRows(ledgerEvents.map(toLedgerRow), query).map((row) => row.id),
+      filterRows(events.map(toLedgerRow), query).map((row) => row.id),
     );
-  }, [ledgerEvents, query]);
+  }, [events, query]);
   const focusEventIds = useMemo(() => {
     if (range == null) return null;
     return trajectoryFocusEventIds(deriveSwimlaneSpans(events, mode), range);
@@ -122,13 +112,19 @@ export default function TrajectoryDrawer({
   const onExport = () => {
     if (!threadId) return;
     void (async () => {
-      const blob = await trajectoryApi.export(agentId, threadId);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `trajectory-${threadId}.jsonl`;
-      link.click();
-      URL.revokeObjectURL(url);
+      try {
+        const blob = await trajectoryApi.export(agentId, threadId);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `trajectory-${threadId}.jsonl`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        message.error(
+          t("chat.trajectoryExportFailed", "Failed to export trajectory"),
+        );
+      }
     })();
   };
 
@@ -234,13 +230,18 @@ export default function TrajectoryDrawer({
               searchMatchIds={searchMatchIds}
             />
           </div>
-          <div className={styles.inspectorPane}>
-            <TrajectoryInspector
-              agentId={agentId}
-              threadId={threadId}
-              event={selectedEvent}
-            />
-          </div>
+          {selectedEvent ? (
+            <div
+              className={styles.inspectorPane}
+              data-testid="trajectory-inspector-pane"
+            >
+              <TrajectoryInspector
+                agentId={agentId}
+                threadId={threadId}
+                event={selectedEvent}
+              />
+            </div>
+          ) : null}
         </div>
         <TrajectoryMetricsBar
           agentId={agentId}

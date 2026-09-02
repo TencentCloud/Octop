@@ -107,6 +107,60 @@ describe("TrajectoryLedger", () => {
     expect(dimmed.closest("li")).toHaveAttribute("data-focus-match", "false");
   });
 
+  it("scrolls the selected row into view", () => {
+    const scrollIntoView = vi.fn();
+    const proto = Element.prototype as Element & {
+      scrollIntoView: typeof scrollIntoView;
+    };
+    const original = proto.scrollIntoView;
+    proto.scrollIntoView = scrollIntoView;
+
+    try {
+      const { rerender } = render(
+        <TrajectoryLedger
+          events={[
+            event({
+              event_id: "first",
+              kind: "user",
+              summary: "kept",
+            }),
+            event({
+              event_id: "second",
+              kind: "assistant",
+              summary: "later",
+            }),
+          ]}
+          {...idle}
+        />,
+      );
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      rerender(
+        <TrajectoryLedger
+          events={[
+            event({
+              event_id: "first",
+              kind: "user",
+              summary: "kept",
+            }),
+            event({
+              event_id: "second",
+              kind: "assistant",
+              summary: "later",
+            }),
+          ]}
+          {...idle}
+          selectedEventId="second"
+        />,
+      );
+
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      proto.scrollIntoView = original;
+    }
+  });
+
   it("inserts a turn header when turn_id changes", () => {
     render(
       <TrajectoryLedger

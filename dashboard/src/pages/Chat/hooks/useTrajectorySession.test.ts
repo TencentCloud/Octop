@@ -121,6 +121,69 @@ describe("useTrajectorySession", () => {
     ]);
   });
 
+  it("upserts a live event with the same event_id", async () => {
+    const { result } = renderHook(() =>
+      useTrajectorySession({
+        agentId: "A1",
+        threadId: "T1",
+        visible: true,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    act(() => {
+      MockEventSource.instances[0].emit("event", {
+        ...assistantEvent,
+        event_id: "tool-1",
+        kind: "assistant",
+        summary: "updated",
+      });
+    });
+
+    expect(result.current.events).toHaveLength(1);
+    expect(result.current.events[0]).toMatchObject({
+      event_id: "tool-1",
+      kind: "assistant",
+      summary: "updated",
+    });
+  });
+
+  it("applies live SSE metrics", async () => {
+    const { result } = renderHook(() =>
+      useTrajectorySession({
+        agentId: "A1",
+        threadId: "T1",
+        visible: true,
+      }),
+    );
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    expect(result.current.metrics).toBeNull();
+
+    act(() => {
+      MockEventSource.instances[0].emit("metrics", {
+        turns: 3,
+        steps: 8,
+        llm_duration_ms: 120,
+        tool_duration_ms: null,
+        ttft_avg_ms: null,
+        tok_per_s: null,
+        cache_hit_ratio: null,
+        input_tokens: 40,
+        output_tokens: null,
+        cache_read_tokens: null,
+      });
+    });
+
+    expect(result.current.metrics).toMatchObject({
+      turns: 3,
+      steps: 8,
+      llm_duration_ms: 120,
+      input_tokens: 40,
+    });
+  });
+
   it("does not fetch or subscribe while the panel is hidden", async () => {
     renderHook(() =>
       useTrajectorySession({

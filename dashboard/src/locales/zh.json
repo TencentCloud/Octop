@@ -1212,6 +1212,7 @@
     "trajectoryTimeline": "运行轨迹时间线",
     "trajectoryMetrics": "会话指标",
     "trajectoryExport": "导出",
+    "trajectoryExportFailed": "导出运行轨迹失败",
     "trajectoryMetricTurns": "回合",
     "trajectoryMetricSteps": "步骤",
     "trajectoryMetricLlmMs": "模型",

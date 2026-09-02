@@ -9,9 +9,10 @@ import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 
-const { session, useTrajectorySession } = vi.hoisted(() => {
+const { session, useTrajectorySession, messageError } = vi.hoisted(() => {
   const session = {
     events: [] as TrajectoryEvent[],
+    metrics: null,
     loading: false,
     error: false,
     hasMore: false,
@@ -22,6 +23,7 @@ const { session, useTrajectorySession } = vi.hoisted(() => {
   return {
     session,
     useTrajectorySession: vi.fn(() => session),
+    messageError: vi.fn(),
   };
 });
 
@@ -35,6 +37,10 @@ vi.mock("../../../hooks/useIsMobile", () => ({
   useIsMobile: () => false,
 }));
 
+vi.mock("@/utils/antdMessage", () => ({
+  message: { error: (...args: unknown[]) => messageError(...args) },
+}));
+
 vi.mock("../../../api/modules/trajectory", async (importOriginal) => {
   const actual = await importOriginal<
     typeof import("../../../api/modules/trajectory")
@@ -43,18 +49,6 @@ vi.mock("../../../api/modules/trajectory", async (importOriginal) => {
     ...actual,
     trajectoryApi: {
       ...actual.trajectoryApi,
-      metrics: vi.fn().mockResolvedValue({
-        turns: 1,
-        steps: 2,
-        llm_duration_ms: null,
-        tool_duration_ms: null,
-        ttft_avg_ms: null,
-        tok_per_s: null,
-        cache_hit_ratio: null,
-        input_tokens: null,
-        output_tokens: null,
-        cache_read_tokens: null,
-      }),
       export: (...args: unknown[]) => exportMock(...args),
     },
   };
@@ -133,6 +127,7 @@ describe("TrajectoryDrawer", () => {
     session.refresh.mockReset();
     useTrajectorySession.mockClear();
     exportMock.mockReset();
+    messageError.mockReset();
   });
 
   it("renders the drawer title, Duration toggle, and timeline when open", async () => {
@@ -188,8 +183,45 @@ describe("TrajectoryDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calls" }));
     expect(screen.getByText("hello")).toBeInTheDocument();
     expect(screen.getByText("Request #1")).toBeInTheDocument();
-    expect(screen.getByText("read_file")).toBeInTheDocument();
+    expect(screen.queryByText("read_file")).not.toBeInTheDocument();
     expect(screen.queryByText("write_file")).not.toBeInTheDocument();
+  });
+
+  it("dims timeline search hits from the full event list while calls are collapsed", async () => {
+    await renderDrawer(
+      <TrajectoryDrawer agentId="A1" threadId="T1" open onClose={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Calls" }));
+    expect(screen.queryByText("read_file")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "read_file" },
+    });
+
+    expect(document.querySelector('[data-event-ids="t1"]')).toHaveAttribute(
+      "data-search-match",
+      "true",
+    );
+    expect(document.querySelector('[data-event-ids="u1"]')).toHaveAttribute(
+      "data-search-match",
+      "false",
+    );
+  });
+
+  it("hides the inspector until a record is selected", async () => {
+    await renderDrawer(
+      <TrajectoryDrawer agentId="A1" threadId="T1" open onClose={() => {}} />,
+    );
+
+    expect(
+      screen.queryByTestId("trajectory-inspector-pane"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Select a record")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /hello/ }));
+    expect(screen.getByTestId("trajectory-inspector-pane")).toBeInTheDocument();
+    expect(screen.getByText("Kind")).toBeInTheDocument();
   });
 
   it("switches timeline duration mode from the toolbar", async () => {
@@ -260,6 +292,21 @@ describe("TrajectoryDrawer", () => {
       expect(exportMock).toHaveBeenCalledWith("A1", "T1");
       expect(createObjectURL).toHaveBeenCalledWith(blob);
       expect(click).toHaveBeenCalled();
+    });
+    expect(messageError).not.toHaveBeenCalled();
+  });
+
+  it("toasts when export fails", async () => {
+    exportMock.mockRejectedValue(new Error("export failed"));
+
+    await renderDrawer(
+      <TrajectoryDrawer agentId="A1" threadId="T1" open onClose={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+    await waitFor(() => {
+      expect(messageError).toHaveBeenCalledWith("Failed to export trajectory");
     });
   });
 

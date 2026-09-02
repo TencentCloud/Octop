@@ -1212,6 +1212,7 @@
     "trajectoryTimeline": "Trajectory timeline",
     "trajectoryMetrics": "Session metrics",
     "trajectoryExport": "Export",
+    "trajectoryExportFailed": "Failed to export trajectory",
     "trajectoryMetricTurns": "Turns",
     "trajectoryMetricSteps": "Steps",
     "trajectoryMetricLlmMs": "LLM",

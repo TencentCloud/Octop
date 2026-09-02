@@ -36,10 +36,13 @@ describe("laneForKind", () => {
     expect(laneForKind("system")).toBe("input");
   });
 
-  it("maps assistant, context, and compacted to the model lane", () => {
+  it("maps assistant and compacted to the model lane", () => {
     expect(laneForKind("assistant")).toBe("model");
-    expect(laneForKind("context")).toBe("model");
     expect(laneForKind("compacted")).toBe("model");
+  });
+
+  it("maps context to the input lane (DSH parity)", () => {
+    expect(laneForKind("context")).toBe("input");
   });
 
   it("maps tool to the tools lane", () => {
@@ -189,17 +192,18 @@ describe("collapseTurns", () => {
 });
 
 describe("collapseCalls", () => {
-  it("groups consecutive tool events and leaves others alone", () => {
+  it("folds tool rows under the preceding assistant and drops orphan tools", () => {
     const groups = collapseCalls([
       event({ event_id: "1", kind: "tool" }),
       event({ event_id: "2", kind: "tool" }),
       event({ event_id: "3", kind: "assistant" }),
       event({ event_id: "4", kind: "tool" }),
+      event({ event_id: "5", kind: "tool" }),
+      event({ event_id: "6", kind: "user" }),
     ]);
     expect(groups.map((group) => group.map((ev) => ev.event_id))).toEqual([
-      ["1", "2"],
-      ["3"],
-      ["4"],
+      ["3", "4", "5"],
+      ["6"],
     ]);
   });
 });
