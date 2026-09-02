@@ -8,7 +8,7 @@
 
 ### 修复
 
-- 日志按大小+按日轮转，并采用 logrotate 风格的 `compress` + `delaycompress`（最新一份轮转文件暂不 gzip，下一轮再压；用 Python 标准库，Windows 可用）；抑制 harness memory maintenance 的高频 INFO
+- 日志按大小+按日轮转，并采用 logrotate 风格的 `compress` + `delaycompress`（最新一份轮转文件暂不 gzip，下一轮再压；用 Python 标准库，Windows 可用）
 
 ## [0.9.31] - 2026-09-01
 

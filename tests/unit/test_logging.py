@@ -21,7 +21,6 @@ from octop.infra.server import (
     SizeTimedRotatingFileHandler,
     _attach_log_handler,
     _build_log_handler,
-    _configure_noisy_loggers,
     _parse_log_compress,
     _parse_log_max_bytes,
     _purge_stale_logs,
@@ -280,26 +279,6 @@ def test_purge_stale_logs_removes_old_gz_files(tmp_path: Path):
     _purge_stale_logs(log_dir, retention_days=14)
     assert not old.exists()
     assert new.exists()
-
-
-def test_configure_noisy_loggers_suppresses_memory_maintenance_info(tmp_path: Path):
-    _configure_noisy_loggers()
-    mem = logging.getLogger("harness_agent.middleware.memory")
-    assert mem.level == logging.WARNING
-
-    server = OctopServer(home=tmp_path / ".octop")
-    server._setup_logging()
-
-    handler = next(
-        h
-        for h in logging.getLogger().handlers
-        if isinstance(h, TimedRotatingFileHandler) and h.baseFilename == str(server.paths.log)
-    )
-    mem.info(
-        "memory.maintenance done gc_err=None vacuum_err=None gc_rows=0 pages=0 auto_vacuum=True"
-    )
-    handler.flush()
-    assert "memory.maintenance done" not in server.paths.log.read_text(encoding="utf-8")
 
 
 def test_setup_logging_respects_max_bytes_env(tmp_path: Path, monkeypatch):

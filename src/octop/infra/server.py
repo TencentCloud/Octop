@@ -41,12 +41,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_LOG_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_LOG_RETENTION_DAYS = 14
 
-# Routine harness memory maintenance ticks are high-frequency at INFO and can
-# balloon octop.log to multi-GB/day; keep them at WARNING unless OCTOP_LOG_LEVEL=debug.
-_NOISY_LOGGER_LEVELS: dict[str, int] = {
-    "harness_agent.middleware.memory": logging.WARNING,
-}
-
 
 class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
     """Daily rotation with an optional per-file byte cap (whichever triggers first)."""
@@ -160,11 +154,6 @@ def _parse_log_max_bytes() -> int:
         return max(0, int(raw))
     except ValueError:
         return DEFAULT_LOG_MAX_BYTES
-
-
-def _configure_noisy_loggers() -> None:
-    for name, level in _NOISY_LOGGER_LEVELS.items():
-        logging.getLogger(name).setLevel(level)
 
 
 def _build_log_handler(
@@ -512,7 +501,6 @@ class OctopServer:
         _purge_stale_logs(log_dir, retention_days)
         # Catch up: gzip older plains, leave the newest rotated file plain (delaycompress).
         delaycompress_rotated_logs(log_dir, enabled=compress_rotated)
-        _configure_noisy_loggers()
 
         root = logging.getLogger()
         _attach_log_handler(root, handler)
@@ -522,9 +510,6 @@ class OctopServer:
 
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
-        if root.level <= logging.DEBUG:
-            for name in _NOISY_LOGGER_LEVELS:
-                logging.getLogger(name).setLevel(logging.DEBUG)
 
     def _ensure_jwt_secret(self) -> None:
         assert self.services is not None
