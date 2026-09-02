@@ -34,6 +34,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -51,7 +52,86 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_FRAME_INTERVAL_S = 0.25  # ~4 fps
+_FRAME_INTERVAL_S = 0.25  # ~4 fps (poll fallback only)
+# screencast is event-driven; the frame rate follows page changes. This is just
+# an upper throttle so scrolling/animations do not flood the WS and the client.
+_SCREENCAST_MIN_INTERVAL_S = 0.05  # ~20fps cap (bounds bandwidth for remote clients)
+# Registered screencast listeners keyed by CDP client id, so the old listener
+# can be detached after a tab switch replaces the client.
+_screencast_handlers: dict[int, Any] = {}
+
+
+def _make_screencast_handler(sess: Any, ws: WebSocket) -> Any:
+    """Construct a Page.screencastFrame listener: forward frame + ack.
+
+    The ack is sent through ``sess._internal.client`` (the *current* client)
+    rather than the one captured at registration, so frames keep being acked
+    after a tab switch replaces the CDP client.
+    """
+    last_sent = 0.0
+
+    async def _on_frame(params: dict[str, Any]) -> None:
+        nonlocal last_sent
+        data = params.get("data")
+        sid = params.get("sessionId")
+        now = time.monotonic()
+        if data and (now - last_sent) >= _SCREENCAST_MIN_INTERVAL_S:
+            last_sent = now
+            await _send_json(ws, {"type": "frame", "data": data})
+        # Must ack regardless of forwarding, otherwise Chrome stops sending
+        # subsequent screencast frames.
+        if sid is not None:
+            with contextlib.suppress(Exception):
+                await _cdp_send_fast(sess, "Page.screencastFrameAck", {"sessionId": sid})
+
+    return _on_frame
+
+
+async def _start_screencast(sess: Any, ws: WebSocket, width: int, height: int) -> bool:
+    """Register a screencastFrame listener and start incremental-frame streaming.
+
+    Chrome pushes frames only when the page content changes (event-driven): a
+    static page costs zero frames, versus the old poll loop that forced a full
+    JPEG capture every 0.25s with a 1.5s timeout. Returns False when the CDP
+    endpoint does not support screencast (caller falls back to polling).
+    """
+    client = sess._internal.client  # noqa: SLF001
+    cid = id(client)
+    prev = _screencast_handlers.pop(cid, None)
+    if prev is not None:
+        client.off("Page.screencastFrame", prev)
+    handler = _make_screencast_handler(sess, ws)
+    client.on("Page.screencastFrame", handler)
+    _screencast_handlers[cid] = handler
+    try:
+        # Do not set maxWidth/maxHeight (default 0 = unlimited): the frame
+        # size always follows the page viewport, so canvas coordinates stay
+        # 1:1 with CDP coordinates (no pointer drift), and frames adapt to
+        # viewport resize without restarting screencast.
+        await client.send(
+            "Page.startScreencast",
+            {
+                "format": "jpeg",
+                "quality": 60,
+                "everyNthFrame": 1,
+            },
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("startScreencast failed (fallback to poll): %s", exc)
+        client.off("Page.screencastFrame", handler)
+        _screencast_handlers.pop(cid, None)
+        return False
+
+
+async def _stop_screencast(sess: Any) -> None:
+    with contextlib.suppress(Exception):
+        await sess._internal.client.send("Page.stopScreencast")  # noqa: SLF001
+    cid = id(sess._internal.client)  # noqa: SLF001
+    handler = _screencast_handlers.pop(cid, None)
+    if handler is not None:
+        with contextlib.suppress(Exception):
+            sess._internal.client.off("Page.screencastFrame", handler)  # noqa: SLF001
 
 
 def _normalize_nav_url(raw: str) -> str:
@@ -73,7 +153,7 @@ async def _capture_jpeg(sess: Any) -> str | None:
         result = await asyncio.wait_for(
             sess._internal.client.send(  # noqa: SLF001
                 "Page.captureScreenshot",
-                {"format": "jpeg", "quality": 80},
+                {"format": "jpeg", "quality": 60},
             ),
             timeout=1.5,
         )
@@ -135,19 +215,40 @@ async def _stream_loop(
     profile: str,
     *,
     listen_only: bool,
+    width: int = 1280,
+    height: int = 800,
 ) -> None:
     await _send_json(ws, {"type": "status", "status": "browser_started"})
     await _send_json(ws, {"type": "status", "status": "streaming"})
 
-    while ws.application_state == WebSocketState.CONNECTED:
-        await _send_session_snapshot(ws, profile, sess=sess)
+    screencast_ok = False
+    if not listen_only:
+        screencast_ok = await _start_screencast(sess, ws, width, height)
+    last_client = sess._internal.client  # noqa: SLF001
+    last_snapshot = 0.0
 
+    try:
+        while ws.application_state == WebSocketState.CONNECTED:
+            now = time.monotonic()
+            # A tab switch replaces the CDP client, so restart screencast on
+            # the new client to keep frames flowing.
+            current_client = sess._internal.client  # noqa: SLF001
+            if not listen_only and current_client is not last_client:
+                last_client = current_client
+                screencast_ok = await _start_screencast(sess, ws, width, height)
+            # tabs/url state snapshot: throttled to 1s (no longer per-frame)
+            if now - last_snapshot >= 1.0:
+                await _send_session_snapshot(ws, profile, sess=sess)
+                last_snapshot = now
+            # Poll fallback only when screencast is unavailable (old CDP)
+            if not listen_only and not screencast_ok:
+                frame = await _capture_jpeg(sess)
+                if frame:
+                    await _send_json(ws, {"type": "frame", "data": frame})
+            await asyncio.sleep(_FRAME_INTERVAL_S)
+    finally:
         if not listen_only:
-            frame = await _capture_jpeg(sess)
-            if frame:
-                await _send_json(ws, {"type": "frame", "data": frame})
-
-        await asyncio.sleep(_FRAME_INTERVAL_S)
+            await _stop_screencast(sess)
 
 
 async def _listen_state_loop(ws: WebSocket, profile: str) -> None:
@@ -184,6 +285,23 @@ def _cdp_buttons(msg: dict[str, Any], *, button: str, event: str) -> int:
     return _CDP_BUTTON_MASK.get(button, 0)
 
 
+
+async def _cdp_send_fast(sess: Any, method: str, params: dict[str, Any] | None = None) -> None:
+    """Send a CDP command without waiting for its response, when supported.
+
+    harness-browser >= 0.7.7 exposes ``CDPClient.send_no_wait`` for
+    fire-and-forget high-frequency commands (input events, screencast acks).
+    Fall back to the awaiting ``send`` on older versions so the stream keeps
+    working without a hard dependency bump.
+    """
+    client = sess._internal.client  # noqa: SLF001
+    fn = getattr(client, "send_no_wait", None)
+    if fn is not None:
+        await fn(method, params)
+    else:
+        await client.send(method, params)
+
+
 async def _dispatch_mouse(
     sess: Any,
     *,
@@ -203,7 +321,7 @@ async def _dispatch_mouse(
     }
     if click_count:
         params["clickCount"] = click_count
-    await sess._internal.client.send("Input.dispatchMouseEvent", params)  # noqa: SLF001
+    await _cdp_send_fast(sess, "Input.dispatchMouseEvent", params)
 
 
 def _cdp_click_count(msg: dict[str, Any]) -> int:
@@ -274,7 +392,8 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         if abs(delta_x) > 0.5 or abs(delta_y) > 0.5:
             with contextlib.suppress(Exception):
                 await _dispatch_mouse(sess, event_type="mouseMoved", x=x, y=y)
-                await sess._internal.client.send(  # noqa: SLF001
+                await _cdp_send_fast(
+                    sess,
                     "Input.dispatchMouseEvent",
                     {
                         "type": "mouseWheel",
@@ -311,7 +430,8 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         h = int(msg.get("height") or 0)
         if w > 0 and h > 0:
             with contextlib.suppress(Exception):
-                await sess._internal.client.send(  # noqa: SLF001
+                await _cdp_send_fast(
+                    sess,
                     "Emulation.setDeviceMetricsOverride",
                     {
                         "width": w,
@@ -396,7 +516,14 @@ async def browser_stream_ws(
                     )
 
             stream_task = asyncio.create_task(
-                _stream_loop(websocket, sess, profile, listen_only=False)
+                _stream_loop(
+                    websocket,
+                    sess,
+                    profile,
+                    listen_only=False,
+                    width=vw,
+                    height=vh,
+                )
             )
 
         while websocket.application_state == WebSocketState.CONNECTED:
