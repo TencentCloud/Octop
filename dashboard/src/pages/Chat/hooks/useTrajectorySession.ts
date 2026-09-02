@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   trajectoryApi,
   type TrajectoryEvent,
@@ -37,12 +37,14 @@ export function useTrajectorySession({
   const [hasMore, setHasMore] = useState(false);
   const [nextBeforeSeq, setNextBeforeSeq] = useState<number | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const sessionGenRef = useRef(0);
 
   const retry = useCallback(() => {
     setReloadToken((token) => token + 1);
   }, []);
 
   const refresh = useCallback(() => {
+    sessionGenRef.current += 1;
     setEvents([]);
     setHasMore(false);
     setNextBeforeSeq(null);
@@ -52,9 +54,12 @@ export function useTrajectorySession({
   const loadEarlier = useCallback(async () => {
     if (!agentId || !threadId || nextBeforeSeq == null) return;
 
+    const loadGen = sessionGenRef.current;
     const page = await trajectoryApi.history(agentId, threadId, {
       beforeSeq: nextBeforeSeq,
     });
+    if (loadGen !== sessionGenRef.current) return;
+
     setHasMore(page.has_more);
     setNextBeforeSeq(page.next_before_seq);
     setEvents((prev) => {
@@ -65,6 +70,7 @@ export function useTrajectorySession({
   }, [agentId, threadId, nextBeforeSeq]);
 
   useEffect(() => {
+    sessionGenRef.current += 1;
     setEvents([]);
     setError(false);
     setHasMore(false);
@@ -74,6 +80,8 @@ export function useTrajectorySession({
   useEffect(() => {
     if (!visible || !agentId || !threadId) return;
 
+    sessionGenRef.current += 1;
+    const fetchGen = sessionGenRef.current;
     let cancelled = false;
     let source: EventSource | null = null;
 
@@ -106,7 +114,7 @@ export function useTrajectorySession({
     void trajectoryApi
       .history(agentId, threadId)
       .then((page) => {
-        if (cancelled) return;
+        if (cancelled || fetchGen !== sessionGenRef.current) return;
         setEvents(page.events);
         setHasMore(page.has_more);
         setNextBeforeSeq(page.next_before_seq);

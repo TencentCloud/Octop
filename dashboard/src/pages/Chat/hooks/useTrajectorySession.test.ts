@@ -208,6 +208,81 @@ describe("useTrajectorySession", () => {
     expect(result.current.hasMore).toBe(false);
   });
 
+  it("loadEarlier ignores stale responses after thread change", async () => {
+    const staleOlderEvent = event({
+      event_id: "stale-old",
+      kind: "tool",
+      seq: 0,
+    });
+    const t2Event = event({
+      event_id: "tool-t2",
+      kind: "tool",
+      seq: 1,
+      thread_id: "T2",
+    });
+
+    let resolveEarlier: ((value: unknown) => void) | undefined;
+
+    historyMock
+      .mockResolvedValueOnce({
+        thread_id: "T1",
+        events: [toolEvent],
+        next_before_seq: 5,
+        has_more: true,
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveEarlier = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        thread_id: "T2",
+        events: [t2Event],
+        next_before_seq: null,
+        has_more: false,
+      });
+
+    const { result, rerender } = renderHook(
+      ({ threadId }: { threadId: string }) =>
+        useTrajectorySession({
+          agentId: "A1",
+          threadId,
+          visible: true,
+        }),
+      { initialProps: { threadId: "T1" } },
+    );
+
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    let loadEarlierPromise: Promise<void> | undefined;
+    act(() => {
+      loadEarlierPromise = result.current.loadEarlier();
+    });
+
+    rerender({ threadId: "T2" });
+
+    await waitFor(() =>
+      expect(result.current.events.map((row) => row.event_id)).toEqual([
+        "tool-t2",
+      ]),
+    );
+
+    await act(async () => {
+      resolveEarlier?.({
+        thread_id: "T1",
+        events: [staleOlderEvent],
+        next_before_seq: null,
+        has_more: false,
+      });
+      await loadEarlierPromise;
+    });
+
+    expect(result.current.events.map((row) => row.event_id)).toEqual([
+      "tool-t2",
+    ]);
+  });
+
   it("closes the EventSource when the panel is hidden", async () => {
     const { rerender } = renderHook(
       ({ visible }: { visible: boolean }) =>
