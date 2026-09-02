@@ -13,29 +13,29 @@ const METRIC_LABEL: Record<
   keyof TrajectoryMetrics,
   { key: string; fallback: string }
 > = {
-  turns: { key: "chat.dockTrajectoryMetricTurns", fallback: "Turns" },
-  steps: { key: "chat.dockTrajectoryMetricSteps", fallback: "Steps" },
+  turns: { key: "chat.trajectoryMetricTurns", fallback: "Turns" },
+  steps: { key: "chat.trajectoryMetricSteps", fallback: "Steps" },
   llm_duration_ms: {
-    key: "chat.dockTrajectoryMetricLlmMs",
+    key: "chat.trajectoryMetricLlmMs",
     fallback: "LLM",
   },
   tool_duration_ms: {
-    key: "chat.dockTrajectoryMetricToolMs",
+    key: "chat.trajectoryMetricToolMs",
     fallback: "Tools",
   },
-  ttft_avg_ms: { key: "chat.dockTrajectoryMetricTtft", fallback: "TTFT" },
-  tok_per_s: { key: "chat.dockTrajectoryMetricTokPerS", fallback: "tok/s" },
+  ttft_avg_ms: { key: "chat.trajectoryMetricTtft", fallback: "TTFT" },
+  tok_per_s: { key: "chat.trajectoryMetricTokPerS", fallback: "tok/s" },
   cache_hit_ratio: {
-    key: "chat.dockTrajectoryMetricCacheHit",
+    key: "chat.trajectoryMetricCacheHit",
     fallback: "Cache",
   },
-  input_tokens: { key: "chat.dockTrajectoryMetricInputTokens", fallback: "In" },
+  input_tokens: { key: "chat.trajectoryMetricInputTokens", fallback: "In" },
   output_tokens: {
-    key: "chat.dockTrajectoryMetricOutputTokens",
+    key: "chat.trajectoryMetricOutputTokens",
     fallback: "Out",
   },
   cache_read_tokens: {
-    key: "chat.dockTrajectoryMetricCacheRead",
+    key: "chat.trajectoryMetricCacheRead",
     fallback: "Cache read",
   },
 };
@@ -62,7 +62,7 @@ export default function TrajectoryMetricsBar({
   return (
     <div
       className={styles.root}
-      aria-label={t("chat.dockTrajectoryMetrics", "Session metrics")}
+      aria-label={t("chat.trajectoryMetrics", "Session metrics")}
     >
       <div className={styles.chips}>
         {entries.map((entry) => {

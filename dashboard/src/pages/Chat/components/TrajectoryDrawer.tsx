@@ -135,7 +135,7 @@ export default function TrajectoryDrawer({
   const drawerTitle = (
     <div className={styles.drawerTitleRow}>
       <span className={styles.drawerTitleText}>
-        {t("chat.dockTrajectoryTitle", "Trajectory")}
+        {t("chat.trajectoryTitle", "Trajectory")}
       </span>
       <Space size={isMobile ? 4 : 8} className={styles.drawerTitleActions}>
         <Button
@@ -151,9 +151,9 @@ export default function TrajectoryDrawer({
           icon={<Download size={13} />}
           disabled={!threadId}
           onClick={() => void onExport()}
-          aria-label={t("chat.dockTrajectoryExport", "Export")}
+          aria-label={t("chat.trajectoryExport", "Export")}
         >
-          {isMobile ? null : t("chat.dockTrajectoryExport", "Export")}
+          {isMobile ? null : t("chat.trajectoryExport", "Export")}
         </Button>
       </Space>
     </div>
@@ -166,7 +166,7 @@ export default function TrajectoryDrawer({
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={t(
-            "chat.dockTrajectorySelectSession",
+            "chat.trajectorySelectSession",
             "Select a session to view trajectory",
           )}
         />
@@ -182,7 +182,7 @@ export default function TrajectoryDrawer({
     body = (
       <div className={styles.status}>
         <p className={styles.errorText}>
-          {t("chat.dockTrajectoryLoadError", "Failed to load trajectory")}
+          {t("chat.trajectoryLoadError", "Failed to load trajectory")}
         </p>
         <button type="button" className={styles.retry} onClick={retry}>
           {t("chat.retry", "Retry")}
@@ -194,10 +194,7 @@ export default function TrajectoryDrawer({
       <div className={styles.status}>
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t(
-            "chat.dockTrajectoryEmpty",
-            "No trajectory events yet",
-          )}
+          description={t("chat.trajectoryEmpty", "No trajectory events yet")}
         />
       </div>
     );

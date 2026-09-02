@@ -342,14 +342,11 @@ export default function TrajectoryTimeline({
   ]);
 
   const laneName = {
-    input: t("chat.dockTrajectoryLaneInput", "Input"),
-    model: t("chat.dockTrajectoryLaneModel", "Model"),
-    tools: t("chat.dockTrajectoryLaneTools", "Tools"),
+    input: t("chat.trajectoryLaneInput", "Input"),
+    model: t("chat.trajectoryLaneModel", "Model"),
+    tools: t("chat.trajectoryLaneTools", "Tools"),
   };
-  const earlierLabel = t(
-    "chat.dockTrajectoryLoadEarlier",
-    "Load earlier history",
-  );
+  const earlierLabel = t("chat.trajectoryLoadEarlier", "Load earlier history");
 
   const fractionAt = (event: PointerEvent<HTMLDivElement>): number => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -551,7 +548,7 @@ export default function TrajectoryTimeline({
     <section
       ref={rootRef}
       className={styles.root}
-      aria-label={t("chat.dockTrajectoryTimeline", "Trajectory timeline")}
+      aria-label={t("chat.trajectoryTimeline", "Trajectory timeline")}
     >
       <div className={styles.plot}>
         <div className={styles.labels} aria-hidden="true">
@@ -565,7 +562,7 @@ export default function TrajectoryTimeline({
           role="group"
           tabIndex={0}
           data-panning={panning || undefined}
-          aria-label={t("chat.dockTrajectoryTimeline", "Trajectory timeline")}
+          aria-label={t("chat.trajectoryTimeline", "Trajectory timeline")}
           style={hoverStyle}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -616,7 +613,7 @@ export default function TrajectoryTimeline({
           ) : null}
           {empty ? (
             <span className={styles.empty}>
-              {t("chat.dockTrajectoryEmpty", "No trajectory events yet")}
+              {t("chat.trajectoryEmpty", "No trajectory events yet")}
             </span>
           ) : (
             <div

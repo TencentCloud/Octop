@@ -1153,8 +1153,8 @@ function ChatPageInner() {
                         ? t("workspace.requiresRunning")
                         : !activeThreadId
                         ? t(
-                            "chat.dockTrajectorySelectSession",
-                            "请选择一个会话以查看运行轨迹",
+                            "chat.trajectorySelectSession",
+                            "Select a session to view trajectory",
                           )
                         : t("chat.openTrajectory", "运行轨迹")
                     }

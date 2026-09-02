@@ -115,9 +115,9 @@ function RawPane({
   return (
     <pre className={styles.raw} data-testid="trajectory-raw">
       {loading
-        ? t("chat.dockTrajectoryDetailLoading", "Loading detail…")
+        ? t("chat.trajectoryDetailLoading", "Loading detail…")
         : failed
-        ? t("chat.dockTrajectoryDetailError", "Failed to load event detail")
+        ? t("chat.trajectoryDetailError", "Failed to load event detail")
         : text}
     </pre>
   );
