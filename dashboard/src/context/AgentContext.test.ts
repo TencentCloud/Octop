@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OctopAgent } from "./AgentContext";
-import {
-  projectChatAgentOption,
-  selectEnabledExperts,
-} from "./AgentContext";
+import { projectChatAgentOption, selectEnabledExperts } from "./AgentContext";
 
 function agent(
   agent_id: string,
@@ -66,9 +63,7 @@ describe("selectEnabledExperts", () => {
     ];
     // S1 is the resolvedAgentId (URL is /chat/S1). Without pinActive it must
     // disappear from the sidebar just like every other stopped expert.
-    const sidebar = selectEnabledExperts(agents, "S1").map(
-      (a) => a.agent_id,
-    );
+    const sidebar = selectEnabledExperts(agents, "S1").map((a) => a.agent_id);
     expect(sidebar).toEqual(["G1"]);
     // @-picker / minimal-layout path also excludes it.
     const pickable = selectEnabledExperts(agents, "S1", {
@@ -83,10 +78,7 @@ describe("selectEnabledExperts", () => {
   });
 
   it("returns empty when nothing is running and there is no active pin", () => {
-    const agents = [
-      agent("A", "stopped"),
-      agent("B", "failed"),
-    ];
+    const agents = [agent("A", "stopped"), agent("B", "failed")];
     expect(selectEnabledExperts(agents, null)).toEqual([]);
   });
 

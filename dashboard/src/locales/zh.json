@@ -52,6 +52,8 @@
     "unknownError": "未知错误",
     "noPermission": "没有权限",
     "noPermissionHint": "你没有访问此页面的权限，请联系管理员开通。",
+    "notFound": "页面不存在",
+    "notFoundHint": "这个地址没有对应的页面。检查一下链接，或返回对话继续使用。",
     "backToChat": "返回聊天",
     "viewDetail": "查看详情",
     "viewMore": "查看更多",

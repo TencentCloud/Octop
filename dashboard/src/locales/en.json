@@ -52,6 +52,8 @@
     "unknownError": "Unknown error",
     "noPermission": "Permission denied",
     "noPermissionHint": "You do not have access to this page. Ask an administrator to grant it.",
+    "notFound": "Page not found",
+    "notFoundHint": "This address does not match any page. Check the link, or go back to chat.",
     "backToChat": "Back to chat",
     "viewDetail": "View Details",
     "viewMore": "View More",
