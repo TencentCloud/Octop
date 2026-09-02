@@ -1,0 +1,183 @@
+.rail {
+  pointer-events: none;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 10;
+  width: 48px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-8px);
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out,
+    visibility 150ms ease-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.railVisible {
+  pointer-events: none;
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+.railScroll {
+  pointer-events: auto;
+  position: absolute;
+  inset-inline-start: 8px;
+  top: 50%;
+  max-height: calc(100% - 6rem);
+  width: 40px;
+  transform: translateY(-50%);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-block: 4px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.railInner {
+  position: relative;
+  width: 40px;
+}
+
+.tickRow {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  height: 14px;
+  width: 40px;
+}
+
+.tickButton {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 40px;
+  height: 14px;
+  padding: 0 0 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.tickBar {
+  display: block;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  transform-origin: left center;
+  background: var(--fn-text-quaternary);
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out,
+    background-color 150ms ease-out,
+    height 150ms ease-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.tickBarFocus {
+  background: var(--fn-text-primary);
+}
+
+.tickBarMuted {
+  background: var(--fn-text-quaternary);
+}
+
+.tickBarActive {
+  background: var(--fn-text-primary);
+}
+
+.previewOverlay {
+  :global(.ant-popover-inner) {
+    padding: 10px 12px;
+    border: 1px solid var(--fn-border-primary);
+    border-radius: 10px;
+    background: var(--fn-bg-elevated, var(--fn-bg-primary));
+    box-shadow: 0 8px 24px
+      color-mix(in srgb, var(--fn-text-primary) 12%, transparent);
+  }
+
+  :global(.ant-popover-arrow) {
+    display: none;
+  }
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(20rem, calc(100vw - 2rem));
+}
+
+.previewUser {
+  margin: 0;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--fn-text-primary);
+}
+
+.previewAssistant {
+  margin: 0;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--fn-text-primary) 80%, transparent);
+}
+
+.previewAssistantMuted {
+  color: var(--fn-text-tertiary);
+}
+
+:global(.turn-timeline-flash) {
+  animation: turnTimelineFlash 700ms ease-out;
+  border-radius: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(.turn-timeline-flash) {
+    animation: none;
+  }
+}
+
+@keyframes turnTimelineFlash {
+  0% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--fn-color-brand) 40%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 14%,
+      transparent
+    );
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    background-color: transparent;
+  }
+}

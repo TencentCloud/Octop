@@ -70,6 +70,9 @@ def build_harness_manager_mock(
             virtual_mode = True
             if isinstance(backend_cfg, dict):
                 virtual_mode = bool(backend_cfg.get("virtual_mode", True))
+                root_dir = str(backend_cfg.get("root_dir") or "").strip()
+                if virtual_mode and root_dir not in {"", "/", "\\"}:
+                    ws_dir = Path(root_dir) / str(ws_dir).lstrip("/\\")
             entry_agent.use_workspace_dir(Path(str(ws_dir)), virtual_mode=virtual_mode)
         if isinstance(entry_agent, FakeHarnessAgent):
             _sync_fake_skill_dirs(entry_agent, config)

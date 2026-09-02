@@ -557,6 +557,7 @@ async def install_expert_hub_item(
                 color=body.color,
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
+                skill_package_ids=package_ids,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -564,8 +565,6 @@ async def install_expert_hub_item(
         raise _map_skillhub_error(exc) from exc
 
     row = result.row
-    if package_ids is not None:
-        await server.app_runtime.agent_registry.persist_skill_package_ids(row.agent_id, package_ids)
     return {
         "id": row.id,
         "agent_id": row.agent_id,
@@ -646,10 +645,9 @@ async def create_agent_from_expert(
         agent_id=body.agent_id,
         color=body.color,
         welcome_message=body.welcome_message,
+        skill_package_ids=package_ids,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
-    if package_ids is not None:
-        await server.app_runtime.agent_registry.persist_skill_package_ids(row.agent_id, package_ids)
     return {
         "id": row.id,
         "agent_id": row.agent_id,

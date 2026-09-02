@@ -18,6 +18,7 @@ import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 import GeneratingIndicator from "./GeneratingIndicator";
+import TurnTimelineRail from "./TurnTimelineRail";
 import { isLiveAssistantTurn } from "./liveAssistantTurn";
 import { chatGeneratingPhase } from "./generatingGate";
 import { useAutoScroll } from "../hooks/useAutoScroll";
@@ -109,6 +110,8 @@ interface MessageListProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  /** Notify chat chrome when the in-thread turn rail is shown (for gutter align). */
+  onTurnRailVisibilityChange?: (visible: boolean) => void;
 }
 
 interface GroupRenderContext {
@@ -157,6 +160,8 @@ function renderMessageGroup(
     if (msg.role === "assistant") {
       return (
         <div
+          data-message-id={msg.id}
+          data-role="assistant"
           ref={(el) => {
             ctx.registerBubbleRef(msg.id, el);
           }}
@@ -184,6 +189,8 @@ function renderMessageGroup(
     }
     return (
       <div
+        data-message-id={msg.id}
+        data-role={msg.role}
         ref={(el) => {
           ctx.registerBubbleRef(msg.id, el);
         }}
@@ -203,6 +210,8 @@ function renderMessageGroup(
   return (
     <div
       key={groupKey}
+      data-message-id={group.messages[0]?.id}
+      data-role="assistant"
       ref={(el) => {
         for (const msg of group.messages) {
           ctx.registerBubbleRef(msg.id, el);
@@ -259,10 +268,12 @@ export default function MessageList(props: MessageListProps) {
     shellCommandDisabled,
     shellCommandDisabledTitle,
     compactProcess,
+    onTurnRailVisibilityChange,
   } = props;
 
   const { t } = useTranslation();
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -766,7 +777,22 @@ export default function MessageList(props: MessageListProps) {
   }
 
   return (
-    <div className={styles.messageListWrapper}>
+    <div ref={wrapperRef} className={styles.messageListWrapper}>
+      <TurnTimelineRail
+        messages={messages}
+        messageGroups={messageGroups}
+        isStreaming={isStreaming}
+        following={!showScrollBtn}
+        useVirtual={useVirtual}
+        firstItemIndex={firstItemIndex}
+        scrollerRef={scrollerRef}
+        containerRef={containerRef}
+        virtuosoRef={virtuosoRef}
+        bubbleRefsMap={bubbleRefsMap}
+        wrapperRef={wrapperRef}
+        armProgrammaticGuard={armProgrammaticGuard}
+        onVisibilityChange={onTurnRailVisibilityChange}
+      />
       {useVirtual ? (
         <Virtuoso
           key={stableSessionKey}

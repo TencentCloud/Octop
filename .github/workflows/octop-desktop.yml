@@ -1,10 +1,8 @@
 name: Octop Desktop Package
 
-# 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch（GITHUB_TOKEN
-# 打的 tag 不会触发 push workflow）。产物由本 workflow 的 release job upsert 到同一
-# GitHub Release。workflow_dispatch 保留给手工补包 / 按平台重跑。
-# 不要对任意分支 push 跑六平台矩阵。
-# pull_request（desktop/**）打 darwin-* + windows-*，不跑 linux。
+# 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch。
+# 产物 upsert 到同一 GitHub Release。手工补包：workflow_dispatch + release_tag
+# （不必跑在 v* ref 上）。attach_from_run 只挂已有 artifact、不重打。
 
 on:
   push:
@@ -22,12 +20,12 @@ on:
         default: "all"
         type: string
       attach_release:
-        description: "If running on a v* tag, also upload zips to that GitHub Release"
+        description: "Upload artifacts to a GitHub Release (v* ref, or pass release_tag)"
         required: false
         default: true
         type: boolean
       release_tag:
-        description: "GitHub Release tag to attach to (e.g. v0.9.27). Defaults to the current v* tag ref."
+        description: "GitHub Release tag to attach to (e.g. v0.9.31). Used when not running on a v* ref."
         required: false
         default: ""
         type: string
@@ -40,9 +38,15 @@ on:
 permissions:
   contents: read
 
+# Builds on the same ref cancel each other (PR retrigger / accidental double
+# dispatch). Attach-only runs use a different group so they cannot cancel an
+# in-flight six-platform package on develop.
 concurrency:
-  group: green-portable-${{ github.ref }}
-  cancel-in-progress: true
+  group: >-
+    green-portable-${{
+      github.event.inputs.attach_from_run != '' && 'attach' || 'build'
+    }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == '' }}
 
 env:
   # Prefer GitHub upstream on Actions runners (npmmirror is for CN local builds).
@@ -139,6 +143,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Read package version
+        run: |
+          set -euo pipefail
+          VER=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' pyproject.toml | head -1)
+          echo "OCTOP_VERSION=${VER}" >> "$GITHUB_ENV"
+          echo "version=${VER}"
+
       - uses: actions/download-artifact@v5
         with:
           name: dashboard-dist
@@ -219,20 +230,31 @@ jobs:
       - name: Install Wails v3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
 
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis --yes --no-progress
+          $nsis = "${env:ProgramFiles(x86)}\NSIS"
+          if (-not (Test-Path "$nsis\makensis.exe")) {
+            throw "makensis.exe missing after NSIS install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsis
+
       - name: Package desktop app with bundled portable runtime
         working-directory: desktop/src
         run: >-
           wails3 task package
           ARCH=${{ matrix.arch }}
-          PORTABLE_ZIP=../portable/release/Octop-${{ matrix.plat }}.zip
+          VERSION=${{ env.OCTOP_VERSION }}
+          PORTABLE_ZIP=../portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
 
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
-      # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip
-      # (Octop-<plat>.zip containing another Octop-<plat>.zip). Affects every plat.
+      # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
       - uses: actions/upload-artifact@v7
         with:
-          path: desktop/portable/release/Octop-${{ matrix.plat }}.zip
+          path: desktop/portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -240,7 +262,7 @@ jobs:
       - name: Upload bundled desktop package
         uses: actions/upload-artifact@v7
         with:
-          path: desktop/src/bin/Octop-Desktop-${{ matrix.plat }}.*
+          path: desktop/src/bin/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -256,6 +278,9 @@ jobs:
       (
         (github.event_name == 'workflow_dispatch' &&
          github.event.inputs.attach_from_run != '') ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.event.inputs.attach_release == 'true' &&
+         github.event.inputs.release_tag != '') ||
         (startsWith(github.ref, 'refs/tags/v') &&
          (github.event_name == 'push' ||
           (github.event_name == 'workflow_dispatch' &&
@@ -281,7 +306,7 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       # v8 required for archive:false artifacts. skip-decompress keeps the
-      # uploaded .zip / .tar / .dmg / .exe intact — default unzip turns portable
+      # uploaded .zip / .tar.gz / .dmg / .exe intact — default unzip turns portable
       # zips into directories, so files: release-assets/* would skip them.
       - uses: actions/download-artifact@v8
         with:

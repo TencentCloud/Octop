@@ -1,0 +1,104 @@
+.mac,
+.windows {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.mac {
+  gap: 8px;
+  padding: 0 12px 0 8px;
+}
+
+.light {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0.5px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+.glyph {
+  opacity: 0;
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: inherit;
+  pointer-events: none;
+  transform: translateY(-0.5px);
+}
+
+.mac:hover .glyph {
+  opacity: 0.85;
+}
+
+.zoom {
+  background: #28c840;
+  border-color: #12a12a;
+  color: #003a08;
+}
+
+.min {
+  background: #febc2e;
+  border-color: #d89e19;
+  color: #5c3b00;
+}
+
+.close {
+  background: #ff5f57;
+  border-color: #e0443e;
+  color: #4d0000;
+}
+
+.windows {
+  height: 32px;
+}
+
+.winBtn {
+  width: 46px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary, #4b5563);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.winBtn:hover {
+  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+  color: var(--fn-text-primary, #111827);
+}
+
+.winBtn:focus-visible {
+  outline: 2px solid var(--fn-color-brand, #1677ff);
+  outline-offset: -2px;
+}
+
+.winClose:hover {
+  background: #e81123;
+  color: #fff;
+}

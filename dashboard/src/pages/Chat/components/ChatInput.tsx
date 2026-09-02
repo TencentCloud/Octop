@@ -93,6 +93,13 @@ interface ChatInputProps {
   selectedSkills?: string[];
   onSkillsChange?: (names: string[]) => void;
   availableAgents?: ChatAgentOption[];
+  /**
+   * Subset of experts the user can currently pick — only running ones
+   * (stopped / failed experts would dispatch into an unloaded harness and
+   * silently fail). Pass the same list as ``availableAgents`` if every
+   * expert is guaranteed to be running.
+   */
+  availableExperts?: ChatAgentOption[];
   selectedTargetAgents?: string[];
   onTargetAgentsChange?: (ids: string[]) => void;
   agentId?: string | null;
@@ -139,6 +146,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedSkills = [],
       onSkillsChange,
       availableAgents = [],
+      // Default ``availableExperts`` to the full projection so older callers
+      // (and tests) keep working. Production callers in ``Chat/index.tsx``
+      // explicitly pass the filtered list — keep that explicit to avoid
+      // accidentally re-surfacing stopped experts in the @-picker.
+      availableExperts = availableAgents,
       selectedTargetAgents = [],
       onTargetAgentsChange,
       agentId,
@@ -338,7 +350,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       locale: i18n.language,
       availableSkills,
       availableConnectors,
-      availableAgents,
+      availableExperts,
       agentId,
       selectedSkills,
       selectedConnectors,
@@ -764,7 +776,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             availableSkills={availableSkills}
             selectedSkills={selectedSkills}
             onSkillsChange={onSkillsChange}
-            availableExperts={availableAgents.filter(
+            availableExperts={availableExperts.filter(
               (a) => a.agent_id !== agentId,
             )}
             selectedTargetAgents={selectedTargetAgents}

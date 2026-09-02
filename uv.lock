@@ -2475,7 +2475,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "0.9.30"
+version = "0.9.31"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2492,6 +2492,7 @@ dependencies = [
     { name = "josepy" },
     { name = "langchain-core" },
     { name = "langgraph-checkpoint-postgres" },
+    { name = "lark-oapi" },
     { name = "mcp" },
     { name = "orcakit-harness-agent", extra = ["all"] },
     { name = "pillow" },
@@ -2560,7 +2561,7 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
-    { name = "harness-browser", specifier = ">=0.7.6" },
+    { name = "harness-browser", specifier = ">=0.7.7" },
     { name = "harness-gateway", specifier = ">=0.9.3" },
     { name = "harness-memory", specifier = ">=0.9.8" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
@@ -2568,6 +2569,7 @@ requires-dist = [
     { name = "josepy", specifier = ">=2.2.0" },
     { name = "langchain-core", specifier = ">=1.4.8" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
+    { name = "lark-oapi", specifier = ">=1.5.5" },
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },

@@ -48,6 +48,7 @@ class SkillHubMarketAgentCreateOptions:
     color: str | None = None
     agent_id: str | None = None
     welcome_message: str | None = None
+    skill_package_ids: list[str] | None = None
     max_iters: int | None = None
     max_input_length: int | None = None
     temperature: float | None = None
@@ -311,6 +312,7 @@ async def create_agent_from_skillhub_skillset(
         icon_url=item.icon_url or None,
         color=options.color,
         welcome_message=(options.welcome_message if customized_welcome else None),
+        skill_package_ids=options.skill_package_ids,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
 

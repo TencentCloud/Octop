@@ -100,7 +100,7 @@ export default function RemotePhoneIdleGuide({
           : needsInstall
           ? t(
               "remoteAndroid.needsInstallDesc",
-              "此主机使用容器 Android 后端。可一键拉取并启动容器（需本机已安装 Docker）。",
+              "此主机使用容器 Android 后端。可一键拉取并启动容器；若未安装 Docker 将自动尝试安装（失败时需手动安装）。",
             )
           : needsDevice
           ? t(
@@ -135,13 +135,13 @@ export default function RemotePhoneIdleGuide({
               {
                 label: t(
                   "remoteAndroid.installStep1",
-                  "确认主机已安装并可使用 Docker",
+                  "点击「安装容器」；若主机未安装 Docker 将自动安装",
                 ),
               },
               {
                 label: t(
                   "remoteAndroid.installStep2",
-                  "点击「安装容器」，拉取并启动 Android 容器",
+                  "等待拉取并启动 Android 容器",
                 ),
               },
               {

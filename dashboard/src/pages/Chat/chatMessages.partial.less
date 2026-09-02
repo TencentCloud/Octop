@@ -8,6 +8,22 @@
   flex-direction: column;
 }
 
+/* Left gutter so the in-thread turn timeline ticks do not cover bubbles.
+   Prefer parent `.chatMainWithTurnRail` (title + composer + list). This local
+   class remains as a fallback when MessageList is mounted alone. */
+.messageListWrapperWithRail {
+  --chat-turn-rail-gutter: 48px;
+
+  .messageListInner {
+    padding-inline-start: var(--chat-turn-rail-gutter);
+    padding-inline-end: var(--chat-column-pad-x, 24px);
+
+    @media (max-width: 863px) {
+      padding-inline-start: var(--chat-column-pad-x, 24px);
+    }
+  }
+}
+
 .messageList {
   flex: 1;
   overflow-y: auto;

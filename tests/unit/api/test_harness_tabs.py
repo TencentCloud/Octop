@@ -32,6 +32,24 @@ def _fake_sess(*, active_id: str | None = "T1", port: int = 9222) -> SimpleNames
 
 
 @pytest.mark.asyncio
+async def test_status_probes_do_not_extend_browser_idle_timeout() -> None:
+    passive = AsyncMock(
+        side_effect=[
+            {},
+            {"result": {"value": "https://example.com"}},
+        ]
+    )
+    active = AsyncMock()
+    client = SimpleNamespace(send=active, send_passive=passive)
+    sess = SimpleNamespace(_internal=SimpleNamespace(client=client))
+
+    assert await harness_mod._is_session_alive(sess)
+    assert await harness_mod.harness_page_url(sess) == "https://example.com"
+    assert passive.await_count == 2
+    active.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_harness_list_tabs_marks_profile_target_active() -> None:
     sess = _fake_sess(active_id="TAB-B")
     targets = [
@@ -71,3 +89,22 @@ async def test_harness_list_tabs_marks_profile_target_active() -> None:
     assert [t["id"] for t in tabs] == ["TAB-A", "TAB-B"]
     assert tabs[1]["active"] is True
     assert tabs[0]["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_shutdown_browser_kills_named_profile() -> None:
+    result = SimpleNamespace(success=True, error=None)
+    with (
+        patch(
+            "harness_browser.tool_interface.browser_tool",
+            new=AsyncMock(return_value=result),
+        ) as tool,
+        patch("harness_browser.tool_interface._registry", {"work": object()}),
+    ):
+        body = await harness_mod.shutdown_browser(profile="work", _=object())
+    assert body == {"ok": True, "profile": "work"}
+    tool.assert_awaited_once_with(
+        action="close_session",
+        profile="work",
+        kill=True,
+    )

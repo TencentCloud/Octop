@@ -50,7 +50,11 @@ import AgentProfileDrawer from "../../components/AgentProfileDrawer";
 import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
-import { useAgent } from "../../context/AgentContext";
+import {
+  useAgent,
+  selectEnabledExperts,
+  projectChatAgentOption,
+} from "../../context/AgentContext";
 import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
@@ -177,6 +181,17 @@ function ChatPageInner() {
   const agentChatReady = isAgentChatReady(activeAgent?.state);
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
   const noAgents = !agentsLoading && agents.length === 0;
+
+  // Sidebar only lists "enabled" experts (harness running). Stopped / failed
+  // experts are hidden so the nav stays focused on agents that can actually
+  // chat right now — including the focused expert the user just stopped. The
+  // main panel still renders ``AgentNotReadyScreen`` on the same URL so users
+  // see a clear path back to ``/experts`` to re-enable it.
+  const sidebarAgents = useMemo(
+    () => selectEnabledExperts(agents, resolvedAgentId, { pinActive: false }),
+    [agents, resolvedAgentId],
+  );
+
   const {
     status: memoryMaint,
     visible: memoryMaintVisible,
@@ -200,6 +215,7 @@ function ChatPageInner() {
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [turnRailVisible, setTurnRailVisible] = useState(false);
 
   const {
     sessions,
@@ -444,18 +460,22 @@ function ChatPageInner() {
     refreshAgents,
   });
 
+  // Full projection — used by surfaces that render an *existing* agent chip
+  // (the preview bar above the composer and historical message chips). They
+  // must still find an expert that was running when the user picked it but
+  // has since been stopped, otherwise the chip silently vanishes.
   const chatAgentOptions = useMemo(
+    () => agents.map(projectChatAgentOption),
+    [agents],
+  );
+  // Subset for the chat-side *pickers* (`@` button popover, `@` mention menu).
+  // Only running experts — picking a stopped one would dispatch into an
+  // unloaded harness and silently fail.
+  const chatAgentOptionsPickable = useMemo(
     () =>
-      agents.map((a) => ({
-        agent_id: a.agent_id,
-        name: a.name,
-        icon_name: a.icon_name,
-        icon_url: a.icon_url,
-        color: a.color,
-        is_shared: a.is_shared,
-        is_owner: a.is_owner,
-        owner_username: a.owner_username,
-      })),
+      selectEnabledExperts(agents, null, { pinActive: false }).map(
+        projectChatAgentOption,
+      ),
     [agents],
   );
 
@@ -809,6 +829,13 @@ function ChatPageInner() {
     activeThreadId && !hasMessages && (historyLoading || !historyHydrated),
   );
   const showWelcome = !hasMessages && !awaitingThreadHistory;
+
+  useEffect(() => {
+    if (showWelcome || !agentChatReady || noAgents) {
+      setTurnRailVisible(false);
+    }
+  }, [showWelcome, agentChatReady, noAgents]);
+
   const activeSession = useMemo(() => {
     if (!activeThreadId || showWelcome) return null;
     return (
@@ -839,7 +866,7 @@ function ChatPageInner() {
       sidebarWidth={sidebarWidth}
       isSidebarResizing={isSidebarResizing}
       sidebarElRef={sidebarElRef}
-      agents={agents}
+      agents={sidebarAgents}
       sessions={sessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
@@ -894,7 +921,14 @@ function ChatPageInner() {
           }`}
         >
           {/* Main chat area */}
-          <div className={styles.chatMain}>
+          <div
+            className={[
+              styles.chatMain,
+              turnRailVisible ? styles.chatMainWithTurnRail : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             {/* Mobile toolbar — session list + optional title + agent profile */}
             {isMobile && (
               <div className={styles.mobileToolbar}>
@@ -1012,6 +1046,7 @@ function ChatPageInner() {
                   forkDisabledHint={forkDisabledHint}
                   onAcpPermissionSelect={handleAcpPermissionSelect}
                   onHitlDecision={handleHitlDecision}
+                  onTurnRailVisibilityChange={setTurnRailVisible}
                   onOpenBrowser={
                     hasBrowserTool && !isMobile ? openBrowserTab : undefined
                   }
@@ -1222,6 +1257,7 @@ function ChatPageInner() {
               selectedSkills={selectedSkills}
               onSkillsChange={handleSkillsChange}
               availableAgents={chatAgentOptions}
+              availableExperts={chatAgentOptionsPickable}
               selectedTargetAgents={selectedTargetAgents}
               onTargetAgentsChange={setSelectedTargetAgents}
               agentId={resolvedAgentId}
