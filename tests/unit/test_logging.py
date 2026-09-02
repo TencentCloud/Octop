@@ -230,12 +230,13 @@ def test_log_handler_rotates_when_max_bytes_exceeded(tmp_path: Path):
 
 def test_gzip_rotated_log_replaces_plain_file(tmp_path: Path):
     plain = tmp_path / "octop.log.2026-09-02"
-    plain.write_text("hello\nworld\n", encoding="utf-8")
+    # Binary write keeps LF on Windows (text mode would expand to CRLF).
+    plain.write_bytes(b"hello\nworld\n")
     gzip_rotated_log(plain)
     gz = tmp_path / "octop.log.2026-09-02.gz"
     assert not plain.exists()
     assert gz.exists()
-    assert gzip.decompress(gz.read_bytes()).decode("utf-8") == "hello\nworld\n"
+    assert gzip.decompress(gz.read_bytes()) == b"hello\nworld\n"
 
 
 def test_delaycompress_keeps_newest_plain_on_startup(tmp_path: Path):
