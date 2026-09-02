@@ -230,6 +230,17 @@ jobs:
       - name: Install Wails v3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
 
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis --yes --no-progress
+          $nsis = "${env:ProgramFiles(x86)}\NSIS"
+          if (-not (Test-Path "$nsis\makensis.exe")) {
+            throw "makensis.exe missing after NSIS install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsis
+
       - name: Package desktop app with bundled portable runtime
         working-directory: desktop/src
         run: >-

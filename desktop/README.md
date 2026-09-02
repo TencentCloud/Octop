@@ -44,6 +44,8 @@ desktop/package-release.sh darwin-arm64 --reuse-portable
 
 Wails requires native packaging, so all six variants are produced by the CI
 matrix on macOS, Linux, and Windows runners rather than cross-compiled locally.
+Windows packaging also needs [NSIS](https://nsis.sourceforge.io/) (`makensis`)
+so the `.exe` is an installer rather than a portable single-file binary.
 
 ## Build the Wails shell
 
@@ -76,7 +78,8 @@ Wails shell never downloads Octop. For local runtime debugging, set
 GitHub Release names follow `Octop-<kind>-<os>-<arch>-<version>.<ext>`:
 
 - Desktop GUI: `Octop-desktop-<plat>-<version>.dmg` (macOS),
-  `.exe` (Windows), `.tar.gz` (Linux)
+  `.exe` (Windows NSIS installer — copies into `Program Files\Octop`
+  and creates Start Menu + desktop shortcuts), `.tar.gz` (Linux)
 - Green runtime zip: `Octop-portable-<plat>-<version>.zip`
 - PyPI wheels stay `octop-<version>-py3-none-any.whl` (PEP 427)
 
