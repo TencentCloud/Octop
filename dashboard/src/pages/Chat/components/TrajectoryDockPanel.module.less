@@ -1,0 +1,113 @@
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--fn-bg-primary);
+  padding: 12px 20px;
+  box-sizing: border-box;
+  gap: 10px;
+}
+
+.status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 24px;
+}
+
+.errorText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  text-align: center;
+}
+
+.retry {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fn-color-brand, var(--fn-text-brand));
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.ledger {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 0 8px;
+  list-style: none;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, var(--fn-bg-primary));
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 36px;
+  padding: 8px 12px 8px 14px;
+  box-sizing: border-box;
+  border-left: 3px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.12));
+
+  &:hover {
+    background: var(--fn-bg-secondary, #f5f5f7);
+  }
+}
+
+.laneInput {
+  border-left-color: var(--fn-text-tertiary, #8b8b8b);
+}
+
+.laneModel {
+  border-left-color: var(--fn-color-brand);
+}
+
+.laneTools {
+  border-left-color: var(--fn-color-success, #389e0d);
+}
+
+.rowError {
+  background: color-mix(
+    in srgb,
+    var(--fn-color-error, #cf1322) 8%,
+    transparent
+  );
+}
+
+.rowTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowSummary {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

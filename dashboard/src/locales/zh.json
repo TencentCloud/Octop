@@ -1204,6 +1204,7 @@
     "dockTrajectoryTitle": "运行轨迹",
     "dockTrajectoryEmpty": "暂无运行轨迹",
     "dockTrajectorySelectSession": "请选择一个会话以查看运行轨迹",
+    "dockTrajectoryLoadError": "加载运行轨迹失败",
     "dockPhoneTitle": "远程手机",
     "dockToolUiTitle": "插件工具",
     "dockToolUiMissing": "该工具结果已不在当前对话中。",

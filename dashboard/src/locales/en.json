@@ -1204,6 +1204,7 @@
     "dockTrajectoryTitle": "Trajectory",
     "dockTrajectoryEmpty": "No trajectory events yet",
     "dockTrajectorySelectSession": "Select a session to view trajectory",
+    "dockTrajectoryLoadError": "Failed to load trajectory",
     "dockPhoneTitle": "Remote Phone",
     "dockToolUiTitle": "Plugin tool",
     "dockToolUiMissing": "Tool result is no longer available in this conversation.",

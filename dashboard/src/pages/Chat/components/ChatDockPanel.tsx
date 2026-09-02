@@ -365,7 +365,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             style={{ display: trajectoryVisible ? "flex" : "none" }}
             aria-hidden={!trajectoryVisible}
           >
-            <TrajectoryDockPanel agentId={agentId} threadId={threadId} />
+            <TrajectoryDockPanel
+              agentId={agentId}
+              threadId={threadId}
+              visible={trajectoryVisible}
+            />
           </div>
         )}
 
