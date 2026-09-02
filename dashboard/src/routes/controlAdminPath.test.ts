@@ -5,7 +5,7 @@ import {
   pathPermissionKeys,
   PERM,
 } from "../utils/permissions";
-import { isWorkbenchPath } from "./index";
+import { isWorkbenchPath, resolveSelectedKey, routeConfigs } from "./index";
 
 describe("pathPermissionKeys", () => {
   it("matches workbench and legacy aliases", () => {
@@ -99,5 +99,15 @@ describe("pathPermissionKeys", () => {
         "/admin/advanced",
       ),
     ).toBe(false);
+  });
+});
+
+describe("unknown dashboard paths", () => {
+  it("do not highlight a sidebar item", () => {
+    expect(resolveSelectedKey("/does-not-exist")).toBe("");
+  });
+
+  it("are caught by the not-found route", () => {
+    expect(routeConfigs.some((rc) => rc.path === "*")).toBe(true);
   });
 });

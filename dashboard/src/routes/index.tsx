@@ -31,6 +31,7 @@ const AgentConfigPage = lazy(() => import("../pages/Agent/Config"));
 
 // Misc
 const PwaDebugPage = lazy(() => import("../pages/PwaDebug"));
+const NotFoundPage = lazy(() => import("../components/NotFoundPage"));
 
 function RedirectPreserveSearch({ to }: { to: string }) {
   const location = useLocation();
@@ -136,7 +137,7 @@ export function resolveSelectedKey(pathname: string): string {
   if (pathname.startsWith("/workbench/")) return "workbench";
   if (pathname.startsWith("/remote-desktop/")) return "remote-desktop";
   if (pathname.startsWith("/personalization/")) return "personalization";
-  return "chat";
+  return "";
 }
 
 export const routeConfigs: RouteConfig[] = [
@@ -277,4 +278,5 @@ export const routeConfigs: RouteConfig[] = [
   // Misc
   { path: "/pwa-debug", element: <PwaDebugPage /> },
   { path: "/", element: <Navigate to="/chat" replace /> },
+  { path: "*", element: <NotFoundPage /> },
 ];
