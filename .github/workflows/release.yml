@@ -134,13 +134,12 @@ jobs:
   # started via GITHUB_TOKEN workflow_dispatch (Auto Tag). Explicitly cascade.
   #
   # This job intentionally has no checkout: pass --repo so `gh` does not need a
-  # local .git (bare runner → "fatal: not a git repository"). continue-on-error
-  # keeps a cascade miss from marking PyPI/GitHub release as failed.
+  # local .git (bare runner → "fatal: not a git repository"). Dispatch failure
+  # must fail this workflow so a missed sync is visible.
   sync-develop:
     name: Trigger sync main into develop
     needs: github-release
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Dispatch Sync Main Into Develop
         env:
@@ -152,12 +151,11 @@ jobs:
             -f version="${{ github.ref_name }}"
 
   # FnOS FPK：复用本 Release 的 wheel + docker-publish 的 GHCR 镜像。
-  # 与 sync-develop 并行；失败不阻断发版。
+  # 与 sync-develop 并行。Dispatch 失败必须让本 workflow 变红（PyPI 已发布仍如此）。
   trigger-fnos:
     name: Trigger FnOS FPK build
     needs: github-release
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Dispatch Build Octop FPK
         env:
