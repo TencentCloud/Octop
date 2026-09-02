@@ -44,9 +44,23 @@ const sampleEvents: TrajectoryEvent[] = [
   }),
 ];
 
+const interactiveProps = {
+  range: null,
+  onRangeChange: () => {},
+  selectedEventId: null,
+  searchMatchIds: null,
+  onRecordSelect: () => {},
+} as const;
+
 describe("TrajectoryTimeline", () => {
-  it("renders a keyboard-focusable span on each lane and merges consecutive tools", () => {
-    render(<TrajectoryTimeline events={sampleEvents} mode="sequence" />);
+  it("renders discrete per-event spans on a shared three-lane track", () => {
+    render(
+      <TrajectoryTimeline
+        events={sampleEvents}
+        mode="sequence"
+        {...interactiveProps}
+      />,
+    );
 
     expect(
       screen.getByRole("group", { name: "Trajectory timeline" }),
@@ -55,45 +69,75 @@ describe("TrajectoryTimeline", () => {
     expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Tools")).toBeInTheDocument();
 
-    const spans = screen.getAllByRole("button");
-    expect(spans).toHaveLength(3);
-    expect(spans[0]).toHaveAttribute("data-lane", "input");
-    expect(spans[1]).toHaveAttribute("data-lane", "model");
-    expect(spans[2]).toHaveAttribute("data-lane", "tools");
-    expect(spans[2]).toHaveAttribute("data-event-ids", "t1,t2");
-    spans.forEach((span) => {
-      expect(span).toHaveAttribute("type", "button");
+    const spans = screen.getAllByRole("button", {
+      name: /^(Input|Model|Tools):/,
     });
+    expect(spans).toHaveLength(4);
+    expect(spans[0]).toHaveAttribute("data-lane", "input");
+    expect(spans[0]).toHaveAttribute("data-timeline-span", "user");
+    expect(spans[1]).toHaveAttribute("data-lane", "model");
+    expect(spans[1]).toHaveAttribute("data-timeline-span", "message");
+    expect(spans[2]).toHaveAttribute("data-lane", "tools");
+    expect(spans[2]).toHaveAttribute("data-event-ids", "t1");
+    expect(spans[3]).toHaveAttribute("data-event-ids", "t2");
     spans[0].focus();
     expect(spans[0]).toHaveFocus();
   });
 
   it("sizes duration-mode spans from payload durations", () => {
     render(
-      <TrajectoryTimeline events={sampleEvents.slice(1)} mode="duration" />,
+      <TrajectoryTimeline
+        events={sampleEvents.slice(1)}
+        mode="duration"
+        {...interactiveProps}
+      />,
     );
 
-    const model = screen.getByRole("button", { name: /Model/ });
-    const tools = screen.getByRole("button", { name: /Tools/ });
+    const model = screen.getByRole("button", { name: /Model: assistant/ });
+    const tools = screen.getAllByRole("button", { name: /Tools: tool/ });
     expect(model).toHaveAttribute("data-start", "0");
     expect(model).toHaveAttribute("data-end", "100");
-    expect(tools).toHaveAttribute("data-start", "100");
-    expect(tools).toHaveAttribute("data-end", "200");
+    expect(tools[0]).toHaveAttribute("data-start", "100");
+    expect(tools[0]).toHaveAttribute("data-end", "150");
+    expect(tools[1]).toHaveAttribute("data-start", "150");
+    expect(tools[1]).toHaveAttribute("data-end", "200");
   });
 
-  it("toggles focus when a span is activated", () => {
-    const onFocusSpan = vi.fn();
+  it("calls onRecordSelect when a span is clicked", () => {
+    const onRecordSelect = vi.fn();
     render(
       <TrajectoryTimeline
         events={sampleEvents}
         mode="sequence"
-        onFocusSpan={onFocusSpan}
+        range={null}
+        onRangeChange={() => {}}
+        selectedEventId={null}
+        searchMatchIds={null}
+        onRecordSelect={onRecordSelect}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: /Input: user/ }));
+    expect(onRecordSelect).toHaveBeenCalledWith("u");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /Tools/ }));
-    expect(onFocusSpan).toHaveBeenCalledTimes(1);
-    const span = onFocusSpan.mock.calls[0][0] as { eventIds: string[] };
-    expect(span.eventIds).toEqual(["t1", "t2"]);
+  it("dims non-matching spans when searchMatchIds is set", () => {
+    render(
+      <TrajectoryTimeline
+        events={sampleEvents}
+        mode="sequence"
+        range={null}
+        onRangeChange={() => {}}
+        selectedEventId={null}
+        searchMatchIds={new Set(["u"])}
+        onRecordSelect={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /Model: assistant/ }),
+    ).toHaveAttribute("data-search-match", "false");
+    expect(screen.getByRole("button", { name: /Input: user/ })).toHaveAttribute(
+      "data-search-match",
+      "true",
+    );
   });
 });

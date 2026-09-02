@@ -213,9 +213,22 @@ export default function TrajectoryDockPanel({
       </div>
       <TrajectoryTimeline
         events={events}
-        mode={mode}
-        focusedSpanId={focusedSpan?.id ?? null}
-        onFocusSpan={setFocusedSpan}
+        mode={mode === "duration" ? "duration" : "sequence"}
+        range={null}
+        onRangeChange={() => {}}
+        selectedEventId={focusedSpan?.id ?? null}
+        searchMatchIds={null}
+        onRecordSelect={(eventId) => {
+          setFocusedSpan({
+            id: eventId,
+            lane: "input",
+            kind: "user",
+            start: 0,
+            end: 1,
+            eventIds: [eventId],
+            isError: false,
+          });
+        }}
       />
       {agentId ? (
         <TrajectoryLedger
