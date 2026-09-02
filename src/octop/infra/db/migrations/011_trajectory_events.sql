@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS trajectory_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT NOT NULL UNIQUE,
   agent_id TEXT NOT NULL,
-  thread_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
   seq INTEGER NOT NULL,
   ts REAL NOT NULL,
   kind TEXT NOT NULL,

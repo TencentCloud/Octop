@@ -548,4 +548,8 @@ def delete_thread_offline(agent_id: str, thread_id: str, *, home: Path | None = 
         row = svc.thread_repo.get(thread_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
+        try:
+            svc.trajectory_event_repo.delete_for_thread(thread_id)
+        except Exception:
+            logger.exception("trajectory cascade delete failed thread=%s", thread_id)
         svc.thread_repo.delete(thread_id)

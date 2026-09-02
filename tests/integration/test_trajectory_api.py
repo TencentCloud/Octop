@@ -345,6 +345,30 @@ async def test_delete_thread_cascades_trajectory_ledger(env_alice_bob_agent: Any
     assert service.list_events(thread_id, before_seq=None, limit=10, kinds=None) == []
 
 
+async def test_delete_thread_succeeds_when_trajectory_cascade_raises(
+    env_alice_bob_agent: Any,
+) -> None:
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+    service.observe_chunk(agent_id, thread_id, {"type": "user", "content": "hello"})
+
+    def _boom(_thread_id: str) -> int:
+        raise RuntimeError("ledger down")
+
+    service.delete_for_thread = _boom  # type: ignore[method-assign]
+
+    response = await client.delete(
+        f"/api/agents/{agent_id}/threads/{thread_id}",
+        headers=alice_auth,
+    )
+    assert response.status_code == 204, response.text
+    listed = await client.get(f"/api/agents/{agent_id}/threads", headers=alice_auth)
+    assert listed.status_code == 200
+    assert all(item["thread_id"] != thread_id for item in listed.json())
+
+
 async def test_live_sse_unsubscribes_on_cancel(env_alice_bob_agent: Any) -> None:
     client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
     thread_id = await _create_thread(client, alice_auth, agent_id)

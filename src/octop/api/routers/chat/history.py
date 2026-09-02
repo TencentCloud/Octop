@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from octop.infra.trajectory.service import TrajectoryService
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _agent_is_busy(server: Any, agent_id: str) -> bool:
@@ -495,4 +497,7 @@ async def delete_thread(
     runtime = getattr(server, "app_runtime", None)
     trajectory = getattr(runtime, "trajectory_service", None) if runtime is not None else None
     if isinstance(trajectory, TrajectoryService):
-        trajectory.delete_for_thread(thread_id)
+        try:
+            trajectory.delete_for_thread(thread_id)
+        except Exception:
+            logger.exception("trajectory cascade delete failed thread=%s", thread_id)

@@ -7,8 +7,26 @@ from typing import Any
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.agents import AgentRepo
+from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
+from octop.infra.db.repos.users import UserRepo
 from octop.infra.trajectory.types import TrajectoryEvent
+
+
+def _seed_threads(db: SqlitePool, *thread_ids: str, agent_id: str = "A1") -> None:
+    user_id = UserRepo(db).create(username="traj-user", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id=agent_id, user_id=user_id, name="Agent")
+    threads = ThreadRepo(db)
+    for tid in thread_ids:
+        threads.insert(
+            thread_id=tid,
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type="dashboard",
+            session_key=f"sk-{tid}",
+            last_active=0,
+        )
 
 
 def _event(
@@ -41,6 +59,7 @@ def _event(
 def _repo(tmp_path: Path) -> TrajectoryEventRepo:
     db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
+    _seed_threads(db, "T1", "T2")
     return TrajectoryEventRepo(db)
 
 
@@ -94,3 +113,27 @@ def test_get_delete_and_iter_for_export(tmp_path: Path) -> None:
     assert repo.delete_for_thread("T1") == 2
     assert repo.list_before("T1", before_seq=None, limit=10, kinds=None) == []
     assert repo.get("other") is not None
+
+
+def test_thread_delete_cascades_trajectory_events(tmp_path: Path) -> None:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    with db.connect() as conn:
+        fks = conn.execute("PRAGMA foreign_key_list(trajectory_events)").fetchall()
+    assert any(str(row["table"]) == "threads" for row in fks)
+
+    user_id = UserRepo(db).create(username="u", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id="A1", user_id=user_id, name="Agent")
+    ThreadRepo(db).insert(
+        thread_id="T1",
+        agent_id="A1",
+        user_id=user_id,
+        channel_type="dashboard",
+        session_key="sk",
+        last_active=0,
+    )
+    repo = TrajectoryEventRepo(db)
+    assert repo.append(_event(event_id="e1", seq=1, summary="hi")) is True
+
+    ThreadRepo(db).delete("T1")
+    assert repo.list_before("T1", before_seq=None, limit=10, kinds=None) == []
