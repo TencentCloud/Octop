@@ -356,7 +356,21 @@ export default function TrajectoryTimeline({
     return clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
   };
 
+  const capturePointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  };
+
+  const armSuppressTrailingClick = () => {
+    suppressClickRef.current = true;
+    queueMicrotask(() => {
+      suppressClickRef.current = false;
+    });
+  };
+
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    suppressClickRef.current = false;
     if (event.button === 2) {
       panRef.current = {
         anchorClientX: event.clientX,
@@ -367,7 +381,7 @@ export default function TrajectoryTimeline({
       };
       if (viewport !== null) setAnimateViewport(false);
       setPanning(true);
-      event.currentTarget.setPointerCapture(event.pointerId);
+      capturePointer(event);
       return;
     }
     if (event.button !== 0 || spans.length === 0) return;
@@ -381,7 +395,7 @@ export default function TrajectoryTimeline({
       anchorClientX: event.clientX,
       eventId,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointer(event);
     setDraft({ start: anchorTime, end: anchorTime });
   };
 
@@ -484,7 +498,7 @@ export default function TrajectoryTimeline({
             modelEnd,
           )
         : selected;
-    suppressClickRef.current = true;
+    armSuppressTrailingClick();
     onRangeChange(committedRange);
     if (click) {
       const nearest = nearestSpan(spans, selected.start);
@@ -495,6 +509,7 @@ export default function TrajectoryTimeline({
   const onPointerCancel = () => {
     dragRef.current = null;
     panRef.current = null;
+    suppressClickRef.current = false;
     setDraft(null);
     setHover(null);
     setPanning(false);

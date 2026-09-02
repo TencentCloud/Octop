@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 import TrajectoryTimeline from "./TrajectoryTimeline";
@@ -51,6 +51,43 @@ const interactiveProps = {
   searchMatchIds: null,
   onRecordSelect: () => {},
 } as const;
+
+function mockTrack(track: HTMLElement): HTMLElement {
+  vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: 400,
+    bottom: 50,
+    width: 400,
+    height: 50,
+    toJSON: () => ({}),
+  });
+  return track;
+}
+
+function pointer(
+  target: HTMLElement,
+  type: "pointerdown" | "pointermove" | "pointerup",
+  init: { button?: number; pointerId?: number; clientX: number },
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    button: init.button ?? 0,
+    buttons: (init.button ?? 0) === 0 ? 1 : 0,
+    clientX: init.clientX,
+    clientY: 10,
+  });
+  Object.defineProperty(event, "pointerId", {
+    value: init.pointerId ?? 1,
+  });
+  Object.defineProperty(event, "pointerType", { value: "mouse" });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+}
 
 describe("TrajectoryTimeline", () => {
   it("renders discrete per-event spans on a shared three-lane track", () => {
@@ -139,5 +176,79 @@ describe("TrajectoryTimeline", () => {
       "data-search-match",
       "true",
     );
+  });
+
+  it("commits a range when dragging on the track", () => {
+    const onRangeChange = vi.fn();
+    render(
+      <TrajectoryTimeline
+        events={sampleEvents}
+        mode="sequence"
+        range={null}
+        onRangeChange={onRangeChange}
+        selectedEventId={null}
+        searchMatchIds={null}
+        onRecordSelect={() => {}}
+      />,
+    );
+    const track = mockTrack(
+      screen.getByRole("group", { name: "Trajectory timeline" }),
+    );
+    pointer(track, "pointerdown", { clientX: 40 });
+    pointer(track, "pointermove", { clientX: 200 });
+    pointer(track, "pointerup", { clientX: 200 });
+    expect(onRangeChange).toHaveBeenCalledTimes(1);
+    const committed = onRangeChange.mock.calls[0][0] as {
+      start: number;
+      end: number;
+    };
+    expect(committed.end).toBeGreaterThan(committed.start);
+  });
+
+  it("clears the range on Escape", () => {
+    const onRangeChange = vi.fn();
+    render(
+      <TrajectoryTimeline
+        events={sampleEvents}
+        mode="sequence"
+        range={{ start: 0, end: 2 }}
+        onRangeChange={onRangeChange}
+        selectedEventId={null}
+        searchMatchIds={null}
+        onRecordSelect={() => {}}
+      />,
+    );
+    fireEvent.keyDown(
+      screen.getByRole("group", { name: "Trajectory timeline" }),
+      { key: "Escape" },
+    );
+    expect(onRangeChange).toHaveBeenCalledWith(null);
+  });
+
+  it("calls onRecordSelect after a whitespace range commit", async () => {
+    const onRangeChange = vi.fn();
+    const onRecordSelect = vi.fn();
+    render(
+      <TrajectoryTimeline
+        events={sampleEvents}
+        mode="sequence"
+        range={null}
+        onRangeChange={onRangeChange}
+        selectedEventId={null}
+        searchMatchIds={null}
+        onRecordSelect={onRecordSelect}
+      />,
+    );
+    const track = mockTrack(
+      screen.getByRole("group", { name: "Trajectory timeline" }),
+    );
+    pointer(track, "pointerdown", { clientX: 10 });
+    pointer(track, "pointerup", { clientX: 10 });
+    expect(onRangeChange).toHaveBeenCalledTimes(1);
+    expect(onRangeChange.mock.calls[0][0]).not.toBeNull();
+
+    await Promise.resolve();
+    fireEvent.click(screen.getByRole("button", { name: /Input: user/ }));
+    expect(onRecordSelect).toHaveBeenCalledWith("u");
   });
 });
