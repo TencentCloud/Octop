@@ -2,31 +2,21 @@ name: Sync Main Into Develop
 
 # After Release succeeds, sync main → develop.
 #
-# Primary trigger: Release.yml explicitly dispatches this workflow (see
-# sync-develop job). Do not rely only on `release: published` or
-# `workflow_run` — when Auto Tag starts Release with GITHUB_TOKEN, those
-# events often never create a Sync run. workflow_dispatch remains for
-# manual catch-up; workflow_run / release are kept as best-effort backups.
+# Only trigger: Release.yml (and humans) dispatch this workflow. Do not also
+# listen for `release: published` or `workflow_run` — those duplicate the
+# explicit dispatch and force-push the same sync branch.
 #
 # Strategy: keep main an ancestor of develop. Try merge first; on conflict,
 # rebuild on main and open a PR (develop is often branch-protected against
 # force-push). Never use head=main merge PRs — that pattern conflicts when
 # main was updated via a bulk develop merge (#150-style divergence).
 on:
-  workflow_run:
-    workflows:
-      - Release
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       version:
         description: "Release tag being synced, e.g. v0.9.31. Blank = read main's pyproject.toml."
         required: false
         type: string
-  release:
-    types:
-      - published
 
 permissions:
   contents: write
@@ -35,12 +25,6 @@ permissions:
 jobs:
   sync:
     name: Sync main into develop
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -52,17 +36,16 @@ jobs:
       - name: Sync develop onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.version || github.event.release.tag_name || github.event.workflow_run.head_branch }}
+          TAG: ${{ inputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main develop
 
-          # Release dispatches this workflow with GITHUB_TOKEN, so the release /
-          # workflow_run payloads are empty. Fall back to main's shipped version
-          # rather than a constant, or every release would reuse (and force-push)
-          # the same sync branch.
+          # Prefer the version input from Release.yml. Fall back to main's
+          # shipped pyproject so a blank dispatch still gets a unique branch
+          # name instead of colliding across releases.
           version="${TAG#v}"
           if [ -z "$version" ]; then
             version="$(git show origin/main:pyproject.toml \
