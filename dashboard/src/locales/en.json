@@ -1047,6 +1047,13 @@
     "generating": "Generating",
     "generatingWithElapsed": "Generating · {{seconds}}s",
     "scrollToBottom": "Back to bottom",
+    "turnTimeline": {
+      "label": "Conversation turns",
+      "jumpToQuery": "Jump to message {{index}}",
+      "userFallback": "(empty message)",
+      "emptyAssistant": "(no reply yet)",
+      "runningAssistant": "(generating…)"
+    },
     "loadingEarlierMessages": "Loading earlier messages…",
     "scrollForEarlierMessages": "Scroll up for earlier messages",
     "refreshingMessages": "Refreshing messages…",
