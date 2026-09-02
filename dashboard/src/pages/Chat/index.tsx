@@ -215,6 +215,7 @@ function ChatPageInner() {
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [turnRailVisible, setTurnRailVisible] = useState(false);
 
   const {
     sessions,
@@ -828,6 +829,13 @@ function ChatPageInner() {
     activeThreadId && !hasMessages && (historyLoading || !historyHydrated),
   );
   const showWelcome = !hasMessages && !awaitingThreadHistory;
+
+  useEffect(() => {
+    if (showWelcome || !agentChatReady || noAgents) {
+      setTurnRailVisible(false);
+    }
+  }, [showWelcome, agentChatReady, noAgents]);
+
   const activeSession = useMemo(() => {
     if (!activeThreadId || showWelcome) return null;
     return (
@@ -913,7 +921,14 @@ function ChatPageInner() {
           }`}
         >
           {/* Main chat area */}
-          <div className={styles.chatMain}>
+          <div
+            className={[
+              styles.chatMain,
+              turnRailVisible ? styles.chatMainWithTurnRail : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             {/* Mobile toolbar — session list + optional title + agent profile */}
             {isMobile && (
               <div className={styles.mobileToolbar}>
@@ -1031,6 +1046,7 @@ function ChatPageInner() {
                   forkDisabledHint={forkDisabledHint}
                   onAcpPermissionSelect={handleAcpPermissionSelect}
                   onHitlDecision={handleHitlDecision}
+                  onTurnRailVisibilityChange={setTurnRailVisible}
                   onOpenBrowser={
                     hasBrowserTool && !isMobile ? openBrowserTab : undefined
                   }

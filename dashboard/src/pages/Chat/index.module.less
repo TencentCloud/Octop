@@ -46,6 +46,37 @@
   }
 }
 
+/* Turn timeline rail visible: align title, message column, and composer gutters. */
+.chatMainWithTurnRail {
+  --chat-turn-rail-gutter: 48px;
+
+  .chatTitleBar {
+    padding-inline: var(--chat-turn-rail-gutter)
+      max(var(--chat-column-pad-x, 24px), var(--window-controls-inset-end, 0px));
+    padding-block: 0;
+  }
+
+  .messageListInner {
+    padding-inline-start: var(--chat-turn-rail-gutter);
+    padding-inline-end: var(--chat-column-pad-x, 24px);
+  }
+
+  .chatInput {
+    padding-inline-start: var(--chat-turn-rail-gutter);
+  }
+
+  .runUsageBar {
+    width: 100%;
+    max-width: var(--chat-column-max, 960px);
+    padding-inline: var(--chat-turn-rail-gutter) var(--chat-column-pad-x, 24px);
+    box-sizing: border-box;
+  }
+
+  @media (max-width: 863px) {
+    --chat-turn-rail-gutter: var(--chat-column-pad-x, 24px);
+  }
+}
+
 .chatTitleBar {
   display: flex;
   align-items: center;

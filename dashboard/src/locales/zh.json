@@ -1047,6 +1047,13 @@
     "generating": "生成中",
     "generatingWithElapsed": "生成中 · {{seconds}}s",
     "scrollToBottom": "回到底部",
+    "turnTimeline": {
+      "label": "对话回合",
+      "jumpToQuery": "跳转到第 {{index}} 条消息",
+      "userFallback": "（空消息）",
+      "emptyAssistant": "（暂无回复）",
+      "runningAssistant": "（生成中…）"
+    },
     "loadingEarlierMessages": "正在加载更早的消息…",
     "scrollForEarlierMessages": "向上滚动加载更早的消息",
     "refreshingMessages": "正在刷新消息…",
