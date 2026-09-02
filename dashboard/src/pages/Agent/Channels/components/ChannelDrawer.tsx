@@ -160,6 +160,7 @@ interface ChannelDrawerProps {
 }
 
 function FormItemForField({ field }: { field: ChannelField }) {
+  const { t } = useTranslation();
   const Input1 =
     field.type === "password"
       ? Input.Password
@@ -167,7 +168,12 @@ function FormItemForField({ field }: { field: ChannelField }) {
       ? Input.TextArea
       : Input;
   const rules: Rule[] = field.required
-    ? [{ required: true, message: `${field.label} 必填` }]
+    ? [
+        {
+          required: true,
+          message: t("channels.fieldRequired", { label: field.label }),
+        },
+      ]
     : [];
   if (field.type === "json") {
     rules.push({
@@ -176,7 +182,9 @@ function FormItemForField({ field }: { field: ChannelField }) {
         try {
           normalizeChannelFieldValue(field.name, value);
         } catch {
-          throw new Error(`${field.label} 必须是 JSON 对象`);
+          throw new Error(
+            t("channels.fieldMustBeJsonObject", { label: field.label }),
+          );
         }
       },
     });
@@ -611,7 +619,10 @@ export function ChannelDrawer({
             });
           } else if (poll.status === "error") {
             stopPolling();
-            setQrState({ phase: "error", reason: poll.reason ?? "扫码失败" });
+            setQrState({
+              phase: "error",
+              reason: poll.reason ?? t("channels.qrFailed"),
+            });
           }
         } catch {
           // network error — keep polling
@@ -653,7 +664,10 @@ export function ChannelDrawer({
             });
           } else if (poll.status === "error") {
             stopPolling();
-            setQrState({ phase: "error", reason: poll.message ?? "扫码失败" });
+            setQrState({
+              phase: "error",
+              reason: poll.message ?? t("channels.qrFailed"),
+            });
           }
         } catch {
           // keep polling
@@ -787,7 +801,7 @@ export function ChannelDrawer({
     stopPolling();
     setQrState({
       phase: "yuanbao_creating",
-      message: "启动元宝扫码绑定流程...",
+      message: t("channels.yuanbaoStarting"),
     });
     try {
       await channelApi.yuanbaoBotCreatorStart(agentId, {});
@@ -830,7 +844,7 @@ export function ChannelDrawer({
           );
           setQrState({
             phase: "error",
-            reason: errEvent?.message ?? "元宝绑定失败",
+            reason: errEvent?.message ?? t("channels.yuanbaoBindFailed"),
           });
         }
       } catch {
@@ -1261,7 +1275,11 @@ export function ChannelDrawer({
   function renderWecomPanel() {
     const s = qrState;
     if (s.phase === "loading" || s.phase === "idle")
-      return renderQrLoading("打开企业微信", "扫码注册 AI 机器人", "确认绑定");
+      return renderQrLoading(
+        t("channels.qrStep1"),
+        t("channels.qrStep2"),
+        t("channels.qrStep3"),
+      );
     if (s.phase === "wecom_success") {
       const retrySave = () =>
         submitChannel(
@@ -1274,7 +1292,7 @@ export function ChannelDrawer({
         <div className={styles.qrPanel}>
           <Alert
             type="success"
-            message="企业微信绑定成功"
+            message={t("channels.wecomQrSuccess")}
             description={`Bot ID: ${s.botId}`}
             style={{ width: "100%", marginBottom: 12 }}
           />
@@ -1285,13 +1303,17 @@ export function ChannelDrawer({
     if (s.phase === "wecom_ready") {
       return (
         <div className={styles.qrPanel}>
-          {renderQrSteps("打开企业微信", "扫码注册 AI 机器人", "确认绑定")}
+          {renderQrSteps(
+            t("channels.qrStep1"),
+            t("channels.qrStep2"),
+            t("channels.qrStep3"),
+          )}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={s.authUrl} size={200} />
             </div>
           </div>
-          <p className={styles.qrScanHint}>扫码后自动跳转下一步</p>
+          <p className={styles.qrScanHint}>{t("channels.qrScanHint")}</p>
           <Button
             size="small"
             onClick={() => void startWecomQr()}
@@ -1322,7 +1344,11 @@ export function ChannelDrawer({
   function renderWeixinPanel() {
     const s = qrState;
     if (s.phase === "loading" || s.phase === "idle")
-      return renderQrLoading("打开微信 App", "扫码登录", "手机确认");
+      return renderQrLoading(
+        t("channels.weixinQrStep1"),
+        t("channels.weixinQrStep2"),
+        t("channels.weixinQrStep3"),
+      );
     if (s.phase === "weixin_success") {
       const weixinConfig = mergeDisplayConfig({
         accounts: [
@@ -1343,8 +1369,8 @@ export function ChannelDrawer({
         <div className={styles.qrPanel}>
           <Alert
             type="success"
-            message="微信绑定成功"
-            description={`账号 ID: ${s.accountId}`}
+            message={t("channels.weixinQrSuccess")}
+            description={t("channels.weixinAccountId", { id: s.accountId })}
             style={{ width: "100%", marginBottom: 12 }}
           />
           {renderQrAutoSaveStatus(retrySave)}
@@ -1354,13 +1380,17 @@ export function ChannelDrawer({
     if (s.phase === "weixin_ready") {
       return (
         <div className={styles.qrPanel}>
-          {renderQrSteps("打开微信 App", "扫码登录", "手机确认")}
+          {renderQrSteps(
+            t("channels.weixinQrStep1"),
+            t("channels.weixinQrStep2"),
+            t("channels.weixinQrStep3"),
+          )}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={s.qrcodeUrl} size={200} />
             </div>
           </div>
-          <p className={styles.qrScanHint}>使用微信扫码登录个人账号</p>
+          <p className={styles.qrScanHint}>{t("channels.weixinQrScanHint")}</p>
           <Button
             size="small"
             onClick={() => void startWeixinQr()}
@@ -1561,19 +1591,27 @@ export function ChannelDrawer({
       s.phase === "yuanbao_creating" ||
       s.phase === "yuanbao_progress"
     ) {
-      return renderQrLoading("打开元宝 App", "扫码绑定", "确认授权");
+      return renderQrLoading(
+        t("channels.yuanbaoQrStep1"),
+        t("channels.yuanbaoQrStep2"),
+        t("channels.yuanbaoQrStep3"),
+      );
     }
     if (s.phase === "yuanbao_scan") {
       const qrValue = s.scanUrl ?? s.scanCode;
       return (
         <div className={styles.qrPanel}>
-          {renderQrSteps("打开元宝 App", "扫码绑定", "确认授权")}
+          {renderQrSteps(
+            t("channels.yuanbaoQrStep1"),
+            t("channels.yuanbaoQrStep2"),
+            t("channels.yuanbaoQrStep3"),
+          )}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={qrValue} size={200} />
             </div>
           </div>
-          <p className={styles.qrScanHint}>扫码后在元宝 App 确认绑定</p>
+          <p className={styles.qrScanHint}>{t("channels.yuanbaoQrScanHint")}</p>
           <Button
             size="small"
             onClick={() => void startYuanbaoCreator()}
@@ -1601,7 +1639,7 @@ export function ChannelDrawer({
         <div className={styles.qrPanel}>
           <Alert
             type="success"
-            message="元宝机器人绑定成功"
+            message={t("channels.yuanbaoCreateSuccess")}
             style={{ width: "100%", marginBottom: 12 }}
           />
           {renderQrAutoSaveStatus(retrySave)}
@@ -1616,11 +1654,17 @@ export function ChannelDrawer({
             message={s.reason}
             style={{ width: "100%", marginBottom: 12 }}
           />
-          <Button onClick={() => void startYuanbaoCreator()}>重试</Button>
+          <Button onClick={() => void startYuanbaoCreator()}>
+            {t("channels.qrRetryBtn")}
+          </Button>
         </div>
       );
     }
-    return renderQrLoading("打开元宝 App", "扫码绑定", "确认授权");
+    return renderQrLoading(
+      t("channels.yuanbaoQrStep1"),
+      t("channels.yuanbaoQrStep2"),
+      t("channels.yuanbaoQrStep3"),
+    );
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -1639,7 +1683,7 @@ export function ChannelDrawer({
           )}
           <span>
             {isEdit
-              ? `${kindLabel} ${t("channels.channelSettings")}`
+              ? t("channels.channelSettingsNamed", { kind: kindLabel })
               : t("channels.createChannel")}
           </span>
         </div>
@@ -1716,8 +1760,8 @@ export function ChannelDrawer({
               value={configMode}
               onChange={(v) => setConfigMode(v as "quick" | "manual")}
               options={[
-                { label: "快捷配置（扫码）", value: "quick" },
-                { label: "手动填写", value: "manual" },
+                { label: t("channels.quickConfig"), value: "quick" },
+                { label: t("channels.manualConfig"), value: "manual" },
               ]}
             />
           )}
@@ -1751,7 +1795,7 @@ export function ChannelDrawer({
                       rel="noopener noreferrer"
                       className={styles.bannerLink}
                     >
-                      前往获取凭据
+                      {t("channels.getCredentials")}
                       <span className={styles.bannerLinkArrow}>&#8250;</span>
                     </a>
                   </div>
@@ -1784,7 +1828,7 @@ export function ChannelDrawer({
                 <Form.Item
                   name="__raw_config"
                   label="Config (JSON)"
-                  tooltip="渠道特定配置 — 详见 harness-gateway 文档"
+                  tooltip={t("channels.rawConfigTooltip")}
                   rules={[
                     {
                       validator: (_, value) => {
@@ -1797,12 +1841,14 @@ export function ChannelDrawer({
                             Array.isArray(parsed)
                           ) {
                             return Promise.reject(
-                              new Error("必须是 JSON 对象"),
+                              new Error(t("channels.jsonMustBeObject")),
                             );
                           }
                           return Promise.resolve();
                         } catch {
-                          return Promise.reject(new Error("非法 JSON"));
+                          return Promise.reject(
+                            new Error(t("channels.invalidJson")),
+                          );
                         }
                       },
                     },
