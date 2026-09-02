@@ -328,6 +328,23 @@ async def test_live_sse_emits_heartbeat(env_alice_bob_agent: Any, monkeypatch: A
     assert "event: heartbeat" in blob
 
 
+async def test_delete_thread_cascades_trajectory_ledger(env_alice_bob_agent: Any) -> None:
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+    service.observe_chunk(agent_id, thread_id, {"type": "user", "content": "hello"})
+    service.observe_chunk(agent_id, thread_id, {"type": "user", "content": "again"})
+    assert len(service.list_events(thread_id, before_seq=None, limit=10, kinds=None)) == 2
+
+    response = await client.delete(
+        f"/api/agents/{agent_id}/threads/{thread_id}",
+        headers=alice_auth,
+    )
+    assert response.status_code == 204, response.text
+    assert service.list_events(thread_id, before_seq=None, limit=10, kinds=None) == []
+
+
 async def test_live_sse_unsubscribes_on_cancel(env_alice_bob_agent: Any) -> None:
     client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
     thread_id = await _create_thread(client, alice_auth, agent_id)

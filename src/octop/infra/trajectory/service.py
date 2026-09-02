@@ -60,6 +60,9 @@ class TrajectoryService:
         for event in self._store.iter_for_export(thread_id):
             yield json.dumps(asdict(event), ensure_ascii=False)
 
+    def delete_for_thread(self, thread_id: str) -> int:
+        return self._store.delete_for_thread(thread_id)
+
     def _next_seq(self, thread_id: str) -> int:
         latest = self._store.list_before(thread_id, before_seq=None, limit=1, kinds=None)
         if not latest:
