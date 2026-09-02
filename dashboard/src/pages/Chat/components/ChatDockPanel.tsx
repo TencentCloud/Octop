@@ -12,6 +12,7 @@ import { Spin, Tooltip } from "antd";
 import {
   FilePen,
   FolderOpen,
+  GitBranch,
   Globe,
   Puzzle,
   RefreshCw,
@@ -31,6 +32,7 @@ import styles from "../index.module.less";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
 import ChatDockToolUiContent from "./ChatDockToolUiContent";
+import TrajectoryDockPanel from "./TrajectoryDockPanel";
 
 const TerminalPage = lazy(() => import("../../Control/Terminal"));
 
@@ -58,7 +60,7 @@ interface ChatDockPanelProps {
 }
 
 /**
- * Tabbed dock shell: file list + per-file viewers + browser + terminal.
+ * Tabbed dock shell: file list + per-file viewers + browser + terminal + trajectory.
  * Bodies stay mounted after first open so streams / editors survive tab switches.
  */
 const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
@@ -85,6 +87,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [terminalMounted, setTerminalMounted] = useState(
     openTabs.some((tab) => tab.kind === "terminal"),
   );
+  const [trajectoryMounted, setTrajectoryMounted] = useState(
+    openTabs.some((tab) => tab.kind === "trajectory"),
+  );
   const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
     openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
   );
@@ -103,8 +108,10 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   useEffect(() => {
     const hasBrowser = openTabs.some((tab) => tab.kind === "browser");
     const hasTerminal = openTabs.some((tab) => tab.kind === "terminal");
+    const hasTrajectory = openTabs.some((tab) => tab.kind === "trajectory");
     setBrowserMounted(hasBrowser);
     setTerminalMounted(hasTerminal);
+    setTrajectoryMounted(hasTrajectory);
     const openFilePaths = new Set(
       openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
     );
@@ -175,6 +182,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const activeTab =
     openTabs.find((tab) => tab.id === activeTabId) ?? openTabs[0] ?? null;
   const terminalVisible = surfaceVisible && activeTab?.kind === "terminal";
+  const trajectoryVisible = surfaceVisible && activeTab?.kind === "trajectory";
 
   const tabBar = (
     <div className={styles.dockTabBar} role="tablist">
@@ -195,6 +203,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <>
               <Terminal size={16} strokeWidth={2} aria-hidden />
               <span>{t("chat.dockTerminalTitle", "终端")}</span>
+            </>
+          ) : tab.kind === "trajectory" ? (
+            <>
+              <GitBranch size={16} strokeWidth={2} aria-hidden />
+              <span>{t("chat.dockTrajectoryTitle", "运行轨迹")}</span>
             </>
           ) : tab.kind === "toolUi" ? (
             <>
@@ -343,6 +356,16 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             >
               <TerminalPage embedded isVisible={terminalVisible} />
             </Suspense>
+          </div>
+        )}
+
+        {trajectoryMounted && (
+          <div
+            className={styles.dockTabBody}
+            style={{ display: trajectoryVisible ? "flex" : "none" }}
+            aria-hidden={!trajectoryVisible}
+          >
+            <TrajectoryDockPanel agentId={agentId} threadId={threadId} />
           </div>
         )}
 

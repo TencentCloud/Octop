@@ -9,6 +9,7 @@ import {
   FilePen,
   Terminal,
   FolderOpen,
+  GitBranch,
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
@@ -341,6 +342,7 @@ function ChatPageInner() {
     openBrowserTab,
     toggleBrowserPanel,
     toggleTerminalPanel,
+    toggleTrajectoryPanel,
     openToolUiTab,
     focusToolUiTab,
     closeTab: closeDockTab,
@@ -1142,6 +1144,32 @@ function ChatPageInner() {
                       </span>
                     </Tooltip>
                   )}
+                  <Tooltip
+                    title={
+                      !agentChatReady
+                        ? t("workspace.requiresRunning")
+                        : !activeThreadId
+                        ? t(
+                            "chat.dockTrajectorySelectSession",
+                            "请选择一个会话以查看运行轨迹",
+                          )
+                        : t("chat.openTrajectory", "运行轨迹")
+                    }
+                    mouseEnterDelay={0.35}
+                    placement="left"
+                  >
+                    <span className={styles.chatFloatBtnWrap}>
+                      <button
+                        type="button"
+                        className={styles.chatFloatBtn}
+                        disabled={!activeThreadId || !agentChatReady}
+                        onClick={toggleTrajectoryPanel}
+                        aria-label={t("chat.openTrajectory", "运行轨迹")}
+                      >
+                        <GitBranch size={20} strokeWidth={2.1} />
+                      </button>
+                    </span>
+                  </Tooltip>
                   <Tooltip
                     title={
                       browserSessionId

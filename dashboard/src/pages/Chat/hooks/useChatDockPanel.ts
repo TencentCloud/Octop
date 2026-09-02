@@ -21,6 +21,7 @@ export type DockTab =
   | { id: "files"; kind: "files" }
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
+  | { id: "trajectory"; kind: "trajectory" }
   | { id: string; kind: "file"; path: string }
   | {
       id: string;
@@ -95,7 +96,7 @@ function fallbackActiveId(
 }
 
 /**
- * Shared chat dock with tabbed file list / file viewers / browser / terminal.
+ * Shared chat dock with tabbed file list / file viewers / browser / terminal / trajectory.
  */
 export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   const [dockOpen, setDockOpen] = useState(false);
@@ -225,9 +226,11 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     [openDock],
   );
 
-  /** Toggle dock open/closed around a dedicated tab (browser / terminal). */
+  /** Toggle dock open/closed around a dedicated tab (browser / terminal / trajectory). */
   const toggleDockTab = useCallback(
-    (tab: Extract<DockTab, { kind: "browser" | "terminal" }>) => {
+    (
+      tab: Extract<DockTab, { kind: "browser" | "terminal" | "trajectory" }>,
+    ) => {
       setDockOpen((prevOpen) => {
         if (prevOpen && activeTabId === tab.id) {
           return false;
@@ -252,6 +255,10 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
 
   const toggleTerminalPanel = useCallback(() => {
     toggleDockTab({ id: "terminal", kind: "terminal" });
+  }, [toggleDockTab]);
+
+  const toggleTrajectoryPanel = useCallback(() => {
+    toggleDockTab({ id: "trajectory", kind: "trajectory" });
   }, [toggleDockTab]);
 
   const closeTab = useCallback((id: DockTabId) => {
@@ -314,6 +321,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleBrowserPanel,
     openTerminalTab,
     toggleTerminalPanel,
+    toggleTrajectoryPanel,
     openToolUiTab,
     focusToolUiTab,
     closeTab,

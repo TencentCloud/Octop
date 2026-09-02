@@ -61,6 +61,41 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current.openTabs.map((t) => t.id)).toEqual(["terminal"]);
   });
 
+  it("toggleTrajectoryPanel opens trajectory tab then closes dock when active", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.toggleTrajectoryPanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.activeTabId).toBe("trajectory");
+    expect(result.current.openTabs).toEqual([
+      { id: "trajectory", kind: "trajectory" },
+    ]);
+    act(() => {
+      result.current.toggleTrajectoryPanel();
+    });
+    expect(result.current.dockOpen).toBe(false);
+    // Closing the float button only hides the dock — tab stays for keep-alive.
+    expect(result.current.openTabs).toEqual([
+      { id: "trajectory", kind: "trajectory" },
+    ]);
+  });
+
+  it("reopening trajectory does not add another dock tab", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.toggleTrajectoryPanel();
+    });
+    act(() => {
+      result.current.toggleTrajectoryPanel();
+    });
+    act(() => {
+      result.current.toggleTrajectoryPanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["trajectory"]);
+  });
+
   it("reopening terminal does not add another dock tab", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     act(() => {

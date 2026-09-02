@@ -29,7 +29,7 @@ interface ChatDockPanelsProps {
 }
 
 /**
- * Single chat dock host (file list / files / browser / terminal).
+ * Single chat dock host (file list / files / browser / terminal / trajectory).
  *
  * One React tree for all layout modes so switching bottom ↔ right ↔ popup
  * does not remount TerminalPage / BrowserWorkspace. Placement is CSS/flex on
