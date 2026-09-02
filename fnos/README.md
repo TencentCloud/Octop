@@ -2,17 +2,6 @@
 
 本目录包含将 [TencentCloud/Octop](https://github.com/TencentCloud/Octop) 打包为飞牛 fnOS `.fpk` 安装包所需的全部文件，并附带自动同步上游 + 自动构建的 GitHub Actions。
 
-## First use (initial account)
-
-After install, open the app (Docker: `http://<device-ip>:8088`, native: `http://<device-ip>:8089`) and sign in with the **initial admin account**:
-
-| Field | Value |
-|-------|-------|
-| Username | `admin` |
-| Password | `Octop123` |
-
-> The password is a fixed initial value (same as the official Docker image default). **Change it right after first login** via the avatar menu → "Change password". If `OCTOP_ADMIN_USERNAME` / `OCTOP_DEFAULT_PASSWORD` were customized via env during install, those take precedence.
-
 ## 两种安装包
 
 仓库同时产出 **两款** `.fpk`，用于满足不同部署偏好：

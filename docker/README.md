@@ -26,7 +26,7 @@ From the repository root:
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-Open `http://localhost:8088`. Default credentials: `admin` / `Octop123` (applied only on first init; change immediately). Password must be ≥8 characters with letters and digits. A future release may randomize the first-boot password and write it only to `credential.txt`.
+Open `http://localhost:8088`. First-boot credentials are written to `~/octop-login.txt` (`/data/octop-login.txt` in the container; override with `OCTOP_DEFAULT_PASSWORD`). Password must be ≥8 characters with letters and digits.
 
 **Option 2: Build script**
 
@@ -58,7 +58,7 @@ bash docker/docker_build.sh
 |----------|---------|-------------|
 | `HOME` | `/data` | Must be `/data` so `~/.octop` maps to the data volume |
 | `OCTOP_PORT` | `8088` | HTTP listen port |
-| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | Initial admin password (≥8 chars, letters + digits) |
+| `OCTOP_DEFAULT_PASSWORD` | — | Optional first-run admin password (≥8 chars, letters + digits) |
 | `OCTOP_ADMIN_USERNAME` | `admin` | Initial admin username |
 | `OCTOP_DATABASE_URL` | — | PostgreSQL DSN (or other `OCTOP_DATABASE_*`; see [configuration.md](../docs/configuration.md)) |
 | `OCTOP_DATABASE_DRIVER` | — | `sqlite` \| `postgresql` when overriding defaults via env |
@@ -71,7 +71,7 @@ For Compose, put these in `docker/.env`. Values only reach the container if list
 
 - Compose mounts host `~/.octop` → container `/data/.octop`
 - `docker run` example uses named volume `octop-data`
-- First boot runs `octop init`; credentials are written to `/data/.octop/credential.txt` (default password `Octop123` unless `OCTOP_DEFAULT_PASSWORD` is set). Future: may randomize on first boot instead of a fixed default.
+- First boot runs `octop init`; credentials are written to `~/octop-login.txt` (`/data/octop-login.txt` in the container; override with `OCTOP_DEFAULT_PASSWORD`).
 
 ### Health check
 
