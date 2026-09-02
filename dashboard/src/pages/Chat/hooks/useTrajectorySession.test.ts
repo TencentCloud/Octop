@@ -164,6 +164,50 @@ describe("useTrajectorySession", () => {
     expect(resolveNext).toBeTypeOf("function");
   });
 
+  it("loadEarlier prepends older events and fetches with beforeSeq", async () => {
+    const olderEvent = event({
+      event_id: "tool-0",
+      kind: "tool",
+      seq: 0,
+    });
+
+    historyMock
+      .mockResolvedValueOnce({
+        thread_id: "T1",
+        events: [toolEvent],
+        next_before_seq: 5,
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        thread_id: "T1",
+        events: [olderEvent],
+        next_before_seq: null,
+        has_more: false,
+      });
+
+    const { result } = renderHook(() =>
+      useTrajectorySession({
+        agentId: "A1",
+        threadId: "T1",
+        visible: true,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+    expect(result.current.hasMore).toBe(true);
+
+    await act(async () => {
+      await result.current.loadEarlier();
+    });
+
+    expect(historyMock).toHaveBeenLastCalledWith("A1", "T1", { beforeSeq: 5 });
+    expect(result.current.events.map((row) => row.event_id)).toEqual([
+      "tool-0",
+      "tool-1",
+    ]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
   it("closes the EventSource when the panel is hidden", async () => {
     const { rerender } = renderHook(
       ({ visible }: { visible: boolean }) =>

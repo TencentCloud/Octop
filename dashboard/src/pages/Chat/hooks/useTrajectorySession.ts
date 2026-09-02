@@ -14,7 +14,10 @@ interface TrajectorySessionState {
   events: TrajectoryEvent[];
   loading: boolean;
   error: boolean;
+  hasMore: boolean;
   retry: () => void;
+  loadEarlier: () => Promise<void>;
+  refresh: () => void;
 }
 
 function isTrajectoryEvent(value: unknown): value is TrajectoryEvent {
@@ -31,15 +34,41 @@ export function useTrajectorySession({
   const [events, setEvents] = useState<TrajectoryEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextBeforeSeq, setNextBeforeSeq] = useState<number | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   const retry = useCallback(() => {
     setReloadToken((token) => token + 1);
   }, []);
 
+  const refresh = useCallback(() => {
+    setEvents([]);
+    setHasMore(false);
+    setNextBeforeSeq(null);
+    setReloadToken((token) => token + 1);
+  }, []);
+
+  const loadEarlier = useCallback(async () => {
+    if (!agentId || !threadId || nextBeforeSeq == null) return;
+
+    const page = await trajectoryApi.history(agentId, threadId, {
+      beforeSeq: nextBeforeSeq,
+    });
+    setHasMore(page.has_more);
+    setNextBeforeSeq(page.next_before_seq);
+    setEvents((prev) => {
+      const seen = new Set(prev.map((row) => row.event_id));
+      const older = page.events.filter((row) => !seen.has(row.event_id));
+      return [...older, ...prev];
+    });
+  }, [agentId, threadId, nextBeforeSeq]);
+
   useEffect(() => {
     setEvents([]);
     setError(false);
+    setHasMore(false);
+    setNextBeforeSeq(null);
   }, [agentId, threadId]);
 
   useEffect(() => {
@@ -79,6 +108,8 @@ export function useTrajectorySession({
       .then((page) => {
         if (cancelled) return;
         setEvents(page.events);
+        setHasMore(page.has_more);
+        setNextBeforeSeq(page.next_before_seq);
         const lastSeq = page.events[page.events.length - 1]?.seq;
         openStream(lastSeq);
       })
@@ -95,5 +126,5 @@ export function useTrajectorySession({
     };
   }, [visible, agentId, threadId, reloadToken]);
 
-  return { events, loading, error, retry };
+  return { events, loading, error, hasMore, retry, loadEarlier, refresh };
 }
