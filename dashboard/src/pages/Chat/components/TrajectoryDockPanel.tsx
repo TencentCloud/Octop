@@ -1,7 +1,11 @@
 import { Empty, Spin } from "antd";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TrajectoryEvent } from "../../../api/modules/trajectory";
+import {
+  trajectoryApi,
+  type TrajectoryEvent,
+  type TrajectoryMetrics,
+} from "../../../api/modules/trajectory";
 import { useTrajectorySession } from "../hooks/useTrajectorySession";
 import dockStyles from "../index.module.less";
 import {
@@ -13,6 +17,7 @@ import {
 import type { SwimlaneMode, SwimlaneSpan } from "../utils/trajectoryTimeline";
 import styles from "./TrajectoryDockPanel.module.less";
 import TrajectoryLedger from "./TrajectoryLedger";
+import TrajectoryMetricsBar from "./TrajectoryMetricsBar";
 import TrajectoryTimeline from "./TrajectoryTimeline";
 
 interface TrajectoryDockPanelProps {
@@ -71,6 +76,24 @@ export default function TrajectoryDockPanel({
   const [collapseCall, setCollapseCall] = useState(false);
   const [query, setQuery] = useState("");
   const [focusedSpan, setFocusedSpan] = useState<SwimlaneSpan | null>(null);
+  const [metrics, setMetrics] = useState<TrajectoryMetrics | null>(null);
+
+  useEffect(() => {
+    setMetrics(null);
+    if (!visible || !agentId || !threadId) return;
+    let cancelled = false;
+    void trajectoryApi
+      .metrics(agentId, threadId)
+      .then((next) => {
+        if (!cancelled) setMetrics(next);
+      })
+      .catch(() => {
+        if (!cancelled) setMetrics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, agentId, threadId, events.length]);
 
   const visibleEvents = useMemo(
     () =>
@@ -134,6 +157,13 @@ export default function TrajectoryDockPanel({
 
   return (
     <div className={styles.root}>
+      {agentId ? (
+        <TrajectoryMetricsBar
+          agentId={agentId}
+          threadId={threadId}
+          metrics={metrics}
+        />
+      ) : null}
       <div className={styles.toolbar}>
         <label className={styles.modeLabel}>
           <span className={styles.modeText}>
