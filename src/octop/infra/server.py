@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gzip
 import logging
 import os
+import shutil
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -35,15 +37,152 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Default 100 MiB per active log file before size-triggered rollover (in addition to daily).
+DEFAULT_LOG_MAX_BYTES = 100 * 1024 * 1024
+DEFAULT_LOG_RETENTION_DAYS = 14
 
-def _build_log_handler(log_path: Path, retention_days: int) -> TimedRotatingFileHandler:
-    """Create a daily-rotating file handler that also enforces retention."""
-    handler = TimedRotatingFileHandler(
+# Routine harness memory maintenance ticks are high-frequency at INFO and can
+# balloon octop.log to multi-GB/day; keep them at WARNING unless OCTOP_LOG_LEVEL=debug.
+_NOISY_LOGGER_LEVELS: dict[str, int] = {
+    "harness_agent.middleware.memory": logging.WARNING,
+}
+
+
+class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """Daily rotation with an optional per-file byte cap (whichever triggers first)."""
+
+    def __init__(
+        self,
+        filename: str | os.PathLike[str],
+        *,
+        max_bytes: int = 0,
+        compress_rotated: bool = True,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(filename, **kwargs)  # type: ignore[arg-type]
+        self.max_bytes = max(0, max_bytes)
+        self.compress_rotated = compress_rotated
+
+    def shouldRollover(self, record: logging.LogRecord) -> bool:
+        if super().shouldRollover(record):
+            return True
+        if self.max_bytes <= 0:
+            return False
+        if self.stream is None:
+            self.stream = self._open()
+        self.stream.flush()
+        return self.stream.tell() >= self.max_bytes
+
+    def rotate(self, source: str, dest: str) -> None:
+        super().rotate(source, dest)
+        if self.compress_rotated:
+            # logrotate delaycompress: leave this cycle's dest plain; gzip prior plains.
+            delaycompress_rotated_logs(Path(dest).parent, enabled=True, keep=Path(dest))
+
+    def rotation_filename(self, default_name: str) -> str:
+        """Avoid overwriting an existing daily backup when size rolls twice same day."""
+        if not os.path.exists(default_name) and not os.path.exists(f"{default_name}.gz"):
+            return default_name
+        index = 1
+        while True:
+            candidate = f"{default_name}-{index:03d}"
+            if not os.path.exists(candidate) and not os.path.exists(f"{candidate}.gz"):
+                return candidate
+            index += 1
+
+
+def gzip_rotated_log(path: Path) -> None:
+    """Compress a rotated log file to ``{name}.gz`` and remove the plain file."""
+    if not path.is_file() or path.suffix == ".gz":
+        return
+    gz_path = path.with_name(f"{path.name}.gz")
+    if gz_path.exists():
+        return
+    try:
+        with path.open("rb") as src, gzip.open(gz_path, "wb", compresslevel=6) as dst:
+            shutil.copyfileobj(src, dst)
+        path.unlink()
+    except OSError:
+        with suppress(OSError):
+            if gz_path.exists():
+                gz_path.unlink()
+
+
+def _parse_log_compress() -> bool:
+    raw = (os.environ.get("OCTOP_LOG_COMPRESS", "1") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def delaycompress_rotated_logs(
+    log_dir: Path,
+    *,
+    enabled: bool,
+    keep: Path | None = None,
+) -> None:
+    """Gzip older rotated plains; leave ``keep`` (or the newest) uncompressed.
+
+    Matches logrotate ``compress`` + ``delaycompress``: postpone compression of the
+    previous log file until the next rotation cycle
+    (https://github.com/logrotate/logrotate).
+    """
+    if not enabled or not log_dir.is_dir():
+        return
+    plains = [
+        entry
+        for entry in log_dir.glob("octop.log.*")
+        if entry.is_file() and not entry.name.endswith(".gz")
+    ]
+    if not plains:
+        return
+    keep_path = max(plains, key=lambda p: p.stat().st_mtime) if keep is None else keep
+    keep_resolved = keep_path.resolve()
+    for entry in plains:
+        if entry.resolve() == keep_resolved:
+            continue
+        gzip_rotated_log(entry)
+
+
+def _parse_log_retention_days() -> int:
+    raw = os.environ.get("OCTOP_LOG_RETENTION_DAYS", str(DEFAULT_LOG_RETENTION_DAYS)) or str(
+        DEFAULT_LOG_RETENTION_DAYS
+    )
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_LOG_RETENTION_DAYS
+
+
+def _parse_log_max_bytes() -> int:
+    raw = os.environ.get("OCTOP_LOG_MAX_BYTES", str(DEFAULT_LOG_MAX_BYTES)) or str(
+        DEFAULT_LOG_MAX_BYTES
+    )
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_LOG_MAX_BYTES
+
+
+def _configure_noisy_loggers() -> None:
+    for name, level in _NOISY_LOGGER_LEVELS.items():
+        logging.getLogger(name).setLevel(level)
+
+
+def _build_log_handler(
+    log_path: Path,
+    retention_days: int,
+    *,
+    max_bytes: int = DEFAULT_LOG_MAX_BYTES,
+    compress_rotated: bool = True,
+) -> SizeTimedRotatingFileHandler:
+    """Create a daily + size-capped rotating file handler with retention."""
+    handler = SizeTimedRotatingFileHandler(
         log_path,
         when="midnight",
         interval=1,
         backupCount=retention_days,
         encoding="utf-8",
+        max_bytes=max_bytes,
+        compress_rotated=compress_rotated,
     )
     # Rotated files get a date suffix, e.g. octop.log.2026-07-16
     handler.suffix = "%Y-%m-%d"
@@ -361,13 +500,19 @@ class OctopServer:
             with suppress(OSError):
                 legacy.replace(log_path)
 
-        raw_retention = os.environ.get("OCTOP_LOG_RETENTION_DAYS", "14") or "14"
-        try:
-            retention_days = int(raw_retention)
-        except ValueError:
-            retention_days = 14
-        handler = _build_log_handler(log_path, retention_days)
+        retention_days = _parse_log_retention_days()
+        max_bytes = _parse_log_max_bytes()
+        compress_rotated = _parse_log_compress()
+        handler = _build_log_handler(
+            log_path,
+            retention_days,
+            max_bytes=max_bytes,
+            compress_rotated=compress_rotated,
+        )
         _purge_stale_logs(log_dir, retention_days)
+        # Catch up: gzip older plains, leave the newest rotated file plain (delaycompress).
+        delaycompress_rotated_logs(log_dir, enabled=compress_rotated)
+        _configure_noisy_loggers()
 
         root = logging.getLogger()
         _attach_log_handler(root, handler)
@@ -377,6 +522,9 @@ class OctopServer:
 
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
+        if root.level <= logging.DEBUG:
+            for name in _NOISY_LOGGER_LEVELS:
+                logging.getLogger(name).setLevel(logging.DEBUG)
 
     def _ensure_jwt_secret(self) -> None:
         assert self.services is not None
