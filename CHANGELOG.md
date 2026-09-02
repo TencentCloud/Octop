@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 聊天侧栏新增运行轨迹停靠面板：时间线泳道、检索与折叠、会话指标与导出；点击事件可查看完整载荷
 - 飞书频道改为官方 `lark-oapi` 扫码创建应用，凭据自动回填（不再走浏览器 CDP）
 - 远程手机：主机缺少 Docker 时自动安装——纯测速选择安装源（官方 download.docker.com 与境内镜像竞速，官方最快则不设 DOWNLOAD_URL），通过**内置的官方 get.docker.com 脚本**（`scripts/linux/v1.0/install-docker.sh`，含 TencentOS/OpenCloudOS releasever 映射等增强）安装；安装后按腾讯云镜像加速可达性决定是否写入 `registry-mirrors`（不检测地区，连不上则跳过）。自动安装失败时回退为提示用户手动安装。
 - Docker 自动安装报错兼容：脚本输出尾部按已知失败模式（不支持的发行版、无 root 权限、网络/curl 失败、包管理器锁死、GPG 密钥、磁盘满、已有 Docker）追加本地化修复提示；脚本启动失败、长时间无输出（卡死看门狗）、脚本缺失均有独立提示；重启失败提示手动启动命令。

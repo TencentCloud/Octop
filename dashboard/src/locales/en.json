@@ -1228,6 +1228,8 @@
     "dockTrajectoryMetricInputTokens": "In",
     "dockTrajectoryMetricOutputTokens": "Out",
     "dockTrajectoryMetricCacheRead": "Cache read",
+    "dockTrajectoryDetailLoading": "Loading detail…",
+    "dockTrajectoryDetailError": "Failed to load event detail",
     "dockPhoneTitle": "Remote Phone",
     "dockToolUiTitle": "Plugin tool",
     "dockToolUiMissing": "Tool result is no longer available in this conversation.",

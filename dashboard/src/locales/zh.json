@@ -1228,6 +1228,8 @@
     "dockTrajectoryMetricInputTokens": "输入",
     "dockTrajectoryMetricOutputTokens": "输出",
     "dockTrajectoryMetricCacheRead": "缓存读取",
+    "dockTrajectoryDetailLoading": "正在加载详情…",
+    "dockTrajectoryDetailError": "加载事件详情失败",
     "dockPhoneTitle": "远程手机",
     "dockToolUiTitle": "插件工具",
     "dockToolUiMissing": "该工具结果已不在当前对话中。",

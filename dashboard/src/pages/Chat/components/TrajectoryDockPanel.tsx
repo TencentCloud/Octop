@@ -217,7 +217,13 @@ export default function TrajectoryDockPanel({
         focusedSpanId={focusedSpan?.id ?? null}
         onFocusSpan={setFocusedSpan}
       />
-      <TrajectoryLedger events={visibleEvents} />
+      {agentId ? (
+        <TrajectoryLedger
+          agentId={agentId}
+          threadId={threadId}
+          events={visibleEvents}
+        />
+      ) : null}
     </div>
   );
 }

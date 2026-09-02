@@ -134,16 +134,58 @@
 .row {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  min-height: 36px;
-  padding: 8px 12px 8px 14px;
   box-sizing: border-box;
   border-left: 3px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.12));
 
   &:hover {
     background: var(--fn-bg-secondary, #f5f5f7);
   }
+}
+
+.rowOpen {
+  background: var(--fn-bg-secondary, #f5f5f7);
+}
+
+.rowToggle {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 8px 12px 8px 14px;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: -2px;
+  }
+}
+
+.rowPayload {
+  margin: 0;
+  padding: 0 12px 10px 14px;
+  max-height: 240px;
+  overflow: auto;
+  font-family: var(
+    --fn-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace
+  );
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .laneInput {
