@@ -1,28 +1,35 @@
-"""Thread trajectory REST APIs (history, detail, metrics, export). SSE is Task 8."""
+"""Thread trajectory REST APIs (history, detail, metrics, export, live SSE)."""
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import Iterator
+import logging
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.history import _require_thread
+from octop.api.routers.chat.sse import format_sse
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.trajectory.live import TrajectoryLiveBus
 from octop.infra.trajectory.service import TrajectoryService
 from octop.infra.trajectory.types import TrajectoryEvent
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 TRAJECTORY_DEFAULT_LIMIT = 100
 TRAJECTORY_MAX_LIMIT = 200
+TRAJECTORY_SSE_HEARTBEAT_S = 15.0
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 _LIST_OMIT_PAYLOAD_KEYS = frozenset({"content", "args", "result", "text", "thinking"})
 
 
@@ -95,6 +102,75 @@ def _summarize_event(event: TrajectoryEvent) -> dict[str, Any]:
 def _jsonl_lines(service: TrajectoryService, thread_id: str) -> Iterator[str]:
     for line in service.export_jsonl(thread_id):
         yield line + "\n"
+
+
+def _live_bus(service: TrajectoryService) -> TrajectoryLiveBus:
+    return service._bus  # noqa: SLF001
+
+
+def _resume_after_seq(after_seq: int | None, last_event_id: str | None) -> int | None:
+    if after_seq is not None:
+        return after_seq
+    if last_event_id is None:
+        return None
+    raw = last_event_id.strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _sse_named(event: str, data: Any, *, sse_id: int | None = None) -> str:
+    frame = format_sse(event, data)
+    if sse_id is None:
+        return frame
+    return f"id: {sse_id}\n{frame}"
+
+
+async def _iter_trajectory_sse(
+    *,
+    request: Request,
+    service: TrajectoryService,
+    thread_id: str,
+    after_seq: int | None,
+) -> AsyncIterator[str]:
+    bus = _live_bus(service)
+    queue = bus.subscribe(thread_id)
+    last_seq = _resume_after_seq(after_seq, request.headers.get("last-event-id"))
+    try:
+        if last_seq is not None:
+            for line in service.export_jsonl(thread_id):
+                payload = json.loads(line)
+                seq = payload.get("seq") if isinstance(payload, dict) else None
+                if not isinstance(seq, int) or seq <= last_seq:
+                    continue
+                yield _sse_named("event", payload, sse_id=seq)
+                last_seq = seq
+        yield format_sse("metrics", asdict(service.metrics(thread_id)))
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                message = await asyncio.wait_for(queue.get(), timeout=TRAJECTORY_SSE_HEARTBEAT_S)
+            except TimeoutError:
+                yield format_sse("heartbeat", {})
+                continue
+            seq = message.get("seq") if isinstance(message, dict) else None
+            if isinstance(seq, int) and last_seq is not None and seq <= last_seq:
+                continue
+            yield _sse_named("event", message, sse_id=seq if isinstance(seq, int) else None)
+            if isinstance(seq, int):
+                last_seq = seq
+            yield format_sse("metrics", asdict(service.metrics(thread_id)))
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("trajectory SSE failed thread=%s", thread_id)
+        yield format_sse("error", {"message": "trajectory stream failed"})
+    finally:
+        bus.unsubscribe(thread_id, queue)
 
 
 @router.get(
@@ -170,6 +246,46 @@ async def get_trajectory_metrics(
     _require_thread(server, agent_id, thread_id, user, as_user)
     return TrajectoryMetricsOut.model_validate(
         asdict(_trajectory_service(server).metrics(thread_id))
+    )
+
+
+@router.get(
+    "/agents/{agent_id}/threads/{thread_id}/trajectory/stream",
+    summary="Live trajectory SSE stream",
+    response_model=None,
+)
+async def stream_thread_trajectory(
+    agent_id: str,
+    thread_id: str,
+    request: Request,
+    after_seq: int | None = Query(
+        default=None, description="Replay events with seq greater than this, then follow live."
+    ),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StreamingResponse:
+    """Subscribe to live trajectory events for a thread.
+
+    Emits SSE ``event``, ``metrics``, and ``heartbeat`` frames. Resume with
+    ``after_seq`` or the ``Last-Event-ID`` header (seq). Disconnect unsubscribes.
+    """
+    _require_thread(server, agent_id, thread_id, user, as_user)
+    service = _trajectory_service(server)
+
+    async def gen() -> AsyncIterator[str]:
+        async for frame in _iter_trajectory_sse(
+            request=request,
+            service=service,
+            thread_id=thread_id,
+            after_seq=after_seq,
+        ):
+            yield frame
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
     )
 
 

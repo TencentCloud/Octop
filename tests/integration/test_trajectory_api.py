@@ -1,9 +1,15 @@
-"""HTTP trajectory history, event detail, metrics, and export (no SSE)."""
+"""HTTP trajectory history, event detail, metrics, export, and live SSE."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from typing import Any
+from urllib.parse import urlencode
+
+from octop.api.routers.chat import trajectory as trajectory_mod
 
 
 def _url(agent_id: str, thread_id: str, suffix: str = "") -> str:
@@ -14,6 +20,121 @@ async def _create_thread(client: Any, auth: dict[str, str], agent_id: str) -> st
     response = await client.post(f"/api/agents/{agent_id}/threads", headers=auth)
     assert response.status_code == 201, response.text
     return str(response.json()["thread_id"])
+
+
+def _sse_event_payloads(blob: str, event_name: str) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    current: str | None = None
+    for line in blob.splitlines():
+        if line.startswith("event:"):
+            current = line.split(":", 1)[1].strip()
+        elif line.startswith("data:") and current == event_name:
+            raw = line.split(":", 1)[1].strip()
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                payloads.append(parsed)
+            current = None
+    return payloads
+
+
+class _SseStream:
+    def __init__(
+        self, status_code: int, headers: dict[str, str], chunks: asyncio.Queue[bytes | None]
+    ) -> None:
+        self.status_code = status_code
+        self.headers = headers
+        self._chunks = chunks
+
+    async def aiter_text(self) -> AsyncIterator[str]:
+        while True:
+            chunk = await self._chunks.get()
+            if chunk is None:
+                return
+            yield chunk.decode("utf-8")
+
+
+@asynccontextmanager
+async def _open_asgi_sse(
+    app: Any,
+    path: str,
+    headers: dict[str, str],
+    params: dict[str, Any] | None = None,
+) -> AsyncIterator[_SseStream]:
+    """Drive the ASGI app concurrently so infinite SSE can be consumed chunk-wise.
+
+    httpx.ASGITransport buffers the full body and cannot test live streams.
+    """
+    query = urlencode({key: str(value) for key, value in (params or {}).items()})
+    raw_headers = [
+        (key.lower().encode("latin-1"), value.encode("latin-1")) for key, value in headers.items()
+    ]
+    raw_headers.append((b"host", b"testserver"))
+    chunks: asyncio.Queue[bytes | None] = asyncio.Queue()
+    started: asyncio.Future[tuple[int, dict[str, str]]] = asyncio.get_running_loop().create_future()
+    disconnected = asyncio.Event()
+    request_sent = False
+
+    async def receive() -> dict[str, Any]:
+        nonlocal request_sent
+        if not request_sent:
+            request_sent = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await disconnected.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.start":
+            header_map = {
+                key.decode("latin-1"): value.decode("latin-1")
+                for key, value in message.get("headers", [])
+            }
+            if not started.done():
+                started.set_result((int(message["status"]), header_map))
+            return
+        if message["type"] == "http.response.body":
+            body = message.get("body") or b""
+            if body:
+                await chunks.put(bytes(body))
+            if not message.get("more_body", False):
+                await chunks.put(None)
+
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode("ascii"),
+        "query_string": query.encode("ascii"),
+        "headers": raw_headers,
+        "client": ("127.0.0.1", 123),
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+    task = asyncio.create_task(app(scope, receive, send))
+    try:
+        status, header_map = await asyncio.wait_for(started, timeout=5)
+        yield _SseStream(status, header_map, chunks)
+    finally:
+        disconnected.set()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+async def _read_sse_until(response: _SseStream, *, predicate: Any, timeout: float = 5.0) -> str:
+    buf = ""
+
+    async def _consume() -> str:
+        nonlocal buf
+        async for chunk in response.aiter_text():
+            buf += chunk
+            if predicate(buf):
+                return buf
+        return buf
+
+    return await asyncio.wait_for(_consume(), timeout=timeout)
 
 
 async def test_owner_gets_empty_trajectory_list(env_alice_bob_agent: Any) -> None:
@@ -40,6 +161,12 @@ async def test_non_owner_cannot_read_trajectory(env_alice_bob_agent: Any) -> Non
     assert response.status_code in (403, 404)
 
     response = await client.get(_url(agent_id, thread_id, "/export"), headers=bob_auth)
+    assert response.status_code in (403, 404)
+
+    response = await client.get(_url(agent_id, thread_id, "/events/any-id"), headers=bob_auth)
+    assert response.status_code in (403, 404)
+
+    response = await client.get(_url(agent_id, thread_id, "/stream"), headers=bob_auth)
     assert response.status_code in (403, 404)
 
 
@@ -119,3 +246,103 @@ async def test_event_detail_missing_is_not_found(env_alice_bob_agent: Any) -> No
         headers=alice_auth,
     )
     assert response.status_code == 404
+
+
+async def test_live_sse_emits_event_after_subscribe(env_alice_bob_agent: Any) -> None:
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+
+    async with _open_asgi_sse(
+        client._octop_app,  # type: ignore[attr-defined]
+        _url(agent_id, thread_id, "/stream"),
+        alice_auth,
+    ) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        published = False
+
+        def _ready(buf: str) -> bool:
+            nonlocal published
+            if not published and "event: metrics" in buf:
+                published = True
+                service.observe_chunk(
+                    agent_id, thread_id, {"type": "user", "content": "hello live"}
+                )
+            return any("event_id" in payload for payload in _sse_event_payloads(buf, "event"))
+
+        blob = await _read_sse_until(response, predicate=_ready)
+
+    payloads = _sse_event_payloads(blob, "event")
+    assert payloads
+    assert payloads[0]["event_id"]
+    assert payloads[0]["kind"] == "user"
+
+
+async def test_live_sse_honors_after_seq(env_alice_bob_agent: Any) -> None:
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+    service.observe_chunk(agent_id, thread_id, {"type": "user", "content": "first"})
+    service.observe_chunk(agent_id, thread_id, {"type": "user", "content": "second"})
+    listed = await client.get(_url(agent_id, thread_id), headers=alice_auth)
+    events = listed.json()["events"]
+    assert len(events) == 2
+    first_id, second_id = events[0]["event_id"], events[1]["event_id"]
+    first_seq = int(events[0]["seq"])
+
+    async with _open_asgi_sse(
+        client._octop_app,  # type: ignore[attr-defined]
+        _url(agent_id, thread_id, "/stream"),
+        alice_auth,
+        params={"after_seq": first_seq},
+    ) as response:
+        assert response.status_code == 200
+        blob = await _read_sse_until(
+            response,
+            predicate=lambda buf: any(
+                payload.get("event_id") == second_id
+                for payload in _sse_event_payloads(buf, "event")
+            ),
+        )
+
+    event_ids = [payload["event_id"] for payload in _sse_event_payloads(blob, "event")]
+    assert second_id in event_ids
+    assert first_id not in event_ids
+
+
+async def test_live_sse_emits_heartbeat(env_alice_bob_agent: Any, monkeypatch: Any) -> None:
+    monkeypatch.setattr(trajectory_mod, "TRAJECTORY_SSE_HEARTBEAT_S", 0.05)
+    client, _srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+
+    async with _open_asgi_sse(
+        client._octop_app,  # type: ignore[attr-defined]
+        _url(agent_id, thread_id, "/stream"),
+        alice_auth,
+    ) as response:
+        assert response.status_code == 200
+        blob = await _read_sse_until(response, predicate=lambda buf: "event: heartbeat" in buf)
+    assert "event: heartbeat" in blob
+
+
+async def test_live_sse_unsubscribes_on_cancel(env_alice_bob_agent: Any) -> None:
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+    bus = service._bus  # noqa: SLF001
+
+    async with _open_asgi_sse(
+        client._octop_app,  # type: ignore[attr-defined]
+        _url(agent_id, thread_id, "/stream"),
+        alice_auth,
+    ) as response:
+        assert response.status_code == 200
+        await _read_sse_until(response, predicate=lambda buf: "event: metrics" in buf)
+        assert thread_id in bus._subscribers  # noqa: SLF001
+
+    await asyncio.sleep(0.05)
+    assert not bus._subscribers.get(thread_id)  # noqa: SLF001
