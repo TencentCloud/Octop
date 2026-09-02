@@ -1,0 +1,72 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 4px 0 8px;
+}
+
+.lane {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+}
+
+.laneLabel {
+  flex: 0 0 44px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+}
+
+.track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.04));
+}
+
+.span {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.spanInput {
+  background: var(--fn-text-tertiary, #8b8b8b);
+}
+
+.spanModel {
+  background: var(--fn-color-brand);
+}
+
+.spanTools {
+  background: var(--fn-color-success, #389e0d);
+}
+
+.spanFocused {
+  box-shadow:
+    0 0 0 1px var(--fn-bg-primary),
+    0 0 0 3px var(--fn-color-brand);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .span {
+    transition: none;
+  }
+}
