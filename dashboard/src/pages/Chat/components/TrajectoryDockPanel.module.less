@@ -142,8 +142,29 @@
   }
 }
 
-.rowOpen {
+.rowOpen,
+.rowSelected {
   background: var(--fn-bg-secondary, #f5f5f7);
+}
+
+.row[data-focus-match="false"],
+.row[data-search-match="false"] {
+  opacity: 0.4;
+}
+
+.turnHeader {
+  list-style: none;
+  padding: 8px 12px 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+  border-top: 2px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.12));
+
+  &:first-child {
+    border-top: none;
+    padding-top: 6px;
+  }
 }
 
 .rowToggle {

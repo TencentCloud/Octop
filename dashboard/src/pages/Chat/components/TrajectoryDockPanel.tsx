@@ -232,9 +232,11 @@ export default function TrajectoryDockPanel({
       />
       {agentId ? (
         <TrajectoryLedger
-          agentId={agentId}
-          threadId={threadId}
           events={visibleEvents}
+          selectedEventId={null}
+          onSelect={() => {}}
+          focusEventIds={null}
+          searchMatchIds={null}
         />
       ) : null}
     </div>

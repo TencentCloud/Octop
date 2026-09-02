@@ -1,19 +1,17 @@
-import { useCallback, useState } from "react";
-import { useTranslation } from "react-i18next";
-import {
-  trajectoryApi,
-  type TrajectoryEvent,
-} from "../../../api/modules/trajectory";
+import { Fragment } from "react";
+import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 import { laneForKind, toLedgerRow } from "../utils/trajectoryModel";
 import styles from "./TrajectoryDockPanel.module.less";
 
-interface TrajectoryLedgerProps {
-  agentId: string;
-  threadId: string;
+export interface TrajectoryLedgerProps {
   events: TrajectoryEvent[];
+  selectedEventId: string | null;
+  onSelect: (eventId: string) => void;
+  focusEventIds: ReadonlySet<string> | null;
+  searchMatchIds: ReadonlySet<string> | null;
 }
 
-function rowClass(kind: string, isError: boolean, expanded: boolean): string {
+function rowClass(kind: string, isError: boolean, selected: boolean): string {
   const lane = laneForKind(kind);
   const laneClass =
     lane === "tools"
@@ -22,91 +20,62 @@ function rowClass(kind: string, isError: boolean, expanded: boolean): string {
       ? styles.laneModel
       : styles.laneInput;
   return `${styles.row} ${laneClass}${isError ? ` ${styles.rowError}` : ""}${
-    expanded ? ` ${styles.rowOpen}` : ""
+    selected ? ` ${styles.rowSelected}` : ""
   }`;
 }
 
-function payloadText(payload: Record<string, unknown>): string {
-  return JSON.stringify(payload, null, 2);
+function matchAttr(
+  ids: ReadonlySet<string> | null,
+  eventId: string,
+): "true" | "false" | undefined {
+  if (ids == null) return undefined;
+  return ids.has(eventId) ? "true" : "false";
 }
 
 export default function TrajectoryLedger({
-  agentId,
-  threadId,
   events,
+  selectedEventId,
+  onSelect,
+  focusEventIds,
+  searchMatchIds,
 }: TrajectoryLedgerProps) {
-  const { t } = useTranslation();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [details, setDetails] = useState<Record<string, TrajectoryEvent>>({});
-  const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [errorIds, setErrorIds] = useState<Record<string, true>>({});
-
-  const toggle = useCallback(
-    async (eventId: string) => {
-      if (expandedId === eventId) {
-        setExpandedId(null);
-        return;
-      }
-      setExpandedId(eventId);
-      if (details[eventId] != null) return;
-      setLoadingId(eventId);
-      try {
-        const detail = await trajectoryApi.event(agentId, threadId, eventId);
-        setDetails((prev) => ({ ...prev, [eventId]: detail }));
-        setErrorIds((prev) => {
-          if (prev[eventId] == null) return prev;
-          const next = { ...prev };
-          delete next[eventId];
-          return next;
-        });
-      } catch {
-        setErrorIds((prev) => ({ ...prev, [eventId]: true }));
-      } finally {
-        setLoadingId((current) => (current === eventId ? null : current));
-      }
-    },
-    [agentId, details, expandedId, threadId],
-  );
-
   return (
     <ol className={styles.ledger}>
-      {events.map((event) => {
+      {events.map((event, index) => {
         const row = toLedgerRow(event);
-        const expanded = expandedId === row.id;
-        const detail = details[row.id];
+        const selected = selectedEventId === row.id;
+        const prevTurn = events[index - 1]?.turn_id;
+        const showTurnHeader =
+          event.turn_id != null && event.turn_id !== prevTurn;
         return (
-          <li
-            key={row.id}
-            className={rowClass(row.kind, row.isError, expanded)}
-            data-kind={row.kind}
-          >
-            <button
-              type="button"
-              className={styles.rowToggle}
-              aria-expanded={expanded}
-              onClick={() => void toggle(row.id)}
-            >
-              <span className={styles.rowTitle}>{row.title}</span>
-              {row.summary ? (
-                <span className={styles.rowSummary}>{row.summary}</span>
-              ) : null}
-            </button>
-            {expanded ? (
-              <pre
-                className={styles.rowPayload}
-                data-testid="trajectory-payload"
+          <Fragment key={row.id}>
+            {showTurnHeader ? (
+              <li
+                className={styles.turnHeader}
+                data-testid="trajectory-turn-header"
               >
-                {loadingId === row.id
-                  ? t("chat.dockTrajectoryDetailLoading", "Loading detail…")
-                  : errorIds[row.id]
-                  ? t(
-                      "chat.dockTrajectoryDetailError",
-                      "Failed to load event detail",
-                    )
-                  : payloadText(detail?.payload ?? event.payload)}
-              </pre>
+                {event.turn_id}
+              </li>
             ) : null}
-          </li>
+            <li
+              className={rowClass(row.kind, row.isError, selected)}
+              data-kind={row.kind}
+              data-focus-match={matchAttr(focusEventIds, row.id)}
+              data-search-match={matchAttr(searchMatchIds, row.id)}
+            >
+              <button
+                type="button"
+                className={styles.rowToggle}
+                aria-selected={selected}
+                onClick={() => onSelect(row.id)}
+              >
+                <span className={styles.rowTitle}>{row.title}</span>
+                {row.summary ? (
+                  <span className={styles.rowSummary}>{row.summary}</span>
+                ) : null}
+              </button>
+            </li>
+          </Fragment>
         );
       })}
     </ol>
