@@ -7,6 +7,7 @@ import {
   pickPreferredSession,
   isPendingThread,
   clearPendingThread,
+  clearSessionUnread,
   type Session,
   type ThreadProbeResult,
 } from "./useSessions";
@@ -20,7 +21,10 @@ interface UseChatNavigationParams {
   sessions: Session[];
   sessionsLoading: boolean;
   prefillInputRef: React.MutableRefObject<string>;
-  loadHistory: (threadId: string) => Promise<void>;
+  loadHistory: (
+    threadId: string,
+    opts?: { force?: boolean },
+  ) => Promise<void>;
   clearMessages: () => void;
   ensureThreadInList: (threadId: string) => Promise<ThreadProbeResult>;
   fetchSessions: (activeId?: string) => Promise<Session[]>;
@@ -43,18 +47,40 @@ export function useChatNavigation({
 }: UseChatNavigationParams) {
   const navigate = useNavigate();
 
+  const weixinHydrateKeyRef = useRef<string | null>(null);
+  const activeChannelType = sessions.find(
+    (s) => s.id === activeThreadId,
+  )?.channelType;
+
   useEffect(() => {
     if (!resolvedAgentId) return;
     if (activeThreadId) {
       if (isPendingThread(activeThreadId)) return;
-      void loadHistory(activeThreadId);
+      if (sessionsLoading && !activeChannelType) return;
+      const visitKey = `${resolvedAgentId}:${activeThreadId}`;
+      const forceWeixin =
+        activeChannelType === "weixin" &&
+        weixinHydrateKeyRef.current !== visitKey;
+      if (forceWeixin) weixinHydrateKeyRef.current = visitKey;
+      if (activeChannelType && activeChannelType !== "weixin") {
+        weixinHydrateKeyRef.current = null;
+      }
+      void loadHistory(activeThreadId, { force: forceWeixin });
     } else {
+      weixinHydrateKeyRef.current = null;
       const emptySnap = chatStore.getSnapshot(EMPTY_CHAT_SESSION_KEY);
       if (emptySnap.messages.length === 0 && !emptySnap.isStreaming) {
         clearMessages();
       }
     }
-  }, [activeThreadId, resolvedAgentId, loadHistory, clearMessages]);
+  }, [
+    activeThreadId,
+    resolvedAgentId,
+    loadHistory,
+    clearMessages,
+    activeChannelType,
+    sessionsLoading,
+  ]);
 
   const markedAgentReadRef = useRef<string | null>(null);
   useEffect(() => {
@@ -66,6 +92,22 @@ export function useChatNavigation({
       .then(() => refreshAgents({ silent: true }))
       .catch(() => {});
   }, [resolvedAgentId, refreshAgents]);
+
+  useEffect(() => {
+    if (!resolvedAgentId || !activeThreadId || isPendingThread(activeThreadId)) {
+      return;
+    }
+    const session = sessions.find((s) => s.id === activeThreadId);
+    if (!session || session.channelType !== "weixin") return;
+    if (!(session.unreadCount ?? 0)) return;
+    void octopThreadsApi
+      .markRead(resolvedAgentId, activeThreadId)
+      .then(() => {
+        clearSessionUnread(activeThreadId);
+        void refreshAgents({ silent: true });
+      })
+      .catch(() => {});
+  }, [resolvedAgentId, activeThreadId, sessions, refreshAgents]);
 
   useEffect(() => {
     const refreshBadges = () => void refreshAgents({ silent: true });

@@ -23,4 +23,12 @@ describe("parseHarnessChunk usage", () => {
       },
     });
   });
+
+  it("parses inbound_user frames from IM mirrors", () => {
+    expect(
+      parseHarnessChunk(
+        'data: {"type":"inbound_user","content":"hi","thread_id":"thr-wx"}',
+      ),
+    ).toEqual({ type: "inbound_user", content: "hi" });
+  });
 });

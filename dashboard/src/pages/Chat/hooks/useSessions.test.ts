@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  pickPreferredSession,
   resetSessionStoreForTests,
   sortSessions,
   toSession,
@@ -73,6 +74,30 @@ describe("toSession / sortSessions ordering", () => {
       "thr_pin",
       "thr_recent",
     ]);
+  });
+});
+
+describe("pickPreferredSession", () => {
+  it("keeps the dashboard bind instead of jumping to a WeChat thread", () => {
+    const emptyDashboard = toSession({
+      thread_id: "thr_dash",
+      title: null,
+      last_active: 0,
+      created_at: 500,
+      channel_type: "dashboard",
+      is_active: true,
+      has_messages: false,
+    });
+    const weixin = toSession({
+      thread_id: "thr_wx",
+      title: "hi",
+      last_active: 100,
+      created_at: 50,
+      channel_type: "weixin",
+      is_active: false,
+      has_messages: true,
+    });
+    expect(pickPreferredSession([emptyDashboard, weixin])?.id).toBe("thr_dash");
   });
 });
 

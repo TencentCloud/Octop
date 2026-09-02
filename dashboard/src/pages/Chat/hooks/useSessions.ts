@@ -17,6 +17,7 @@ export interface Session {
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
   artifacts?: string[];
+  unreadCount?: number;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -35,6 +36,7 @@ export function toSession(row: {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   artifacts?: string[] | null;
+  unread_count?: number;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -63,7 +65,19 @@ export function toSession(row: {
             typeof path === "string" && path.trim().length > 0,
         )
       : [],
+    unreadCount: Math.max(0, Number(row.unread_count) || 0),
   };
+}
+
+export function clearSessionUnread(threadId: string) {
+  if (!threadId) return;
+  setModuleSessions((prev) => {
+    const idx = prev.findIndex((s) => s.id === threadId);
+    if (idx < 0 || !prev[idx].unreadCount) return prev;
+    const next = [...prev];
+    next[idx] = { ...next[idx], unreadCount: 0 };
+    return next;
+  });
 }
 
 /** Mirror server order: pinned first, then recency (empty chats use created_at). */
@@ -436,11 +450,15 @@ export function useSessions(agentId: string | null) {
 
   useEffect(() => {
     return onSessionEvent((event) => {
-      if (event.kind !== "sessionDeleted") return;
-      const { sessionId } = event;
-      setModuleSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (event.kind === "sessionDeleted") {
+        setModuleSessions((prev) => prev.filter((s) => s.id !== event.sessionId));
+        return;
+      }
+      if (event.kind === "threadActivity" && event.agentId && event.agentId === agentId) {
+        void fetchSessions(event.sessionId);
+      }
     });
-  }, []);
+  }, [agentId, fetchSessions]);
 
   const createSession = useCallback((): {
     session: Session;

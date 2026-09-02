@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+from harness_gateway.models import ChannelSubject, InboundMessage, MessageEvent, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.process.processor import GlobalProcessor
@@ -212,3 +212,109 @@ async def test_resolve_turn_mcp_servers_raises_when_prepare_fails() -> None:
             explicit=None,
         )
     assert ei.value.code == ErrorCode.CONNECTOR_MCP_LOAD_FAILED
+
+
+def _processor_with_gateway(gateway: object) -> tuple[GlobalProcessor, MagicMock]:
+    thread_registry = MagicMock()
+    thread_registry.touch_last_active = MagicMock()
+    thread_registry.set_title_if_null = MagicMock()
+    thread_registry.increment_unread = MagicMock()
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=gateway,
+    )
+    return processor, thread_registry
+
+
+@pytest.mark.asyncio
+async def test_im_turn_notifies_dashboard_and_mirrors_tokens() -> None:
+    hub = MagicMock()
+    hub.push_to_thread = AsyncMock()
+    hub.push_to_user = AsyncMock()
+    processor, thread_registry = _processor_with_gateway(SimpleNamespace(ws_hub=hub))
+
+    await processor._publish_im_turn_to_dashboard(
+        channel_type="weixin",
+        session_key="a1:weixin:ou:dm",
+        thread_id="thr-wx",
+        agent_id="a1",
+        user_id=7,
+        text="hi",
+    )
+    thread_registry.increment_unread.assert_called_once_with("a1:weixin:ou:dm")
+    hub.mark_turn_active.assert_called_once_with("thr-wx")
+    hub.push_to_thread.assert_awaited_once_with(
+        "thr-wx",
+        {"type": "inbound_user", "content": "hi", "thread_id": "thr-wx"},
+    )
+    hub.push_to_user.assert_awaited_once_with(
+        7,
+        {
+            "type": "thread_activity",
+            "agent_id": "a1",
+            "thread_id": "thr-wx",
+            "channel_type": "weixin",
+        },
+    )
+
+    thread_registry.increment_unread.reset_mock()
+    await processor._publish_im_turn_to_dashboard(
+        channel_type="feishu",
+        session_key="a1:feishu:ou:dm",
+        thread_id="thr-fs",
+        agent_id="a1",
+        user_id=7,
+        text="hi",
+    )
+    thread_registry.increment_unread.assert_not_called()
+
+    await processor._mirror_im_event_to_dashboard("thr-wx", MessageEvent.delta("你"))
+    await processor._mirror_im_event_to_dashboard("thr-wx", MessageEvent.completed())
+    frames = [call.args[1] for call in hub.push_to_thread.await_args_list]
+    assert {"type": "token", "content": "你", "thread_id": "thr-wx"} in frames
+    assert {"type": "done", "thread_id": "thr-wx"} in frames
+    hub.mark_turn_idle.assert_called_once_with("thr-wx")
+
+
+@pytest.mark.asyncio
+async def test_dashboard_turn_does_not_publish_im_activity() -> None:
+    hub = MagicMock()
+    hub.push_to_thread = AsyncMock()
+    processor, thread_registry = _processor_with_gateway(SimpleNamespace(ws_hub=hub))
+
+    await processor._publish_im_turn_to_dashboard(
+        channel_type="dashboard",
+        session_key="a1:dashboard:7:dm",
+        thread_id="thr-dash",
+        agent_id="a1",
+        user_id=7,
+        text="from panel",
+    )
+    thread_registry.increment_unread.assert_not_called()
+    hub.push_to_thread.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_im_publish_failure_does_not_raise() -> None:
+    hub = MagicMock()
+    hub.push_to_thread = AsyncMock(side_effect=RuntimeError("hub down"))
+    hub.push_to_user = AsyncMock()
+    processor, thread_registry = _processor_with_gateway(SimpleNamespace(ws_hub=hub))
+    thread_registry.increment_unread.side_effect = RuntimeError("db down")
+
+    await processor._publish_im_turn_to_dashboard(
+        channel_type="weixin",
+        session_key="a1:weixin:ou:dm",
+        thread_id="thr-wx",
+        agent_id="a1",
+        user_id=7,
+        text="hi",
+    )
+    hub.push_to_thread.assert_awaited()

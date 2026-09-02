@@ -198,8 +198,22 @@ class SessionRepo:
                 (thread_id,),
             )
 
-    def clear_unread_for_agent(self, agent_id: str, user_id: int) -> None:
+    def clear_unread_for_agent(
+        self,
+        agent_id: str,
+        user_id: int,
+        *,
+        exclude_channels: tuple[str, ...] = (),
+    ) -> None:
         with self._db.transaction() as conn:
+            if exclude_channels:
+                placeholders = ",".join("?" * len(exclude_channels))
+                conn.execute(
+                    "UPDATE sessions SET unread_count = 0 "
+                    f"WHERE agent_id = ? AND user_id = ? AND channel_type NOT IN ({placeholders})",
+                    (agent_id, user_id, *exclude_channels),
+                )
+                return
             conn.execute(
                 "UPDATE sessions SET unread_count = 0 WHERE agent_id = ? AND user_id = ?",
                 (agent_id, user_id),

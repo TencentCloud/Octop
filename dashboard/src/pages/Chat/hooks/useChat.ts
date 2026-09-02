@@ -52,6 +52,27 @@ export {
   extractText,
 } from "../../../utils/messageParser";
 
+/** Keep live inbound / tokens and place server history in front of them. */
+export function mergeHistoryBehindLive(
+  history: ChatMessage[],
+  live: ChatMessage[],
+): ChatMessage[] {
+  if (live.length === 0) return history;
+  if (history.length === 0) return live;
+  const liveIds = new Set(live.map((message) => message.id).filter(Boolean));
+  const liveKeys = new Set(
+    live
+      .filter((message) => (message.content || "").trim())
+      .map((message) => `${message.role}:${(message.content || "").trim()}`),
+  );
+  const prefix = history.filter((message) => {
+    if (liveIds.has(message.id)) return false;
+    const text = (message.content || "").trim();
+    return !(text && liveKeys.has(`${message.role}:${text}`));
+  });
+  return [...prefix, ...live];
+}
+
 interface InternalChatMessage extends ChatMessage {
   _toolKind?: "call" | "result";
 }
@@ -864,22 +885,34 @@ export function useChat(
   }, [stableSessionId]);
 
   const loadHistory = useCallback(
-    async (targetThreadId: string) => {
+    async (targetThreadId: string, opts?: { force?: boolean }) => {
       const key = targetThreadId || "__empty__";
       const snap = chatStore.getSnapshot(key);
+      const force = Boolean(opts?.force);
 
       if (!targetThreadId || !agentId) {
         chatStore.clearMessages(key);
         return;
       }
 
-      // Already have local history: only re-probe when we still expect a stream.
+      // Cached thread: keep the fast path unless the caller asked to resync
+      // (WeChat click-in). Never replace an in-flight local stream.
       if (snap.messages.length > 0 || snap.historyHydrated) {
         if (shouldProbeActiveTurn({ isStreaming: snap.isStreaming })) {
           attachAfterHistory(key, targetThreadId);
         }
-        return;
+        if (!force || snap.isStreaming) return;
       }
+
+      // Subscribe first so inbound tokens are not waiting on history backfill.
+      if (force) {
+        attachAfterHistory(key, targetThreadId);
+      }
+
+      const startedCount = snap.messages.length;
+      const startedLastId = snap.messages[snap.messages.length - 1]?.id;
+      const startedLastLen =
+        snap.messages[snap.messages.length - 1]?.content?.length ?? 0;
 
       // Never cancelStream here — load/hydrate must not stop a live server turn.
       // (Weak resume: only the Stop control / cancelStream may send `cancel`.)
@@ -904,11 +937,25 @@ export function useChat(
           });
         }
         if (loadGenRef.current !== gen) return;
-        chatStore.setHistoryPage(key, loaded.messages, {
-          hasMore: loaded.hasMore,
-          nextOffset: loaded.nextOffset,
-        });
+        const latest = chatStore.getSnapshot(key);
+        const liveGrew =
+          latest.isStreaming ||
+          latest.messages.length !== startedCount ||
+          latest.messages[latest.messages.length - 1]?.id !== startedLastId ||
+          (latest.messages[latest.messages.length - 1]?.content?.length ?? 0) !==
+            startedLastLen;
+        chatStore.setHistoryPage(
+          key,
+          liveGrew
+            ? mergeHistoryBehindLive(loaded.messages, latest.messages)
+            : loaded.messages,
+          {
+            hasMore: loaded.hasMore,
+            nextOffset: loaded.nextOffset,
+          },
+        );
         if (
+          force ||
           shouldProbeActiveTurn({
             isStreaming: false,
             turnActive: loaded.turnActive,
@@ -994,20 +1041,36 @@ export function useChat(
         } = await loadThreadHistory(agentId, key, { offset: 0 });
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (loadGenRef.current !== gen) return;
+        const current = chatStore.getSnapshot(key);
+        if (
+          current.isStreaming ||
+          shouldBlockHistoryRefresh({
+            isStreaming: current.isStreaming,
+            hasLiveSocket: chatStore.hasLiveSocket(key),
+          })
+        ) {
+          return;
+        }
 
         // Keep older pages the user already scrolled in; replace the overlapping
         // latest-page window with the server copy so truncated WS turns heal.
         const latestIds = new Set(latest.map((m) => m.id));
-        const firstOverlap = snap.messages.findIndex((m) =>
+        const firstOverlap = current.messages.findIndex((m) =>
           latestIds.has(m.id),
         );
         const olderPrefix =
-          firstOverlap > 0 ? snap.messages.slice(0, firstOverlap) : [];
-        chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
-          hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
-          nextOffset:
-            olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
-        });
+          firstOverlap > 0 ? current.messages.slice(0, firstOverlap) : [];
+        chatStore.setHistoryPage(
+          key,
+          current.isStreaming
+            ? mergeHistoryBehindLive(latest, current.messages)
+            : [...olderPrefix, ...latest],
+          {
+            hasMore: olderPrefix.length > 0 ? current.historyHasMore : hasMore,
+            nextOffset:
+              olderPrefix.length > 0 ? current.historyNextOffset : nextOffset,
+          },
+        );
       } finally {
         refreshInFlightRef.current = false;
         setHistoryRefreshing(false);

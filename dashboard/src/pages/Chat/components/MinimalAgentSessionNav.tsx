@@ -223,6 +223,14 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
+          {session.channelType === "weixin" && (session.unreadCount ?? 0) > 0 ? (
+            <span
+              className={styles.sessionRowUnread}
+              aria-label={t("chat.unreadMessages", "未读消息")}
+            >
+              {(session.unreadCount ?? 0) > 99 ? "99+" : session.unreadCount}
+            </span>
+          ) : null}
           <Dropdown
             menu={{ items: menuItems }}
             trigger={["click"]}

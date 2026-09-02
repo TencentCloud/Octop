@@ -175,6 +175,7 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
     thread_registry = MagicMock()
     thread_registry.list_threads.return_value = rows
     thread_registry.get_bound_thread_id.return_value = None
+    thread_registry.unread_counts_for_threads.return_value = {"thr_used": 2}
 
     server = MagicMock()
     agent_row = MagicMock(user_id=1)
@@ -190,7 +191,9 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 
     assert len(out) == 2
     assert out[0]["has_messages"] is False
+    assert out[0]["unread_count"] == 0
     assert out[1]["has_messages"] is True
+    assert out[1]["unread_count"] == 2
 
 
 @pytest.mark.asyncio

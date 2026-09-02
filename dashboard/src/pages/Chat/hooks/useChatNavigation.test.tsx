@@ -21,6 +21,7 @@ vi.mock("react-router-dom", async () => {
 vi.mock("../../../api/modules/octopThreads", () => ({
   octopThreadsApi: {
     rebind: (...args: unknown[]) => rebindMock(...args),
+    markRead: vi.fn().mockResolvedValue(undefined),
   },
 }));
 

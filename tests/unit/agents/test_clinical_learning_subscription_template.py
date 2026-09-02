@@ -168,6 +168,62 @@ def test_daily_learning_validator_requires_fixed_unit_structure() -> None:
     assert result["ok"] is True
 
 
+def test_clinical_validator_rejects_english_process_phrases() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_process_language_test"
+    )
+    text = """【指南学习单元｜全科】
+轨道：高血压学习轨道
+依据：高血压防治指南（2024，国家卫生健康委）
+学习单元：1 / 2
+章节：第一章 1.1
+主题：适用范围与核心定义
+1. 学习适用范围与核心概念，避免将学习条目代入具体患者。
+2. 关注概念之间的关系和质量意识，不把它写成处置命令。
+3. 医院制度和本地执行口径需要以正式文件确认。
+Let me search for the next unit.
+下一单元预告：
+风险分层框架 — 学习识别风险分层的核心概念。
+来源：示例页面：[链接](https://www.nhc.gov.cn/example)
+说明：本内容用于医生继续学习，不提供个体诊疗、处方剂量或急诊处置建议。
+"""
+    result = validator.validate(
+        text,
+        module="daily_guideline_learning",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is False
+    assert any("Let me" in err for err in result["errors"])
+
+
+def test_clinical_validator_ignores_english_in_source_titles() -> None:
+    validator = _load_module(
+        _ROOT / "scripts" / "validate_output.py", "clinical_source_title_language_test"
+    )
+    text = """【指南学习单元｜全科】
+轨道：高血压学习轨道
+依据：高血压防治指南（2024，国家卫生健康委）
+学习单元：1 / 2
+章节：第一章 1.1
+主题：适用范围与核心定义
+1. 学习适用范围与核心概念，避免将学习条目代入具体患者。
+2. 关注概念之间的关系和质量意识，不把它写成处置命令。
+3. 医院制度和本地执行口径需要以正式文件确认。
+下一单元预告：
+风险分层框架 — 学习识别风险分层的核心概念。
+来源：Let me explain hypertension：[链接](https://www.nhc.gov.cn/example)
+说明：本内容用于医生继续学习，不提供个体诊疗、处方剂量或急诊处置建议。
+"""
+    result = validator.validate(
+        text,
+        module="daily_guideline_learning",
+        policy_path=_ROOT / "references" / "source-policy.yaml",
+        allow_no_source=False,
+    )
+    assert result["ok"] is True
+
+
 def test_daily_learning_final_unit_requires_confirmed_next_stage_choices() -> None:
     validator = _load_module(
         _ROOT / "scripts" / "validate_output.py", "clinical_final_daily_validator_test"

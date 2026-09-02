@@ -292,7 +292,11 @@ async def mark_agent_read(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
-    server.services.session_repo.clear_unread_for_agent(agent_id, user.id)
+    server.services.session_repo.clear_unread_for_agent(
+        agent_id,
+        user.id,
+        exclude_channels=("weixin",),
+    )
 
 
 @router.get("/{agent_id}", summary="Get agent")

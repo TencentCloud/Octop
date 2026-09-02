@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { convertHistoryMessages } from "./useChat";
+import { convertHistoryMessages, mergeHistoryBehindLive } from "./useChat";
+import type { ChatMessage } from "./sseHelpers";
+
+function msg(
+  id: string,
+  role: "user" | "assistant",
+  content: string,
+): ChatMessage {
+  return { id, role, content, status: "done", timestamp: 1 };
+}
 
 describe("history token usage", () => {
   it("normalizes provider cache details and rolls up every model call", () => {
@@ -70,5 +79,27 @@ describe("history token usage", () => {
     expect(messages[0]?.attachments?.[0]?.url).toContain(
       "/api/agents/agent_1/",
     );
+  });
+});
+
+describe("mergeHistoryBehindLive", () => {
+  it("places older server history in front of a live inbound tail", () => {
+    const history = [msg("h1", "user", "昨天"), msg("h2", "assistant", "好的")];
+    const live = [msg("l1", "user", "你好")];
+    expect(mergeHistoryBehindLive(history, live).map((m) => m.id)).toEqual([
+      "h1",
+      "h2",
+      "l1",
+    ]);
+  });
+
+  it("does not duplicate a user line already on the live tail", () => {
+    const history = [msg("h1", "user", "昨天"), msg("h2", "user", "你好")];
+    const live = [msg("l1", "user", "你好"), msg("l2", "assistant", "在")];
+    expect(mergeHistoryBehindLive(history, live).map((m) => m.content)).toEqual([
+      "昨天",
+      "你好",
+      "在",
+    ]);
   });
 });

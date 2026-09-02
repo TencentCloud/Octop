@@ -520,6 +520,21 @@ class GlobalProcessor:
         history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
         try:
+            await self._publish_im_turn_to_dashboard(
+                channel_type=channel_type,
+                session_key=session_key,
+                thread_id=thread_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                text=msg.text,
+            )
+        except Exception:
+            logger.debug(
+                "dashboard IM publish failed for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+        try:
             async for ev in project_stream(
                 self._agent_manager,
                 agent_id,
@@ -538,6 +553,7 @@ class GlobalProcessor:
                     channel_type=channel_type,
                 ),
             ):
+                await self._mirror_im_event_to_dashboard(thread_id, ev)
                 yield ev
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
@@ -554,6 +570,7 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 self._record_turn_history(thread_id, history_tracker)
+        await self._mirror_im_event_to_dashboard(thread_id, MessageEvent.completed())
         yield MessageEvent.completed()
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
@@ -965,6 +982,90 @@ class GlobalProcessor:
             thread_id=thread_id,
             usage=usage,
         )
+
+    async def _publish_im_turn_to_dashboard(
+        self,
+        *,
+        channel_type: str,
+        session_key: str,
+        thread_id: str,
+        agent_id: str,
+        user_id: int,
+        text: str,
+    ) -> None:
+        """Surface an IM turn on the dashboard thread list and live chat socket."""
+        if channel_type in ("dashboard", "cli"):
+            return
+        try:
+            self._touch_thread_after_turn(thread_id, text)
+            if channel_type == "weixin":
+                self._thread_registry.increment_unread(session_key)
+        except Exception:
+            logger.debug(
+                "dashboard IM unread/title update failed for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+        hub = self._dashboard_hub()
+        if hub is None:
+            return
+        try:
+            hub.mark_turn_active(thread_id)
+            inbound = (text or "").strip()
+            if inbound:
+                await hub.push_to_thread(
+                    thread_id,
+                    {"type": "inbound_user", "content": inbound, "thread_id": thread_id},
+                )
+            if user_id > 0:
+                await hub.push_to_user(
+                    user_id,
+                    {
+                        "type": "thread_activity",
+                        "agent_id": agent_id,
+                        "thread_id": thread_id,
+                        "channel_type": channel_type,
+                    },
+                )
+        except Exception:
+            logger.debug(
+                "dashboard IM notify failed for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    async def _mirror_im_event_to_dashboard(self, thread_id: str, ev: MessageEvent) -> None:
+        hub = self._dashboard_hub()
+        if hub is None or not thread_id:
+            return
+        frame: dict[str, Any] | None = None
+        if ev.type == MessageEventType.DELTA:
+            content = "".join(
+                part.text for part in ev.content if isinstance(part, TextContent) and part.text
+            )
+            if content:
+                frame = {"type": "token", "content": content, "thread_id": thread_id}
+        elif ev.type == MessageEventType.ERROR:
+            frame = {
+                "type": "error",
+                "message": ev.error or "unknown error",
+                "thread_id": thread_id,
+            }
+        elif ev.type == MessageEventType.COMPLETED:
+            hub.mark_turn_idle(thread_id)
+            frame = {"type": "done", "thread_id": thread_id}
+        if frame is None:
+            return
+        try:
+            await hub.push_to_thread(thread_id, frame)
+        except Exception:
+            logger.debug("dashboard mirror failed for thread=%s", thread_id, exc_info=True)
+
+    def _dashboard_hub(self) -> Any | None:
+        gateway = self._gateway
+        if gateway is None:
+            return None
+        return getattr(gateway, "ws_hub", None)
 
     def _record_turn_history(
         self,

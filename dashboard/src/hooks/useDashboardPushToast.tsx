@@ -7,6 +7,7 @@ import { buildDashboardNotifyWsUrl } from "../api/modules/wsNotifications";
 import { getAuthToken } from "../api/request";
 import { useAgent } from "../context/AgentContext";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
+import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
 import {
   parseDashboardPushFrame,
   truncatePushText,
@@ -113,8 +114,34 @@ export function useDashboardPushToast(): void {
         ) {
           return;
         }
+        if (
+          raw &&
+          typeof raw === "object" &&
+          (raw as { type?: string }).type === "thread_activity"
+        ) {
+          const activity = raw as {
+            thread_id?: string;
+            agent_id?: string;
+          };
+          const threadId = activity.thread_id?.trim() ?? "";
+          const agentId = activity.agent_id?.trim() ?? "";
+          if (threadId && agentId) {
+            emitSessionEvent({
+              kind: "threadActivity",
+              sessionId: threadId,
+              agentId,
+            });
+            void refreshRef.current({ silent: true });
+          }
+          return;
+        }
         const parsed = parseDashboardPushFrame(raw);
         if (!parsed) return;
+        emitSessionEvent({
+          kind: "threadActivity",
+          sessionId: parsed.thread_id,
+          agentId: parsed.agent_id,
+        });
         void refreshRef.current({ silent: true });
         const agent = agentsRef.current.find(
           (a) => a.agent_id === parsed.agent_id,

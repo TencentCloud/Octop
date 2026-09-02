@@ -177,6 +177,35 @@ def test_unread_totals_by_agent(repos):
     assert sessions.unread_totals_by_agent(1, ["a1"]) == {}
 
 
+def test_clear_unread_for_agent_keeps_weixin(repos):
+    sessions, threads = repos
+    dash = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    wx = ThreadRegistry.make_key(agent_id="a1", channel_type="weixin", channel_subject_id="ou")
+    for sk, thr, channel in (
+        (dash, "thr_dash", "dashboard"),
+        (wx, "thr_wx", "weixin"),
+    ):
+        threads.insert(
+            thread_id=thr,
+            agent_id="a1",
+            user_id=1,
+            channel_type=channel,
+            session_key=sk,
+        )
+        sessions.upsert(
+            session_key=sk,
+            agent_id="a1",
+            user_id=1,
+            channel_type=channel,
+            chat_type="dm",
+            thread_id=thr,
+        )
+        sessions.increment_unread(sk)
+    sessions.clear_unread_for_agent("a1", 1, exclude_channels=("weixin",))
+    assert sessions.get(dash).unread_count == 0
+    assert sessions.get(wx).unread_count == 1
+
+
 def test_unread_counts_for_threads(repos):
     sessions, threads = repos
     sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)

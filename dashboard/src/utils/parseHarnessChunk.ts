@@ -97,6 +97,11 @@ export interface AttachmentChunk {
   filename?: string;
 }
 
+export interface InboundUserChunk {
+  type: "inbound_user";
+  content: string;
+}
+
 export type HarnessChunk =
   | TokenChunk
   | ReasoningChunk
@@ -110,7 +115,8 @@ export type HarnessChunk =
   | ErrorChunk
   | HitlRequiredChunk
   | SlashActionChunk
-  | AttachmentChunk;
+  | AttachmentChunk
+  | InboundUserChunk;
 
 /**
  * Parse one ``data: …`` SSE frame line into a typed chunk.
@@ -224,6 +230,11 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         type: "slash_action",
         action: typeof obj.action === "string" ? obj.action : "",
         agent_id: typeof obj.agent_id === "string" ? obj.agent_id : undefined,
+      };
+    case "inbound_user":
+      return {
+        type: "inbound_user",
+        content: typeof obj.content === "string" ? obj.content : "",
       };
     case "attachment":
       return {

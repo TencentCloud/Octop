@@ -98,6 +98,7 @@ async def list_threads(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
+    unread_map = thread_registry.unread_counts_for_threads([r.thread_id for r in rows])
     return [
         {
             "thread_id": r.thread_id,
@@ -109,6 +110,7 @@ async def list_threads(
             "is_active": r.thread_id == bound,
             "has_messages": thread_row_has_messages(r),
             "pinned": r.pinned,
+            "unread_count": int(unread_map.get(r.thread_id, 0) or 0),
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,

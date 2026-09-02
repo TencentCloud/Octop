@@ -48,8 +48,21 @@ export function setFocusedChatSession(sessionId: string | null): void {
   const next = sessionId && sessionId !== "__empty__" ? sessionId : null;
   const prev = focusedChatSessionId;
   focusedChatSessionId = next;
-  if (next && next !== prev) {
-    void rebindFocusedSessionIfNeeded(next);
+  if (next) {
+    closeUnfocusedLiveSockets(next);
+    if (next !== prev) {
+      void rebindFocusedSessionIfNeeded(next);
+    }
+    return;
+  }
+  // Unmount / switch races `set(null)` then `set(next)`. Delay so a remount
+  // can reclaim the same thread without dropping a live subscribe.
+  if (prev) {
+    queueMicrotask(() => {
+      if (focusedChatSessionId == null || focusedChatSessionId !== prev) {
+        closeLiveSocket(prev, { intentional: true });
+      }
+    });
   }
 }
 
@@ -299,10 +312,11 @@ function emitSlashAction(event: SlashActionEvent) {
 }
 
 // Session lifecycle events (e.g. deletion) for cross-module bridging.
-export type SessionEventKind = "sessionDeleted";
+export type SessionEventKind = "sessionDeleted" | "threadActivity";
 export interface SessionEvent {
   kind: SessionEventKind;
   sessionId: string;
+  agentId?: string;
 }
 type SessionEventListener = (event: SessionEvent) => void;
 const sessionEventListeners = new Set<SessionEventListener>();
@@ -663,6 +677,14 @@ function sendCancelFrame(ws: WebSocket, threadId: string): void {
   }
 }
 
+function closeUnfocusedLiveSockets(keepSessionId: string): void {
+  for (const sessionId of [...liveSockets.keys()]) {
+    if (sessionId !== keepSessionId) {
+      closeLiveSocket(sessionId, { intentional: true });
+    }
+  }
+}
+
 function closeLiveSocket(
   sessionId: string,
   opts: { intentional: boolean; userCancelled?: boolean },
@@ -923,6 +945,26 @@ function handleHarnessChunk(
     touchStreamActivity(sessionId);
   }
   switch (chunk.type) {
+    case "inbound_user": {
+      const inbound = chunk.content.trim();
+      if (!inbound) break;
+      const last = state.messages[state.messages.length - 1];
+      if (last?.role === "user" && last.content === inbound) break;
+      state.messages = [
+        ...state.messages,
+        {
+          id: generateId(),
+          role: "user",
+          content: inbound,
+          status: "done",
+          timestamp: Date.now(),
+        },
+      ];
+      if (sessionId && !state.isStreaming) {
+        beginStream(state, sessionId);
+      }
+      break;
+    }
     case "token":
       appendStreamingToken(state, chunk.content);
       break;
@@ -1675,22 +1717,13 @@ export async function attachThread(
             ) {
               emitStreamEvent({ kind: "streamResume", sessionId });
             }
-          } else {
-            // Idle on server — clear any sticky local streaming from a race,
-            // then drop the probe socket so scroll/history UX is unaffected.
-            live.intentionalClose = true;
-            controller.signal.removeEventListener("abort", onAbort);
-            try {
-              ws.close();
-            } catch {
-              // ignore
-            }
-            clearLiveSocket(sessionId, ws);
-            if (state.isStreaming) {
-              finish();
-            } else if (state.abortController === controller) {
-              state.abortController = previousController;
-            }
+          } else if (state.isStreaming) {
+            // Idle while we still thought a turn was live — seal locally,
+            // but keep the subscribe socket so later IM turns still arrive.
+            finish();
+            finished = false;
+          } else if (state.abortController === controller) {
+            state.abortController = previousController;
           }
           return;
         }
@@ -1703,15 +1736,10 @@ export async function attachThread(
           data.type === "error" ||
           data.type === "hitl_required"
         ) {
-          live.intentionalClose = true;
-          controller.signal.removeEventListener("abort", onAbort);
-          try {
-            ws.close();
-          } catch {
-            // ignore
-          }
-          clearLiveSocket(sessionId, ws);
+          // End the local stream but stay subscribed — WeChat / cron turns
+          // arrive on this same socket after the current reply finishes.
           finish();
+          finished = false;
         }
       } catch {
         // ignore malformed frames
@@ -1911,14 +1939,8 @@ async function sendTurnWebSocket(
           data.type === "error" ||
           data.type === "hitl_required"
         ) {
-          live.intentionalClose = true;
-          controller.signal.removeEventListener("abort", onAbort);
-          try {
-            ws.close();
-          } catch {
-            // ignore
-          }
-          clearLiveSocket(sessionId, ws);
+          // Seal this dashboard turn but keep the socket subscribed so a
+          // later WeChat / IM turn on the same thread still arrives.
           finish();
           settle(true);
         }
