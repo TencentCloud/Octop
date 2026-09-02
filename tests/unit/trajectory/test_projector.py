@@ -66,12 +66,37 @@ def test_empty_token_chunk_emits_no_events() -> None:
     assert events == []
 
 
-def test_unknown_chunk_becomes_unknown_kind() -> None:
+def test_unrecognized_stream_noise_is_not_stored() -> None:
     events = project_harness_chunk(
         {"type": "not_a_real_chunk"}, agent_id="A1", thread_id="T1", seq=1
     )
+    assert events == []
+
+
+def test_state_and_reasoning_chunks_emit_no_events() -> None:
+    for chunk in (
+        {"type": "state_snapshot", "data": {"messages": []}},
+        {"type": "state_update", "node": "agent", "data": {}},
+        {"type": "reasoning", "content": "thinking..."},
+        {"type": "usage", "usage": {"input_tokens": 1}},
+    ):
+        assert project_harness_chunk(chunk, agent_id="A1", thread_id="T1", seq=1) == []
+
+
+def test_project_tool_result_emits_tool_event_with_result() -> None:
+    chunk = {
+        "type": "tool_result",
+        "id": "call_1",
+        "name": "read_file",
+        "content": "file body",
+    }
+    events = project_harness_chunk(chunk, agent_id="A1", thread_id="T1", seq=11)
     assert len(events) == 1
-    assert events[0].kind in ("unknown", "system")
+    ev = events[0]
+    assert ev.kind == "tool"
+    assert ev.payload["call_id"] == "call_1"
+    assert ev.payload["result"] == "file body"
+    assert ev.event_id == "T1:11:tool:call_1"
 
 
 def test_project_session_user_fact_emits_user_event() -> None:
@@ -121,8 +146,7 @@ def test_bad_input_never_raises() -> None:
         thread_id="T1",
         seq=1,
     )
-    assert len(events) == 1
-    assert events[0].kind in ("unknown", "system")
+    assert events == []
 
     events = project_harness_chunk(
         {"type": "user", "ts": object(), "content": "hi"},
@@ -139,6 +163,4 @@ def test_bad_input_never_raises() -> None:
         thread_id="T1",
         seq=3,
     )
-    assert len(events) == 1
-    assert events[0].kind in ("unknown", "system")
-    assert events[0].ts == 0.0
+    assert events == []

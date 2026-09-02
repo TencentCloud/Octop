@@ -5,6 +5,21 @@ from typing import Any, TypedDict
 
 from octop.infra.trajectory.types import TrajectoryEvent, TrajectoryKind
 
+_IGNORED_TYPES = frozenset(
+    {
+        "reasoning",
+        "state_snapshot",
+        "state_update",
+        "usage",
+        "done",
+        "error",
+        "custom",
+        "hitl_required",
+        "slash_action",
+        "attachment",
+    }
+)
+
 
 class _Common(TypedDict):
     agent_id: str
@@ -25,19 +40,7 @@ def project_harness_chunk(
     try:
         return _project_harness_chunk(chunk, agent_id=agent_id, thread_id=thread_id, seq=seq)
     except Exception:
-        return [
-            _event(
-                agent_id=agent_id,
-                thread_id=thread_id,
-                seq=seq,
-                ts=0.0,
-                kind="unknown",
-                turn_id=None,
-                request_seq=None,
-                summary="unknown",
-                payload={},
-            )
-        ]
+        return []
 
 
 def _project_harness_chunk(
@@ -48,21 +51,11 @@ def _project_harness_chunk(
     seq: int,
 ) -> list[TrajectoryEvent]:
     if not isinstance(chunk, dict):
-        return [
-            _event(
-                agent_id=agent_id,
-                thread_id=thread_id,
-                seq=seq,
-                ts=0.0,
-                kind="unknown",
-                turn_id=None,
-                request_seq=None,
-                summary="unknown",
-                payload={"type": type(chunk).__name__},
-            )
-        ]
+        return []
 
     ctype = _kind_key(chunk)
+    if not ctype or ctype in _IGNORED_TYPES or ctype.startswith("state_"):
+        return []
     ts = _coerce_ts(chunk.get("ts"))
     turn_id = chunk.get("turn_id") if isinstance(chunk.get("turn_id"), str) else None
     request_seq_raw = chunk.get("request_seq")
@@ -78,7 +71,23 @@ def _project_harness_chunk(
 
     if ctype == "tool_call_chunk":
         call_id = str(chunk.get("id") or chunk.get("index", 0))
-        name = str(chunk.get("name") or "tool")
+        name = str(chunk.get("name") or "")
+        return [
+            _event(
+                **common,
+                kind="tool",
+                suffix=f"tool:{call_id}",
+                summary=f"tool {name or 'tool'}",
+                payload={
+                    "call_id": call_id,
+                    "name": name or "tool",
+                    "args": chunk.get("args"),
+                },
+            )
+        ]
+
+    if ctype == "tool_result":
+        call_id, name, result = _tool_result_fields(chunk)
         return [
             _event(
                 **common,
@@ -88,7 +97,7 @@ def _project_harness_chunk(
                 payload={
                     "call_id": call_id,
                     "name": name,
-                    "args": chunk.get("args"),
+                    "result": result,
                 },
             )
         ]
@@ -161,14 +170,34 @@ def _project_harness_chunk(
             )
         ]
 
-    return [
-        _event(
-            **common,
-            kind="unknown",
-            summary=str(ctype or "unknown"),
-            payload={"type": ctype},
-        )
-    ]
+    return []
+
+
+def _tool_result_fields(chunk: dict[str, Any]) -> tuple[str, str, Any]:
+    call_id = str(chunk.get("id") or chunk.get("tool_call_id") or chunk.get("index", 0))
+    name = str(chunk.get("name") or "tool")
+    result: Any = chunk.get("content")
+    messages = chunk.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            msg_id = _message_attr(message, "tool_call_id")
+            msg_name = _message_attr(message, "name")
+            msg_content = _message_attr(message, "content")
+            if msg_id:
+                call_id = str(msg_id)
+            if isinstance(msg_name, str) and msg_name:
+                name = msg_name
+            if msg_content is not None:
+                result = msg_content
+            if msg_id or msg_content is not None:
+                break
+    return call_id, name, result
+
+
+def _message_attr(message: Any, key: str) -> Any:
+    if isinstance(message, dict):
+        return message.get(key)
+    return getattr(message, key, None)
 
 
 def _kind_key(chunk: dict[str, Any]) -> str:

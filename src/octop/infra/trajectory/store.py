@@ -15,6 +15,9 @@ class TrajectoryStore:
     def append(self, event: TrajectoryEvent) -> bool:
         return self._repo.append(event)
 
+    def upsert(self, event: TrajectoryEvent) -> bool:
+        return self._repo.upsert(event)
+
     def list_before(
         self,
         thread_id: str,

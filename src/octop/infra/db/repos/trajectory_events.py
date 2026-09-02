@@ -66,6 +66,38 @@ class TrajectoryEventRepo:
             )
         return int(cursor.rowcount or 0) > 0
 
+    def upsert(self, event: TrajectoryEvent) -> bool:
+        payload_json = json.dumps(event.payload, ensure_ascii=False)
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "INSERT INTO trajectory_events("
+                "event_id, agent_id, thread_id, seq, ts, kind, turn_id, "
+                "request_seq, is_error, summary, payload_json"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(event_id) DO UPDATE SET "
+                "ts = excluded.ts, "
+                "kind = excluded.kind, "
+                "turn_id = excluded.turn_id, "
+                "request_seq = excluded.request_seq, "
+                "is_error = excluded.is_error, "
+                "summary = excluded.summary, "
+                "payload_json = excluded.payload_json",
+                (
+                    event.event_id,
+                    event.agent_id,
+                    event.thread_id,
+                    event.seq,
+                    event.ts,
+                    event.kind,
+                    event.turn_id,
+                    event.request_seq,
+                    bool_int(event.is_error),
+                    event.summary,
+                    payload_json,
+                ),
+            )
+        return int(cursor.rowcount or 0) > 0
+
     def list_before(
         self,
         thread_id: str,

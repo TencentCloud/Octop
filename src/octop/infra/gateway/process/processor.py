@@ -642,6 +642,11 @@ class GlobalProcessor:
             thread_id=thread_id,
             meta=meta,
         )
+        self._observe_trajectory(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            chunk={"type": "user", "content": msg.text or "", "source": channel_type},
+        )
 
         stream_ok = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)

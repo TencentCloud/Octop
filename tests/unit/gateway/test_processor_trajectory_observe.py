@@ -76,12 +76,27 @@ async def test_iter_turn_chunks_observes_tool_chunk() -> None:
 
     assert any(c.get("type") == "tool_call_chunk" for c in chunks)
     assert chunks[-1]["type"] == "done"
-    assert len(service.calls) == 1
-    agent_id, thread_id, chunk = service.calls[0]
+    tool_calls = [call for call in service.calls if call[2].get("type") == "tool_call_chunk"]
+    assert len(tool_calls) == 1
+    agent_id, thread_id, chunk = tool_calls[0]
     assert agent_id == "agent-1"
     assert thread_id == "thread-1"
-    assert chunk["type"] == "tool_call_chunk"
     assert chunk["name"] == "read_file"
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_observes_user_before_stream() -> None:
+    service = _RecordingService()
+    processor = _processor(trajectory_service=service)
+
+    chunks = [c async for c in processor.iter_turn_chunks(_dashboard_msg())]
+
+    assert any(c.get("type") == "tool_call_chunk" for c in chunks)
+    assert [call[2]["type"] for call in service.calls][0] == "user"
+    user_chunk = service.calls[0][2]
+    assert "read a.py" in str(user_chunk.get("content") or "")
+    assert service.calls[0][0] == "agent-1"
+    assert service.calls[0][1] == "thread-1"
 
 
 @pytest.mark.asyncio
