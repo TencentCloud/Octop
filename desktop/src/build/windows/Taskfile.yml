@@ -39,7 +39,7 @@ tasks:
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-windows-%s-%s.zip" (.ARCH | default ARCH) (.VERSION | default "dev"))}}'
 
   package:
-    summary: Packages a single production exe with the portable runtime embedded
+    summary: Packages an NSIS installer with the portable runtime embedded
     cmds:
       - task: stage:portable
         vars:
@@ -49,18 +49,44 @@ tasks:
         vars:
           PRODUCTION: "true"
           ARCH: "{{.ARCH}}"
+      - task: create:nsis:installer
+        vars:
+          ARCH: "{{.ARCH}}"
+          VERSION: "{{.VERSION}}"
       - cmd: >-
           powershell -NoProfile -Command
-          "Remove-Item -Force '{{.ARCHIVE}}' -ErrorAction SilentlyContinue;
-          Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.zip' -ErrorAction SilentlyContinue;
+          "Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.zip' -ErrorAction SilentlyContinue;
           Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.exe' -ErrorAction SilentlyContinue;
           Remove-Item -Recurse -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}' -ErrorAction SilentlyContinue;
-          Copy-Item '{{.BIN_DIR}}/{{.APP_NAME}}.exe' '{{.ARCHIVE}}';
           Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-windows-%s-%s.zip" .ARCH .VERSION)}}'
+      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-windows-{{.ARCH}}-{{.VERSION}}.exe'
+
+  create:nsis:installer:
+    summary: Wraps Octop.exe in an NSIS installer (Program Files + shortcuts)
+    dir: build/windows/nsis
+    preconditions:
+      - sh: makensis -VERSION
+        msg: "makensis is required. Install NSIS (choco install nsis) and ensure it is on PATH."
+    cmds:
+      - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
+      - cmd: >-
+          powershell -NoProfile -Command
+          "Remove-Item -Force '{{.ROOT_DIR}}/{{.ARCHIVE}}' -ErrorAction SilentlyContinue;
+          New-Item -ItemType Directory -Force '{{.ROOT_DIR}}/{{.BIN_DIR}}' | Out-Null"
+      - |
+        {{if eq OS "windows"}}
+        makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" -DINSTALLER_OUTFILE="{{.ROOT_DIR}}\{{.ARCHIVE}}" project.nsi
+        {{else}}
+        makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" -DINSTALLER_OUTFILE="{{.ROOT_DIR}}/{{.ARCHIVE}}" project.nsi
+        {{end}}
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+      VERSION: '{{.VERSION | default "dev"}}'
+      ARG_FLAG: '{{if eq (.ARCH | default ARCH) "amd64"}}AMD64{{else}}ARM64{{end}}'
       ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-windows-{{.ARCH}}-{{.VERSION}}.exe'
 
   run:

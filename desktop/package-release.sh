@@ -59,6 +59,10 @@ if ! command -v wails3 >/dev/null 2>&1; then
   echo "wails3 is required: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13" >&2
   exit 1
 fi
+if [[ "$plat" == windows-* ]] && ! command -v makensis >/dev/null 2>&1; then
+  echo "makensis is required for the Windows installer: choco install nsis" >&2
+  exit 1
+fi
 
 arch="${plat##*-}"
 ver="$(octop_version)"
