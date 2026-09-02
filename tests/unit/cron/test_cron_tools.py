@@ -111,9 +111,7 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
         assert "error" in err
         listed = json.loads(await list_tool.ainvoke({"include_disabled": True}))
         assert listed == []
-        created = json.loads(
-            await create.ainvoke({"trigger": "interval:60", "prompt": "nope"})
-        )
+        created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "nope"}))
         assert "error" in created
 
 

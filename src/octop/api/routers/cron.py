@@ -54,7 +54,9 @@ def _user_may_manage_agent_cron(*, agent_row: Any, user: Any) -> bool:
     return user_owns_agent(agent_row, user)
 
 
-def _assert_cron_manage(*, agent_id: str, agent_row: Any, user: Any, row: Any | None = None) -> None:
+def _assert_cron_manage(
+    *, agent_id: str, agent_row: Any, user: Any, row: Any | None = None
+) -> None:
     if row is not None and row.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
     if not _user_may_manage_agent_cron(agent_row=agent_row, user=user):
