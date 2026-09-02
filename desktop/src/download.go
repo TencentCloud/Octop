@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -70,7 +71,6 @@ func extractPortable(root string) error {
 }
 
 func bundledPortableZip() (string, error) {
-	name := fmt.Sprintf("Octop-%s.zip", greenPlat())
 	if override := os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP"); override != "" {
 		if _, err := os.Stat(override); err != nil {
 			return "", fmt.Errorf("bundled portable package: %w", err)
@@ -82,17 +82,25 @@ func bundledPortableZip() (string, error) {
 		return "", err
 	}
 	dir := filepath.Dir(exe)
-	candidates := []string{
-		filepath.Join(dir, name),
-		filepath.Join(dir, "..", "Resources", name),
+	plat := greenPlat()
+	legacy := fmt.Sprintf("Octop-%s.zip", plat)
+	searchDirs := []string{
+		dir,
+		filepath.Join(dir, "..", "Resources"),
 	}
-	for _, candidate := range candidates {
-		candidate = filepath.Clean(candidate)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
+	for _, search := range searchDirs {
+		search = filepath.Clean(search)
+		legacyPath := filepath.Join(search, legacy)
+		if _, err := os.Stat(legacyPath); err == nil {
+			return legacyPath, nil
+		}
+		matches, _ := filepath.Glob(filepath.Join(search, "Octop-portable-"+plat+"-*.zip"))
+		if len(matches) > 0 {
+			sort.Strings(matches)
+			return matches[len(matches)-1], nil
 		}
 	}
-	return "", fmt.Errorf("bundled portable package %s not found beside application", name)
+	return "", fmt.Errorf("bundled portable package %s not found beside application", legacy)
 }
 
 func unzipGreen(zipPath, dest string) error {

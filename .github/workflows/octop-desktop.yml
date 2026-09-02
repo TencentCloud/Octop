@@ -139,6 +139,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Read package version
+        run: |
+          set -euo pipefail
+          VER=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' pyproject.toml | head -1)
+          echo "OCTOP_VERSION=${VER}" >> "$GITHUB_ENV"
+          echo "version=${VER}"
+
       - uses: actions/download-artifact@v5
         with:
           name: dashboard-dist
@@ -224,15 +231,15 @@ jobs:
         run: >-
           wails3 task package
           ARCH=${{ matrix.arch }}
-          PORTABLE_ZIP=../portable/release/Octop-${{ matrix.plat }}.zip
+          VERSION=${{ env.OCTOP_VERSION }}
+          PORTABLE_ZIP=../portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
 
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
-      # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip
-      # (Octop-<plat>.zip containing another Octop-<plat>.zip). Affects every plat.
+      # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
       - uses: actions/upload-artifact@v7
         with:
-          path: desktop/portable/release/Octop-${{ matrix.plat }}.zip
+          path: desktop/portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -240,7 +247,7 @@ jobs:
       - name: Upload bundled desktop package
         uses: actions/upload-artifact@v7
         with:
-          path: desktop/src/bin/Octop-Desktop-${{ matrix.plat }}.*
+          path: desktop/src/bin/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -281,7 +288,7 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       # v8 required for archive:false artifacts. skip-decompress keeps the
-      # uploaded .zip / .tar / .dmg / .exe intact — default unzip turns portable
+      # uploaded .zip / .tar.gz / .dmg / .exe intact — default unzip turns portable
       # zips into directories, so files: release-assets/* would skip them.
       - uses: actions/download-artifact@v8
         with:

@@ -16,6 +16,8 @@
 #     packages/    site-packages (uv --target, relocatable)
 #     start.sh / start.bat
 #     README.txt
+#
+# Public filename is Octop-portable-<plat>-<version>.zip (see portable_zip_basename).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -83,7 +85,7 @@ assemble_one() {
   local runtime="${GREEN_RUNTIMES}/${plat}"
   local wheel_dir="${GREEN_WHEELS}/${plat}"
   local staging="${GREEN_RELEASE}/Octop-${plat}"
-  local zip_path="${GREEN_RELEASE}/Octop-${plat}.zip"
+  local zip_path="${GREEN_RELEASE}/$(portable_zip_basename "$plat")"
   local pyplat
 
   if ! pyplat="$(uv_platform "$plat")"; then
@@ -254,10 +256,13 @@ assemble_one() {
 
   rm -f "$zip_path"
   echo "[package] ${plat}: zipping → ${zip_path}"
+  local zip_name zip_stem
+  zip_name="$(basename "$zip_path")"
+  zip_stem="${zip_name%.zip}"
   (
     cd "$GREEN_RELEASE"
     if command -v zip >/dev/null 2>&1; then
-      zip -qry "Octop-${plat}.zip" "Octop-${plat}"
+      zip -qry "$zip_name" "Octop-${plat}"
     else
       # Windows runners often have `python` but not `python3` / `zip`.
       py=""
@@ -270,7 +275,7 @@ assemble_one() {
         echo "[package] need zip or python to create archive" >&2
         exit 1
       fi
-      "$py" -c "import shutil; shutil.make_archive('Octop-${plat}', 'zip', '.', 'Octop-${plat}')"
+      "$py" -c "import shutil; shutil.make_archive('${zip_stem}', 'zip', '.', 'Octop-${plat}')"
     fi
   )
   echo "[package] wrote ${zip_path}"
