@@ -204,7 +204,7 @@ export const channelApi = {
         current?: number;
         total?: number;
       }>;
-      qr_token?: string;
+      qr_url?: string;
       app_id?: string;
       app_secret?: string;
       return_code?: number;

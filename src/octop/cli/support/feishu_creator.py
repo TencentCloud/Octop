@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import time
 from typing import Any
 
@@ -18,15 +17,15 @@ from octop.infra.gateway.bot_creators.feishu_runner import (
 
 
 def dry_run_feishu_setup(*, agent_id: str, platform: str, channel_id: str | None) -> None:
-    """Print what ``feishu-setup`` would do without starting the browser flow."""
+    """Print what ``feishu-setup`` would do without starting the scan-to-create flow."""
     click.echo("Dry run — no subprocess or channel writes.")
     click.echo(f"  agent:      {agent_id}")
     click.echo(f"  platform:   {platform}")
     click.echo(f"  channel_id: {channel_id or '(create new feishu channel)'}")
     click.echo("  steps:")
-    click.echo("    1. Start feishu_bot_creator.py subprocess")
+    click.echo("    1. Start feishu_bot_creator.py subprocess (lark-oapi register_app)")
     click.echo("    2. Poll stdout until app_id + app_secret")
-    click.echo("    3. Render QR in terminal when qr_token appears")
+    click.echo("    3. Render QR in terminal when qr_url appears")
     click.echo("    4. Stop subprocess")
     click.echo("    5. PATCH or POST channel with app_id / app_secret")
 
@@ -51,9 +50,9 @@ def run_feishu_bot_creator(
                 message = ev.get("message") or ev.get("step") or ""
                 if message and level in ("info", "success", ""):
                     click.echo(f"  {message}")
-            qr_token = poll.get("qr_token")
-            if qr_token and not shown_qr:
-                render_qrcode_terminal(json.dumps({"qrlogin": {"token": qr_token}}))
+            qr_url = poll.get("qr_url")
+            if qr_url and not shown_qr:
+                render_qrcode_terminal(str(qr_url))
                 shown_qr = True
             app_id = poll.get("app_id") or app_id
             app_secret = poll.get("app_secret") or app_secret

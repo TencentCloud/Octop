@@ -521,7 +521,7 @@ def feishu_setup(
     dry_run: bool,
     retries: int,
 ) -> None:
-    """Run Feishu bot-creator (browser QR) and save app credentials."""
+    """Run Feishu scan-to-create (lark-oapi QR) and save app credentials."""
     from octop.cli.support.feishu_creator import dry_run_feishu_setup, run_feishu_bot_creator
     from octop.cli.support.offline_ops import create_channel_offline, patch_channel_offline
     from octop.infra.errors import OctopError
