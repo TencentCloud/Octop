@@ -18,6 +18,7 @@
 - 桌面启动页改为白底卡片和底部进度条；Windows 设置窗加高，避免底边距被裁掉
 - 桌面壳内隐藏「安装为桌面应用」，避免在已原生窗口里再提示 PWA 安装
 - 日志按大小+按日轮转，并采用 logrotate 风格的 `compress` + `delaycompress`（最新一份轮转文件暂不 gzip，下一轮再压；用 Python 标准库，Windows 可用）
+- 远程手机自动安装 Docker 后，非 root 时用 `sudo -n` 写 `daemon.json` 并重启 dockerd
 
 ## [0.9.31] - 2026-09-01
 

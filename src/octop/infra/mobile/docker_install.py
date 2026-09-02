@@ -203,12 +203,52 @@ async def _probe_tencent_mirror() -> bool:
     return True
 
 
+def _privileged_cmd(*cmd: str) -> list[str]:
+    """Prefix ``sudo -n`` when we are not already root (passwordless sudo)."""
+    if geteuid() == 0:
+        return list(cmd)
+    return ["sudo", "-n", *cmd]
+
+
+def _run_privileged(*cmd: str, input_bytes: bytes | None = None) -> bool:
+    """Run ``cmd``, prefixing ``sudo -n`` when the process is not root."""
+    argv = list(cmd) if geteuid() == 0 else _privileged_cmd(*cmd)
+    try:
+        proc = subprocess.run(
+            argv,
+            input=input_bytes,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def _copy_privileged(src: Path, dst: Path) -> bool:
+    try:
+        shutil.copy2(src, dst)
+        return True
+    except OSError:
+        return _run_privileged("cp", "-a", str(src), str(dst))
+
+
+def _write_text_privileged(path: Path, text: str) -> bool:
+    try:
+        path.write_text(text, encoding="utf-8")
+        return True
+    except OSError:
+        return _run_privileged("tee", str(path), input_bytes=text.encode("utf-8"))
+
+
 def _merge_registry_mirror(daemon_json: Path, mirror: str) -> bool:
     """Add ``registry-mirrors`` to daemon.json unless already configured.
 
     Backs up the previous file as ``daemon.json.backup``. Returns True when the
     file was written; False when left untouched (already configured, or the
-    existing file is unreadable/corrupt).
+    existing file is unreadable/corrupt). Writes via ``sudo -n`` when the
+    process is not root (same gate as the install itself).
     """
     config: dict[str, object] = {}
     if daemon_json.exists():
@@ -223,20 +263,15 @@ def _merge_registry_mirror(daemon_json: Path, mirror: str) -> bool:
         return False
     if not daemon_json.parent.exists():
         return False
-    if daemon_json.exists():
-        try:
-            shutil.copy2(daemon_json, daemon_json.parent / f"{daemon_json.name}.backup")
-        except OSError:
-            return False
-    config["registry-mirrors"] = [mirror]
-    try:
-        daemon_json.write_text(
-            json.dumps(config, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-    except OSError:
+    if daemon_json.exists() and not _copy_privileged(
+        daemon_json, daemon_json.parent / f"{daemon_json.name}.backup"
+    ):
         return False
-    return True
+    config["registry-mirrors"] = [mirror]
+    return _write_text_privileged(
+        daemon_json,
+        json.dumps(config, indent=2, ensure_ascii=False) + "\n",
+    )
 
 
 async def _restart_docker_daemon() -> bool:
@@ -246,9 +281,10 @@ async def _restart_docker_daemon() -> bool:
     ):
         if shutil.which(cmd[0]) is None:
             continue
+        argv = _privileged_cmd(*cmd)
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd,
+                *argv,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )

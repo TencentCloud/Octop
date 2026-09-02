@@ -111,6 +111,54 @@ def test_merge_registry_mirror_skips_corrupt_file(tmp_path: Path) -> None:
     assert daemon.read_text(encoding="utf-8") == "{not json"  # left untouched
 
 
+def test_privileged_cmd_prefixes_sudo_when_not_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(docker_install, "geteuid", lambda: 1000)
+    assert docker_install._privileged_cmd("systemctl", "restart", "docker") == [
+        "sudo",
+        "-n",
+        "systemctl",
+        "restart",
+        "docker",
+    ]
+    monkeypatch.setattr(docker_install, "geteuid", lambda: 0)
+    assert docker_install._privileged_cmd("systemctl", "restart", "docker") == [
+        "systemctl",
+        "restart",
+        "docker",
+    ]
+
+
+def test_write_text_privileged_falls_back_to_sudo_tee(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "daemon.json"
+    monkeypatch.setattr(docker_install, "geteuid", lambda: 1000)
+
+    orig_write = Path.write_text
+
+    def boom(_self: Path, *_args: object, **_kwargs: object) -> None:
+        raise PermissionError("denied")
+
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        calls.append(list(argv))
+        raw = kwargs.get("input")
+        assert isinstance(raw, bytes)
+        orig_write(target, raw.decode("utf-8"), encoding="utf-8")
+
+        class _Proc:
+            returncode = 0
+
+        return _Proc()
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    monkeypatch.setattr(docker_install.subprocess, "run", fake_run)
+    assert docker_install._write_text_privileged(target, '{"ok": true}\n') is True
+    assert calls[0] == ["sudo", "-n", "tee", str(target)]
+    assert json.loads(target.read_text(encoding="utf-8")) == {"ok": True}
+
+
 @pytest.mark.asyncio
 async def test_probe_tencent_mirror_unreachable() -> None:
     # 127.0.0.1:1 → connection refused → probe returns False quickly.
