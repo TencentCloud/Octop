@@ -739,9 +739,7 @@ export function ChannelDrawer({
   };
 
   // ── Feishu Flow ─────────────────────────────────────────────────────────
-  const startFeishuCreator = async (
-    platform: "feishu" | "lark" = "feishu",
-  ) => {
+  const startFeishuCreator = async (platform: "feishu" | "lark" = "feishu") => {
     stopPolling();
     setQrState({
       phase: "feishu_creating",

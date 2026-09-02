@@ -29,6 +29,7 @@ from octop.infra.gateway.process.response_mode import (
 )
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.gateway.title_distill import TitleDistillQueue
 from octop.infra.gateway.ws import (
     WS_CHANNEL_ID,
     WebSocketChannel,
@@ -119,6 +120,7 @@ class Gateway:
         self._cli_channel: CliChannel | None = None
         self._runtime_status: dict[str, ChannelRuntimeStatus] = {}
         self._history_backfill = HistoryBackfillQueue()
+        self._title_distill = TitleDistillQueue()
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point channel/thread persistence at a rebound control-plane pool."""
@@ -210,6 +212,7 @@ class Gateway:
             usage_repo=self._repos.usage_repo,
             thread_message_repo=self._repos.thread_message_repo,
             gateway=self,
+            title_distill=self._title_distill,
         )
 
         self._channel_manager = ChannelManager(channels={})
@@ -281,6 +284,7 @@ class Gateway:
 
     async def shutdown(self) -> None:
         await self._history_backfill.close()
+        await self._title_distill.close()
         if self._channel_manager:
             await self._channel_manager.stop()
         self._channel_manager = None

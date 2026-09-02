@@ -322,6 +322,14 @@ class ThreadRegistry:
     def update_title(self, thread_id: str, title: str) -> None:
         self._threads.update_title(thread_id, title)
 
+    def replace_auto_thread_title(
+        self,
+        thread_id: str,
+        user_source: str,
+        new_title: str,
+    ) -> bool:
+        return self._threads.replace_auto_thread_title(thread_id, user_source, new_title)
+
     def set_pinned(self, thread_id: str, pinned: bool) -> None:
         self._threads.set_pinned(thread_id, pinned)
 

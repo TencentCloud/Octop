@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
-import { onSessionEvent } from "./chatStore";
+import { onSessionEvent, onStreamEvent } from "./chatStore";
 import { formatThreadTitle } from "../utils/threadTitle";
 
 export interface Session {
@@ -155,6 +155,53 @@ export async function fetchAndSyncSessionArtifacts(
     return [];
   }
 }
+
+/** Poll server title after a turn (interim clip, then LLM distill). */
+export const TITLE_REFRESH_DELAYS_MS = [
+  500, 2000, 6000, 15000, 30000, 45000, 60000, 90000,
+] as const;
+
+async function refreshSessionTitle(agentId: string, threadId: string) {
+  if (!agentId || !threadId || threadId === "__pending__") return;
+  try {
+    const rows = await octopThreadsApi.list(agentId, 50);
+    const row = rows.find((r) => r.thread_id === threadId);
+    if (!row) return;
+    const name = formatThreadTitle(row.title) || "New Chat";
+    setModuleSessions((prev) => {
+      const idx = prev.findIndex((s) => s.id === threadId);
+      if (idx >= 0) {
+        if (prev[idx].name === name) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], name };
+        return next;
+      }
+      const session = toSession(row);
+      if (session.name === name) {
+        return sortSessions([session, ...prev]).slice(
+          0,
+          getLoadedLimit(agentId),
+        );
+      }
+      return sortSessions([{ ...session, name }, ...prev]).slice(
+        0,
+        getLoadedLimit(agentId),
+      );
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function scheduleSessionTitleRefresh(agentId: string, threadId: string) {
+  for (const delay of TITLE_REFRESH_DELAYS_MS) {
+    window.setTimeout(() => {
+      void refreshSessionTitle(agentId, threadId);
+    }, delay);
+  }
+}
+
+export { scheduleSessionTitleRefresh };
 
 export function isPendingThread(threadId: string): boolean {
   return threadId === "__pending__" || _pendingThreadIds.has(threadId);
@@ -441,6 +488,14 @@ export function useSessions(agentId: string | null) {
       setModuleSessions((prev) => prev.filter((s) => s.id !== sessionId));
     });
   }, []);
+
+  useEffect(() => {
+    if (!agentId) return;
+    return onStreamEvent((event) => {
+      if (event.kind !== "streamEnd") return;
+      scheduleSessionTitleRefresh(agentId, event.sessionId);
+    });
+  }, [agentId]);
 
   const createSession = useCallback((): {
     session: Session;

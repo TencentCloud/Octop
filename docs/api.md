@@ -119,6 +119,8 @@ because each request is a one-shot continuation.
 | `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
 | `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
 
+**Thread titles:** After the first successful assistant reply on a dashboard turn, the gateway sets an interim title from the clipped first user message when `title` is still null, then asynchronously distills a short topic via the agent default model. Distillation replaces the title only while it still matches that auto clip; manual renames via `PATCH` are preserved. The dashboard polls for title updates for up to ~90s after each turn.
+
 ## Channels
 
 | Method | Path | Auth | Notes |

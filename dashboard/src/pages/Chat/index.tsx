@@ -491,8 +491,6 @@ function ChatPageInner() {
   const { handleSend } = useChatSend({
     resolvedAgentId,
     activeThreadId,
-    sessions,
-    messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
@@ -503,7 +501,6 @@ function ChatPageInner() {
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
-    renameSession,
     onAutoRecordingStarted: useCallback((recordingId: string) => {
       setBrowserRecording(true);
       setBrowserRecordingId(recordingId);
