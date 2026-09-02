@@ -49,6 +49,7 @@ import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
 import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
+import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
 import {
@@ -216,6 +217,7 @@ function ChatPageInner() {
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [trajectoryDrawerOpen, setTrajectoryDrawerOpen] = useState(false);
 
   const {
     sessions,
@@ -256,6 +258,7 @@ function ChatPageInner() {
     }
     setAgentProfileOpen(false);
     setWorkspaceDrawerOpen(false);
+    setTrajectoryDrawerOpen(false);
   }, [resolvedAgentId]);
 
   // Weak stream resume may skip intermediate tokens — hint once after rebind.
@@ -342,7 +345,6 @@ function ChatPageInner() {
     openBrowserTab,
     toggleBrowserPanel,
     toggleTerminalPanel,
-    toggleTrajectoryPanel,
     openToolUiTab,
     focusToolUiTab,
     closeTab: closeDockTab,
@@ -1050,7 +1052,8 @@ function ChatPageInner() {
             {!isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
-              !workspaceDrawerOpen && (
+              !workspaceDrawerOpen &&
+              !trajectoryDrawerOpen && (
                 <div className={styles.chatFloatActions}>
                   {/* PWA install first when available — same column as browser / experts. */}
                   <PwaInstallPrompt appearance="chatFloat" />
@@ -1163,7 +1166,7 @@ function ChatPageInner() {
                         type="button"
                         className={styles.chatFloatBtn}
                         disabled={!activeThreadId || !agentChatReady}
-                        onClick={toggleTrajectoryPanel}
+                        onClick={() => setTrajectoryDrawerOpen(true)}
                         aria-label={t("chat.openTrajectory", "运行轨迹")}
                       >
                         <GitBranch size={20} strokeWidth={2.1} />
@@ -1316,6 +1319,12 @@ function ChatPageInner() {
               />
             </>
           )}
+          <TrajectoryDrawer
+            agentId={resolvedAgentId ?? ""}
+            threadId={activeThreadId}
+            open={trajectoryDrawerOpen}
+            onClose={() => setTrajectoryDrawerOpen(false)}
+          />
         </div>
       </ChatToolDockProvider>
     </ChatFilePreviewProvider>

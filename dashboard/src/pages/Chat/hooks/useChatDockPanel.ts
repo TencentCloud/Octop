@@ -21,7 +21,6 @@ export type DockTab =
   | { id: "files"; kind: "files" }
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
-  | { id: "trajectory"; kind: "trajectory" }
   | { id: string; kind: "file"; path: string }
   | {
       id: string;
@@ -32,6 +31,13 @@ export type DockTab =
     };
 
 export type DockTabId = DockTab["id"];
+
+/** Drop retired dock tabs (pre-drawer trajectory) if they appear in stored lists. */
+export function ensureNoTrajectoryTab<T extends { kind: string }>(
+  tabs: readonly T[],
+): T[] {
+  return tabs.filter((t) => t.kind !== "trajectory");
+}
 
 function loadPanelMode(): PanelMode {
   try {
@@ -96,7 +102,7 @@ function fallbackActiveId(
 }
 
 /**
- * Shared chat dock with tabbed file list / file viewers / browser / terminal / trajectory.
+ * Shared chat dock with tabbed file list / file viewers / browser / terminal.
  */
 export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   const [dockOpen, setDockOpen] = useState(false);
@@ -226,11 +232,9 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     [openDock],
   );
 
-  /** Toggle dock open/closed around a dedicated tab (browser / terminal / trajectory). */
+  /** Toggle dock open/closed around a dedicated tab (browser / terminal). */
   const toggleDockTab = useCallback(
-    (
-      tab: Extract<DockTab, { kind: "browser" | "terminal" | "trajectory" }>,
-    ) => {
+    (tab: Extract<DockTab, { kind: "browser" | "terminal" }>) => {
       setDockOpen((prevOpen) => {
         if (prevOpen && activeTabId === tab.id) {
           return false;
@@ -255,10 +259,6 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
 
   const toggleTerminalPanel = useCallback(() => {
     toggleDockTab({ id: "terminal", kind: "terminal" });
-  }, [toggleDockTab]);
-
-  const toggleTrajectoryPanel = useCallback(() => {
-    toggleDockTab({ id: "trajectory", kind: "trajectory" });
   }, [toggleDockTab]);
 
   const closeTab = useCallback((id: DockTabId) => {
@@ -321,7 +321,6 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleBrowserPanel,
     openTerminalTab,
     toggleTerminalPanel,
-    toggleTrajectoryPanel,
     openToolUiTab,
     focusToolUiTab,
     closeTab,
