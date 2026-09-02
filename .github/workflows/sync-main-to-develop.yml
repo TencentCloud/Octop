@@ -19,6 +19,11 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag being synced, e.g. v0.9.31. Blank = read main's pyproject.toml."
+        required: false
+        type: string
   release:
     types:
       - published
@@ -47,14 +52,24 @@ jobs:
       - name: Sync develop onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name || github.event.workflow_run.head_branch || 'manual' }}
+          TAG: ${{ inputs.version || github.event.release.tag_name || github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          version="${TAG#v}"
-          sync_branch="chore/sync-develop-after-${version}"
           git fetch origin main develop
+
+          # Release dispatches this workflow with GITHUB_TOKEN, so the release /
+          # workflow_run payloads are empty. Fall back to main's shipped version
+          # rather than a constant, or every release would reuse (and force-push)
+          # the same sync branch.
+          version="${TAG#v}"
+          if [ -z "$version" ]; then
+            version="$(git show origin/main:pyproject.toml \
+              | sed -nE 's/^version = "([^"]+)".*/\1/p' | head -1)"
+          fi
+          : "${version:?could not resolve the version being synced}"
+          sync_branch="chore/sync-develop-after-${version}"
 
           if git merge-base --is-ancestor origin/main origin/develop; then
             echo "develop already contains main tip; nothing to sync."
@@ -118,7 +133,7 @@ jobs:
               --base develop \
               --head "${sync_branch}" \
               --title "chore: sync develop onto main after ${version}" \
-              --body "Post-release sync so \`main\` stays an ancestor of \`develop\` (${TAG}). Merge when CI is green."
+              --body "Post-release sync so \`main\` stays an ancestor of \`develop\` (v${version}). Carries main's already-tested tree, so CI is skipped for this branch."
           )"
           echo "Created sync PR: ${url}"
 

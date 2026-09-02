@@ -148,7 +148,8 @@ jobs:
         run: |
           gh workflow run sync-main-to-develop.yml \
             --repo "${{ github.repository }}" \
-            --ref main
+            --ref main \
+            -f version="${{ github.ref_name }}"
 
   # FnOS FPK：复用本 Release 的 wheel + docker-publish 的 GHCR 镜像。
   # 与 sync-develop 并行；失败不阻断发版。
