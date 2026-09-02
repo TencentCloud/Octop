@@ -105,6 +105,18 @@ def configure_browser_profiles_dir(profiles_dir: Path | None = None) -> Path:
     return resolved
 
 
+def configure_browser_idle_timeout(timeout_minutes: int) -> None:
+    """Apply Octop's browser idle policy to harness-browser."""
+    timeout = max(int(timeout_minutes), 0)
+    os.environ["BROWSER_USE_IDLE_TIMEOUT_MINUTES"] = str(timeout)
+    with contextlib.suppress(Exception):
+        from harness_browser.settings import settings as hb_settings  # noqa: PLC0415
+
+        runtime_settings: Any = hb_settings
+        runtime_settings.idle_timeout_minutes = float(timeout)
+    logger.debug("BROWSER_USE_IDLE_TIMEOUT_MINUTES=%s", timeout)
+
+
 def harness_settings_for_screenshots_dir(screenshots_dir: Path) -> Any | None:
     """Build :class:`HarnessSettings` when harness-browser is installed."""
     try:

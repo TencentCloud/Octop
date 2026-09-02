@@ -49,7 +49,7 @@ def _seed_memory(srv: Any, agent_id: str) -> None:
         RawEvent,
     )
 
-    workspace = srv.services.paths.ensure_agent_workspace(agent_id)
+    workspace = srv.app_runtime.agent_registry.resolve_workspace_dir(agent_id)
     row = srv.services.agent_repo.get(agent_id)
     cfg: dict[str, Any] = {}
     if row is not None and row.config_json:

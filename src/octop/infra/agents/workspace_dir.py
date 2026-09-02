@@ -185,6 +185,23 @@ def resolve_workspace_host_path(raw: str, cfg: dict[str, Any] | None = None) -> 
     return (root / text).resolve()
 
 
+def harness_workspace_path(raw: str, cfg: dict[str, Any] | None = None) -> Path:
+    """Path handed to harness as ``workspace_dir``.
+
+    The persisted value goes through as-is whenever the platform can express it
+    as an absolute path. Windows cannot: the agent-facing
+    ``/.octop/workspaces/<id>`` form has no drive letter, and harness rejects a
+    non-absolute workspace — fall back to the on-disk host mapping there.
+    """
+    text = raw.strip()
+    if not text:
+        raise ValueError("workspace_dir is empty")
+    candidate = Path(text)
+    if candidate.is_absolute():
+        return candidate
+    return resolve_workspace_host_path(text, cfg)
+
+
 def _backend_virtual_mode(cfg: dict[str, Any] | None) -> bool:
     backend = (cfg or {}).get("backend")
     if not isinstance(backend, dict):
@@ -337,6 +354,7 @@ __all__ = [
     "agent_facing_workspace_dir_from_config",
     "agent_facing_workspace_root",
     "default_agent_workspace_dir",
+    "harness_workspace_path",
     "host_system_dir",
     "join_agent_facing",
     "local_backend_root_dir",

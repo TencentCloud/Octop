@@ -46,6 +46,18 @@ async def test_hashed_dashboard_assets_are_immutable(tmp_octop_home: Path) -> No
             assert r.headers.get("cache-control") == "public, max-age=31536000, immutable"
 
 
+async def test_missing_hashed_asset_returns_404(tmp_octop_home: Path) -> None:
+    if not (_DASHBOARD / "index.html").exists():
+        return
+    async with octop_client(tmp_octop_home) as (_client, srv):
+        app = build_app(srv)
+        with TestClient(app) as c:
+            # A stale shell asks for a deleted chunk; answering with index.html
+            # would make the browser reject HTML as a module script.
+            r = c.get("/assets/index.deadbeef.js")
+            assert r.status_code == 404
+
+
 async def test_path_traversal_is_blocked(tmp_octop_home: Path) -> None:
     async with octop_client(tmp_octop_home) as (_client, srv):
         app = build_app(srv)

@@ -33,6 +33,7 @@ import {
 } from "./sidebarNav";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
+import { DESKTOP_DRAG_REGION_CLASS } from "../utils/desktopChrome";
 
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
 /** Minimal settings pane: skip the "设置" group header (duplicates the pane title). */
@@ -722,7 +723,7 @@ export default function Sidebar({
       }}
     >
       <div
-        className={styles.sidebarBrand}
+        className={`${styles.sidebarBrand} ${DESKTOP_DRAG_REGION_CLASS}`}
         style={{
           display: "flex",
           alignItems: "center",

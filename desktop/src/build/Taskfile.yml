@@ -26,15 +26,20 @@ tasks:
       - echo "skip generate bindings"
 
   generate:icons:
-    summary: Generates .ico / .icns from appicon.png
+    summary: Generates .ico from appicon.png and .icns from appicon-macos.png
     dir: build
     sources:
       - appicon.png
+      - appicon-macos.png
     generates:
       - darwin/icons.icns
       - windows/icon.ico
     cmds:
-      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+      # Windows / Linux keep the full-bleed artwork.
+      - wails3 generate icons -input appicon.png -windowsfilename windows/icon.ico -macfilename ""
+      # macOS expects 824x824 artwork on a 1024x1024 canvas; a full-bleed tile
+      # renders ~24% larger than every other app in the Dock and Launchpad.
+      - wails3 generate icons -input appicon-macos.png -macfilename darwin/icons.icns -windowsfilename ""
 
   dev:frontend:
     summary: Serves the embedded shell assets for Wails dev mode

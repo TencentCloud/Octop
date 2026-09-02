@@ -45,13 +45,32 @@
   font-family: inherit;
 }
 
-.skillItemRow {
+.entityCard {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
   min-width: 0;
   padding: 10px 12px;
+}
+
+.entityCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  > :last-child {
+    flex-shrink: 0;
+  }
+}
+
+.entityCardTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionTitleRow {

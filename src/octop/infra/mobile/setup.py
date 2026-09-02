@@ -15,6 +15,11 @@ from typing import Literal
 from octop.config import OctopConfig
 from octop.i18n import tr
 from octop.infra.mobile.adb import adb_connect, find_adb, list_devices
+from octop.infra.mobile.docker_install import (
+    auto_install_docker_stream,
+    can_install_without_password,
+    docker_daemon_ready,
+)
 
 SetupState = Literal["needs_device", "needs_install", "ready", "unsupported"]
 MobileBackend = Literal["physical", "redroid", "emulator", "none"]
@@ -213,9 +218,22 @@ async def install_mobile_stream(*, locale: str = "en") -> AsyncIterator[str]:
         yield _sse({"done": False, "error": "script_missing"})
         return
     if not _docker_available():
-        yield _sse({"log": _mobile_log(locale, "error_docker_missing")})
-        yield _sse({"done": False, "error": "docker_missing"})
-        return
+        # Try to install Docker automatically; fall back to manual guidance.
+        installed = False
+        if platform.system().lower() == "linux" and can_install_without_password():
+            yield _sse({"log": _mobile_log(locale, "docker_missing_auto_install")})
+            async for msg in auto_install_docker_stream(locale=locale):
+                yield _sse({"log": msg})
+            # Authoritative check: the daemon answering beats script exit codes
+            # (e.g. Docker was installed just now by another process).
+            installed = await docker_daemon_ready()
+        else:
+            yield _sse({"log": _mobile_log(locale, "error_docker_missing")})
+        if not installed:
+            yield _sse({"log": _mobile_log(locale, "docker_auto_install_failed")})
+            yield _sse({"done": False, "error": "docker_missing"})
+            return
+        yield _sse({"log": _mobile_log(locale, "docker_auto_install_ok")})
     yield _sse({"log": _mobile_log(locale, "install_log_start")})
     proc = await asyncio.create_subprocess_exec(
         "bash",

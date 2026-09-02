@@ -2,11 +2,15 @@ package main
 
 import (
 	"archive/zip"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
@@ -24,7 +28,7 @@ func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
 	embeddedPortable = data
 	t.Cleanup(func() { embeddedPortable = prev })
 
-	if err := ensurePortable(func(string) {}); err != nil {
+	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
 	if !launchReady(portableDir()) {
@@ -41,7 +45,7 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	writeTestGreenZip(t, zipPath)
 
 	var statuses []string
-	err := ensurePortable(func(status string) {
+	err := ensurePortable(LocaleZH, func(status string) {
 		statuses = append(statuses, status)
 	})
 	if err != nil {
@@ -80,6 +84,81 @@ func TestLaunchReadyRejectsFlattenedPythonSymlink(t *testing.T) {
 	}
 	if launchReady(root) {
 		t.Fatal("flattened Python symlink must not be treated as a ready runtime")
+	}
+}
+
+func TestFormatHealthWaitErrorIsActionableChinese(t *testing.T) {
+	err := formatHealthWaitError(LocaleZH, "http://127.0.0.1:8088/", time.Minute, errors.New("connection refused"), 0)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	msg := err.Error()
+	for _, needle := range []string{
+		"Octop 服务未在",
+		"1 分钟",
+		"http://127.0.0.1:8088",
+		"请确认",
+	} {
+		if !strings.Contains(msg, needle) {
+			t.Fatalf("friendly health error missing %q: %s", needle, msg)
+		}
+	}
+	if strings.Contains(msg, "/api/health") {
+		t.Fatalf("user-facing status should not expose the health path: %s", msg)
+	}
+	if strings.Contains(msg, "did not become healthy") {
+		t.Fatalf("should not use the old English diagnostic: %s", msg)
+	}
+}
+
+func TestFormatHealthWaitErrorUsesEnglishWhenLocaleIsEn(t *testing.T) {
+	msg := formatHealthWaitError(LocaleEN, "http://127.0.0.1:8088", time.Minute, errors.New("connection refused"), 0).Error()
+	for _, needle := range []string{
+		"Octop did not become ready within",
+		"1 minute",
+		"http://127.0.0.1:8088",
+		"make sure Octop is running",
+	} {
+		if !strings.Contains(msg, needle) {
+			t.Fatalf("English health error missing %q: %s", needle, msg)
+		}
+	}
+	if strings.Contains(msg, "服务未在") || strings.Contains(msg, "请确认") {
+		t.Fatalf("English locale should not use Chinese splash copy: %s", msg)
+	}
+}
+
+func TestFormatHealthWaitErrorUsesServiceNotReadyHintOn5xx(t *testing.T) {
+	zh := formatHealthWaitError(LocaleZH, "http://127.0.0.1:8088", 2*time.Minute, nil, 503).Error()
+	if !strings.Contains(zh, "2 分钟") || !strings.Contains(zh, "尚未就绪") {
+		t.Fatalf("zh 5xx hint: %s", zh)
+	}
+	en := formatHealthWaitError(LocaleEN, "http://127.0.0.1:8088", 2*time.Minute, nil, 503).Error()
+	if !strings.Contains(en, "2 minutes") || !strings.Contains(en, "not ready yet") {
+		t.Fatalf("en 5xx hint: %s", en)
+	}
+}
+
+func TestWaitHealthSucceedsOnOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	if err := waitHealth(LocaleZH, srv.URL, time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitHealthTimesOutWithFriendlyMessage(t *testing.T) {
+	err := waitHealth(LocaleEN, "http://127.0.0.1:1", 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("closed port should time out")
+	}
+	if strings.Contains(err.Error(), "did not become healthy") {
+		t.Fatalf("should not use the old English diagnostic: %s", err)
+	}
+	if !strings.Contains(err.Error(), "Octop did not become ready within") {
+		t.Fatalf("timeout should follow the desktop locale: %s", err)
 	}
 }
 

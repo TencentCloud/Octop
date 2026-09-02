@@ -975,6 +975,40 @@ async def test_on_provider_changed_removes_stale_provider(tmp_path: Path, monkey
 
 
 @pytest.mark.asyncio
+async def test_deferred_create_initializes_workspace_before_bootstrap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    services = _make_services(tmp_path)
+    registry = _make_registry(services)
+    events: list[str] = []
+    bootstrapped = asyncio.Event()
+
+    async def initialize(row: Any, workspace: Any) -> None:
+        assert row.last_state != "starting"
+        await workspace.awrite_text("seeded.txt", "ready", force=True)
+        events.append("initialized")
+
+    async def bootstrap(row: Any) -> None:
+        workspace = registry._backend_workspace_for_row(row)
+        assert await workspace.aread_text("seeded.txt") == "ready"
+        events.append("bootstrapped")
+        bootstrapped.set()
+
+    monkeypatch.setattr(registry, "_complete_create_bootstrap", bootstrap)
+
+    row = await registry.create(
+        AgentCreateSpec(name="deferred-seed"),
+        defer_bootstrap=True,
+        workspace_initializer=initialize,
+    )
+
+    assert row.last_state == "starting"
+    assert events == ["initialized"]
+    await asyncio.wait_for(bootstrapped.wait(), timeout=1)
+    assert events == ["initialized", "bootstrapped"]
+
+
+@pytest.mark.asyncio
 async def test_create_with_template_writes_files(tmp_path: Path) -> None:
     """create() with template_name uploads expert files to the agent backend."""
     from octop.infra.agents.experts.catalog import (  # noqa: PLC0415

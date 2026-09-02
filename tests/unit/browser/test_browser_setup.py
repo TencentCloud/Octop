@@ -26,6 +26,26 @@ from octop.infra.browser.setup import (
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only runtime dirs")
 
 
+def test_configure_browser_idle_timeout_updates_harness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from harness_browser.settings import settings as hb_settings
+
+    from octop.infra.utils.browser_media import configure_browser_idle_timeout
+
+    previous = getattr(hb_settings, "idle_timeout_minutes", None)
+    try:
+        configure_browser_idle_timeout(17)
+        assert os.environ["BROWSER_USE_IDLE_TIMEOUT_MINUTES"] == "17"
+        assert hb_settings.idle_timeout_minutes == 17.0
+    finally:
+        if previous is None:
+            delattr(hb_settings, "idle_timeout_minutes")
+        else:
+            hb_settings.idle_timeout_minutes = previous
+        monkeypatch.delenv("BROWSER_USE_IDLE_TIMEOUT_MINUTES", raising=False)
+
+
 def test_clear_profile_locks_removes_singleton_files(tmp_path: Path) -> None:
     profile = tmp_path / "default"
     profile.mkdir()

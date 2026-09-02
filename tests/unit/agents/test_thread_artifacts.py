@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
@@ -24,11 +22,9 @@ from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
 
-# POSIX/container workspace path semantics (e.g. rootfs-absolute /.octop/...);
-# on Windows Path("/home/wally/...").resolve() gains a drive letter.
-posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX workspace path semantics")
 
-_WS = Path("/home/wally/.octop/agents/ABC123")
+def _ws(tmp_path: Path) -> Path:
+    return tmp_path / ".octop" / "agents" / "ABC123"
 
 
 class _FakeThreads:
@@ -55,72 +51,75 @@ def test_is_artifact_tool_name() -> None:
     assert not is_artifact_tool_name("ls")
 
 
-@posix_only
-def test_normalize_artifact_path_absolute_passthrough_relative_joins_workspace() -> None:
-    abs_path = "/home/wally/.octop/agents/ABC123/docs/note.md"
-    assert normalize_artifact_path(abs_path, _WS) == abs_path
+def test_normalize_artifact_path_absolute_passthrough_relative_joins_workspace(
+    tmp_path: Path,
+) -> None:
+    ws = _ws(tmp_path)
+    abs_path = str((ws / "docs" / "note.md").as_posix())
+    assert normalize_artifact_path(abs_path, ws) == abs_path
     # Absolute-looking paths are stored as-is (no rewrite).
     assert (
-        normalize_artifact_path("/.octop/agents/main/skills/env-reader/SKILL.md", _WS)
+        normalize_artifact_path("/.octop/agents/main/skills/env-reader/SKILL.md", ws)
         == "/.octop/agents/main/skills/env-reader/SKILL.md"
     )
-    assert normalize_artifact_path("outbound/screenshots/harness.png", _WS) == str(
-        (_WS / "outbound/screenshots/harness.png").as_posix()
+    assert normalize_artifact_path("outbound/screenshots/harness.png", ws) == str(
+        (ws / "outbound/screenshots/harness.png").as_posix()
     )
-    assert normalize_artifact_path("_builtin_skills/foo/SKILL.md", _WS) == ""
+    assert normalize_artifact_path("_builtin_skills/foo/SKILL.md", ws) == ""
 
 
-@posix_only
-def test_artifacts_for_response_upgrades_legacy_relative_paths() -> None:
-    abs_path = "/home/wally/.octop/agents/ABC123/docs/a.md"
+def test_artifacts_for_response_upgrades_legacy_relative_paths(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
+    abs_path = str((ws / "docs" / "a.md").as_posix())
     out = artifacts_for_response(
         ["docs/a.md", abs_path, "/.octop/agents/main/skills/x.md"],
-        _WS,
+        ws,
     )
     # Relative upgrades to workspace abs; identical abs dedupes; other abs kept.
     assert out == [
-        str((_WS / "docs/a.md").as_posix()),
+        str((ws / "docs/a.md").as_posix()),
         "/.octop/agents/main/skills/x.md",
     ]
 
 
-@posix_only
-def test_extract_from_write_file_args() -> None:
+def test_extract_from_write_file_args(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
     paths = extract_artifact_paths(
         tool_name="write_file",
         args={"path": "generated/report.pptx"},
-        workspace_dir=_WS,
+        workspace_dir=ws,
     )
-    assert paths == [str((_WS / "generated/report.pptx").as_posix())]
+    assert paths == [str((ws / "generated/report.pptx").as_posix())]
     assert extract_artifact_paths(tool_name="read_file", args={"path": "a.md"}) == []
 
 
-@posix_only
-def test_extract_prefers_args_over_result_text() -> None:
+def test_extract_prefers_args_over_result_text(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
     paths = extract_artifact_paths(
         tool_name="write_file",
         args={"path": "generated/report.pptx"},
         result="Also mentioned outbound/screenshots/harness.png in the log",
-        workspace_dir=_WS,
+        workspace_dir=ws,
     )
-    assert paths == [str((_WS / "generated/report.pptx").as_posix())]
+    assert paths == [str((ws / "generated/report.pptx").as_posix())]
 
 
-def test_extract_screenshot_from_tool_result_text() -> None:
+def test_extract_screenshot_from_tool_result_text(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
     abs_path = "/Users/me/.octop/agents/A1/outbound/screenshots/harness.png"
     paths = extract_artifact_paths(
         tool_name="desktop_screenshot",
         args={},
         result=f"Screenshot saved to {abs_path}",
-        workspace_dir=_WS,
+        workspace_dir=ws,
     )
     assert paths == [abs_path]
 
 
-@posix_only
-def test_middleware_records_successful_write() -> None:
+def test_middleware_records_successful_write(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
     store = _FakeThreads()
-    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_WS)
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=ws)
     request = _request("write_file", {"path": "docs/note.md"})
     result = ToolMessage(content="ok", tool_call_id="tc1")
     with patch(
@@ -129,12 +128,13 @@ def test_middleware_records_successful_write() -> None:
     ):
         out = mw.wrap_tool_call(request, lambda _req: result)
     assert out is result
-    assert store.calls == [("thr_1", [str((_WS / "docs/note.md").as_posix())])]
+    assert store.calls == [("thr_1", [str((ws / "docs/note.md").as_posix())])]
 
 
-def test_middleware_records_absolute_write_as_is() -> None:
+def test_middleware_records_absolute_write_as_is(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
     store = _FakeThreads()
-    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_WS)
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=ws)
     abs_path = "/.octop/agents/main/skills/env-reader/SKILL.md"
     request = _request("write_file", {"path": abs_path})
     with patch(
@@ -148,9 +148,9 @@ def test_middleware_records_absolute_write_as_is() -> None:
     assert store.calls == [("thr_1", [abs_path])]
 
 
-def test_middleware_skips_error_and_command() -> None:
+def test_middleware_skips_error_and_command(tmp_path: Path) -> None:
     store = _FakeThreads()
-    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_WS)
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_ws(tmp_path))
     request = _request("write_file", {"path": "docs/note.md"})
     error = ToolMessage(content="fail", tool_call_id="tc1", status="error")
     with patch(
@@ -162,9 +162,9 @@ def test_middleware_skips_error_and_command() -> None:
     assert store.calls == []
 
 
-def test_middleware_skips_without_thread_id() -> None:
+def test_middleware_skips_without_thread_id(tmp_path: Path) -> None:
     store = _FakeThreads()
-    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_WS)
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=_ws(tmp_path))
     request = _request("write_file", {"path": "docs/note.md"})
     with patch(
         "octop.infra.agents.middleware.thread_artifacts.current_thread_id",

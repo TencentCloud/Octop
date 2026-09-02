@@ -5,8 +5,12 @@
 
 const RELOAD_FLAG_KEY = "octop:chunk-reload";
 
+// A stale hashed chunk can also surface as a MIME rejection: the SPA fallback
+// answers the deleted `/assets/*.js` with `index.html`, and the browser refuses
+// to evaluate HTML as a module. WebKit (macOS desktop shell), Chrome and Firefox
+// each word that differently.
 const CHUNK_ERROR_RE =
-  /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk [\w.-]+ failed|ChunkLoadError|error loading dynamically imported module/i;
+  /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk [\w.-]+ failed|ChunkLoadError|error loading dynamically imported module|is not a valid JavaScript MIME type|Failed to load module script|Expected a JavaScript(?:-or-Wasm)? module script|disallowed MIME type/i;
 
 /**
  * A pending full-page navigation aborts every in-flight dynamic import, which

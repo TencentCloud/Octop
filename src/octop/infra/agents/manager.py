@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import shutil
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -477,7 +477,13 @@ class AgentManager:
     # CRUD — persist agent rows and sync harness runtime
     # ------------------------------------------------------------------
 
-    async def create(self, spec: AgentCreateSpec, *, defer_bootstrap: bool = False) -> AgentRow:
+    async def create(
+        self,
+        spec: AgentCreateSpec,
+        *,
+        defer_bootstrap: bool = False,
+        workspace_initializer: Callable[[AgentRow, Any], Awaitable[None]] | None = None,
+    ) -> AgentRow:
         """Create a new agent, persist to DB, and register with harness."""
         async with self._lock:
             self._assert_agent_name_available(spec.user_id, spec.name)
@@ -551,8 +557,15 @@ class AgentManager:
                 assert row is not None
             if spec.template_name:
                 await self._seed_expert_template(row, spec.template_name)
+            if workspace_initializer is not None:
+                workspace = self._backend_workspace_for_row(row)
+                await workspace_initializer(row, workspace)
+                row = self._repos.agent_repo.get(agent_id)
+                assert row is not None
             if defer_bootstrap:
                 self._repos.agent_repo.set_state(agent_id, "starting")
+                row = self._repos.agent_repo.get(agent_id)
+                assert row is not None
                 asyncio.create_task(
                     self._complete_create_bootstrap(row),
                     name=f"bootstrap-agent-{agent_id}",
@@ -2305,6 +2318,7 @@ class AgentManager:
         from harness_agent.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
         from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+            harness_workspace_path,
             resolve_workspace_host_path,
             system_files_path_from_config,
         )
@@ -2313,7 +2327,7 @@ class AgentManager:
         raw = cfg.get("workspace_dir")
         if isinstance(raw, str) and raw.strip():
             # Persisted value goes to harness as-is; host map is Octop-local only.
-            harness_workspace = Path(raw.strip())
+            harness_workspace = harness_workspace_path(raw, cfg)
             workspace_dir = resolve_workspace_host_path(raw, cfg)
             workspace_dir.mkdir(parents=True, exist_ok=True)
         else:

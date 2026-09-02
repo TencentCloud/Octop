@@ -2,6 +2,11 @@ import type { ReactNode } from "react";
 import { Segmented, Typography } from "antd";
 import AgentSelector from "../components/AgentSelector";
 import { useIsMobile } from "../hooks/useIsMobile";
+import {
+  titleRowEndPadding,
+  DESKTOP_DRAG_REGION_CLASS,
+  DESKTOP_NO_DRAG_CLASS,
+} from "../utils/desktopChrome";
 import styles from "./PageShell.module.less";
 
 const { Title, Text } = Typography;
@@ -109,6 +114,7 @@ function PageShell({
 
   return (
     <div
+      className={DESKTOP_DRAG_REGION_CLASS}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -127,6 +133,7 @@ function PageShell({
           gap: 12,
           flexShrink: 0,
           marginBottom: agentScoped ? 12 : 24,
+          paddingRight: titleRowEndPadding(outerPad),
         }}
       >
         <div>
@@ -165,6 +172,7 @@ function PageShell({
          tabbed pages get more usable horizontal space. Path tabs on mobile
          pin above the body (same chrome as Workbench / Personalization). */}
       <div
+        className={DESKTOP_NO_DRAG_CLASS}
         style={{
           flex: 1,
           background: "var(--fn-bg-container, var(--fn-bg-elevated))",

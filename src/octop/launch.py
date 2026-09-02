@@ -4,11 +4,49 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+from contextlib import suppress
 from typing import Any
 
 from octop.infra.server import OctopServer
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_linux_bubblewrap() -> None:
+    """Best-effort startup provisioning; never fail the ``octop run`` process."""
+    try:
+        from octop.infra.utils.bwrap import ensure_bubblewrap
+
+        result = ensure_bubblewrap()
+    except Exception:
+        logger.warning("background bubblewrap provisioning failed", exc_info=True)
+        return
+    status = result.get("status")
+    detail = result.get("detail")
+    if status == "degraded":
+        logger.warning("background bubblewrap provisioning degraded: %s", detail or "unknown")
+    else:
+        logger.info("background bubblewrap provisioning status=%s", status)
+
+
+def _schedule_linux_bubblewrap_ensure() -> asyncio.Task[None] | None:
+    """Run bubblewrap provisioning once in the background on Linux."""
+    if not sys.platform.startswith("linux"):
+        return None
+    return asyncio.create_task(
+        asyncio.to_thread(_ensure_linux_bubblewrap),
+        name="ensure-linux-bubblewrap",
+    )
+
+
+async def _cancel_background_task(task: asyncio.Task[None] | None) -> None:
+    """Drop a startup background task on shutdown; never raise."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
 
 
 async def _serve(server: Any) -> None:
@@ -35,6 +73,7 @@ async def run_foreground(
 
     srv = OctopServer()
     await srv.start()
+    bwrap_task = _schedule_linux_bubblewrap_ensure()
     # Greenfield deferral leaves services unset until /setup/database binds.
     cfg = srv.services.config if srv.services is not None else srv.config
     assert cfg is not None
@@ -108,6 +147,7 @@ async def run_foreground(
     try:
         await asyncio.gather(*(_serve(s) for s in servers))
     finally:
+        await _cancel_background_task(bwrap_task)
         await srv.stop()
 
 

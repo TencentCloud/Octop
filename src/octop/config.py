@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_UPLOAD_MB = 100
 MIN_MAX_UPLOAD_MB = 1
 MAX_MAX_UPLOAD_MB = 1024
+DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES = 30
 
 _VALID_DRIVERS = frozenset({"sqlite", "postgresql"})
 
@@ -134,6 +135,7 @@ class OctopConfig:
     backup: BackupConfig = field(default_factory=BackupConfig)
     capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
     max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB
+    browser_idle_timeout_minutes: int = DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES
 
     @property
     def max_upload_bytes(self) -> int:
@@ -443,6 +445,17 @@ def load_config(path: Path) -> OctopConfig:
         merged["max_upload_mb"] = parse_max_upload_mb(
             merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)
         )
+    if v := os.environ.get("OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES"):
+        merged["browser_idle_timeout_minutes"] = _coerce_int(
+            "OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES",
+            v,
+            int(
+                merged.get(
+                    "browser_idle_timeout_minutes",
+                    DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES,
+                )
+            ),
+        )
 
     capabilities = _parse_capabilities_section(raw.get("capabilities"))
     if v := os.environ.get("OCTOP_ENABLE_MOBILE"):
@@ -514,4 +527,13 @@ def load_config(path: Path) -> OctopConfig:
         backup=backup,
         capabilities=capabilities,
         max_upload_mb=int(merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)),
+        browser_idle_timeout_minutes=max(
+            0,
+            int(
+                merged.get(
+                    "browser_idle_timeout_minutes",
+                    DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES,
+                )
+            ),
+        ),
     )

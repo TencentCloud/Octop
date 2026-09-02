@@ -119,11 +119,22 @@ def test_loads_database_section(tmp_path: Path):
 def test_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_PORT", "7000")
     monkeypatch.setenv("OCTOP_LOG_LEVEL", "warning")
+    monkeypatch.setenv("OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES", "12")
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"port": 8088}))
     cfg = load_config(cfg_path)
     assert cfg.port == 7000
     assert cfg.log_level == "warning"
+    assert cfg.browser_idle_timeout_minutes == 12
+
+
+def test_browser_idle_timeout_defaults_and_can_be_disabled(tmp_path: Path):
+    cfg = load_config(tmp_path / "config.json")
+    assert cfg.browser_idle_timeout_minutes == 30
+
+    cfg_path = tmp_path / "disabled.json"
+    cfg_path.write_text(json.dumps({"browser_idle_timeout_minutes": 0}))
+    assert load_config(cfg_path).browser_idle_timeout_minutes == 0
 
 
 def test_database_env_sqlite_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

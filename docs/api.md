@@ -366,6 +366,7 @@ endpoint (public, mounted directly in `api/app.py`).
 | `WS`/`POST`/`GET`/… | `/agents/{aid}/terminal` | owner | AI-assisted remote PTY |
 | `GET` | `/agents/{aid}/terminal/context` | owner | recent terminal context for the AI helper |
 | `WS`/`POST`/`GET`/… | `/browser/...` | user | remote Playwright sessions, screenshots, live streams |
+| `POST` | `/browser/shutdown` | user | stop the local Chrome process for a harness profile (`?profile=`) |
 | `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
 | `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |
 | `GET`  | `/agents/{aid}/files/{path}` | owner | read an inbound file |

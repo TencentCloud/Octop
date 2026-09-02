@@ -180,11 +180,16 @@ async def test_hub_install_mounts_skill_packages(env: Any, monkeypatch: pytest.M
         )
     ).json()["id"]
     row = await server.app_runtime.agent_registry.create(
-        AgentCreateSpec(name="hub-packaged-expert", user_id=1),
+        AgentCreateSpec(
+            name="hub-packaged-expert",
+            user_id=1,
+            skill_package_ids=[package_id],
+        ),
         defer_bootstrap=True,
     )
 
-    async def fake_create_skillhub_market_agent(**_kwargs: Any) -> Any:
+    async def fake_create_skillhub_market_agent(**kwargs: Any) -> Any:
+        assert kwargs["options"].skill_package_ids == [package_id]
         return SimpleNamespace(
             row=row,
             expert_id="hub-expert",

@@ -17,8 +17,6 @@ from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
     read_workspace_manifest_welcome,
-    welcome_payload_from_expert,
-    welcome_payload_has_content,
 )
 from octop.infra.agents.profile import welcome_from_row
 from octop.infra.errors import ErrorCode, OctopError
@@ -60,8 +58,7 @@ async def get_chat_welcome(
     Resolution order:
     1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
     2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
-    3. Bundled expert catalog entry for ``template_name`` (legacy agents).
-    4. Default quick cards (``general-assistant`` or a small built-in set).
+    3. Default quick cards (``general-assistant`` or a small built-in set).
     """
     assert_agent_access(server, agent_id, user)
     assert server.app_runtime is not None
@@ -74,14 +71,6 @@ async def get_chat_welcome(
         payload = await read_workspace_manifest_welcome(workspace)
 
     row = registry.get_row(agent_id)
-    template = (row.template_name if row else None) or ""
-    if payload is None and catalog is not None and template:
-        expert = catalog.get(template)
-        if expert is not None:
-            candidate = welcome_payload_from_expert(expert)
-            if welcome_payload_has_content(candidate):
-                payload = candidate
-
     if payload is None:
         payload = default_welcome_payload(catalog)
 

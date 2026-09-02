@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"time"
 
@@ -18,20 +19,18 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-//go:embed assets/tray-icon.png
-var trayIcon []byte
-
 const trayDoubleClick = 400 * time.Millisecond
 
 // App is the Wails service bound to the shell UI.
 type App struct {
-	app      *application.App
-	window   *application.WebviewWindow
-	store    *settingsStore
-	sleep    *sleepGuard
-	cmd      *exec.Cmd
-	mu       sync.Mutex
-	quitting bool
+	app            *application.App
+	window         *application.WebviewWindow
+	settingsWindow *application.WebviewWindow
+	store          *settingsStore
+	sleep          *sleepGuard
+	cmd            *exec.Cmd
+	mu             sync.Mutex
+	quitting       bool
 
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
@@ -102,6 +101,13 @@ func (a *App) ShowMain() {
 	a.showWindow()
 }
 
+func (a *App) HideSettings() {
+	if a.settingsWindow == nil {
+		return
+	}
+	a.settingsWindow.Hide()
+}
+
 func (a *App) Quit() {
 	a.requestQuit()
 }
@@ -151,9 +157,13 @@ func (a *App) setStatus(msg string) {
 }
 
 func (a *App) boot() {
+	locale := LocaleZH
+	if a.store != nil {
+		locale = a.store.get().Locale
+	}
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
-		a.setStatus("正在连接 Octop…")
-		if err := waitHealth(url, 60*time.Second); err != nil {
+		a.setStatus(desktopText(locale, "正在连接 Octop…", "Connecting to Octop…"))
+		if err := waitHealth(locale, url, 60*time.Second); err != nil {
 			a.setStatus(err.Error())
 			return
 		}
@@ -161,8 +171,8 @@ func (a *App) boot() {
 		return
 	}
 	s := a.store.get()
-	a.setStatus("正在检查运行环境…")
-	if err := ensurePortable(a.setStatus); err != nil {
+	a.setStatus(desktopText(locale, "正在检查运行环境…", "Checking the runtime…"))
+	if err := ensurePortable(locale, a.setStatus); err != nil {
 		a.setStatus(err.Error())
 		return
 	}
@@ -177,8 +187,8 @@ func (a *App) boot() {
 		return
 	}
 	base := dashboardURL(s.Port)
-	a.setStatus("正在启动 Octop 服务…")
-	if err := waitHealth(base, 2*time.Minute); err != nil {
+	a.setStatus(desktopText(locale, "正在启动 Octop 服务…", "Starting the Octop service…"))
+	if err := waitHealth(locale, base, 2*time.Minute); err != nil {
 		a.setStatus(err.Error())
 		return
 	}
@@ -196,7 +206,7 @@ func (a *App) showDashboard(base string) {
 		time.Sleep(800 * time.Millisecond)
 		a.applyDashboardPrefs(s)
 	}()
-	a.setStatus("Octop 已就绪")
+	a.setStatus(desktopText(s.Locale, "Octop 已就绪", "Octop is ready"))
 }
 
 func (a *App) hideToTray() {
@@ -254,39 +264,7 @@ func (a *App) installDragOverlay() {
 	if a.window == nil {
 		return
 	}
-	a.window.ExecJS(`(function(){
-		if (!document.body || !window._wails || typeof window._wails.invoke !== 'function') return;
-		var bar = document.getElementById('octop-window-drag-overlay');
-		if (!bar) {
-			bar = document.createElement('div');
-			bar.id = 'octop-window-drag-overlay';
-			bar.setAttribute('aria-hidden', 'true');
-			bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:32px;z-index:2147483647;background:transparent;user-select:none;';
-			document.body.appendChild(bar);
-		}
-		if (bar.dataset.octopDragReady === '1') return;
-		bar.dataset.octopDragReady = '1';
-		var armed = false, startX = 0, startY = 0;
-		bar.addEventListener('mousedown', function(event) {
-			if (event.button !== 0) return;
-			armed = true;
-			startX = event.screenX;
-			startY = event.screenY;
-		}, true);
-		window.addEventListener('mousemove', function(event) {
-			if (!armed) return;
-			if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) < 4) return;
-			armed = false;
-			window._wails.invoke('wails:drag');
-		}, true);
-		window.addEventListener('mouseup', function() { armed = false; }, true);
-		bar.addEventListener('dblclick', function(event) {
-			event.preventDefault();
-			event.stopPropagation();
-			armed = false;
-			window._wails.invoke('wails:event:emit:desktop:toggle-maximise');
-		}, true);
-	})();`)
+	a.window.ExecJS(dragOverlayJS())
 }
 
 func (a *App) scheduleDragOverlay() {
@@ -337,7 +315,7 @@ func main() {
 	api.app = app
 	attachOpenURLEventListener(app, api.OpenExternal)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
-		app.SetIcon(trayIcon)
+		applyAppIcon(app)
 	})
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -353,14 +331,20 @@ func main() {
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
 	})
+	app.Event.On("desktop:minimise", func(_ *application.CustomEvent) {
+		win.Minimise()
+	})
+	app.Event.On("desktop:close", func(_ *application.CustomEvent) {
+		api.hideToTray()
+	})
 	installDragOverlay := func(_ *application.WindowEvent) { api.scheduleDragOverlay() }
 	win.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, installDragOverlay)
 	win.OnWindowEvent(events.Windows.WebViewNavigationCompleted, installDragOverlay)
 	win.OnWindowEvent(events.Linux.WindowLoadFinished, installDragOverlay)
 	settingsWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Octop 设置",
-		Width:            400,
-		Height:           500,
+		Width:            settingsWindowWidth,
+		Height:           settingsWindowOuterHeight(),
 		URL:              "/?settings=1",
 		Hidden:           true,
 		Frameless:        true,
@@ -370,6 +354,11 @@ func main() {
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: true,
 		},
+	})
+	api.settingsWindow = settingsWin
+	app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(event *application.ApplicationEvent) {
+		event.Cancel()
+		restoreMainAfterDockClick(api.window, api.settingsWindow)
 	})
 
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
@@ -396,11 +385,16 @@ func main() {
 	})
 
 	tray := app.SystemTray.New()
-	tray.SetIcon(trayIcon)
+	applyTrayIcon(tray)
 	tray.SetTooltip("Octop")
 	tray.AttachWindow(settingsWin).WindowOffset(6)
-	tray.OnClick(func() { api.onTrayLeftClick() })
-	tray.OnRightClick(func() { tray.ShowWindow() })
+	showSettings := func() { tray.ShowWindow() }
+	if trayLeftClickShowsSettings(runtime.GOOS) {
+		tray.OnClick(showSettings)
+	} else {
+		tray.OnClick(func() { api.onTrayLeftClick() })
+	}
+	tray.OnRightClick(showSettings)
 
 	if _, err := api.setAutostart(store.get().Autostart); err != nil {
 		log.Printf("sync autostart: %v", err)

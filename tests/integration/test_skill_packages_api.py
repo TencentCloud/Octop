@@ -172,7 +172,21 @@ async def test_import_skill_url_into_package(env: Any, monkeypatch: pytest.Monke
 
 
 async def test_delete_package_strips_agent_mounts(env_with_main_agent: Any) -> None:
-    client, server, auth, agent_id = env_with_main_agent
+    client, server, auth, _main_agent_id = env_with_main_agent
+    created = await client.post(
+        "/api/agents/from-expert/general-assistant",
+        headers=auth,
+        json={
+            "name": "Package Mount Agent",
+            "backend": {
+                "type": "local_shell",
+                "root_dir": "/",
+                "virtual_mode": True,
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
     package_id = (
         await client.post(
             "/api/skill-packages",

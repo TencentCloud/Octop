@@ -4,6 +4,7 @@ import {
   isWriteTodosToolName,
   parsePartialTodoPayload,
   parseWriteTodosToolData,
+  sortTodoItems,
 } from "./parseWriteTodos";
 
 describe("parseWriteTodosToolData", () => {
@@ -81,5 +82,34 @@ describe("collectWriteTodosFromMessages", () => {
     expect(items).toEqual([
       { id: "1", content: "Plan", status: "in_progress" },
     ]);
+  });
+
+  it("keeps original id order instead of grouping by status", () => {
+    const items = collectWriteTodosFromMessages([
+      {
+        toolData: {
+          name: "write_todos",
+          arguments: JSON.stringify({
+            todos: [
+              { id: "1", content: "调研", status: "completed" },
+              { id: "2", content: "实现", status: "in_progress" },
+              { id: "3", content: "测试", status: "pending" },
+            ],
+          }),
+        },
+      },
+    ]);
+    expect(items.map((item) => item.content)).toEqual(["调研", "实现", "测试"]);
+  });
+});
+
+describe("sortTodoItems", () => {
+  it("orders numeric ids naturally so 10 follows 2", () => {
+    const items = sortTodoItems([
+      { id: "10", content: "步骤10", status: "pending" },
+      { id: "2", content: "步骤2", status: "completed" },
+      { id: "1", content: "步骤1", status: "in_progress" },
+    ]);
+    expect(items.map((item) => item.id)).toEqual(["1", "2", "10"]);
   });
 });

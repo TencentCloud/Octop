@@ -24,10 +24,6 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
-# Rootfs-absolute workspace paths (e.g. /.octop/workspaces/<id>) are a
-# Linux/Docker sandbox concept; on Windows they are not absolute paths.
-posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX rootfs workspace paths")
-
 # Real HarnessAgentManager starts memory maintenance (GC/vacuum) on a daemon
 # thread. Closing the agent while that tick holds the SQLite handle races on
 # Windows (access violation under pytest-xdist). Unit tests here only need
@@ -964,7 +960,6 @@ async def test_create_keeps_user_workspace_dir(
 
 
 @pytest.mark.asyncio
-@posix_only
 async def test_create_persists_rootfs_workspace_under_scoped_root(
     manager: AgentManager,
     tmp_path: Path,
@@ -1001,8 +996,12 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
         assert host.is_dir()
         assert (host / "AGENTS.md").is_file()
         harness_cfg = manager._build_harness_config(row)
-        # Harness receives the persisted agent-facing path — not the host join.
-        assert Path(harness_cfg.workspace_dir) == Path(f"/.octop/workspaces/{row.agent_id}")
+        # POSIX hands harness the persisted agent-facing path — not the host join.
+        # Windows cannot express it as absolute, so harness gets the host mapping.
+        expected_harness_ws = (
+            Path(f"/.octop/workspaces/{row.agent_id}") if os.name == "posix" else host
+        )
+        assert Path(harness_cfg.workspace_dir) == expected_harness_ws
         assert not (tmp_path / ".octop" / "agents" / row.agent_id).exists()
     finally:
         manager._harness_manager.close()

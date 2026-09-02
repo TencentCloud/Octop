@@ -22,7 +22,7 @@ Platforms:
   windows-arm64 windows-amd64
 
 The platform defaults to the current native host. --reuse-portable skips
-rebuilding desktop/portable/release/Octop-<platform>.zip when it already exists.
+rebuilding desktop/portable/release/Octop-portable-<platform>-<version>.zip when it already exists.
 EOF
 }
 
@@ -61,7 +61,8 @@ if ! command -v wails3 >/dev/null 2>&1; then
 fi
 
 arch="${plat##*-}"
-portable_zip="${REPO_ROOT}/desktop/portable/release/Octop-${plat}.zip"
+ver="$(octop_version)"
+portable_zip="${REPO_ROOT}/desktop/portable/release/$(portable_zip_basename "$plat")"
 
 echo "[desktop-release] platform=${plat}"
 echo "[desktop-release] building Dashboard"
@@ -99,14 +100,10 @@ PYTHONNOUSERSITE=1 "$portable_python" \
 echo "[desktop-release] packaging Wails application"
 (
   cd "${REPO_ROOT}/desktop/src"
-  wails3 task package "ARCH=${arch}" "PORTABLE_ZIP=${portable_zip}"
+  wails3 task package "ARCH=${arch}" "PORTABLE_ZIP=${portable_zip}" "VERSION=${ver}"
 )
 
-case "$plat" in
-  darwin-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.dmg" ;;
-  windows-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.exe" ;;
-  linux-*) output="${REPO_ROOT}/desktop/src/bin/Octop-Desktop-${plat}.tar" ;;
-esac
+output="${REPO_ROOT}/desktop/src/bin/$(desktop_pkg_basename "$plat")"
 if [[ ! -s "$output" ]]; then
   echo "desktop release was not created: ${output}" >&2
   exit 1

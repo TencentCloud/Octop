@@ -2,26 +2,21 @@ name: Sync Main Into Develop
 
 # After Release succeeds, sync main → develop.
 #
-# Primary trigger: Release.yml explicitly dispatches this workflow (see
-# sync-develop job). Do not rely only on `release: published` or
-# `workflow_run` — when Auto Tag starts Release with GITHUB_TOKEN, those
-# events often never create a Sync run. workflow_dispatch remains for
-# manual catch-up; workflow_run / release are kept as best-effort backups.
+# Only trigger: Release.yml (and humans) dispatch this workflow. Do not also
+# listen for `release: published` or `workflow_run` — those duplicate the
+# explicit dispatch and force-push the same sync branch.
 #
 # Strategy: keep main an ancestor of develop. Try merge first; on conflict,
 # rebuild on main and open a PR (develop is often branch-protected against
 # force-push). Never use head=main merge PRs — that pattern conflicts when
 # main was updated via a bulk develop merge (#150-style divergence).
 on:
-  workflow_run:
-    workflows:
-      - Release
-    types:
-      - completed
   workflow_dispatch:
-  release:
-    types:
-      - published
+    inputs:
+      version:
+        description: "Release tag being synced, e.g. v0.9.31. Blank = read main's pyproject.toml."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -30,12 +25,6 @@ permissions:
 jobs:
   sync:
     name: Sync main into develop
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,14 +36,23 @@ jobs:
       - name: Sync develop onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name || github.event.workflow_run.head_branch || 'manual' }}
+          TAG: ${{ inputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          version="${TAG#v}"
-          sync_branch="chore/sync-develop-after-${version}"
           git fetch origin main develop
+
+          # Prefer the version input from Release.yml. Fall back to main's
+          # shipped pyproject so a blank dispatch still gets a unique branch
+          # name instead of colliding across releases.
+          version="${TAG#v}"
+          if [ -z "$version" ]; then
+            version="$(git show origin/main:pyproject.toml \
+              | sed -nE 's/^version = "([^"]+)".*/\1/p' | head -1)"
+          fi
+          : "${version:?could not resolve the version being synced}"
+          sync_branch="chore/sync-develop-after-${version}"
 
           if git merge-base --is-ancestor origin/main origin/develop; then
             echo "develop already contains main tip; nothing to sync."
@@ -118,7 +116,7 @@ jobs:
               --base develop \
               --head "${sync_branch}" \
               --title "chore: sync develop onto main after ${version}" \
-              --body "Post-release sync so \`main\` stays an ancestor of \`develop\` (${TAG}). Merge when CI is green."
+              --body "Post-release sync so \`main\` stays an ancestor of \`develop\` (v${version}). Carries main's already-tested tree, so CI is skipped for this branch."
           )"
           echo "Created sync PR: ${url}"
 

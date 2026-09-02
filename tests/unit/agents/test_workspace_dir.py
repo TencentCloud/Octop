@@ -8,6 +8,7 @@ from octop.infra.agents.workspace_dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
     default_agent_workspace_dir,
+    harness_workspace_path,
     join_agent_facing,
     resolve_workspace_host_path,
     scoped_workspace_dir_str,
@@ -82,6 +83,21 @@ def test_host_rooted_default_uses_octop_home(tmp_path: Path) -> None:
     host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="A1")
     assert cfg["workspace_dir"] == str(host)
     assert host == (tmp_path / ".octop" / "agents" / "A1").resolve()
+
+
+def test_harness_workspace_keeps_absolute_persisted_value(tmp_path: Path) -> None:
+    root = tmp_path / "home"
+    cfg = _scoped_cfg(root, workspace_dir=str(tmp_path / "ws"))
+    assert harness_workspace_path(cfg["workspace_dir"], cfg) == tmp_path / "ws"
+
+
+def test_harness_workspace_maps_non_absolute_persisted_value(tmp_path: Path) -> None:
+    """Windows cannot express ``/.octop/workspaces/<id>`` as absolute — host-map it."""
+    root = tmp_path / "home"
+    cfg = _scoped_cfg(root, workspace_dir=".octop/workspaces/W1N")
+    assert harness_workspace_path(cfg["workspace_dir"], cfg) == (
+        root / ".octop" / "workspaces" / "W1N"
+    )
 
 
 def test_workspace_dir_from_config_roundtrip(tmp_path: Path) -> None:

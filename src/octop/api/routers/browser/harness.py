@@ -49,10 +49,10 @@ async def _is_session_alive(sess: Any, *, timeout: float = 2.0) -> bool:
     ``Runtime.evaluate`` to confirm the CDP connection is still usable.
     """
     try:
+        client = sess._internal.client  # noqa: SLF001
+        send = getattr(client, "send_passive", client.send)
         await asyncio.wait_for(
-            sess._internal.client.send(  # noqa: SLF001
-                "Runtime.evaluate", {"expression": "1", "returnByValue": True}
-            ),
+            send("Runtime.evaluate", {"expression": "1", "returnByValue": True}),
             timeout=timeout,
         )
         return True
@@ -207,7 +207,9 @@ async def resolve_harness_session(
 
 async def harness_page_url(sess: Any) -> str:
     try:
-        info = await sess._internal.client.send(  # noqa: SLF001
+        client = sess._internal.client  # noqa: SLF001
+        send = getattr(client, "send_passive", client.send)
+        info = await send(
             "Runtime.evaluate",
             {
                 "expression": "location.href",
@@ -340,3 +342,39 @@ async def handoff(
             "last_activity_at": now,
         }
     return {"ok": True, "session": session}
+
+
+@router.post(
+    "/browser/shutdown",
+    summary="Stop the local Chrome process for a harness-browser profile",
+)
+async def shutdown_browser(
+    profile: str | None = Query(
+        default=None,
+        description="Profile name. Defaults to the live session, then 'default'.",
+    ),
+    _: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Terminate Octop-managed Chrome for ``profile``. Cookies stay on disk."""
+    try:
+        from harness_browser.tool_interface import _registry, browser_tool
+    except ImportError as exc:
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR,
+            "harness-browser not installed",
+            status=503,
+        ) from exc
+
+    hint = (profile or "").strip()
+    if not hint or hint == "auto":
+        hint = next(iter(_registry), "default")
+
+    result = await browser_tool(action="close_session", profile=hint, kill=True)
+    _CONTROL_OWNERS.pop(hint, None)
+    if not result.success:
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR,
+            result.error or f"failed to stop browser profile {hint!r}",
+            status=503,
+        )
+    return {"ok": True, "profile": hint}

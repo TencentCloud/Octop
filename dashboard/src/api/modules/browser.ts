@@ -139,6 +139,14 @@ export const browserApi = {
       },
     ),
 
+  /** Stop the local Chrome process. Login cookies stay in the on-disk profile. */
+  shutdown: (profile?: string) => {
+    const path = profile
+      ? `/browser/shutdown?profile=${encodeURIComponent(profile)}`
+      : "/browser/shutdown";
+    return request<{ ok: boolean; profile: string }>(path, { method: "POST" });
+  },
+
   // -- Browser stream (WebSocket CDP screencast, ~10 fps) --
 
   /**
