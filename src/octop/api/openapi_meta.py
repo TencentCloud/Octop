@@ -65,7 +65,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "chat",
-        "description": "Dashboard chat: WebSocket streaming, threads, conversation history, and text-push toasts.",
+        "description": "Dashboard chat: WebSocket streaming, threads, conversation history, trajectory ledger, and text-push toasts.",
     },
     {
         "name": "slash",
