@@ -65,9 +65,20 @@ def _tool_ctx() -> tuple[str, int, str]:
     return str(agent_id), user_id, str(session_key)
 
 
+def _user_owns_agent(mgr: CronManager, agent_id: str, user_id: int) -> bool:
+    row = mgr._repos.agent_repo.get(agent_id)
+    return row is not None and row.user_id == user_id
+
+
+def _require_agent_owner(mgr: CronManager, agent_id: str, user_id: int) -> None:
+    if not _user_owns_agent(mgr, agent_id, user_id):
+        raise ValueError("cron jobs can only be managed by the expert owner")
+
+
 def _get_owned(mgr: CronManager, cron_id: str, agent_id: str, user_id: int) -> CronJobRow:
+    _require_agent_owner(mgr, agent_id, user_id)
     row = mgr.get(cron_id)
-    if row is None or row.agent_id != agent_id or row.user_id != user_id:
+    if row is None or row.agent_id != agent_id:
         raise ValueError(f"cron job not found: {cron_id}")
     return row
 
@@ -87,11 +98,9 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
     async def cronjob_list(include_disabled: bool = True) -> str:
         try:
             agent_id, user_id, _session_key = _tool_ctx()
-            rows = [
-                r
-                for r in mgr.list_by_agent(agent_id, include_disabled=include_disabled)
-                if r.user_id == user_id
-            ]
+            if not _user_owns_agent(mgr, agent_id, user_id):
+                return _ok([])
+            rows = mgr.list_by_agent(agent_id, include_disabled=include_disabled)
             return _ok([r.to_public_dict() for r in rows])
         except Exception as exc:
             return _err(exc)
@@ -137,6 +146,7 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
     ) -> str:
         try:
             agent_id, user_id, session_key = _tool_ctx()
+            _require_agent_owner(mgr, agent_id, user_id)
             cron_id = new_cron_id()
             cleaned_prompt = require_cron_prompt(prompt)
             spec = CronCreateSpec(

@@ -143,12 +143,12 @@ because each request is a one-shot continuation.
 | `GET`    | `/settings/timezone` | user | process-level `{timezone}` from `default_timezone` |
 | `GET`    | `/settings/upload` | user | `{max_upload_mb, max_upload_bytes}` from `max_upload_mb` |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
-| `GET`    | `/agents/{aid}/cron` | agent access | list cron rows; shared-agent viewers see only their own rows |
-| `POST`   | `/agents/{aid}/cron` | agent access | body `{name?, trigger, prompt, session_key?, fresh_thread?, enabled?, model?, task_type?}` → `201` |
-| `GET`    | `/agents/{aid}/cron/{cid}` | owner/creator | cron row |
-| `PATCH`  | `/agents/{aid}/cron/{cid}` | owner/creator | body subset → updated row |
-| `DELETE` | `/agents/{aid}/cron/{cid}` | owner/creator | `204` |
-| `POST`   | `/agents/{aid}/cron/{cid}/run-now` | owner/creator | `204` (fire immediately, off-schedule) |
+| `GET`    | `/agents/{aid}/cron` | owner only | list cron rows; non-owners (including admin) get `[]` |
+| `POST`   | `/agents/{aid}/cron` | owner only | body `{name?, trigger, prompt, session_key?, fresh_thread?, enabled?, model?, task_type?}` → `201` |
+| `GET`    | `/agents/{aid}/cron/{cid}` | owner only | cron row |
+| `PATCH`  | `/agents/{aid}/cron/{cid}` | owner only | body subset → updated row |
+| `DELETE` | `/agents/{aid}/cron/{cid}` | owner only | `204` |
+| `POST`   | `/agents/{aid}/cron/{cid}/run-now` | owner only | `204` (fire immediately, off-schedule) |
 
 `task_type` is `"text"` (push prompt directly to the session) or
 `"agent"` (run the prompt through the LLM and push the reply).

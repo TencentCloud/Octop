@@ -170,7 +170,8 @@ function toOctopPatchBody(values: CronJobFormValues) {
 
 export function useCronJobs() {
   const { t } = useTranslation();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId, activeAgent } = useAgent();
+  const canManageJobs = activeAgent?.is_owner === true;
   const [jobs, setJobs] = useState<CronJob[]>([]);
   /** Which agent the currently painted `jobs` belong to (may lag activeAgent). */
   const [jobsOwnerId, setJobsOwnerId] = useState<string | null>(null);
@@ -187,6 +188,8 @@ export function useCronJobs() {
   timezoneRef.current = cronTimezone;
   const activeAgentRef = useRef(activeAgentId);
   activeAgentRef.current = activeAgentId;
+  const canManageRef = useRef(canManageJobs);
+  canManageRef.current = canManageJobs;
   const jobsOwnerRef = useRef<string | null>(null);
   jobsOwnerRef.current = jobsOwnerId;
   /** Per-agent list cache — instant paint when hopping back to an expert. */
@@ -255,7 +258,7 @@ export function useCronJobs() {
   const fetchJobs = useCallback(
     async (opts?: { soft?: boolean }) => {
       const agentId = activeAgentRef.current;
-      if (!agentId) {
+      if (!agentId || !canManageRef.current) {
         setJobs([]);
         setJobsOwnerId(null);
         jobsOwnerRef.current = null;
@@ -318,7 +321,7 @@ export function useCronJobs() {
   // Expert switch: paint cache immediately, revalidate in background.
   useEffect(() => {
     void fetchJobs({ soft: false });
-  }, [activeAgentId, fetchJobs]);
+  }, [activeAgentId, canManageJobs, fetchJobs]);
 
   const createJob = async (values: CronJobFormValues) => {
     if (!activeAgentId) return false;

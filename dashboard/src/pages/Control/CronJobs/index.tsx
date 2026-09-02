@@ -76,7 +76,8 @@ function CronJobsPage() {
   const { isMobile, viewMode, setViewMode, showCardView } =
     useCardTableView("table");
   const navigate = useNavigate();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId, activeAgent } = useAgent();
+  const canManageJobs = activeAgent?.is_owner === true;
   const {
     jobs,
     loading,
@@ -225,9 +226,9 @@ function CronJobsPage() {
     stickyColumns: !isMobile,
   });
 
-  // Until the user picks an agent there is nothing to fetch and no scope
-  // to write to. Mirror the behaviour of the other octop agent-scoped pages.
-  if (!activeAgentId) {
+  // Shared experts are not a task scope. Non-owners should see the same
+  // "pick an agent" empty as if nothing were selected — no shared-expert copy.
+  if (!activeAgentId || !canManageJobs) {
     return (
       <PageShell
         title={t("pageShell.tasks.title")}

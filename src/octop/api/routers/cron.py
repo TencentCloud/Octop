@@ -50,16 +50,14 @@ def _get_cron_manager(server: Any) -> Any:
     return server.app_runtime.cron_manager
 
 
-def _user_may_manage_cron(row: Any, *, agent_row: Any, user: Any) -> bool:
-    if bool(user.is_admin) or user_owns_agent(agent_row, user):
-        return True
-    return bool(row.user_id == user.id)
+def _user_may_manage_agent_cron(*, agent_row: Any, user: Any) -> bool:
+    return user_owns_agent(agent_row, user)
 
 
-def _assert_cron_access(row: Any, *, agent_id: str, agent_row: Any, user: Any) -> None:
-    if row.agent_id != agent_id:
+def _assert_cron_manage(*, agent_id: str, agent_row: Any, user: Any, row: Any | None = None) -> None:
+    if row is not None and row.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
-    if not _user_may_manage_cron(row, agent_row=agent_row, user=user):
+    if not _user_may_manage_agent_cron(agent_row=agent_row, user=user):
         raise OctopError(ErrorCode.FORBIDDEN, "cron job not accessible to user")
 
 
@@ -80,13 +78,11 @@ async def list_cron(
 ) -> list[dict[str, Any]]:
     """List scheduled jobs for an agent."""
     agent_row = require_agent_row(agent_id, user=user, as_user=None, server=server)
-    owner_scope = user.is_admin or user_owns_agent(agent_row, user)
+    if not _user_may_manage_agent_cron(agent_row=agent_row, user=user):
+        return []
     return [
         r.to_public_dict(include_agent=True)
-        for r in _get_cron_manager(server).list_by_agent(
-            agent_id,
-            user_id=None if owner_scope else user.id,
-        )
+        for r in _get_cron_manager(server).list_by_agent(agent_id)
     ]
 
 
@@ -101,7 +97,8 @@ async def create_cron(
     from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
     from octop.infra.cron.manager import CronCreateSpec  # noqa: PLC0415
 
-    require_agent_row(agent_id, user=user, as_user=None, server=server)
+    agent_row = require_agent_row(agent_id, user=user, as_user=None, server=server)
+    _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user)
     prompt = require_cron_prompt(body.prompt)
     cron_id = new_cron_id()
     mcp_servers = (
@@ -138,7 +135,7 @@ async def get_cron(
     row = _get_cron_manager(server).get(cron_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
-    _assert_cron_access(row, agent_id=agent_id, agent_row=agent_row, user=user)
+    _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user, row=row)
     return cast(dict[str, Any], row.to_public_dict(include_agent=True))
 
 
@@ -159,7 +156,7 @@ async def patch_cron(
     existing = mgr.get(cron_id)
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
-    _assert_cron_access(existing, agent_id=agent_id, agent_row=agent_row, user=user)
+    _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user, row=existing)
     if body.trigger is not None:
         build_trigger(body.trigger)
     patch_fields = body.model_dump(exclude_unset=True)
@@ -201,7 +198,7 @@ async def delete_cron(
     existing = mgr.get(cron_id)
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
-    _assert_cron_access(existing, agent_id=agent_id, agent_row=agent_row, user=user)
+    _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user, row=existing)
     await mgr.delete(cron_id)
 
 
@@ -218,5 +215,5 @@ async def run_now(
     existing = mgr.get(cron_id)
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
-    _assert_cron_access(existing, agent_id=agent_id, agent_row=agent_row, user=user)
+    _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user, row=existing)
     await mgr.run_now(cron_id)
