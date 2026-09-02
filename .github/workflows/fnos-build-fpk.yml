@@ -3,18 +3,19 @@ name: Build Octop FPK
 # FnOS (飞牛 NAS) 安装包流水线。
 #
 # 触发：
-#   - Release 工作流在 GitHub Release 创建成功后自动 dispatch（推荐）
-#   - 亦可手动 workflow_dispatch（需对应版本镜像已在 GHCR）
+#   - Release 工作流在 GitHub Release（v*）创建成功后自动 dispatch（推荐）
+#   - 亦可手动 workflow_dispatch（需对应版本镜像已在 GHCR，且 v* Release 已存在）
 #
 # 制品复用：
 #   - Docker 镜像：不再重建，等待 docker-publish 推送的
 #     ghcr.io/tencentcloud/octop:{version|latest}
 #   - Native wheel：优先从同版本 GitHub Release（v*）下载；
 #     缺失时再回退到本仓源码构建
+#   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），不再单独打 fnos-* tag
 #
 # Jobs：
 #   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose）
-#           ↘ native（本地版 .fpk）→ release（按版本号发布 fnos-<ver>）
+#           ↘ native（本地版 .fpk）→ release（把 .fpk 挂到已有的 v* GitHub Release）
 
 on:
   workflow_dispatch:
@@ -48,9 +49,9 @@ jobs:
           IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "tag=fnos-${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
           echo "pkg_ver=${VER}" >> "$GITHUB_OUTPUT"
-          echo "[version] VER=$VER, TAG=fnos-${VER}"
+          echo "[version] VER=$VER, TAG=v${VER}"
 
   # 复用 docker-publish 已推送的镜像，不在此重新 build/push。
   ensure-image:
@@ -256,50 +257,28 @@ jobs:
           cp artifacts/docker-fpk/*.fpk dist/ || true
           cp artifacts/native-fpk/*.fpk dist/ || true
           ls -lh dist
+          if ! ls dist/*.fpk >/dev/null 2>&1; then
+            echo "::error::No .fpk files to attach."
+            exit 1
+          fi
 
-      - name: Generate changelog
-        id: changelog
+      - name: Require existing v* GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          VER="${{ needs.version.outputs.version }}"
-          IMAGE="${{ needs.version.outputs.image }}"
-          PREV_TAG=""
-          for t in $(git tag --list "fnos-*" --sort=-creatordate); do
-            [ "$t" = "fnos-latest" ] && continue
-            if git merge-base --is-ancestor "$t" HEAD 2>/dev/null; then
-              PREV_TAG="$t"
-              break
-            fi
-          done
-          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
-          {
-            echo "## 安装说明"
-            echo ""
-            echo "1. 飞牛应用中心 → 设置 → 手动安装应用，选择对应 .fpk。"
-            echo "2. Docker 版 **Octop-fnos-docker-${VER}.fpk**（约 80KB）：飞牛自动从 GHCR 拉取 \`${IMAGE}:latest\`。"
-            echo "3. 本地版 **Octop-fnos-native-${VER}.fpk**（约 200MB）：非 Docker，原生运行在飞牛主机；安装时自动关联系统 Python 3.12 开发工具；浏览器、远程桌面等附加组件在 Octop 应用内按需安装。"
-            echo ""
-            echo "---"
-            echo "按版本号下载对应 .fpk 即可（如 \`Octop-fnos-docker-${VER}.fpk\` / \`Octop-fnos-native-${VER}.fpk\`）。"
-            echo ""
-            echo "## 本次更新（v${VER}）"
-            echo ""
-            if [ -n "$PREV_TAG" ]; then
-              git log --oneline --no-merges "$PREV_TAG"..HEAD | head -30
-            else
-              git log --oneline --no-merges -30 HEAD
-            fi
-          } > /tmp/release-body.md
-          cat /tmp/release-body.md
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null; then
+            echo "::error::GitHub Release ${TAG} does not exist yet. Run this after Release.yml creates it."
+            exit 1
+          fi
 
-      - name: Publish versioned release
+      - name: Attach fpk to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          name: Octop (FnOS) v${{ needs.version.outputs.pkg_ver }}
-          body_path: /tmp/release-body.md
           files: dist/*.fpk
-          draft: false
-          prerelease: false
+          fail_on_unmatched_files: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
