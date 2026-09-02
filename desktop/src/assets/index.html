@@ -16,6 +16,10 @@
       );
       if (new URLSearchParams(location.search).get("settings") === "1") {
         document.documentElement.dataset.mode = "settings";
+        document.documentElement.style.setProperty(
+          "--window-controls-inset-end",
+          "36px",
+        );
       }
     </script>
     <script type="module" src="/wails/runtime.js"></script>
@@ -87,6 +91,9 @@
       }
       html[data-mode="settings"] .wrap {
         max-width: none;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
         padding: 44px 20px 28px;
       }
       html[data-mode="settings"] #title {
@@ -97,6 +104,7 @@
       }
       html[data-mode="settings"] .actions {
         margin-top: 14px;
+        flex-shrink: 0;
       }
       .ctrl-mac {
         gap: 8px;
@@ -306,28 +314,29 @@
       }
       .loading {
         min-height: 100vh;
-        display: grid;
-        place-content: center;
-        justify-items: center;
-        text-align: center;
-        background:
-          radial-gradient(
-            1200px 420px at 50% 110%,
-            var(--brand-soft) 0%,
-            transparent 62%
-          ),
-          var(--bg-layout);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-layout);
         padding: 56px 24px 40px;
+        box-sizing: border-box;
       }
-      .loading-stage {
+      .loading-card {
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: min(360px, 100%);
+        gap: 14px;
+        width: min(100%, 420px);
+        padding: 36px 32px 32px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+        text-align: center;
       }
       .loading img {
-        width: 148px;
-        aspect-ratio: 352 / 320;
+        width: 120px;
+        aspect-ratio: 1;
         height: auto;
         object-fit: contain;
         background: transparent;
@@ -342,54 +351,64 @@
         transform: scale(0.94);
       }
       .loading-brand {
-        margin: 10px 0 0;
-        font-size: 22px;
-        font-weight: 650;
-        letter-spacing: -0.03em;
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.4;
+        letter-spacing: -0.02em;
         color: var(--text-primary);
       }
-      .spinner {
-        width: 18px;
-        height: 18px;
-        margin-top: 18px;
-        border: 2px solid var(--brand-soft);
-        border-top-color: var(--brand);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-      }
-      .loading-status {
-        margin: 16px 0 0;
-        max-width: 28em;
-        padding: 10px 14px;
-        border-radius: 10px;
-        background: var(--bg-primary);
-        border: 1px solid var(--border);
-        box-shadow: var(--shadow);
-        color: var(--text-secondary);
-        font-size: 13px;
-        line-height: 1.55;
-      }
-      .loading.is-error .spinner {
-        display: none;
-      }
-      .loading.is-error .loading-status {
-        border-color: #fecaca;
-        background: #fef2f2;
-        color: #991b1b;
-      }
       .loading-hint {
-        max-width: 280px;
-        margin: 10px 0 0;
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.6;
         color: var(--text-tertiary);
-        font-size: 12px;
-        line-height: 1.5;
       }
       .loading.is-error .loading-hint {
         display: none;
       }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
+      .loading-footer {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        margin-top: 4px;
+      }
+      .loading-bar {
+        width: 100%;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--brand-soft);
+      }
+      .loading-bar-fill {
+        display: block;
+        width: 36%;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--brand);
+        animation: loading-slide 1.2s ease-in-out infinite;
+      }
+      .loading-status {
+        margin: 0;
+        width: 100%;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .loading.is-error .loading-bar {
+        display: none;
+      }
+      .loading.is-error .loading-status {
+        color: #991b1b;
+      }
+      @keyframes loading-slide {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(320%);
         }
       }
       .hidden {
@@ -465,7 +484,7 @@
     </div>
 
     <div class="loading" id="loading-panel">
-      <div class="loading-stage">
+      <div class="loading-card">
         <img
           id="mascot"
           src="/octop-mascot-peek.webp"
@@ -473,11 +492,15 @@
           draggable="false"
         />
         <p class="loading-brand" id="loading-brand">Octop</p>
-        <div class="spinner" aria-hidden="true"></div>
-        <p class="loading-status" id="status">正在启动，请稍候…</p>
         <p class="loading-hint" id="loading-hint">
           正在检查运行环境，可能需要几分钟。
         </p>
+        <div class="loading-footer">
+          <div class="loading-bar" role="progressbar" aria-hidden="true">
+            <span class="loading-bar-fill"></span>
+          </div>
+          <p class="loading-status" id="status">正在启动，请稍候…</p>
+        </div>
       </div>
     </div>
 
@@ -543,7 +566,7 @@
 
       const copy = {
         zh: {
-          statusWait: "正在启动…",
+          statusWait: "正在启动，请稍候…",
           loadingHint: "正在检查运行环境，可能需要几分钟。",
           title: "Octop 设置",
           subtitle: "桌面端偏好",
@@ -563,7 +586,7 @@
           winClose: "关闭",
         },
         en: {
-          statusWait: "Starting…",
+          statusWait: "Starting, please wait…",
           loadingHint: "Checking the runtime. This may take a few minutes.",
           title: "Octop Settings",
           subtitle: "Desktop preferences",

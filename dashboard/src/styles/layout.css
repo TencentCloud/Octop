@@ -33,6 +33,27 @@ html[data-octop-desktop-chrome] [data-octop-no-drag] {
   --wails-draggable: no-drag;
 }
 
+/* Right-edge overlays sit under the frameless caption buttons unless inset. */
+html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
+  padding-inline-end: max(
+    12px,
+    var(--window-controls-inset-end, 0px)
+  ) !important;
+}
+
+html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-header,
+html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-header {
+  padding-inline-end: max(
+    24px,
+    var(--window-controls-inset-end, 0px)
+  ) !important;
+}
+
+html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-close,
+html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
+  inset-inline-end: var(--window-controls-inset-end, 0px) !important;
+}
+
 #root {
   height: 100%;
   overflow: hidden;
