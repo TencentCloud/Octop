@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyDesktopChrome,
+  CHROME_END_PAD_ATTR,
+  chromeEndPadValue,
   emitDesktopWindowAction,
   installDesktopWindowDrag,
   isDesktopShell,
@@ -8,7 +12,10 @@ import {
   shouldArmDesktopDrag,
   titleRowEndPadding,
   WINDOW_CONTROLS_INSET,
+  WINDOW_CONTROLS_SPACER_ATTR,
+  windowControlsEndSpacerPx,
   DESKTOP_DRAG_REGION_CLASS,
+  DOCK_WINDOW_CONTROLS_PAD_PX,
 } from "./desktopChrome";
 
 describe("desktopChrome", () => {
@@ -49,13 +56,47 @@ describe("desktopChrome", () => {
     ).toBe("windows");
   });
 
-  it("reserves a trailing inset only for the title row", () => {
+  it("reserves a trailing inset for the title row and right-edge overlays", () => {
     expect(WINDOW_CONTROLS_INSET.mac).toBeGreaterThan(0);
     expect(WINDOW_CONTROLS_INSET.windows).toBeGreaterThan(
       WINDOW_CONTROLS_INSET.mac,
     );
     expect(titleRowEndPadding(32)).toContain("--window-controls-inset-end");
     expect(titleRowEndPadding(32)).toContain("32px");
+    expect(CHROME_END_PAD_ATTR).toBe("data-octop-chrome-end-pad");
+    expect(WINDOW_CONTROLS_SPACER_ATTR).toBe(
+      "data-octop-window-controls-spacer",
+    );
+    expect(chromeEndPadValue(12)).toContain("--window-controls-inset-end");
+    expect(chromeEndPadValue(12)).toContain("12px");
+    expect(windowControlsEndSpacerPx("mac", true)).toBe(
+      WINDOW_CONTROLS_INSET.mac,
+    );
+    expect(windowControlsEndSpacerPx("windows", true)).toBe(
+      WINDOW_CONTROLS_INSET.windows,
+    );
+    expect(windowControlsEndSpacerPx("mac", true, 12)).toBe(
+      WINDOW_CONTROLS_INSET.mac - 12,
+    );
+    expect(
+      windowControlsEndSpacerPx("mac", true, DOCK_WINDOW_CONTROLS_PAD_PX),
+    ).toBe(WINDOW_CONTROLS_INSET.mac - DOCK_WINDOW_CONTROLS_PAD_PX);
+    expect(windowControlsEndSpacerPx("windows", true, 12)).toBe(
+      WINDOW_CONTROLS_INSET.windows - 12,
+    );
+    expect(windowControlsEndSpacerPx("mac", false)).toBe(0);
+    expect(windowControlsEndSpacerPx(null, true)).toBe(0);
+  });
+
+  it("pads right-edge overlays away from frameless window controls", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../styles/layout.css"),
+      "utf8",
+    );
+    expect(css).toContain("[data-octop-chrome-end-pad]");
+    expect(css).not.toContain("[data-dock-panel]");
+    expect(css).toContain(".octop-drawer-right");
+    expect(css).toMatch(/padding-inline-end:\s*max\(/);
   });
 
   it("exports a stable class for Wails title-bar dragging", () => {

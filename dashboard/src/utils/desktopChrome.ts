@@ -12,6 +12,34 @@ export const WINDOW_CONTROLS_INSET: Record<DesktopChromeStyle, number> = {
   windows: 138,
 };
 
+/** Right-edge overlay chrome (dock toolbar, etc.) to keep clear of caption buttons. */
+export const CHROME_END_PAD_ATTR = "data-octop-chrome-end-pad";
+export const WINDOW_CONTROLS_SPACER_ATTR = "data-octop-window-controls-spacer";
+
+/**
+ * Dock toolbar already has 12px end padding. Subtract that plus 6px so the
+ * ⋮ / close group sits a few pixels closer to the caption buttons than the
+ * personalization title row.
+ */
+export const DOCK_WINDOW_CONTROLS_PAD_PX = 18;
+
+const INSET_VAR = "--window-controls-inset-end";
+
+/** Inline padding so CSS-module `padding` shorthands cannot clobber the inset. */
+export function chromeEndPadValue(minPx = 12): string {
+  return `max(${minPx}px, var(${INSET_VAR}, 0px))`;
+}
+
+/** Pixel width of a flex spacer that clears overlay caption buttons. */
+export function windowControlsEndSpacerPx(
+  chrome: DesktopChromeStyle | null,
+  panelTouchesWindowEnd: boolean,
+  existingEndPadPx = 0,
+): number {
+  if (!chrome || !panelTouchesWindowEnd) return 0;
+  return Math.max(0, WINDOW_CONTROLS_INSET[chrome] - existingEndPadPx);
+}
+
 /** Marks shell chrome that Wails should treat as a window-drag region. */
 export const DESKTOP_DRAG_REGION_CLASS = "octop-desktop-drag";
 export const DESKTOP_NO_DRAG_CLASS = "octop-desktop-no-drag";
@@ -19,8 +47,6 @@ export const DESKTOP_TITLEBAR_DRAG_HEIGHT = 32;
 
 const NO_DRAG_SELECTOR =
   'button, a, input, textarea, select, [role="button"], [role="menuitem"], [data-octop-no-drag], .octop-desktop-no-drag';
-
-const INSET_VAR = "--window-controls-inset-end";
 
 export function isDesktopShell(
   win: Pick<DesktopWindow, "_wails"> = window as DesktopWindow,

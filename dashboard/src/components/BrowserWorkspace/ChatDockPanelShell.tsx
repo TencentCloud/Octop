@@ -20,6 +20,14 @@ import {
 } from "lucide-react";
 import { beginPointerDragSession } from "../../hooks/usePointerDragSession";
 import type { PanelMode } from "./index";
+import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
+import {
+  DOCK_WINDOW_CONTROLS_PAD_PX,
+  isDesktopShell,
+  resolveDesktopChromeStyle,
+  WINDOW_CONTROLS_SPACER_ATTR,
+  windowControlsEndSpacerPx,
+} from "../../utils/desktopChrome";
 import styles from "./ChatBrowserPanel.module.less";
 
 interface ChatDockPanelShellProps {
@@ -112,6 +120,10 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   children,
 }) => {
   const { t } = useTranslation();
+  const chromeFromContext = useDesktopChromeStyle();
+  const desktopChrome =
+    chromeFromContext ??
+    (isDesktopShell() ? resolveDesktopChromeStyle() : null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevModeRef = useRef<PanelMode>(mode);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
@@ -370,6 +382,15 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     [mode, onModeChange, style],
   );
 
+  const windowControlsSpacerPx = windowControlsEndSpacerPx(
+    desktopChrome,
+    mode === "right" || mode === "popup",
+    DOCK_WINDOW_CONTROLS_PAD_PX,
+  );
+  const toolbarStyle: React.CSSProperties | undefined = popupFullscreen
+    ? { cursor: "default" }
+    : undefined;
+
   const togglePopupFullscreen = useCallback(() => {
     setPopupFullscreen((v) => !v);
   }, []);
@@ -426,7 +447,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
       <div
         className={styles.toolbar}
         onPointerDown={handlePopupDragStart}
-        style={popupFullscreen ? { cursor: "default" } : undefined}
+        style={toolbarStyle}
       >
         <div className={styles.toolbarTitle}>{title}</div>
         <div className={styles.toolbarSpacer} />
@@ -499,6 +520,14 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
             <X size={14} strokeWidth={1.8} />
           </button>
         </div>
+        {windowControlsSpacerPx > 0 ? (
+          <span
+            {...{ [WINDOW_CONTROLS_SPACER_ATTR]: "" }}
+            aria-hidden
+            className={styles.windowControlsSpacer}
+            style={{ width: windowControlsSpacerPx }}
+          />
+        ) : null}
       </div>
       {children}
       {mode === "popup" && !popupFullscreen && (

@@ -344,7 +344,7 @@ func main() {
 	settingsWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Octop 设置",
 		Width:            settingsWindowWidth,
-		Height:           settingsWindowHeight,
+		Height:           settingsWindowOuterHeight(),
 		URL:              "/?settings=1",
 		Hidden:           true,
 		Frameless:        true,

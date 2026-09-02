@@ -8,6 +8,7 @@ import {
   triggerInstall,
   waitForInstallPrompt,
 } from "../../pwa-prompt";
+import { isDesktopShell } from "../../utils/desktopChrome";
 import styles from "./index.module.less";
 
 const DISMISSED_KEY = "pwa:install-dismissed";
@@ -165,7 +166,7 @@ export default function PwaInstallPrompt({
     () => !!localStorage.getItem(DISMISSED_KEY),
   );
 
-  if (isStandalone() || installState.installed) return null;
+  if (isStandalone() || isDesktopShell() || installState.installed) return null;
 
   // Chat right float: always expose the install entry until the app is
   // installed (ignore Header dismiss + beforeinstallprompt lag). Dev has no
@@ -262,7 +263,7 @@ export function PwaAutoPrompt() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    if (!isIosDevice() || isStandalone()) return;
+    if (!isIosDevice() || isStandalone() || isDesktopShell()) return;
     if (
       localStorage.getItem(DISMISSED_KEY) ||
       localStorage.getItem(IOS_SHOWN_KEY)

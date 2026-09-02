@@ -1,4 +1,11 @@
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   applyDesktopChrome,
   installDesktopWindowDrag,
@@ -6,6 +13,8 @@ import {
   resolveDesktopChromeStyle,
   type DesktopChromeStyle,
 } from "../utils/desktopChrome";
+
+const DesktopChromeContext = createContext<DesktopChromeStyle | null>(null);
 
 /** Activate frameless window chrome after the Wails bridge appears. */
 export function useDesktopChrome(): DesktopChromeStyle | null {
@@ -24,7 +33,6 @@ export function useDesktopChrome(): DesktopChromeStyle | null {
     if (tryApply()) {
       return () => {
         cancelled = true;
-        applyDesktopChrome(null);
       };
     }
     const timer = window.setInterval(() => {
@@ -35,9 +43,22 @@ export function useDesktopChrome(): DesktopChromeStyle | null {
       cancelled = true;
       window.clearInterval(timer);
       window.clearTimeout(stop);
-      applyDesktopChrome(null);
     };
   }, []);
 
   return style;
+}
+
+export function DesktopChromeProvider({
+  value,
+  children,
+}: {
+  value: DesktopChromeStyle | null;
+  children: ReactNode;
+}) {
+  return createElement(DesktopChromeContext.Provider, { value }, children);
+}
+
+export function useDesktopChromeStyle(): DesktopChromeStyle | null {
+  return useContext(DesktopChromeContext);
 }
