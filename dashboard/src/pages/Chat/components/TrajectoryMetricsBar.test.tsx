@@ -1,22 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import type { TrajectoryMetrics } from "../../../api/modules/trajectory";
-
-const exportMock = vi.fn();
-
-vi.mock("../../../api/modules/trajectory", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("../../../api/modules/trajectory")
-  >();
-  return {
-    ...actual,
-    trajectoryApi: {
-      ...actual.trajectoryApi,
-      export: (...args: unknown[]) => exportMock(...args),
-    },
-  };
-});
-
 import TrajectoryMetricsBar from "./TrajectoryMetricsBar";
 
 const metrics: TrajectoryMetrics = {
@@ -33,14 +17,6 @@ const metrics: TrajectoryMetrics = {
 };
 
 describe("TrajectoryMetricsBar", () => {
-  beforeEach(() => {
-    exportMock.mockReset();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("hides null metric fields and keeps zeros", () => {
     const { container } = render(
       <TrajectoryMetricsBar agentId="A1" threadId="T1" metrics={metrics} />,
@@ -69,27 +45,5 @@ describe("TrajectoryMetricsBar", () => {
     expect(
       container.querySelector('[data-metric="cache_read_tokens"]'),
     ).toBeNull();
-  });
-
-  it("triggers a blob download URL when export is clicked", async () => {
-    const blob = new Blob(["{}\n"], { type: "application/x-ndjson" });
-    exportMock.mockResolvedValue(blob);
-    const createObjectURL = vi.fn(() => "blob:trajectory-export");
-    URL.createObjectURL = createObjectURL;
-    URL.revokeObjectURL = vi.fn();
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => {});
-
-    render(
-      <TrajectoryMetricsBar agentId="A1" threadId="T1" metrics={metrics} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Export" }));
-
-    await waitFor(() => {
-      expect(exportMock).toHaveBeenCalledWith("A1", "T1");
-      expect(createObjectURL).toHaveBeenCalledWith(blob);
-      expect(click).toHaveBeenCalled();
-    });
   });
 });

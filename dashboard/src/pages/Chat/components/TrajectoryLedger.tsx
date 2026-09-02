@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 import { laneForKind, toLedgerRow } from "../utils/trajectoryModel";
-import styles from "./TrajectoryDockPanel.module.less";
+import styles from "./TrajectoryLedger.module.less";
 
 export interface TrajectoryLedgerProps {
   events: TrajectoryEvent[];

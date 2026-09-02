@@ -1,0 +1,130 @@
+.drawerTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.drawerTitleText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.drawerTitleActions {
+  flex-shrink: 0;
+
+  :global(.octop-btn),
+  :global(.ant-btn) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--fn-bg-primary);
+  padding: 12px 20px;
+  box-sizing: border-box;
+  gap: 10px;
+}
+
+.split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+}
+
+.splitMobile {
+  flex-direction: column;
+}
+
+.ledgerPane,
+.inspectorPane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inspectorPane {
+  border-left: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  padding-left: 12px;
+}
+
+.splitMobile .inspectorPane {
+  border-left: none;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  padding-left: 0;
+  padding-top: 8px;
+}
+
+.status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 24px;
+}
+
+.errorText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  text-align: center;
+}
+
+.retry {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fn-color-brand, var(--fn-text-brand));
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 767px) {
+  .drawerTitleRow {
+    gap: 4px;
+    padding-right: 0;
+  }
+
+  .drawerTitleActions {
+    :global(.octop-btn),
+    :global(.ant-btn) {
+      min-width: 32px;
+      padding-inline: 8px;
+    }
+  }
+
+  .body {
+    padding: 10px 12px;
+  }
+}

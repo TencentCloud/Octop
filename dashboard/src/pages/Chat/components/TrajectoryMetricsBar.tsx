@@ -1,8 +1,5 @@
 import { useTranslation } from "react-i18next";
-import {
-  trajectoryApi,
-  type TrajectoryMetrics,
-} from "../../../api/modules/trajectory";
+import { type TrajectoryMetrics } from "../../../api/modules/trajectory";
 import { visibleMetrics } from "../utils/trajectoryModel";
 import styles from "./TrajectoryMetricsBar.module.less";
 
@@ -57,24 +54,10 @@ function formatMetric(key: keyof TrajectoryMetrics, value: number): string {
 }
 
 export default function TrajectoryMetricsBar({
-  agentId,
-  threadId,
   metrics,
 }: TrajectoryMetricsBarProps) {
   const { t } = useTranslation();
   const entries = metrics ? visibleMetrics(metrics) : [];
-
-  const onExport = () => {
-    void (async () => {
-      const blob = await trajectoryApi.export(agentId, threadId);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `trajectory-${threadId}.jsonl`;
-      link.click();
-      URL.revokeObjectURL(url);
-    })();
-  };
 
   return (
     <div
@@ -100,9 +83,6 @@ export default function TrajectoryMetricsBar({
           );
         })}
       </div>
-      <button type="button" className={styles.exportBtn} onClick={onExport}>
-        {t("chat.dockTrajectoryExport", "Export")}
-      </button>
     </div>
   );
 }
