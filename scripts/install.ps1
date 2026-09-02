@@ -36,12 +36,13 @@ Options:
   -Version <VER>        Install a specific version (e.g. 0.1.0)
   -FromSource           Install from source (requires git, or use -SourceDir)
   -SourceDir <DIR>      Local source directory (used with -FromSource)
-  -Extras <EXTRAS>      Extra optional components (e.g. desktop); browser/playwright is always installed
+  -Extras <EXTRAS>      Extra optional components (e.g. desktop, browser)
   -UvPath <PATH>        Path to a pre-installed uv.exe
   -Help                 Show this help
 
-Note: if a system Chrome/Chromium is already installed (common on GUI systems
-like Windows / macOS), the bundled Playwright Chromium download is skipped.
+Note: Playwright Chromium is not downloaded by default. Pass -Extras browser
+to install it, or install later from the dashboard. If a system Chrome already
+exists, that download is skipped even with -Extras browser.
 
 Environment:
   OCTOP_HOME            Installation directory (default: ~/.octop)
@@ -276,18 +277,30 @@ function Find-SystemChrome {
     return $null
 }
 
-$systemChrome = Find-SystemChrome
-if ($systemChrome) {
-    Write-Info "Found system Chrome/Chromium: $systemChrome"
-    Write-Info "Using system browser; skipping Playwright Chromium download."
-    Write-Info "To use Playwright's bundled Chromium instead, run: $VenvPython -m playwright install chromium"
+$wantPlaywrightChromium = $false
+if ($Extras) {
+    foreach ($p in ($Extras -split ",")) {
+        if ($p.Trim() -eq "browser") { $wantPlaywrightChromium = $true }
+    }
+}
+if (-not $wantPlaywrightChromium) {
+    Write-Info "Skipping Playwright Chromium download."
+    Write-Info "For remote-browser automation, re-run with -Extras browser, use the dashboard, or:"
+    Write-Info "  $VenvPython -m playwright install chromium"
 } else {
-    Write-Info "Installing Playwright Chromium browser..."
-    & $VenvPython -m playwright install chromium 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Info "Playwright Chromium installed"
+    $systemChrome = Find-SystemChrome
+    if ($systemChrome) {
+        Write-Info "Found system Chrome/Chromium: $systemChrome"
+        Write-Info "Using system browser; skipping Playwright Chromium download."
+        Write-Info "To use Playwright's bundled Chromium instead, run: $VenvPython -m playwright install chromium"
     } else {
-        Write-Warn "Playwright install failed. Run later: $VenvPython -m playwright install chromium"
+        Write-Info "Installing Playwright Chromium browser..."
+        & $VenvPython -m playwright install chromium 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Info "Playwright Chromium installed"
+        } else {
+            Write-Warn "Playwright install failed. Run later: $VenvPython -m playwright install chromium"
+        }
     }
 }
 

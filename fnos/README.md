@@ -19,11 +19,11 @@ After install, open the app (Docker: `http://<device-ip>:8088`, native: `http://
 
 | 版本 | 包名 | 体积 | 运行方式 | 依赖 |
 |------|------|------|----------|------|
-| **Docker 版** | `Octop-fnos-docker-<ver>.fpk` | ~80 KB | 飞牛自动从 GHCR 拉取 `ghcr.io/tencentcloud/octop:latest` 镜像运行 | 宿主需有 Docker 运行时 |
-| **本地版（非 Docker）** | `Octop-fnos-native-<ver>.fpk` | ~200 MB | 自带 Python 3.12 运行时 + 前端，原生运行在飞牛主机 | 无需 Docker |
+| **Docker 版** | `octop-<ver>.fpk` | ~8 KB | 飞牛自动从 GHCR 拉取 `ghcr.io/tencentcloud/octop:latest` 镜像运行 | 宿主需有 Docker 运行时 |
+| **本地版（非 Docker）** | `octop-native-<ver>.fpk` | ~560 MB | 自带 Python 3.12 运行时 + 前端 + 核心依赖，原生运行在飞牛主机 | 无需 Docker |
 
-- **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。镜像已内置全部附加组件（`browser` 浏览器自动化 + `desktop` 桌面控制）与前端。
-- **本地版**实现为 FnOS 原生 `app`：包内自带独立 Python 3.12 运行时、Octop 全部依赖、前端构建产物、Playwright Chromium，以及 `data-share` 共享数据目录，直接以进程方式运行，不依赖 Docker。
+- **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。镜像已内置 `desktop` 桌面控制与前端；Playwright Chromium 不预装，可在控制台按需安装。
+- **本地版**实现为 FnOS 原生 `app`：包内自带独立 Python 3.12 运行时、Octop 核心依赖、前端构建产物，以及 `data-share` 共享数据目录，直接以进程方式运行，不依赖 Docker。
 
 > 两款包随正式版一起挂在 **`v*` GitHub Release** 上（例如 [v0.9.31](https://github.com/TencentCloud/Octop/releases/latest)）：`Octop-fnos-docker-<ver>.fpk` / `Octop-fnos-native-<ver>.fpk`。
 
@@ -48,12 +48,12 @@ fnos/
 │   │   └── ui/
 │   │       ├── config                # 桌面图标入口
 │   │       └── images/icon-{64,256}.png
-│   └── Dockerfile          # 从仓库源码构建镜像，安装全部附加组件（browser + desktop）
+│   └── Dockerfile          # 从仓库源码构建镜像，安装 desktop extra（不预装 Chromium）
 └── native/                 # 本地版（非 Docker 的 FnOS 原生 app）
     ├── manifest            # platform=all + 原生 app 元信息
     ├── cmd/                # 生命周期脚本（main / install_callback / config_callback）
     ├── config/
-    │   ├── privilege       # 权限声明（root，用于补装 Chromium 系统库）
+    │   ├── privilege       # 权限声明（root，用于 sudo / 远程桌面等）
     │   └── resource        # data-share + usr-local-linker
     ├── app/
     │   ├── bin/octop       # 启动器（用自带 Python 运行时启动 octop init/run）
@@ -85,6 +85,6 @@ bash scripts/build-fpk.sh native     # 仅本地版      → dist/Octop-fnos-nat
    - 不想依赖 Docker、希望自带运行时原生运行 → 选 `Octop-fnos-native-<version>.fpk`
 2. 安装向导中设置管理员账号/密码、日志级别、LLM 密钥（可选）。
 3. 安装完成后桌面出现「Octop AI 助手」图标，浏览器打开 `http://<设备IP>:8088`。
-4. Docker 版镜像首次会从 GHCR `ghcr.io/tencentcloud/octop:latest` 拉取；请确保该包为 Public（首次推送后可在 GitHub Packages 设置）。本地版无需联网拉镜像，首次启动会按需要补装 Chromium 系统库（需 root 权限，已尽力处理）。
+4. Docker 版镜像首次会从 GHCR `ghcr.io/tencentcloud/octop:latest` 拉取；请确保该包为 Public（首次推送后可在 GitHub Packages 设置）。本地版无需联网拉镜像。Playwright Chromium 不预装，需要远程浏览器时在控制台按需安装。
 
-> 服务端口固定为 `8088`（飞牛端口映射与桌面图标均据此）。附加组件（browser 浏览器自动化 + desktop 桌面控制）已在镜像中默认安装。
+> 服务端口固定为 `8088`（飞牛端口映射与桌面图标均据此）。`desktop` 桌面控制已在镜像中默认安装。
