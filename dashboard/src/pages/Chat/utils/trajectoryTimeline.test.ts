@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
-import { deriveSwimlaneSpans } from "./trajectoryTimeline";
+import {
+  deriveSwimlaneSpans,
+  orderedRange,
+  trajectoryFocusEventIds,
+  zoomDomain,
+  type SwimlaneSpan,
+} from "./trajectoryTimeline";
 
 function event(
   overrides: Partial<TrajectoryEvent> &
@@ -25,29 +31,61 @@ describe("deriveSwimlaneSpans", () => {
     expect(deriveSwimlaneSpans([], "sequence")).toEqual([]);
   });
 
-  it("places events on lanes and merges consecutive same-lane tools in sequence mode", () => {
+  it("emits one discrete span per event in sequence mode (no lane merge)", () => {
     const spans = deriveSwimlaneSpans(
       [
         event({ event_id: "u", kind: "user" }),
         event({ event_id: "a", kind: "assistant" }),
         event({ event_id: "t1", kind: "tool" }),
         event({ event_id: "t2", kind: "tool" }),
-        event({ event_id: "u2", kind: "user" }),
+        event({ event_id: "c", kind: "context" }),
       ],
       "sequence",
     );
     expect(
       spans.map((span) => ({
         lane: span.lane,
+        kind: span.kind,
         eventIds: span.eventIds,
         start: span.start,
         end: span.end,
       })),
     ).toEqual([
-      { lane: "input", eventIds: ["u"], start: 0, end: 1 },
-      { lane: "model", eventIds: ["a"], start: 1, end: 2 },
-      { lane: "tools", eventIds: ["t1", "t2"], start: 2, end: 4 },
-      { lane: "input", eventIds: ["u2"], start: 4, end: 5 },
+      {
+        lane: "input",
+        kind: "user",
+        eventIds: ["u"],
+        start: 0,
+        end: 1,
+      },
+      {
+        lane: "model",
+        kind: "assistant",
+        eventIds: ["a"],
+        start: 1,
+        end: 2,
+      },
+      {
+        lane: "tools",
+        kind: "tool",
+        eventIds: ["t1"],
+        start: 2,
+        end: 3,
+      },
+      {
+        lane: "tools",
+        kind: "tool",
+        eventIds: ["t2"],
+        start: 3,
+        end: 4,
+      },
+      {
+        lane: "input",
+        kind: "context",
+        eventIds: ["c"],
+        start: 4,
+        end: 5,
+      },
     ]);
   });
 
@@ -102,5 +140,61 @@ describe("deriveSwimlaneSpans", () => {
       { lane: "model", start: 20, end: 25 },
       { lane: "tools", start: 25, end: 26 },
     ]);
+  });
+});
+
+describe("trajectory timeline domain helpers", () => {
+  it("orderedRange normalizes inverted drags", () => {
+    expect(orderedRange(5, 2)).toEqual({ start: 2, end: 5 });
+  });
+
+  it("trajectoryFocusEventIds includes spans intersecting the range", () => {
+    const spans: SwimlaneSpan[] = [
+      {
+        id: "a",
+        lane: "input",
+        kind: "user",
+        start: 0,
+        end: 1,
+        eventIds: ["a"],
+        isError: false,
+      },
+      {
+        id: "b",
+        lane: "model",
+        kind: "assistant",
+        start: 1,
+        end: 2,
+        eventIds: ["b"],
+        isError: false,
+      },
+      {
+        id: "c",
+        lane: "tools",
+        kind: "tool",
+        start: 2,
+        end: 3,
+        eventIds: ["c"],
+        isError: false,
+      },
+    ];
+    expect([
+      ...trajectoryFocusEventIds(spans, { start: 1.5, end: 2.5 }),
+    ]).toEqual(["b", "c"]);
+  });
+
+  it("zoomDomain shrinks around the anchor and stays inside the full domain", () => {
+    const next = zoomDomain({
+      fullStart: 0,
+      fullEnd: 100,
+      domainStart: 0,
+      domainEnd: 100,
+      anchorFraction: 0.5,
+      zoomFactor: 0.5,
+      minDomain: 10,
+    });
+    expect(next.end - next.start).toBe(50);
+    expect(next.start).toBeGreaterThanOrEqual(0);
+    expect(next.end).toBeLessThanOrEqual(100);
   });
 });
