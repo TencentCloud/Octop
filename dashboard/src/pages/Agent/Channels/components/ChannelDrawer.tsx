@@ -512,14 +512,29 @@ export function ChannelDrawer({
   }, [open, resetQr]);
 
   useEffect(() => {
-    resetQr();
-  }, [selectedKind, resetQr]);
-
-  useEffect(() => {
     if (open && initialValues?.kind) {
       setSelectedKind(initialValues.kind);
     }
   }, [open, initialValues?.kind]);
+
+  // Only wipe an in-flight QR when the kind actually changes while the drawer
+  // is already open. A blanket `[selectedKind]` reset races the open-time
+  // kickoff: QR appears, kind sync/draft fires, resetQr hides it, and a second
+  // start often never gets a new qr_url.
+  const kindWhileOpenRef = useRef<ChannelKey | null>(null);
+  useEffect(() => {
+    if (!open) {
+      kindWhileOpenRef.current = null;
+      return;
+    }
+    if (kindWhileOpenRef.current === null) {
+      kindWhileOpenRef.current = selectedKind;
+      return;
+    }
+    if (kindWhileOpenRef.current === selectedKind) return;
+    kindWhileOpenRef.current = selectedKind;
+    resetQr();
+  }, [open, selectedKind, resetQr]);
 
   // Restore session draft after server/default values are applied.
   useEffect(() => {
@@ -533,7 +548,7 @@ export function ChannelDrawer({
   }, [open, loadingConfig, draftScope, form]);
 
   // ── QQ Bot Flow ────────────────────────────────────────────────────────
-  const startQqQr = useCallback(async () => {
+  const startQqQr = async () => {
     stopPolling();
     setQrState({ phase: "loading" });
     try {
@@ -571,10 +586,10 @@ export function ChannelDrawer({
         reason: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [agentId, stopPolling, t]);
+  };
 
   // ── WeCom Flow ─────────────────────────────────────────────────────────
-  const startWecomQr = useCallback(async () => {
+  const startWecomQr = async () => {
     stopPolling();
     setQrState({ phase: "loading" });
     try {
@@ -609,10 +624,10 @@ export function ChannelDrawer({
         reason: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [agentId, stopPolling]);
+  };
 
   // ── WeChat Flow ─────────────────────────────────────────────────────────
-  const startWeixinQr = useCallback(async () => {
+  const startWeixinQr = async () => {
     stopPolling();
     setQrState({ phase: "loading" });
     try {
@@ -651,10 +666,10 @@ export function ChannelDrawer({
         reason: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [agentId, stopPolling]);
+  };
 
   // ── DingTalk Flow ───────────────────────────────────────────────────────
-  const startDingtalkQr = useCallback(async () => {
+  const startDingtalkQr = async () => {
     stopPolling();
     setQrState({ phase: "loading" });
     try {
@@ -707,69 +722,68 @@ export function ChannelDrawer({
         reason: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [agentId, onProvisioned, stopPolling, t]);
+  };
 
   // ── Feishu Flow ─────────────────────────────────────────────────────────
-  const startFeishuCreator = useCallback(
-    async (platform: "feishu" | "lark" = "feishu") => {
-      stopPolling();
+  const startFeishuCreator = async (
+    platform: "feishu" | "lark" = "feishu",
+  ) => {
+    stopPolling();
+    setQrState({
+      phase: "feishu_creating",
+      message: t("channels.feishuCreating"),
+    });
+    try {
+      await channelApi.feishuBotCreatorStart(agentId, { platform });
+    } catch (e: unknown) {
       setQrState({
-        phase: "feishu_creating",
-        message: t("channels.feishuCreating"),
+        phase: "error",
+        reason: e instanceof Error ? e.message : String(e),
       });
+      return;
+    }
+    const timer = setInterval(async () => {
       try {
-        await channelApi.feishuBotCreatorStart(agentId, { platform });
-      } catch (e: unknown) {
-        setQrState({
-          phase: "error",
-          reason: e instanceof Error ? e.message : String(e),
-        });
-        return;
-      }
-      const timer = setInterval(async () => {
-        try {
-          const poll = await channelApi.feishuBotCreatorPoll(agentId);
-          if (poll.qr_url) {
-            setQrState((prev) =>
-              prev.phase === "feishu_progress" || prev.phase === "feishu_done"
-                ? prev
-                : { phase: "feishu_qr", qrUrl: poll.qr_url! },
-            );
-          }
-          if (poll.status === "finished" && poll.app_id && poll.app_secret) {
-            stopPolling();
-            const finishEvent = poll.events.find(
-              (e) => e.action === "finish" && e.level === "success",
-            );
-            const data = (finishEvent?.data ?? {}) as Record<string, unknown>;
-            setQrState({
-              phase: "feishu_done",
-              appId: poll.app_id,
-              appSecret: poll.app_secret,
-              botName: data.bot_name as string | undefined,
-              manageUrl: data.manage_url as string | undefined,
-            });
-          } else if (poll.status === "failed") {
-            stopPolling();
-            const errEvent = poll.events.find(
-              (e) => e.action === "finish" && e.level === "error",
-            );
-            setQrState({
-              phase: "error",
-              reason: errEvent?.message ?? t("channels.feishuCreateFailed"),
-            });
-          }
-        } catch {
-          // keep polling
+        const poll = await channelApi.feishuBotCreatorPoll(agentId);
+        if (poll.qr_url) {
+          setQrState((prev) =>
+            prev.phase === "feishu_progress" || prev.phase === "feishu_done"
+              ? prev
+              : { phase: "feishu_qr", qrUrl: poll.qr_url! },
+          );
         }
-      }, 1500);
-      pollTimerRef.current = timer;
-    },
-    [agentId, stopPolling, t],
-  );
+        if (poll.status === "finished" && poll.app_id && poll.app_secret) {
+          stopPolling();
+          const finishEvent = poll.events.find(
+            (e) => e.action === "finish" && e.level === "success",
+          );
+          const data = (finishEvent?.data ?? {}) as Record<string, unknown>;
+          setQrState({
+            phase: "feishu_done",
+            appId: poll.app_id,
+            appSecret: poll.app_secret,
+            botName: data.bot_name as string | undefined,
+            manageUrl: data.manage_url as string | undefined,
+          });
+        } else if (poll.status === "failed") {
+          stopPolling();
+          const errEvent = poll.events.find(
+            (e) => e.action === "finish" && e.level === "error",
+          );
+          setQrState({
+            phase: "error",
+            reason: errEvent?.message ?? t("channels.feishuCreateFailed"),
+          });
+        }
+      } catch {
+        // keep polling
+      }
+    }, 1500);
+    pollTimerRef.current = timer;
+  };
 
   // ── YuanBao Flow ────────────────────────────────────────────────────────
-  const startYuanbaoCreator = useCallback(async () => {
+  const startYuanbaoCreator = async () => {
     stopPolling();
     setQrState({
       phase: "yuanbao_creating",
@@ -824,7 +838,49 @@ export function ChannelDrawer({
       }
     }, 2000);
     pollTimerRef.current = timer;
-  }, [agentId, stopPolling]);
+  };
+
+  // Entering quick-config starts QR generation immediately (no extra click).
+  useEffect(() => {
+    if (!open || isEdit || loadingConfig) return;
+    if (configMode !== "quick" && selectedKind !== "weixin") return;
+    if (qrState.phase !== "idle") return;
+    // Wait until local kind matches the card that opened the drawer.
+    if (initialValues?.kind && selectedKind !== initialValues.kind) return;
+
+    switch (selectedKind) {
+      case "qq":
+        void startQqQr();
+        break;
+      case "wecom":
+        void startWecomQr();
+        break;
+      case "weixin":
+        void startWeixinQr();
+        break;
+      case "dingtalk":
+        void startDingtalkQr();
+        break;
+      case "feishu":
+        void startFeishuCreator("feishu");
+        break;
+      case "yuanbao":
+        void startYuanbaoCreator();
+        break;
+      default:
+        break;
+    }
+    // start* omitted: recreated each render; idle-phase already one-shots.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    isEdit,
+    loadingConfig,
+    configMode,
+    selectedKind,
+    qrState.phase,
+    initialValues?.kind,
+  ]);
 
   // ── Form ────────────────────────────────────────────────────────────────
   const fields = CHANNEL_FIELDS[selectedKind];
@@ -1094,13 +1150,48 @@ export function ChannelDrawer({
   };
 
   // ── QR Panels ───────────────────────────────────────────────────────────
+  function renderQrSteps(step1: string, step2: string, step3: string) {
+    return (
+      <div className={styles.qrSteps}>
+        <span className={styles.qrStep}>
+          <span className={styles.qrDot}>1</span>
+          {step1}
+        </span>
+        <span className={styles.qrStepDivider} />
+        <span className={styles.qrStep}>
+          <span className={styles.qrDot}>2</span>
+          {step2}
+        </span>
+        <span className={styles.qrStepDivider} />
+        <span className={styles.qrStep}>
+          <span className={styles.qrDot}>3</span>
+          {step3}
+        </span>
+      </div>
+    );
+  }
+
+  function renderQrLoading(step1: string, step2: string, step3: string) {
+    return (
+      <div className={styles.qrPanel}>
+        {renderQrSteps(step1, step2, step3)}
+        <div className={styles.qrCardWrap}>
+          <div className={styles.qrFrame}>
+            <Spin />
+          </div>
+        </div>
+        <p className={styles.qrScanHint}>{t("channels.qrLoading")}</p>
+      </div>
+    );
+  }
+
   function renderQqPanel() {
     const s = qrState;
-    if (s.phase === "loading")
-      return (
-        <div className={styles.qrPanel}>
-          <Spin />
-        </div>
+    if (s.phase === "loading" || s.phase === "idle")
+      return renderQrLoading(
+        t("channels.qqQrStep1"),
+        t("channels.qqQrStep2"),
+        t("channels.qqQrStep3"),
       );
     if (s.phase === "qq_success") {
       const retrySave = () =>
@@ -1129,22 +1220,11 @@ export function ChannelDrawer({
     if (s.phase === "qq_ready") {
       return (
         <div className={styles.qrPanel}>
-          <div className={styles.qrSteps}>
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>
-              {t("channels.qqQrStep1")}
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>
-              {t("channels.qqQrStep2")}
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>
-              {t("channels.qqQrStep3")}
-            </span>
-          </div>
+          {renderQrSteps(
+            t("channels.qqQrStep1"),
+            t("channels.qqQrStep2"),
+            t("channels.qqQrStep3"),
+          )}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={s.qrcodeUrl} size={200} />
@@ -1156,7 +1236,7 @@ export function ChannelDrawer({
             onClick={() => void startQqQr()}
             style={{ marginTop: 4 }}
           >
-            {t("channels.qrRetry")}
+            {t("channels.qrRegenerate")}
           </Button>
         </div>
       );
@@ -1170,47 +1250,18 @@ export function ChannelDrawer({
             style={{ width: "100%", marginBottom: 12 }}
           />
           <Button onClick={() => void startQqQr()}>
-            {t("channels.qrRetry")}
+            {t("channels.qrRegenerate")}
           </Button>
         </div>
       );
     }
-    return (
-      <div className={styles.quickConfigPanel}>
-        <div className={styles.quickConfigSteps}>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>1</span>
-            {t("channels.qqQrIntro1")}
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>
-            {t("channels.qqQrIntro2")}
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>3</span>
-            {t("channels.qqQrIntro3")}
-          </div>
-        </div>
-        <Button
-          type="primary"
-          className={styles.quickConfigBtn}
-          block
-          onClick={() => void startQqQr()}
-        >
-          {t("channels.qqQrGenerate")}
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   function renderWecomPanel() {
     const s = qrState;
-    if (s.phase === "loading")
-      return (
-        <div className={styles.qrPanel}>
-          <Spin />
-        </div>
-      );
+    if (s.phase === "loading" || s.phase === "idle")
+      return renderQrLoading("打开企业微信", "扫码注册 AI 机器人", "确认绑定");
     if (s.phase === "wecom_success") {
       const retrySave = () =>
         submitChannel(
@@ -1234,19 +1285,7 @@ export function ChannelDrawer({
     if (s.phase === "wecom_ready") {
       return (
         <div className={styles.qrPanel}>
-          <div className={styles.qrSteps}>
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>打开企业微信
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>扫码注册 AI 机器人
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>确认绑定
-            </span>
-          </div>
+          {renderQrSteps("打开企业微信", "扫码注册 AI 机器人", "确认绑定")}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={s.authUrl} size={200} />
@@ -1277,42 +1316,13 @@ export function ChannelDrawer({
         </div>
       );
     }
-    return (
-      <div className={styles.quickConfigPanel}>
-        <div className={styles.quickConfigSteps}>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>1</span>
-            点击下方按钮，生成企业微信 AI 机器人注册二维码
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>用企业微信 App
-            扫码，完成机器人注册
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>3</span>
-            凭据自动填入并保存
-          </div>
-        </div>
-        <Button
-          type="primary"
-          className={styles.quickConfigBtn}
-          block
-          onClick={() => void startWecomQr()}
-        >
-          {t("channels.wecomGenerateQr")}
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   function renderWeixinPanel() {
     const s = qrState;
-    if (s.phase === "loading")
-      return (
-        <div className={styles.qrPanel}>
-          <Spin />
-        </div>
-      );
+    if (s.phase === "loading" || s.phase === "idle")
+      return renderQrLoading("打开微信 App", "扫码登录", "手机确认");
     if (s.phase === "weixin_success") {
       const weixinConfig = mergeDisplayConfig({
         accounts: [
@@ -1344,19 +1354,7 @@ export function ChannelDrawer({
     if (s.phase === "weixin_ready") {
       return (
         <div className={styles.qrPanel}>
-          <div className={styles.qrSteps}>
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>打开微信 App
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>扫码登录
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>手机确认
-            </span>
-          </div>
+          {renderQrSteps("打开微信 App", "扫码登录", "手机确认")}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={s.qrcodeUrl} size={200} />
@@ -1387,40 +1385,16 @@ export function ChannelDrawer({
         </div>
       );
     }
-    return (
-      <div className={styles.quickConfigPanel}>
-        <div className={styles.quickConfigSteps}>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>1</span>
-            点击按钮生成微信登录二维码
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>微信扫码并在手机确认登录
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>3</span>登录成功后自动保存配置
-          </div>
-        </div>
-        <Button
-          type="primary"
-          className={styles.quickConfigBtn}
-          block
-          onClick={() => void startWeixinQr()}
-        >
-          {t("channels.weixinGenerateQr")}
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   function renderDingtalkPanel() {
     const s = qrState;
-    if (s.phase === "loading") {
-      return (
-        <div className={styles.qrPanel}>
-          <Spin />
-          <p className={styles.qrScanHint}>{t("channels.dingtalkQrLoading")}</p>
-        </div>
+    if (s.phase === "loading" || s.phase === "idle") {
+      return renderQrLoading(
+        t("channels.dingtalkQrStep1"),
+        t("channels.dingtalkQrStep2"),
+        t("channels.dingtalkQrStep3"),
       );
     }
     if (s.phase === "dingtalk_success") {
@@ -1437,22 +1411,11 @@ export function ChannelDrawer({
     if (s.phase === "dingtalk_ready") {
       return (
         <div className={styles.qrPanel}>
-          <div className={styles.qrSteps}>
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>
-              {t("channels.dingtalkQrStep1")}
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>
-              {t("channels.dingtalkQrStep2")}
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>
-              {t("channels.dingtalkQrStep3")}
-            </span>
-          </div>
+          {renderQrSteps(
+            t("channels.dingtalkQrStep1"),
+            t("channels.dingtalkQrStep2"),
+            t("channels.dingtalkQrStep3"),
+          )}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={s.qrcodeUrl} size={200} />
@@ -1488,81 +1451,45 @@ export function ChannelDrawer({
         </div>
       );
     }
-    return (
-      <div className={styles.quickConfigPanel}>
-        <div className={styles.quickConfigSteps}>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>1</span>
-            {t("channels.dingtalkQrIntro1")}
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>
-            {t("channels.dingtalkQrIntro2")}
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>3</span>
-            {t("channels.dingtalkQrIntro3")}
-          </div>
-        </div>
-        <Button
-          type="primary"
-          className={styles.quickConfigBtn}
-          block
-          onClick={() => void startDingtalkQr()}
-        >
-          {t("channels.dingtalkGenerateQr")}
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   function renderFeishuPanel() {
     const s = qrState;
-    if (s.phase === "feishu_creating" || s.phase === "feishu_progress") {
+    const feishuPending =
+      s.phase === "idle" ||
+      s.phase === "loading" ||
+      s.phase === "feishu_creating" ||
+      s.phase === "feishu_progress";
+    if (feishuPending || s.phase === "feishu_qr") {
       return (
         <div className={styles.qrPanel}>
-          <Spin />
-          <p
-            style={{
-              marginTop: 12,
-              color: "var(--fn-text-secondary)",
-              fontSize: 13,
-            }}
-          >
-            {s.message}
-          </p>
-        </div>
-      );
-    }
-    if (s.phase === "feishu_qr") {
-      return (
-        <div className={styles.qrPanel}>
-          <div className={styles.qrSteps}>
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>
-              {t("channels.feishuQrStep1")}
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>
-              {t("channels.feishuQrStep2")}
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>
-              {t("channels.feishuQrStep3")}
-            </span>
-          </div>
+          {renderQrSteps(
+            t("channels.feishuQrStep1"),
+            t("channels.feishuQrStep2"),
+            t("channels.feishuQrStep3"),
+          )}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
-              <QRCodeSVG value={s.qrUrl} size={200} />
+              {s.phase === "feishu_qr" ? (
+                <QRCodeSVG value={s.qrUrl} size={200} />
+              ) : (
+                <Spin />
+              )}
             </div>
           </div>
-          <p className={styles.qrScanHint}>{t("channels.feishuQrScanHint")}</p>
+          <p className={styles.qrScanHint}>
+            {s.phase === "feishu_qr"
+              ? t("channels.feishuQrScanHint")
+              : t("channels.qrLoading")}
+          </p>
           <Button
             size="small"
+            style={{
+              marginTop: 4,
+              visibility: s.phase === "feishu_qr" ? "visible" : "hidden",
+            }}
             onClick={() => void startFeishuCreator()}
-            style={{ marginTop: 4 }}
           >
             {t("channels.qrRegenerate")}
           </Button>
@@ -1614,74 +1541,33 @@ export function ChannelDrawer({
             style={{ width: "100%", marginBottom: 12 }}
           />
           <Button onClick={() => void startFeishuCreator()}>
-            {t("channels.qrRetry")}
+            {t("channels.qrRegenerate")}
           </Button>
         </div>
       );
     }
-    return (
-      <div className={styles.quickConfigPanel}>
-        <div className={styles.quickConfigSteps}>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>1</span>
-            {t("channels.feishuQrIntro1")}
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>
-            {t("channels.feishuQrIntro2")}
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>3</span>
-            {t("channels.feishuQrIntro3")}
-          </div>
-        </div>
-        <Button
-          type="primary"
-          className={styles.quickConfigBtn}
-          block
-          onClick={() => void startFeishuCreator("feishu")}
-        >
-          {t("channels.feishuCreateButton")}
-        </Button>
-      </div>
+    return renderQrLoading(
+      t("channels.feishuQrStep1"),
+      t("channels.feishuQrStep2"),
+      t("channels.feishuQrStep3"),
     );
   }
 
   function renderYuanbaoPanel() {
     const s = qrState;
-    if (s.phase === "yuanbao_creating" || s.phase === "yuanbao_progress") {
-      return (
-        <div className={styles.qrPanel}>
-          <Spin />
-          <p
-            style={{
-              marginTop: 12,
-              color: "var(--fn-text-secondary)",
-              fontSize: 13,
-            }}
-          >
-            {s.message}
-          </p>
-        </div>
-      );
+    if (
+      s.phase === "idle" ||
+      s.phase === "loading" ||
+      s.phase === "yuanbao_creating" ||
+      s.phase === "yuanbao_progress"
+    ) {
+      return renderQrLoading("打开元宝 App", "扫码绑定", "确认授权");
     }
     if (s.phase === "yuanbao_scan") {
       const qrValue = s.scanUrl ?? s.scanCode;
       return (
         <div className={styles.qrPanel}>
-          <div className={styles.qrSteps}>
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>1</span>打开元宝 App
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>2</span>扫码绑定
-            </span>
-            <span className={styles.qrStepDivider} />
-            <span className={styles.qrStep}>
-              <span className={styles.qrDot}>3</span>确认授权
-            </span>
-          </div>
+          {renderQrSteps("打开元宝 App", "扫码绑定", "确认授权")}
           <div className={styles.qrCardWrap}>
             <div className={styles.qrFrame}>
               <QRCodeSVG value={qrValue} size={200} />
@@ -1734,30 +1620,7 @@ export function ChannelDrawer({
         </div>
       );
     }
-    return (
-      <div className={styles.quickConfigPanel}>
-        <div className={styles.quickConfigSteps}>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>1</span>点击按钮，获取元宝扫码
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>2</span>在元宝 App
-            扫码并确认授权
-          </div>
-          <div className={styles.quickConfigStep}>
-            <span className={styles.stepNumber}>3</span>凭据自动填入并保存
-          </div>
-        </div>
-        <Button
-          type="primary"
-          className={styles.quickConfigBtn}
-          block
-          onClick={() => void startYuanbaoCreator()}
-        >
-          生成元宝扫码
-        </Button>
-      </div>
-    );
+    return renderQrLoading("打开元宝 App", "扫码绑定", "确认授权");
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
