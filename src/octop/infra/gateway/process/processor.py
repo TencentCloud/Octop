@@ -107,6 +107,7 @@ class GlobalProcessor:
         thread_message_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
+        trajectory_service: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -128,6 +129,7 @@ class GlobalProcessor:
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
+        self._trajectory_service = trajectory_service
 
     @property
     def hitl_coordinator(self) -> HitlChannelCoordinator:
@@ -136,6 +138,19 @@ class GlobalProcessor:
     def replace_thread_message_repo(self, repo: Any) -> None:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
+
+    def _observe_trajectory(self, *, agent_id: str, thread_id: str, chunk: dict[str, Any]) -> None:
+        service = self._trajectory_service
+        if service is None:
+            return
+        try:
+            service.observe_chunk(agent_id, thread_id, chunk)
+        except Exception:
+            logger.exception(
+                "trajectory observe_chunk failed agent=%s thread=%s",
+                agent_id,
+                thread_id,
+            )
 
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
 
@@ -643,6 +658,7 @@ class GlobalProcessor:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
+                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
@@ -719,6 +735,7 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
+                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
                 yield chunk
             completed = True
         finally:

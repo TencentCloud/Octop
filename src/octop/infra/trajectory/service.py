@@ -36,6 +36,10 @@ class TrajectoryService:
                 thread_id,
             )
 
+    def replace_store(self, store: TrajectoryStore) -> None:
+        """Point append/list at a rebound control-plane pool."""
+        self._store = store
+
     def list_events(
         self,
         thread_id: str,
