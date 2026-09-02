@@ -33,16 +33,20 @@ tasks:
           PRODUCTION: "true"
     cmds:
       - task: create:app:bundle
-      - rm -rf {{.DMG_ROOT}} {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip
+        vars:
+          PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
+          ARCH: "{{.ARCH}}"
+      - rm -rf {{.DMG_ROOT}} {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg
       - mkdir -p {{.DMG_ROOT}}
       - ditto {{.BIN_DIR}}/{{.APP_NAME}}.app {{.DMG_ROOT}}/{{.APP_NAME}}.app
       - hdiutil create -volname {{.APP_NAME}} -srcfolder {{.DMG_ROOT}} -ov -format UDRO {{.ARCHIVE}}
       - rm -rf {{.DMG_ROOT}}
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
-      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-darwin-%s.zip" .ARCH)}}'
+      VERSION: '{{.VERSION | default "dev"}}'
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-darwin-%s-%s.zip" .ARCH .VERSION)}}'
       DMG_ROOT: '{{.BIN_DIR}}/dmg-darwin-{{.ARCH}}'
-      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg'
+      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-darwin-{{.ARCH}}-{{.VERSION}}.dmg'
 
   create:app:bundle:
     summary: Creates an .app bundle
@@ -50,7 +54,8 @@ tasks:
       - test -f {{.PORTABLE_ZIP}}
       - mkdir -p {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/{MacOS,Resources}
       - cp build/darwin/icons.icns {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources
-      - cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/
+      # Stable name inside the signed .app; GitHub Release uses the versioned portable zip.
+      - cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/Octop-darwin-{{.ARCH}}.zip
       - cp {{.BIN_DIR}}/{{.APP_NAME}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS
       - cp build/darwin/Info.plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents
       - codesign --force --deep --sign - {{.BIN_DIR}}/{{.APP_NAME}}.app
