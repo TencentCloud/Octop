@@ -27,7 +27,7 @@ description: 学习订阅任务创建与启用。医生完成 5 项登记后，�
    - **平台自动路由**：`cronjob_create` 自动绑定当前会话 `session_key`，并按该会话通道（微信/QQ/dashboard/CLI 等）投递。**不要要求微信绑定、不要以"非微信会话"为由拒绝、不要反问用户是否在微信里**。
    - 直接创建，不需要 `:weixin:` 会话标识，不要求 `allow_dashboard` 之类的门禁。
 3. **核对**：创建后调用 `cronjob_list` 核对，回执如实写"已启用，推送至当前会话通道"。
-4. **回执**：按 `../../references/output-templates.md` 的"登记启用回执"模板输出，列出已启用任务（注明推送至当前会话通道）和未启用任务。
+4. **回执**：按 `../../references/output-templates.md` 的"登记启用回执"模板输出，列出已启用任务（注明推送至当前会话通道）和未启用任务。查重、创建、核对全程静默；用户可见内容必须是简体中文终稿或简体中文确认问句，禁止 I'll、Let me、Now running、Validation passed、脚本执行日志等过程语句。需要用户先选指南时，只问选项后停止，不要在同一条回复里继续跑工具。
 
 任务排程参数（trigger / task_type / prompt）使用 `../../references/cron-presets.json` 的预设：
 

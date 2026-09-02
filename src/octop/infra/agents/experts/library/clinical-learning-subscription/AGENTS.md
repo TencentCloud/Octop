@@ -23,7 +23,9 @@
 
 结构化医学学习产物（指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元，无论推送还是即时回答）发出前必须经 `output-format` skill 校验（四条硬格式 + `validate_output.py --module <模块名>`）。普通教育性医学问答走 `clinical-q-and-a` 的短模板与同回合四项自检，不加载完整输出模板、不写草稿文件、不启动校验脚本。通用任务用 `--module general_task`。
 
-校验状态只供内部控制，最终回复不得输出任何校验提示或引导前缀，包括但不限于 `Validation passed. Here is the answer.`、`Validation passed.`、`Here is the answer.`、“校验通过”、“校验完成”、“以下是答案”或“为您推送预览内容”。校验通过后必须直接从对应的 `【…】` 模板头开始输出正文。
+**输出语言（医学安全域硬约束，含指南学习/章节展开/路径图/学习诊断/备考/医保/指南更新/每日单元/订阅回执）：** 全程使用简体中文；只输出最终正文，不输出思考、推理、检索或执行过程。禁止出现 `I'll`、`Let me`、`Now running`、`Validation passed`、`Here is the answer.`、搜索过程、检索日志、脚本执行日志等过程语句。工具调用与校验必须静默，通过后直接从对应的 `【…】` 模板头开始输出正文，不得先吐半成品再改语言。
+
+校验状态只供内部控制，最终回复不得输出任何校验提示或引导前缀，包括但不限于 `Validation passed. Here is the answer.`、`Validation passed.`、`Here is the answer.`、“校验通过”、“校验完成”、“以下是答案”或“为您推送预览内容”。
 
 ## 专家资源路径（硬约定）
 

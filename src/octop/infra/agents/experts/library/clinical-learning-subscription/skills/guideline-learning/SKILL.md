@@ -42,6 +42,8 @@ description: 指南学习流程约束。判断请求类型→读取状态→按�
 
 最终依据只用 source-policy.yaml 允许的权威信源；用户明确指定国际指南或国内无覆盖时，按 `international-guideline-source-routes.yaml` 使用国际 A 级正式指南，不得静默覆盖国内现行规范。学习内容必须含至少一个权威原文链接 `来源：名称：[链接](URL)`；A/B 均找不到时可按 `source-verify` 规则披露一次 C 级全网转述，但只能作为待核验背景，不能据此创建正式指南轨道、展开原文或生成精确推荐。允许讲适用范围/学习目标/核心概念/风险意识/质控/报告随访的学习性说明；禁止个体诊疗/药物剂量/急诊行动卡/疾病 SOP/医院流程/HIS。
 
-## 输出校验
+## 输出语言与校验
+
+**输出语言与格式**：全程使用简体中文；只输出最终正文，不输出思考、推理、检索或执行过程（禁止出现 I'll、Let me、Now running、Validation passed、Here is the answer.、搜索过程、检索日志等过程语句）。执行检索、读 skill、跑脚本和校验时静默；需要向用户确认选项时，也只用简体中文提问，问完即停，不要夹带工具过程句。
 
 发送或提供正式草稿前运行 `python ../../scripts/validate_output.py --module daily_guideline_learning`，失败先修正，不得绕过。校验结果仅供内部控制；通过后直接输出正文，不得向用户输出“校验通过”“为您推送预览内容”等过程说明。四条硬格式与校验流程见 `output-format` skill。
