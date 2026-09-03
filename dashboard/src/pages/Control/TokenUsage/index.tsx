@@ -25,6 +25,7 @@ import {
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { UsageStats, type UsageStatItem } from "./UsageStats";
 import { useUserRole } from "../../../hooks/useUserRole";
 import { request } from "../../../api/request";
 import { useAgent } from "../../../context/AgentContext";
@@ -222,19 +223,43 @@ function UsageBarChart({
   );
 }
 
-function StatBlock({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className={styles.statBlock}>
-      <div className={styles.statLabel}>{label}</div>
-      <div className={styles.statValue}>{value}</div>
-    </div>
-  );
+function usageStatItems(
+  totals: UsageSummary,
+  t: (key: string) => string,
+): UsageStatItem[] {
+  return [
+    {
+      key: "total",
+      label: t("tokenUsage.totalTokens"),
+      value: formatNumber(totals.total_tokens),
+    },
+    {
+      key: "input",
+      label: t("tokenUsage.input"),
+      value: formatNumber(totals.input_tokens),
+    },
+    {
+      key: "output",
+      label: t("tokenUsage.output"),
+      value: formatNumber(totals.output_tokens),
+    },
+    {
+      key: "cacheRead",
+      label: t("tokenUsage.cacheRead"),
+      value: formatNumber(totals.cache_read_tokens),
+    },
+    {
+      key: "cacheHit",
+      label: t("tokenUsage.cacheHit"),
+      value: `${totals.cache_hit_percent.toFixed(1)}%`,
+    },
+    { key: "turns", label: t("tokenUsage.turns"), value: totals.turns },
+    {
+      key: "avg",
+      label: t("tokenUsage.avgPerTurn"),
+      value: formatNumber(totals.avg_per_turn),
+    },
+  ];
 }
 
 function bucketColumnTitle(
@@ -492,40 +517,10 @@ function SummaryView({
 
   return (
     <div className={styles.summaryBody}>
-      <div
-        className={styles.statsGrid}
-        style={{
-          gridTemplateColumns: isMobile
-            ? "repeat(2, minmax(0, 1fr))"
-            : "repeat(7, minmax(0, 1fr))",
-        }}
-      >
-        <StatBlock
-          label={t("tokenUsage.totalTokens")}
-          value={formatNumber(totals.total_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.input")}
-          value={formatNumber(totals.input_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.output")}
-          value={formatNumber(totals.output_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.cacheRead")}
-          value={formatNumber(totals.cache_read_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.cacheHit")}
-          value={`${totals.cache_hit_percent.toFixed(1)}%`}
-        />
-        <StatBlock label={t("tokenUsage.turns")} value={totals.turns} />
-        <StatBlock
-          label={t("tokenUsage.avgPerTurn")}
-          value={formatNumber(totals.avg_per_turn)}
-        />
-      </div>
+      <UsageStats
+        items={usageStatItems(totals, t)}
+        overflowEnabled={!isMobile}
+      />
 
       <div
         className={styles.pieGrid}
@@ -618,40 +613,10 @@ function DimensionView({
 
   return (
     <div className={styles.summaryBody}>
-      <div
-        className={styles.statsGrid}
-        style={{
-          gridTemplateColumns: isMobile
-            ? "repeat(2, minmax(0, 1fr))"
-            : "repeat(7, minmax(0, 1fr))",
-        }}
-      >
-        <StatBlock
-          label={t("tokenUsage.totalTokens")}
-          value={formatNumber(totals.total_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.input")}
-          value={formatNumber(totals.input_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.output")}
-          value={formatNumber(totals.output_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.cacheRead")}
-          value={formatNumber(totals.cache_read_tokens)}
-        />
-        <StatBlock
-          label={t("tokenUsage.cacheHit")}
-          value={`${totals.cache_hit_percent.toFixed(1)}%`}
-        />
-        <StatBlock label={t("tokenUsage.turns")} value={totals.turns} />
-        <StatBlock
-          label={t("tokenUsage.avgPerTurn")}
-          value={formatNumber(totals.avg_per_turn)}
-        />
-      </div>
+      <UsageStats
+        items={usageStatItems(totals, t)}
+        overflowEnabled={!isMobile}
+      />
 
       {granularity !== "by_day" && pieData.length > 0 && (
         <div
