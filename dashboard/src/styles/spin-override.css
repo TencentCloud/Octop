@@ -1,0 +1,39 @@
+/**
+ * Layout contract for the global antd Spin indicator (OctopSpinner).
+ * antd sizes and positions its default dot from the `dotSize` token, so every
+ * geometry rule it derives (box, nested-pattern centering, tip gap) has to be
+ * restated from one size variable per Spin size.
+ */
+
+.octop-spin {
+  --octop-spinner-size: 24px;
+  --octop-spinner-ring-width: 2.5px;
+}
+
+.octop-spin-lg {
+  --octop-spinner-size: 48px;
+  --octop-spinner-ring-width: 4px;
+}
+
+.octop-spin-sm {
+  --octop-spinner-size: 18px;
+  --octop-spinner-ring-width: 2px;
+}
+
+.octop-spin .octop-spin-dot {
+  width: var(--octop-spinner-size) !important;
+  height: var(--octop-spinner-size) !important;
+}
+
+.octop-spin-nested-loading .octop-spin .octop-spin-dot {
+  margin: calc(var(--octop-spinner-size) / -2) !important;
+}
+
+/* With a tip, lift the ring and drop the text below it. */
+.octop-spin-nested-loading .octop-spin-show-text .octop-spin-dot {
+  margin-top: calc(var(--octop-spinner-size) / -2 - 12px) !important;
+}
+
+.octop-spin-nested-loading .octop-spin-show-text .octop-spin-text {
+  padding-top: calc(var(--octop-spinner-size) / 2 - 4px) !important;
+}
