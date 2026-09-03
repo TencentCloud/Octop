@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseDashboardPushFrame,
+  parseHistoryReadyFrame,
   truncatePushText,
 } from "./dashboardPushToast";
 
@@ -35,6 +36,38 @@ describe("parseDashboardPushFrame", () => {
       }),
     ).toBeNull();
     expect(parseDashboardPushFrame(null)).toBeNull();
+  });
+});
+
+describe("parseHistoryReadyFrame", () => {
+  it("accepts a weixin history_ready frame", () => {
+    expect(
+      parseHistoryReadyFrame({
+        type: "history_ready",
+        agent_id: "a1",
+        thread_id: "thr_wx",
+        channel_type: "weixin",
+      }),
+    ).toEqual({
+      type: "history_ready",
+      agent_id: "a1",
+      thread_id: "thr_wx",
+      channel_type: "weixin",
+    });
+  });
+
+  it("rejects dashboard_push and incomplete payloads", () => {
+    expect(
+      parseHistoryReadyFrame({
+        type: "dashboard_push",
+        agent_id: "a1",
+        thread_id: "thr_1",
+        text: "hi",
+      }),
+    ).toBeNull();
+    expect(
+      parseHistoryReadyFrame({ type: "history_ready", agent_id: "a1" }),
+    ).toBeNull();
   });
 });
 

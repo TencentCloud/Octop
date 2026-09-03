@@ -73,6 +73,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_HISTORY_READY_CHANNELS = frozenset({"weixin", "qq"})
+
 
 class _MessageEventSink(SlashSink):
     def __init__(self) -> None:
@@ -554,6 +556,12 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 self._record_turn_history(thread_id, history_tracker)
+                await self._notify_im_history_ready(
+                    channel_type=channel_type,
+                    thread_id=thread_id,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                )
         yield MessageEvent.completed()
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
@@ -965,6 +973,38 @@ class GlobalProcessor:
             thread_id=thread_id,
             usage=usage,
         )
+
+    async def _notify_im_history_ready(
+        self,
+        *,
+        channel_type: str,
+        thread_id: str,
+        agent_id: str,
+        user_id: int,
+    ) -> None:
+        """Tell an already-open WeChat/QQ dashboard view to reload history."""
+        if channel_type not in _HISTORY_READY_CHANNELS or user_id <= 0 or not thread_id:
+            return
+        hub = getattr(self._gateway, "ws_hub", None) if self._gateway is not None else None
+        if hub is None:
+            return
+        try:
+            await hub.push_to_user(
+                user_id,
+                {
+                    "type": "history_ready",
+                    "agent_id": agent_id,
+                    "thread_id": thread_id,
+                    "channel_type": channel_type,
+                },
+            )
+        except Exception:
+            logger.debug(
+                "im history_ready notify failed for thread=%s channel=%s",
+                thread_id,
+                channel_type,
+                exc_info=True,
+            )
 
     def _record_turn_history(
         self,

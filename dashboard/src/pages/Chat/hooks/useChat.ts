@@ -1071,6 +1071,14 @@ export function useChat(
     [agentId, stableSessionId, refreshHistory],
   );
 
+  useEffect(() => {
+    return chatStore.onSessionEvent((event) => {
+      if (event.kind !== "historyReady") return;
+      if (event.sessionId !== stableSessionId) return;
+      void refreshHistory(event.sessionId);
+    });
+  }, [stableSessionId, refreshHistory]);
+
   return {
     messages,
     isStreaming,

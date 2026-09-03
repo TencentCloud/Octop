@@ -7,8 +7,10 @@ import { buildDashboardNotifyWsUrl } from "../api/modules/wsNotifications";
 import { getAuthToken } from "../api/request";
 import { useAgent } from "../context/AgentContext";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
+import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
 import {
   parseDashboardPushFrame,
+  parseHistoryReadyFrame,
   truncatePushText,
 } from "../utils/dashboardPushToast";
 import styles from "./useDashboardPushToast.module.less";
@@ -111,6 +113,15 @@ export function useDashboardPushToast(): void {
           typeof raw === "object" &&
           (raw as { type?: string }).type === "pong"
         ) {
+          return;
+        }
+        const historyReady = parseHistoryReadyFrame(raw);
+        if (historyReady) {
+          emitSessionEvent({
+            kind: "historyReady",
+            sessionId: historyReady.thread_id,
+            agentId: historyReady.agent_id,
+          });
           return;
         }
         const parsed = parseDashboardPushFrame(raw);

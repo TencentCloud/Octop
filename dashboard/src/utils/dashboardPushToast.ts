@@ -6,6 +6,31 @@ export type DashboardPushEvent = {
   agent_name?: string;
 };
 
+export type HistoryReadyEvent = {
+  type: "history_ready";
+  agent_id: string;
+  thread_id: string;
+  channel_type: string;
+};
+
+export function parseHistoryReadyFrame(raw: unknown): HistoryReadyEvent | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj.type !== "history_ready") return null;
+  const agentId = typeof obj.agent_id === "string" ? obj.agent_id.trim() : "";
+  const threadId =
+    typeof obj.thread_id === "string" ? obj.thread_id.trim() : "";
+  if (!agentId || !threadId) return null;
+  const channelType =
+    typeof obj.channel_type === "string" ? obj.channel_type.trim() : "";
+  return {
+    type: "history_ready",
+    agent_id: agentId,
+    thread_id: threadId,
+    channel_type: channelType,
+  };
+}
+
 export function parseDashboardPushFrame(
   raw: unknown,
 ): DashboardPushEvent | null {
