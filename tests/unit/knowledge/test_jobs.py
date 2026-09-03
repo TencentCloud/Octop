@@ -117,6 +117,30 @@ def test_process_document_indexes_chunks_and_marks_ready(
     assert KnowledgeIndex(kb.id).search([1.0, 0.0], 1)[0].doc_id == doc.id
 
 
+def test_process_document_indexes_ocr_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    repo = KnowledgeRepo(pool)
+    owner_id = UserRepo(pool).create(username="owner", password_hash="h", role="user")
+    kb = repo.create_base(owner_user_id=owner_id, name="Scans", embedding_model="model")
+    doc = repo.create_document(
+        kb_id=kb.id, filename="scan.png", content_type="image/png", byte_size=5
+    )
+    write_document(kb.id, doc.id, doc.filename, b"image")
+    services = SimpleNamespace(knowledge_repo=repo, settings_repo=SettingsRepo(pool))
+    monkeypatch.setattr(jobs, "assert_knowledge_usable", lambda *_args: None)
+    monkeypatch.setattr(jobs, "optional_ocr_extractor", lambda _services: lambda _path: "发票")
+    monkeypatch.setattr(jobs, "embed_knowledge_texts", lambda _services, _texts: [[1.0, 0.0]])
+
+    jobs.process_document(services, kb.id, doc.id)
+
+    updated = repo.get_document(doc.id)
+    assert updated is not None
+    assert updated.status == "ready"
+    assert KnowledgeIndex(kb.id).search([1.0, 0.0], 1)[0].text == "发票"
+
+
 def test_reindex_all_updates_base_model_marks_documents_pending_and_enqueues(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

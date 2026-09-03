@@ -73,6 +73,7 @@ describe("knowledgeBasesApi", () => {
       "/knowledge-bases/kb-1/documents",
       expect.any(FormData),
       { method: "POST" },
+      undefined,
     );
     expect(request).toHaveBeenNthCalledWith(
       1,
@@ -82,6 +83,20 @@ describe("knowledgeBasesApi", () => {
     expect(request).toHaveBeenNthCalledWith(
       2,
       "/knowledge-bases/kb-1/documents/doc-1/preview",
+    );
+  });
+
+  it("forwards the upload progress handler", () => {
+    const file = new File(["document"], "notes.md", { type: "text/markdown" });
+    const onProgress = vi.fn();
+
+    knowledgeBasesApi.uploadDocument("kb-1", file, "docs/notes.md", onProgress);
+
+    expect(requestUpload).toHaveBeenCalledWith(
+      "/knowledge-bases/kb-1/documents",
+      expect.any(FormData),
+      { method: "POST" },
+      onProgress,
     );
   });
 });

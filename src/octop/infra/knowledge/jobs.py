@@ -10,6 +10,7 @@ from octop.infra.knowledge.embed import embed_knowledge_texts
 from octop.infra.knowledge.files import document_path
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.index import KnowledgeIndex
+from octop.infra.knowledge.ocr import optional_ocr_extractor
 from octop.infra.knowledge.params import get_advanced_settings
 from octop.infra.knowledge.parse import parse_document
 
@@ -42,7 +43,8 @@ def process_document(services: Any, kb_id: str, doc_id: str) -> None:
         return
     repo.update_document(doc_id, status="processing", error_message="")
     try:
-        text = parse_document(document_path(kb_id, doc_id, document.filename))
+        path = document_path(kb_id, doc_id, document.filename)
+        text = parse_document(path, ocr=optional_ocr_extractor(services))
         knobs = get_advanced_settings(services.settings_repo.get)
         chunks = chunk_text(text, size=knobs["chunk_size"], overlap=knobs["chunk_overlap"])
         if not (text or "").strip() or not chunks:

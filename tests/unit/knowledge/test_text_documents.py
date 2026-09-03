@@ -71,3 +71,99 @@ def test_create_and_update_text_document(
     assert path.read_text(encoding="utf-8") == "# Updated\n"
     raw = svc.read_text_document(base.id, created.id, actor_user_id=services.owner_id)
     assert raw["text"] == "# Updated\n"
+
+
+def test_upload_spreadsheet_documents(
+    services: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "octop.infra.knowledge.service.assert_knowledge_usable",
+        lambda *_a, **_k: None,
+    )
+    svc = KnowledgeService(services)
+    base = svc.create_base(owner_user_id=services.owner_id, name="Sheets")
+    xlsx = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="sales.xlsx",
+        content_type="application/octet-stream",
+        content=b"fake-xlsx",
+    )
+    csv_doc = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="sales.csv",
+        content_type="application/vnd.ms-excel",
+        content=b"a,b\n1,2\n",
+    )
+    xls = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="legacy.xls",
+        content_type="application/vnd.ms-excel",
+        content=b"fake-xls",
+    )
+    html = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="page.html",
+        content_type="text/html",
+        content=b"<p>hi</p>",
+    )
+    json_doc = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="data.json",
+        content_type="application/json",
+        content=b"{}",
+    )
+    xlsm = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="macro.xlsm",
+        content_type="application/octet-stream",
+        content=b"fake-xlsm",
+    )
+    assert xlsx.content_type == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert csv_doc.content_type == "text/csv"
+    assert xls.content_type == "application/vnd.ms-excel"
+    assert html.content_type == "text/html"
+    assert json_doc.content_type == "application/json"
+    assert xlsm.content_type == "application/vnd.ms-excel.sheet.macroEnabled.12"
+
+
+def test_image_upload_requires_ocr(
+    services: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "octop.infra.knowledge.service.assert_knowledge_usable",
+        lambda *_a, **_k: None,
+    )
+    svc = KnowledgeService(services)
+    base = svc.create_base(owner_user_id=services.owner_id, name="Images")
+
+    with pytest.raises(ValueError, match="OCR must be enabled"):
+        svc.upload_document(
+            base.id,
+            actor_user_id=services.owner_id,
+            filename="scan.png",
+            content_type="image/png",
+            content=b"image",
+        )
+
+    services.settings_repo.get.side_effect = lambda key, default=None: {
+        "knowledge_feature_enabled": "1",
+        "knowledge_embedding_backend": "onnx",
+        "knowledge_embedding_model": "tiny",
+        "knowledge_ocr_enabled": "true",
+    }.get(key, default)
+    created = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="scan.png",
+        content_type="application/octet-stream",
+        content=b"image",
+    )
+    assert created.content_type == "image/png"

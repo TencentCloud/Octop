@@ -19,6 +19,18 @@ export interface KnowledgeCapability {
     deps_available: boolean;
     provider_ready: boolean;
   };
+  ocr: {
+    enabled: boolean;
+    backend: "onnx" | "remote";
+    model: string;
+    provider_id: string;
+    prerequisites_ok: boolean;
+    usable: boolean;
+    checks: {
+      deps_available: boolean;
+      provider_ready: boolean;
+    };
+  };
   limits?: KnowledgeLimits;
 }
 
@@ -76,6 +88,15 @@ export interface KnowledgeEmbeddingOptions {
   }[];
 }
 
+export interface KnowledgeOcrOptions {
+  local: { id: "rapidocr"; name: string };
+  remote: {
+    provider_id: string;
+    provider_name: string;
+    models: { id: string; name: string }[];
+  }[];
+}
+
 export interface KnowledgeOnnxDownloadState {
   status: "idle" | "downloading" | "loading" | "done" | "failed";
   progress: number;
@@ -99,6 +120,10 @@ export const knowledgeBasesApi = {
     backend?: "onnx" | "remote";
     model?: string;
     provider_id?: string;
+    ocr_enabled?: boolean;
+    ocr_backend?: "onnx" | "remote";
+    ocr_model?: string;
+    ocr_provider_id?: string;
   }) =>
     request<KnowledgeCapability>("/knowledge-bases/feature", {
       method: "PUT",
@@ -112,6 +137,9 @@ export const knowledgeBasesApi = {
         ? "/knowledge-bases/embedding-options?all_onnx=true"
         : "/knowledge-bases/embedding-options",
     ),
+
+  getOcrOptions: () =>
+    request<KnowledgeOcrOptions>("/knowledge-bases/ocr-options"),
 
   downloadOnnx: (model: string) =>
     request<KnowledgeOnnxDownloadState>("/knowledge-bases/onnx-download", {
@@ -224,7 +252,12 @@ export const knowledgeBasesApi = {
       },
     ),
 
-  uploadDocument: (id: string, file: File, relativePath?: string) => {
+  uploadDocument: (
+    id: string,
+    file: File,
+    relativePath?: string,
+    onProgress?: (percent: number) => void,
+  ) => {
     const body = new FormData();
     body.append("upload", file);
     if (relativePath) body.append("path", relativePath);
@@ -232,6 +265,7 @@ export const knowledgeBasesApi = {
       `/knowledge-bases/${id}/documents`,
       body,
       { method: "POST" },
+      onProgress,
     );
   },
 

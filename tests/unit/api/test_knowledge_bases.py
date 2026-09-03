@@ -321,6 +321,38 @@ async def test_embedding_options_excludes_onnx_local_provider() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ocr_options_only_lists_image_capable_models() -> None:
+    from octop.api.routers import knowledge_bases
+
+    provider = SimpleNamespace(
+        id=2,
+        name="OpenAI",
+        enabled=True,
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        get_models=lambda: [
+            {"id": "text-only", "name": "Text", "input": ["text"]},
+            {"id": "vision-1", "name": "Vision", "input": ["text", "image"]},
+            {"id": "embed-1", "name": "Embed", "embedding": True, "input": ["image"]},
+        ],
+    )
+    server = SimpleNamespace(
+        services=SimpleNamespace(provider_repo=SimpleNamespace(list_all=lambda: [provider]))
+    )
+
+    options = await knowledge_bases.ocr_options(server=server, _admin=object())
+
+    assert options["local"] == {"id": "rapidocr", "name": "RapidOCR (ONNX)"}
+    assert options["remote"] == [
+        {
+            "provider_id": "2",
+            "provider_name": "OpenAI",
+            "models": [{"id": "vision-1", "name": "Vision"}],
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_embedding_options_omits_non_recommended_onnx() -> None:
     from octop.api.routers import knowledge_bases
     from octop.infra.agents.providers.onnx_catalog import ONNX_PRESET_MODEL_IDS

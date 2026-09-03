@@ -91,6 +91,28 @@ def is_embedding_model(
     return is_onnx_local_provider(provider_name, provider_api_key=provider_api_key)
 
 
+def is_vision_model(model: dict[str, Any]) -> bool:
+    """True when a model entry declares or conventionally supports image input."""
+    model_id = str(model.get("id") or "").strip().lower()
+    raw_input = model.get("input")
+    if isinstance(raw_input, list) and any(
+        str(modality).strip().lower() == "image" for modality in raw_input
+    ):
+        return True
+    return any(
+        hint in model_id
+        for hint in (
+            "-vl",
+            "vision",
+            "-image",
+            "gpt-4o",
+            "gpt-4.1",
+            "claude-3",
+            "gemini",
+        )
+    )
+
+
 def is_chat_eligible_model(
     model: dict[str, Any],
     *,

@@ -101,7 +101,9 @@ type BaseFormValues = {
 type DocsViewMode = "card" | "table";
 const DOCS_VIEW_STORAGE_KEY = "octop:knowledge-bases-docs-view";
 
-const SUPPORTED_DOCUMENT_TYPES = ".md,.txt,.pdf,.docx,.pptx";
+const BASE_DOCUMENT_TYPES =
+  ".md,.markdown,.txt,.rst,.html,.htm,.json,.jsonl,.yaml,.yml,.csv,.tsv,.pdf,.docx,.pptx,.xls,.xlsx,.xlsm";
+const OCR_DOCUMENT_TYPES = ".png,.jpg,.jpeg,.webp";
 
 function loadDocsViewMode(): DocsViewMode {
   const stored = localStorage.getItem(DOCS_VIEW_STORAGE_KEY);
@@ -275,12 +277,24 @@ export default function KnowledgeBasesPage() {
   } | null>(null);
   const [onnxProbing, setOnnxProbing] = useState(false);
   const [featureEnabledDraft, setFeatureEnabledDraft] = useState(false);
+  const [featureSaving, setFeatureSaving] = useState(false);
   const [featureModel, setFeatureModel] = useState<string>();
   const [featureBackend, setFeatureBackend] = useState<"onnx" | "remote">(
     "onnx",
   );
   const [featureProviderId, setFeatureProviderId] = useState<string>();
   const [featureOptionsLoading, setFeatureOptionsLoading] = useState(false);
+  const [ocrEnabledDraft, setOcrEnabledDraft] = useState(false);
+  const [ocrBackend, setOcrBackend] = useState<"onnx" | "remote">("onnx");
+  const [ocrModel, setOcrModel] = useState<string>();
+  const [ocrProviderId, setOcrProviderId] = useState<string>();
+  const [ocrRemoteProviders, setOcrRemoteProviders] = useState<
+    {
+      provider_id: string;
+      provider_name: string;
+      models: { id: string; name: string }[];
+    }[]
+  >([]);
   const [onnxExpanded, setOnnxExpanded] = useState(false);
   const [onnxExpanding, setOnnxExpanding] = useState(false);
   const onnxExpandedRef = useRef(false);
@@ -302,6 +316,12 @@ export default function KnowledgeBasesPage() {
   const [baseForm] = Form.useForm<BaseFormValues>();
   const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
   const [sharedChecked, setSharedChecked] = useState(false);
+  const [uploadState, setUploadState] = useState<{
+    filename: string;
+    index: number;
+    total: number;
+    percent: number;
+  } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const detailRequestGate = useRef(createDetailRequestGate());
   const {
@@ -324,6 +344,9 @@ export default function KnowledgeBasesPage() {
   );
   const canWriteSelected = canManageSelected;
   const usable = Boolean(capability?.usable);
+  const supportedDocumentTypes = capability?.ocr?.usable
+    ? `${BASE_DOCUMENT_TYPES},${OCR_DOCUMENT_TYPES}`
+    : BASE_DOCUMENT_TYPES;
   const limits = capability?.limits ?? DEFAULT_KNOWLEDGE_LIMITS;
   const ownedBaseCount = user
     ? bases.filter((base) => base.owner_user_id === user.id).length
@@ -368,6 +391,10 @@ export default function KnowledgeBasesPage() {
       setFeatureBackend(nextCapability.backend);
       setFeatureProviderId(nextCapability.provider_id || undefined);
       setFeatureEnabledDraft(Boolean(nextCapability.feature_enabled));
+      setOcrEnabledDraft(Boolean(nextCapability.ocr?.enabled));
+      setOcrBackend(nextCapability.ocr?.backend ?? "onnx");
+      setOcrModel(nextCapability.ocr?.model || "rapidocr");
+      setOcrProviderId(nextCapability.ocr?.provider_id || undefined);
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
@@ -403,6 +430,17 @@ export default function KnowledgeBasesPage() {
     },
     [t],
   );
+
+  const loadOcrOptions = useCallback(async () => {
+    try {
+      const options = await knowledgeBasesApi.getOcrOptions();
+      setOcrRemoteProviders(options.remote);
+      return options;
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
+      return undefined;
+    }
+  }, [t]);
 
   const stopOnnxDownloadWatch = useCallback(() => {
     if (onnxDownloadTimer.current) {
@@ -694,6 +732,7 @@ export default function KnowledgeBasesPage() {
 
   const saveFeature = async (confirmed = false) => {
     if (!featureEnabledDraft) {
+      setFeatureSaving(true);
       try {
         setCapability(await knowledgeBasesApi.setFeature({ enabled: false }));
         setFeatureModalOpen(false);
@@ -702,10 +741,19 @@ export default function KnowledgeBasesPage() {
         message.error(
           apiErrorMessage(error, t("knowledgeBases.featureSaveFailed"), t),
         );
+      } finally {
+        setFeatureSaving(false);
       }
       return;
     }
     if (!featureModel || (featureBackend === "remote" && !featureProviderId)) {
+      return;
+    }
+    if (
+      ocrEnabledDraft &&
+      ocrBackend === "remote" &&
+      (!ocrProviderId || !ocrModel)
+    ) {
       return;
     }
     if (
@@ -721,7 +769,13 @@ export default function KnowledgeBasesPage() {
       (capability.backend !== featureBackend ||
         capability.selected_model !== featureModel ||
         capability.provider_id !==
-          (featureBackend === "remote" ? featureProviderId : ""))
+          (featureBackend === "remote" ? featureProviderId : "") ||
+        capability.ocr?.enabled !== ocrEnabledDraft ||
+        capability.ocr?.backend !== ocrBackend ||
+        (ocrEnabledDraft &&
+          ocrBackend === "remote" &&
+          (capability.ocr?.model !== ocrModel ||
+            capability.ocr?.provider_id !== ocrProviderId)))
     ) {
       modal.confirm({
         title: t("knowledgeBases.rebuildConfirmTitle"),
@@ -732,12 +786,17 @@ export default function KnowledgeBasesPage() {
       });
       return;
     }
+    setFeatureSaving(true);
     try {
       const next = await knowledgeBasesApi.setFeature({
         enabled: true,
         backend: featureBackend,
         model: featureModel,
         provider_id: featureBackend === "remote" ? featureProviderId : "",
+        ocr_enabled: ocrEnabledDraft,
+        ocr_backend: ocrBackend,
+        ocr_model: ocrBackend === "remote" ? ocrModel : "rapidocr",
+        ocr_provider_id: ocrBackend === "remote" ? ocrProviderId : "",
       });
       setCapability(next);
       setFeatureModalOpen(false);
@@ -746,6 +805,8 @@ export default function KnowledgeBasesPage() {
       message.error(
         apiErrorMessage(error, t("knowledgeBases.featureSaveFailed"), t),
       );
+    } finally {
+      setFeatureSaving(false);
     }
   };
 
@@ -758,6 +819,10 @@ export default function KnowledgeBasesPage() {
     setFeatureBackend(selectedBackend);
     setFeatureModel(selectedModel);
     setFeatureProviderId(capability?.provider_id || undefined);
+    setOcrEnabledDraft(Boolean(capability?.ocr?.enabled));
+    setOcrBackend(capability?.ocr?.backend ?? "onnx");
+    setOcrModel(capability?.ocr?.model || "rapidocr");
+    setOcrProviderId(capability?.ocr?.provider_id || undefined);
     setFeatureModalOpen(true);
     void (async () => {
       const options = await loadEmbeddingOptions(false);
@@ -769,6 +834,7 @@ export default function KnowledgeBasesPage() {
         await loadEmbeddingOptions(true);
       }
     })();
+    void loadOcrOptions();
     void knowledgeBasesApi.getOnnxDownloadStatus().then((state) => {
       if (state.status === "downloading" || state.status === "loading") {
         const modelId = state.model_name;
@@ -837,12 +903,28 @@ export default function KnowledgeBasesPage() {
       return;
     }
     try {
-      for (const file of chosen) {
+      for (const [index, file] of chosen.entries()) {
+        setUploadState({
+          filename: file.name,
+          index: index + 1,
+          total: chosen.length,
+          percent: 0,
+        });
         await knowledgeBasesApi.uploadDocument(
           selected.id,
           file,
           joinKnowledgePath(currentFolder, file.name),
+          (percent) =>
+            setUploadState((current) =>
+              current && current.filename === file.name
+                ? { ...current, percent }
+                : current,
+            ),
         );
+        // Show each finished file while the remaining ones still upload.
+        if (index < chosen.length - 1) {
+          void loadDetail(selected.id, { silent: true });
+        }
       }
       await loadDetail(selected.id);
       await loadBases();
@@ -852,6 +934,7 @@ export default function KnowledgeBasesPage() {
         apiErrorMessage(error, t("knowledgeBases.uploadFailed"), t),
       );
     } finally {
+      setUploadState(null);
       if (uploadRef.current) uploadRef.current.value = "";
     }
   };
@@ -1520,7 +1603,7 @@ export default function KnowledgeBasesPage() {
                           className={styles.fileInput}
                           type="file"
                           multiple
-                          accept={SUPPORTED_DOCUMENT_TYPES}
+                          accept={supportedDocumentTypes}
                           onChange={(event) =>
                             void uploadDocuments(event.target.files)
                           }
@@ -1549,7 +1632,8 @@ export default function KnowledgeBasesPage() {
                           <Button
                             type="primary"
                             icon={<FileUp size={14} />}
-                            disabled={isAtDocumentLimit}
+                            loading={Boolean(uploadState)}
+                            disabled={isAtDocumentLimit || Boolean(uploadState)}
                             onClick={() => uploadRef.current?.click()}
                           >
                             {t("knowledgeBases.upload")}
@@ -1603,14 +1687,42 @@ export default function KnowledgeBasesPage() {
                           type="secondary"
                           className={styles.uploadHint}
                         >
-                          {t("knowledgeBases.uploadHint", {
-                            sizeMb: Math.round(
-                              limits.max_document_bytes / (1024 * 1024),
-                            ),
-                          })}
+                          {t(
+                            capability?.ocr?.usable
+                              ? "knowledgeBases.uploadHintOcr"
+                              : "knowledgeBases.uploadHint",
+                            {
+                              sizeMb: Math.round(
+                                limits.max_document_bytes / (1024 * 1024),
+                              ),
+                            },
+                          )}
                         </Typography.Text>
                       ) : null}
                     </div>
+                    {uploadState ? (
+                      <div className={styles.uploadProgress} aria-live="polite">
+                        <Typography.Text
+                          className={styles.uploadProgressLabel}
+                          ellipsis={{ tooltip: uploadState.filename }}
+                        >
+                          {uploadState.total > 1
+                            ? t("knowledgeBases.uploadingMany", {
+                                name: uploadState.filename,
+                                index: uploadState.index,
+                                total: uploadState.total,
+                              })
+                            : t("knowledgeBases.uploading", {
+                                name: uploadState.filename,
+                              })}
+                        </Typography.Text>
+                        <Progress
+                          percent={uploadState.percent}
+                          size="small"
+                          status="active"
+                        />
+                      </div>
+                    ) : null}
                     {isAtDocumentLimit ? (
                       <Alert
                         className={styles.limitAlert}
@@ -2014,10 +2126,14 @@ export default function KnowledgeBasesPage() {
             </Button>
             <Button
               type="primary"
+              loading={featureSaving}
               disabled={
                 featureEnabledDraft
                   ? !featureModel ||
                     (featureBackend === "remote" && !featureProviderId) ||
+                    (ocrEnabledDraft &&
+                      ocrBackend === "remote" &&
+                      (!ocrProviderId || !ocrModel)) ||
                     (featureBackend === "onnx" &&
                       !catalog.find((model) => model.id === featureModel)
                         ?.downloaded) ||
@@ -2252,6 +2368,95 @@ export default function KnowledgeBasesPage() {
               <Typography.Link onClick={() => navigate("/admin/models")}>
                 {t("knowledgeBases.manageModels")}
               </Typography.Link>
+              <div className={styles.ocrSettings}>
+                <div className={styles.formOptionRow}>
+                  <div className={styles.formOptionCopy}>
+                    <span className={styles.switchLabel}>
+                      {t("knowledgeBases.ocrTitle")}
+                    </span>
+                    <span className={styles.formOptionHint}>
+                      {t("knowledgeBases.ocrDescription")}
+                    </span>
+                  </div>
+                  <Switch
+                    size="small"
+                    checked={ocrEnabledDraft}
+                    onChange={setOcrEnabledDraft}
+                  />
+                </div>
+                {ocrEnabledDraft ? (
+                  <div className={styles.featureFields}>
+                    <Radio.Group
+                      className={styles.featureBackend}
+                      value={ocrBackend}
+                      onChange={(event) => {
+                        const backend = event.target.value as "onnx" | "remote";
+                        setOcrBackend(backend);
+                        setOcrModel(
+                          backend === "onnx" ? "rapidocr" : undefined,
+                        );
+                        setOcrProviderId(undefined);
+                      }}
+                    >
+                      <Radio value="onnx">{t("knowledgeBases.ocrLocal")}</Radio>
+                      <Radio value="remote">
+                        {t("knowledgeBases.ocrRemote")}
+                      </Radio>
+                    </Radio.Group>
+                    {ocrBackend === "onnx" ? (
+                      <div
+                        className={`${styles.onnxModelItem} ${styles.onnxModelItemActive}`}
+                      >
+                        <div className={styles.onnxModelInfo}>
+                          <span className={styles.onnxModelName}>
+                            RapidOCR (ONNX)
+                          </span>
+                          <span className={styles.onnxModelMeta}>
+                            {t("knowledgeBases.ocrLocalHint")}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={t("knowledgeBases.ocrRemotePrivacy")}
+                        />
+                        <Select
+                          value={ocrProviderId}
+                          onChange={(id) => {
+                            setOcrProviderId(id);
+                            setOcrModel(undefined);
+                          }}
+                          placeholder={t("knowledgeBases.selectProvider")}
+                          options={ocrRemoteProviders.map((provider) => ({
+                            value: provider.provider_id,
+                            label: provider.provider_name,
+                          }))}
+                          notFoundContent={t("knowledgeBases.ocrNoProviders")}
+                        />
+                        <Select
+                          value={ocrModel}
+                          onChange={setOcrModel}
+                          placeholder={t("knowledgeBases.ocrSelectModel")}
+                          options={(
+                            ocrRemoteProviders.find(
+                              (provider) =>
+                                provider.provider_id === ocrProviderId,
+                            )?.models ?? []
+                          ).map((model) => ({
+                            value: model.id,
+                            label: model.name,
+                          }))}
+                          disabled={!ocrProviderId}
+                          notFoundContent={t("knowledgeBases.ocrNoModels")}
+                        />
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </Spin>
         ) : null}

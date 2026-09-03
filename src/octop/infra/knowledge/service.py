@@ -18,6 +18,11 @@ from octop.infra.knowledge.files import (
 )
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.index import KnowledgeIndex
+from octop.infra.knowledge.ocr import (
+    OCR_IMAGE_SUFFIXES,
+    load_ocr_config,
+    optional_ocr_extractor,
+)
 from octop.infra.knowledge.parse import parse_document
 from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path_parent
 
@@ -30,9 +35,26 @@ _MAX_PREVIEW_CHARS = 200_000
 _EXT_TO_CONTENT_TYPE = {
     ".txt": "text/plain",
     ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".rst": "text/x-rst",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".json": "application/json",
+    ".jsonl": "application/jsonl",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+    ".csv": "text/csv",
+    ".tsv": "text/tab-separated-values",
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
 }
 _ALLOWED_CONTENT_TYPES = set(_EXT_TO_CONTENT_TYPE.values())
 _TEXT_CONTENT_TYPES = {"text/plain", "text/markdown"}
@@ -41,11 +63,15 @@ _TEXT_FORMAT_TO_CONTENT_TYPE = {"md": "text/markdown", "txt": "text/plain"}
 
 
 def _resolve_content_type(filename: str, content_type: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    mapped = _EXT_TO_CONTENT_TYPE.get(suffix)
+    if mapped is not None:
+        return mapped
     ct = (content_type or "").strip().lower()
     if ct in _ALLOWED_CONTENT_TYPES:
         return ct
     if ct in {"", "application/octet-stream"}:
-        return _EXT_TO_CONTENT_TYPE.get(Path(filename).suffix.lower(), ct)
+        return ct
     return ct
 
 
@@ -160,7 +186,8 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        text = parse_document(document_path(kb_id, doc_id, document.filename))
+        path = document_path(kb_id, doc_id, document.filename)
+        text = parse_document(path, ocr=optional_ocr_extractor(self._services))
         if len(text) > _MAX_PREVIEW_CHARS:
             text = text[:_MAX_PREVIEW_CHARS]
         return {
@@ -314,6 +341,11 @@ class KnowledgeService:
         name = path_basename(rel)
         if not name:
             raise ValueError("invalid knowledge document filename")
+        if (
+            Path(name).suffix.lower() in OCR_IMAGE_SUFFIXES
+            and not load_ocr_config(self._services.settings_repo.get).enabled
+        ):
+            raise ValueError("knowledge OCR must be enabled for image documents")
         resolved_type = _resolve_content_type(name, content_type)
         if resolved_type not in _ALLOWED_CONTENT_TYPES:
             raise ValueError(f"unsupported knowledge document content type: {content_type}")
