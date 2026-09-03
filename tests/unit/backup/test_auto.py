@@ -39,18 +39,69 @@ def test_backup_config_from_payload_rejects_bad_retention() -> None:
         backup_config_from_payload({"schedule": "cron:0 4 * * *", "retention_count": 0})
 
 
+def test_backup_config_from_payload_reads_content_options() -> None:
+    cfg = backup_config_from_payload(
+        {
+            "schedule": "cron:0 4 * * *",
+            "retention_count": 3,
+            "include_config": False,
+            "include_workspaces": False,
+            "include_skill_packages": False,
+            "include_plugins": False,
+            "include_knowledge": False,
+            "include_chats": True,
+        }
+    )
+    assert cfg.include_config is False
+    assert cfg.include_workspaces is False
+    assert cfg.include_skill_packages is False
+    assert cfg.include_plugins is False
+    assert cfg.include_knowledge is False
+    assert cfg.include_chats is True
+
+    defaults = backup_config_from_payload({"schedule": "cron:0 4 * * *", "retention_count": 3})
+    assert defaults.include_config is True
+    assert defaults.include_workspaces is True
+    assert defaults.include_skill_packages is True
+    assert defaults.include_plugins is True
+    assert defaults.include_knowledge is True
+    assert defaults.include_chats is False
+
+
 def test_persist_backup_config(tmp_path: Path) -> None:
     cfg_path = tmp_path / "config.json"
     load_config(cfg_path)
     out = persist_backup_config(
         cfg_path,
-        BackupConfig(auto_enabled=True, schedule="interval:3600", retention_count=3),
+        BackupConfig(
+            auto_enabled=True,
+            schedule="interval:3600",
+            retention_count=3,
+            include_config=False,
+            include_workspaces=False,
+            include_skill_packages=False,
+            include_plugins=False,
+            include_knowledge=False,
+            include_chats=True,
+        ),
     )
     assert out.backup.auto_enabled is True
     assert out.backup.schedule == "interval:3600"
     assert out.backup.retention_count == 3
+    assert out.backup.include_chats is True
+    assert out.backup.include_config is False
+    assert out.backup.include_workspaces is False
+    assert out.backup.include_skill_packages is False
+    assert out.backup.include_plugins is False
+    assert out.backup.include_knowledge is False
     reloaded = load_config(cfg_path)
     assert reloaded.backup.auto_enabled is True
+    assert reloaded.backup.include_chats is True
+    assert reloaded.backup.include_config is False
+    assert reloaded.backup.include_workspaces is False
+    assert reloaded.backup.include_skill_packages is False
+    assert reloaded.backup.include_plugins is False
+    assert reloaded.backup.include_knowledge is False
 
 
 def test_apply_auto_backup_schedule_skips_when_disabled(tmp_path: Path) -> None:

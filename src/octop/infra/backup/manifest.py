@@ -29,6 +29,10 @@ class BackupManifest:
     agents: list[AgentBackupEntry] = field(default_factory=list)
     includes_config: bool = True
     includes_env: bool = False
+    includes_skill_packages: bool = True
+    includes_plugins: bool = False
+    includes_knowledge: bool = False
+    includes_chats: bool = True
 
     def to_json(self) -> str:
         payload: dict[str, Any] = {
@@ -42,6 +46,10 @@ class BackupManifest:
             "database_dump_format": self.database_dump_format,
             "includes_config": self.includes_config,
             "includes_env": self.includes_env,
+            "includes_skill_packages": self.includes_skill_packages,
+            "includes_plugins": self.includes_plugins,
+            "includes_knowledge": self.includes_knowledge,
+            "includes_chats": self.includes_chats,
             "agents": [asdict(a) for a in self.agents],
         }
         return json.dumps(payload, indent=2, ensure_ascii=False)
@@ -70,6 +78,17 @@ class BackupManifest:
             agents=agents,
             includes_config=bool(data.get("includes_config", True)),
             includes_env=bool(data.get("includes_env", False)),
+            includes_skill_packages=bool(data.get("includes_skill_packages", True)),
+            # Older archives never packed ~/.octop/plugins; missing key means omit on restore.
+            includes_plugins=(
+                bool(data["includes_plugins"]) if "includes_plugins" in data else False
+            ),
+            # Older archives never packed ~/.octop/knowledge.
+            includes_knowledge=(
+                bool(data["includes_knowledge"]) if "includes_knowledge" in data else False
+            ),
+            # Legacy archives dumped the full database; missing key means chats are present.
+            includes_chats=bool(data["includes_chats"]) if "includes_chats" in data else True,
         )
 
     @classmethod

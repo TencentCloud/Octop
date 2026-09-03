@@ -26,6 +26,12 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.backup.auto_enabled is False
     assert cfg.backup.schedule == "cron:0 4 * * *"
     assert cfg.backup.retention_count == 7
+    assert cfg.backup.include_config is True
+    assert cfg.backup.include_workspaces is True
+    assert cfg.backup.include_skill_packages is True
+    assert cfg.backup.include_plugins is True
+    assert cfg.backup.include_knowledge is True
+    assert cfg.backup.include_chats is False
     assert cfg.max_upload_mb == 100
     assert cfg.max_upload_bytes == 100 * 1024 * 1024
     assert cfg_path.exists()  # file written with defaults
@@ -44,6 +50,12 @@ def test_loads_backup_section(tmp_path: Path):
                     "auto_enabled": True,
                     "schedule": "interval:7200",
                     "retention_count": 3,
+                    "include_config": False,
+                    "include_workspaces": False,
+                    "include_skill_packages": False,
+                    "include_plugins": False,
+                    "include_knowledge": False,
+                    "include_chats": True,
                 }
             }
         )
@@ -52,16 +64,34 @@ def test_loads_backup_section(tmp_path: Path):
     assert cfg.backup.auto_enabled is True
     assert cfg.backup.schedule == "interval:7200"
     assert cfg.backup.retention_count == 3
+    assert cfg.backup.include_config is False
+    assert cfg.backup.include_workspaces is False
+    assert cfg.backup.include_skill_packages is False
+    assert cfg.backup.include_plugins is False
+    assert cfg.backup.include_knowledge is False
+    assert cfg.backup.include_chats is True
 
 
 def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_BACKUP_AUTO_ENABLED", "true")
     monkeypatch.setenv("OCTOP_BACKUP_SCHEDULE", "cron:30 5 * * *")
     monkeypatch.setenv("OCTOP_BACKUP_RETENTION_COUNT", "5")
+    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_CHATS", "true")
+    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_CONFIG", "false")
+    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_WORKSPACES", "false")
+    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES", "false")
+    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_PLUGINS", "false")
+    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_KNOWLEDGE", "false")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.backup.auto_enabled is True
     assert cfg.backup.schedule == "cron:30 5 * * *"
     assert cfg.backup.retention_count == 5
+    assert cfg.backup.include_chats is True
+    assert cfg.backup.include_config is False
+    assert cfg.backup.include_workspaces is False
+    assert cfg.backup.include_skill_packages is False
+    assert cfg.backup.include_plugins is False
+    assert cfg.backup.include_knowledge is False
 
 
 def test_loads_existing(tmp_path: Path):

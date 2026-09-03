@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 from octop.infra.errors import ErrorCode, OctopError
@@ -19,11 +20,19 @@ def _require_tool(name: str) -> str:
     return path
 
 
-def dump_postgres(conninfo: str, dest: Path) -> None:
+def dump_postgres(
+    conninfo: str,
+    dest: Path,
+    *,
+    exclude_table_data: Sequence[str] = (),
+) -> None:
     pg_dump = _require_tool("pg_dump")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [pg_dump, "-Fc", "-f", str(dest), "--dbname", conninfo]
+    for table in exclude_table_data:
+        cmd.extend(["--exclude-table-data", table])
     proc = subprocess.run(
-        [pg_dump, "-Fc", "-f", str(dest), "--dbname", conninfo],
+        cmd,
         capture_output=True,
         text=True,
         check=False,

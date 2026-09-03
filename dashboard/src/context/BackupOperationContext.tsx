@@ -14,6 +14,7 @@ import {
   backupApi,
   type BackupOperationKind,
   type BackupStatusResponse,
+  type CreateBackupOptions,
 } from "../api/modules/backup";
 import { apiErrorMessage } from "../utils/apiError";
 
@@ -28,7 +29,7 @@ interface BackupOperationContextValue {
   creating: boolean;
   restoring: boolean;
   autoRunning: boolean;
-  createBackup: () => Promise<boolean>;
+  createBackup: (options: CreateBackupOptions) => Promise<boolean>;
   runAutoBackup: () => Promise<boolean>;
   restoreBackup: (name: string, restoreConfig: boolean) => Promise<boolean>;
   uploadBackup: (file: File) => Promise<boolean>;
@@ -95,22 +96,25 @@ export function BackupOperationProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  const createBackup = useCallback(async () => {
-    if (!beginLocal("create")) return false;
-    try {
-      await backupApi.createBackup();
-      message.success(t("backup.createSuccess"));
-      notifySettled();
-      return true;
-    } catch (err: unknown) {
-      message.error(apiErrorMessage(err, t("backup.createFailed"), t));
-      return false;
-    } finally {
-      localOwnedRef.current = false;
-      setKind(null);
-      void syncFromServer();
-    }
-  }, [beginLocal, message, notifySettled, syncFromServer, t]);
+  const createBackup = useCallback(
+    async (options: CreateBackupOptions) => {
+      if (!beginLocal("create")) return false;
+      try {
+        await backupApi.createBackup(options);
+        message.success(t("backup.createSuccess"));
+        notifySettled();
+        return true;
+      } catch (err: unknown) {
+        message.error(apiErrorMessage(err, t("backup.createFailed"), t));
+        return false;
+      } finally {
+        localOwnedRef.current = false;
+        setKind(null);
+        void syncFromServer();
+      }
+    },
+    [beginLocal, message, notifySettled, syncFromServer, t],
+  );
 
   const runAutoBackup = useCallback(async () => {
     if (!beginLocal("auto")) return false;

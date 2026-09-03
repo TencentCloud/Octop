@@ -14,7 +14,17 @@ from typing import Any
 
 from octop import __version__
 from octop.config import DatabaseConfig
-from octop.infra.agents.workspace_dir import workspace_dir_from_config_json
+from octop.infra.agents.workspace_dir import (
+    system_files_path_from_config,
+    workspace_dir_from_config_json,
+)
+from octop.infra.backup.chats import (
+    CHAT_TABLES_CHILD_FIRST,
+    capture_chat_tables,
+    is_chat_workspace_rel,
+    restore_preserved_chats,
+    strip_chat_tables_from_sqlite_file,
+)
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
 from octop.infra.backup.pg_dump import dump_postgres, restore_postgres
 from octop.infra.backup.snapshot import (
@@ -40,6 +50,8 @@ _CONFIG_DIR = "config"
 _DB_DIR = "db"
 _WORKSPACES_DIR = "workspaces"
 _SKILL_PACKAGES_DIR = "skill-packages"
+_PLUGINS_DIR = "plugins"
+_KNOWLEDGE_DIR = "knowledge"
 _MANIFEST_NAME = "manifest.json"
 _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
@@ -74,20 +86,52 @@ def suggested_backup_filename() -> str:
     return f"octop-backup-{_timestamp()}.tar.gz"
 
 
-def _should_skip_path(rel: Path) -> bool:
-    return any(part in _SKIP_DIR_NAMES for part in rel.parts)
+def _should_skip_path(
+    rel: Path,
+    *,
+    skip_chats: bool,
+    system_files_path: str = "",
+) -> bool:
+    if any(part in _SKIP_DIR_NAMES for part in rel.parts):
+        return True
+    return skip_chats and is_chat_workspace_rel(
+        rel,
+        system_files_path=system_files_path,
+    )
 
 
-def _add_dir(tf: tarfile.TarFile, src: Path, arc_root: str) -> None:
+def _add_dir(
+    tf: tarfile.TarFile,
+    src: Path,
+    arc_root: str,
+    *,
+    skip_chats: bool,
+    system_files_path: str = "",
+) -> None:
     if not src.is_dir():
         return
     for path in sorted(src.rglob("*")):
         if not path.is_file():
             continue
         rel = path.relative_to(src)
-        if _should_skip_path(rel):
+        if _should_skip_path(
+            rel,
+            skip_chats=skip_chats,
+            system_files_path=system_files_path,
+        ):
             continue
         tf.add(path, arcname=f"{arc_root}/{rel.as_posix()}")
+
+
+def _system_files_path_from_row(row: Any) -> str:
+    raw = getattr(row, "config_json", None)
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return ""
+    return system_files_path_from_config(parsed if isinstance(parsed, dict) else None)
 
 
 def _build_manifest(
@@ -99,6 +143,12 @@ def _build_manifest(
     database_driver: str,
     database_dump_format: str,
     env_path: Path,
+    include_config: bool,
+    include_workspaces: bool,
+    include_skill_packages: bool,
+    include_plugins: bool,
+    include_knowledge: bool,
+    include_chats: bool,
 ) -> BackupManifest:
     try:
         schema_version = _current_version(pool)
@@ -108,7 +158,7 @@ def _build_manifest(
         AgentBackupEntry(
             agent_id=str(row.agent_id),
             name=str(row.name),
-            workspace_included=True,
+            workspace_included=include_workspaces,
         )
         for row in agent_rows
     ]
@@ -122,8 +172,12 @@ def _build_manifest(
         database_driver=database_driver,
         database_dump_format=database_dump_format,
         agents=agents,
-        includes_config=paths.config.is_file(),
-        includes_env=env_path.is_file(),
+        includes_config=include_config and paths.config.is_file(),
+        includes_env=include_config and env_path.is_file(),
+        includes_skill_packages=include_skill_packages,
+        includes_plugins=include_plugins,
+        includes_knowledge=include_knowledge,
+        includes_chats=include_chats,
     )
 
 
@@ -134,8 +188,20 @@ def create_system_backup(
     pool: DatabasePool,
     db_config: DatabaseConfig,
     dest: Path,
+    include_config: bool = True,
+    include_workspaces: bool = True,
+    include_skill_packages: bool = True,
+    include_plugins: bool = True,
+    include_knowledge: bool = True,
+    include_chats: bool = False,
 ) -> str:
     """Write a ``.tar.gz`` archive to *dest* (streamed to disk).
+
+    Configuration, agent workspaces, skill packages, plugins, and knowledge
+    files can be omitted independently. ``include_chats`` defaults to False
+    because thread/session history usually dominates archive size. Restore
+    keeps live chats and omitted directories when the manifest says they were
+    not packed.
 
     Returns the suggested basename (``octop-backup-….tar.gz``). Callers that
     need a different name should rename/move *dest* afterward.
@@ -162,6 +228,12 @@ def create_system_backup(
         database_driver=database_driver,
         database_dump_format=database_dump_format,
         env_path=env_path,
+        include_config=include_config,
+        include_workspaces=include_workspaces,
+        include_skill_packages=include_skill_packages,
+        include_plugins=include_plugins,
+        include_knowledge=include_knowledge,
+        include_chats=include_chats,
     )
     filename = suggested_backup_filename()
     dest = Path(dest)
@@ -173,19 +245,25 @@ def create_system_backup(
             root = Path(tmp)
             db_dest = root / db_arc
             if pool.dialect == "postgresql":
-                dump_postgres(db_config.postgresql_conninfo(), db_dest)
+                dump_postgres(
+                    db_config.postgresql_conninfo(),
+                    db_dest,
+                    exclude_table_data=() if include_chats else CHAT_TABLES_CHILD_FIRST,
+                )
             else:
                 assert isinstance(pool, SqlitePool)
                 snapshot_sqlite_file(pool.path, db_dest)
+                if not include_chats:
+                    strip_chat_tables_from_sqlite_file(db_dest)
 
             manifest_path = root / _MANIFEST_NAME
             manifest_path.write_text(manifest.to_json(), encoding="utf-8")
 
-            if paths.config.is_file():
+            if include_config and paths.config.is_file():
                 cfg_dir = root / _CONFIG_DIR
                 cfg_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(paths.config, cfg_dir / "config.json")
-            if env_path.is_file():
+            if include_config and env_path.is_file():
                 cfg_dir = root / _CONFIG_DIR
                 cfg_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(env_path, cfg_dir / "env")
@@ -193,23 +271,49 @@ def create_system_backup(
             with tarfile.open(partial, mode="w:gz") as tf:
                 tf.add(manifest_path, arcname=_MANIFEST_NAME)
                 tf.add(db_dest, arcname=db_arc)
-                if paths.config.is_file():
+                if include_config and paths.config.is_file():
                     tf.add(
                         root / _CONFIG_DIR / "config.json",
                         arcname=f"{_CONFIG_DIR}/config.json",
                     )
-                if env_path.is_file():
+                if include_config and env_path.is_file():
                     tf.add(root / _CONFIG_DIR / "env", arcname=f"{_CONFIG_DIR}/env")
-                for row in agent_rows:
-                    ws = workspace_dir_from_config_json(
-                        getattr(row, "config_json", None),
-                        paths=paths,
-                        agent_id=str(row.agent_id),
+                if include_workspaces:
+                    for row in agent_rows:
+                        ws = workspace_dir_from_config_json(
+                            getattr(row, "config_json", None),
+                            paths=paths,
+                            agent_id=str(row.agent_id),
+                        )
+                        if ws.is_dir():
+                            _add_dir(
+                                tf,
+                                ws,
+                                f"{_WORKSPACES_DIR}/{row.agent_id}",
+                                skip_chats=not include_chats,
+                                system_files_path=_system_files_path_from_row(row),
+                            )
+                if include_skill_packages and paths.skill_packages_dir.is_dir():
+                    _add_dir(
+                        tf,
+                        paths.skill_packages_dir,
+                        _SKILL_PACKAGES_DIR,
+                        skip_chats=False,
                     )
-                    if ws.is_dir():
-                        _add_dir(tf, ws, f"{_WORKSPACES_DIR}/{row.agent_id}")
-                if paths.skill_packages_dir.is_dir():
-                    _add_dir(tf, paths.skill_packages_dir, _SKILL_PACKAGES_DIR)
+                if include_plugins and paths.plugins_dir.is_dir():
+                    _add_dir(
+                        tf,
+                        paths.plugins_dir,
+                        _PLUGINS_DIR,
+                        skip_chats=False,
+                    )
+                if include_knowledge and paths.knowledge_dir.is_dir():
+                    _add_dir(
+                        tf,
+                        paths.knowledge_dir,
+                        _KNOWLEDGE_DIR,
+                        skip_chats=False,
+                    )
 
         partial.replace(dest)
     except Exception:
@@ -268,6 +372,24 @@ def _iter_extracted_files(root: Path, prefix: str) -> list[tuple[str, Path]]:
     return out
 
 
+def _replace_tree_from_archive(extracted: Path, dest: Path, arc_name: str) -> int:
+    """Replace *dest* with files packed under *arc_name* in the extracted archive."""
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    count = 0
+    prefix = f"{arc_name}/"
+    for rel, src_file in _iter_extracted_files(extracted, arc_name):
+        rest = rel[len(prefix) :]
+        if not rest:
+            continue
+        out = dest / rest
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_file, out)
+        count += 1
+    return count
+
+
 def restore_system_backup(
     source: Path | bytes,
     *,
@@ -320,6 +442,12 @@ def restore_system_backup(
         db_path = extracted / manifest.db_file
         if not db_path.is_file():
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
+
+        saved_chats = (
+            capture_chat_tables(pool, Path(tmp) / "preserved-chats.sqlite")
+            if not manifest.includes_chats
+            else None
+        )
 
         # Capture current login credentials before overwriting the DB (only when needed).
         saved_users: list[tuple[object, ...]] = []
@@ -383,6 +511,7 @@ def restore_system_backup(
         prefix = f"{_WORKSPACES_DIR}/"
         agent_repo = AgentRepo(pool)
         workspace_by_agent: dict[str, Path] = {}
+        system_path_by_agent: dict[str, str] = {}
         for rel, src_file in _iter_extracted_files(extracted, _WORKSPACES_DIR):
             file_rel = rel[len(prefix) :]
             if "/" not in file_rel:
@@ -392,38 +521,57 @@ def restore_system_backup(
                 continue
             dest_root = workspace_by_agent.get(agent_id)
             if dest_root is None:
-                row = agent_repo.get(agent_id)
+                agent_row = agent_repo.get(agent_id)
                 dest_root = workspace_dir_from_config_json(
-                    None if row is None else row.config_json,
+                    None if agent_row is None else agent_row.config_json,
                     paths=paths,
                     agent_id=agent_id,
                 )
                 workspace_by_agent[agent_id] = dest_root
+                system_path_by_agent[agent_id] = (
+                    _system_files_path_from_row(agent_row) if agent_row is not None else ""
+                )
             dest = dest_root / rest
+            if not manifest.includes_chats and is_chat_workspace_rel(
+                Path(rest),
+                system_files_path=system_path_by_agent.get(agent_id, ""),
+            ):
+                continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_file, dest)
             restored_workspaces += 1
 
-        # Replace skill-package files wholesale so leftover package dirs cannot
-        # outlive a restored database that no longer references them.
-        if paths.skill_packages_dir.exists():
-            shutil.rmtree(paths.skill_packages_dir)
-        paths.skill_packages_dir.mkdir(parents=True, exist_ok=True)
         restored_skill_package_files = 0
-        skill_packages_prefix = f"{_SKILL_PACKAGES_DIR}/"
-        for rel, src_file in _iter_extracted_files(extracted, _SKILL_PACKAGES_DIR):
-            rest = rel[len(skill_packages_prefix) :]
-            if not rest:
-                continue
-            dest = paths.skill_packages_dir / rest
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_file, dest)
-            restored_skill_package_files += 1
+        if manifest.includes_skill_packages:
+            restored_skill_package_files = _replace_tree_from_archive(
+                extracted,
+                paths.skill_packages_dir,
+                _SKILL_PACKAGES_DIR,
+            )
+
+        restored_plugin_files = 0
+        if manifest.includes_plugins:
+            restored_plugin_files = _replace_tree_from_archive(
+                extracted,
+                paths.plugins_dir,
+                _PLUGINS_DIR,
+            )
+
+        restored_knowledge_files = 0
+        if manifest.includes_knowledge:
+            restored_knowledge_files = _replace_tree_from_archive(
+                extracted,
+                paths.knowledge_dir,
+                _KNOWLEDGE_DIR,
+            )
 
         # LightClaw migration exports (and older Octop backups) may ship schema v1
         # without columns added in later migrations (e.g. cron_jobs.mcp_servers).
         # API restore keeps the process alive, so re-apply migrations on the live pool.
         run_migrations(pool)
+        preserved_chat_rows, skipped_chat_rows = (
+            restore_preserved_chats(pool, saved_chats) if saved_chats is not None else (0, 0)
+        )
         schema_version = _current_version(pool)
 
     result: dict[str, Any] = {
@@ -432,7 +580,12 @@ def restore_system_backup(
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
         "skill_package_files": restored_skill_package_files,
+        "plugin_files": restored_plugin_files,
+        "knowledge_files": restored_knowledge_files,
         "restore_config": restore_config,
+        "chats_restored": manifest.includes_chats,
+        "preserved_chat_rows": preserved_chat_rows,
+        "skipped_chat_rows": skipped_chat_rows,
         "users_preserved": effective_preserve_users,
         "jwt_preserved": bool(saved_jwt is not None and effective_preserve_users),
         "database_driver": archive_driver,

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
+import tarfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from octop.infra.backup.manifest import BackupManifest
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.paths import PathLayout
 
@@ -45,13 +49,25 @@ class BackupFileInfo:
     size: int
     modified_at: str
     created_at: str
+    includes_config: bool = True
+    includes_workspaces: bool = True
+    includes_skill_packages: bool = True
+    includes_plugins: bool = True
+    includes_knowledge: bool = True
+    includes_chats: bool = True
 
-    def to_dict(self) -> dict[str, str | int]:
+    def to_dict(self) -> dict[str, str | int | bool]:
         return {
             "name": self.name,
             "size": self.size,
             "modified_at": self.modified_at,
             "created_at": self.created_at,
+            "includes_config": self.includes_config,
+            "includes_workspaces": self.includes_workspaces,
+            "includes_skill_packages": self.includes_skill_packages,
+            "includes_plugins": self.includes_plugins,
+            "includes_knowledge": self.includes_knowledge,
+            "includes_chats": self.includes_chats,
         }
 
 
@@ -87,11 +103,66 @@ def backup_file_info(path: Path) -> BackupFileInfo:
     stat = path.stat()
     modified = _iso_utc_from_timestamp(stat.st_mtime)
     created = resolve_backup_created_at(path.name, path, mtime=stat.st_mtime)
+    contents = peek_backup_contents(path)
     return BackupFileInfo(
         name=path.name,
         size=stat.st_size,
         modified_at=modified,
         created_at=created,
+        includes_config=contents.includes_config,
+        includes_workspaces=contents.includes_workspaces,
+        includes_skill_packages=contents.includes_skill_packages,
+        includes_plugins=contents.includes_plugins,
+        includes_knowledge=contents.includes_knowledge,
+        includes_chats=contents.includes_chats,
+    )
+
+
+@dataclass(frozen=True)
+class BackupContentFlags:
+    includes_config: bool = True
+    includes_workspaces: bool = True
+    includes_skill_packages: bool = True
+    includes_plugins: bool = True
+    includes_knowledge: bool = True
+    includes_chats: bool = True
+
+
+_FULL_CONTENTS = BackupContentFlags()
+
+
+def peek_backup_contents(path: Path) -> BackupContentFlags:
+    """Read ``manifest.json`` from an archive.
+
+    Unreadable archives default to all-included. Legacy archives that omit
+    ``includes_plugins`` / ``includes_knowledge`` keep those live directories
+    on restore.
+    """
+    try:
+        with tarfile.open(path, mode="r:*") as tf:
+            member = tf.extractfile("manifest.json")
+            if member is None:
+                return _FULL_CONTENTS
+            raw: Any = json.loads(member.read().decode("utf-8"))
+        if not isinstance(raw, dict):
+            return _FULL_CONTENTS
+        manifest = BackupManifest.from_dict(raw)
+    except (
+        OSError,
+        tarfile.TarError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        ValueError,
+        TypeError,
+    ):
+        return _FULL_CONTENTS
+    return BackupContentFlags(
+        includes_config=bool(manifest.includes_config or manifest.includes_env),
+        includes_workspaces=any(entry.workspace_included for entry in manifest.agents),
+        includes_skill_packages=bool(manifest.includes_skill_packages),
+        includes_plugins=bool(manifest.includes_plugins),
+        includes_knowledge=bool(manifest.includes_knowledge),
+        includes_chats=bool(manifest.includes_chats),
     )
 
 
