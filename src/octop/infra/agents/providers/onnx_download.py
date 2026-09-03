@@ -194,12 +194,15 @@ def _progress_tqdm(on_progress: SnapshotProgressFn) -> type[Any] | None:
     return ProgressTqdm
 
 
+_HF_HUB_DISABLE_XET = "HF_HUB_DISABLE_XET"
+
+
 def _disable_hf_xet() -> None:
     """Force HTTP snapshots; Xet CAS 401s or is unreachable via hf-mirror."""
-    os.environ["HF_HUB_DISABLE_XET"] = "1"
+    os.environ[_HF_HUB_DISABLE_XET] = "1"
     constants = sys.modules.get("huggingface_hub.constants")
-    if constants is not None and hasattr(constants, "HF_HUB_DISABLE_XET"):
-        setattr(constants, "HF_HUB_DISABLE_XET", True)
+    if constants is not None and hasattr(constants, _HF_HUB_DISABLE_XET):
+        setattr(constants, _HF_HUB_DISABLE_XET, True)
 
 
 def _download_hf_snapshot(
