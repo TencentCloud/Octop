@@ -18,9 +18,13 @@ import type {
 
 // -- Browser environment types --
 export interface BrowserEnvStatus {
-  installed: boolean;
-  browser_type: "system" | "playwright" | null;
-  path: string | null;
+  playwright: boolean;
+  browsers_ok: boolean;
+  harness_browser: boolean;
+  playwright_chromium?: boolean;
+  chrome_path?: string | null;
+  chrome_source?: "system" | "playwright" | null;
+  error: string | null;
 }
 
 function streamBrowserSse(

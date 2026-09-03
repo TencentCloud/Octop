@@ -23,6 +23,7 @@ import {
 } from "antd";
 
 import {
+  AlertCircle,
   Bot,
   CheckCircle2,
   Copy,
@@ -612,10 +613,10 @@ export default function RemoteBrowserPage({
   const handleUninstall = useCallback(() => {
     if (!envStatus?.playwright_chromium || uninstalling) return;
     modal.confirm({
-      title: t("remoteBrowser.uninstallTitle", "卸载远程浏览器"),
+      title: t("remoteBrowser.uninstallTitle", "卸载内置浏览器"),
       content: t(
         "remoteBrowser.uninstallConfirm",
-        "将关闭 Octop 浏览器会话，并删除通过 Playwright 安装的 Chromium。不会影响本机已有的 Chrome/Chromium。是否继续？",
+        "将关闭当前浏览器窗口，并卸载 Octop 自动安装的浏览器。你电脑上已有的 Chrome 等浏览器不受影响。",
       ),
       okText: t("remoteBrowser.uninstall", "卸载"),
       okButtonProps: { danger: true },
@@ -647,7 +648,7 @@ export default function RemoteBrowserPage({
                   antMessage.success(
                     t(
                       "remoteBrowser.uninstallSuccess",
-                      "已删除 Playwright Chromium",
+                      "内置浏览器已卸载",
                     ),
                   );
                   resolve();
@@ -748,10 +749,10 @@ export default function RemoteBrowserPage({
   const shutdownBrowser = useCallback(() => {
     const profile = profileIdRef.current || "default";
     modal.confirm({
-      title: t("remoteBrowser.shutdownTitle", "关闭浏览器进程"),
+      title: t("remoteBrowser.shutdownTitle", "关闭浏览器"),
       content: t(
         "remoteBrowser.shutdownConfirm",
-        "将结束本机 Chrome 进程并释放内存。登录状态会保留在磁盘，下次启动仍可复用。是否继续？",
+        "将关闭当前浏览器窗口。已登录的网站下次打开时仍然有效。",
       ),
       okText: t("remoteBrowser.stop", "关闭浏览器"),
       okButtonProps: { danger: true },
@@ -762,7 +763,7 @@ export default function RemoteBrowserPage({
         } catch (err: unknown) {
           showApiError(
             err,
-            t("remoteBrowser.shutdownFailed", "关闭浏览器进程失败"),
+            t("remoteBrowser.shutdownFailed", "关闭浏览器失败"),
             t,
           );
           throw err;
@@ -1139,24 +1140,16 @@ export default function RemoteBrowserPage({
     }
 
     if (envReady) {
-      const harnessOk = envStatus?.harness_browser;
-      const pwOk = envStatus?.playwright;
-      const subTitle =
-        harnessOk && pwOk
-          ? t(
-              "remoteBrowser.envReadyBoth",
-              "harness-browser 与 Playwright 均可用",
-            )
-          : harnessOk
-          ? t("remoteBrowser.envReadyHarness", "harness-browser (CDP) 已就绪")
-          : t("remoteBrowser.envReady", "Playwright 与 Chromium 均可用");
       return (
         <Result
           icon={
             <CheckCircle2 size={40} color="var(--fn-color-success,#52c41a)" />
           }
-          title={t("remoteBrowser.browserAlreadyInstalled", "浏览器已安装")}
-          subTitle={subTitle}
+          title={t("remoteBrowser.browserAlreadyInstalled", "浏览器已就绪")}
+          subTitle={t(
+            "remoteBrowser.envReady",
+            "可以帮你打开网页、填写表单和截图了",
+          )}
           style={{ padding: "8px 0" }}
         />
       );
@@ -1192,13 +1185,16 @@ export default function RemoteBrowserPage({
     }
 
     return (
-      <Alert
-        type="warning"
-        showIcon
-        message={t("remoteBrowser.notInstalled", "Chromium 未安装")}
-        description={
-          envStatus?.error ?? t("remoteBrowser.notInstalledHint", "点击安装")
+      <Result
+        icon={
+          <AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />
         }
+        title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
+        subTitle={t(
+          "remoteBrowser.notInstalledHint",
+          "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+        )}
+        style={{ padding: "8px 0" }}
       />
     );
   };
@@ -1339,7 +1335,7 @@ export default function RemoteBrowserPage({
     type: "default" as const,
     title: t(
       "remoteBrowser.checkInstallTip",
-      "检查 Playwright 浏览器是否已安装，未安装则可安装",
+      "检查本机是否已准备好浏览器，未安装时可一键安装",
     ),
   };
 
@@ -1503,7 +1499,7 @@ export default function RemoteBrowserPage({
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
-                        : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
+                        : t("remoteBrowser.setupTitle", "需要安装浏览器")
                     }
                     description={
                       envReady
@@ -1511,10 +1507,9 @@ export default function RemoteBrowserPage({
                             "remoteBrowser.startBrowserDesc",
                             "环境已就绪，按以下步骤开始远程浏览与操控",
                           )
-                        : envStatus?.error ||
-                          t(
+                        : t(
                             "remoteBrowser.setupDesc",
-                            "按以下步骤完成 Playwright / Chromium 环境配置",
+                            "先安装浏览器，即可开始远程浏览和自动操作网页",
                           )
                     }
                     steps={
@@ -1537,7 +1532,7 @@ export default function RemoteBrowserPage({
                             {
                               label: t(
                                 "remoteBrowser.setupStep1",
-                                "点击「检查」，检测 Playwright 与 Chromium 是否可用",
+                                "点击「检查」，确认本机是否已有可用浏览器",
                               ),
                             },
                             {

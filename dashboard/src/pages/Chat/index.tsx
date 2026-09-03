@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
+import { showConfirmModal } from "../../utils/confirmModal";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -37,6 +38,10 @@ import { useChatContextWindow } from "./hooks/useChatContextWindow";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { listDockFilePathsForTree } from "./utils/dockFilePath";
+import {
+  shouldJumpToChromeInstall,
+  WORKBENCH_BROWSER_PATH,
+} from "./utils/chromeInstallGate";
 import { isFileToolName } from "./constants";
 import { browserApi } from "../../api/modules/browser";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
@@ -347,6 +352,40 @@ function ChatPageInner() {
     closeTab: closeDockTab,
     setActiveTab: setDockActiveTab,
   } = useChatDockPanel(isMobile, resolvedAgentId);
+
+  const chromeCheckInFlightRef = useRef(false);
+  const handleToggleBrowserPanel = useCallback(async () => {
+    // A live session means Chrome is already running — skip the probe.
+    if (browserSessionId) {
+      toggleBrowserPanel();
+      return;
+    }
+    if (chromeCheckInFlightRef.current) return;
+    chromeCheckInFlightRef.current = true;
+    try {
+      const env = await browserApi.checkEnvStatus();
+      if (shouldJumpToChromeInstall(env)) {
+        showConfirmModal(
+          {
+            title: t("browserWorkspace.chromeMissingTitle"),
+            content: t("browserWorkspace.chromeMissingJumpToInstall"),
+            okText: t("common.confirm"),
+            cancelText: t("common.cancel"),
+            onOk: () => {
+              navigate(WORKBENCH_BROWSER_PATH);
+            },
+          },
+          { isMobile },
+        );
+        return;
+      }
+    } catch {
+      // Probe failed — keep the existing open-panel behavior.
+    } finally {
+      chromeCheckInFlightRef.current = false;
+    }
+    toggleBrowserPanel();
+  }, [browserSessionId, isMobile, navigate, t, toggleBrowserPanel]);
 
   const closeToolUiPanel = useCallback(
     (callId: string) => {
@@ -1189,7 +1228,7 @@ function ChatPageInner() {
                         ]
                           .filter(Boolean)
                           .join(" ")}
-                        onClick={toggleBrowserPanel}
+                        onClick={() => void handleToggleBrowserPanel()}
                         aria-label={t("chat.openBrowser")}
                       >
                         <Globe size={20} strokeWidth={2.1} />

@@ -125,7 +125,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
     && uv sync --frozen --no-dev --extra browser \
-    && PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright playwright install --with-deps chromium \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
