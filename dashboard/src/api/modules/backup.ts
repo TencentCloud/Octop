@@ -5,6 +5,12 @@ export interface BackupFileItem {
   size: number;
   modified_at: string;
   created_at: string;
+  includes_config?: boolean;
+  includes_workspaces?: boolean;
+  includes_skill_packages?: boolean;
+  includes_plugins?: boolean;
+  includes_knowledge?: boolean;
+  includes_chats?: boolean;
 }
 
 export interface BackupListResponse {
@@ -16,7 +22,22 @@ export interface AutoBackupSettings {
   auto_enabled: boolean;
   schedule: string;
   retention_count: number;
+  include_config: boolean;
+  include_workspaces: boolean;
+  include_skill_packages: boolean;
+  include_plugins: boolean;
+  include_knowledge: boolean;
+  include_chats: boolean;
   scheduled?: boolean;
+}
+
+export interface CreateBackupOptions {
+  include_config: boolean;
+  include_workspaces: boolean;
+  include_skill_packages: boolean;
+  include_plugins: boolean;
+  include_knowledge: boolean;
+  include_chats: boolean;
 }
 
 export type BackupOperationKind = "create" | "restore" | "auto" | "export";
@@ -37,6 +58,12 @@ export const backupApi = {
     auto_enabled: boolean;
     schedule: string;
     retention_count: number;
+    include_config: boolean;
+    include_workspaces: boolean;
+    include_skill_packages: boolean;
+    include_plugins: boolean;
+    include_knowledge: boolean;
+    include_chats: boolean;
   }) =>
     request<{ ok: boolean } & AutoBackupSettings>("/admin/backup/auto", {
       method: "PUT",
@@ -48,9 +75,10 @@ export const backupApi = {
       method: "POST",
     }),
 
-  createBackup: () =>
+  createBackup: (options: CreateBackupOptions) =>
     request<{ ok: boolean; item: BackupFileItem }>("/admin/backup/create", {
       method: "POST",
+      body: JSON.stringify(options),
     }),
 
   downloadBackup: (filename: string): Promise<Blob> =>

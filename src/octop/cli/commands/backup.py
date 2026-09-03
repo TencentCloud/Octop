@@ -33,8 +33,23 @@ def backup() -> None:
 @click.option(
     "--home", type=click.Path(path_type=Path), default=None, help="Octop home (default ~/.octop)."
 )
-def create(output: Path | None, home: Path | None) -> None:
-    """Create a full backup archive."""
+@click.option("--no-config", is_flag=True, help="Do not include config.json / env.")
+@click.option("--no-workspaces", is_flag=True, help="Do not include agent workspaces.")
+@click.option("--no-skill-packages", is_flag=True, help="Do not include global skill packages.")
+@click.option("--no-plugins", is_flag=True, help="Do not include installed plugins.")
+@click.option("--no-knowledge", is_flag=True, help="Do not include knowledge base files.")
+@click.option("--include-chats", is_flag=True, help="Include chat history (omitted by default).")
+def create(
+    output: Path | None,
+    home: Path | None,
+    no_config: bool,
+    no_workspaces: bool,
+    no_skill_packages: bool,
+    no_plugins: bool,
+    no_knowledge: bool,
+    include_chats: bool,
+) -> None:
+    """Create a selected-content backup archive."""
     paths = _paths(home)
     config = load_config(paths.config)
     db = open_database(config, paths)
@@ -50,6 +65,12 @@ def create(output: Path | None, home: Path | None) -> None:
                 pool=db,
                 db_config=config.database,
                 dest=tmp_path,
+                include_config=not no_config,
+                include_workspaces=not no_workspaces,
+                include_skill_packages=not no_skill_packages,
+                include_plugins=not no_plugins,
+                include_knowledge=not no_knowledge,
+                include_chats=include_chats,
             )
             if output is None:
                 entry = place_backup_file(paths, suggested, tmp_path)
@@ -83,6 +104,12 @@ def auto_status(home: Path | None) -> None:
     click.echo(f"auto_enabled: {backup_cfg.auto_enabled}")
     click.echo(f"schedule: {backup_cfg.schedule}")
     click.echo(f"retention_count: {backup_cfg.retention_count}")
+    click.echo(f"include_config: {backup_cfg.include_config}")
+    click.echo(f"include_workspaces: {backup_cfg.include_workspaces}")
+    click.echo(f"include_skill_packages: {backup_cfg.include_skill_packages}")
+    click.echo(f"include_plugins: {backup_cfg.include_plugins}")
+    click.echo(f"include_knowledge: {backup_cfg.include_knowledge}")
+    click.echo(f"include_chats: {backup_cfg.include_chats}")
     click.echo("note: the scheduler only runs inside an active `octop run` process")
 
 
@@ -105,6 +132,12 @@ def auto_run(home: Path | None) -> None:
             pool=db,
             db_config=config.database,
             retention_count=config.backup.retention_count,
+            include_config=config.backup.include_config,
+            include_workspaces=config.backup.include_workspaces,
+            include_skill_packages=config.backup.include_skill_packages,
+            include_plugins=config.backup.include_plugins,
+            include_knowledge=config.backup.include_knowledge,
+            include_chats=config.backup.include_chats,
         )
     finally:
         db.close()
