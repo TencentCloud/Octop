@@ -118,16 +118,16 @@ def _project_harness_chunk(
 
     if ctype == "user":
         content = str(chunk.get("content") or "")
-        payload: dict[str, Any] = {"content": content}
+        user_payload: dict[str, Any] = {"content": content}
         source = chunk.get("source")
         if isinstance(source, str) and source:
-            payload["source"] = source
+            user_payload["source"] = source
         return [
             _event(
                 **common,
                 kind="user",
                 summary=content,
-                payload=payload,
+                payload=user_payload,
             )
         ]
 
@@ -137,13 +137,37 @@ def _project_harness_chunk(
         tokens = chunk.get("tokens")
         if not isinstance(tokens, int) or isinstance(tokens, bool):
             tokens = None
-        payload = {"source": source, "label": label, "tokens": tokens}
+        content = str(chunk.get("content") or chunk.get("text") or "")
+        context_payload: dict[str, Any] = {
+            "source": source,
+            "label": label,
+            "tokens": tokens,
+        }
+        if content:
+            context_payload["content"] = content
+        summary = _clip_summary(label, content) if content else label
         return [
             _event(
                 **common,
                 kind="context",
-                summary=label,
-                payload=payload,
+                summary=summary,
+                payload=context_payload,
+            )
+        ]
+
+    if ctype == "system":
+        label = str(chunk.get("label") or "system")
+        content = str(chunk.get("content") or chunk.get("text") or "")
+        system_payload: dict[str, Any] = {"label": label}
+        if content:
+            system_payload["content"] = content
+        summary = _clip_summary(label, content) if content else label
+        return [
+            _event(
+                **common,
+                kind="system",
+                summary=summary,
+                payload=system_payload,
             )
         ]
 
@@ -152,7 +176,7 @@ def _project_harness_chunk(
         preserved = _as_int(chunk.get("preserved_count"))
         removed_tokens = _as_int(chunk.get("removed_tokens"))
         summary = str(chunk.get("summary") or f"compacted {summarized} messages")
-        payload = {
+        compacted_payload: dict[str, Any] = {
             "summarized_count": summarized,
             "preserved_count": preserved,
             "removed_tokens": removed_tokens,
@@ -160,13 +184,13 @@ def _project_harness_chunk(
         }
         file_path = chunk.get("file_path")
         if isinstance(file_path, str) and file_path:
-            payload["file_path"] = file_path
+            compacted_payload["file_path"] = file_path
         return [
             _event(
                 **common,
                 kind="compacted",
                 summary=summary,
-                payload=payload,
+                payload=compacted_payload,
             )
         ]
 
@@ -245,6 +269,15 @@ def _as_int(raw: Any) -> int:
         except ValueError:
             return 0
     return 0
+
+
+def _clip_summary(label: str, content: str, *, limit: int = 240) -> str:
+    preview = " ".join(content.split())
+    if preview:
+        if len(preview) > limit:
+            return preview[: max(0, limit - 1)].rstrip() + "…"
+        return preview
+    return label
 
 
 def _event(

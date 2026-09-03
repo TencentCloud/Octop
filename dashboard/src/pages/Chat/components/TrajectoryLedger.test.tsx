@@ -38,7 +38,11 @@ describe("TrajectoryLedger", () => {
             kind: "tool",
             seq: 1,
             summary: "tool read_file",
-            payload: { name: "read_file" },
+            payload: {
+              name: "read_file",
+              args: { path: "a.py" },
+              result: "ok",
+            },
           }),
           event({
             event_id: "asst-1",
@@ -54,6 +58,8 @@ describe("TrajectoryLedger", () => {
 
     expect(screen.getByText("read_file")).toBeInTheDocument();
     expect(screen.getByText("Request #3")).toBeInTheDocument();
+    expect(screen.getByText("TOOL")).toBeInTheDocument();
+    expect(screen.getByText("ASSISTANT")).toBeInTheDocument();
   });
 
   it("calls onSelect when a row is clicked and does not expand Raw inline", () => {
@@ -103,8 +109,8 @@ describe("TrajectoryLedger", () => {
     const dimmed = screen.getByRole("button", { name: /dimmed/ });
     expect(kept).toHaveAttribute("aria-selected", "true");
     expect(dimmed).toHaveAttribute("aria-selected", "false");
-    expect(kept.closest("li")).toHaveAttribute("data-focus-match", "true");
-    expect(dimmed.closest("li")).toHaveAttribute("data-focus-match", "false");
+    expect(kept).toHaveAttribute("data-focus-match", "true");
+    expect(dimmed).toHaveAttribute("data-focus-match", "false");
   });
 
   it("scrolls the selected row into view", () => {
@@ -190,7 +196,100 @@ describe("TrajectoryLedger", () => {
 
     const headers = screen.getAllByTestId("trajectory-turn-header");
     expect(headers).toHaveLength(2);
-    expect(headers[0]).toHaveTextContent("turn-a");
-    expect(headers[1]).toHaveTextContent("turn-b");
+    expect(headers[0]).toHaveTextContent("T1");
+    expect(headers[1]).toHaveTextContent("T2");
+  });
+
+  it("follows the live tail when near the bottom", () => {
+    const { rerender } = render(
+      <TrajectoryLedger
+        events={[
+          event({ event_id: "e1", kind: "user", seq: 1, summary: "one" }),
+        ]}
+        {...idle}
+      />,
+    );
+
+    const pane = screen.getByTestId("trajectory-ledger-pane");
+    Object.defineProperty(pane, "clientHeight", {
+      configurable: true,
+      value: 100,
+    });
+    Object.defineProperty(pane, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+    let scrollTop = 0;
+    Object.defineProperty(pane, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTop;
+      },
+      set(value: number) {
+        scrollTop = value;
+      },
+    });
+
+    rerender(
+      <TrajectoryLedger
+        events={[
+          event({ event_id: "e1", kind: "user", seq: 1, summary: "one" }),
+          event({ event_id: "e2", kind: "assistant", seq: 2, summary: "two" }),
+        ]}
+        {...idle}
+      />,
+    );
+
+    expect(scrollTop).toBe(400);
+  });
+
+  it("does not follow the live tail after the user scrolls up", () => {
+    const { rerender } = render(
+      <TrajectoryLedger
+        events={[
+          event({ event_id: "e1", kind: "user", seq: 1, summary: "one" }),
+          event({ event_id: "e2", kind: "assistant", seq: 2, summary: "two" }),
+        ]}
+        {...idle}
+      />,
+    );
+
+    const pane = screen.getByTestId("trajectory-ledger-pane");
+    Object.defineProperty(pane, "clientHeight", {
+      configurable: true,
+      value: 100,
+    });
+    Object.defineProperty(pane, "scrollHeight", {
+      configurable: true,
+      value: 500,
+    });
+    let scrollTop = 50;
+    Object.defineProperty(pane, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTop;
+      },
+      set(value: number) {
+        scrollTop = value;
+      },
+    });
+
+    fireEvent.scroll(pane);
+    expect(scrollTop).toBe(50);
+
+    rerender(
+      <TrajectoryLedger
+        events={[
+          event({ event_id: "e1", kind: "user", seq: 1, summary: "one" }),
+          event({ event_id: "e2", kind: "assistant", seq: 2, summary: "two" }),
+          event({ event_id: "e3", kind: "tool", seq: 3, summary: "three" }),
+        ]}
+        {...idle}
+      />,
+    );
+
+    expect(scrollTop).toBe(50);
   });
 });

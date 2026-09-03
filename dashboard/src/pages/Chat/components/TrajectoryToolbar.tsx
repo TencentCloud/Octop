@@ -1,3 +1,4 @@
+import { Clock, Search, SquareMinus, SquarePlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "./TrajectoryToolbar.module.less";
 
@@ -23,43 +24,100 @@ export default function TrajectoryToolbar({
   onSearchQueryChange,
 }: TrajectoryToolbarProps) {
   const { t } = useTranslation();
+  const searchLabel = t("chat.trajectoryToolbarSearch", "Search trajectory");
+  const durationLabel = t("chat.trajectoryToolbarDuration", "Duration");
+  const turnsLabel = t("chat.trajectoryToolbarTurns", "Turns");
+  const callsLabel = t("chat.trajectoryToolbarCalls", "Calls");
 
   return (
     <div className={styles.root}>
       <div className={styles.toggles}>
         <button
           type="button"
-          className={styles.toggle}
+          className={styles.switch}
           aria-pressed={durationOn}
+          aria-label={durationLabel}
           onClick={() => onDurationOnChange(!durationOn)}
         >
-          {t("chat.trajectoryToolbarDuration", "Duration")}
+          <Clock
+            size={12}
+            strokeWidth={1.75}
+            aria-hidden
+            className={styles.icon}
+          />
+          <span
+            className={styles.switchTrack}
+            data-on={durationOn ? "true" : "false"}
+            aria-hidden
+          >
+            <span className={styles.switchThumb} />
+          </span>
+          <span>{durationLabel}</span>
         </button>
         <button
           type="button"
           className={styles.toggle}
           aria-pressed={allTurnsCollapsed}
+          aria-label={turnsLabel}
           onClick={onToggleAllTurns}
         >
-          {t("chat.trajectoryToolbarTurns", "Turns")}
+          {allTurnsCollapsed ? (
+            <SquarePlus
+              size={12}
+              strokeWidth={1.75}
+              aria-hidden
+              className={styles.icon}
+            />
+          ) : (
+            <SquareMinus
+              size={12}
+              strokeWidth={1.75}
+              aria-hidden
+              className={styles.icon}
+            />
+          )}
+          <span>{turnsLabel}</span>
         </button>
         <button
           type="button"
           className={styles.toggle}
           aria-pressed={allCallsCollapsed}
+          aria-label={callsLabel}
           onClick={onToggleAllCalls}
         >
-          {t("chat.trajectoryToolbarCalls", "Calls")}
+          {allCallsCollapsed ? (
+            <SquarePlus
+              size={12}
+              strokeWidth={1.75}
+              aria-hidden
+              className={styles.icon}
+            />
+          ) : (
+            <SquareMinus
+              size={12}
+              strokeWidth={1.75}
+              aria-hidden
+              className={styles.icon}
+            />
+          )}
+          <span>{callsLabel}</span>
         </button>
       </div>
-      <input
-        type="search"
-        className={styles.search}
-        value={searchQuery}
-        placeholder={t("chat.trajectoryToolbarSearch", "Search trajectory")}
-        aria-label={t("chat.trajectoryToolbarSearch", "Search trajectory")}
-        onChange={(event) => onSearchQueryChange(event.target.value)}
-      />
+      <label className={styles.search}>
+        <Search
+          size={12}
+          strokeWidth={2}
+          aria-hidden
+          className={styles.searchIcon}
+        />
+        <input
+          type="search"
+          value={searchQuery}
+          placeholder={searchLabel}
+          aria-label={searchLabel}
+          onChange={(event) => onSearchQueryChange(event.target.value)}
+        />
+      </label>
     </div>
   );
 }

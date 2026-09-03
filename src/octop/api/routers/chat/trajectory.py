@@ -30,7 +30,12 @@ TRAJECTORY_DEFAULT_LIMIT = 100
 TRAJECTORY_MAX_LIMIT = 200
 TRAJECTORY_SSE_HEARTBEAT_S = 15.0
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-_LIST_OMIT_PAYLOAD_KEYS = frozenset({"content", "args", "result", "text", "thinking"})
+_LIST_OMIT_PAYLOAD_KEYS = frozenset({"content", "text", "thinking"})
+# Keep tool ``args`` / ``result`` on the list endpoint so the ledger can render
+# ``name{args} → result`` without a detail fetch. Clip oversized values so a
+# single huge tool output cannot bloat the history page.
+_LIST_MAX_TOOL_FIELD_CHARS = 2_000
+_LIST_CLIP_PAYLOAD_KEYS = frozenset({"args", "result"})
 
 
 class TrajectoryEventOut(BaseModel):
@@ -87,15 +92,35 @@ def _trajectory_service(server: Any) -> TrajectoryService:
     return service
 
 
+def _clip_list_payload_value(value: Any) -> Any:
+    if isinstance(value, str):
+        if len(value) <= _LIST_MAX_TOOL_FIELD_CHARS:
+            return value
+        return value[:_LIST_MAX_TOOL_FIELD_CHARS] + "…"
+    if isinstance(value, (dict, list)):
+        raw = json.dumps(value, ensure_ascii=False, default=str)
+        if len(raw) <= _LIST_MAX_TOOL_FIELD_CHARS:
+            return value
+        return raw[:_LIST_MAX_TOOL_FIELD_CHARS] + "…"
+    return value
+
+
 def _summarize_event(event: TrajectoryEvent) -> dict[str, Any]:
+    """List-view projection: drop message bodies; keep clipped tool args/result."""
     data = asdict(event)
     payload = data.get("payload")
-    if isinstance(payload, dict):
-        data["payload"] = {
-            key: value for key, value in payload.items() if key not in _LIST_OMIT_PAYLOAD_KEYS
-        }
-    else:
+    if not isinstance(payload, dict):
         data["payload"] = {}
+        return data
+    summarized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in _LIST_OMIT_PAYLOAD_KEYS:
+            continue
+        if key in _LIST_CLIP_PAYLOAD_KEYS:
+            summarized[key] = _clip_list_payload_value(value)
+        else:
+            summarized[key] = value
+    data["payload"] = summarized
     return data
 
 
@@ -144,10 +169,14 @@ async def _iter_trajectory_sse(
             for line in service.export_jsonl(thread_id):
                 payload = json.loads(line)
                 seq = payload.get("seq") if isinstance(payload, dict) else None
-                if not isinstance(seq, int) or seq <= last_seq:
+                if not isinstance(seq, int) or seq < last_seq:
                     continue
+                # Re-emit ``seq == after_seq`` so a same-seq tool upsert that
+                # landed between REST history and this subscribe still reaches
+                # the browser (clients upsert by event_id). Newer seqs follow.
                 yield _sse_named("event", payload, sse_id=seq)
-                last_seq = seq
+                if seq > last_seq:
+                    last_seq = seq
         yield format_sse("metrics", asdict(service.metrics(thread_id)))
         while True:
             if await request.is_disconnected():
@@ -158,7 +187,9 @@ async def _iter_trajectory_sse(
                 yield format_sse("heartbeat", {})
                 continue
             seq = message.get("seq") if isinstance(message, dict) else None
-            if isinstance(seq, int) and last_seq is not None and seq <= last_seq:
+            # Same-seq upserts (tool args→result) must reach the browser; only
+            # drop strictly older frames that can appear after a replay race.
+            if isinstance(seq, int) and last_seq is not None and seq < last_seq:
                 continue
             yield _sse_named("event", message, sse_id=seq if isinstance(seq, int) else None)
             if isinstance(seq, int):
@@ -190,7 +221,12 @@ async def get_thread_trajectory(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> TrajectoryHistoryOut:
-    """Return a summarized page of trajectory events for a thread (newest page by default)."""
+    """Return a page of trajectory events for a thread (newest page by default).
+
+    List payloads omit message bodies (``content`` / ``text`` / ``thinking``) but
+    include clipped tool ``args`` / ``result`` for ledger rendering. Use the
+    event detail endpoint for full payloads.
+    """
     _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_limit(limit)
     events = _trajectory_service(server).list_events(

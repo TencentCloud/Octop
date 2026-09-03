@@ -156,15 +156,17 @@
 }
 
 .span[data-timeline-span="user"] {
-  background: var(--fn-color-brand, #1677ff);
+  /* DSH Input lane: business/success green, not brand blue */
+  background: color-mix(
+    in srgb,
+    var(--fn-color-success, #389e0d) 78%,
+    var(--fn-text-tertiary, #8b8b8b)
+  );
 }
 
 .span[data-timeline-span="context"] {
-  background: color-mix(
-    in srgb,
-    var(--fn-color-success, #389e0d) 68%,
-    var(--fn-text-tertiary, #8b8b8b)
-  );
+  /* Distinct from USER green: cool cyan for injected context */
+  background: color-mix(in srgb, #0891b2 82%, var(--fn-text-tertiary, #8b8b8b));
 }
 
 .span[data-timeline-span="message"],

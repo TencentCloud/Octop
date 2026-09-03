@@ -3,15 +3,14 @@ import { Download, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
-import {
-  trajectoryApi,
-  type TrajectoryEvent,
-} from "../../../api/modules/trajectory";
+import { trajectoryApi } from "../../../api/modules/trajectory";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useTrajectorySession } from "../hooks/useTrajectorySession";
 import {
-  collapseCalls,
-  collapseTurns,
+  collapseCallRows,
+  collapseTurnRows,
+  collapsibleAssistantIds,
+  ensureToolCallParents,
   filterRows,
   toLedgerRow,
 } from "../utils/trajectoryModel";
@@ -34,24 +33,7 @@ export interface TrajectoryDrawerProps {
   onClose: () => void;
 }
 
-function firstOfGroups(groups: TrajectoryEvent[][]): TrajectoryEvent[] {
-  return groups.flatMap((group) => (group[0] != null ? [group[0]] : []));
-}
-
-function collapsedEvents(
-  events: TrajectoryEvent[],
-  collapseTurn: boolean,
-  collapseCall: boolean,
-): TrajectoryEvent[] {
-  let rows = events;
-  if (collapseTurn) {
-    rows = firstOfGroups(collapseTurns(rows));
-  }
-  if (collapseCall) {
-    rows = firstOfGroups(collapseCalls(rows));
-  }
-  return rows;
-}
+const EMPTY_IDS = new Set<string>();
 
 export default function TrajectoryDrawer({
   agentId,
@@ -77,7 +59,8 @@ export default function TrajectoryDrawer({
   });
   const [durationOn, setDurationOn] = useState(false);
   const [collapseTurn, setCollapseTurn] = useState(false);
-  const [collapseCall, setCollapseCall] = useState(false);
+  const [collapsedAssistants, setCollapsedAssistants] =
+    useState<ReadonlySet<string>>(EMPTY_IDS);
   const [query, setQuery] = useState("");
   const [range, setRange] = useState<TrajectoryTimeRange | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -87,27 +70,98 @@ export default function TrajectoryDrawer({
     setSelectedEventId(null);
     setQuery("");
     setCollapseTurn(false);
-    setCollapseCall(false);
+    setCollapsedAssistants(EMPTY_IDS);
     setDurationOn(false);
   }, [agentId, threadId]);
 
   const mode = durationOn ? "duration" : "sequence";
-  const ledgerEvents = useMemo(
-    () => collapsedEvents(events, collapseTurn, collapseCall),
-    [events, collapseTurn, collapseCall],
+  const toolCallOnlyLabel = t(
+    "chat.trajectoryToolCallOnly",
+    "(tool call only)",
   );
+  const formatCallSummary = (count: number, names: readonly string[]) => {
+    const namesJoined = names.join(", ");
+    if (count === 1) {
+      return t(
+        "chat.trajectoryCollapsedToolCallOne",
+        "{{count}} tool call · {{names}}",
+        { count, names: namesJoined },
+      );
+    }
+    return t(
+      "chat.trajectoryCollapsedToolCallMany",
+      "{{count}} tool calls · {{names}}",
+      { count, names: namesJoined },
+    );
+  };
+  const formatTurnSummary = (steps: number, toolCalls: number) =>
+    t(
+      "chat.trajectoryCollapsedTurn",
+      "{{steps}} steps · {{toolCalls}} tool calls",
+      { steps, toolCalls },
+    );
+
+  const displayEvents = useMemo(
+    () => ensureToolCallParents(events, toolCallOnlyLabel),
+    [events, toolCallOnlyLabel],
+  );
+  const assistantIdsWithTools = useMemo(
+    () => collapsibleAssistantIds(displayEvents),
+    [displayEvents],
+  );
+  const allCallsCollapsed =
+    assistantIdsWithTools.length > 0 &&
+    assistantIdsWithTools.every((id) => collapsedAssistants.has(id));
+
+  const ledgerEvents = useMemo(() => {
+    let rows = displayEvents;
+    if (collapseTurn) {
+      rows = collapseTurnRows(rows, formatTurnSummary);
+    }
+    if (collapsedAssistants.size > 0) {
+      rows = collapseCallRows(rows, formatCallSummary, collapsedAssistants);
+    }
+    return rows;
+  }, [displayEvents, collapseTurn, collapsedAssistants, t]);
+
   const searchMatchIds = useMemo(() => {
     if (!query.trim()) return null;
     return new Set(
-      filterRows(events.map(toLedgerRow), query).map((row) => row.id),
+      filterRows(displayEvents.map(toLedgerRow), query).map((row) => row.id),
     );
-  }, [events, query]);
+  }, [displayEvents, query]);
   const focusEventIds = useMemo(() => {
     if (range == null) return null;
-    return trajectoryFocusEventIds(deriveSwimlaneSpans(events, mode), range);
-  }, [events, mode, range]);
+    return trajectoryFocusEventIds(
+      deriveSwimlaneSpans(displayEvents, mode),
+      range,
+    );
+  }, [displayEvents, mode, range]);
   const selectedEvent =
-    events.find((event) => event.event_id === selectedEventId) ?? null;
+    displayEvents.find((event) => event.event_id === selectedEventId) ?? null;
+
+  const toggleAllCalls = () => {
+    setCollapsedAssistants(() => {
+      if (allCallsCollapsed) return EMPTY_IDS;
+      return new Set(assistantIdsWithTools);
+    });
+  };
+
+  const onExpandCollapsed = (
+    parentEventId: string,
+    kind: "assistant" | "turn",
+  ) => {
+    if (kind === "turn") {
+      setCollapseTurn(false);
+      return;
+    }
+    setCollapsedAssistants((current) => {
+      if (!current.has(parentEventId)) return current;
+      const next = new Set(current);
+      next.delete(parentEventId);
+      return next.size === 0 ? EMPTY_IDS : next;
+    });
+  };
 
   const onExport = () => {
     if (!threadId) return;
@@ -202,13 +256,13 @@ export default function TrajectoryDrawer({
           onDurationOnChange={setDurationOn}
           allTurnsCollapsed={collapseTurn}
           onToggleAllTurns={() => setCollapseTurn((value) => !value)}
-          allCallsCollapsed={collapseCall}
-          onToggleAllCalls={() => setCollapseCall((value) => !value)}
+          allCallsCollapsed={allCallsCollapsed}
+          onToggleAllCalls={toggleAllCalls}
           searchQuery={query}
           onSearchQueryChange={setQuery}
         />
         <TrajectoryTimeline
-          events={events}
+          events={displayEvents}
           mode={mode}
           range={range}
           onRangeChange={setRange}
@@ -226,22 +280,23 @@ export default function TrajectoryDrawer({
               events={ledgerEvents}
               selectedEventId={selectedEventId}
               onSelect={setSelectedEventId}
+              onExpandCollapsed={onExpandCollapsed}
               focusEventIds={focusEventIds}
               searchMatchIds={searchMatchIds}
             />
           </div>
-          {selectedEvent ? (
-            <div
-              className={styles.inspectorPane}
-              data-testid="trajectory-inspector-pane"
-            >
-              <TrajectoryInspector
-                agentId={agentId}
-                threadId={threadId}
-                event={selectedEvent}
-              />
-            </div>
-          ) : null}
+          <div
+            className={styles.inspectorPane}
+            data-testid="trajectory-inspector-pane"
+          >
+            <TrajectoryInspector
+              agentId={agentId}
+              threadId={threadId}
+              event={selectedEvent}
+              events={displayEvents}
+              onSelectEvent={setSelectedEventId}
+            />
+          </div>
         </div>
         <TrajectoryMetricsBar
           agentId={agentId}

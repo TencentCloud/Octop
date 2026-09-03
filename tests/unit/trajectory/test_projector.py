@@ -126,6 +126,45 @@ def test_project_context_injection_fact_emits_context_event() -> None:
     assert "AGENTS.md" in ev.summary
 
 
+def test_project_system_chunk_emits_system_event() -> None:
+    events = project_harness_chunk(
+        {
+            "type": "system",
+            "label": "Initial System Prompt",
+            "content": "You are Octop.\nBe helpful.",
+        },
+        agent_id="A1",
+        thread_id="T1",
+        seq=1,
+    )
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.kind == "system"
+    assert ev.event_id == "T1:1:system"
+    assert ev.payload["label"] == "Initial System Prompt"
+    assert "You are Octop" in ev.payload["content"]
+    assert "Initial System Prompt" in ev.summary or "You are Octop" in ev.summary
+
+
+def test_project_context_chunk_keeps_content_body() -> None:
+    events = project_harness_chunk(
+        {
+            "type": "context",
+            "source": "rules",
+            "label": "AGENTS.md",
+            "content": "# Rules\nPrefer BackendWorkspace paths.",
+        },
+        agent_id="A1",
+        thread_id="T1",
+        seq=2,
+    )
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.kind == "context"
+    assert ev.payload["content"] == "# Rules\nPrefer BackendWorkspace paths."
+    assert "Prefer BackendWorkspace" in ev.summary or "AGENTS.md" in ev.summary
+
+
 def test_project_compacted_fact_emits_compacted_event() -> None:
     chunk = _load_fixture("compacted.json")
     events = project_harness_chunk(chunk, agent_id="A1", thread_id="T1", seq=8)

@@ -9,7 +9,7 @@ import {
   FilePen,
   Terminal,
   FolderOpen,
-  GitBranch,
+  Activity,
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
@@ -1169,7 +1169,7 @@ function ChatPageInner() {
                         onClick={() => setTrajectoryDrawerOpen(true)}
                         aria-label={t("chat.openTrajectory", "运行轨迹")}
                       >
-                        <GitBranch size={20} strokeWidth={2.1} />
+                        <Activity size={20} strokeWidth={2.1} />
                       </button>
                     </span>
                   </Tooltip>

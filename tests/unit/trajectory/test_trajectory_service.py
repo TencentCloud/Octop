@@ -127,13 +127,77 @@ def test_observe_merges_tool_call_and_result(tmp_path: Path) -> None:
     )
 
     events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
-    assert len(events) == 1
-    ev = events[0]
+    assert [event.kind for event in events] == ["assistant", "tool"]
+    parent, ev = events
+    assert parent.payload.get("tool_call_only") is True
+    assert parent.summary == "(tool call only)"
     assert ev.kind == "tool"
     assert ev.payload["call_id"] == "call_1"
     assert ev.payload["name"] == "read_file"
     assert ev.payload["args"] == '{"path":"a.py"}'
     assert ev.payload["result"] == "ok"
+
+
+def test_observe_tool_burst_shares_one_tool_call_only_parent(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_call_chunk", "id": "c1", "name": "ls", "args": "{}"},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_result", "id": "c1", "name": "ls", "content": "a"},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_call_chunk", "id": "c2", "name": "ls", "args": "{}"},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_result", "id": "c2", "name": "ls", "content": "b"},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "token", "node": "agent", "content": "done", "request_seq": 1},
+    )
+
+    events = service.list_events("T1", before_seq=None, limit=20, kinds=None)
+    assert [event.kind for event in events] == ["assistant", "tool", "tool", "assistant"]
+    assert events[0].payload.get("tool_call_only") is True
+    assert events[-1].summary == "done"
+    assert events[-1].payload.get("tool_call_only") is not True
+
+
+def test_observe_does_not_synthesize_parent_when_assistant_text_precedes_tools(
+    tmp_path: Path,
+) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "token", "node": "agent", "content": "Looking…", "request_seq": 2},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_call_chunk", "id": "c1", "name": "read", "args": "{}"},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_result", "id": "c1", "name": "read", "content": "x"},
+    )
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    assert [event.kind for event in events] == ["assistant", "tool"]
+    assert events[0].summary == "Looking…"
+    assert events[0].payload.get("tool_call_only") is not True
 
 
 def test_observe_does_not_store_state_snapshot(tmp_path: Path) -> None:
@@ -145,3 +209,67 @@ def test_observe_does_not_store_state_snapshot(tmp_path: Path) -> None:
     events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
     assert len(events) == 1
     assert events[0].kind == "user"
+
+
+def test_has_kind_detects_system_events(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    assert service.has_kind("T1", "system") is False
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "system", "label": "Initial System Prompt", "content": "You are Octop."},
+    )
+    assert service.has_kind("T1", "system") is True
+    assert service.has_kind("T1", "context") is False
+
+
+def test_observe_assigns_turn_id_and_wall_clock_ts(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "system", "label": "Initial System Prompt", "content": "sys"},
+    )
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hi"})
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "token", "node": "agent", "content": "hello"},
+    )
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "again"})
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    assert [event.kind for event in events] == ["system", "user", "assistant", "user"]
+    assert events[0].turn_id is None
+    assert events[0].ts > 0
+    assert events[1].turn_id == "T1:turn:1"
+    assert events[2].turn_id == "T1:turn:1"
+    assert events[3].turn_id == "T1:turn:2"
+    assert events[1].ts > 0
+
+
+def test_observe_tool_result_records_tool_duration_ms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, _bus = _service(tmp_path)
+    clock = {"t": 1000.0}
+
+    def fake_time() -> float:
+        return clock["t"]
+
+    monkeypatch.setattr("octop.infra.trajectory.service.time.time", fake_time)
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_call_chunk", "id": "c1", "name": "ls", "args": "{}"},
+    )
+    clock["t"] = 1000.25
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_result", "id": "c1", "name": "ls", "content": "ok"},
+    )
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    tool = next(event for event in events if event.kind == "tool")
+    assert tool.payload.get("tool_duration_ms") == pytest.approx(250.0)

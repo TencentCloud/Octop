@@ -183,24 +183,54 @@ async def test_list_returns_summarized_events_after_append(env_alice_bob_agent: 
     service = srv.app_runtime.trajectory_service
     assert service is not None
     service.observe_chunk(agent_id, thread_id, {"type": "user", "content": "hello there"})
+    service.observe_chunk(
+        agent_id,
+        thread_id,
+        {
+            "type": "tool_call_chunk",
+            "id": "call_1",
+            "name": "read_file",
+            "args": {"path": "a.py"},
+        },
+    )
+    service.observe_chunk(
+        agent_id,
+        thread_id,
+        {
+            "type": "tool_result",
+            "id": "call_1",
+            "name": "read_file",
+            "content": "file contents",
+        },
+    )
 
     response = await client.get(_url(agent_id, thread_id), headers=alice_auth)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["thread_id"] == thread_id
-    assert len(body["events"]) == 1
-    event = body["events"][0]
-    assert event["kind"] == "user"
-    assert "hello there" in event["summary"]
-    assert event["payload"].get("content") is None
+    # user + synthetic ASSISTANT (tool_call_only) + tool
+    assert len(body["events"]) == 3
+    kinds = [event["kind"] for event in body["events"]]
+    assert kinds == ["user", "assistant", "tool"]
+    user_event = body["events"][0]
+    assistant_event = body["events"][1]
+    tool_event = body["events"][2]
+    assert "hello there" in user_event["summary"]
+    # Message bodies stay on the detail endpoint only.
+    assert user_event["payload"].get("content") is None
+    assert assistant_event["payload"].get("tool_call_only") is True
+    # Tool args/result are available on the list for ledger rendering.
+    assert tool_event["payload"]["name"] == "read_file"
+    assert tool_event["payload"]["args"] == {"path": "a.py"}
+    assert tool_event["payload"]["result"] == "file contents"
 
     detail = await client.get(
-        _url(agent_id, thread_id, f"/events/{event['event_id']}"),
+        _url(agent_id, thread_id, f"/events/{user_event['event_id']}"),
         headers=alice_auth,
     )
     assert detail.status_code == 200, detail.text
     full = detail.json()
-    assert full["event_id"] == event["event_id"]
+    assert full["event_id"] == user_event["event_id"]
     assert full["payload"]["content"] == "hello there"
 
 
@@ -220,7 +250,7 @@ async def test_metrics_and_jsonl_export(env_alice_bob_agent: Any) -> None:
     assert metrics.status_code == 200, metrics.text
     body = metrics.json()
     assert body["turns"] == 1
-    assert body["steps"] == 2
+    assert body["steps"] == 3
 
     exported = await client.get(_url(agent_id, thread_id, "/export"), headers=alice_auth)
     assert exported.status_code == 200, exported.text
@@ -229,12 +259,14 @@ async def test_metrics_and_jsonl_export(env_alice_bob_agent: Any) -> None:
     disposition = exported.headers.get("content-disposition", "")
     assert thread_id in disposition
     lines = [line for line in exported.text.splitlines() if line.strip()]
-    assert len(lines) == 2
+    assert len(lines) == 3
     parsed = [json.loads(line) for line in lines]
     assert parsed[0]["kind"] == "user"
     assert parsed[0]["payload"]["content"] == "hello"
-    assert parsed[1]["kind"] == "tool"
-    assert parsed[1]["payload"]["name"] == "read_file"
+    assert parsed[1]["kind"] == "assistant"
+    assert parsed[1]["payload"].get("tool_call_only") is True
+    assert parsed[2]["kind"] == "tool"
+    assert parsed[2]["payload"]["name"] == "read_file"
 
 
 async def test_event_detail_missing_is_not_found(env_alice_bob_agent: Any) -> None:
@@ -310,7 +342,122 @@ async def test_live_sse_honors_after_seq(env_alice_bob_agent: Any) -> None:
 
     event_ids = [payload["event_id"] for payload in _sse_event_payloads(blob, "event")]
     assert second_id in event_ids
-    assert first_id not in event_ids
+    # ``after_seq`` also re-emits the boundary row as an upsert refresh.
+    assert first_id in event_ids
+
+
+async def test_sse_catchup_refreshes_same_seq_tool_after_history(
+    env_alice_bob_agent: Any,
+) -> None:
+    """Tool result upserted before subscribe must still appear in catch-up."""
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+    service.observe_chunk(
+        agent_id,
+        thread_id,
+        {
+            "type": "tool_call_chunk",
+            "id": "call_race",
+            "name": "read_file",
+            "args": {"path": "a.py"},
+        },
+    )
+    listed = await client.get(_url(agent_id, thread_id), headers=alice_auth)
+    tool = next(event for event in listed.json()["events"] if event["kind"] == "tool")
+    tool_seq = int(tool["seq"])
+    service.observe_chunk(
+        agent_id,
+        thread_id,
+        {
+            "type": "tool_result",
+            "id": "call_race",
+            "name": "read_file",
+            "content": "late result",
+        },
+    )
+
+    async with _open_asgi_sse(
+        client._octop_app,  # type: ignore[attr-defined]
+        _url(agent_id, thread_id, "/stream"),
+        alice_auth,
+        params={"after_seq": tool_seq},
+    ) as response:
+        assert response.status_code == 200
+        blob = await _read_sse_until(
+            response,
+            predicate=lambda buf: any(
+                payload.get("kind") == "tool"
+                and payload.get("payload", {}).get("result") == "late result"
+                for payload in _sse_event_payloads(buf, "event")
+            ),
+        )
+
+    tool_payloads = [
+        payload for payload in _sse_event_payloads(blob, "event") if payload.get("kind") == "tool"
+    ]
+    assert any(p.get("payload", {}).get("result") == "late result" for p in tool_payloads)
+
+
+async def test_live_sse_delivers_same_seq_tool_upsert(env_alice_bob_agent: Any) -> None:
+    """Tool call → result keeps the same seq; the upsert must still stream."""
+    client, srv, alice_auth, _bob_auth, agent_id = env_alice_bob_agent
+    thread_id = await _create_thread(client, alice_auth, agent_id)
+    service = srv.app_runtime.trajectory_service
+    assert service is not None
+
+    async with _open_asgi_sse(
+        client._octop_app,  # type: ignore[attr-defined]
+        _url(agent_id, thread_id, "/stream"),
+        alice_auth,
+    ) as response:
+        assert response.status_code == 200
+        phase = 0
+
+        def _ready(buf: str) -> bool:
+            nonlocal phase
+            payloads = _sse_event_payloads(buf, "event")
+            if phase == 0 and "event: metrics" in buf:
+                phase = 1
+                service.observe_chunk(
+                    agent_id,
+                    thread_id,
+                    {
+                        "type": "tool_call_chunk",
+                        "id": "call_live",
+                        "name": "read_file",
+                        "args": {"path": "a.py"},
+                    },
+                )
+            if phase == 1 and any(
+                p.get("kind") == "tool" and p.get("payload", {}).get("args") for p in payloads
+            ):
+                phase = 2
+                service.observe_chunk(
+                    agent_id,
+                    thread_id,
+                    {
+                        "type": "tool_result",
+                        "id": "call_live",
+                        "name": "read_file",
+                        "content": "file contents",
+                    },
+                )
+            return any(
+                p.get("kind") == "tool" and p.get("payload", {}).get("result") == "file contents"
+                for p in payloads
+            )
+
+        blob = await _read_sse_until(response, predicate=_ready)
+
+    tool_payloads = [
+        payload for payload in _sse_event_payloads(blob, "event") if payload.get("kind") == "tool"
+    ]
+    assert tool_payloads
+    assert any(p.get("payload", {}).get("result") == "file contents" for p in tool_payloads)
+    seqs = {p.get("seq") for p in tool_payloads}
+    assert len(seqs) == 1
 
 
 async def test_live_sse_emits_heartbeat(env_alice_bob_agent: Any, monkeypatch: Any) -> None:

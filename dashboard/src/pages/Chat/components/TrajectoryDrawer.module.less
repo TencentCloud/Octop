@@ -35,9 +35,9 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--fn-bg-primary);
-  padding: 12px 20px;
+  padding: 8px 16px 10px;
   box-sizing: border-box;
-  gap: 10px;
+  gap: 6px;
 }
 
 .split {
@@ -45,6 +45,7 @@
   min-height: 0;
   display: flex;
   gap: 0;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
 }
 
 .splitMobile {
@@ -68,7 +69,12 @@
   flex: 0 0 38%;
   max-width: 40%;
   border-left: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
-  padding-left: 12px;
+  padding: 8px 0 0 12px;
+
+  > * {
+    flex: 1;
+    min-height: 0;
+  }
 }
 
 .splitMobile .inspectorPane {

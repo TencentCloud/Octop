@@ -96,7 +96,7 @@ const sampleEvents: TrajectoryEvent[] = [
     seq: 3,
     turn_id: "turn-a",
     summary: "open a.py",
-    payload: { name: "read_file" },
+    payload: { name: "read_file", args: { path: "a.py" }, result: "ok" },
   }),
   event({
     event_id: "t2",
@@ -104,7 +104,7 @@ const sampleEvents: TrajectoryEvent[] = [
     seq: 4,
     turn_id: "turn-b",
     summary: "save a.py",
-    payload: { name: "write_file" },
+    payload: { name: "write_file", args: { path: "a.py" }, result: "saved" },
   }),
 ];
 
@@ -162,14 +162,16 @@ describe("TrajectoryDrawer", () => {
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "read_file" },
     });
-    expect(screen.getByText("read_file").closest("li")).toHaveAttribute(
-      "data-search-match",
-      "true",
-    );
-    expect(screen.getByText("write_file").closest("li")).toHaveAttribute(
-      "data-search-match",
-      "false",
-    );
+    const readRow = screen
+      .getAllByText("read_file")
+      .map((node) => node.closest("tr"))
+      .find((node): node is HTMLTableRowElement => node != null);
+    const writeRow = screen
+      .getAllByText("write_file")
+      .map((node) => node.closest("tr"))
+      .find((node): node is HTMLTableRowElement => node != null);
+    expect(readRow).toHaveAttribute("data-search-match", "true");
+    expect(writeRow).toHaveAttribute("data-search-match", "false");
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
 
@@ -183,8 +185,13 @@ describe("TrajectoryDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calls" }));
     expect(screen.getByText("hello")).toBeInTheDocument();
     expect(screen.getByText("Request #1")).toBeInTheDocument();
-    expect(screen.queryByText("read_file")).not.toBeInTheDocument();
-    expect(screen.queryByText("write_file")).not.toBeInTheDocument();
+    expect(document.querySelectorAll('tr[data-kind="tool"]')).toHaveLength(0);
+    expect(
+      document.querySelectorAll('tr[data-kind="collapsed-summary"]'),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(/2 tool calls · read_file, write_file/),
+    ).toBeInTheDocument();
   });
 
   it("dims timeline search hits from the full event list while calls are collapsed", async () => {
@@ -193,7 +200,7 @@ describe("TrajectoryDrawer", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Calls" }));
-    expect(screen.queryByText("read_file")).not.toBeInTheDocument();
+    expect(document.querySelectorAll('tr[data-kind="tool"]')).toHaveLength(0);
 
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "read_file" },
@@ -209,18 +216,16 @@ describe("TrajectoryDrawer", () => {
     );
   });
 
-  it("hides the inspector until a record is selected", async () => {
+  it("keeps the inspector visible and shows a placeholder until a record is selected", async () => {
     await renderDrawer(
       <TrajectoryDrawer agentId="A1" threadId="T1" open onClose={() => {}} />,
     );
 
-    expect(
-      screen.queryByTestId("trajectory-inspector-pane"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Select a record")).not.toBeInTheDocument();
+    expect(screen.getByTestId("trajectory-inspector-pane")).toBeInTheDocument();
+    expect(screen.getByText("Select a record")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /hello/ }));
-    expect(screen.getByTestId("trajectory-inspector-pane")).toBeInTheDocument();
+    expect(screen.queryByText("Select a record")).not.toBeInTheDocument();
     expect(screen.getByText("Kind")).toBeInTheDocument();
   });
 

@@ -25,4 +25,52 @@ describe("TrajectoryToolbar", () => {
     await user.type(screen.getByRole("searchbox"), "read");
     expect(onSearchQueryChange).toHaveBeenCalled();
   });
+
+  it("shows fold icons for turns and calls instead of a selected-filter look", () => {
+    const { rerender } = render(
+      <TrajectoryToolbar
+        durationOn={false}
+        onDurationOnChange={() => {}}
+        allTurnsCollapsed={false}
+        onToggleAllTurns={() => {}}
+        allCallsCollapsed={false}
+        onToggleAllCalls={() => {}}
+        searchQuery=""
+        onSearchQueryChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Turns/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /Calls/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    rerender(
+      <TrajectoryToolbar
+        durationOn={true}
+        onDurationOnChange={() => {}}
+        allTurnsCollapsed={true}
+        onToggleAllTurns={() => {}}
+        allCallsCollapsed={true}
+        onToggleAllCalls={() => {}}
+        searchQuery=""
+        onSearchQueryChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Duration/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Turns/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Calls/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
 });

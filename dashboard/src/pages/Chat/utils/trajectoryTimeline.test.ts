@@ -120,6 +120,122 @@ describe("deriveSwimlaneSpans", () => {
     });
   });
 
+  it("falls back to timestamp gaps in duration mode when payload lacks durations", () => {
+    const spans = deriveSwimlaneSpans(
+      [
+        event({ event_id: "a", kind: "assistant", ts: 1 }),
+        event({ event_id: "t", kind: "tool", ts: 1.5 }),
+        event({ event_id: "u", kind: "user", ts: 2, summary: "hi" }),
+      ],
+      "duration",
+    );
+    // Last event has no successor gap → content-size estimate (user "hi" → 42).
+    expect(
+      spans.map((span) => ({ id: span.id, start: span.start, end: span.end })),
+    ).toEqual([
+      { id: "a", start: 0, end: 500 },
+      { id: "t", start: 500, end: 1000 },
+      { id: "u", start: 1000, end: 1042 },
+    ]);
+  });
+
+  it("ignores sub-50ms timestamp gaps and estimates instead", () => {
+    const spans = deriveSwimlaneSpans(
+      [
+        event({
+          event_id: "a",
+          kind: "assistant",
+          ts: 1,
+          summary: "x".repeat(100),
+        }),
+        event({ event_id: "t", kind: "tool", ts: 1.01, summary: "tool" }),
+      ],
+      "duration",
+    );
+    // 10ms gap is below the floor → estimate, not 10.
+    expect(spans[0]!.end - spans[0]!.start).toBeGreaterThan(10);
+    expect(spans[0]!.end - spans[0]!.start).toBe(120 + 100 * 2);
+  });
+
+  it("estimates duration when timestamps are equal so Duration differs from sequence", () => {
+    const events = [
+      event({ event_id: "u", kind: "user", ts: 100, summary: "hi" }),
+      event({
+        event_id: "a",
+        kind: "assistant",
+        ts: 100,
+        summary: "x".repeat(200),
+      }),
+      event({
+        event_id: "t",
+        kind: "tool",
+        ts: 100,
+        summary: "tool",
+        payload: { name: "read", result: "y".repeat(50) },
+      }),
+    ];
+    const sequence = deriveSwimlaneSpans(events, "sequence");
+    const duration = deriveSwimlaneSpans(events, "duration");
+    expect(sequence.map((s) => s.end - s.start)).toEqual([1, 1, 1]);
+    expect(duration[1]!.end - duration[1]!.start).toBeGreaterThan(
+      duration[0]!.end - duration[0]!.start,
+    );
+    expect(duration.map((s) => s.end - s.start)).not.toEqual([1, 1, 1]);
+  });
+
+  it("estimates duration from payload bulk when ts and duration fields are missing", () => {
+    const spans = deriveSwimlaneSpans(
+      [
+        event({
+          event_id: "u",
+          kind: "user",
+          ts: 0,
+          summary: "hi",
+        }),
+        event({
+          event_id: "a",
+          kind: "assistant",
+          ts: 0,
+          summary: "x".repeat(200),
+        }),
+        event({
+          event_id: "t",
+          kind: "tool",
+          ts: 0,
+          summary: "tool",
+          payload: { name: "read", result: "y".repeat(50) },
+        }),
+      ],
+      "duration",
+    );
+    expect(spans[0]!.end - spans[0]!.start).toBeLessThan(
+      spans[1]!.end - spans[1]!.start,
+    );
+    expect(spans[2]!.end - spans[2]!.start).toBeGreaterThan(
+      spans[0]!.end - spans[0]!.start,
+    );
+    const equal = deriveSwimlaneSpans(
+      [
+        event({ event_id: "u", kind: "user", ts: 0, summary: "hi" }),
+        event({
+          event_id: "a",
+          kind: "assistant",
+          ts: 0,
+          summary: "x".repeat(200),
+        }),
+        event({
+          event_id: "t",
+          kind: "tool",
+          ts: 0,
+          summary: "tool",
+          payload: { name: "read", result: "y".repeat(50) },
+        }),
+      ],
+      "sequence",
+    );
+    expect(equal.every((span) => span.end - span.start === 1)).toBe(true);
+  });
+
   it("uses timestamps in actual mode and keeps a visible last span", () => {
     const spans = deriveSwimlaneSpans(
       [

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { type TrajectoryMetrics } from "../../../api/modules/trajectory";
-import { visibleMetrics } from "../utils/trajectoryModel";
+import { formatDurationMs, visibleMetrics } from "../utils/trajectoryModel";
 import styles from "./TrajectoryMetricsBar.module.less";
 
 interface TrajectoryMetricsBarProps {
@@ -21,18 +21,18 @@ const METRIC_LABEL: Record<
   },
   tool_duration_ms: {
     key: "chat.trajectoryMetricToolMs",
-    fallback: "Tools",
+    fallback: "Tool call",
   },
-  ttft_avg_ms: { key: "chat.trajectoryMetricTtft", fallback: "TTFT" },
+  ttft_avg_ms: { key: "chat.trajectoryMetricTtft", fallback: "TTFT avg" },
   tok_per_s: { key: "chat.trajectoryMetricTokPerS", fallback: "tok/s" },
   cache_hit_ratio: {
     key: "chat.trajectoryMetricCacheHit",
-    fallback: "Cache",
+    fallback: "Cache hit",
   },
-  input_tokens: { key: "chat.trajectoryMetricInputTokens", fallback: "In" },
+  input_tokens: { key: "chat.trajectoryMetricInputTokens", fallback: "Input" },
   output_tokens: {
     key: "chat.trajectoryMetricOutputTokens",
-    fallback: "Out",
+    fallback: "Output",
   },
   cache_read_tokens: {
     key: "chat.trajectoryMetricCacheRead",
@@ -40,17 +40,52 @@ const METRIC_LABEL: Record<
   },
 };
 
+function formatTokenCount(value: number): string {
+  if (value >= 1000) {
+    const kilo = value / 1000;
+    return `${kilo >= 10 ? Math.round(kilo) : kilo.toFixed(1)}k`;
+  }
+  return String(Math.round(value));
+}
+
 function formatMetric(key: keyof TrajectoryMetrics, value: number): string {
   if (key === "cache_hit_ratio") {
     return `${Math.round(value * 100)}%`;
   }
   if (key.endsWith("_ms")) {
-    return `${Math.round(value)}ms`;
+    return formatDurationMs(value);
+  }
+  if (
+    key === "input_tokens" ||
+    key === "output_tokens" ||
+    key === "cache_read_tokens"
+  ) {
+    return formatTokenCount(value);
+  }
+  if (key === "tok_per_s") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
   if (Number.isInteger(value)) {
     return String(value);
   }
   return value.toFixed(1);
+}
+
+function chipText(
+  key: keyof TrajectoryMetrics,
+  value: number,
+  label: string,
+): string {
+  if (key === "turns" || key === "steps") {
+    return `${formatMetric(key, value)} ${label.toLowerCase()}`;
+  }
+  if (key === "tok_per_s") {
+    return `${formatMetric(key, value)} ${label}`;
+  }
+  if (key === "cache_hit_ratio") {
+    return `${label} ${formatMetric(key, value)}`;
+  }
+  return `${label} ${formatMetric(key, value)}`;
 }
 
 export default function TrajectoryMetricsBar({
@@ -65,19 +100,22 @@ export default function TrajectoryMetricsBar({
       aria-label={t("chat.trajectoryMetrics", "Session metrics")}
     >
       <div className={styles.chips}>
-        {entries.map((entry) => {
+        {entries.map((entry, index) => {
           const label = METRIC_LABEL[entry.key];
+          const text = chipText(
+            entry.key,
+            entry.value,
+            t(label.key, label.fallback),
+          );
           return (
-            <span
-              key={entry.key}
-              className={styles.chip}
-              data-metric={entry.key}
-            >
-              <span className={styles.label}>
-                {t(label.key, label.fallback)}
-              </span>
-              <span className={styles.value}>
-                {formatMetric(entry.key, entry.value)}
+            <span key={entry.key} className={styles.chipGroup}>
+              {index > 0 ? (
+                <span className={styles.sep} aria-hidden>
+                  ·
+                </span>
+              ) : null}
+              <span className={styles.chip} data-metric={entry.key}>
+                {text}
               </span>
             </span>
           );

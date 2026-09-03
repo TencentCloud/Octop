@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from harness_agent.slash import SlashSink, parse_slash
 from harness_agent.teams.inbox import InboxMessage
@@ -151,6 +151,149 @@ class GlobalProcessor:
                 agent_id,
                 thread_id,
             )
+
+    async def _observe_turn_start_context(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        request: dict[str, Any],
+        meta: dict[str, Any],
+        phase: Literal["system", "context"] = "context",
+    ) -> None:
+        """Emit SYSTEM / CONTEXT from harness injection sources of truth."""
+        service = self._trajectory_service
+        if service is None:
+            return
+        try:
+            from octop.infra.trajectory.turn_context import (  # noqa: PLC0415
+                build_turn_start_chunks,
+                filter_turn_skill_names,
+            )
+
+            include_system = phase == "system" and not bool(service.has_kind(thread_id, "system"))
+            system_prompt = self._trajectory_system_prompt(agent_id) if phase == "system" else None
+            workspace_files: list[tuple[str, str]] = []
+            skills: list[str] | None = None
+            skills_filter_present = False
+            mcp_names: list[str] | None = None
+            if phase == "context":
+                workspace_files = await self._trajectory_workspace_files(agent_id)
+                skills_filter_present = "skills" in request or "skills" in meta
+                turn_skills: list[str] | None = None
+                if "skills" in request and isinstance(request.get("skills"), list):
+                    turn_skills = [str(x) for x in request["skills"]]
+                elif "skills" in meta and isinstance(meta.get("skills"), list):
+                    turn_skills = [str(x) for x in meta["skills"]]
+                enabled = await self._trajectory_enabled_skill_names(agent_id)
+                if enabled is not None:
+                    skills = filter_turn_skill_names(
+                        enabled,
+                        turn_skills=turn_skills,
+                        skills_filter_present=skills_filter_present,
+                    )
+                mcp_names = _mcp_server_names(request.get("mcp_servers"))
+            for chunk in build_turn_start_chunks(
+                include_system=include_system,
+                system_prompt=system_prompt,
+                workspace_files=workspace_files,
+                skills=skills,
+                mcp_servers=mcp_names,
+                skills_filter_present=skills_filter_present,
+            ):
+                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+        except Exception:
+            logger.exception(
+                "trajectory turn-start context failed agent=%s thread=%s",
+                agent_id,
+                thread_id,
+            )
+
+    def _trajectory_system_prompt(self, agent_id: str) -> str | None:
+        """Live harness config prompt — same string the graph was compiled with."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+            prompt = getattr(getattr(agent, "_config", None), "system_prompt", None)
+            if isinstance(prompt, str) and prompt.strip():
+                return prompt
+        except Exception:
+            logger.debug(
+                "trajectory live system_prompt unavailable agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+        row = self._agent_repo.get(agent_id)
+        if row is not None and isinstance(row.system_prompt, str) and row.system_prompt.strip():
+            return row.system_prompt
+        return None
+
+    async def _trajectory_enabled_skill_names(self, agent_id: str) -> list[dict[str, str]] | None:
+        """Enabled skills from harness catalog (SoT for prompt skill section)."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+            summaries = await agent.list_skill_summaries()
+        except Exception:
+            logger.debug(
+                "trajectory skill catalog unavailable agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return None
+        rows: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in summaries:
+            if not isinstance(row, dict) or not row.get("enabled", True):
+                continue
+            name = str(row.get("name") or row.get("slug") or "").strip()
+            slug = str(row.get("slug") or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            item = {"name": name}
+            if slug:
+                item["slug"] = slug
+            rows.append(item)
+        return rows
+
+    async def _trajectory_workspace_files(self, agent_id: str) -> list[tuple[str, str]]:
+        """Memory files harness injects — ``DEFAULT_MEMORY_FILES`` ∩ exists ∩ non-empty."""
+        from octop.infra.trajectory.turn_context import memory_file_order  # noqa: PLC0415
+
+        workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
+        if workspace is None:
+            return []
+        out: list[tuple[str, str]] = []
+        for name in memory_file_order():
+            try:
+                exists = workspace.exists(name)
+            except Exception:
+                logger.debug(
+                    "trajectory workspace exists failed agent=%s path=%s",
+                    agent_id,
+                    name,
+                    exc_info=True,
+                )
+                continue
+            if not exists:
+                continue
+            try:
+                text = await workspace.aread_text(name)
+            except Exception:
+                logger.debug(
+                    "trajectory workspace read failed agent=%s path=%s",
+                    agent_id,
+                    name,
+                    exc_info=True,
+                )
+                continue
+            if text is None:
+                continue
+            cleaned = str(text).strip()
+            # deepagents empty-file sentinel — not real workspace content.
+            if not cleaned or cleaned == "System reminder: File exists but has empty contents":
+                continue
+            out.append((name, cleaned))
+        return out
 
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
 
@@ -642,10 +785,24 @@ class GlobalProcessor:
             thread_id=thread_id,
             meta=meta,
         )
+        await self._observe_turn_start_context(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            request=request,
+            meta=meta,
+            phase="system",
+        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
             chunk={"type": "user", "content": msg.text or "", "source": channel_type},
+        )
+        await self._observe_turn_start_context(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            request=request,
+            meta=meta,
+            phase="context",
         )
 
         stream_ok = False
@@ -1005,3 +1162,13 @@ class GlobalProcessor:
                 thread_id,
                 exc_info=True,
             )
+
+
+def _mcp_server_names(raw: Any) -> list[str] | None:
+    if isinstance(raw, list):
+        names = [str(item).strip() for item in raw if str(item).strip()]
+        return names or None
+    if isinstance(raw, dict):
+        names = [str(key).strip() for key in raw if str(key).strip()]
+        return names or None
+    return None

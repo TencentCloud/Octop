@@ -5,11 +5,17 @@ import type {
 } from "../../../api/modules/trajectory";
 import {
   collapseCalls,
+  collapseCallRows,
   collapseTurns,
+  ensureToolCallParents,
   filterRows,
+  formatCollapsedToolCalls,
+  formatDurationMs,
+  kindLabelFor,
   laneForKind,
   toLedgerRow,
   visibleMetrics,
+  coerceToolResultText,
 } from "./trajectoryModel";
 
 function event(
@@ -97,9 +103,40 @@ describe("toLedgerRow", () => {
     expect(row.title).toBe("read_file");
   });
 
+  it("unwraps MCP content-block tool results for the ledger", () => {
+    const row = toLedgerRow(
+      event({
+        event_id: "t2",
+        kind: "tool",
+        summary: "tool list_projects",
+        payload: {
+          name: "list_projects",
+          result: [
+            {
+              type: "text",
+              text: '{\n  "id": "1",\n  "name": "工作"\n}',
+            },
+          ],
+        },
+      }),
+    );
+    expect(row.toolResult).toContain('"name": "工作"');
+    expect(row.toolResult).not.toContain('"type": "text"');
+  });
+
   it("omits requestSeq when the event has none", () => {
     const row = toLedgerRow(event({ event_id: "u1", kind: "user" }));
     expect(row.requestSeq).toBeUndefined();
+  });
+});
+
+describe("coerceToolResultText", () => {
+  it("pretty-prints unwrapped MCP text JSON", () => {
+    const text = coerceToolResultText([
+      { type: "text", text: '{"id":"1","name":"工作"}' },
+    ]);
+    expect(text).toContain('"name": "工作"');
+    expect(text).not.toContain("type");
   });
 });
 
@@ -108,15 +145,23 @@ describe("filterRows", () => {
     {
       id: "1",
       kind: "tool",
+      kindLabel: "TOOL" as const,
       title: "read_file",
       summary: "open a.py",
+      content: "open a.py",
+      toolArgs: null,
+      toolResult: null,
       isError: false,
     },
     {
       id: "2",
       kind: "assistant",
+      kindLabel: "ASSISTANT" as const,
       title: "Request #1",
       summary: "I'll look at the source",
+      content: "I'll look at the source",
+      toolArgs: null,
+      toolResult: null,
       requestSeq: 1,
       isError: false,
     },
@@ -182,12 +227,20 @@ describe("collapseTurns", () => {
     ]);
   });
 
-  it("does not merge events that lack a turn_id", () => {
+  it("falls back to USER boundaries when turn_id is missing", () => {
     const groups = collapseTurns([
-      event({ event_id: "1", kind: "system", turn_id: null }),
-      event({ event_id: "2", kind: "system", turn_id: null }),
+      event({ event_id: "s", kind: "system", turn_id: null }),
+      event({ event_id: "u1", kind: "user", turn_id: null }),
+      event({ event_id: "a1", kind: "assistant", turn_id: null }),
+      event({ event_id: "t1", kind: "tool", turn_id: null }),
+      event({ event_id: "u2", kind: "user", turn_id: null }),
+      event({ event_id: "a2", kind: "assistant", turn_id: null }),
     ]);
-    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.map((ev) => ev.event_id))).toEqual([
+      ["s"],
+      ["u1", "a1", "t1"],
+      ["u2", "a2"],
+    ]);
   });
 });
 
@@ -205,5 +258,113 @@ describe("collapseCalls", () => {
       ["3", "4", "5"],
       ["6"],
     ]);
+  });
+});
+
+describe("collapseCallRows", () => {
+  it("keeps the assistant and inserts a separate DSH summary row", () => {
+    const rows = collapseCallRows([
+      event({
+        event_id: "a",
+        kind: "assistant",
+        summary: "(tool call only)",
+        payload: { tool_call_only: true, content: "" },
+      }),
+      event({
+        event_id: "t1",
+        kind: "tool",
+        payload: { name: "todo_write" },
+      }),
+      event({
+        event_id: "t2",
+        kind: "tool",
+        payload: { name: "bash" },
+      }),
+      event({
+        event_id: "t3",
+        kind: "tool",
+        payload: { name: "bash" },
+      }),
+      event({
+        event_id: "t4",
+        kind: "tool",
+        payload: { name: "glob" },
+      }),
+      event({
+        event_id: "u",
+        kind: "user",
+        summary: "next",
+      }),
+    ]);
+    expect(rows.map((row) => row.event_id)).toEqual([
+      "a",
+      "a__assistant_summary",
+      "u",
+    ]);
+    expect(rows[0]?.payload.tool_call_only).toBe(true);
+    expect(rows[0]?.summary).toBe("(tool call only)");
+    expect(rows[1]?.payload.collapsed_summary).toBe(true);
+    expect(rows[1]?.payload.content).toBe(
+      "4 tool calls · todo_write, bash, glob",
+    );
+  });
+
+  it("formats singular tool call counts", () => {
+    expect(formatCollapsedToolCalls(1, ["read"])).toBe("1 tool call · read");
+  });
+});
+
+describe("ensureToolCallParents", () => {
+  it("inserts a tool-call-only assistant before orphan tool bursts", () => {
+    const rows = ensureToolCallParents([
+      event({ event_id: "u", kind: "user" }),
+      event({ event_id: "t1", kind: "tool", summary: "tool ls" }),
+      event({ event_id: "t2", kind: "tool", summary: "tool ls" }),
+      event({
+        event_id: "a",
+        kind: "assistant",
+        summary: "done",
+        payload: { content: "done" },
+      }),
+    ]);
+    expect(rows.map((row) => row.kind)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+      "tool",
+      "assistant",
+    ]);
+    expect(rows[1]?.payload.tool_call_only).toBe(true);
+    expect(rows[1]?.summary).toBe("(tool call only)");
+  });
+
+  it("does not duplicate parents when an assistant already precedes tools", () => {
+    const rows = ensureToolCallParents([
+      event({
+        event_id: "a",
+        kind: "assistant",
+        summary: "(tool call only)",
+        payload: { tool_call_only: true },
+      }),
+      event({ event_id: "t1", kind: "tool" }),
+    ]);
+    expect(rows.map((row) => row.event_id)).toEqual(["a", "t1"]);
+  });
+});
+
+describe("formatDurationMs", () => {
+  it("formats compact DSH-style durations", () => {
+    expect(formatDurationMs(45)).toBe("45ms");
+    expect(formatDurationMs(1200)).toBe("1.2s");
+    expect(formatDurationMs(12_500)).toBe("13s");
+    expect(formatDurationMs(74_370)).toBe("1m14s");
+  });
+});
+
+describe("kindLabelFor", () => {
+  it("maps kinds to DSH uppercase labels", () => {
+    expect(kindLabelFor("assistant")).toBe("ASSISTANT");
+    expect(kindLabelFor("tool")).toBe("TOOL");
+    expect(kindLabelFor("user")).toBe("USER");
   });
 });
