@@ -55,6 +55,7 @@
   :global(.ant-table-cell-fix-left),
   :global(.ant-table-cell-fix-right) {
     background: var(--fn-bg-primary, #fff) !important;
+    z-index: 2;
   }
 
   :global(.octop-table-thead .octop-table-cell-fix-left),
@@ -67,9 +68,50 @@
   :global(.octop-table-row:hover > .octop-table-cell-fix-left),
   :global(.octop-table-row:hover > .octop-table-cell-fix-right),
   :global(.ant-table-row:hover > .ant-table-cell-fix-left),
-  :global(.ant-table-row:hover > .ant-table-cell-fix-right) {
-    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.02)) !important;
+  :global(.ant-table-row:hover > .ant-table-cell-fix-right),
+  :global(.octop-table-cell-fix-left.octop-table-cell-row-hover),
+  :global(.octop-table-cell-fix-right.octop-table-cell-row-hover),
+  :global(.ant-table-cell-fix-left.ant-table-cell-row-hover),
+  :global(.ant-table-cell-fix-right.ant-table-cell-row-hover) {
+    background: linear-gradient(
+        var(--fn-bg-hover, rgba(0, 0, 0, 0.02)),
+        var(--fn-bg-hover, rgba(0, 0, 0, 0.02))
+      ),
+      var(--fn-bg-primary, #fff) !important;
   }
+
+  :global(.octop-table-tbody > tr > td),
+  :global(.ant-table-tbody > tr > td) {
+    overflow: hidden;
+  }
+}
+
+.nameCellButton {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.actionCell {
+  overflow: hidden;
+}
+
+.tableActionGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .promptCell {

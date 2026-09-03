@@ -12,6 +12,7 @@ import {
   Select,
   Spin,
   Switch,
+  Tag,
   Table,
   Upload,
 } from "antd";
@@ -59,6 +60,22 @@ function triggerDownload(blob: Blob, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+function BackupContentsTags({ row }: { row: BackupFileItem }) {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.contentTags}>
+      {row.includes_config ? <Tag>{t("backup.tagConfig")}</Tag> : null}
+      {row.includes_workspaces ? <Tag>{t("backup.tagWorkspaces")}</Tag> : null}
+      {row.includes_skill_packages ? (
+        <Tag>{t("backup.tagSkillPackages")}</Tag>
+      ) : null}
+      {row.includes_plugins ? <Tag>{t("backup.tagPlugins")}</Tag> : null}
+      {row.includes_knowledge ? <Tag>{t("backup.tagKnowledge")}</Tag> : null}
+      {row.includes_chats ? <Tag>{t("backup.tagChatsYes")}</Tag> : null}
+    </div>
+  );
 }
 
 function formatSize(bytes: number): string {
@@ -112,6 +129,7 @@ function BackupFileCard({
           {formatServerIsoDateTime(row.modified_at, timeZone)}
         </span>
       </div>
+      <BackupContentsTags row={row} />
       <div className={styles.backupCardActions}>
         <Button
           size="small"
@@ -170,6 +188,13 @@ export default function BackupRestorePanel() {
   const [items, setItems] = useState<BackupFileItem[]>([]);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [includeConfig, setIncludeConfig] = useState(true);
+  const [includeWorkspaces, setIncludeWorkspaces] = useState(true);
+  const [includeSkillPackages, setIncludeSkillPackages] = useState(true);
+  const [includePlugins, setIncludePlugins] = useState(true);
+  const [includeKnowledge, setIncludeKnowledge] = useState(true);
+  const [includeChats, setIncludeChats] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreConfig, setRestoreConfig] = useState(true);
   const [pendingRestore, setPendingRestore] = useState<BackupFileItem | null>(
@@ -181,6 +206,13 @@ export default function BackupRestorePanel() {
   const [autoSchedule, setAutoSchedule] = useState(SCHEDULE_DAILY);
   const [schedulePreset, setSchedulePreset] = useState<string>(SCHEDULE_DAILY);
   const [autoRetention, setAutoRetention] = useState(7);
+  const [autoIncludeConfig, setAutoIncludeConfig] = useState(true);
+  const [autoIncludeWorkspaces, setAutoIncludeWorkspaces] = useState(true);
+  const [autoIncludeSkillPackages, setAutoIncludeSkillPackages] =
+    useState(true);
+  const [autoIncludePlugins, setAutoIncludePlugins] = useState(true);
+  const [autoIncludeKnowledge, setAutoIncludeKnowledge] = useState(true);
+  const [autoIncludeChats, setAutoIncludeChats] = useState(false);
   const [autoScheduled, setAutoScheduled] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -195,6 +227,12 @@ export default function BackupRestorePanel() {
     setAutoEnabled(data.auto_enabled);
     setAutoSchedule(data.schedule);
     setAutoRetention(data.retention_count);
+    setAutoIncludeConfig(data.include_config);
+    setAutoIncludeWorkspaces(data.include_workspaces);
+    setAutoIncludeSkillPackages(data.include_skill_packages);
+    setAutoIncludePlugins(data.include_plugins);
+    setAutoIncludeKnowledge(data.include_knowledge);
+    setAutoIncludeChats(data.include_chats);
     setAutoScheduled(Boolean(data.scheduled));
     setSchedulePreset(
       PRESET_SCHEDULES.has(data.schedule) ? data.schedule : "custom",
@@ -261,7 +299,15 @@ export default function BackupRestorePanel() {
   }, [restoring, restoreTarget]);
 
   const onCreate = async () => {
-    await createBackup();
+    const ok = await createBackup({
+      include_config: includeConfig,
+      include_workspaces: includeWorkspaces,
+      include_skill_packages: includeSkillPackages,
+      include_plugins: includePlugins,
+      include_knowledge: includeKnowledge,
+      include_chats: includeChats,
+    });
+    if (ok) setCreateOpen(false);
   };
 
   const onSaveAuto = async () => {
@@ -271,6 +317,12 @@ export default function BackupRestorePanel() {
         auto_enabled: autoEnabled,
         schedule: autoSchedule.trim() || SCHEDULE_DAILY,
         retention_count: autoRetention,
+        include_config: autoIncludeConfig,
+        include_workspaces: autoIncludeWorkspaces,
+        include_skill_packages: autoIncludeSkillPackages,
+        include_plugins: autoIncludePlugins,
+        include_knowledge: autoIncludeKnowledge,
+        include_chats: autoIncludeChats,
       });
       applyAutoSettings(data);
       message.success(t("backup.autoSaveSuccess"));
@@ -353,6 +405,14 @@ export default function BackupRestorePanel() {
       render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
     {
+      title: t("backup.colContents"),
+      key: "contents",
+      width: 220,
+      render: (_: unknown, row: BackupFileItem) => (
+        <BackupContentsTags row={row} />
+      ),
+    },
+    {
       title: t("backup.colActions"),
       key: "actions",
       width: 225,
@@ -376,6 +436,7 @@ export default function BackupRestorePanel() {
             disabled={busy}
             onClick={() => {
               setPendingRestore(row);
+              setRestoreConfig(row.includes_config !== false);
               setRestoreOpen(true);
             }}
           >
@@ -422,7 +483,7 @@ export default function BackupRestorePanel() {
             icon={<Plus size={14} />}
             loading={creating}
             disabled={busy && !creating}
-            onClick={() => void onCreate()}
+            onClick={() => setCreateOpen(true)}
           >
             {creating ? t("backup.creating") : t("backup.createButton")}
           </Button>
@@ -497,6 +558,7 @@ export default function BackupRestorePanel() {
                     onDownload={onDownload}
                     onRestore={(item) => {
                       setPendingRestore(item);
+                      setRestoreConfig(item.includes_config !== false);
                       setRestoreOpen(true);
                     }}
                     onDelete={onDelete}
@@ -614,6 +676,58 @@ export default function BackupRestorePanel() {
                 }
               />
             </label>
+            <div className={styles.autoRow}>
+              <span>{t("backup.autoContent")}</span>
+              <div className={styles.autoContentOptions}>
+                <Checkbox checked disabled>
+                  {t("backup.includeDatabase")}
+                </Checkbox>
+                <Checkbox
+                  checked={autoIncludeConfig}
+                  disabled={busy}
+                  onChange={(e) => setAutoIncludeConfig(e.target.checked)}
+                >
+                  {t("backup.includeConfig")}
+                </Checkbox>
+                <Checkbox
+                  checked={autoIncludeWorkspaces}
+                  disabled={busy}
+                  onChange={(e) => setAutoIncludeWorkspaces(e.target.checked)}
+                >
+                  {t("backup.includeWorkspaces")}
+                </Checkbox>
+                <Checkbox
+                  checked={autoIncludeSkillPackages}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setAutoIncludeSkillPackages(e.target.checked)
+                  }
+                >
+                  {t("backup.includeSkillPackages")}
+                </Checkbox>
+                <Checkbox
+                  checked={autoIncludePlugins}
+                  disabled={busy}
+                  onChange={(e) => setAutoIncludePlugins(e.target.checked)}
+                >
+                  {t("backup.includePlugins")}
+                </Checkbox>
+                <Checkbox
+                  checked={autoIncludeKnowledge}
+                  disabled={busy}
+                  onChange={(e) => setAutoIncludeKnowledge(e.target.checked)}
+                >
+                  {t("backup.includeKnowledge")}
+                </Checkbox>
+                <Checkbox
+                  checked={autoIncludeChats}
+                  disabled={busy}
+                  onChange={(e) => setAutoIncludeChats(e.target.checked)}
+                >
+                  {t("backup.includeChats")}
+                </Checkbox>
+              </div>
+            </div>
             <div className={styles.autoStatus}>
               {autoScheduled
                 ? t("backup.autoScheduled")
@@ -641,6 +755,72 @@ export default function BackupRestorePanel() {
       </section>
 
       <Modal
+        title={t("backup.createModalTitle")}
+        open={createOpen}
+        onCancel={() => {
+          if (!creating) setCreateOpen(false);
+        }}
+        onOk={() => void onCreate()}
+        okText={creating ? t("backup.creating") : t("backup.createButton")}
+        cancelText={t("common.cancel")}
+        confirmLoading={creating}
+        okButtonProps={{ disabled: busy && !creating }}
+        cancelButtonProps={{ disabled: creating }}
+      >
+        <p>{t("backup.createModalDesc")}</p>
+        <div className={styles.contentOptions}>
+          <Checkbox checked disabled>
+            {t("backup.includeDatabase")}
+          </Checkbox>
+          <Checkbox
+            checked={includeConfig}
+            disabled={creating}
+            onChange={(e) => setIncludeConfig(e.target.checked)}
+          >
+            {t("backup.includeConfig")}
+          </Checkbox>
+          <Checkbox
+            checked={includeWorkspaces}
+            disabled={creating}
+            onChange={(e) => setIncludeWorkspaces(e.target.checked)}
+          >
+            {t("backup.includeWorkspaces")}
+          </Checkbox>
+          <Checkbox
+            checked={includeSkillPackages}
+            disabled={creating}
+            onChange={(e) => setIncludeSkillPackages(e.target.checked)}
+          >
+            {t("backup.includeSkillPackages")}
+          </Checkbox>
+          <Checkbox
+            checked={includePlugins}
+            disabled={creating}
+            onChange={(e) => setIncludePlugins(e.target.checked)}
+          >
+            {t("backup.includePlugins")}
+          </Checkbox>
+          <Checkbox
+            checked={includeKnowledge}
+            disabled={creating}
+            onChange={(e) => setIncludeKnowledge(e.target.checked)}
+          >
+            {t("backup.includeKnowledge")}
+          </Checkbox>
+          <Checkbox
+            checked={includeChats}
+            disabled={creating}
+            onChange={(e) => setIncludeChats(e.target.checked)}
+          >
+            {t("backup.includeChats")}
+          </Checkbox>
+          <span className={styles.optionHint}>
+            {t("backup.includeChatsHint")}
+          </span>
+        </div>
+      </Modal>
+
+      <Modal
         title={t("backup.importConfirmTitle")}
         open={restoreOpen}
         onCancel={() => {
@@ -661,15 +841,37 @@ export default function BackupRestorePanel() {
             name: pendingRestore?.name ?? restoreTarget ?? "",
           })}
         </p>
+        {pendingRestore?.includes_chats === false ? (
+          <p className={styles.restoreNote}>{t("backup.restoreKeepChats")}</p>
+        ) : null}
+        {pendingRestore?.includes_workspaces === false ? (
+          <p className={styles.restoreNote}>
+            {t("backup.restoreNoWorkspaces")}
+          </p>
+        ) : null}
+        {pendingRestore?.includes_skill_packages === false ? (
+          <p className={styles.restoreNote}>
+            {t("backup.restoreNoSkillPackages")}
+          </p>
+        ) : null}
+        {pendingRestore?.includes_plugins === false ? (
+          <p className={styles.restoreNote}>{t("backup.restoreNoPlugins")}</p>
+        ) : null}
+        {pendingRestore?.includes_knowledge === false ? (
+          <p className={styles.restoreNote}>{t("backup.restoreNoKnowledge")}</p>
+        ) : null}
         <div className={styles.checkboxRow}>
           <Checkbox
             checked={restoreConfig}
-            disabled={restoring}
+            disabled={restoring || pendingRestore?.includes_config === false}
             onChange={(e) => setRestoreConfig(e.target.checked)}
           >
             {t("backup.restoreConfig")}
           </Checkbox>
         </div>
+        {pendingRestore?.includes_config === false ? (
+          <p className={styles.restoreNote}>{t("backup.restoreNoConfig")}</p>
+        ) : null}
       </Modal>
     </>
   );

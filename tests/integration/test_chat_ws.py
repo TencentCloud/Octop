@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -11,7 +10,6 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from tests.support.app import octop_client
@@ -23,7 +21,11 @@ from tests.support.auth import (
     seed_openai_provider,
 )
 from tests.support.fakes import FakeHarnessAgent
-from tests.support.http import ws_token
+from tests.support.http import chat_ws_path, ws_connect
+
+
+def _chat_ws(c: httpx.AsyncClient, aid: str, auth: dict[str, str]) -> Any:
+    return ws_connect(c._octop_app, chat_ws_path(aid, auth))  # type: ignore[attr-defined]
 
 
 @pytest.fixture
@@ -43,80 +45,38 @@ async def env(tmp_octop_home: Path) -> AsyncIterator[Any]:
         yield c, srv, fake, users["alice"], users["bob"], aid
 
 
-def _consume_ws_turn_sync(
-    app: object,
+async def _turn_then_rebind(
+    c: httpx.AsyncClient,
     aid: str,
-    token: str,
-    body: dict[str, Any],
-) -> list[dict[str, Any]]:
-    chunks: list[dict[str, Any]] = []
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws:
-        ws.send_json(body)
-        while True:
-            raw = ws.receive_text()
-            chunk = json.loads(raw)
-            chunks.append(chunk)
-            if chunk.get("type") in ("done", "error"):
-                break
-    return chunks
-
-
-def _disconnect_ws_turn_sync(
-    app: object,
-    aid: str,
-    token: str,
-) -> None:
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws:
-        ws.send_json({"type": "user_turn", "text": "cancel me"})
-        ws.receive_text()
-
-
-def _turn_then_rebind_sync(
-    app: object,
-    aid: str,
-    token: str,
+    auth: dict[str, str],
     thread_id: str,
-    gate_release: Any,
+    gate_release: asyncio.Event,
 ) -> list[dict[str, Any]]:
     """Start a turn on conn A, drop it after the first token, re-subscribe on B.
 
     The fake stream is gated between first and second token so B can subscribe
     while the turn is still active, then receive the remaining chunks.
     """
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws_a:
-        ws_a.send_json(
+    async with _chat_ws(c, aid, auth) as ws_a:
+        await ws_a.send_json(
             {
                 "type": "user_turn",
                 "text": "slow please",
                 "thread_id": thread_id,
             }
         )
-        first = json.loads(ws_a.receive_text())
+        first = await ws_a.receive_json()
         assert first.get("type") == "token"
         assert first.get("content") == "first"
     # A is closed; turn is blocked on gate_release (still active, not cancelled).
 
     frames: list[dict[str, Any]] = []
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws_b:
-        ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
-        status = json.loads(ws_b.receive_text())
-        frames.append(status)
+    async with _chat_ws(c, aid, auth) as ws_b:
+        await ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
+        frames.append(await ws_b.receive_json())
         # Release the slow stream only after B is subscribed.
         gate_release.set()
-        for _ in range(50):
-            raw = ws_b.receive_text()
-            frame = json.loads(raw)
-            frames.append(frame)
-            if frame.get("type") in ("done", "error"):
-                break
+        frames.extend(await ws_b.drain_turn())
     return frames
 
 
@@ -138,14 +98,7 @@ async def test_ws_rebind_after_disconnect_receives_later_chunks(env: Any) -> Non
     cancel_spy = MagicMock(wraps=srv.app_runtime.agent_registry.cancel_stream)
     srv.app_runtime.agent_registry.cancel_stream = cancel_spy
 
-    frames = await asyncio.to_thread(
-        _turn_then_rebind_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-        tid,
-        gate,
-    )
+    frames = await _turn_then_rebind(c, aid, alice_auth, tid, gate)
 
     cancel_spy.assert_not_called()
     assert frames[0] == {"type": "turn_status", "thread_id": tid, "active": True}
@@ -154,63 +107,46 @@ async def test_ws_rebind_after_disconnect_receives_later_chunks(env: Any) -> Non
     assert frames[-1].get("type") == "done"
 
 
-def _turn_with_second_subscriber_sync(
-    app: object,
+async def _turn_with_second_subscriber(
+    c: httpx.AsyncClient,
     aid: str,
-    token: str,
+    auth: dict[str, str],
     thread_id: str,
-    gate_release: Any,
+    gate_release: asyncio.Event,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Keep conn A open, subscribe conn B mid-turn; both receive remaining chunks."""
     a_frames: list[dict[str, Any]] = []
     b_frames: list[dict[str, Any]] = []
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws_a:
-        ws_a.send_json(
+    async with _chat_ws(c, aid, auth) as ws_a:
+        await ws_a.send_json(
             {
                 "type": "user_turn",
                 "text": "slow please",
                 "thread_id": thread_id,
             }
         )
-        a_frames.append(json.loads(ws_a.receive_text()))
-        with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-            f"/api/agents/{aid}/chat/ws?token={token}"
-        ) as ws_b:
-            ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
-            b_frames.append(json.loads(ws_b.receive_text()))
+        a_frames.append(await ws_a.receive_json())
+        async with _chat_ws(c, aid, auth) as ws_b:
+            await ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
+            b_frames.append(await ws_b.receive_json())
             gate_release.set()
-            for _ in range(50):
-                frame = json.loads(ws_a.receive_text())
-                a_frames.append(frame)
-                if frame.get("type") in ("done", "error"):
-                    break
-            for _ in range(50):
-                frame = json.loads(ws_b.receive_text())
-                b_frames.append(frame)
-                if frame.get("type") in ("done", "error"):
-                    break
+            rest_a, rest_b = await asyncio.gather(ws_a.drain_turn(), ws_b.drain_turn())
+            a_frames.extend(rest_a)
+            b_frames.extend(rest_b)
     return a_frames, b_frames
 
 
-def _two_threads_turn_sync(
-    app: object,
+async def _two_threads_turn(
+    c: httpx.AsyncClient,
     aid: str,
-    token: str,
+    auth: dict[str, str],
     tid_a: str,
     tid_b: str,
     *,
     text_a: str = "one",
     text_b: str = "two",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Run two live turns on different threads from one TestClient thread.
-
-    Each sync ``TestClient`` spins a blocking anyio portal; driving two portals
-    from separate ``asyncio.to_thread`` workers deadlocks the server's
-    ``run_coroutine_threadsafe`` outbound path under pytest-asyncio. Interleaving
-    receives on one thread still exercises concurrent per-thread routing.
-    """
+    """Run two live turns on different threads over two concurrent sockets."""
     body_a: dict[str, Any] = {
         "type": "user_turn",
         "text": text_a,
@@ -223,31 +159,10 @@ def _two_threads_turn_sync(
         "messages": [{"role": "user", "content": text_b}],
         "thread_id": tid_b,
     }
-    a_frames: list[dict[str, Any]] = []
-    b_frames: list[dict[str, Any]] = []
-    with (
-        TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-            f"/api/agents/{aid}/chat/ws?token={token}"
-        ) as ws_a,
-        TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-            f"/api/agents/{aid}/chat/ws?token={token}"
-        ) as ws_b,
-    ):
-        ws_a.send_json(body_a)
-        ws_b.send_json(body_b)
-        pending = {"a": True, "b": True}
-        while pending["a"] or pending["b"]:
-            if pending["a"]:
-                frame = json.loads(ws_a.receive_text())
-                a_frames.append(frame)
-                if frame.get("type") in ("done", "error"):
-                    pending["a"] = False
-            if pending["b"]:
-                frame = json.loads(ws_b.receive_text())
-                b_frames.append(frame)
-                if frame.get("type") in ("done", "error"):
-                    pending["b"] = False
-    return a_frames, b_frames
+    async with _chat_ws(c, aid, auth) as ws_a, _chat_ws(c, aid, auth) as ws_b:
+        await ws_a.send_json(body_a)
+        await ws_b.send_json(body_b)
+        return await asyncio.gather(ws_a.drain_turn(), ws_b.drain_turn())  # type: ignore[return-value]
 
 
 async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> None:
@@ -266,14 +181,7 @@ async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> 
 
     agent.stream = slow_stream
 
-    a_frames, b_frames = await asyncio.to_thread(
-        _turn_with_second_subscriber_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-        tid,
-        gate,
-    )
+    a_frames, b_frames = await _turn_with_second_subscriber(c, aid, alice_auth, tid, gate)
 
     assert a_frames[0].get("content") == "first"
     assert [f.get("content") for f in a_frames if f.get("type") == "token"] == ["first", "second"]
@@ -298,14 +206,7 @@ async def test_ws_two_threads_do_not_cross_stream(env: Any) -> None:
 
     agent.stream = tagged_stream
 
-    a_frames, b_frames = await asyncio.to_thread(
-        _two_threads_turn_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-        tid_a,
-        tid_b,
-    )
+    a_frames, b_frames = await _two_threads_turn(c, aid, alice_auth, tid_a, tid_b)
 
     a_tokens = [f.get("content") for f in a_frames if f.get("type") == "token"]
     b_tokens = [f.get("content") for f in b_frames if f.get("type") == "token"]
@@ -334,15 +235,9 @@ async def _consume_ws_turn(
     if extra:
         body.update(extra)
 
-    # Run the blocking starlette TestClient session in a worker thread so the
-    # server's event loop stays free to process the turn (see ws_chat_turn).
-    return await asyncio.to_thread(
-        _consume_ws_turn_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(auth),
-        body,
-    )
+    async with _chat_ws(c, aid, auth) as ws:
+        await ws.send_json(body)
+        return await ws.drain_turn()
 
 
 async def test_ws_emits_chunks_then_done(env: Any) -> None:
@@ -367,28 +262,23 @@ async def test_ws_disconnect_does_not_cancel_active_turn(env: Any) -> None:
     cancel_spy = MagicMock(wraps=original_cancel)
     srv.app_runtime.agent_registry.cancel_stream = cancel_spy
 
-    await asyncio.to_thread(
-        _disconnect_ws_turn_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-    )
+    async with _chat_ws(c, aid, alice_auth) as ws:
+        await ws.send_json({"type": "user_turn", "text": "cancel me"})
+        await ws.receive_json()
 
     await asyncio.sleep(0.05)
     cancel_spy.assert_not_called()
 
 
-def _subscribe_ws_sync(
-    app: object,
+async def _subscribe_ws(
+    c: httpx.AsyncClient,
     aid: str,
-    token: str,
+    auth: dict[str, str],
     thread_id: str,
 ) -> dict[str, Any]:
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws:
-        ws.send_json({"type": "subscribe", "thread_id": thread_id})
-        return json.loads(ws.receive_text())
+    async with _chat_ws(c, aid, auth) as ws:
+        await ws.send_json({"type": "subscribe", "thread_id": thread_id})
+        return await ws.receive_json()
 
 
 async def test_ws_subscribe_turn_status_idle(env: Any) -> None:
@@ -397,13 +287,7 @@ async def test_ws_subscribe_turn_status_idle(env: Any) -> None:
     assert create.status_code == 201
     tid = create.json()["thread_id"]
 
-    frame = await asyncio.to_thread(
-        _subscribe_ws_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-        tid,
-    )
+    frame = await _subscribe_ws(c, aid, alice_auth, tid)
     assert frame == {"type": "turn_status", "thread_id": tid, "active": False}
 
 
@@ -420,28 +304,8 @@ async def test_ws_subscribe_rejects_another_users_thread(env: Any) -> None:
     assert response.status_code == 201, response.text
     tid = response.json()["thread_id"]
 
-    frame = await asyncio.to_thread(
-        _subscribe_ws_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-        tid,
-    )
+    frame = await _subscribe_ws(c, aid, alice_auth, tid)
     assert frame == {"type": "error", "message": f"thread {tid!r} not found"}
-
-
-def _cancel_ws_turn_sync(
-    app: object,
-    aid: str,
-    token: str,
-    thread_id: str,
-) -> None:
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{aid}/chat/ws?token={token}"
-    ) as ws:
-        ws.send_json({"type": "user_turn", "text": "cancel me", "thread_id": thread_id})
-        ws.receive_text()  # first token
-        ws.send_json({"type": "cancel", "thread_id": thread_id})
 
 
 async def test_ws_cancel_frame_cancels_active_turn(env: Any) -> None:
@@ -459,13 +323,10 @@ async def test_ws_cancel_frame_cancels_active_turn(env: Any) -> None:
     cancel_spy = MagicMock(wraps=original_cancel)
     srv.app_runtime.agent_registry.cancel_stream = cancel_spy
 
-    await asyncio.to_thread(
-        _cancel_ws_turn_sync,
-        c._octop_app,  # type: ignore[attr-defined]
-        aid,
-        ws_token(alice_auth),
-        tid,
-    )
+    async with _chat_ws(c, aid, alice_auth) as ws:
+        await ws.send_json({"type": "user_turn", "text": "cancel me", "thread_id": tid})
+        await ws.receive_json()  # first token
+        await ws.send_json({"type": "cancel", "thread_id": tid})
 
     for _ in range(40):
         if cancel_spy.called:
@@ -487,24 +348,16 @@ async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
 
 async def test_ws_bad_agent_rejected(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, _aid = env
-    with (
-        pytest.raises(WebSocketDisconnect),
-        TestClient(c._octop_app).websocket_connect(  # type: ignore[attr-defined]
-            f"/api/agents/01HMISSING0000000000000000/chat/ws?token={ws_token(alice_auth)}"
-        ),
-    ):
-        pass
+    with pytest.raises(WebSocketDisconnect):
+        async with _chat_ws(c, "01HMISSING0000000000000000", alice_auth):
+            pass
 
 
 async def test_ws_cross_user_rejected(env: Any) -> None:
     c, _srv, _fake, _admin_auth, bob_auth, aid = env
-    with (
-        pytest.raises(WebSocketDisconnect),
-        TestClient(c._octop_app).websocket_connect(  # type: ignore[attr-defined]
-            f"/api/agents/{aid}/chat/ws?token={ws_token(bob_auth)}"
-        ),
-    ):
-        pass
+    with pytest.raises(WebSocketDisconnect):
+        async with _chat_ws(c, aid, bob_auth):
+            pass
 
 
 async def test_ws_accepts_skills_and_model(env: Any) -> None:

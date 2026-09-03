@@ -6,6 +6,7 @@ from pathlib import Path
 
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -33,7 +34,16 @@ def test_replace_services_retargets_user_and_provider_repos(tmp_path: Path) -> N
 
     registry = AgentManager(repos=svc_a.repos, paths=paths_a, config=cfg_a)
     gateway = Gateway(agent_manager=registry, repos=svc_a.repos)
-    cron = CronManager(gateway=gateway, repos=svc_a.repos, timezone=cfg_a.default_timezone)
+    cron = CronManager(
+        gateway=gateway,
+        delivery_service=CronDeliveryService(
+            gateway=gateway,
+            agent_manager=registry,
+            repos=svc_a.repos,
+        ),
+        repos=svc_a.repos,
+        timezone=cfg_a.default_timezone,
+    )
     care = ProactiveCareService(
         gateway=gateway,
         care_push_repo=svc_a.repos.care_push_repo,
@@ -60,6 +70,7 @@ def test_replace_services_retargets_user_and_provider_repos(tmp_path: Path) -> N
     assert registry.providers._provider_repo._db is svc_b.db  # noqa: SLF001
     assert gateway._repos is svc_b.repos  # noqa: SLF001
     assert cron._repos is svc_b.repos  # noqa: SLF001
+    assert cron._delivery_service._repos is svc_b.repos  # noqa: SLF001
 
 
 def test_rebind_module_delegates_retarget_to_app_runtime() -> None:

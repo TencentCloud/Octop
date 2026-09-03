@@ -35,11 +35,11 @@ echo Usage: install.bat [OPTIONS]
 echo   -Version ^<VER^>     Install specific version
 echo   -FromSource        Install from source
 echo   -SourceDir ^<DIR^>   Local source directory
-echo   -Extras ^<EXTRAS^>  Extra components (e.g. desktop); browser/playwright always installed
+echo   -Extras ^<EXTRAS^>  Extra components (e.g. desktop, browser)
 echo   -UvPath ^<PATH^>     Pre-installed uv.exe
 echo.
-echo   Note: if a system Chrome/Chromium is installed (common on GUI systems like
-echo         Windows / macOS), the bundled Playwright Chromium download is skipped.
+echo   Note: Playwright Chromium is not downloaded by default. Pass -Extras browser
+echo         to install it, or install later from the dashboard.
 exit /b 0
 
 :done_args
@@ -117,6 +117,13 @@ if "%CONSOLE_AVAILABLE%"=="0" (
     if "!_UI!"=="yes" set "CONSOLE_AVAILABLE=1"
 )
 
+echo ",%ARG_EXTRAS%," | findstr /i /c:",browser," >nul
+if errorlevel 1 (
+    echo [octop] Skipping Playwright Chromium download.
+    echo [octop] For remote-browser automation, re-run with -Extras browser, use the dashboard, or:
+    echo [octop]   "%VENV_PYTHON%" -m playwright install chromium
+    goto :after_browser
+)
 call :detect_chrome
 if defined OCTOP_SYSTEM_CHROME (
     echo [octop] Found system Chrome/Chromium: %OCTOP_SYSTEM_CHROME%

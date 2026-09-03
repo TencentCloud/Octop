@@ -51,6 +51,21 @@ class AutoBackupSettingsBody(BaseModel):
     auto_enabled: bool = False
     schedule: str = Field(default="cron:0 4 * * *", min_length=1)
     retention_count: int = Field(default=7, ge=1, le=365)
+    include_config: bool = True
+    include_workspaces: bool = True
+    include_skill_packages: bool = True
+    include_plugins: bool = True
+    include_knowledge: bool = True
+    include_chats: bool = False
+
+
+class CreateBackupBody(BaseModel):
+    include_config: bool = True
+    include_workspaces: bool = True
+    include_skill_packages: bool = True
+    include_plugins: bool = True
+    include_knowledge: bool = True
+    include_chats: bool = False
 
 
 def _agent_rows(server: Any) -> list[Any]:
@@ -69,6 +84,12 @@ def _auto_settings_payload(server: Any) -> dict[str, Any]:
         "auto_enabled": backup.auto_enabled,
         "schedule": backup.schedule,
         "retention_count": backup.retention_count,
+        "include_config": backup.include_config,
+        "include_workspaces": backup.include_workspaces,
+        "include_skill_packages": backup.include_skill_packages,
+        "include_plugins": backup.include_plugins,
+        "include_knowledge": backup.include_knowledge,
+        "include_chats": backup.include_chats,
         "scheduled": scheduled,
     }
 
@@ -83,6 +104,7 @@ def _create_and_store_manual_backup(
     agent_rows: list[Any],
     pool: DatabasePool,
     db_config: DatabaseConfig,
+    options: CreateBackupBody,
 ) -> BackupFileInfo:
     """Sync create + place for ``asyncio.to_thread`` (keeps the event loop free)."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -93,6 +115,12 @@ def _create_and_store_manual_backup(
             pool=pool,
             db_config=db_config,
             dest=tmp_path,
+            include_config=options.include_config,
+            include_workspaces=options.include_workspaces,
+            include_skill_packages=options.include_skill_packages,
+            include_plugins=options.include_plugins,
+            include_knowledge=options.include_knowledge,
+            include_chats=options.include_chats,
         )
         return place_backup_file(paths, filename, tmp_path)
 
@@ -124,6 +152,7 @@ def _create_ephemeral_backup(
     agent_rows: list[Any],
     pool: DatabasePool,
     db_config: DatabaseConfig,
+    options: CreateBackupBody,
 ) -> tuple[Path, str]:
     """Write a backup to a temp file; caller must delete after the response is sent."""
     fd, name = tempfile.mkstemp(prefix="octop-export-", suffix=".tar.gz")
@@ -136,6 +165,12 @@ def _create_ephemeral_backup(
             pool=pool,
             db_config=db_config,
             dest=tmp_path,
+            include_config=options.include_config,
+            include_workspaces=options.include_workspaces,
+            include_skill_packages=options.include_skill_packages,
+            include_plugins=options.include_plugins,
+            include_knowledge=options.include_knowledge,
+            include_chats=options.include_chats,
         )
     except Exception:
         tmp_path.unlink(missing_ok=True)
@@ -235,11 +270,13 @@ async def run_auto_backup_now(
 
 @router.post("/backup/create", summary="Create backup and save to backups dir")
 async def create_backup(
+    body: CreateBackupBody | None = None,
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Create a full backup archive and persist it under ``backups_dir``."""
+    """Create a selected-content backup and persist it under ``backups_dir``."""
     assert server.services is not None
+    options = body or CreateBackupBody()
     _raise_if_backup_busy()
     async with hold_backup_lock("create"):
         entry = await asyncio.to_thread(
@@ -248,6 +285,7 @@ async def create_backup(
             agent_rows=_agent_rows(server),
             pool=server.services.db,
             db_config=server.services.config.database,
+            options=options,
         )
     return {"ok": True, "item": entry.to_dict()}
 
@@ -330,11 +368,17 @@ async def remove_backup_file(
 
 @router.get(
     "/backup/export",
-    summary="Download full system backup (ephemeral)",
+    summary="Download selected system backup (ephemeral)",
     response_class=FileResponse,
 )
 async def export_backup(
     background_tasks: BackgroundTasks,
+    include_config: bool = Query(default=True),
+    include_workspaces: bool = Query(default=True),
+    include_skill_packages: bool = Query(default=True),
+    include_plugins: bool = Query(default=True),
+    include_knowledge: bool = Query(default=True),
+    include_chats: bool = Query(default=False),
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> FileResponse:
@@ -348,6 +392,14 @@ async def export_backup(
             agent_rows=_agent_rows(server),
             pool=server.services.db,
             db_config=server.services.config.database,
+            options=CreateBackupBody(
+                include_config=include_config,
+                include_workspaces=include_workspaces,
+                include_skill_packages=include_skill_packages,
+                include_plugins=include_plugins,
+                include_knowledge=include_knowledge,
+                include_chats=include_chats,
+            ),
         )
     background_tasks.add_task(_unlink_quiet, tmp_path)
     return FileResponse(

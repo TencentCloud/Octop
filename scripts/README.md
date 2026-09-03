@@ -52,9 +52,9 @@ Windows PowerShell 等价参数：`-Version`、`-FromSource`、`-SourceDir`、`-
 | `OCTOP_HOME` | 安装根目录，默认 `~/.octop` |
 | `OCTOP_REPO` | `--from-source` 无本地目录时的 git 克隆地址 |
 | `OCTOP_PYPI_MIRROR` | PyPI 镜像（与 `--mirror` 等效） |
-| `PLAYWRIGHT_DOWNLOAD_HOST` | Playwright 浏览器下载镜像（`browser` 附加组件） |
+| `PLAYWRIGHT_DOWNLOAD_HOST` | Playwright 浏览器下载镜像（仅 `--extras browser`） |
 
-安装脚本会优先复用系统已安装的 **Chrome / Chromium**（GUI 系统常见，如 macOS / Windows / Linux 桌面）：检测到后直接跳过体积较大的 Playwright 自带 Chromium 下载。如需强制使用 Playwright 自带版本，可手动运行 `python -m playwright install chromium`。
+默认不下载 Playwright Chromium。需要远程浏览器自动化时加 `--extras browser`，或安装后在控制台 / `python -m playwright install chromium` 按需安装。若系统已有 Chrome / Chromium，即使加了 `--extras browser` 也会跳过下载。
 
 安装完成后：
 
@@ -87,7 +87,7 @@ powershell -File scripts/wheel_build.ps1
 
 ## 平台说明
 
-- **macOS / Linux**：`install.sh` 支持自动安装 uv、创建 venv、可选 Playwright 系统依赖（`browser` extra）。检测到系统已装 Chrome/Chromium 时会跳过 Playwright Chromium 下载。
+- **macOS / Linux**：`install.sh` 支持自动安装 uv、创建 venv；Playwright Chromium 仅在 `--extras browser` 时下载（系统已有 Chrome 则跳过）。
 - **Windows**：使用 `install.ps1` 或 `install.bat`；PTY 终端、飞书 bot creator 等非阻塞 stdout 等功能在 Windows 上受限（见下方兼容性分析）。
 
 完整跨平台兼容性分析见项目文档或 PR 说明。

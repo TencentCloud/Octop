@@ -395,8 +395,16 @@ class OctopServer:
         gateway.set_slash_meta(version=__version__, started_at=started_at)
         self._started_at = started_at
 
+        from octop.infra.cron.delivery import CronDeliveryService  # noqa: PLC0415
+
+        cron_delivery = CronDeliveryService(
+            gateway=gateway,
+            agent_manager=registry,
+            repos=self.services.repos,
+        )
         cron_mgr = CronManager(
             gateway=gateway,
+            delivery_service=cron_delivery,
             repos=self.services.repos,
             timezone=config.default_timezone,
         )
@@ -424,6 +432,7 @@ class OctopServer:
             config_repo=self.services.repos.proactive_care_config_repo,
             session_repo=self.services.repos.session_repo,
         )
+        registry.set_proactive_scheduler(proactive_scheduler)
 
         await registry.boot()
         await gateway.refresh_media_backends()

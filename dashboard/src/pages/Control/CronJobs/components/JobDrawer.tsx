@@ -20,7 +20,7 @@ import {
   cronToPreset,
   presetToCron,
 } from "./constants";
-import { CRON_PROMPT_MAX_LEN } from "../constants";
+import { CRON_NAME_MAX_LEN, CRON_PROMPT_MAX_LEN } from "../constants";
 import { channelFromSessionKey } from "../cronDisplay";
 import type { CronJobFormValues } from "../useCronJobs";
 import {
@@ -219,6 +219,27 @@ export function JobDrawer({
             <Input disabled />
           </Form.Item>
         )}
+
+        <Form.Item
+          name="name"
+          label={t("cronJobs.form.name")}
+          rules={[
+            { required: true, message: t("cronJobs.pleaseInputName") },
+            {
+              max: CRON_NAME_MAX_LEN,
+              message: t("cronJobs.form.nameTooLong", {
+                max: CRON_NAME_MAX_LEN,
+              }),
+            },
+          ]}
+          tooltip={t("cronJobs.form.nameTooltip")}
+        >
+          <Input
+            maxLength={CRON_NAME_MAX_LEN}
+            showCount
+            placeholder={t("cronJobs.jobNamePlaceholder")}
+          />
+        </Form.Item>
 
         <Form.Item
           name="enabled"

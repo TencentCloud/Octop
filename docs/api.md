@@ -143,19 +143,20 @@ because each request is a one-shot continuation.
 | `GET`    | `/settings/timezone` | user | process-level `{timezone}` from `default_timezone` |
 | `GET`    | `/settings/upload` | user | `{max_upload_mb, max_upload_bytes}` from `max_upload_mb` |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
-| `GET`    | `/agents/{aid}/cron` | owner | list of cron rows |
-| `POST`   | `/agents/{aid}/cron` | owner | body `{trigger, prompt, session_key?, fresh_thread?, model?, task_type?}` → `201` |
-| `GET`    | `/agents/{aid}/cron/{cid}` | owner | cron row |
-| `PATCH`  | `/agents/{aid}/cron/{cid}` | owner | body subset → updated row |
-| `DELETE` | `/agents/{aid}/cron/{cid}` | owner | `204` |
-| `POST`   | `/agents/{aid}/cron/{cid}/run-now` | owner | `204` (fire immediately, off-schedule) |
+| `GET`    | `/agents/{aid}/cron` | owner only | list cron rows; non-owners (including admin) get `[]` |
+| `POST`   | `/agents/{aid}/cron` | owner only | body `{name?, trigger, prompt, session_key?, fresh_thread?, enabled?, model?, task_type?}` → `201` |
+| `GET`    | `/agents/{aid}/cron/{cid}` | owner only | cron row |
+| `PATCH`  | `/agents/{aid}/cron/{cid}` | owner only | body subset → updated row |
+| `DELETE` | `/agents/{aid}/cron/{cid}` | owner only | `204` |
+| `POST`   | `/agents/{aid}/cron/{cid}/run-now` | owner only | `204` (fire immediately, off-schedule) |
 
 `task_type` is `"text"` (push prompt directly to the session) or
 `"agent"` (run the prompt through the LLM and push the reply).
 Default: `"agent"`. `trigger` accepts cron expressions
 (`"0 9 * * *"`) plus the `interval:N` / `date:ISO8601` aliases
 documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
-≤ 2000 characters.
+≤ 2000 characters. `name` is an optional display label; when omitted,
+the server derives one from `prompt`.
 
 ## Providers
 

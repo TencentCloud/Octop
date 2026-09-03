@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tarfile
 from io import BytesIO
 from pathlib import Path
@@ -42,6 +43,22 @@ def test_manifest_roundtrip_includes_driver_fields() -> None:
     assert loaded.db_file == "db/octop.dump"
 
 
+def test_legacy_manifest_defaults_plugins_omitted() -> None:
+    loaded = BackupManifest.from_dict(
+        {
+            "manifest_version": 1,
+            "octop_version": "0.0.0",
+            "schema_version": 1,
+            "created_at": "t",
+            "home": "/tmp",
+        }
+    )
+    assert loaded.includes_skill_packages is True
+    assert loaded.includes_plugins is False
+    assert loaded.includes_knowledge is False
+    assert loaded.includes_chats is True
+
+
 def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
     db_path = layout.db
     pool = SqlitePool(db_path)
@@ -57,6 +74,12 @@ def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
     pkg_skill = layout.skill_packages_dir / "pkg01" / "skills" / "writer" / "SKILL.md"
     pkg_skill.parent.mkdir(parents=True, exist_ok=True)
     pkg_skill.write_text("---\nname: writer\ndescription: x\n---\n", encoding="utf-8")
+    plugin_yaml = layout.plugins_dir / "weather" / "plugin.yaml"
+    plugin_yaml.parent.mkdir(parents=True, exist_ok=True)
+    plugin_yaml.write_text("id: weather\n", encoding="utf-8")
+    kb_doc = layout.knowledge_dir / "kb01" / "docs" / "doc1.md"
+    kb_doc.parent.mkdir(parents=True, exist_ok=True)
+    kb_doc.write_text("# note", encoding="utf-8")
     layout.config.write_text('{"port": 8088}', encoding="utf-8")
 
     class Row:
@@ -90,6 +113,8 @@ def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
 
     assert result["agents"] == 1
     assert result["skill_package_files"] == 1
+    assert result["plugin_files"] == 1
+    assert result["knowledge_files"] == 1
     assert (restore_layout.agent_workspace("agent01") / "SOUL.md").read_text(
         encoding="utf-8"
     ) == "# soul"
@@ -98,6 +123,12 @@ def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
         .read_text(encoding="utf-8")
         .startswith("---")
     )
+    assert (restore_layout.plugins_dir / "weather" / "plugin.yaml").read_text(
+        encoding="utf-8"
+    ) == "id: weather\n"
+    assert (restore_layout.knowledge_dir / "kb01" / "docs" / "doc1.md").read_text(
+        encoding="utf-8"
+    ) == "# note"
     assert json.loads(restore_layout.config.read_text(encoding="utf-8"))["port"] == 8088
 
     with tarfile.open(archive, mode="r:gz") as tf:
@@ -164,6 +195,545 @@ def test_backup_skips_junk_directories(layout: PathLayout, tmp_path: Path) -> No
     assert "workspaces/agent01/keep.txt" in names
     assert "workspaces/agent01/node_modules/pkg.js" not in names
     assert "workspaces/agent01/.git/config" not in names
+
+
+def test_default_backup_omits_chats_and_restore_preserves_current_chats(
+    tmp_path: Path,
+) -> None:
+    source_layout = PathLayout(tmp_path / "source")
+    source_layout.root.mkdir()
+    source_pool = SqlitePool(source_layout.db)
+    run_migrations(source_pool)
+    with source_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at)"
+            " VALUES (1, 'alice', 'hash', 'admin', 1)"
+        )
+        conn.execute(
+            "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
+            " VALUES ('agent01', 1, 'Agent', 1, 1)"
+        )
+
+    source_ws = source_layout.ensure_agent_workspace("agent01")
+    (source_ws / "SOUL.md").write_text("# source", encoding="utf-8")
+    source_sessions = source_ws / ".octop" / "sessions"
+    source_sessions.mkdir(parents=True)
+    (source_sessions / "large.jsonl").write_text("chat", encoding="utf-8")
+    (source_ws / ".octop" / "checkpoints.sqlite").write_bytes(b"chat-db")
+    user_sessions = source_ws / "project" / "sessions"
+    user_sessions.mkdir(parents=True)
+    (user_sessions / "notes.txt").write_text("keep", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Agent"
+        config_json = '{"system_files_path": ".octop"}'
+
+    archive = tmp_path / "without-chats.tar.gz"
+    create_system_backup(
+        paths=source_layout,
+        agent_rows=[Row()],
+        pool=source_pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+    source_pool.close()
+
+    with tarfile.open(archive, mode="r:gz") as tf:
+        names = set(tf.getnames())
+        manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
+    assert manifest["includes_chats"] is False
+    assert "workspaces/agent01/SOUL.md" in names
+    assert "workspaces/agent01/project/sessions/notes.txt" in names
+    assert "workspaces/agent01/.octop/sessions/large.jsonl" not in names
+    assert "workspaces/agent01/.octop/checkpoints.sqlite" not in names
+
+    target_layout = PathLayout(tmp_path / "target")
+    target_layout.root.mkdir()
+    target_pool = SqlitePool(target_layout.db)
+    run_migrations(target_pool)
+    with target_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at)"
+            " VALUES (1, 'alice', 'old-hash', 'admin', 1)"
+        )
+        conn.execute(
+            "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
+            " VALUES ('agent01', 1, 'Old Agent', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO sessions(session_key, agent_id, user_id, channel_type, chat_type,"
+            " thread_id, updated_at) VALUES ('session-1', 'agent01', 1, 'dashboard',"
+            " 'dm', 'thread-1', 1)"
+        )
+        conn.execute(
+            "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, session_key,"
+            " last_active, created_at) VALUES ('thread-1', 'agent01', 1, 'dashboard',"
+            " 'session-1', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO thread_messages(thread_id, seq, role, message_json, created_at)"
+            " VALUES ('thread-1', 1, 'user', '{\"content\":\"keep\"}', 1)"
+        )
+
+    target_sessions = target_layout.ensure_agent_workspace("agent01") / ".octop" / "sessions"
+    target_sessions.mkdir(parents=True)
+    current_log = target_sessions / "current.jsonl"
+    current_log.write_text("keep", encoding="utf-8")
+
+    result = restore_system_backup(
+        archive,
+        paths=target_layout,
+        pool=target_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    assert result["chats_restored"] is False
+    assert result["preserved_chat_rows"] >= 3
+    with target_pool.connect() as conn:
+        message = conn.execute(
+            "SELECT message_json FROM thread_messages WHERE thread_id = 'thread-1'"
+        ).fetchone()
+    target_pool.close()
+    assert message is not None
+    assert json.loads(message[0])["content"] == "keep"
+    assert current_log.read_text(encoding="utf-8") == "keep"
+
+
+def test_restore_without_chats_remaps_user_ids_by_username(tmp_path: Path) -> None:
+    source_layout = PathLayout(tmp_path / "source")
+    source_layout.root.mkdir()
+    source_pool = SqlitePool(source_layout.db)
+    run_migrations(source_pool)
+    with source_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at)"
+            " VALUES (1, 'alice', 'hash', 'admin', 1)"
+        )
+        conn.execute(
+            "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
+            " VALUES ('agent01', 1, 'Agent', 1, 1)"
+        )
+
+    class Row:
+        agent_id = "agent01"
+        name = "Agent"
+
+    archive = tmp_path / "remap.tar.gz"
+    create_system_backup(
+        paths=source_layout,
+        agent_rows=[Row()],
+        pool=source_pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+    source_pool.close()
+
+    target_layout = PathLayout(tmp_path / "target")
+    target_layout.root.mkdir()
+    target_pool = SqlitePool(target_layout.db)
+    run_migrations(target_pool)
+    with target_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at)"
+            " VALUES (2, 'alice', 'live-hash', 'admin', 1)"
+        )
+        conn.execute(
+            "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
+            " VALUES ('agent01', 2, 'Live Agent', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO sessions(session_key, agent_id, user_id, channel_type, chat_type,"
+            " thread_id, updated_at, channel_subject_id) VALUES ("
+            " 'agent01:dashboard:2:dm', 'agent01', 2, 'dashboard', 'dm', 'thread-1', 1, '2')"
+        )
+        conn.execute(
+            "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, session_key,"
+            " last_active, created_at) VALUES ('thread-1', 'agent01', 2, 'dashboard',"
+            " 'agent01:dashboard:2:dm', 1, 1)"
+        )
+
+    result = restore_system_backup(
+        archive,
+        paths=target_layout,
+        pool=target_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    assert result["skipped_chat_rows"] == 0
+    with target_pool.connect() as conn:
+        session = conn.execute(
+            "SELECT user_id, session_key, channel_subject_id FROM sessions"
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, session_key,"
+            " last_active, created_at) VALUES ('thread-new', 'agent01', 1, 'dashboard',"
+            " 'x', 1, 1)"
+        )
+        new_pk = conn.execute("SELECT id FROM threads WHERE thread_id = 'thread-new'").fetchone()
+        preserved_pk = conn.execute(
+            "SELECT id FROM threads WHERE thread_id = 'thread-1'"
+        ).fetchone()
+    target_pool.close()
+    assert session is not None
+    assert session[0] == 1
+    assert session[1] == "agent01:dashboard:1:dm"
+    assert session[2] == "1"
+    assert preserved_pk is not None
+    assert new_pk is not None
+    assert int(new_pk[0]) > int(preserved_pk[0])
+
+
+def test_restore_skips_chat_workspace_files_when_manifest_omits_chats(
+    tmp_path: Path,
+) -> None:
+    layout = PathLayout(tmp_path / "src")
+    layout.root.mkdir()
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+
+    class Row:
+        agent_id = "agent01"
+        name = "Agent"
+        config_json = '{"system_files_path": ".octop"}'
+
+    archive = tmp_path / "inject-chats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_workspaces=True,
+        include_chats=False,
+    )
+    pool.close()
+
+    members: dict[str, bytes] = {}
+    with tarfile.open(archive, mode="r:gz") as tf:
+        for m in tf.getmembers():
+            if m.isfile():
+                f = tf.extractfile(m)
+                assert f is not None
+                members[m.name] = f.read()
+    members["workspaces/agent01/.octop/sessions/injected.jsonl"] = b"overwrite-me"
+    with tarfile.open(archive, mode="w:gz") as tf:
+        for name, blob in members.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(blob)
+            tf.addfile(info, BytesIO(blob))
+
+    target = PathLayout(tmp_path / "tgt")
+    target.root.mkdir()
+    target_pool = SqlitePool(target.db)
+    run_migrations(target_pool)
+    keep = target.ensure_agent_workspace("agent01") / ".octop" / "sessions" / "current.jsonl"
+    keep.parent.mkdir(parents=True)
+    keep.write_text("keep", encoding="utf-8")
+    restore_system_backup(
+        archive,
+        paths=target,
+        pool=target_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    target_pool.close()
+    assert keep.read_text(encoding="utf-8") == "keep"
+    assert not (
+        target.ensure_agent_workspace("agent01") / ".octop" / "sessions" / "injected.jsonl"
+    ).exists()
+
+
+def test_sqlite_strip_chats_reclaims_pages(tmp_path: Path) -> None:
+    from octop.infra.backup.chats import strip_chat_tables_from_sqlite_file
+    from octop.infra.backup.snapshot import snapshot_sqlite_file
+
+    layout = PathLayout(tmp_path / "home")
+    layout.root.mkdir()
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at)"
+            " VALUES (1, 'alice', 'hash', 'admin', 1)"
+        )
+        conn.execute(
+            "INSERT INTO agents(agent_id, user_id, name, created_at, updated_at)"
+            " VALUES ('agent01', 1, 'Agent', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, session_key,"
+            " last_active, created_at) VALUES ('t1', 'agent01', 1, 'dashboard', 's', 1, 1)"
+        )
+        payload = "x" * 2048
+        for seq in range(400):
+            conn.execute(
+                "INSERT INTO thread_messages(thread_id, seq, role, message_json, created_at)"
+                " VALUES ('t1', ?, 'user', ?, 1)",
+                (seq, json.dumps({"content": payload})),
+            )
+    snap = tmp_path / "snap.db"
+    snapshot_sqlite_file(pool.path, snap)
+    pool.close()
+    before = snap.stat().st_size
+    strip_chat_tables_from_sqlite_file(snap)
+    after = snap.stat().st_size
+    assert after < before
+    conn = sqlite3.connect(snap)
+    count = conn.execute("SELECT COUNT(*) FROM thread_messages").fetchone()[0]
+    conn.close()
+    assert count == 0
+
+
+def test_backup_can_omit_config_and_workspaces(layout: PathLayout, tmp_path: Path) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    layout.config.write_text('{"port": 8088}', encoding="utf-8")
+    workspace = layout.ensure_agent_workspace("agent01")
+    (workspace / "SOUL.md").write_text("# soul", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Agent"
+
+    archive = tmp_path / "database-only.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_config=False,
+        include_workspaces=False,
+        include_skill_packages=False,
+        include_plugins=False,
+        include_knowledge=False,
+    )
+    pool.close()
+
+    with tarfile.open(archive, mode="r:gz") as tf:
+        names = set(tf.getnames())
+        manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
+    assert manifest["includes_config"] is False
+    assert manifest["includes_skill_packages"] is False
+    assert manifest["includes_plugins"] is False
+    assert manifest["includes_knowledge"] is False
+    assert manifest["agents"][0]["workspace_included"] is False
+    assert "config/config.json" not in names
+    assert "workspaces/agent01/SOUL.md" not in names
+
+
+def test_backup_can_include_skill_packages_and_plugins_without_workspaces(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    workspace = layout.ensure_agent_workspace("agent01")
+    (workspace / "SOUL.md").write_text("# soul", encoding="utf-8")
+    pkg = layout.skill_packages_dir / "pkg01" / "skills" / "a" / "SKILL.md"
+    pkg.parent.mkdir(parents=True, exist_ok=True)
+    pkg.write_text("---\nname: a\ndescription: x\n---\n", encoding="utf-8")
+    plugin = layout.plugins_dir / "weather" / "plugin.yaml"
+    plugin.parent.mkdir(parents=True, exist_ok=True)
+    plugin.write_text("id: weather\n", encoding="utf-8")
+    kb_doc = layout.knowledge_dir / "kb01" / "docs" / "doc1.md"
+    kb_doc.parent.mkdir(parents=True, exist_ok=True)
+    kb_doc.write_text("# note", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Agent"
+
+    archive = tmp_path / "dirs-only.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_config=False,
+        include_workspaces=False,
+        include_skill_packages=True,
+        include_plugins=True,
+        include_knowledge=True,
+    )
+    pool.close()
+
+    with tarfile.open(archive, mode="r:gz") as tf:
+        names = set(tf.getnames())
+        manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
+    assert manifest["includes_skill_packages"] is True
+    assert manifest["includes_plugins"] is True
+    assert manifest["includes_knowledge"] is True
+    assert manifest["agents"][0]["workspace_included"] is False
+    assert "workspaces/agent01/SOUL.md" not in names
+    assert "skill-packages/pkg01/skills/a/SKILL.md" in names
+    assert "plugins/weather/plugin.yaml" in names
+    assert "knowledge/kb01/docs/doc1.md" in names
+
+
+def test_restore_without_skill_packages_keeps_live_files(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+
+    archive = tmp_path / "no-packages.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_skill_packages=False,
+        include_plugins=False,
+        include_knowledge=False,
+    )
+    pool.close()
+
+    restore_layout = PathLayout(layout.root.parent / "restored-keep-dirs")
+    restore_pool = SqlitePool(restore_layout.db)
+    run_migrations(restore_pool)
+    kept_pkg = restore_layout.skill_packages_dir / "kept" / "skills" / "a" / "SKILL.md"
+    kept_pkg.parent.mkdir(parents=True, exist_ok=True)
+    kept_pkg.write_text("keep-pkg", encoding="utf-8")
+    kept_plugin = restore_layout.plugins_dir / "local" / "plugin.yaml"
+    kept_plugin.parent.mkdir(parents=True, exist_ok=True)
+    kept_plugin.write_text("id: local\n", encoding="utf-8")
+    kept_kb = restore_layout.knowledge_dir / "kb01" / "docs" / "keep.md"
+    kept_kb.parent.mkdir(parents=True, exist_ok=True)
+    kept_kb.write_text("keep-kb", encoding="utf-8")
+
+    restore_system_backup(
+        archive,
+        paths=restore_layout,
+        pool=restore_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    restore_pool.close()
+
+    assert kept_pkg.read_text(encoding="utf-8") == "keep-pkg"
+    assert kept_plugin.read_text(encoding="utf-8") == "id: local\n"
+    assert kept_kb.read_text(encoding="utf-8") == "keep-kb"
+
+
+def test_restore_replaces_stale_plugin_files(layout: PathLayout, tmp_path: Path) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+
+    kept = layout.plugins_dir / "weather" / "plugin.yaml"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text("id: weather\n", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+
+    archive = tmp_path / "plugins.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_workspaces=False,
+        include_skill_packages=False,
+        include_plugins=True,
+        include_knowledge=False,
+    )
+    pool.close()
+
+    restore_layout = PathLayout(layout.root.parent / "restored-plugins")
+    restore_pool = SqlitePool(restore_layout.db)
+    run_migrations(restore_pool)
+    stale = restore_layout.plugins_dir / "stale" / "plugin.yaml"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("id: stale\n", encoding="utf-8")
+
+    restore_system_backup(
+        archive,
+        paths=restore_layout,
+        pool=restore_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    restore_pool.close()
+
+    assert (restore_layout.plugins_dir / "weather" / "plugin.yaml").is_file()
+    assert not (restore_layout.plugins_dir / "stale").exists()
+
+
+def test_restore_replaces_stale_knowledge_files(layout: PathLayout, tmp_path: Path) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+
+    kept = layout.knowledge_dir / "kb01" / "docs" / "a.md"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text("# keep", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+
+    archive = tmp_path / "knowledge.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_workspaces=False,
+        include_skill_packages=False,
+        include_plugins=False,
+        include_knowledge=True,
+    )
+    pool.close()
+
+    restore_layout = PathLayout(layout.root.parent / "restored-knowledge")
+    restore_pool = SqlitePool(restore_layout.db)
+    run_migrations(restore_pool)
+    stale = restore_layout.knowledge_dir / "stale" / "docs" / "old.md"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("# stale", encoding="utf-8")
+
+    restore_system_backup(
+        archive,
+        paths=restore_layout,
+        pool=restore_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    restore_pool.close()
+
+    assert (restore_layout.knowledge_dir / "kb01" / "docs" / "a.md").read_text(
+        encoding="utf-8"
+    ) == "# keep"
+    assert not (restore_layout.knowledge_dir / "stale").exists()
 
 
 def test_restore_replaces_stale_skill_package_files(layout: PathLayout, tmp_path: Path) -> None:
@@ -282,6 +852,7 @@ def _make_migration_backup(
         pool=pool,
         db_config=DatabaseConfig(),
         dest=dest,
+        include_chats=True,
     )
     # Rewrite octop_version to signal a LightClaw migration backup.
     members: dict[str, bytes] = {}

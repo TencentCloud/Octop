@@ -147,6 +147,37 @@ async def test_create_backup_offloads_to_thread(monkeypatch: pytest.MonkeyPatch)
 
     assert result == {"ok": True, "item": entry.to_dict()}
     assert called["pool"] is server.services.db
+    assert called["options"].include_chats is False
+
+
+@pytest.mark.asyncio
+async def test_create_backup_passes_selected_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    entry = BackupFileInfo(
+        name="octop-backup-20260101T000000Z.tar.gz",
+        size=12,
+        modified_at="2026-01-01T00:00:00+00:00",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    called: dict[str, Any] = {}
+
+    def _fake_create(**kwargs: Any) -> BackupFileInfo:
+        called.update(kwargs)
+        return entry
+
+    monkeypatch.setattr(backup_router, "_create_and_store_manual_backup", _fake_create)
+    monkeypatch.setattr(backup_router, "_agent_rows", lambda _server: [])
+    server = MagicMock()
+    server.services.db = object()
+    server.services.config.database = object()
+
+    body = backup_router.CreateBackupBody(
+        include_config=False,
+        include_workspaces=False,
+        include_chats=True,
+    )
+    await backup_router.create_backup(body=body, _=None, server=server)
+
+    assert called["options"] == body
 
 
 @pytest.mark.asyncio

@@ -140,7 +140,7 @@ This roadmap may shift as the community grows; treat it as indicative only.
 
 Octop can be installed on FnOS (飞牛 NAS) devices via the App Center as a `.fpk` package, either as a Docker-backed app or as a native (non-Docker) app. See [`fnos/README.md`](fnos/README.md) for the full packaging guide, the FPK build helper (`scripts/build-fpk.sh`), and the CI pipeline template (`.github/workflows/fnos-build-fpk.yml`).
 
-For non-root FnOS installs, the WeCom/Feishu connector CLIs require the fix in [PR #406](https://github.com/TencentCloud/Octop/pull/406) (user-level npm fallback).
+Initial admin credentials: `admin` / `Octop123` (change after first login). For non-root FnOS installs, the WeCom/Feishu connector CLIs require the fix in [PR #406](https://github.com/TencentCloud/Octop/pull/406) (user-level npm fallback).
 
 ## 🚀 Quick Start
 
@@ -226,7 +226,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-Open **http://127.0.0.1:8088**. Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits). Docker first-run credentials are written to `~/octop-login.txt`.
+Open **http://127.0.0.1:8088**. With Docker first-run defaults, sign in as `admin` / `Octop123` and change the password immediately. Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits).
 
 ### Docker (recommended for production)
 
@@ -240,17 +240,18 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
+  -e OCTOP_DEFAULT_PASSWORD=Octop123 \
   octop:latest
 ```
 
-Open `http://localhost:8088`. First-boot credentials are written to `~/octop-login.txt` (`/data/octop-login.txt` in the container); set `OCTOP_DEFAULT_PASSWORD` if you want to choose the initial password yourself.
+Open `http://localhost:8088`. First boot creates an admin account with fixed default credentials `admin` / `Octop123` (written to `/data/.octop/credential.txt` in the container) — **not** a randomly generated password. Override the defaults via `OCTOP_ADMIN_USERNAME` / `OCTOP_DEFAULT_PASSWORD`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OCTOP_PORT` | `8088` | HTTP listen port |
-| `OCTOP_DEFAULT_PASSWORD` | — | Optional first-run admin password (Docker bootstrap) |
+| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | First-run admin password (Docker bootstrap) |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
 | `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
 

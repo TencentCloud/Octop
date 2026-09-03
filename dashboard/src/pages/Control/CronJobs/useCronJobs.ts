@@ -17,6 +17,7 @@ type CronJob = CronJobSpecOutput;
 /** Octop-aligned form values for create / edit drawer. */
 export interface CronJobFormValues {
   id?: string;
+  name: string;
   enabled: boolean;
   schedule: {
     type: "cron";
@@ -48,7 +49,7 @@ function fromOctop(row: OctopCronRow, timezone: string): CronJob {
 
   return {
     id: row.id,
-    name: promptLabel(row.prompt, row.id),
+    name: row.name?.trim() || promptLabel(row.prompt, row.id),
     enabled: row.enabled,
     schedule: {
       type: "cron",
@@ -111,6 +112,7 @@ export function jobToFormValues(
   const matchedPreset = cronToPreset(cronExpr);
   return {
     id: job.id,
+    name: job.name || "",
     enabled: Boolean(job.enabled),
     schedule: {
       type: "cron",
@@ -147,11 +149,13 @@ function resolveCronExpression(values: CronJobFormValues): string {
 
 function toOctopCreateBody(values: CronJobFormValues) {
   return {
+    name: (values.name || "").trim(),
     trigger: resolveCronExpression(values),
     prompt: values.prompt.trim(),
     task_type: values.task_type,
     session_key: values.fresh_thread ? null : values.session_key || null,
     fresh_thread: Boolean(values.fresh_thread),
+    enabled: Boolean(values.enabled),
     model: defaultModelFromForm(values.model),
     mcp_servers: values.mcp_servers ?? [],
   };
@@ -166,7 +170,8 @@ function toOctopPatchBody(values: CronJobFormValues) {
 
 export function useCronJobs() {
   const { t } = useTranslation();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId, activeAgent } = useAgent();
+  const canManageJobs = activeAgent?.is_owner === true;
   const [jobs, setJobs] = useState<CronJob[]>([]);
   /** Which agent the currently painted `jobs` belong to (may lag activeAgent). */
   const [jobsOwnerId, setJobsOwnerId] = useState<string | null>(null);
@@ -183,6 +188,8 @@ export function useCronJobs() {
   timezoneRef.current = cronTimezone;
   const activeAgentRef = useRef(activeAgentId);
   activeAgentRef.current = activeAgentId;
+  const canManageRef = useRef(canManageJobs);
+  canManageRef.current = canManageJobs;
   const jobsOwnerRef = useRef<string | null>(null);
   jobsOwnerRef.current = jobsOwnerId;
   /** Per-agent list cache — instant paint when hopping back to an expert. */
@@ -251,7 +258,7 @@ export function useCronJobs() {
   const fetchJobs = useCallback(
     async (opts?: { soft?: boolean }) => {
       const agentId = activeAgentRef.current;
-      if (!agentId) {
+      if (!agentId || !canManageRef.current) {
         setJobs([]);
         setJobsOwnerId(null);
         jobsOwnerRef.current = null;
@@ -314,7 +321,7 @@ export function useCronJobs() {
   // Expert switch: paint cache immediately, revalidate in background.
   useEffect(() => {
     void fetchJobs({ soft: false });
-  }, [activeAgentId, fetchJobs]);
+  }, [activeAgentId, canManageJobs, fetchJobs]);
 
   const createJob = async (values: CronJobFormValues) => {
     if (!activeAgentId) return false;
@@ -339,6 +346,7 @@ export function useCronJobs() {
     const original = jobs.find((j) => j.id === jobId);
     const optimistic = {
       ...original,
+      name: (values.name || "").trim(),
       enabled: values.enabled,
       task_type: values.task_type,
       model: values.model ?? undefined,

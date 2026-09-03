@@ -26,7 +26,7 @@
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-访问 `http://localhost:8088`。首次启动的凭据写入 `~/octop-login.txt`（容器内为 `/data/octop-login.txt`，可用 `OCTOP_DEFAULT_PASSWORD` 覆盖）。密码须 ≥8 位且同时包含字母和数字。
+访问 `http://localhost:8088`。默认凭据：`admin` / `Octop123`（仅在首次初始化时生效，请立即修改密码）。密码须 ≥8 位且同时包含字母和数字。后续版本可能改为首次启动随机生成并仅写入 `credential.txt`。
 
 **方式二：构建脚本**
 
@@ -58,7 +58,7 @@ bash docker/docker_build.sh
 |------|--------|------|
 | `HOME` | `/data` | 必须为 `/data`，数据目录映射到 `~/.octop` |
 | `OCTOP_PORT` | `8088` | HTTP 服务端口 |
-| `OCTOP_DEFAULT_PASSWORD` | — | 可选，首次管理员密码（≥8 位，字母+数字） |
+| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | 首次管理员密码（≥8 位，字母+数字） |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次管理员用户名 |
 | `OCTOP_DATABASE_URL` | — | PostgreSQL DSN（或其他 `OCTOP_DATABASE_*`，见 [configuration.md](../docs/configuration.md)） |
 | `OCTOP_DATABASE_DRIVER` | — | 通过环境变量覆盖时：`sqlite` \| `postgresql` |
@@ -71,7 +71,7 @@ Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 C
 
 - Compose 默认将宿主机 `~/.octop` 挂载到容器 `/data/.octop`
 - `docker run` 示例使用命名卷 `octop-data`
-- 首次启动会自动执行 `octop init`，凭据写入 `~/octop-login.txt`（容器内为 `/data/octop-login.txt`，可用 `OCTOP_DEFAULT_PASSWORD` 覆盖）。
+- 首次启动会自动执行 `octop init`，凭据写入容器内 `/data/.octop/credential.txt`（默认密码 `Octop123`，可用 `OCTOP_DEFAULT_PASSWORD` 覆盖）。后续计划改为首次启动随机生成密码。
 
 ### 健康检查
 

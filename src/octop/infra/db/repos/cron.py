@@ -9,6 +9,7 @@ from typing import Any
 from octop.infra.cron.task_type import (
     DEFAULT_CRON_TASK_TYPE,
     CronTaskType,
+    default_cron_name,
     normalize_cron_task_type,
     require_cron_task_type,
 )
@@ -51,10 +52,20 @@ def _decode_mcp_servers(raw: Any) -> list[str]:
     return [str(n).strip() for n in parsed if str(n).strip()]
 
 
+def _optional_str(r: DbRow, key: str) -> str | None:
+    try:
+        value = r[key]
+    except (KeyError, IndexError):
+        return None
+    text = str(value).strip() if value else ""
+    return text or None
+
+
 @dataclass(frozen=True)
 class CronJobRow:
     id: int
     cron_id: str
+    name: str
     agent_id: str
     user_id: int
     trigger: str
@@ -76,6 +87,7 @@ class CronJobRow:
         return cls(
             id=r["id"],
             cron_id=r["cron_id"],
+            name=_optional_str(r, "name") or default_cron_name(r["prompt"], r["cron_id"]),
             agent_id=r["agent_id"],
             user_id=r["user_id"],
             trigger=r["schedule_spec"],
@@ -96,6 +108,7 @@ class CronJobRow:
     def to_public_dict(self, *, include_agent: bool = False) -> dict[str, Any]:
         out: dict[str, Any] = {
             "id": self.cron_id,
+            "name": self.name,
             "trigger": self.trigger,
             "prompt": self.prompt,
             "session_key": self.session_key,
@@ -130,16 +143,19 @@ class CronJobRepo:
         model: str | None = None,
         task_type: CronTaskType = DEFAULT_CRON_TASK_TYPE,
         mcp_servers: list[str] | None = None,
+        enabled: bool = True,
+        name: str | None = None,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
-                "INSERT INTO cron_jobs(cron_id, agent_id, user_id, schedule_spec, prompt, "
+                "INSERT INTO cron_jobs(cron_id, name, agent_id, user_id, schedule_spec, prompt, "
                 "session_key, model, fresh_thread, task_type, mcp_servers, enabled, "
                 "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cron_id,
+                    (name or "").strip() or default_cron_name(prompt, cron_id),
                     agent_id,
                     user_id,
                     trigger,
@@ -149,6 +165,7 @@ class CronJobRepo:
                     bool_int(fresh_thread),
                     task_type,
                     _encode_mcp_servers(mcp_servers),
+                    bool_int(enabled),
                     ts,
                     ts,
                 ),
@@ -160,13 +177,23 @@ class CronJobRepo:
             r = conn.execute("SELECT * FROM cron_jobs WHERE cron_id = ?", (cron_id,)).fetchone()
         return CronJobRow.from_row(r) if r else None
 
-    def list_by_agent(self, agent_id: str, *, include_disabled: bool = True) -> list[CronJobRow]:
+    def list_by_agent(
+        self,
+        agent_id: str,
+        *,
+        include_disabled: bool = True,
+        user_id: int | None = None,
+    ) -> list[CronJobRow]:
         sql = "SELECT * FROM cron_jobs WHERE agent_id = ?"
+        params: list[object] = [agent_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
         if not include_disabled:
             sql += " AND enabled = 1"
         sql += " ORDER BY created_at DESC"
         with self._db.connect() as conn:
-            rows = conn.execute(sql, (agent_id,)).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, CronJobRow)
 
     def list_all(self, *, include_disabled: bool = True) -> list[CronJobRow]:
@@ -198,6 +225,7 @@ class CronJobRepo:
         cron_id: str,
         *,
         trigger: str | None = None,
+        name: str | None = None,
         prompt: str | None = None,
         session_key: str | None = None,
         fresh_thread: bool | None = None,
@@ -209,6 +237,7 @@ class CronJobRepo:
         fields, params = partial_updates(
             [
                 ("schedule_spec", trigger),
+                ("name", name),
                 ("prompt", prompt),
                 ("session_key", session_key),
                 ("task_type", task_type),

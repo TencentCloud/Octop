@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from octop.config import OctopConfig
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -28,7 +29,16 @@ async def test_boot_empty(tmp_path: Path) -> None:
     services = _make_services(tmp_path)
     gateway = MagicMock()
     gateway.thread_registry = MagicMock()
-    mgr = CronManager(gateway=gateway, repos=services.repos, timezone="UTC")
+    mgr = CronManager(
+        gateway=gateway,
+        delivery_service=CronDeliveryService(
+            gateway=gateway,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
     mgr._scheduler = MagicMock()
     mgr._scheduler.get_job = MagicMock(return_value=None)
     await mgr.boot()
@@ -58,7 +68,16 @@ async def test_add_and_remove(tmp_path: Path) -> None:
 
     gateway = MagicMock()
     gateway.thread_registry = MagicMock()
-    mgr = CronManager(gateway=gateway, repos=services.repos, timezone="UTC")
+    mgr = CronManager(
+        gateway=gateway,
+        delivery_service=CronDeliveryService(
+            gateway=gateway,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
     mgr._scheduler = MagicMock()
     mgr._scheduler.get_job = MagicMock(return_value=None)
     await mgr.boot()

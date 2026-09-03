@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.job import CronJob
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
 
-from octop.infra.cron.task_type import normalize_cron_task_type
+from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_name
 from octop.infra.db.repos._base import UNSET
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class CronCreateSpec:
     user_id: int
     trigger: str
     prompt: str
+    name: str | None = None
     session_key: str | None = None
     fresh_thread: bool = False
     model: str | None = None
@@ -52,10 +54,12 @@ class CronManager:
         self,
         *,
         gateway: Gateway,
+        delivery_service: CronDeliveryService,
         repos: RepoBundle,
         timezone: str = "Asia/Shanghai",
     ) -> None:
         self._gateway = gateway
+        self._delivery_service = delivery_service
         self._repos = repos
         self._timezone = timezone
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone=timezone)
@@ -66,6 +70,7 @@ class CronManager:
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point cron persistence at a rebound control-plane pool."""
         self._repos = repos
+        self._delivery_service.replace_repos(repos)
 
     async def boot(self) -> None:
         self._scheduler.start()
@@ -115,6 +120,7 @@ class CronManager:
                 cron_id=spec.cron_id,
                 agent_id=spec.agent_id,
                 user_id=spec.user_id,
+                name=require_cron_name(spec.name, prompt=spec.prompt, cron_id=spec.cron_id),
                 trigger=spec.trigger,
                 prompt=spec.prompt,
                 session_key=session_key,
@@ -122,6 +128,7 @@ class CronManager:
                 model=(spec.model or "").strip() or None,
                 task_type=normalize_cron_task_type(spec.task_type),
                 mcp_servers=list(spec.mcp_servers or []),
+                enabled=spec.enabled,
             )
             row = self._repos.cron_repo.get(spec.cron_id)
             assert row is not None
@@ -139,8 +146,18 @@ class CronManager:
     def get(self, cron_id: str) -> CronJobRow | None:
         return self._repos.cron_repo.get(cron_id)
 
-    def list_by_agent(self, agent_id: str, *, include_disabled: bool = True) -> list[CronJobRow]:
-        return self._repos.cron_repo.list_by_agent(agent_id, include_disabled=include_disabled)
+    def list_by_agent(
+        self,
+        agent_id: str,
+        *,
+        include_disabled: bool = True,
+        user_id: int | None = None,
+    ) -> list[CronJobRow]:
+        return self._repos.cron_repo.list_by_agent(
+            agent_id,
+            include_disabled=include_disabled,
+            user_id=user_id,
+        )
 
     def list_all(self, *, include_disabled: bool = True) -> list[CronJobRow]:
         return self._repos.cron_repo.list_all(include_disabled=include_disabled)
@@ -150,6 +167,7 @@ class CronManager:
         cron_id: str,
         *,
         trigger: str | None = None,
+        name: str | None = None,
         prompt: str | None = None,
         session_key: str | None = None,
         fresh_thread: bool | None = None,
@@ -167,6 +185,7 @@ class CronManager:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
             repo_kwargs: dict[str, Any] = {
                 "trigger": trigger,
+                "name": name,
                 "prompt": prompt,
                 "session_key": session_key,
                 "fresh_thread": fresh_thread,
@@ -209,7 +228,7 @@ class CronManager:
     def _make_job(self, row: Any) -> CronJob:
         return CronJob.from_row(
             row,
-            gateway=self._gateway,
+            delivery_service=self._delivery_service,
             cron_repo=self._repos.cron_repo,
             audit_repo=self._repos.audit_repo,
         )
@@ -249,6 +268,11 @@ class CronManager:
                 msg = (
                     f"session {session_key!r} belongs to agent {existing.agent_id!r}, "
                     f"not {agent_id!r}"
+                )
+                raise ValueError(msg)
+            if existing.user_id != user_id:
+                msg = (
+                    f"session {session_key!r} belongs to user {existing.user_id!r}, not {user_id!r}"
                 )
                 raise ValueError(msg)
             return

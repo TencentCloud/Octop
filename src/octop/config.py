@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
@@ -95,6 +95,12 @@ class BackupConfig:
     auto_enabled: bool = False
     schedule: str = "cron:0 4 * * *"
     retention_count: int = 7
+    include_config: bool = True
+    include_workspaces: bool = True
+    include_skill_packages: bool = True
+    include_plugins: bool = True
+    include_knowledge: bool = True
+    include_chats: bool = False
 
 
 _VALID_MOBILE_BACKENDS = frozenset({"physical", "redroid", "emulator", "none"})
@@ -219,6 +225,14 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
         retention_count=retention,
+        include_config=bool(raw.get("include_config", defaults.include_config)),
+        include_workspaces=bool(raw.get("include_workspaces", defaults.include_workspaces)),
+        include_skill_packages=bool(
+            raw.get("include_skill_packages", defaults.include_skill_packages)
+        ),
+        include_plugins=bool(raw.get("include_plugins", defaults.include_plugins)),
+        include_knowledge=bool(raw.get("include_knowledge", defaults.include_knowledge)),
+        include_chats=bool(raw.get("include_chats", defaults.include_chats)),
     )
 
 
@@ -483,18 +497,13 @@ def load_config(path: Path) -> OctopConfig:
 
     backup = _parse_backup_section(raw.get("backup"))
     if v := os.environ.get("OCTOP_BACKUP_AUTO_ENABLED"):
-        backup = BackupConfig(
+        backup = replace(
+            backup,
             auto_enabled=_coerce_bool("OCTOP_BACKUP_AUTO_ENABLED", v, backup.auto_enabled),
-            schedule=backup.schedule,
-            retention_count=backup.retention_count,
         )
     if v := os.environ.get("OCTOP_BACKUP_SCHEDULE"):
         schedule = v.strip() or backup.schedule
-        backup = BackupConfig(
-            auto_enabled=backup.auto_enabled,
-            schedule=schedule,
-            retention_count=backup.retention_count,
-        )
+        backup = replace(backup, schedule=schedule)
     if v := os.environ.get("OCTOP_BACKUP_RETENTION_COUNT"):
         retention = _coerce_int("OCTOP_BACKUP_RETENTION_COUNT", v, backup.retention_count)
         if retention < 1:
@@ -503,10 +512,44 @@ def load_config(path: Path) -> OctopConfig:
                 backup.retention_count,
             )
             retention = backup.retention_count
-        backup = BackupConfig(
-            auto_enabled=backup.auto_enabled,
-            schedule=backup.schedule,
-            retention_count=retention,
+        backup = replace(backup, retention_count=retention)
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_CONFIG"):
+        backup = replace(
+            backup,
+            include_config=_coerce_bool("OCTOP_BACKUP_INCLUDE_CONFIG", v, backup.include_config),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_WORKSPACES"):
+        backup = replace(
+            backup,
+            include_workspaces=_coerce_bool(
+                "OCTOP_BACKUP_INCLUDE_WORKSPACES", v, backup.include_workspaces
+            ),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES"):
+        backup = replace(
+            backup,
+            include_skill_packages=_coerce_bool(
+                "OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES",
+                v,
+                backup.include_skill_packages,
+            ),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_PLUGINS"):
+        backup = replace(
+            backup,
+            include_plugins=_coerce_bool("OCTOP_BACKUP_INCLUDE_PLUGINS", v, backup.include_plugins),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_KNOWLEDGE"):
+        backup = replace(
+            backup,
+            include_knowledge=_coerce_bool(
+                "OCTOP_BACKUP_INCLUDE_KNOWLEDGE", v, backup.include_knowledge
+            ),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_CHATS"):
+        backup = replace(
+            backup,
+            include_chats=_coerce_bool("OCTOP_BACKUP_INCLUDE_CHATS", v, backup.include_chats),
         )
 
     return OctopConfig(

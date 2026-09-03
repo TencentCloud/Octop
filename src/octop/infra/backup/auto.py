@@ -108,6 +108,12 @@ def persist_backup_config(config_path: Path, backup: BackupConfig) -> OctopConfi
         "auto_enabled": backup.auto_enabled,
         "schedule": backup.schedule,
         "retention_count": backup.retention_count,
+        "include_config": backup.include_config,
+        "include_workspaces": backup.include_workspaces,
+        "include_skill_packages": backup.include_skill_packages,
+        "include_plugins": backup.include_plugins,
+        "include_knowledge": backup.include_knowledge,
+        "include_chats": backup.include_chats,
     }
     _atomic_write_json(config_path, raw)
     return load_config(config_path)
@@ -131,6 +137,14 @@ def backup_config_from_payload(payload: dict[str, Any]) -> BackupConfig:
         auto_enabled=bool(payload.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
         retention_count=retention,
+        include_config=bool(payload.get("include_config", defaults.include_config)),
+        include_workspaces=bool(payload.get("include_workspaces", defaults.include_workspaces)),
+        include_skill_packages=bool(
+            payload.get("include_skill_packages", defaults.include_skill_packages)
+        ),
+        include_plugins=bool(payload.get("include_plugins", defaults.include_plugins)),
+        include_knowledge=bool(payload.get("include_knowledge", defaults.include_knowledge)),
+        include_chats=bool(payload.get("include_chats", defaults.include_chats)),
     )
 
 
@@ -141,8 +155,14 @@ def create_and_store_auto_backup(
     pool: DatabasePool,
     db_config: DatabaseConfig,
     retention_count: int,
+    include_config: bool = True,
+    include_workspaces: bool = True,
+    include_skill_packages: bool = True,
+    include_plugins: bool = True,
+    include_knowledge: bool = True,
+    include_chats: bool = False,
 ) -> tuple[BackupFileInfo, list[str]]:
-    """Create a full system backup with the auto filename prefix and prune."""
+    """Create a selected-content system backup with the auto prefix and prune."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp) / "backup.tar.gz"
         suggested = create_system_backup(
@@ -151,6 +171,12 @@ def create_and_store_auto_backup(
             pool=pool,
             db_config=db_config,
             dest=tmp_path,
+            include_config=include_config,
+            include_workspaces=include_workspaces,
+            include_skill_packages=include_skill_packages,
+            include_plugins=include_plugins,
+            include_knowledge=include_knowledge,
+            include_chats=include_chats,
         )
         filename = to_auto_backup_filename(suggested)
         entry = place_backup_file(paths, filename, tmp_path)
@@ -183,6 +209,12 @@ async def run_auto_backup(server: OctopServer) -> BackupFileInfo | None:
                 pool=server.services.db,
                 db_config=server.services.config.database,
                 retention_count=retention,
+                include_config=config.backup.include_config,
+                include_workspaces=config.backup.include_workspaces,
+                include_skill_packages=config.backup.include_skill_packages,
+                include_plugins=config.backup.include_plugins,
+                include_knowledge=config.backup.include_knowledge,
+                include_chats=config.backup.include_chats,
             )
         except Exception as exc:
             logger.exception("auto backup failed")

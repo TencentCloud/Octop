@@ -11,6 +11,7 @@ import pytest
 from langgraph.config import var_child_runnable_config
 
 from octop.config import OctopConfig
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.manager import CronManager
 from octop.infra.cron.tools import build_cronjob_tools
 from octop.infra.db.migrate import run_migrations
@@ -41,7 +42,16 @@ def _make_manager(services) -> CronManager:
     gw.thread_registry = MagicMock()
     gw.thread_registry.get_session = MagicMock(return_value=None)
     gw.thread_registry.get_or_create_by_key = AsyncMock(return_value="thr_test")
-    mgr = CronManager(gateway=gw, repos=services.repos, timezone="UTC")
+    mgr = CronManager(
+        gateway=gw,
+        delivery_service=CronDeliveryService(
+            gateway=gw,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
     mgr._scheduler = MagicMock()
     mgr._scheduler.get_job = MagicMock(return_value=None)
     return mgr
@@ -96,6 +106,7 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
     tools = build_cronjob_tools(mgr)
     create = _tool_by_name(tools, "cronjob_create")
     get_tool = _tool_by_name(tools, "cronjob_get")
+    list_tool = _tool_by_name(tools, "cronjob_list")
 
     with _configurable(agent_id=agent_a, user=str(uid)):
         created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "a"}))
@@ -108,6 +119,10 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
     with _configurable(agent_id=agent_a, user=str(other_uid)):
         err = json.loads(await get_tool.ainvoke({"cron_id": cron_id}))
         assert "error" in err
+        listed = json.loads(await list_tool.ainvoke({"include_disabled": True}))
+        assert listed == []
+        created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "nope"}))
+        assert "error" in created
 
 
 @pytest.mark.asyncio

@@ -602,3 +602,25 @@ async def test_global_processor_iter_turn_chunks_slash() -> None:
     chunks = [c async for c in processor.iter_turn_chunks(msg)]
     assert chunks[0]["type"] == "token"
     assert chunks[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_send_text_finalizes_with_done() -> None:
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    hub.register("c1", capture)
+    hub.subscribe("thr1", "c1")
+    channel = WebSocketChannel(object(), hub=hub)  # type: ignore[arg-type]
+    subject = ChannelSubject(
+        subject_id="u1",
+        chat_type="dm",
+        metadata={"thread_id": "thr1"},
+    )
+    await channel._send_text(subject, "hello")
+    assert frames[0]["type"] == "token"
+    assert frames[0]["content"] == "hello"
+    assert frames[-1]["type"] == "done"

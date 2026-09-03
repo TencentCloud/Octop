@@ -6,7 +6,7 @@ Procedural flow (bypasses the LangGraph ReAct loop):
 3. Use EpisodePicker to select the Top-3 most care-worthy episodes.
 4. Read the agent's SOUL.md and embed it into the LLM system prompt.
 5. Call a lightweight LLM to generate a care message (<=200 chars).
-6. Push to the current session via Gateway.push_text_from_session(task_type="text").
+6. Push to the current session via Gateway.push_text_from_session.
 7. Write a dedup record to care_push_records after a successful push.
 """
 
@@ -247,11 +247,9 @@ class ProactiveCareService:
             logger.warning("ProactiveCareService: LLM call failed agent=%s: %s", agent_id, exc)
             return  # do not push, do not write a record
 
-        # 7. Push the message directly (task_type="text" bypasses the agent ReAct loop)
+        # 7. Push the message directly without invoking the agent.
         try:
-            await self._gateway.push_text_from_session(
-                agent_id, session_key, care_text, task_type="text"
-            )
+            await self._gateway.push_text_from_session(agent_id, session_key, care_text)
         except Exception as exc:
             logger.warning(
                 "ProactiveCareService: push failed agent=%s session=%s: %s",

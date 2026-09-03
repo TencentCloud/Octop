@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 from octop.infra.backup.store import (
+    BackupContentFlags,
     delete_backup_file,
     is_auto_backup_filename,
     list_backup_files,
     normalize_backup_filename,
+    peek_backup_contents,
     prune_auto_backups,
     read_backup_file,
     write_backup_file,
@@ -111,3 +113,46 @@ def test_prune_auto_backups_keep_zero_deletes_all_auto(tmp_path: Path) -> None:
     assert deleted == ["octop-auto-backup-20260101T010000Z.tar.gz"]
     names = {f.name for f in list_backup_files(layout)}
     assert names == {"octop-backup-20260101T000000Z.tar.gz"}
+
+
+def test_peek_backup_contents_reads_manifest(tmp_path: Path) -> None:
+    from octop.config import DatabaseConfig
+    from octop.infra.backup.system_archive import create_system_backup
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+
+    layout = PathLayout(tmp_path / ".octop")
+    layout.root.mkdir()
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    archive = tmp_path / "peek.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_config=False,
+        include_workspaces=False,
+        include_skill_packages=False,
+        include_plugins=False,
+        include_knowledge=False,
+        include_chats=False,
+    )
+    pool.close()
+    assert peek_backup_contents(archive) == BackupContentFlags(
+        includes_config=False,
+        includes_workspaces=False,
+        includes_skill_packages=False,
+        includes_plugins=False,
+        includes_knowledge=False,
+        includes_chats=False,
+    )
+    write_backup_file(layout, "octop-backup-peek.tar.gz", archive.read_bytes())
+    item = list_backup_files(layout)[0]
+    assert item.includes_config is False
+    assert item.includes_workspaces is False
+    assert item.includes_skill_packages is False
+    assert item.includes_plugins is False
+    assert item.includes_knowledge is False
+    assert item.includes_chats is False

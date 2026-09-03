@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 from typing import Any
 
 import pytest
-from starlette.testclient import TestClient
 
 from tests.support.auth import bootstrap_admin
-from tests.support.http import ws_token
+from tests.support.http import ws_chat_turn
 
 
 @pytest.fixture
@@ -18,37 +15,10 @@ async def env(env_fake_harness):
     yield env_fake_harness
 
 
-def _ws_turn_sync(app: object, agent_id: str, token: str, text: str) -> list[dict[str, Any]]:
-    chunks: list[dict[str, Any]] = []
-    with TestClient(app).websocket_connect(  # type: ignore[attr-defined]
-        f"/api/agents/{agent_id}/chat/ws?token={token}"
-    ) as ws:
-        ws.send_json(
-            {
-                "type": "user_turn",
-                "text": text,
-                "messages": [{"role": "user", "content": text}],
-            }
-        )
-        while True:
-            raw = ws.receive_text()
-            chunk = json.loads(raw)
-            chunks.append(chunk)
-            if chunk.get("type") in ("done", "error"):
-                break
-    return chunks
-
-
 async def _ws_turn(
-    client: object, agent_id: str, auth: dict[str, str], *, text: str = "Hello"
+    client: Any, agent_id: str, auth: dict[str, str], *, text: str = "Hello"
 ) -> list[dict[str, Any]]:
-    return await asyncio.to_thread(
-        _ws_turn_sync,
-        client._octop_app,
-        agent_id,
-        ws_token(auth),
-        text,  # type: ignore[attr-defined]
-    )
+    return await ws_chat_turn(client, agent_id, auth, text=text)
 
 
 async def test_full_golden_path(env: Any) -> None:

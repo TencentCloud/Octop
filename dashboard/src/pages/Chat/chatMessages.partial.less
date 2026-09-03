@@ -8,6 +8,22 @@
   flex-direction: column;
 }
 
+/* Left gutter so the in-thread turn timeline ticks do not cover bubbles.
+   Prefer parent `.chatMainWithTurnRail` (title + composer + list). This local
+   class remains as a fallback when MessageList is mounted alone. */
+.messageListWrapperWithRail {
+  --chat-turn-rail-gutter: 48px;
+
+  .messageListInner {
+    padding-inline-start: var(--chat-turn-rail-gutter);
+    padding-inline-end: var(--chat-column-pad-x, 24px);
+
+    @media (max-width: 863px) {
+      padding-inline-start: var(--chat-column-pad-x, 24px);
+    }
+  }
+}
+
 .messageList {
   flex: 1;
   overflow-y: auto;
@@ -180,6 +196,12 @@
   .messageBubble {
     margin-bottom: 0;
   }
+}
+
+.hitlSegment {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* Legacy grouped bubbles (kept for compatibility) */
@@ -644,36 +666,6 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
-}
-
-.hitlCard {
-  border: 1px solid var(--fn-border);
-  border-radius: 8px;
-  padding: 12px;
-  background: var(--fn-bg-elevated, var(--fn-bg-container));
-}
-
-.hitlTitle {
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.hitlAction {
-  margin-bottom: 8px;
-}
-
-.hitlResolved {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.hitlResolvedApproved {
-  color: var(--fn-color-success, #389e0d);
-}
-
-.hitlResolvedRejected {
-  color: var(--fn-color-error, #cf1322);
 }
 
 /* ---------- Assistant turn process summary (tools + thinking) ---------- */

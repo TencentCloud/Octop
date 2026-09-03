@@ -92,25 +92,36 @@ class ProactiveCareConfigRepo:
             )
 
     def list_enabled(self) -> list[ProactiveCareConfig]:
-        """List the configurations of all agents that have proactive care push enabled.
+        """List proactive-care configs for every enabled agent that should be scheduled.
+
+        Agents without a ``proactive_care_config`` row use the same defaults as
+        ``get()`` (enabled=True). An explicit ``enabled=0`` row opts out.
+        Disabled agents (``agents.enabled = 0``) are excluded.
 
         Returns:
             The list of enabled ProactiveCareConfig.
         """
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT agent_id, enabled, active_hours_start, active_hours_end, "
-                "min_interval_hours, max_interval_hours "
-                "FROM proactive_care_config WHERE enabled = 1",
+                "SELECT a.agent_id, c.enabled, c.active_hours_start, "
+                "c.active_hours_end, c.min_interval_hours, c.max_interval_hours "
+                "FROM agents a "
+                "LEFT JOIN proactive_care_config c ON c.agent_id = a.agent_id "
+                "WHERE a.enabled = 1 AND (c.agent_id IS NULL OR c.enabled = 1)",
             ).fetchall()
-        return [
-            ProactiveCareConfig(
-                agent_id=row[0],
-                enabled=bool(row[1]),
-                active_hours_start=row[2],
-                active_hours_end=row[3],
-                min_interval_hours=row[4],
-                max_interval_hours=row[5],
-            )
-            for row in rows
-        ]
+        configs: list[ProactiveCareConfig] = []
+        for row in rows:
+            if row[1] is None:
+                configs.append(ProactiveCareConfig(agent_id=row[0]))
+            else:
+                configs.append(
+                    ProactiveCareConfig(
+                        agent_id=row[0],
+                        enabled=bool(row[1]),
+                        active_hours_start=row[2],
+                        active_hours_end=row[3],
+                        min_interval_hours=row[4],
+                        max_interval_hours=row[5],
+                    )
+                )
+        return configs

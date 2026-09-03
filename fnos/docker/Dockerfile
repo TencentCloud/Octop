@@ -2,9 +2,9 @@
 # =============================================================================
 # Octop — FnOS 专用构建（基于仓库源码，安装全部附加组件）
 #
-# 与上游 docker/Dockerfile 一致，但显式安装全部 extras：
-#   - browser  （Playwright 浏览器自动化，已进核心依赖）
+# 与上游 docker/Dockerfile 一致，但显式安装 desktop extra：
 #   - desktop  （mss / pynput / pillow，桌面控制附加组件）
+# Playwright Chromium 不再预装，浏览器自动化可在控制台按需安装。
 #
 # 构建上下文必须为仓库根目录（fnpack / CI 中以仓库根为 context）：
 #   docker build -f fnos/docker/Dockerfile -t ghcr.io/tencentcloud/octop:latest .
@@ -82,7 +82,7 @@ COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# 安装项目 + 全部附加组件（browser 已在核心依赖，desktop 显式加入）
+# 安装项目 + desktop 附加组件（Playwright Chromium 不预装，控制台可按需下载）
 # UV_INDEX_URL 首选阿里云镜像加速；UV_DEFAULT_INDEX 保留 PyPI 作为兜底，
 # 避免新发布的包（如 orcakit-harness-agent 0.9.16）尚未同步到镜像时构建失败。
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -91,8 +91,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
        UV_INSECURE_HOST=mirrors.aliyun.com \
        uv pip install --python /app/.venv ".[desktop]" \
-    && PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright \
-       /app/.venv/bin/python -m playwright install --with-deps chromium \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*

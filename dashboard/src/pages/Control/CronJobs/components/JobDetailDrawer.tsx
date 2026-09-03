@@ -111,6 +111,9 @@ export function JobDetailDrawer({
             {job.id}
           </Text>
         </Descriptions.Item>
+        <Descriptions.Item label={t("cronJobs.col.name")}>
+          {job.name || "—"}
+        </Descriptions.Item>
         <Descriptions.Item label={t("common.enabled")}>
           {job.enabled ? (
             <Tag color="success">{t("common.enabled")}</Tag>
