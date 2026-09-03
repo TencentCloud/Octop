@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { dockFileTabId } from "../utils/dockFilePath";
-import { useChatDockPanel } from "./useChatDockPanel";
+import { ensureNoTrajectoryTab, useChatDockPanel } from "./useChatDockPanel";
 
 describe("useChatDockPanel tabs", () => {
   it("openFileList focuses the pinned files tab", () => {
@@ -59,6 +59,19 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current.dockOpen).toBe(false);
     // Closing the float button only hides the dock — tab stays for keep-alive.
     expect(result.current.openTabs.map((t) => t.id)).toEqual(["terminal"]);
+  });
+
+  it("ensureNoTrajectoryTab strips leftover trajectory tabs", () => {
+    expect(
+      ensureNoTrajectoryTab([
+        { id: "files", kind: "files" },
+        { id: "trajectory", kind: "trajectory" },
+        { id: "browser", kind: "browser" },
+      ]),
+    ).toEqual([
+      { id: "files", kind: "files" },
+      { id: "browser", kind: "browser" },
+    ]);
   });
 
   it("reopening terminal does not add another dock tab", () => {
@@ -180,6 +193,7 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current).not.toHaveProperty("openFilePanel");
     expect(result.current).not.toHaveProperty("openBrowserPanel");
     expect(result.current).not.toHaveProperty("resetDismissOnSessionGone");
+    expect(result.current).not.toHaveProperty("toggleTrajectoryPanel");
   });
 
   it("closes the dock and clears tabs when agentId changes", () => {

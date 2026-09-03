@@ -1,0 +1,42 @@
+.root {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+  font-size: 11px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chipGroup {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.sep {
+  margin: 0 8px;
+  color: var(--fn-text-tertiary, #8b8b8b);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+}

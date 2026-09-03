@@ -32,6 +32,13 @@ export type DockTab =
 
 export type DockTabId = DockTab["id"];
 
+/** Drop retired dock tabs (pre-drawer trajectory) if they appear in stored lists. */
+export function ensureNoTrajectoryTab<T extends { kind: string }>(
+  tabs: readonly T[],
+): T[] {
+  return tabs.filter((t) => t.kind !== "trajectory");
+}
+
 function loadPanelMode(): PanelMode {
   try {
     const saved = localStorage.getItem(PANEL_MODE_KEY);

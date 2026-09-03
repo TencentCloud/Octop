@@ -7,11 +7,13 @@ from fastapi import APIRouter
 from octop.api.routers.chat.history import router as history_router
 from octop.api.routers.chat.notify_ws import router as notify_ws_router
 from octop.api.routers.chat.routes import router as routes_router
+from octop.api.routers.chat.trajectory import router as trajectory_router
 from octop.api.routers.chat.ws import router as ws_router
 
 router = APIRouter()
 router.include_router(routes_router)
 router.include_router(history_router)
+router.include_router(trajectory_router)
 router.include_router(ws_router)
 router.include_router(notify_ws_router)
 

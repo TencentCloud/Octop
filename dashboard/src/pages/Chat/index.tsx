@@ -9,6 +9,7 @@ import {
   FilePen,
   Terminal,
   FolderOpen,
+  Activity,
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
@@ -53,6 +54,7 @@ import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
 import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
+import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
 import {
@@ -220,8 +222,8 @@ function ChatPageInner() {
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [trajectoryDrawerOpen, setTrajectoryDrawerOpen] = useState(false);
   const [turnRailVisible, setTurnRailVisible] = useState(false);
-
   const {
     sessions,
     loading: sessionsLoading,
@@ -261,6 +263,7 @@ function ChatPageInner() {
     }
     setAgentProfileOpen(false);
     setWorkspaceDrawerOpen(false);
+    setTrajectoryDrawerOpen(false);
   }, [resolvedAgentId]);
 
   // Weak stream resume may skip intermediate tokens — hint once after rebind.
@@ -1103,7 +1106,8 @@ function ChatPageInner() {
             {!isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
-              !workspaceDrawerOpen && (
+              !workspaceDrawerOpen &&
+              !trajectoryDrawerOpen && (
                 <div className={styles.chatFloatActions}>
                   {/* PWA install first when available — same column as browser / experts. */}
                   <PwaInstallPrompt appearance="chatFloat" />
@@ -1197,6 +1201,32 @@ function ChatPageInner() {
                       </span>
                     </Tooltip>
                   )}
+                  <Tooltip
+                    title={
+                      !agentChatReady
+                        ? t("workspace.requiresRunning")
+                        : !activeThreadId
+                        ? t(
+                            "chat.trajectorySelectSession",
+                            "Select a session to view trajectory",
+                          )
+                        : t("chat.openTrajectory", "运行轨迹")
+                    }
+                    mouseEnterDelay={0.35}
+                    placement="left"
+                  >
+                    <span className={styles.chatFloatBtnWrap}>
+                      <button
+                        type="button"
+                        className={styles.chatFloatBtn}
+                        disabled={!activeThreadId || !agentChatReady}
+                        onClick={() => setTrajectoryDrawerOpen(true)}
+                        aria-label={t("chat.openTrajectory", "运行轨迹")}
+                      >
+                        <Activity size={20} strokeWidth={2.1} />
+                      </button>
+                    </span>
+                  </Tooltip>
                   <Tooltip
                     title={
                       browserSessionId
@@ -1343,6 +1373,12 @@ function ChatPageInner() {
               />
             </>
           )}
+          <TrajectoryDrawer
+            agentId={resolvedAgentId ?? ""}
+            threadId={activeThreadId}
+            open={trajectoryDrawerOpen}
+            onClose={() => setTrajectoryDrawerOpen(false)}
+          />
         </div>
       </ChatToolDockProvider>
     </ChatFilePreviewProvider>

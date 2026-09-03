@@ -34,6 +34,7 @@ from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
     from octop.infra.auth.sso.service import SsoService
+    from octop.infra.trajectory.service import TrajectoryService
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,7 @@ class AppRuntime:
     cron_manager: CronManager
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
+    trajectory_service: TrajectoryService | None = None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
         """Retarget all runtime singletons onto a new SharedServices / config.
@@ -228,6 +230,10 @@ class AppRuntime:
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
         )
+        if self.trajectory_service is not None:
+            from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
+
+            self.trajectory_service.replace_store(TrajectoryStore(services.trajectory_event_repo))
 
 
 class OctopServer:
@@ -363,9 +369,19 @@ class OctopServer:
             plugin_manager=self.plugin_manager,
         )
 
+        from octop.infra.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
+        from octop.infra.trajectory.service import TrajectoryService  # noqa: PLC0415
+        from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
+
+        trajectory_service = TrajectoryService(
+            TrajectoryStore(self.services.trajectory_event_repo),
+            TrajectoryLiveBus(),
+        )
+
         gateway = Gateway(
             agent_manager=registry,
             repos=self.services.repos,
+            trajectory_service=trajectory_service,
         )
         await gateway.boot()
 
@@ -431,6 +447,7 @@ class OctopServer:
             cron_manager=cron_mgr,
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
+            trajectory_service=trajectory_service,
         )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 

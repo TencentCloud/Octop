@@ -1,0 +1,9 @@
+{
+  "type": "compacted",
+  "summarized_count": 12,
+  "preserved_count": 6,
+  "removed_tokens": 4200,
+  "summary": "Earlier turns offloaded to conversation history.",
+  "file_path": ".octop/conversation_history/thr.md",
+  "ts": 1756800001.0
+}
