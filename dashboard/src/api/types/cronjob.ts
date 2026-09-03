@@ -67,6 +67,7 @@ export type CronJobViewLegacy = Record<string, unknown>;
  */
 export interface OctopCronRow {
   id: string;
+  name: string;
   agent_id: string;
   trigger: string;
   prompt: string;
@@ -83,10 +84,12 @@ export interface OctopCronRow {
 
 /** Body sent to POST /api/agents/:id/cron */
 export interface OctopCronCreateBody {
+  name?: string | null;
   trigger: string;
   prompt: string;
   session_key?: string | null;
   fresh_thread?: boolean;
+  enabled?: boolean;
   model?: string | null;
   task_type?: "text" | "agent";
   mcp_servers?: string[];
@@ -94,6 +97,7 @@ export interface OctopCronCreateBody {
 
 /** Body sent to PATCH /api/agents/:id/cron/:cron_id */
 export interface OctopCronPatchBody {
+  name?: string | null;
   trigger?: string;
   prompt?: string;
   session_key?: string | null;

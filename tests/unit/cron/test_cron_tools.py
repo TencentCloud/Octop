@@ -96,6 +96,7 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
     tools = build_cronjob_tools(mgr)
     create = _tool_by_name(tools, "cronjob_create")
     get_tool = _tool_by_name(tools, "cronjob_get")
+    list_tool = _tool_by_name(tools, "cronjob_list")
 
     with _configurable(agent_id=agent_a, user=str(uid)):
         created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "a"}))
@@ -108,6 +109,10 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
     with _configurable(agent_id=agent_a, user=str(other_uid)):
         err = json.loads(await get_tool.ainvoke({"cron_id": cron_id}))
         assert "error" in err
+        listed = json.loads(await list_tool.ainvoke({"include_disabled": True}))
+        assert listed == []
+        created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "nope"}))
+        assert "error" in created
 
 
 @pytest.mark.asyncio

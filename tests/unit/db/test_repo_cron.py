@@ -51,6 +51,7 @@ def test_create_and_get(repo: CronJobRepo, agent_id: str, user_id: int):
         cron_id=cid,
         agent_id=agent_id,
         user_id=user_id,
+        name="Morning report",
         trigger="0 9 * * *",
         prompt="run report",
         session_key=_session_key(agent_id, user_id),
@@ -58,10 +59,12 @@ def test_create_and_get(repo: CronJobRepo, agent_id: str, user_id: int):
     row = repo.get(cid)
     assert isinstance(row, CronJobRow)
     assert row.cron_id == cid
+    assert row.name == "Morning report"
     assert row.trigger == "0 9 * * *"
     assert row.enabled == 1
     assert row.task_type == "agent"
     assert row.last_run_at is None
+    assert row.to_public_dict()["name"] == "Morning report"
 
 
 def test_create_with_task_type(repo: CronJobRepo, agent_id: str, user_id: int):
@@ -127,6 +130,36 @@ def test_list_by_agent(repo: CronJobRepo, agent_id: str, user_id: int):
     )
     rows = repo.list_by_agent(agent_id)
     assert len(rows) == 2
+
+
+def test_list_by_agent_can_filter_user(
+    db: SqlitePool,
+    repo: CronJobRepo,
+    agent_id: str,
+    user_id: int,
+):
+    other_user = UserRepo(db).create(username="bob", password_hash="h", role="user")
+    repo.create(
+        cron_id=new_ulid(),
+        agent_id=agent_id,
+        user_id=user_id,
+        trigger="* * * * *",
+        prompt="mine",
+        session_key=_session_key(agent_id, user_id),
+    )
+    repo.create(
+        cron_id=new_ulid(),
+        agent_id=agent_id,
+        user_id=other_user,
+        trigger="* * * * *",
+        prompt="theirs",
+        session_key=_session_key(agent_id, other_user),
+    )
+
+    rows = repo.list_by_agent(agent_id, user_id=user_id)
+
+    assert len(rows) == 1
+    assert rows[0].prompt == "mine"
 
 
 def test_update_partial(repo: CronJobRepo, agent_id: str, user_id: int):

@@ -1671,6 +1671,7 @@
       "idTooltip": "任务的唯一标识符，由系统自动生成。",
       "name": "任务名称",
       "nameTooltip": "给任务起一个易于辨识的名称，方便在列表中快速找到。",
+      "nameTooLong": "任务名称不能超过 {{max}} 个字符",
       "enabled": "启用任务",
       "enabledTooltip": "开启后任务将按照设定的时间自动执行，关闭则暂停执行。",
       "sectionSchedule": "执行频率",

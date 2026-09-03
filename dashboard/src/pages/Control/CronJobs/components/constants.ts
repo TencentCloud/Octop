@@ -48,6 +48,7 @@ export const DEFAULT_FORM_VALUES = {
 /** Form defaults with server-configured cron timezone. */
 export function buildDefaultFormValues(timezone: string) {
   return {
+    name: "",
     enabled: false,
     schedule: {
       type: "cron" as const,

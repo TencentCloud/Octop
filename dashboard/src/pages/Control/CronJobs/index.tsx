@@ -1,14 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Button,
-  Card,
-  Empty,
-  Form,
-  Segmented,
-  Spin,
-  Table,
-  Tooltip,
-} from "antd";
+import { Button, Card, Empty, Form, Segmented, Spin, Tooltip } from "antd";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import type { CronJobSpecOutput } from "../../../api/types";
 import { useTranslation } from "react-i18next";
@@ -26,6 +17,7 @@ import type { CronJobFormValues } from "./useCronJobs";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
+import { ResizableTable } from "../../../components/ResizableTable";
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
 import styles from "./index.module.less";
@@ -84,7 +76,8 @@ function CronJobsPage() {
   const { isMobile, viewMode, setViewMode, showCardView } =
     useCardTableView("table");
   const navigate = useNavigate();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId, activeAgent } = useAgent();
+  const canManageJobs = activeAgent?.is_owner === true;
   const {
     jobs,
     loading,
@@ -233,9 +226,9 @@ function CronJobsPage() {
     stickyColumns: !isMobile,
   });
 
-  // Until the user picks an agent there is nothing to fetch and no scope
-  // to write to. Mirror the behaviour of the other octop agent-scoped pages.
-  if (!activeAgentId) {
+  // Shared experts are not a task scope. Non-owners should see the same
+  // "pick an agent" empty as if nothing were selected — no shared-expert copy.
+  if (!activeAgentId || !canManageJobs) {
     return (
       <PageShell
         title={t("pageShell.tasks.title")}
@@ -349,13 +342,16 @@ function CronJobsPage() {
               ))}
             </div>
           ) : (
-            <Table
+            <ResizableTable
               className={styles.cronTable}
               columns={columns}
               dataSource={jobs}
               rowKey="id"
               size="middle"
-              scroll={{ x: 1300 }}
+              tableLayout="fixed"
+              scroll={{ x: 1562 }}
+              storageKey="cron-jobs-table-widths"
+              minWidth={72}
               pagination={{
                 pageSize: 10,
                 showSizeChanger: false,

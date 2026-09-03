@@ -233,11 +233,13 @@ async def test_create_persists_row(tmp_path: Path) -> None:
         cron_id=cid,
         agent_id=aid,
         user_id=uid,
+        name="Morning report",
         trigger="cron:0 9 * * *",
         prompt="morning report",
     )
 
     assert row.cron_id == cid
+    assert row.name == "Morning report"
     assert row.prompt == "morning report"
     assert row.agent_id == aid
     assert mgr.get(cid) is not None
@@ -259,6 +261,25 @@ async def test_create_schedules_job(tmp_path: Path) -> None:
     )
 
     mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_can_start_disabled(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+
+    row = await mgr.create(
+        cron_id=_cron_id(),
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:30",
+        prompt="ping",
+        enabled=False,
+    )
+
+    assert row.enabled == 0
+    mgr._scheduler.add_job.assert_not_called()
 
 
 @pytest.mark.asyncio

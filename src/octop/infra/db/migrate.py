@@ -143,6 +143,24 @@ def _ensure_agent_profile_columns(db: DatabasePool) -> None:
     _collapse_legacy_agent_welcome_columns(db)
 
 
+def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "cron_jobs"):
+        return
+    _ensure_column(db, "cron_jobs", "name", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(
+        db,
+        "cron_jobs",
+        "task_type",
+        "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent'))",
+    )
+    _ensure_column(
+        db,
+        "cron_jobs",
+        "mcp_servers",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )
+
+
 def _collapse_legacy_agent_welcome_columns(db: DatabasePool) -> None:
     """Fold welcome_message_zh/en into a single instance-owned welcome_message."""
     if not _table_exists(db, "agents"):
@@ -926,19 +944,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         # Pre-squash DBs may already report version ≥6; reconcile can clamp to 6
         # without applying 006_user_permissions.sql — ensure the column here.
         _ensure_column(db, "users", "permissions", "TEXT NOT NULL DEFAULT '[]'")
-    if _table_exists(db, "cron_jobs"):
-        _ensure_column(
-            db,
-            "cron_jobs",
-            "task_type",
-            "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent'))",
-        )
-        _ensure_column(
-            db,
-            "cron_jobs",
-            "mcp_servers",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )
+    _ensure_cron_jobs_schema(db)
     if _table_exists(db, "threads"):
         _ensure_column(db, "threads", "model_ref", "TEXT")
         _ensure_column(db, "threads", "reasoning_mode", "TEXT")
@@ -996,6 +1002,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_user_invites_schema(db)
             if max_version >= 10:
                 _ensure_thread_message_projection_schema(db)
+            if max_version >= 11:
+                _ensure_cron_jobs_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1025,6 +1033,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_user_invites_schema(db)
     if max_version >= 10:
         _ensure_thread_message_projection_schema(db)
+    if max_version >= 11:
+        _ensure_cron_jobs_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1052,10 +1062,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     (idempotent); PostgreSQL runs the ``.pg.sql`` file then the same helpers
     as a no-op safety net. ``config_json`` profile keys are backfilled in
     Python either way.
-        Version 8 adds cache-aware usage buckets and model call counts.
-        Version 9 adds one-time ``user_invites`` codes.
-        Version 10 adds the dashboard thread-message projection when the legacy
-        database actually contains conversation tables.
+    Version 8 adds cache-aware usage buckets and model call counts.
+    Version 9 adds one-time ``user_invites`` codes.
+    Version 10 adds the dashboard thread-message projection when the legacy
+    database actually contains conversation tables.
+    Version 11 adds cron job display names.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1134,6 +1145,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 11:
+        _ensure_cron_jobs_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1168,3 +1184,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_usage_cache_schema(db)
     _ensure_user_invites_schema(db)
     _ensure_thread_message_projection_schema(db)
+    _ensure_cron_jobs_schema(db)
