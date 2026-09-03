@@ -3863,7 +3863,8 @@
       "active": "运行中"
     },
     "browserStatusActive": "浏览器：{{owner}}",
-    "browserStatusIdle": "浏览器（点击查看/接管）"
+    "browserStatusIdle": "浏览器（点击查看/接管）",
+    "chromeMissingJumpToInstall": "即将跳转「工作区-浏览器」进行安装"
   },
   "browserViewer": {
     "goBack": "后退",

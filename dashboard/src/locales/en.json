@@ -3724,7 +3724,8 @@
       "active": "Active"
     },
     "browserStatusActive": "Browser: {{owner}}",
-    "browserStatusIdle": "Browser (click to view or take over)"
+    "browserStatusIdle": "Browser (click to view or take over)",
+    "chromeMissingJumpToInstall": "Chrome is not installed. Opening Workbench → Browser to install."
   },
   "browserViewer": {
     "goBack": "Go back",
