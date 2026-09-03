@@ -612,10 +612,10 @@ export default function RemoteBrowserPage({
   const handleUninstall = useCallback(() => {
     if (!envStatus?.playwright_chromium || uninstalling) return;
     modal.confirm({
-      title: t("remoteBrowser.uninstallTitle", "卸载远程浏览器"),
+      title: t("remoteBrowser.uninstallTitle", "卸载内置浏览器"),
       content: t(
         "remoteBrowser.uninstallConfirm",
-        "将关闭 Octop 浏览器会话，并删除通过 Playwright 安装的 Chromium。不会影响本机已有的 Chrome/Chromium。是否继续？",
+        "将关闭当前浏览器窗口，并卸载 Octop 自动安装的浏览器。你电脑上已有的 Chrome 等浏览器不受影响。",
       ),
       okText: t("remoteBrowser.uninstall", "卸载"),
       okButtonProps: { danger: true },
@@ -647,7 +647,7 @@ export default function RemoteBrowserPage({
                   antMessage.success(
                     t(
                       "remoteBrowser.uninstallSuccess",
-                      "已删除 Playwright Chromium",
+                      "内置浏览器已卸载",
                     ),
                   );
                   resolve();
@@ -1139,24 +1139,16 @@ export default function RemoteBrowserPage({
     }
 
     if (envReady) {
-      const harnessOk = envStatus?.harness_browser;
-      const pwOk = envStatus?.playwright;
-      const subTitle =
-        harnessOk && pwOk
-          ? t(
-              "remoteBrowser.envReadyBoth",
-              "harness-browser 与 Playwright 均可用",
-            )
-          : harnessOk
-          ? t("remoteBrowser.envReadyHarness", "harness-browser (CDP) 已就绪")
-          : t("remoteBrowser.envReady", "Playwright 与 Chromium 均可用");
       return (
         <Result
           icon={
             <CheckCircle2 size={40} color="var(--fn-color-success,#52c41a)" />
           }
-          title={t("remoteBrowser.browserAlreadyInstalled", "浏览器已安装")}
-          subTitle={subTitle}
+          title={t("remoteBrowser.browserAlreadyInstalled", "浏览器已就绪")}
+          subTitle={t(
+            "remoteBrowser.envReady",
+            "可以帮你打开网页、填写表单和截图了",
+          )}
           style={{ padding: "8px 0" }}
         />
       );
