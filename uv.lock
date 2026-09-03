@@ -1343,11 +1343,11 @@ wheels = [
 
 [[package]]
 name = "harness-memory"
-version = "0.9.7"
+version = "0.9.8"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/aa/1e/31ed48da269f67eb18ba758974fa4d315cb0563d4e546bea52c985f21dd1/harness_memory-0.9.7.tar.gz", hash = "sha256:c1013bf5ce57f07393443a313b75e4f0e66f4e7158cc7295cb7e899d3b16719c", size = 34604833, upload-time = "2026-08-20T12:53:17.595Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/80/ef214b2b7d5bc7ee349236545c75f7ed13372c2c39c9b2042ac4df0c4df3/harness_memory-0.9.8.tar.gz", hash = "sha256:0c995845514c9525604b7799db3a7bdcb1e3f87b6b6f0f9cf4a40346276b5479", size = 1078796, upload-time = "2026-09-02T11:57:47.216Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/05/b239a8db324d79f29c917d51daa1a30753998f559579d393d7629306685a/harness_memory-0.9.7-py3-none-any.whl", hash = "sha256:c0872ebcc24144edb89b3a928de8df0cef80abea36ab1bd2a6ee7ca56e7f71ff", size = 345460, upload-time = "2026-08-20T12:53:12.719Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/61/b0057b399bfbc153bd2d207b1204254934038960e7e78a7426d9ec59f8ff/harness_memory-0.9.8-py3-none-any.whl", hash = "sha256:8621175ca605a50930f1253cb18c157b2881aecaab93d96e8ba2537845465957", size = 350227, upload-time = "2026-09-02T11:57:44.94Z" },
 ]
 
 [[package]]
@@ -2563,7 +2563,7 @@ requires-dist = [
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "harness-browser", specifier = ">=0.7.7" },
     { name = "harness-gateway", specifier = ">=0.9.3" },
-    { name = "harness-memory", specifier = ">=0.9.7" },
+    { name = "harness-memory", specifier = ">=0.9.8" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },
@@ -2573,7 +2573,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.2" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.3" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2747,7 +2747,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "1.0.2"
+version = "1.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2765,9 +2765,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/c8/3985ab4520ea92b51506b5932e6f2f3c631cbe2066238234d4047a31ccfd/orcakit_harness_agent-1.0.2.tar.gz", hash = "sha256:a36df51c19b74042319f1d9d4de93f9439fcd5e429b9cbdf5a0523d9de2a9b97", size = 1197763, upload-time = "2026-09-01T08:56:24.118Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/27/c8cd2c2b77fa830f06dd753fd5810a6a6a352f6f086f706a4ec166d934e8/orcakit_harness_agent-1.0.3.tar.gz", hash = "sha256:545d1ff57f4666b721a56a6c595dfd4c63da0ef7bd954a91439a4eafeb1674ed", size = 1203668, upload-time = "2026-09-02T12:13:58.496Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/49/29585033f3be1bee13a76f7a517107540a79dd8011cc223edf74d1416ab5/orcakit_harness_agent-1.0.2-py3-none-any.whl", hash = "sha256:fa61ec1a6ceb13c3233eae3e6707526b9621b85d2dbfea4fa2694a14cbf37bfa", size = 1424971, upload-time = "2026-09-01T08:56:28.24Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/4e/11ec5fac7f7261ad0d012704437730b11ac5016ddc6cf32a5d5f254150d6/orcakit_harness_agent-1.0.3-py3-none-any.whl", hash = "sha256:e401ebef4d7ebd725bfcb94467b3d1afcc10ca3c7ee5682d571b0ece4c4681bf", size = 1430103, upload-time = "2026-09-02T12:13:56.456Z" },
 ]
 
 [package.optional-dependencies]

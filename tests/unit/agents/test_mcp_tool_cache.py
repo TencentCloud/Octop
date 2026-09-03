@@ -195,6 +195,61 @@ async def test_prepare_chat_mcp_injects_custom_from_cache() -> None:
     assert isinstance(injected[0], StructuredTool)
 
 
+@pytest.mark.asyncio
+async def test_prepare_chat_mcp_attaches_gateway_tools_without_reload() -> None:
+    """Gateway connectors inject in-process; rebuilding would drop the runtime.
+
+    A rebuild ends in the very same injection, but first closes the harness
+    agent (and the checkpointer pool an in-flight turn still writes to) and
+    holds ``AgentManager._lock`` across workspace I/O.
+    """
+    from octop.infra.agents.manager import AgentManager
+    from octop.infra.connectors.builder import mcp_server_name
+
+    instance_id = "01TESTGATEWAYINSTANCE0001"
+    server = mcp_server_name("qq-mail", instance_id)
+
+    inst = MagicMock()
+    inst.instance_id = instance_id
+    inst.kind = "qq-mail"
+    inst.status = "active"
+    inst.mcp_server_name = server
+
+    agent = MagicMock()
+    agent._mcp_tools = []
+    agent._mcp_tool_name_set = frozenset()
+    agent.config.mcp_server_configs = {}
+
+    def _inject(tools: list[Any]) -> None:
+        agent._mcp_tools = [*tools, *agent._mcp_tools]
+        agent._mcp_tool_name_set = frozenset(str(getattr(t, "name", "")) for t in agent._mcp_tools)
+
+    agent.inject_mcp_tools = MagicMock(side_effect=_inject)
+
+    mgr = object.__new__(AgentManager)
+    mgr._repos = MagicMock()
+    mgr._repos.connector_repo.list_by_user.return_value = [inst]
+    mgr._connector_svc = MagicMock()
+    mgr._connector_svc.custom_harness_configs.return_value = {}
+    mgr._connector_svc.decrypt.return_value = {"email": "a@qq.com", "password": "code"}
+    mgr._connector_svc.ensure_fresh_credentials = AsyncMock(return_value={})
+    mgr.get_agent = MagicMock(return_value=agent)
+    mgr.get_row = MagicMock(return_value=MagicMock())
+    mgr._connector_uid_for = MagicMock(return_value=7)
+    mgr.reload_connectors = AsyncMock()
+
+    failed = await mgr.prepare_chat_mcp("A1", [server], connector_user_id=7)
+
+    # Asserted before the tool checks so a reintroduced rebuild reports itself
+    # rather than surfacing as "tools missing".
+    mgr.reload_connectors.assert_not_awaited()
+    assert failed == []
+    assert agent.inject_mcp_tools.call_count == 1
+    assert all(name.startswith(f"{server}_") for name in agent._mcp_tool_name_set)
+    assert server in agent.config.mcp_server_configs
+    mgr._connector_svc.ensure_fresh_credentials.assert_awaited_once_with(instance_id, "qq-mail")
+
+
 def test_wrap_tools_for_shared_use() -> None:
     lock = asyncio.Lock()
     inner = MagicMock()

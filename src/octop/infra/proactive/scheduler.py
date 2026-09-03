@@ -133,6 +133,7 @@ class ProactiveCareScheduler:
         self._session_repo = session_repo
         # agent_id -> asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._suspended = False
 
     def replace_persistence(
         self,
@@ -147,11 +148,32 @@ class ProactiveCareScheduler:
         self._care_service.replace_care_push_repo(care_push_repo)
 
     async def start_all(self) -> None:
-        """At system startup, register random scheduling tasks for all agents with enabled=true."""
+        """At system startup, register random scheduling tasks for all agents with enabled=true.
+
+        Includes agents that never saved a config row: proactive care defaults to on.
+        """
         configs = self._config_repo.list_enabled()
         logger.info("ProactiveCareScheduler: started, found %d enabled agents", len(configs))
         for cfg in configs:
-            self._schedule(cfg.agent_id)
+            self.ensure_scheduled(cfg.agent_id)
+
+    def suspend(self) -> None:
+        """Stop creating new loops. Tests call this so leftover sleeps do not hang pytest."""
+        self._suspended = True
+
+    def ensure_scheduled(self, agent_id: str) -> None:
+        """Start the loop if this agent is enabled and not already scheduled."""
+        if self._suspended:
+            return
+        if agent_id in self._tasks:
+            return
+        cfg = self._config_repo.get(agent_id)
+        if cfg.enabled:
+            self._schedule(agent_id)
+            logger.info(
+                "ProactiveCareScheduler: agent=%s scheduled (default enabled unless opted out)",
+                agent_id,
+            )
 
     def reschedule(self, agent_id: str) -> None:
         """Cancel the current schedule and re-arrange the next trigger time with new config.
@@ -182,14 +204,24 @@ class ProactiveCareScheduler:
             task.cancel()
 
     async def shutdown(self) -> None:
-        """Shut down all scheduling tasks."""
-        agent_ids = list(self._tasks.keys())
-        for agent_id in agent_ids:
-            self.cancel(agent_id)
+        """Cancel every loop and wait so a long sleep cannot outlive the process."""
+        pending: list[asyncio.Task[None]] = []
+        for agent_id in list(self._tasks.keys()):
+            task = self._tasks.pop(agent_id, None)
+            if task and not task.done():
+                task.cancel()
+                pending.append(task)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         logger.info("ProactiveCareScheduler: all scheduled tasks shut down")
 
     def _schedule(self, agent_id: str) -> None:
         """Create a scheduling task for an agent."""
+        if self._suspended:
+            return
+        existing = self._tasks.get(agent_id)
+        if existing is not None and not existing.done():
+            existing.cancel()
         task = asyncio.create_task(
             self._run_loop(agent_id),
             name=f"proactive_care_{agent_id}",
@@ -199,7 +231,8 @@ class ProactiveCareScheduler:
 
     def _on_task_done(self, agent_id: str, task: asyncio.Task[None]) -> None:
         """Task-completion callback that handles exceptions."""
-        self._tasks.pop(agent_id, None)
+        if self._tasks.get(agent_id) is task:
+            self._tasks.pop(agent_id, None)
         if task.cancelled():
             return
         exc = task.exception()
