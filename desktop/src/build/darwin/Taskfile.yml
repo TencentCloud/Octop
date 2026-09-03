@@ -37,7 +37,75 @@ tasks:
           PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
           ARCH: "{{.ARCH}}"
       - rm -f {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg
-      - bash build/darwin/create-installer-dmg.sh {{.BIN_DIR}}/{{.APP_NAME}}.app {{.ARCHIVE}} {{.APP_NAME}}
+      - |
+        set -euo pipefail
+        app_path="{{.BIN_DIR}}/{{.APP_NAME}}.app"
+        output="{{.ARCHIVE}}"
+        volname="{{.APP_NAME}}"
+        app_name="{{.APP_NAME}}.app"
+        work="$(mktemp -d "${TMPDIR:-/tmp}/octop-dmg.XXXXXX")"
+        staging="${work}/root"
+        rw_dmg="${work}/rw.dmg"
+        device=""
+        cleanup() {
+          if [[ -n "$device" ]]; then
+            hdiutil detach "$device" -quiet >/dev/null 2>&1 || \
+              hdiutil detach "$device" -force -quiet >/dev/null 2>&1 || true
+          fi
+          rm -rf "$work"
+        }
+        trap cleanup EXIT
+        mkdir -p "${staging}/.background"
+        ditto "$app_path" "${staging}/${app_name}"
+        ln -s /Applications "${staging}/Applications"
+        cp build/darwin/dmg-background.png "${staging}/.background/background.png"
+        if [[ -d "/Volumes/${volname}" ]]; then
+          hdiutil detach "/Volumes/${volname}" -quiet >/dev/null 2>&1 || \
+            hdiutil detach "/Volumes/${volname}" -force -quiet >/dev/null 2>&1 || true
+        fi
+        hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRW "$rw_dmg" >/dev/null
+        attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg")"
+        device="$(awk '/^\/dev\// { print $1; exit }' <<<"$attach_out")"
+        mount_point="$(awk -F'\t' '/\/Volumes\// { print $NF; exit }' <<<"$attach_out")"
+        if [[ -z "$device" || ! -d "$mount_point" ]]; then
+          echo "warning: could not mount writable DMG; writing a plain image" >&2
+          hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output"
+          exit 0
+        fi
+        osascript - "$volname" "$app_name" <<'APPLESCRIPT' || \
+          echo "warning: could not set Finder icon layout; Applications drop link is still present" >&2
+        on run argv
+          set volName to item 1 of argv
+          set appName to item 2 of argv
+          tell application "Finder"
+            tell disk volName
+              open
+              set current view of container window to icon view
+              set toolbar visible of container window to false
+              set statusbar visible of container window to false
+              set the bounds of container window to {200, 120, 800, 520}
+              set viewOptions to the icon view options of container window
+              set arrangement of viewOptions to not arranged
+              set icon size of viewOptions to 128
+              try
+                set background picture of viewOptions to file ".background:background.png"
+              end try
+              set position of item appName of container window to {150, 250}
+              set position of item "Applications" of container window to {450, 250}
+              close
+              open
+              update without registering applications
+              delay 1
+            end tell
+          end tell
+        end run
+        APPLESCRIPT
+        sync
+        hdiutil detach "$device" -quiet
+        device=""
+        rm -f "$output"
+        hdiutil convert "$rw_dmg" -ov -format UDRO -o "$output" >/dev/null
+        test -s "$output"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
