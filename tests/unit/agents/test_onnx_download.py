@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import threading
 import time
 from pathlib import Path
 
+import httpx
+
 from octop.infra.agents.providers.onnx_catalog import get_onnx_model_meta
 from octop.infra.agents.providers.onnx_download import (
+    COS_ENDPOINT_DEFAULT,
     HF_ENDPOINT_MIRROR,
     HF_ENDPOINT_OFFICIAL,
     DownloadCandidate,
     build_download_candidates,
+    cos_file_url,
     download_model_raced,
+    export_model_tree_for_cos,
     race_download_sources,
 )
 
@@ -28,20 +34,24 @@ def test_bge_small_zh_infers_hf_repo_without_fastembed(monkeypatch) -> None:
     assert "direct_url" not in meta
 
 
-def test_candidates_are_hf_and_mirror_with_inferred_urls(monkeypatch) -> None:
+def test_candidates_are_cos_hf_and_mirror_with_inferred_urls(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_catalog as catalog
 
     monkeypatch.setattr(catalog, "_fastembed_meta_map", lambda: {})
     cands = build_download_candidates("BAAI/bge-small-zh-v1.5")
-    assert [c.kind for c in cands] == ["hf", "hf-mirror"]
+    assert [c.kind for c in cands] == ["cos", "hf", "hf-mirror"]
     assert cands[0].probe_url == (
-        f"{HF_ENDPOINT_OFFICIAL}/Qdrant/bge-small-zh-v1.5/resolve/main/config.json"
+        f"{COS_ENDPOINT_DEFAULT}/models/embedding/BAAI/bge-small-zh-v1.5/config.json"
     )
     assert cands[1].probe_url == (
+        f"{HF_ENDPOINT_OFFICIAL}/Qdrant/bge-small-zh-v1.5/resolve/main/config.json"
+    )
+    assert cands[2].probe_url == (
         f"{HF_ENDPOINT_MIRROR}/Qdrant/bge-small-zh-v1.5/resolve/main/config.json"
     )
-    assert cands[0].hf_endpoint == HF_ENDPOINT_OFFICIAL
-    assert cands[1].hf_endpoint == HF_ENDPOINT_MIRROR
+    assert cands[0].hf_repo == "Qdrant/bge-small-zh-v1.5"
+    assert cands[1].hf_endpoint == HF_ENDPOINT_OFFICIAL
+    assert cands[2].hf_endpoint == HF_ENDPOINT_MIRROR
 
 
 def test_unknown_model_uses_model_id_as_hf_repo(monkeypatch) -> None:
@@ -49,12 +59,13 @@ def test_unknown_model_uses_model_id_as_hf_repo(monkeypatch) -> None:
 
     monkeypatch.setattr(catalog, "_fastembed_meta_map", lambda: {})
     cands = build_download_candidates("jinaai/jina-embeddings-v2-base-zh")
-    assert [c.kind for c in cands] == ["hf", "hf-mirror"]
-    assert cands[0].hf_repo == "jinaai/jina-embeddings-v2-base-zh"
-    assert cands[0].probe_url.startswith(
+    assert [c.kind for c in cands] == ["cos", "hf", "hf-mirror"]
+    assert cands[1].hf_repo == "jinaai/jina-embeddings-v2-base-zh"
+    assert cands[0].probe_url == cos_file_url("jinaai/jina-embeddings-v2-base-zh", "config.json")
+    assert cands[1].probe_url.startswith(
         f"{HF_ENDPOINT_OFFICIAL}/jinaai/jina-embeddings-v2-base-zh/"
     )
-    assert cands[1].probe_url.startswith(f"{HF_ENDPOINT_MIRROR}/jinaai/jina-embeddings-v2-base-zh/")
+    assert cands[2].probe_url.startswith(f"{HF_ENDPOINT_MIRROR}/jinaai/jina-embeddings-v2-base-zh/")
 
 
 def test_race_orders_by_ttfb_and_skips_failures() -> None:
@@ -243,3 +254,149 @@ def test_snapshot_disables_xet_before_hub_import(monkeypatch, tmp_path: Path) ->
     assert seen["env"] == "1"
     assert seen["const"] is True
     assert seen["endpoint"] == HF_ENDPOINT_MIRROR
+
+
+def test_cos_base_env_override(monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_ONNX_COS_BASE", "https://example-cos.example.com/")
+    assert cos_file_url("BAAI/bge-small-zh-v1.5", "config.json") == (
+        "https://example-cos.example.com/models/embedding/BAAI/bge-small-zh-v1.5/config.json"
+    )
+
+
+def test_cos_download_writes_hf_cache(monkeypatch, tmp_path: Path) -> None:
+    from octop.infra.agents.providers.onnx_download import _download_cos_snapshot
+
+    files = {
+        "files.json": json.dumps(
+            {
+                "model_id": "BAAI/bge-small-zh-v1.5",
+                "hf_repo": "Qdrant/bge-small-zh-v1.5",
+                "files": ["config.json", "model.onnx"],
+            }
+        ).encode(),
+        "config.json": b'{"hidden_size": 512}',
+        "model.onnx": b"onnx-bytes",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        name = request.url.path.rsplit("/", 1)[-1]
+        body = files.get(name)
+        if body is None:
+            return httpx.Response(404, request=request)
+        return httpx.Response(200, content=body, request=request)
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **_kwargs: real_client(transport=httpx.MockTransport(handler)),
+    )
+    cache = tmp_path / "cache"
+    _download_cos_snapshot(
+        DownloadCandidate(
+            kind="cos",
+            probe_url="http://cos/config.json",
+            hf_endpoint="",
+            hf_repo="Qdrant/bge-small-zh-v1.5",
+            model_name="BAAI/bge-small-zh-v1.5",
+        ),
+        cache,
+    )
+    snapshot = cache / "models--Qdrant--bge-small-zh-v1.5" / "snapshots" / "cos-mirror"
+    assert (snapshot / "config.json").read_text(encoding="utf-8") == '{"hidden_size": 512}'
+    assert (snapshot / "model.onnx").read_bytes() == b"onnx-bytes"
+    assert (cache / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main").read_text(
+        encoding="utf-8"
+    ).strip() == "cos-mirror"
+
+
+def test_cos_download_rejects_parent_paths(monkeypatch, tmp_path: Path) -> None:
+    from octop.infra.agents.providers.onnx_download import _download_cos_snapshot
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("files.json"):
+            return httpx.Response(
+                200,
+                content=json.dumps({"files": ["../escape.onnx"]}).encode(),
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **_kwargs: real_client(transport=httpx.MockTransport(handler)),
+    )
+    try:
+        _download_cos_snapshot(
+            DownloadCandidate(
+                kind="cos",
+                probe_url="http://cos/config.json",
+                hf_endpoint="",
+                hf_repo="Qdrant/bge-small-zh-v1.5",
+                model_name="BAAI/bge-small-zh-v1.5",
+            ),
+            tmp_path,
+        )
+    except ValueError as exc:
+        assert "unsafe" in str(exc)
+    else:
+        raise AssertionError("expected unsafe COS path to fail")
+
+
+def test_download_raced_uses_cos_winner(monkeypatch, tmp_path: Path) -> None:
+    from octop.infra.agents.providers import onnx_download as mod
+
+    cands = [
+        DownloadCandidate(
+            kind="cos",
+            probe_url="http://cos",
+            hf_endpoint="",
+            hf_repo="Qdrant/bge-small-zh-v1.5",
+            model_name="BAAI/bge-small-zh-v1.5",
+        ),
+        DownloadCandidate(
+            kind="hf",
+            probe_url="http://hf",
+            hf_endpoint=HF_ENDPOINT_OFFICIAL,
+            hf_repo="Qdrant/bge-small-zh-v1.5",
+        ),
+    ]
+    tried: list[str] = []
+    monkeypatch.setattr(mod, "build_download_candidates", lambda _name: cands)
+    monkeypatch.setattr(mod, "race_download_sources", lambda items, **_kw: items)
+
+    def fake_cos(cand: DownloadCandidate, cache_dir: Path, **_kwargs: object) -> None:
+        del cache_dir
+        tried.append(cand.kind)
+
+    monkeypatch.setattr(mod, "_download_cos_snapshot", fake_cos)
+    winner = download_model_raced("BAAI/bge-small-zh-v1.5", tmp_path)
+    assert winner == "cos"
+    assert tried == ["cos"]
+
+
+def test_export_model_tree_writes_manifest(monkeypatch, tmp_path: Path) -> None:
+    from octop.infra.agents.providers import onnx_catalog as catalog
+
+    monkeypatch.setattr(catalog, "_fastembed_meta_map", lambda: {})
+    snapshot = tmp_path / "snap"
+    snapshot.mkdir()
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.onnx").write_bytes(b"onnx")
+
+    import types
+
+    hub = sys.modules.get("huggingface_hub")
+    if hub is None:
+        hub = types.ModuleType("huggingface_hub")
+        monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setattr(hub, "snapshot_download", lambda **_kwargs: str(snapshot), raising=False)
+
+    dest = export_model_tree_for_cos("BAAI/bge-small-zh-v1.5", tmp_path / "out")
+    assert dest == tmp_path / "out" / "models" / "embedding" / "BAAI" / "bge-small-zh-v1.5"
+    manifest = json.loads((dest / "files.json").read_text(encoding="utf-8"))
+    assert manifest["model_id"] == "BAAI/bge-small-zh-v1.5"
+    assert manifest["hf_repo"] == "Qdrant/bge-small-zh-v1.5"
+    assert set(manifest["files"]) == {"config.json", "model.onnx"}
