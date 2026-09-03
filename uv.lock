@@ -1318,7 +1318,7 @@ wheels = [
 
 [[package]]
 name = "harness-gateway"
-version = "0.9.3"
+version = "0.9.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1336,9 +1336,9 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bd/31/bffc0bedae91253db68cc6b18f44b2d3e97e964c87548aad86430a0fb296/harness_gateway-0.9.3.tar.gz", hash = "sha256:ea5135daa7e02726c93c5c0f8d124df0f7bf35ebde5e439a673d8eb6fc3f2ee8", size = 497904, upload-time = "2026-08-20T03:26:07.75Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/2c/a037fca7d181c97fb3a19e434830ab0e2ca556ea9627a42976325566c43d/harness_gateway-0.9.5.tar.gz", hash = "sha256:4d7f1c6db78b90072e739fdaf07fd0d88b339a0d65030f0bd2de2884b76a62f2", size = 499064, upload-time = "2026-09-03T08:18:28.814Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/11/03374a4b52520e918ee19db1c1d2bb8c844e951edc6d5d96ca55545f345a/harness_gateway-0.9.3-py3-none-any.whl", hash = "sha256:89dc52bbdf4c8167f6e4b003a07cc7dca0908ede572953350287af25a473a17c", size = 138401, upload-time = "2026-08-20T03:26:04.083Z" },
+    { url = "https://files.pythonhosted.org/packages/77/82/3cca28f17f7d0b5e42c802570b7b599b4149795cb7c5f73ed0fd59515124/harness_gateway-0.9.5-py3-none-any.whl", hash = "sha256:0d76d3148898501d3c71acec57c47f7cfd97fba1ee42eb96b1766560b7398051", size = 138899, upload-time = "2026-09-03T08:18:25.786Z" },
 ]
 
 [[package]]
@@ -2561,8 +2561,8 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
+    { name = "harness-gateway", specifier = ">=0.9.5" },
     { name = "harness-browser", specifier = ">=0.7.8" },
-    { name = "harness-gateway", specifier = ">=0.9.3" },
     { name = "harness-memory", specifier = ">=0.9.8" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
@@ -2573,7 +2573,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.3" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.4" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2747,7 +2747,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "1.0.3"
+version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2765,9 +2765,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/27/c8cd2c2b77fa830f06dd753fd5810a6a6a352f6f086f706a4ec166d934e8/orcakit_harness_agent-1.0.3.tar.gz", hash = "sha256:545d1ff57f4666b721a56a6c595dfd4c63da0ef7bd954a91439a4eafeb1674ed", size = 1203668, upload-time = "2026-09-02T12:13:58.496Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/36/e096b72e622b176efb57b16313b49350595e1eed2c670df60fe4ff94dd0f/orcakit_harness_agent-1.0.4.tar.gz", hash = "sha256:9c126056b9a232c599414e479896bfd78c5f51011987080d2ee738a55f8202fc", size = 1204119, upload-time = "2026-09-03T08:18:42.288Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/4e/11ec5fac7f7261ad0d012704437730b11ac5016ddc6cf32a5d5f254150d6/orcakit_harness_agent-1.0.3-py3-none-any.whl", hash = "sha256:e401ebef4d7ebd725bfcb94467b3d1afcc10ca3c7ee5682d571b0ece4c4681bf", size = 1430103, upload-time = "2026-09-02T12:13:56.456Z" },
+    { url = "https://files.pythonhosted.org/packages/27/95/bc4660a554fcfce78af2c1695a8b96374f81384e7564fc2a0c1091557d9e/orcakit_harness_agent-1.0.4-py3-none-any.whl", hash = "sha256:ef53f6ab53fade47c3866ce2c76a9503119ea9c223cf83c3fdc400ffb681204a", size = 1430458, upload-time = "2026-09-03T08:18:40.712Z" },
 ]
 
 [package.optional-dependencies]

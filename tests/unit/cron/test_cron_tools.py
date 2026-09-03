@@ -11,6 +11,7 @@ import pytest
 from langgraph.config import var_child_runnable_config
 
 from octop.config import OctopConfig
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.manager import CronManager
 from octop.infra.cron.tools import build_cronjob_tools
 from octop.infra.db.migrate import run_migrations
@@ -41,7 +42,16 @@ def _make_manager(services) -> CronManager:
     gw.thread_registry = MagicMock()
     gw.thread_registry.get_session = MagicMock(return_value=None)
     gw.thread_registry.get_or_create_by_key = AsyncMock(return_value="thr_test")
-    mgr = CronManager(gateway=gw, repos=services.repos, timezone="UTC")
+    mgr = CronManager(
+        gateway=gw,
+        delivery_service=CronDeliveryService(
+            gateway=gw,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
     mgr._scheduler = MagicMock()
     mgr._scheduler.get_job = MagicMock(return_value=None)
     return mgr

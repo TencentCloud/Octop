@@ -558,6 +558,11 @@
     "fork_title_suffix": " (fork)",
     "fork_default_title": "Forked chat"
   },
+  "cron": {
+    "history": {
+      "executed": "Task {cron_id}: {name} executed."
+    }
+  },
   "agents": {
     "state": {
       "running": "Running",

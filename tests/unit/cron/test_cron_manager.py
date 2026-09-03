@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from octop.config import OctopConfig
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -76,7 +77,16 @@ async def _aiter(items):
 
 def _make_manager(services, *, gateway: MagicMock | None = None) -> CronManager:
     gw = gateway or _make_gateway()
-    mgr = CronManager(gateway=gw, repos=services.repos, timezone="UTC")
+    mgr = CronManager(
+        gateway=gw,
+        delivery_service=CronDeliveryService(
+            gateway=gw,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
     # Replace real APScheduler with a mock to avoid background threads
     fake_scheduler = MagicMock()
     fake_scheduler.running = False

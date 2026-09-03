@@ -1,4 +1,4 @@
-"""tests/unit/test_cron_job.py — tests for the gateway-based CronJob."""
+"""tests/unit/test_cron_job.py — CronJob bookkeeping around CronDeliveryService."""
 
 from __future__ import annotations
 
@@ -60,13 +60,14 @@ def _job(
     audit: AuditRepo,
     cid: str,
     session_key: str,
-    gateway: MagicMock,
+    delivery_service: MagicMock,
     fresh_thread: bool = False,
     task_type: str = "agent",
     mcp_servers: list[str] | None = None,
 ) -> CronJob:
     return CronJob(
         cron_id=cid,
+        name="say hi",
         agent_id="a1",
         prompt="hi",
         fresh_thread=fresh_thread,
@@ -74,7 +75,8 @@ def _job(
         model=None,
         task_type=task_type,
         mcp_servers=mcp_servers,
-        gateway=gateway,
+        user_id=1,
+        delivery_service=delivery_service,
         cron_repo=cron_repo,
         audit_repo=audit,
     )
@@ -83,103 +85,66 @@ def _job(
 @pytest.mark.asyncio
 async def test_run_records_ok(setup) -> None:
     cron_repo, audit, cid, session_key = setup
+    delivery = MagicMock()
+    delivery.deliver = AsyncMock()
 
-    gateway = MagicMock()
-    gateway.thread_registry = MagicMock()
-    gateway.thread_registry.get_session = MagicMock(
-        return_value=SessionRepo(cron_repo._db).get(session_key)
+    job = _job(
+        cron_repo=cron_repo,
+        audit=audit,
+        cid=cid,
+        session_key=session_key,
+        delivery_service=delivery,
     )
-    gateway.thread_registry.reset_by_session_key = AsyncMock(return_value="thr_new")
-    gateway.push_text_from_session = AsyncMock()
-
-    job = _job(cron_repo=cron_repo, audit=audit, cid=cid, session_key=session_key, gateway=gateway)
     await job.run()
     row = cron_repo.get(cid)
     assert row.last_status == "ok"
     assert row.last_run_at is not None
+    delivery.deliver.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_run_uses_session_key(setup) -> None:
+async def test_run_passes_delivery_command(setup) -> None:
     cron_repo, audit, cid, session_key = setup
-
-    gateway = MagicMock()
-    gateway.thread_registry = MagicMock()
-    gateway.thread_registry.get_session = MagicMock(
-        return_value=SessionRepo(cron_repo._db).get(session_key)
-    )
-    gateway.push_text_from_session = AsyncMock()
-
-    job = _job(cron_repo=cron_repo, audit=audit, cid=cid, session_key=session_key, gateway=gateway)
-    await job.run()
-
-    args = gateway.push_text_from_session.call_args
-    assert args.args[0] == "a1"
-    assert args.args[1] == session_key
-    assert args.args[2] == "hi"
-    assert args.kwargs["task_type"] == "agent"
-
-
-@pytest.mark.asyncio
-async def test_run_passes_mcp_servers(setup) -> None:
-    cron_repo, audit, cid, session_key = setup
-
-    gateway = MagicMock()
-    gateway.thread_registry = MagicMock()
-    gateway.thread_registry.get_session = MagicMock(
-        return_value=SessionRepo(cron_repo._db).get(session_key)
-    )
-    gateway.push_text_from_session = AsyncMock()
+    delivery = MagicMock()
+    delivery.deliver = AsyncMock()
 
     job = _job(
         cron_repo=cron_repo,
         audit=audit,
         cid=cid,
         session_key=session_key,
-        gateway=gateway,
+        delivery_service=delivery,
         mcp_servers=["github__1"],
-    )
-    await job.run()
-
-    args = gateway.push_text_from_session.call_args
-    assert args.kwargs["mcp_servers"] == ["github__1"]
-
-
-@pytest.mark.asyncio
-async def test_run_passes_task_type(setup) -> None:
-    cron_repo, audit, cid, session_key = setup
-
-    gateway = MagicMock()
-    gateway.thread_registry = MagicMock()
-    gateway.thread_registry.get_session = MagicMock(
-        return_value=SessionRepo(cron_repo._db).get(session_key)
-    )
-    gateway.push_text_from_session = AsyncMock()
-
-    job = _job(
-        cron_repo=cron_repo,
-        audit=audit,
-        cid=cid,
-        session_key=session_key,
-        gateway=gateway,
         task_type="text",
+        fresh_thread=True,
     )
     await job.run()
-    assert gateway.push_text_from_session.call_args.kwargs["task_type"] == "text"
+
+    command = delivery.deliver.await_args.args[0]
+    assert command.cron_id == cid
+    assert command.cron_name == "say hi"
+    assert command.agent_id == "a1"
+    assert command.user_id == 1
+    assert command.session_key == session_key
+    assert command.prompt == "hi"
+    assert command.fresh_thread is True
+    assert command.task_type == "text"
+    assert command.mcp_servers == ("github__1",)
 
 
 @pytest.mark.asyncio
 async def test_run_records_error_on_failure(setup) -> None:
     cron_repo, audit, cid, session_key = setup
+    delivery = MagicMock()
+    delivery.deliver = AsyncMock(side_effect=RuntimeError("nope"))
 
-    gateway = MagicMock()
-    gateway.thread_registry = MagicMock()
-    gateway.thread_registry.get_session = MagicMock(
-        return_value=SessionRepo(cron_repo._db).get(session_key)
+    job = _job(
+        cron_repo=cron_repo,
+        audit=audit,
+        cid=cid,
+        session_key=session_key,
+        delivery_service=delivery,
     )
-    gateway.push_text_from_session = AsyncMock(side_effect=RuntimeError("nope"))
-
-    job = _job(cron_repo=cron_repo, audit=audit, cid=cid, session_key=session_key, gateway=gateway)
     await job.run()
     row = cron_repo.get(cid)
     assert row.last_status == "error"
@@ -189,36 +154,19 @@ async def test_run_records_error_on_failure(setup) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fresh_thread_resets_on_run(setup) -> None:
-    cron_repo, audit, cid, session_key = setup
-
-    gateway = MagicMock()
-    gateway.thread_registry = MagicMock()
-    gateway.thread_registry.get_session = MagicMock(
-        return_value=SessionRepo(cron_repo._db).get(session_key)
-    )
-    gateway.thread_registry.reset_by_session_key = AsyncMock(return_value="thr_fresh")
-    gateway.push_text_from_session = AsyncMock()
-
-    job = _job(
-        cron_repo=cron_repo,
-        audit=audit,
-        cid=cid,
-        session_key=session_key,
-        gateway=gateway,
-        fresh_thread=True,
-    )
-    await job.run()
-    gateway.thread_registry.reset_by_session_key.assert_called_once_with(session_key)
-
-
-@pytest.mark.asyncio
 async def test_from_row_reads_persisted_session_key(setup) -> None:
     cron_repo, audit, cid, session_key = setup
     row = cron_repo.get(cid)
     assert row is not None
 
-    gateway = MagicMock()
-    job = CronJob.from_row(row, gateway=gateway, cron_repo=cron_repo, audit_repo=audit)
+    delivery = MagicMock()
+    job = CronJob.from_row(
+        row,
+        delivery_service=delivery,
+        cron_repo=cron_repo,
+        audit_repo=audit,
+    )
     assert job._session_key == session_key
     assert job._task_type == "agent"
+    assert job._name == row.name
+    assert job._user_id == 1

@@ -180,10 +180,12 @@ class WebSocketChannel(BaseChannel):
         thread_id = str(subject.metadata.get("thread_id") or "").strip()
         if thread_id:
             await self._hub.push_to_thread(thread_id, {"type": "token", "content": text})
+            await self._hub.push_to_thread(thread_id, {"type": "done"})
             return
         conn_id = str(subject.metadata.get("ws_connection_id") or "")
         if conn_id:
             await self._hub.push(conn_id, {"type": "token", "content": text})
+            await self._hub.push(conn_id, {"type": "done"})
 
     async def _send_content(self, subject: ChannelSubject, parts: list[ContentPart]) -> None:
         text = "\n".join(p.text for p in parts if isinstance(p, TextContent) and p.text)

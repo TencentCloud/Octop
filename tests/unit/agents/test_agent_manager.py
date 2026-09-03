@@ -210,7 +210,18 @@ def test_build_harness_config_includes_cronjob_tools_when_cron_manager_set(
 
     gw = MagicMock()
     gw.thread_registry = MagicMock()
-    cron_mgr = CronManager(gateway=gw, repos=manager._repos, timezone="UTC")
+    from octop.infra.cron.delivery import CronDeliveryService
+
+    cron_mgr = CronManager(
+        gateway=gw,
+        delivery_service=CronDeliveryService(
+            gateway=gw,
+            agent_manager=manager,
+            repos=manager._repos,
+        ),
+        repos=manager._repos,
+        timezone="UTC",
+    )
     cron_mgr._scheduler = MagicMock()
     manager.set_cron_manager(cron_mgr)
 
