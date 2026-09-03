@@ -84,13 +84,14 @@ Options:
   --version <VER>       Install a specific version (e.g. 0.1.0) [PyPI only]
   --from-source [DIR]   Install from source; clones the git repo if DIR is omitted
   --from-pypi           Install from PyPI (default)
-  --extras <EXTRAS>     Extra optional components (e.g. desktop); browser/playwright always installed
+  --extras <EXTRAS>     Extra optional components (e.g. desktop, browser)
   --mirror <URL>        Use a specific PyPI mirror (e.g. https://mirrors.cloud.tencent.com/pypi/simple)
   -h, --help            Show this help
 
-Note: if Chrome/Chromium is already installed (common on macOS/Windows or
-  Linux desktops), the installer reuses it and skips the large bundled
-  Chromium download.
+Note: Playwright Chromium is not downloaded by default. Pass
+  --extras browser to install it, or install later from the dashboard.
+  If a system Chrome/Chromium already exists, that download is skipped
+  even with --extras browser.
 
 Environment variables:
   OCTOP_HOME              Install directory (default: ~/.octop)
@@ -104,10 +105,8 @@ Environment variables:
 
 Details:
   Everything is installed into an isolated virtualenv (~/.octop/venv), so the
-  system Python is untouched. Playwright dependencies are installed by
-  default; if a system Chrome/Chromium is detected, the bundled Chromium
-  download is skipped and the system browser is used instead:
-  1. Playwright Chromium browser and Python package (skipped if a system browser exists)
+  system Python is untouched. Playwright Chromium is opt-in (--extras browser):
+  1. Playwright Chromium browser (skipped if a system browser exists)
   2. System libraries (Linux: apt/dnf/yum/pacman/zypper; only needed for Chromium)
   3. CJK fonts for rendering Chinese web pages
 EOF
@@ -564,7 +563,7 @@ fi
 _ensure_old_glibc_build_toolchain
 
 # ── 步骤 3: 安装 Octop ───────────────────────────────────────────────────────
-# browser/playwright 为默认安装内容；其它 --extras 追加合并
+# playwright Python 包已是核心依赖；Chromium 浏览器仅在 --extras browser 时下载。
 _merge_install_extras() {
     local result="browser"
     if [ -n "$EXTRAS" ]; then
@@ -912,8 +911,22 @@ if p:
     return 1
 }
 
-# 默认安装 Playwright 系统依赖和 Chromium，但检测到系统浏览器时跳过下载。
-if "$OCTOP_VENV/bin/python" -c "import playwright" 2>/dev/null; then
+# Playwright Chromium is opt-in (--extras browser).
+_WANT_PW_CHROMIUM=0
+if [ -n "$EXTRAS" ]; then
+    _old_ifs="$IFS"
+    IFS=','
+    for _part in $EXTRAS; do
+        [ "$_part" = "browser" ] && _WANT_PW_CHROMIUM=1
+    done
+    IFS="$_old_ifs"
+fi
+
+if [ "$_WANT_PW_CHROMIUM" != 1 ]; then
+    info "Skipping Playwright Chromium download."
+    info "For remote-browser automation, re-run with --extras browser, use the dashboard, or:"
+    info "  $OCTOP_VENV/bin/python -m playwright install chromium"
+elif "$OCTOP_VENV/bin/python" -c "import playwright" 2>/dev/null; then
     _SYSTEM_CHROME="$(_detect_system_chrome || true)"
     if [ -n "$_SYSTEM_CHROME" ]; then
         info "Detected system Chrome/Chromium: $_SYSTEM_CHROME"
@@ -1138,4 +1151,4 @@ printf "  ${BOLD}octop service start${RESET}  # Install and run in the backgroun
 printf "  ${BOLD}open http://127.0.0.1:8088${RESET}\n"
 echo ""
 printf "Upgrade: re-run this installer. Cleanup: ${BOLD}octop clean${RESET}\n"
-printf "Playwright reinstall: ${BOLD}$OCTOP_VENV/bin/python -m playwright install chromium${RESET}\n"
+printf "Playwright Chromium (optional): ${BOLD}$OCTOP_VENV/bin/python -m playwright install chromium${RESET}\n"
