@@ -122,6 +122,9 @@ jobs:
               echo '```'
             } > .release-notes.md
           fi
+          if ! grep -q '^## Downloads' .release-notes.md; then
+            python3 scripts/release_download_links.py "$version" >> .release-notes.md
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v2
