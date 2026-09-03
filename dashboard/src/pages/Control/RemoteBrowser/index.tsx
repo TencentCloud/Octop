@@ -1195,10 +1195,11 @@ export default function RemoteBrowserPage({
       <Alert
         type="warning"
         showIcon
-        message={t("remoteBrowser.notInstalled", "Chromium 未安装")}
-        description={
-          envStatus?.error ?? t("remoteBrowser.notInstalledHint", "点击安装")
-        }
+        message={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
+        description={t(
+          "remoteBrowser.notInstalledHint",
+          "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+        )}
       />
     );
   };
@@ -1339,7 +1340,7 @@ export default function RemoteBrowserPage({
     type: "default" as const,
     title: t(
       "remoteBrowser.checkInstallTip",
-      "检查 Playwright 浏览器是否已安装，未安装则可安装",
+      "检查本机是否已准备好浏览器，未安装时可一键安装",
     ),
   };
 
@@ -1503,7 +1504,7 @@ export default function RemoteBrowserPage({
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
-                        : t("remoteBrowser.setupTitle", "需要配置浏览器环境")
+                        : t("remoteBrowser.setupTitle", "需要安装浏览器")
                     }
                     description={
                       envReady
@@ -1511,10 +1512,9 @@ export default function RemoteBrowserPage({
                             "remoteBrowser.startBrowserDesc",
                             "环境已就绪，按以下步骤开始远程浏览与操控",
                           )
-                        : envStatus?.error ||
-                          t(
+                        : t(
                             "remoteBrowser.setupDesc",
-                            "按以下步骤完成 Playwright / Chromium 环境配置",
+                            "先安装浏览器，即可开始远程浏览和自动操作网页",
                           )
                     }
                     steps={
@@ -1537,7 +1537,7 @@ export default function RemoteBrowserPage({
                             {
                               label: t(
                                 "remoteBrowser.setupStep1",
-                                "点击「检查」，检测 Playwright 与 Chromium 是否可用",
+                                "点击「检查」，确认本机是否已有可用浏览器",
                               ),
                             },
                             {
