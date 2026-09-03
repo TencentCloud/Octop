@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
@@ -207,3 +208,38 @@ def test_hf_snapshot_emits_tqdm_byte_progress(monkeypatch, tmp_path: Path) -> No
 
     assert (400_000, None, "Downloading bytes") in seen
     assert (800_000, 800_000, "Reconstructing") in seen
+
+
+def test_snapshot_disables_xet_before_hub_import(monkeypatch, tmp_path: Path) -> None:
+    import types
+
+    from octop.infra.agents.providers import onnx_download as mod
+
+    seen: dict[str, object] = {}
+    constants = types.ModuleType("huggingface_hub.constants")
+    constants.HF_HUB_DISABLE_XET = False
+    monkeypatch.setitem(sys.modules, "huggingface_hub.constants", constants)
+
+    def fake_snapshot_download(**kwargs: object) -> str:
+        seen["env"] = os.environ.get("HF_HUB_DISABLE_XET")
+        seen["const"] = constants.HF_HUB_DISABLE_XET
+        seen["endpoint"] = kwargs.get("endpoint")
+        return "ok"
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = fake_snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+
+    mod._download_hf_snapshot(
+        DownloadCandidate(
+            kind="hf-mirror",
+            probe_url="http://mirror",
+            hf_endpoint=HF_ENDPOINT_MIRROR,
+            hf_repo="Qdrant/bge-small-zh-v1.5",
+        ),
+        tmp_path / "cache",
+    )
+
+    assert seen["env"] == "1"
+    assert seen["const"] is True
+    assert seen["endpoint"] == HF_ENDPOINT_MIRROR
