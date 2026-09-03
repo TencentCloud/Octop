@@ -16,6 +16,7 @@ import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
 import InvitePage from "./pages/Invite";
 import AuthGuard from "./components/AuthGuard";
+import OctopSpinner from "./components/OctopSpinner";
 import { AntdAppProvider } from "./components/AntdAppProvider";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -29,6 +30,7 @@ import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
 import "./styles/form-override.css";
+import "./styles/spin-override.css";
 
 const GlobalStyle = createGlobalStyle`
 * {
@@ -114,7 +116,12 @@ function ThemedApp() {
   };
 
   return (
-    <ConfigProvider theme={themeConfig} prefixCls="octop" locale={antdLocale}>
+    <ConfigProvider
+      theme={themeConfig}
+      prefixCls="octop"
+      locale={antdLocale}
+      spin={{ indicator: <OctopSpinner /> }}
+    >
       <AntdAppProvider>
         <DesktopChromeProvider value={desktopChrome}>
           {desktopChrome ? (
