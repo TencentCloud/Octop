@@ -129,6 +129,7 @@ class CliChannel(BaseChannel):
         conn_id = str(subject.metadata.get(CLI_CONNECTION_META) or "")
         if conn_id and text:
             await self._hub.push(conn_id, {"type": "token", "content": text})
+            await self._hub.push(conn_id, {"type": "done"})
 
     async def _send_content(self, subject: ChannelSubject, parts: list[ContentPart]) -> None:
         text = "\n".join(p.text for p in parts if isinstance(p, TextContent) and p.text)

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -15,13 +16,12 @@ from harness_gateway.manager import ChannelManager
 from harness_gateway.models import ChannelSubject
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
-from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli import CLI_CHANNEL_ID, CliChannel, CliHub
 from octop.infra.gateway.history_backfill import HistoryBackfillQueue
-from octop.infra.gateway.process import build_harness_request, media_backend_for_agent
+from octop.infra.gateway.process import media_backend_for_agent
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.process.response_mode import (
     normalize_channel_response_mode,
@@ -34,7 +34,6 @@ from octop.infra.gateway.ws import (
     WebSocketChannel,
     WebSocketHub,
 )
-from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
@@ -359,7 +358,8 @@ class Gateway:
         await self._unregister(channel_id)
         self._runtime_status.pop(channel_id, None)
 
-    def _require_session(self, agent_id: str, session_key: str) -> SessionRow:
+    def require_session(self, agent_id: str, session_key: str) -> SessionRow:
+        """Return a session after validating its owning agent."""
         session = self._thread_registry.get_session(session_key)
         if session is None:
             raise ValueError(f"session {session_key!r} not found")
@@ -367,128 +367,97 @@ class Gateway:
             raise ValueError(f"session {session_key!r} does not belong to agent {agent_id!r}")
         return session
 
-    def _bump_dashboard_session(self, session: SessionRow, session_key: str, text: str) -> None:
+    def _bump_virtual_session(self, session: SessionRow, text: str) -> None:
         self._thread_registry.touch_last_active(session.thread_id)
         if text:
             self._thread_registry.set_title_if_null(session.thread_id, text)
-        self._thread_registry.increment_unread(session_key)
+        self._thread_registry.increment_unread(session.session_key)
+
+    async def run_in_session(
+        self,
+        agent_id: str,
+        session_key: str,
+        operation: Callable[[], Awaitable[None]],
+    ) -> None:
+        """Serialize a proactive operation with inbound turns for its session."""
+        session = self.require_session(agent_id, session_key)
+        manager = self._require_channel_manager()
+        channel_id = self._channel_id_for_session(session)
+        await manager.run_in_session(channel_id, session_key, operation)
 
     async def push_text_from_session(
         self,
         agent_id: str,
         session_key: str,
         text: str,
-        *,
-        task_type: CronTaskType | str = "agent",
-        model: str | None = None,
-        mcp_servers: list[str] | None = None,
     ) -> None:
-        """Cron delivery: run agent if needed, then push text (IM channel or dashboard WS)."""
-        session = self._require_session(agent_id, session_key)
-        virtual_stream = session.channel_type in (
+        """Push complete text without running the agent."""
+
+        async def _locked() -> None:
+            session = self.require_session(agent_id, session_key)
+            await self.push_session_text(session, text, title_source=text)
+            if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+                await self.notify_dashboard_push(session, agent_id, text)
+
+        await self.run_in_session(agent_id, session_key, _locked)
+
+    async def push_session_text(
+        self,
+        session: SessionRow,
+        text: str,
+        *,
+        title_source: str | None = None,
+    ) -> None:
+        """Deliver one complete proactive message to a resolved session."""
+        channel_id = self._channel_id_for_session(session)
+        await self.push_text(
+            session.channel_type,
+            channel_id,
+            self._resolve_push_subject(session),
+            text,
+        )
+        if session.channel_type in (
             ThreadRegistry.CHANNEL_DASHBOARD,
             ThreadRegistry.CHANNEL_CLI,
-        )
-        is_text = normalize_cron_task_type(str(task_type)) == "text"
+        ):
+            self._bump_virtual_session(session, title_source or text)
 
-        if is_text:
-            outbound = text
-        else:
-            # Stamp composer chips on this run's HumanMessage only (no history backfill).
-            from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
-                COMPOSER_CTX_KEY,
-                build_composer_context,
-            )
-
-            servers = [s.strip() for s in (mcp_servers or []) if s and str(s).strip()]
-            # Empty job selection → follow default_open. Explicit picks win as-is.
-            if servers:
-                servers = (
-                    self._agent_manager.merge_turn_mcp_servers(
-                        session.user_id, servers, apply_defaults=False
-                    )
-                    or []
-                )
-            else:
-                servers = (
-                    self._agent_manager.merge_turn_mcp_servers(
-                        session.user_id, None, apply_defaults=True
-                    )
-                    or []
-                )
-            if servers:
-                failed = await self._agent_manager.prepare_chat_mcp(
-                    agent_id,
-                    servers,
-                    connector_user_id=session.user_id,
-                )
-                if failed:
-                    raise OctopError(
-                        ErrorCode.CONNECTOR_MCP_LOAD_FAILED,
-                        f"mcp load failed: {', '.join(failed)}",
-                    )
-            row = self._agent_manager.get_row(agent_id)
-            default_model = (row.default_model if row is not None else None) or None
-            composer = build_composer_context(
-                mcp_servers=servers or None,
-                skills=None,
-                target_agent_ids=None,
-                model_ref=model,
-                default_model=default_model,
-            )
-            message_kwargs = {COMPOSER_CTX_KEY: composer} if composer else None
-            request = build_harness_request(
-                thread_id=session.thread_id,
-                user_id=session.user_id,
-                agent_id=agent_id,
-                session_key=session_key,
-                source=session.channel_type,
-                text=text,
-                model=model,
-                message_kwargs=message_kwargs,
-            )
-            if servers:
-                request["mcp_servers"] = servers
-            parts: list[str] = []
-            async for chunk in self._agent_manager.stream(agent_id, request):
-                if chunk.get("type") in ("token", "delta"):
-                    parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-            outbound = strip_thinking("".join(parts)) or "(empty)"
-
-        if virtual_stream:
-            self._bump_dashboard_session(session, session_key, text)
-            channel_id = (
-                WS_CHANNEL_ID
-                if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD
-                else CLI_CHANNEL_ID
-            )
-            await self.push_text(
-                session.channel_type,
-                channel_id,
-                self._resolve_push_subject(session),
-                outbound,
-            )
-            if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD and is_text:
-                await self._notify_dashboard_text_push(session, agent_id, outbound)
-            return
-
+    @staticmethod
+    def _channel_id_for_session(session: SessionRow) -> str:
+        if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+            return WS_CHANNEL_ID
+        if session.channel_type == ThreadRegistry.CHANNEL_CLI:
+            return CLI_CHANNEL_ID
         if not session.channel_id:
             raise ValueError(
                 f"session is IM ({session.channel_type!r}) but has no channel_id bound"
             )
-        await self.push_text(
-            session.channel_type,
-            session.channel_id,
-            self._resolve_push_subject(session),
-            outbound,
-        )
+        return session.channel_id
 
     def _resolve_push_subject(self, session: SessionRow) -> ChannelSubject:
         """Build ChannelSubject from session; IM routing enrichment is in harness-gateway."""
-        return session.to_channel_subject()
+        subject = session.to_channel_subject()
+        if session.channel_type not in (
+            ThreadRegistry.CHANNEL_DASHBOARD,
+            ThreadRegistry.CHANNEL_CLI,
+        ):
+            return subject
+        metadata = dict(subject.metadata or {})
+        metadata["thread_id"] = session.thread_id
+        return ChannelSubject(
+            subject_id=subject.subject_id,
+            first_seen=subject.first_seen,
+            last_seen=subject.last_seen,
+            display_name=subject.display_name,
+            chat_type=subject.chat_type,
+            metadata=metadata,
+        )
 
-    async def _notify_dashboard_text_push(
-        self, session: SessionRow, agent_id: str, text: str
+    async def notify_dashboard_push(
+        self,
+        session: SessionRow,
+        agent_id: str,
+        text: str,
     ) -> None:
         """Fan out a toast payload to the owner's dashboard notification sockets."""
         if not text.strip():

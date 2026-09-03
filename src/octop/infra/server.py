@@ -379,8 +379,16 @@ class OctopServer:
         gateway.set_slash_meta(version=__version__, started_at=started_at)
         self._started_at = started_at
 
+        from octop.infra.cron.delivery import CronDeliveryService  # noqa: PLC0415
+
+        cron_delivery = CronDeliveryService(
+            gateway=gateway,
+            agent_manager=registry,
+            repos=self.services.repos,
+        )
         cron_mgr = CronManager(
             gateway=gateway,
+            delivery_service=cron_delivery,
             repos=self.services.repos,
             timezone=config.default_timezone,
         )

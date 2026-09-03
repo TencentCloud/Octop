@@ -56,3 +56,25 @@ async def test_cli_channel_streams_chunks() -> None:
 
     assert {"type": "token", "content": "hello"} in frames
     assert frames[-1] == {"type": "done"}
+
+
+@pytest.mark.asyncio
+async def test_cli_channel_send_text_finalizes_with_done() -> None:
+    hub = CliHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    hub.register("conn-1", capture)
+    channel = CliChannel(object(), hub=hub)  # type: ignore[arg-type]
+    subject = ChannelSubject(
+        subject_id="7",
+        chat_type="dm",
+        metadata={CLI_CONNECTION_META: "conn-1"},
+    )
+    await channel._send_text(subject, "hello")
+    assert frames == [
+        {"type": "token", "content": "hello"},
+        {"type": "done"},
+    ]

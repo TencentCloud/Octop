@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.job import CronJob
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
@@ -53,10 +54,12 @@ class CronManager:
         self,
         *,
         gateway: Gateway,
+        delivery_service: CronDeliveryService,
         repos: RepoBundle,
         timezone: str = "Asia/Shanghai",
     ) -> None:
         self._gateway = gateway
+        self._delivery_service = delivery_service
         self._repos = repos
         self._timezone = timezone
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone=timezone)
@@ -67,6 +70,7 @@ class CronManager:
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point cron persistence at a rebound control-plane pool."""
         self._repos = repos
+        self._delivery_service.replace_repos(repos)
 
     async def boot(self) -> None:
         self._scheduler.start()
@@ -224,7 +228,7 @@ class CronManager:
     def _make_job(self, row: Any) -> CronJob:
         return CronJob.from_row(
             row,
-            gateway=self._gateway,
+            delivery_service=self._delivery_service,
             cron_repo=self._repos.cron_repo,
             audit_repo=self._repos.audit_repo,
         )
