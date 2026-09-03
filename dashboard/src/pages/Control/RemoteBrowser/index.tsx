@@ -646,10 +646,7 @@ export default function RemoteBrowserPage({
                 if (removed) {
                   setUninstallLogs([]);
                   antMessage.success(
-                    t(
-                      "remoteBrowser.uninstallSuccess",
-                      "内置浏览器已卸载",
-                    ),
+                    t("remoteBrowser.uninstallSuccess", "内置浏览器已卸载"),
                   );
                   resolve();
                   return;
@@ -1186,9 +1183,7 @@ export default function RemoteBrowserPage({
 
     return (
       <Result
-        icon={
-          <AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />
-        }
+        icon={<AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />}
         title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
         subTitle={t(
           "remoteBrowser.notInstalledHint",
