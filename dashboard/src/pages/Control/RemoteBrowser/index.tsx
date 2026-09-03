@@ -23,6 +23,7 @@ import {
 } from "antd";
 
 import {
+  AlertCircle,
   Bot,
   CheckCircle2,
   Copy,
@@ -748,10 +749,10 @@ export default function RemoteBrowserPage({
   const shutdownBrowser = useCallback(() => {
     const profile = profileIdRef.current || "default";
     modal.confirm({
-      title: t("remoteBrowser.shutdownTitle", "关闭浏览器进程"),
+      title: t("remoteBrowser.shutdownTitle", "关闭浏览器"),
       content: t(
         "remoteBrowser.shutdownConfirm",
-        "将结束本机 Chrome 进程并释放内存。登录状态会保留在磁盘，下次启动仍可复用。是否继续？",
+        "将关闭当前浏览器窗口。已登录的网站下次打开时仍然有效。",
       ),
       okText: t("remoteBrowser.stop", "关闭浏览器"),
       okButtonProps: { danger: true },
@@ -762,7 +763,7 @@ export default function RemoteBrowserPage({
         } catch (err: unknown) {
           showApiError(
             err,
-            t("remoteBrowser.shutdownFailed", "关闭浏览器进程失败"),
+            t("remoteBrowser.shutdownFailed", "关闭浏览器失败"),
             t,
           );
           throw err;
@@ -1184,14 +1185,16 @@ export default function RemoteBrowserPage({
     }
 
     return (
-      <Alert
-        type="warning"
-        showIcon
-        message={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
-        description={t(
+      <Result
+        icon={
+          <AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />
+        }
+        title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
+        subTitle={t(
           "remoteBrowser.notInstalledHint",
           "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
         )}
+        style={{ padding: "8px 0" }}
       />
     );
   };
