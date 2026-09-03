@@ -5,13 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 from octop.api.routers.chat.trajectory import (
+    _LIST_MAX_SUMMARY_CHARS,
     _LIST_MAX_TOOL_FIELD_CHARS,
+    _resume_after_seq,
     _summarize_event,
 )
 from octop.infra.trajectory.types import TrajectoryEvent
 
 
-def _event(*, kind: str = "tool", payload: dict[str, Any] | None = None) -> TrajectoryEvent:
+def _event(
+    *,
+    kind: str = "tool",
+    summary: str = "x",
+    payload: dict[str, Any] | None = None,
+) -> TrajectoryEvent:
     return TrajectoryEvent(
         event_id="e1",
         thread_id="T1",
@@ -22,7 +29,7 @@ def _event(*, kind: str = "tool", payload: dict[str, Any] | None = None) -> Traj
         turn_id=None,
         request_seq=None,
         is_error=False,
-        summary="x",
+        summary=summary,
         payload=payload or {},
     )
 
@@ -65,3 +72,15 @@ def test_summarize_clips_oversized_tool_result() -> None:
     assert isinstance(result, str)
     assert result.endswith("…")
     assert len(result) == _LIST_MAX_TOOL_FIELD_CHARS + 1
+
+
+def test_summarize_clips_message_summary() -> None:
+    data = _summarize_event(_event(kind="user", summary="x" * (_LIST_MAX_SUMMARY_CHARS + 50)))
+
+    assert data["summary"].endswith("…")
+    assert len(data["summary"]) == _LIST_MAX_SUMMARY_CHARS
+
+
+def test_sse_resume_prefers_newer_last_event_id() -> None:
+    assert _resume_after_seq(10, "14") == 14
+    assert _resume_after_seq(10, "8") == 10

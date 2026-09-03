@@ -152,6 +152,20 @@ class GlobalProcessor:
                 thread_id,
             )
 
+    def _finish_trajectory(
+        self,
+        *,
+        thread_id: str,
+        usage: dict[str, Any] | None = None,
+    ) -> None:
+        service = self._trajectory_service
+        if service is None:
+            return
+        try:
+            service.finish_turn(thread_id, usage)
+        except Exception:
+            logger.exception("trajectory finish_turn failed thread=%s", thread_id)
+
     async def _observe_turn_start_context(
         self,
         *,
@@ -173,7 +187,7 @@ class GlobalProcessor:
 
             include_system = phase == "system" and not bool(service.has_kind(thread_id, "system"))
             system_prompt = self._trajectory_system_prompt(agent_id) if phase == "system" else None
-            workspace_files: list[tuple[str, str]] = []
+            workspace_files: list[str] = []
             skills: list[str] | None = None
             skills_filter_present = False
             mcp_names: list[str] | None = None
@@ -255,17 +269,17 @@ class GlobalProcessor:
             rows.append(item)
         return rows
 
-    async def _trajectory_workspace_files(self, agent_id: str) -> list[tuple[str, str]]:
-        """Memory files harness injects — ``DEFAULT_MEMORY_FILES`` ∩ exists ∩ non-empty."""
+    async def _trajectory_workspace_files(self, agent_id: str) -> list[str]:
+        """Return existing harness memory paths without duplicating their contents."""
         from octop.infra.trajectory.turn_context import memory_file_order  # noqa: PLC0415
 
         workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         if workspace is None:
             return []
-        out: list[tuple[str, str]] = []
+        out: list[str] = []
         for name in memory_file_order():
             try:
-                exists = workspace.exists(name)
+                exists = await workspace.aexists(name)
             except Exception:
                 logger.debug(
                     "trajectory workspace exists failed agent=%s path=%s",
@@ -276,23 +290,7 @@ class GlobalProcessor:
                 continue
             if not exists:
                 continue
-            try:
-                text = await workspace.aread_text(name)
-            except Exception:
-                logger.debug(
-                    "trajectory workspace read failed agent=%s path=%s",
-                    agent_id,
-                    name,
-                    exc_info=True,
-                )
-                continue
-            if text is None:
-                continue
-            cleaned = str(text).strip()
-            # deepagents empty-file sentinel — not real workspace content.
-            if not cleaned or cleaned == "System reminder: File exists but has empty contents":
-                continue
-            out.append((name, cleaned))
+            out.append(name)
         return out
 
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
@@ -866,6 +864,8 @@ class GlobalProcessor:
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             yield {"type": "error", "message": format_stream_error(exc, locale)}
+        finally:
+            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(
@@ -901,6 +901,7 @@ class GlobalProcessor:
                 yield chunk
             completed = True
         finally:
+            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
                 self._record_turn_usage(

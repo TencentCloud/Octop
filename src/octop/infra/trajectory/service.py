@@ -16,17 +16,30 @@ from octop.infra.trajectory.store import TrajectoryStore
 from octop.infra.trajectory.types import TrajectoryEvent
 
 logger = logging.getLogger(__name__)
+_METRICS_CACHE_TTL_S = 1.0
+_LIVE_UPDATE_INTERVAL_S = 0.05
 
 
 @dataclass
 class _ThreadInFlight:
     assistant: TrajectoryEvent | None = None
+    usage_target: TrajectoryEvent | None = None
     tools: dict[str, TrajectoryEvent] = field(default_factory=dict)
+    dirty_tools: set[str] = field(default_factory=set)
     #: Synthetic ASSISTANT "(tool call only)" already emitted for the current tool burst.
     tool_call_only: bool = False
     #: Active turn id when harness chunks omit ``turn_id``.
     turn_id: str | None = None
     turn_seq: int = 0
+    next_seq: int | None = None
+    system_seen: bool | None = None
+    last_publish_at: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _CachedMetrics:
+    value: TrajectoryMetrics
+    expires_at: float
 
 
 class TrajectoryService:
@@ -34,11 +47,14 @@ class TrajectoryService:
         self._store = store
         self._bus = bus
         self._inflight: dict[str, _ThreadInFlight] = {}
+        self._metrics_cache: dict[str, _CachedMetrics] = {}
 
     def observe_chunk(self, agent_id: str, thread_id: str, chunk: dict[str, Any]) -> None:
         try:
             events = project_harness_chunk(chunk, agent_id=agent_id, thread_id=thread_id, seq=0)
             for event in events:
+                if event.kind == "user":
+                    self.finish_turn(event.thread_id)
                 event = self._with_thread_defaults(event)
                 if event.kind == "assistant":
                     self._observe_assistant(event)
@@ -57,6 +73,8 @@ class TrajectoryService:
     def replace_store(self, store: TrajectoryStore) -> None:
         """Point append/list at a rebound control-plane pool."""
         self._store = store
+        self._inflight.clear()
+        self._metrics_cache.clear()
 
     def list_events(
         self,
@@ -71,11 +89,26 @@ class TrajectoryService:
     def get_event(self, event_id: str) -> TrajectoryEvent | None:
         return self._store.get(event_id)
 
-    def metrics(self, thread_id: str) -> TrajectoryMetrics:
-        return aggregate_metrics(list(self._store.iter_for_export(thread_id)))
+    def metrics(self, thread_id: str, *, refresh: bool = False) -> TrajectoryMetrics:
+        now = time.monotonic()
+        cached = self._metrics_cache.get(thread_id)
+        if not refresh and cached is not None and cached.expires_at > now:
+            return cached.value
+        value = aggregate_metrics(list(self._store.iter_for_export(thread_id)))
+        self._metrics_cache[thread_id] = _CachedMetrics(
+            value=value,
+            expires_at=now + _METRICS_CACHE_TTL_S,
+        )
+        return value
 
     def has_kind(self, thread_id: str, kind: str) -> bool:
-        return bool(self._store.list_before(thread_id, before_seq=None, limit=1, kinds=[kind]))
+        state = self._inflight.setdefault(thread_id, _ThreadInFlight())
+        if kind == "system" and state.system_seen is not None:
+            return state.system_seen
+        found = bool(self._store.list_before(thread_id, before_seq=None, limit=1, kinds=[kind]))
+        if kind == "system":
+            state.system_seen = found
+        return found
 
     def export_jsonl(self, thread_id: str) -> Iterator[str]:
         for event in self._store.iter_for_export(thread_id):
@@ -83,7 +116,35 @@ class TrajectoryService:
 
     def delete_for_thread(self, thread_id: str) -> int:
         self._inflight.pop(thread_id, None)
+        self._metrics_cache.pop(thread_id, None)
         return self._store.delete_for_thread(thread_id)
+
+    def finish_turn(self, thread_id: str, usage: dict[str, Any] | None = None) -> None:
+        """Persist final in-flight snapshots and release per-turn aggregation state."""
+        state = self._inflight.get(thread_id)
+        if state is None:
+            return
+        if state.assistant is not None:
+            assistant = state.assistant
+            if usage:
+                assistant = replace(assistant, payload={**assistant.payload, **usage})
+            self._upsert(_stamp_llm_duration(assistant), final=True)
+        elif state.usage_target is not None and usage:
+            target = replace(
+                state.usage_target,
+                payload={**state.usage_target.payload, **usage},
+            )
+            self._upsert(target, final=True)
+        for call_id in state.dirty_tools:
+            tool = state.tools.get(call_id)
+            if tool is not None:
+                self._upsert(tool)
+        state.assistant = None
+        state.usage_target = None
+        state.tools.clear()
+        state.dirty_tools.clear()
+        state.tool_call_only = False
+        state.last_publish_at.clear()
 
     def _with_thread_defaults(self, event: TrajectoryEvent) -> TrajectoryEvent:
         """Fill wall-clock ``ts`` and a stable ``turn_id`` when harness omits them."""
@@ -109,11 +170,13 @@ class TrajectoryService:
         current = state.assistant
         if current is not None and _same_assistant_request(current, event):
             merged = _merge_assistant(current, event)
-            self._upsert(merged)
             state.assistant = merged
+            state.usage_target = merged
+            self._publish_partial(merged)
             return
         self._finalize_assistant(event.thread_id)
         state.assistant = self._commit_new(event)
+        state.usage_target = state.assistant
 
     def _observe_tool(self, event: TrajectoryEvent) -> None:
         state = self._inflight.setdefault(event.thread_id, _ThreadInFlight())
@@ -123,7 +186,7 @@ class TrajectoryService:
         # DSH parity: only the model issues tool calls. When a tool burst starts
         # with no open assistant text bubble, insert a synthetic parent row.
         if current is None and state.assistant is None and not state.tool_call_only:
-            self._commit_new(_tool_call_only_parent(event))
+            state.usage_target = self._commit_new(_tool_call_only_parent(event))
             state.tool_call_only = True
 
         # Stop appending later tokens onto a prior text assistant once tools run.
@@ -131,8 +194,13 @@ class TrajectoryService:
 
         if current is not None:
             merged = _merge_tool(current, event)
-            self._upsert(merged)
             state.tools[call_id] = merged
+            if "result" in event.payload:
+                self._upsert(merged)
+                state.dirty_tools.discard(call_id)
+            else:
+                state.dirty_tools.add(call_id)
+                self._publish_partial(merged)
             return
         committed = self._commit_new(event)
         if call_id:
@@ -145,8 +213,8 @@ class TrajectoryService:
         current = state.assistant
         if current is not None:
             stamped = _stamp_llm_duration(current)
-            if stamped is not current:
-                self._upsert(stamped)
+            self._upsert(stamped)
+            state.usage_target = stamped
         state.assistant = None
         if not clear_only:
             state.tool_call_only = False
@@ -155,18 +223,41 @@ class TrajectoryService:
         seq = self._next_seq(event.thread_id)
         stored = replace(event, seq=seq, event_id=_stable_event_id(event, seq))
         if self._store.append(stored):
-            self._bus.publish(stored.thread_id, asdict(stored))
+            if event.kind == "system":
+                self._inflight[event.thread_id].system_seen = True
+            self._publish(stored)
         return stored
 
-    def _upsert(self, event: TrajectoryEvent) -> None:
+    def _upsert(self, event: TrajectoryEvent, *, final: bool = False) -> None:
         if self._store.upsert(event):
-            self._bus.publish(event.thread_id, asdict(event))
+            self._publish(event, final=final)
+
+    def _publish(self, event: TrajectoryEvent, *, final: bool = False) -> None:
+        message = asdict(event)
+        if final:
+            message["_final"] = True
+        self._bus.publish(event.thread_id, message)
+        state = self._inflight.get(event.thread_id)
+        if state is not None:
+            state.last_publish_at[event.event_id] = time.monotonic()
+
+    def _publish_partial(self, event: TrajectoryEvent) -> None:
+        state = self._inflight[event.thread_id]
+        now = time.monotonic()
+        if now - state.last_publish_at.get(event.event_id, 0.0) < _LIVE_UPDATE_INTERVAL_S:
+            return
+        self._publish(event)
 
     def _next_seq(self, thread_id: str) -> int:
+        state = self._inflight.setdefault(thread_id, _ThreadInFlight())
+        if state.next_seq is not None:
+            seq = state.next_seq
+            state.next_seq += 1
+            return seq
         latest = self._store.list_before(thread_id, before_seq=None, limit=1, kinds=None)
-        if not latest:
-            return 1
-        return latest[0].seq + 1
+        seq = latest[0].seq + 1 if latest else 1
+        state.next_seq = seq + 1
+        return seq
 
 
 def _stable_event_id(event: TrajectoryEvent, seq: int) -> str:

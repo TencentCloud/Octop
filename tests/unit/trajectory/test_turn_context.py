@@ -21,19 +21,19 @@ def test_build_turn_start_includes_system_and_memory_skills_mcp() -> None:
     chunks = build_turn_start_chunks(
         include_system=True,
         system_prompt="You are Octop.\nBe helpful.",
-        workspace_files=[
-            ("AGENTS.md", "# Rules\nDo not invent APIs."),
-            ("USER.md", "Name: Ada"),
-        ],
+        workspace_files=["AGENTS.md", "USER.md"],
         skills=["bash", "read"],
         mcp_servers=["github"],
     )
     kinds = [c["type"] for c in chunks]
     assert kinds == ["system", "context", "context", "context", "context"]
     assert chunks[0]["label"] == "Initial System Prompt"
-    assert "You are Octop" in chunks[0]["content"]
+    assert "content" not in chunks[0]
+    assert chunks[0]["content_chars"] == len("You are Octop.\nBe helpful.")
+    assert len(str(chunks[0]["content_sha256"])) == 64
     assert chunks[1]["source"] == "memory"
     assert chunks[1]["label"] == "AGENTS.md"
+    assert "content" not in chunks[1]
     assert chunks[2]["label"] == "USER.md"
     assert chunks[3]["source"] == "skills"
     assert "bash" in chunks[3]["content"]
@@ -59,7 +59,7 @@ def test_build_turn_start_skips_empty_system_prompt() -> None:
     chunks = build_turn_start_chunks(
         include_system=True,
         system_prompt="  ",
-        workspace_files=[("SOUL.md", "# Persona")],
+        workspace_files=["SOUL.md"],
         skills=None,
         mcp_servers=None,
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -23,14 +24,21 @@ _TOOL_CHUNK = {
 class _RecordingService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, dict[str, Any]]] = []
+        self.finished: list[tuple[str, dict[str, Any] | None]] = []
 
     def observe_chunk(self, agent_id: str, thread_id: str, chunk: dict[str, Any]) -> None:
         self.calls.append((agent_id, thread_id, chunk))
+
+    def finish_turn(self, thread_id: str, usage: dict[str, Any] | None = None) -> None:
+        self.finished.append((thread_id, usage))
 
 
 class _BoomService:
     def observe_chunk(self, *_args: object, **_kwargs: object) -> None:
         raise RuntimeError("observe down")
+
+    def finish_turn(self, *_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("finish down")
 
 
 def _processor(*, trajectory_service: object | None) -> GlobalProcessor:
@@ -97,6 +105,7 @@ async def test_iter_turn_chunks_observes_user_before_stream() -> None:
     assert "read a.py" in str(user_chunk.get("content") or "")
     assert service.calls[0][0] == "agent-1"
     assert service.calls[0][1] == "thread-1"
+    assert service.finished == [("thread-1", None)]
 
 
 @pytest.mark.asyncio
@@ -118,3 +127,20 @@ async def test_iter_turn_chunks_noop_when_service_absent() -> None:
 
     assert any(c.get("type") == "tool_call_chunk" for c in chunks)
     assert chunks[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_finishes_trajectory_when_cancelled() -> None:
+    service = _RecordingService()
+    processor = _processor(trajectory_service=service)
+
+    async def cancelled_stream(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "partial"}
+        raise asyncio.CancelledError
+
+    processor._agent_manager.stream = cancelled_stream  # noqa: SLF001
+
+    with pytest.raises(asyncio.CancelledError):
+        _ = [chunk async for chunk in processor.iter_turn_chunks(_dashboard_msg())]
+
+    assert service.finished == [("thread-1", None)]
