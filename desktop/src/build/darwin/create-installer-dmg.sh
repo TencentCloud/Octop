@@ -19,6 +19,8 @@ if [[ ! -d "$app_path" ]]; then
 fi
 
 app_name="$(basename "$app_path")"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bg_src="${script_dir}/dmg-background.jpeg"
 work="$(mktemp -d "${TMPDIR:-/tmp}/octop-dmg.XXXXXX")"
 staging="${work}/root"
 rw_dmg="${work}/rw.dmg"
@@ -41,6 +43,10 @@ trap cleanup EXIT
 mkdir -p "$staging"
 ditto "$app_path" "${staging}/${app_name}"
 ln -s /Applications "${staging}/Applications"
+if [[ -f "$bg_src" ]]; then
+  mkdir -p "${staging}/.background"
+  cp "$bg_src" "${staging}/.background/background.png"
+fi
 
 create_plain_dmg() {
   rm -f "$output"
@@ -65,6 +71,7 @@ if [[ -z "$device" || -z "$mount_point" || ! -d "$mount_point" ]]; then
 fi
 
 # Finder layout is cosmetic. The Applications symlink is already in the image.
+# Window 600x400 matches dmg-background.jpeg; icons sit in the white well.
 if ! osascript - "$volname" "$app_name" <<'APPLESCRIPT'
 on run argv
   set volName to item 1 of argv
@@ -75,12 +82,15 @@ on run argv
       set current view of container window to icon view
       set toolbar visible of container window to false
       set statusbar visible of container window to false
-      set the bounds of container window to {200, 120, 760, 480}
+      set the bounds of container window to {200, 120, 800, 520}
       set viewOptions to the icon view options of container window
       set arrangement of viewOptions to not arranged
       set icon size of viewOptions to 128
-      set position of item appName of container window to {140, 180}
-      set position of item "Applications" of container window to {420, 180}
+      try
+        set background picture of viewOptions to file ".background:background.png"
+      end try
+      set position of item appName of container window to {150, 250}
+      set position of item "Applications" of container window to {450, 250}
       close
       open
       update without registering applications
