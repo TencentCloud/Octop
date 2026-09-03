@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from typing import Any
 
@@ -52,15 +53,15 @@ def build_turn_start_chunks(
     *,
     include_system: bool,
     system_prompt: str | None,
-    workspace_files: Sequence[tuple[str, str]],
+    workspace_files: Sequence[str],
     skills: list[str] | None,
     mcp_servers: list[str] | None,
     skills_filter_present: bool = False,
 ) -> list[dict[str, Any]]:
     """Return projector-ready chunks aligned with harness injection.
 
-    ``workspace_files`` must already be filtered to files harness would load
-    (``DEFAULT_MEMORY_FILES`` ∩ exists ∩ non-empty). ``skills`` is the final
+    ``workspace_files`` must already be filtered to files harness may load
+    (``DEFAULT_MEMORY_FILES`` ∩ exists). ``skills`` is the final
     enabled allow-list for this turn (or ``None`` to omit the skills row when
     the catalog could not be resolved). When ``skills_filter_present`` and
     ``skills == []``, emit an explicit ``(none)`` row so the ledger is not
@@ -73,21 +74,17 @@ def build_turn_start_chunks(
             {
                 "type": "system",
                 "label": "Initial System Prompt",
-                "content": prompt,
+                **_content_reference(prompt),
             }
         )
 
-    for label, body in workspace_files:
-        text = (body or "").strip()
-        if not text:
-            continue
+    for label in workspace_files:
         name = (label or "").strip() or "workspace"
         chunks.append(
             {
                 "type": "context",
                 "source": _MEMORY_SOURCE,
                 "label": name,
-                "content": text,
             }
         )
 
@@ -121,3 +118,11 @@ def build_turn_start_chunks(
         )
 
     return chunks
+
+
+def _content_reference(content: str) -> dict[str, str | int]:
+    encoded = content.encode("utf-8")
+    return {
+        "content_sha256": hashlib.sha256(encoded).hexdigest(),
+        "content_chars": len(content),
+    }

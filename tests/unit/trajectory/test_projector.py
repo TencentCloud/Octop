@@ -146,6 +146,28 @@ def test_project_system_chunk_emits_system_event() -> None:
     assert "Initial System Prompt" in ev.summary or "You are Octop" in ev.summary
 
 
+def test_project_system_chunk_keeps_content_reference_without_body() -> None:
+    digest = "a" * 64
+    events = project_harness_chunk(
+        {
+            "type": "system",
+            "label": "Initial System Prompt",
+            "content_sha256": digest,
+            "content_chars": 42,
+        },
+        agent_id="A1",
+        thread_id="T1",
+        seq=1,
+    )
+
+    assert len(events) == 1
+    assert events[0].payload == {
+        "label": "Initial System Prompt",
+        "content_sha256": digest,
+        "content_chars": 42,
+    }
+
+
 def test_project_context_chunk_keeps_content_body() -> None:
     events = project_harness_chunk(
         {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -82,9 +83,17 @@ def test_observe_chunk_appends_publishes_and_exports(tmp_path: Path) -> None:
     assert exported["kind"] == "user"
 
 
-def test_observe_aggregates_tokens_into_one_assistant(tmp_path: Path) -> None:
+def test_observe_aggregates_tokens_without_per_token_db_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("octop.infra.trajectory.service.time.monotonic", lambda: 1.0)
     service, bus = _service(tmp_path)
     queue = bus.subscribe("T1")
+    append = MagicMock(side_effect=service._store.append)  # noqa: SLF001
+    upsert = MagicMock(side_effect=service._store.upsert)  # noqa: SLF001
+    service._store.append = append  # type: ignore[method-assign]  # noqa: SLF001
+    service._store.upsert = upsert  # type: ignore[method-assign]  # noqa: SLF001
 
     for piece in ("Hel", "lo ", "world"):
         service.observe_chunk(
@@ -92,6 +101,11 @@ def test_observe_aggregates_tokens_into_one_assistant(tmp_path: Path) -> None:
             "T1",
             {"type": "token", "node": "agent", "content": piece, "request_seq": 3},
         )
+
+    assert append.call_count == 1
+    assert upsert.call_count == 0
+    service.finish_turn("T1")
+    assert upsert.call_count == 1
 
     events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
     assert len(events) == 1
@@ -102,9 +116,62 @@ def test_observe_aggregates_tokens_into_one_assistant(tmp_path: Path) -> None:
     assert ev.request_seq == 3
 
     published = [queue.get_nowait() for _ in range(queue.qsize())]
-    assert len(published) >= 1
+    assert len(published) == 2
     assert published[0]["event_id"] == ev.event_id
     assert all(item["event_id"] == ev.event_id for item in published)
+
+
+def test_finish_turn_persists_usage_and_marks_final_live_snapshot(tmp_path: Path) -> None:
+    service, bus = _service(tmp_path)
+    queue = bus.subscribe("T1")
+    service.observe_chunk("A1", "T1", {"type": "token", "content": "done"})
+
+    service.finish_turn(
+        "T1",
+        {"input_tokens": 12, "output_tokens": 3, "cache_read_tokens": 4},
+    )
+
+    event = service.list_events("T1", before_seq=None, limit=1, kinds=None)[0]
+    assert event.payload["input_tokens"] == 12
+    assert "_final" not in event.payload
+    published = [queue.get_nowait() for _ in range(queue.qsize())]
+    assert published[-1]["_final"] is True
+
+
+def test_finish_turn_attaches_usage_when_tools_follow_assistant(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "token", "content": "checking"})
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_call_chunk", "id": "c1", "name": "read", "args": "{}"},
+    )
+    service.observe_chunk(
+        "A1",
+        "T1",
+        {"type": "tool_result", "id": "c1", "name": "read", "content": "ok"},
+    )
+
+    service.finish_turn("T1", {"input_tokens": 7, "output_tokens": 2})
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    assistant = next(event for event in events if event.kind == "assistant")
+    assert assistant.payload["input_tokens"] == 7
+    assert assistant.payload["output_tokens"] == 2
+
+
+def test_metrics_reuses_short_lived_cache(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hello"})
+    iterate = MagicMock(side_effect=service._store.iter_for_export)  # noqa: SLF001
+    service._store.iter_for_export = iterate  # type: ignore[method-assign]  # noqa: SLF001
+
+    service.metrics("T1")
+    service.metrics("T1")
+    assert iterate.call_count == 1
+
+    service.metrics("T1", refresh=True)
+    assert iterate.call_count == 2
 
 
 def test_observe_merges_tool_call_and_result(tmp_path: Path) -> None:

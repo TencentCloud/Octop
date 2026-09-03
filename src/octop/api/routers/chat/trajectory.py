@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -29,12 +31,14 @@ logger = logging.getLogger(__name__)
 TRAJECTORY_DEFAULT_LIMIT = 100
 TRAJECTORY_MAX_LIMIT = 200
 TRAJECTORY_SSE_HEARTBEAT_S = 15.0
+TRAJECTORY_METRICS_PUSH_INTERVAL_S = 1.0
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 _LIST_OMIT_PAYLOAD_KEYS = frozenset({"content", "text", "thinking"})
 # Keep tool ``args`` / ``result`` on the list endpoint so the ledger can render
 # ``name{args} → result`` without a detail fetch. Clip oversized values so a
 # single huge tool output cannot bloat the history page.
 _LIST_MAX_TOOL_FIELD_CHARS = 2_000
+_LIST_MAX_SUMMARY_CHARS = 240
 _LIST_CLIP_PAYLOAD_KEYS = frozenset({"args", "result"})
 
 
@@ -108,6 +112,9 @@ def _clip_list_payload_value(value: Any) -> Any:
 def _summarize_event(event: TrajectoryEvent) -> dict[str, Any]:
     """List-view projection: drop message bodies; keep clipped tool args/result."""
     data = asdict(event)
+    summary = str(data.get("summary") or "")
+    if len(summary) > _LIST_MAX_SUMMARY_CHARS:
+        data["summary"] = summary[: _LIST_MAX_SUMMARY_CHARS - 1].rstrip() + "…"
     payload = data.get("payload")
     if not isinstance(payload, dict):
         data["payload"] = {}
@@ -134,17 +141,15 @@ def _live_bus(service: TrajectoryService) -> TrajectoryLiveBus:
 
 
 def _resume_after_seq(after_seq: int | None, last_event_id: str | None) -> int | None:
-    if after_seq is not None:
+    header_seq: int | None = None
+    raw = last_event_id.strip() if last_event_id is not None else ""
+    with contextlib.suppress(ValueError):
+        header_seq = int(raw) if raw else None
+    if after_seq is None:
+        return header_seq
+    if header_seq is None:
         return after_seq
-    if last_event_id is None:
-        return None
-    raw = last_event_id.strip()
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
+    return max(after_seq, header_seq)
 
 
 def _sse_named(event: str, data: Any, *, sse_id: int | None = None) -> str:
@@ -152,6 +157,16 @@ def _sse_named(event: str, data: Any, *, sse_id: int | None = None) -> str:
     if sse_id is None:
         return frame
     return f"id: {sse_id}\n{frame}"
+
+
+async def _metrics_frame(
+    service: TrajectoryService,
+    thread_id: str,
+    *,
+    refresh: bool,
+) -> str:
+    metrics = await asyncio.to_thread(service.metrics, thread_id, refresh=refresh)
+    return format_sse("metrics", asdict(metrics))
 
 
 async def _iter_trajectory_sse(
@@ -177,7 +192,8 @@ async def _iter_trajectory_sse(
                 yield _sse_named("event", payload, sse_id=seq)
                 if seq > last_seq:
                     last_seq = seq
-        yield format_sse("metrics", asdict(service.metrics(thread_id)))
+        yield await _metrics_frame(service, thread_id, refresh=True)
+        last_metrics_at = time.monotonic()
         while True:
             if await request.is_disconnected():
                 break
@@ -194,7 +210,11 @@ async def _iter_trajectory_sse(
             yield _sse_named("event", message, sse_id=seq if isinstance(seq, int) else None)
             if isinstance(seq, int):
                 last_seq = seq
-            yield format_sse("metrics", asdict(service.metrics(thread_id)))
+            force_metrics = isinstance(message, dict) and message.get("_final") is True
+            now = time.monotonic()
+            if force_metrics or now - last_metrics_at >= TRAJECTORY_METRICS_PUSH_INTERVAL_S:
+                yield await _metrics_frame(service, thread_id, refresh=force_metrics)
+                last_metrics_at = now
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -280,9 +300,9 @@ async def get_trajectory_metrics(
 ) -> TrajectoryMetricsOut:
     """Return aggregated session metrics for a thread's trajectory ledger."""
     _require_thread(server, agent_id, thread_id, user, as_user)
-    return TrajectoryMetricsOut.model_validate(
-        asdict(_trajectory_service(server).metrics(thread_id))
-    )
+    service = _trajectory_service(server)
+    metrics = await asyncio.to_thread(service.metrics, thread_id)
+    return TrajectoryMetricsOut.model_validate(asdict(metrics))
 
 
 @router.get(
@@ -347,7 +367,9 @@ async def export_thread_trajectory(
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     if format == "json":
         filename = f"trajectory-{thread_id}-{stamp}.json"
-        payload = [json.loads(line) for line in service.export_jsonl(thread_id)]
+        payload = await asyncio.to_thread(
+            lambda: [json.loads(line) for line in service.export_jsonl(thread_id)]
+        )
         return JSONResponse(
             payload,
             headers={"Content-Disposition": content_disposition(filename)},

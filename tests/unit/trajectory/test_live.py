@@ -26,3 +26,13 @@ def test_unsubscribe_stops_delivery_and_isolates_threads() -> None:
 
     assert t1.empty()
     assert t2.get_nowait() == {"event_id": "kept"}
+
+
+def test_slow_subscriber_keeps_only_latest_bounded_events() -> None:
+    bus = TrajectoryLiveBus(subscriber_queue_size=2)
+    queue = bus.subscribe("T1")
+
+    for seq in range(4):
+        bus.publish("T1", {"seq": seq})
+
+    assert [queue.get_nowait(), queue.get_nowait()] == [{"seq": 2}, {"seq": 3}]

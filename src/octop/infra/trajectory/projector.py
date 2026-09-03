@@ -143,6 +143,7 @@ def _project_harness_chunk(
             "label": label,
             "tokens": tokens,
         }
+        _copy_content_reference(chunk, context_payload)
         if content:
             context_payload["content"] = content
         summary = _clip_summary(label, content) if content else label
@@ -159,6 +160,7 @@ def _project_harness_chunk(
         label = str(chunk.get("label") or "system")
         content = str(chunk.get("content") or chunk.get("text") or "")
         system_payload: dict[str, Any] = {"label": label}
+        _copy_content_reference(chunk, system_payload)
         if content:
             system_payload["content"] = content
         summary = _clip_summary(label, content) if content else label
@@ -222,6 +224,15 @@ def _message_attr(message: Any, key: str) -> Any:
     if isinstance(message, dict):
         return message.get(key)
     return getattr(message, key, None)
+
+
+def _copy_content_reference(source: dict[str, Any], target: dict[str, Any]) -> None:
+    digest = source.get("content_sha256")
+    chars = source.get("content_chars")
+    if isinstance(digest, str) and digest:
+        target["content_sha256"] = digest
+    if isinstance(chars, int) and not isinstance(chars, bool) and chars >= 0:
+        target["content_chars"] = chars
 
 
 def _kind_key(chunk: dict[str, Any]) -> str:
