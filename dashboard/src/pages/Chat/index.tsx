@@ -366,7 +366,8 @@ function ChatPageInner() {
       if (shouldJumpToChromeInstall(env)) {
         showConfirmModal(
           {
-            title: t("browserWorkspace.chromeMissingJumpToInstall"),
+            title: t("browserWorkspace.chromeMissingTitle"),
+            content: t("browserWorkspace.chromeMissingJumpToInstall"),
             okText: t("common.confirm"),
             cancelText: t("common.cancel"),
             onOk: () => {
