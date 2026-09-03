@@ -47,10 +47,20 @@ tasks:
         staging="${work}/root"
         rw_dmg="${work}/rw.dmg"
         device=""
+        # hdiutil detach exits 16 while the volume is still busy (Spotlight, Finder).
+        detach_device() {
+          local dev="$1" i
+          for i in 1 2 3 4 5; do
+            if hdiutil detach "$dev" -quiet >/dev/null 2>&1; then
+              return 0
+            fi
+            sleep 3
+          done
+          hdiutil detach "$dev" -force -quiet >/dev/null 2>&1
+        }
         cleanup() {
           if [[ -n "$device" ]]; then
-            hdiutil detach "$device" -quiet >/dev/null 2>&1 || \
-              hdiutil detach "$device" -force -quiet >/dev/null 2>&1 || true
+            detach_device "$device" || true
           fi
           rm -rf "$work"
         }
@@ -58,13 +68,16 @@ tasks:
         mkdir -p "${staging}/.background"
         ditto "$app_path" "${staging}/${app_name}"
         ln -s /Applications "${staging}/Applications"
-        cp build/darwin/dmg-background.png "${staging}/.background/background.png"
+        # Finder renders a background picture at its DPI-derived point size, so
+        # 1200x800 @144dpi lands exactly on the 600x400pt container window.
+        sips -s format png -z 800 1200 -s dpiWidth 144 -s dpiHeight 144 \
+          build/darwin/dmg-background.jpeg --out "${staging}/.background/background.png" >/dev/null
         if [[ -d "/Volumes/${volname}" ]]; then
           hdiutil detach "/Volumes/${volname}" -quiet >/dev/null 2>&1 || \
             hdiutil detach "/Volumes/${volname}" -force -quiet >/dev/null 2>&1 || true
         fi
         hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRW "$rw_dmg" >/dev/null
-        attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg")"
+        attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg" || true)"
         device="$(awk '/^\/dev\// { print $1; exit }' <<<"$attach_out")"
         mount_point="$(awk -F'\t' '/\/Volumes\// { print $NF; exit }' <<<"$attach_out")"
         if [[ -z "$device" || ! -d "$mount_point" ]]; then
@@ -83,15 +96,15 @@ tasks:
               set current view of container window to icon view
               set toolbar visible of container window to false
               set statusbar visible of container window to false
-              set the bounds of container window to {200, 120, 800, 520}
+              set the bounds of container window to {200, 120, 800, 552}
               set viewOptions to the icon view options of container window
               set arrangement of viewOptions to not arranged
               set icon size of viewOptions to 128
               try
                 set background picture of viewOptions to file ".background:background.png"
               end try
-              set position of item appName of container window to {150, 250}
-              set position of item "Applications" of container window to {450, 250}
+              set position of item appName of container window to {154, 237}
+              set position of item "Applications" of container window to {454, 237}
               close
               open
               update without registering applications
@@ -101,7 +114,13 @@ tasks:
         end run
         APPLESCRIPT
         sync
-        hdiutil detach "$device" -quiet
+        if ! detach_device "$device"; then
+          echo "warning: could not detach ${device}; writing a plain image" >&2
+          device=""
+          hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output" >/dev/null
+          test -s "$output"
+          exit 0
+        fi
         device=""
         rm -f "$output"
         hdiutil convert "$rw_dmg" -ov -format UDRO -o "$output" >/dev/null
