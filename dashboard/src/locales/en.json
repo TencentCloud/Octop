@@ -1167,12 +1167,96 @@
       "emptyResult": "Model returned an empty result"
     },
     "hitl": {
-      "title": "Tool approval required",
+      "title": "Confirm this action",
       "approve": "Approve",
       "reject": "Reject",
       "approved": "Approved",
       "rejectedLabel": "Rejected",
-      "rejected": "Rejected by user"
+      "rejected": "Rejected by user",
+      "args": {
+        "action": "Action",
+        "level": "Detail",
+        "url": "URL",
+        "command": "Command",
+        "cmd": "Command",
+        "path": "Path",
+        "file": "File",
+        "file_path": "File path",
+        "query": "Query",
+        "pattern": "Pattern",
+        "content": "Content",
+        "text": "Text",
+        "selector": "Selector",
+        "ref": "Element",
+        "key": "Key",
+        "value": "Value",
+        "direction": "Direction",
+        "amount": "Amount",
+        "prompt": "Prompt",
+        "old_string": "Original",
+        "new_string": "Replacement",
+        "timeout": "Timeout",
+        "method": "Method",
+        "body": "Body",
+        "code": "Script",
+        "wait": "Wait",
+        "element_ref": "Element",
+        "full_page": "Full page",
+        "tab_id": "Tab"
+      },
+      "bool": {
+        "true": "Yes",
+        "false": "No"
+      },
+      "browser": {
+        "actions": {
+          "navigate": "Open a page",
+          "open": "Open a page",
+          "snapshot": "Capture a page snapshot",
+          "dom_tree": "Read the page structure",
+          "screenshot": "Take a screenshot",
+          "click": "Click a page element",
+          "type": "Type into the page",
+          "fill": "Fill a form field",
+          "press": "Press a key",
+          "wait": "Wait for the page",
+          "select": "Choose a dropdown option",
+          "scroll": "Scroll the page",
+          "hover": "Hover over an element",
+          "eval_js": "Run a script on the page",
+          "go_back": "Go back",
+          "go_forward": "Go forward",
+          "reload": "Reload the page",
+          "new_tab": "Open a new tab",
+          "switch_tab": "Switch tabs",
+          "close_tab": "Close a tab",
+          "list_tabs": "List tabs",
+          "close_session": "Close the browser session"
+        },
+        "levels": {
+          "minimal": "Minimal structure",
+          "interactive": "Interactive elements only",
+          "full": "Full structure",
+          "structured": "Structured content"
+        },
+        "directions": {
+          "up": "Up",
+          "down": "Down",
+          "left": "Left",
+          "right": "Right"
+        }
+      },
+      "summaries": {
+        "domTreeInteractive": "Read the interactive structure of the current page",
+        "domTree": "Read the structure of the current page",
+        "screenshot": "Take a screenshot of the current page",
+        "openUrl": "Open {{url}}",
+        "runCommand": "Run command: {{command}}",
+        "writeFile": "Write file {{path}}",
+        "readFile": "Read file {{path}}",
+        "editFile": "Edit file {{path}}",
+        "fetchUrl": "Fetch {{url}}"
+      }
     },
     "ask": {
       "title": "A few questions first",

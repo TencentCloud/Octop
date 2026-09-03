@@ -198,6 +198,12 @@
   }
 }
 
+.hitlSegment {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* Legacy grouped bubbles (kept for compatibility) */
 .assistantGroup {
   display: flex;
@@ -660,36 +666,6 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
-}
-
-.hitlCard {
-  border: 1px solid var(--fn-border);
-  border-radius: 8px;
-  padding: 12px;
-  background: var(--fn-bg-elevated, var(--fn-bg-container));
-}
-
-.hitlTitle {
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.hitlAction {
-  margin-bottom: 8px;
-}
-
-.hitlResolved {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.hitlResolvedApproved {
-  color: var(--fn-color-success, #389e0d);
-}
-
-.hitlResolvedRejected {
-  color: var(--fn-color-error, #cf1322);
 }
 
 /* ---------- Assistant turn process summary (tools + thinking) ---------- */
