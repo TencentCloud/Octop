@@ -71,7 +71,7 @@ jobs:
       - name: Build frontend → src/octop/dashboard
         run: make build-frontend
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dashboard-dist
           path: src/octop/dashboard/
@@ -150,7 +150,7 @@ jobs:
           echo "OCTOP_VERSION=${VER}" >> "$GITHUB_ENV"
           echo "version=${VER}"
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: dashboard-dist
           path: src/octop/dashboard

@@ -26,7 +26,7 @@ tasks:
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
 
   package:
-    summary: Packages a production .app into an uncompressed DMG
+    summary: Packages a production .app into a drag-to-Applications DMG
     deps:
       - task: build
         vars:
@@ -36,16 +36,99 @@ tasks:
         vars:
           PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
           ARCH: "{{.ARCH}}"
-      - rm -rf {{.DMG_ROOT}} {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg
-      - mkdir -p {{.DMG_ROOT}}
-      - ditto {{.BIN_DIR}}/{{.APP_NAME}}.app {{.DMG_ROOT}}/{{.APP_NAME}}.app
-      - hdiutil create -volname {{.APP_NAME}} -srcfolder {{.DMG_ROOT}} -ov -format UDRO {{.ARCHIVE}}
-      - rm -rf {{.DMG_ROOT}}
+      - rm -f {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg
+      - |
+        set -euo pipefail
+        app_path="{{.BIN_DIR}}/{{.APP_NAME}}.app"
+        output="{{.ARCHIVE}}"
+        volname="{{.APP_NAME}}"
+        app_name="{{.APP_NAME}}.app"
+        work="$(mktemp -d "${TMPDIR:-/tmp}/octop-dmg.XXXXXX")"
+        staging="${work}/root"
+        rw_dmg="${work}/rw.dmg"
+        device=""
+        # hdiutil detach exits 16 while the volume is still busy (Spotlight, Finder).
+        detach_device() {
+          local dev="$1" i
+          for i in 1 2 3 4 5; do
+            if hdiutil detach "$dev" -quiet >/dev/null 2>&1; then
+              return 0
+            fi
+            sleep 3
+          done
+          hdiutil detach "$dev" -force -quiet >/dev/null 2>&1
+        }
+        cleanup() {
+          if [[ -n "$device" ]]; then
+            detach_device "$device" || true
+          fi
+          rm -rf "$work"
+        }
+        trap cleanup EXIT
+        mkdir -p "${staging}/.background"
+        ditto "$app_path" "${staging}/${app_name}"
+        ln -s /Applications "${staging}/Applications"
+        # Finder renders a background picture at its DPI-derived point size, so
+        # 1200x800 @144dpi lands exactly on the 600x400pt container window.
+        sips -s format png -z 800 1200 -s dpiWidth 144 -s dpiHeight 144 \
+          build/darwin/dmg-background.jpeg --out "${staging}/.background/background.png" >/dev/null
+        if [[ -d "/Volumes/${volname}" ]]; then
+          hdiutil detach "/Volumes/${volname}" -quiet >/dev/null 2>&1 || \
+            hdiutil detach "/Volumes/${volname}" -force -quiet >/dev/null 2>&1 || true
+        fi
+        hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRW "$rw_dmg" >/dev/null
+        attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg" || true)"
+        device="$(awk '/^\/dev\// { print $1; exit }' <<<"$attach_out")"
+        mount_point="$(awk -F'\t' '/\/Volumes\// { print $NF; exit }' <<<"$attach_out")"
+        if [[ -z "$device" || ! -d "$mount_point" ]]; then
+          echo "warning: could not mount writable DMG; writing a plain image" >&2
+          hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output"
+          exit 0
+        fi
+        osascript - "$volname" "$app_name" <<'APPLESCRIPT' || \
+          echo "warning: could not set Finder icon layout; Applications drop link is still present" >&2
+        on run argv
+          set volName to item 1 of argv
+          set appName to item 2 of argv
+          tell application "Finder"
+            tell disk volName
+              open
+              set current view of container window to icon view
+              set toolbar visible of container window to false
+              set statusbar visible of container window to false
+              set the bounds of container window to {200, 120, 800, 552}
+              set viewOptions to the icon view options of container window
+              set arrangement of viewOptions to not arranged
+              set icon size of viewOptions to 128
+              try
+                set background picture of viewOptions to file ".background:background.png"
+              end try
+              set position of item appName of container window to {154, 237}
+              set position of item "Applications" of container window to {454, 237}
+              close
+              open
+              update without registering applications
+              delay 1
+            end tell
+          end tell
+        end run
+        APPLESCRIPT
+        sync
+        if ! detach_device "$device"; then
+          echo "warning: could not detach ${device}; writing a plain image" >&2
+          device=""
+          hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output" >/dev/null
+          test -s "$output"
+          exit 0
+        fi
+        device=""
+        rm -f "$output"
+        hdiutil convert "$rw_dmg" -ov -format UDRO -o "$output" >/dev/null
+        test -s "$output"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-darwin-%s-%s.zip" .ARCH .VERSION)}}'
-      DMG_ROOT: '{{.BIN_DIR}}/dmg-darwin-{{.ARCH}}'
       ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-darwin-{{.ARCH}}-{{.VERSION}}.dmg'
 
   create:app:bundle:

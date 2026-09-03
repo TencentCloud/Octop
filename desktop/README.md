@@ -77,9 +77,10 @@ Wails shell never downloads Octop. For local runtime debugging, set
 
 GitHub Release names follow `Octop-<kind>-<os>-<arch>-<version>.<ext>`:
 
-- Desktop GUI: `Octop-desktop-<plat>-<version>.dmg` (macOS),
-  `.exe` (Windows NSIS installer — copies into `Program Files\Octop`
-  and creates Start Menu + desktop shortcuts), `.tar.gz` (Linux)
+- Desktop GUI: `Octop-desktop-<plat>-<version>.dmg` (macOS; open and drag
+  `Octop.app` into Applications), `.exe` (Windows NSIS installer — copies
+  into `Program Files\Octop` and creates Start Menu + desktop shortcuts),
+  `.tar.gz` (Linux)
 - Green runtime zip: `Octop-portable-<plat>-<version>.zip`
 - PyPI wheels stay `octop-<version>-py3-none-any.whl` (PEP 427)
 
