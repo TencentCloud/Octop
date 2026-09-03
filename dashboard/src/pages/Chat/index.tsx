@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
+import { showConfirmModal } from "../../utils/confirmModal";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -363,8 +364,17 @@ function ChatPageInner() {
     try {
       const env = await browserApi.checkEnvStatus();
       if (shouldJumpToChromeInstall(env)) {
-        antMessage.info(t("browserWorkspace.chromeMissingJumpToInstall"));
-        navigate(WORKBENCH_BROWSER_PATH);
+        showConfirmModal(
+          {
+            title: t("browserWorkspace.chromeMissingJumpToInstall"),
+            okText: t("common.confirm"),
+            cancelText: t("common.cancel"),
+            onOk: () => {
+              navigate(WORKBENCH_BROWSER_PATH);
+            },
+          },
+          { isMobile },
+        );
         return;
       }
     } catch {
@@ -373,7 +383,7 @@ function ChatPageInner() {
       chromeCheckInFlightRef.current = false;
     }
     toggleBrowserPanel();
-  }, [browserSessionId, navigate, t, toggleBrowserPanel]);
+  }, [browserSessionId, isMobile, navigate, t, toggleBrowserPanel]);
 
   const closeToolUiPanel = useCallback(
     (callId: string) => {
