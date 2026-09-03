@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
     is_embedding_model,
+    is_vision_model,
 )
 from octop.infra.agents.providers.resolved import list_resolved_models
 
@@ -74,6 +75,13 @@ def test_chat_eligible_excludes_embedding() -> None:
     assert is_chat_eligible_model({"id": "gpt", "enabled": True})
     assert not is_chat_eligible_model({"id": "emb", "enabled": True, "embedding": True})
     assert not is_chat_eligible_model({"id": "gpt", "enabled": False})
+
+
+def test_vision_model_uses_explicit_input_then_known_ids() -> None:
+    assert is_vision_model({"id": "custom", "input": ["text", "image"]})
+    assert is_vision_model({"id": "gpt-4o-mini", "input": ["text"]})
+    assert is_vision_model({"id": "qwen2.5-vl"})
+    assert not is_vision_model({"id": "text-only", "input": ["text"]})
 
 
 def test_list_resolved_models_skips_embedding() -> None:

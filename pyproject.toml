@@ -43,6 +43,8 @@ dependencies = [
     "python-docx>=1.2.0",
     "python-pptx>=1.0",
     "pypinyin>=0.53",
+    "openpyxl>=3.1",
+    "xlrd>=2.0.1",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +60,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "build>=1.0",
+    "xlwt>=1.3",
 ]
 # Kept for backward compatibility; playwright is now a core dependency.
 browser = [
@@ -67,6 +70,11 @@ browser = [
 desktop = ["mss>=9.0", "pynput>=1.7"]
 # Local ONNX / fastembed embedding models (Models admin local tab).
 local-embedding = ["fastembed>=0.4", "huggingface_hub>=0.20"]
+knowledge-ocr = [
+    "rapidocr>=3.4,<4",
+    "onnxruntime>=1.17",
+    "pymupdf>=1.24",
+]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the
@@ -81,6 +89,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "build>=1.0",
+    "xlwt>=1.3",
 ]
 
 [project.scripts]

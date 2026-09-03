@@ -14,6 +14,12 @@
   z-index: 2;
 }
 
+/* The last header cell sits on the table edge: an outward handle would extend
+   the scrollable area and show a few-pixel horizontal scrollbar. */
+.cell:last-child .handle {
+  inset-inline-end: 0;
+}
+
 .handle::after {
   position: absolute;
   top: 20%;
