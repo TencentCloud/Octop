@@ -1167,12 +1167,96 @@
       "emptyResult": "模型未返回润色结果"
     },
     "hitl": {
-      "title": "需要审批工具调用",
+      "title": "需要确认这次操作",
       "approve": "批准",
       "reject": "拒绝",
       "approved": "已批准",
       "rejectedLabel": "已拒绝",
-      "rejected": "用户已拒绝"
+      "rejected": "用户已拒绝",
+      "args": {
+        "action": "操作",
+        "level": "范围",
+        "url": "网址",
+        "command": "命令",
+        "cmd": "命令",
+        "path": "路径",
+        "file": "文件",
+        "file_path": "文件路径",
+        "query": "查询",
+        "pattern": "匹配",
+        "content": "内容",
+        "text": "文字",
+        "selector": "选择器",
+        "ref": "元素",
+        "key": "按键",
+        "value": "值",
+        "direction": "方向",
+        "amount": "幅度",
+        "prompt": "提示词",
+        "old_string": "原文",
+        "new_string": "替换为",
+        "timeout": "超时",
+        "method": "方法",
+        "body": "内容",
+        "code": "脚本",
+        "wait": "等待",
+        "element_ref": "目标元素",
+        "full_page": "整页",
+        "tab_id": "标签页"
+      },
+      "bool": {
+        "true": "是",
+        "false": "否"
+      },
+      "browser": {
+        "actions": {
+          "navigate": "打开网页",
+          "open": "打开网页",
+          "snapshot": "获取页面快照",
+          "dom_tree": "获取网页结构",
+          "screenshot": "截取网页截图",
+          "click": "点击页面元素",
+          "type": "在页面中输入文字",
+          "fill": "填写表单",
+          "press": "按下按键",
+          "wait": "等待页面就绪",
+          "select": "选择下拉选项",
+          "scroll": "滚动页面",
+          "hover": "悬停在元素上",
+          "eval_js": "在页面中执行脚本",
+          "go_back": "返回上一页",
+          "go_forward": "前进到下一页",
+          "reload": "刷新页面",
+          "new_tab": "打开新标签页",
+          "switch_tab": "切换标签页",
+          "close_tab": "关闭标签页",
+          "list_tabs": "列出标签页",
+          "close_session": "关闭浏览器会话"
+        },
+        "levels": {
+          "minimal": "精简结构",
+          "interactive": "仅交互元素",
+          "full": "完整结构",
+          "structured": "结构化内容"
+        },
+        "directions": {
+          "up": "向上",
+          "down": "向下",
+          "left": "向左",
+          "right": "向右"
+        }
+      },
+      "summaries": {
+        "domTreeInteractive": "获取当前网页的可交互元素结构",
+        "domTree": "获取当前网页结构",
+        "screenshot": "截取当前网页截图",
+        "openUrl": "打开网页 {{url}}",
+        "runCommand": "执行命令：{{command}}",
+        "writeFile": "写入文件 {{path}}",
+        "readFile": "读取文件 {{path}}",
+        "editFile": "编辑文件 {{path}}",
+        "fetchUrl": "抓取网页 {{url}}"
+      }
     },
     "ask": {
       "title": "先问几个问题",

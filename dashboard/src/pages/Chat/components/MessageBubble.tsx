@@ -1,5 +1,5 @@
 import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
-import { Image, Button, Tooltip } from "antd";
+import { Image, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import Markdown from "../../../components/Markdown/LazyMarkdown";
@@ -39,6 +39,7 @@ import {
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
+import HitlApprovalCard from "./HitlApprovalCard";
 import { extractAskQuestions, isAskHitl } from "../../../api/types/hitl";
 import styles from "../index.module.less";
 import {
@@ -616,58 +617,11 @@ function MessageBubble({
           compact ? styles.compact : ""
         }`}
       >
-        <div className={styles.hitlCard}>
-          <div className={styles.hitlTitle}>
-            {t("chat.hitl.title", "Tool approval required")}
-          </div>
-          {actions.map((action, idx) => (
-            <div key={`${action.name}-${idx}`} className={styles.hitlAction}>
-              <code>{action.name}</code>
-              {action.args && Object.keys(action.args).length > 0 && (
-                <pre className={styles.inlineToolCode}>
-                  {JSON.stringify(action.args, null, 2)}
-                </pre>
-              )}
-            </div>
-          ))}
-          {hitlStatus === "pending" && onHitlDecision ? (
-            <div className={styles.acpPermissionActions}>
-              <Button
-                type="primary"
-                onClick={() =>
-                  onHitlDecision(actions.map(() => ({ type: "approve" })))
-                }
-              >
-                {t("chat.hitl.approve", "Approve")}
-              </Button>
-              <Button
-                danger
-                onClick={() =>
-                  onHitlDecision(
-                    actions.map(() => ({
-                      type: "reject",
-                      message: t("chat.hitl.rejected", "Rejected by user"),
-                    })),
-                  )
-                }
-              >
-                {t("chat.hitl.reject", "Reject")}
-              </Button>
-            </div>
-          ) : hitlStatus !== "pending" ? (
-            <div
-              className={`${styles.hitlResolved} ${
-                hitlStatus === "approved"
-                  ? styles.hitlResolvedApproved
-                  : styles.hitlResolvedRejected
-              }`}
-            >
-              {hitlStatus === "approved"
-                ? t("chat.hitl.approved", "Approved")
-                : t("chat.hitl.rejectedLabel", "Rejected")}
-            </div>
-          ) : null}
-        </div>
+        <HitlApprovalCard
+          actions={actions}
+          status={hitlStatus}
+          onDecision={onHitlDecision}
+        />
       </div>
     );
   }

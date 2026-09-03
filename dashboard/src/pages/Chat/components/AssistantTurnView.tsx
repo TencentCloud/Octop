@@ -165,7 +165,7 @@ export default function AssistantTurnView({
           idx === segmentProcess.length - 1 &&
           hitlLayout.trailingMessages.length === 0;
         return (
-          <div key={hitl.id}>
+          <div key={hitl.id} className={styles.hitlSegment}>
             {showProcess ? (
               <>
                 <TurnProcessBlocks
