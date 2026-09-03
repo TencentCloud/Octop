@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 HF_ENDPOINT_OFFICIAL = "https://huggingface.co"
 HF_ENDPOINT_MIRROR = "https://hf-mirror.com"
-# Same public bucket that hosts install.sh; objects live under /models/embedding/.
+# Public COS bucket; objects live under /models/embedding/{model_id}/.
 COS_ENDPOINT_DEFAULT = "https://octop-1258344699.cos.ap-guangzhou.myqcloud.com"
 COS_PREFIX = "models/embedding"
 COS_MANIFEST_NAME = "files.json"
