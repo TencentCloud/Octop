@@ -43,50 +43,50 @@ def portable_name(os_name: str, arch: str, version: str) -> str:
 
 def render_download_section(raw_version: str) -> str:
     tag, version = split_tag(raw_version)
-    win64 = md_link("64位(常用)", tag, desktop_name("windows", "amd64", version, "exe"))
+    win64 = md_link("64-bit (Recommended)", tag, desktop_name("windows", "amd64", version, "exe"))
     win_arm = md_link("ARM64", tag, desktop_name("windows", "arm64", version, "exe"))
-    win64_zip = md_link("64位", tag, portable_name("windows", "amd64", version))
+    win64_zip = md_link("64-bit", tag, portable_name("windows", "amd64", version))
     win_arm_zip = md_link("ARM64", tag, portable_name("windows", "arm64", version))
     mac_arm = md_link("Apple Silicon", tag, desktop_name("darwin", "arm64", version, "dmg"))
     mac_intel = md_link("Intel", tag, desktop_name("darwin", "amd64", version, "dmg"))
     mac_arm_zip = md_link("Apple Silicon", tag, portable_name("darwin", "arm64", version))
     mac_intel_zip = md_link("Intel", tag, portable_name("darwin", "amd64", version))
-    linux64 = md_link("64位", tag, desktop_name("linux", "amd64", version, "tar.gz"))
+    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "tar.gz"))
     linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "tar.gz"))
-    linux64_zip = md_link("64位", tag, portable_name("linux", "amd64", version))
+    linux64_zip = md_link("64-bit", tag, portable_name("linux", "amd64", version))
     linux_arm_zip = md_link("ARM64", tag, portable_name("linux", "arm64", version))
-    fnos_docker = md_link("Docker 版", tag, f"Octop-fnos-docker-{version}.fpk")
-    fnos_native = md_link("本地版", tag, f"Octop-fnos-native-{version}.fpk")
+    fnos_docker = md_link("Docker", tag, f"Octop-fnos-docker-{version}.fpk")
+    fnos_native = md_link("Native", tag, f"Octop-fnos-native-{version}.fpk")
     return "\n".join(
         [
             "",
-            "## 下载地址",
+            "## Downloads",
             "",
             "### Windows",
             "",
-            "#### 桌面安装包(推荐)",
+            "#### Desktop installer (Recommended)",
             f"- {win64} | {win_arm}",
             "",
-            "#### 便携版",
+            "#### Portable",
             f"- {win64_zip} | {win_arm_zip}",
             "",
             "### macOS",
             "",
-            "#### 桌面安装包(推荐)",
+            "#### Desktop installer (Recommended)",
             f"- {mac_arm} | {mac_intel}",
             "",
-            "#### 便携版",
+            "#### Portable",
             f"- {mac_arm_zip} | {mac_intel_zip}",
             "",
             "### Linux",
             "",
-            "#### 桌面安装包(推荐)",
+            "#### Desktop installer (Recommended)",
             f"- {linux64} | {linux_arm}",
             "",
-            "#### 便携版",
+            "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",
             "",
-            "### 飞牛 NAS",
+            "### fnOS NAS",
             f"- {fnos_docker} | {fnos_native}",
             "",
         ]
