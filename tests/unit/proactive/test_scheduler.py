@@ -15,9 +15,9 @@ import asyncio
 from datetime import UTC, datetime, time
 from pathlib import Path
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
-from zoneinfo import ZoneInfo
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -160,12 +160,15 @@ def test_is_in_active_hours_false_after():
 def test_is_in_active_hours_with_timezone():
     # 2026-07-01 01:00 UTC is 09:00 Asia/Shanghai.
     now = datetime(2026, 7, 1, 1, 0, 0, tzinfo=UTC)
-    assert is_in_active_hours(
-        now,
-        active_hours_start="09:00",
-        active_hours_end="22:00",
-        timezone_name="Asia/Shanghai",
-    ) is True
+    assert (
+        is_in_active_hours(
+            now,
+            active_hours_start="09:00",
+            active_hours_end="22:00",
+            timezone_name="Asia/Shanghai",
+        )
+        is True
+    )
 
 
 def test_is_in_active_hours_boundary_start():

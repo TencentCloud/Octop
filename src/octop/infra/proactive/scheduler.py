@@ -16,17 +16,17 @@ import asyncio
 import logging
 import random
 from datetime import UTC, datetime, time, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 if TYPE_CHECKING:
-    from octop.infra.db.repos.care_push import CarePushRepo
     from octop.infra.db.repos.agents import AgentRepo
+    from octop.infra.db.repos.care_push import CarePushRepo
     from octop.infra.db.repos.proactive_care_config import (
         ProactiveCareConfigRepo,
     )
-    from octop.infra.db.repos.users import UserRepo
     from octop.infra.db.repos.sessions import SessionRepo
+    from octop.infra.db.repos.users import UserRepo
     from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.users.preferences import get_timezone_from_preferences_json
 
