@@ -806,7 +806,7 @@
   :global(.ant-table-container) {
     border: 1px solid var(--fn-border-primary);
     border-radius: var(--fn-radius-lg, 12px);
-    overflow: hidden;
+    // Do not set overflow:hidden — it breaks Ant Design sticky fixed columns.
   }
 
   :global(.ant-table-thead > tr > th) {
