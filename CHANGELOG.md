@@ -24,6 +24,7 @@
 
 ### 修复
 
+- 桌面客户端打包把 `pyproject.toml` 版本写入 macOS Info.plist、Windows 文件版本和 NSIS 安装器，不再沿用写死的旧号
 - 用户发布专家卡片展示快照内自定义头像（`icon_url` + `/api/experts/published/{id}/avatar`），不再只显示默认 Lucide 图标
 - 用户管理表格（桌面端）横向滚动时固定用户名与操作列（与专家列表一致；移动端不固定）
 - 运行轨迹流式事件在内存聚合、回合边界持久化，避免逐 token 写库和重复存储上下文全文

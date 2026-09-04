@@ -36,6 +36,7 @@ tasks:
         vars:
           PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
           ARCH: "{{.ARCH}}"
+          VERSION: "{{.VERSION}}"
       - rm -f {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg
       - |
         set -euo pipefail
@@ -141,7 +142,10 @@ tasks:
       - cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/Octop-darwin-{{.ARCH}}.zip
       - cp {{.BIN_DIR}}/{{.APP_NAME}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS
       - cp build/darwin/Info.plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents
+      - python3 build/stamp_version.py plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist "{{.VERSION}}"
       - codesign --force --deep --sign - {{.BIN_DIR}}/{{.APP_NAME}}.app
+    vars:
+      VERSION: '{{.VERSION | default "dev"}}'
 
   run:
     cmds:
