@@ -130,6 +130,43 @@ class TrajectoryEventRepo:
         events.reverse()
         return events
 
+    def list_from_seq(
+        self,
+        thread_id: str,
+        *,
+        from_seq: int,
+        limit: int,
+    ) -> list[TrajectoryEvent]:
+        if limit <= 0:
+            return []
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT {_SELECT_COLS} FROM trajectory_events "
+                "WHERE thread_id = ? AND seq >= ? ORDER BY seq ASC LIMIT ?",
+                (thread_id, from_seq, limit),
+            ).fetchall()
+        return [_event_from_row(row) for row in rows]
+
+    def prune_older_than_user_turns(self, thread_id: str, keep_user_turns: int) -> int:
+        """Drop events before the Nth-newest USER seq (keeps that user and later)."""
+        if keep_user_turns <= 0:
+            return 0
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT seq FROM trajectory_events "
+                "WHERE thread_id = ? AND kind = 'user' "
+                "ORDER BY seq DESC LIMIT 1 OFFSET ?",
+                (thread_id, keep_user_turns - 1),
+            ).fetchone()
+            if row is None:
+                return 0
+            cutoff = int(row["seq"])
+            cursor = conn.execute(
+                "DELETE FROM trajectory_events WHERE thread_id = ? AND seq < ?",
+                (thread_id, cutoff),
+            )
+        return int(cursor.rowcount or 0)
+
     def get(self, event_id: str) -> TrajectoryEvent | None:
         with self._db.connect() as conn:
             row = conn.execute(

@@ -275,6 +275,11 @@ def test_default_backup_omits_chats_and_restore_preserves_current_chats(
             "INSERT INTO thread_messages(thread_id, seq, role, message_json, created_at)"
             " VALUES ('thread-1', 1, 'user', '{\"content\":\"keep\"}', 1)"
         )
+        conn.execute(
+            "INSERT INTO trajectory_events("
+            "event_id, agent_id, thread_id, seq, ts, kind, summary, payload_json"
+            ") VALUES ('event-1', 'agent01', 'thread-1', 1, 1, 'user', 'keep', '{}')"
+        )
 
     target_sessions = target_layout.ensure_agent_workspace("agent01") / ".octop" / "sessions"
     target_sessions.mkdir(parents=True)
@@ -294,9 +299,14 @@ def test_default_backup_omits_chats_and_restore_preserves_current_chats(
         message = conn.execute(
             "SELECT message_json FROM thread_messages WHERE thread_id = 'thread-1'"
         ).fetchone()
+        trajectory = conn.execute(
+            "SELECT summary FROM trajectory_events WHERE thread_id = 'thread-1'"
+        ).fetchone()
     target_pool.close()
     assert message is not None
     assert json.loads(message[0])["content"] == "keep"
+    assert trajectory is not None
+    assert trajectory[0] == "keep"
     assert current_log.read_text(encoding="utf-8") == "keep"
 
 
@@ -477,6 +487,12 @@ def test_sqlite_strip_chats_reclaims_pages(tmp_path: Path) -> None:
                 " VALUES ('t1', ?, 'user', ?, 1)",
                 (seq, json.dumps({"content": payload})),
             )
+        conn.execute(
+            "INSERT INTO trajectory_events("
+            "event_id, agent_id, thread_id, seq, ts, kind, summary, payload_json"
+            ") VALUES ('event-large', 'agent01', 't1', 1, 1, 'assistant', 'large', ?)",
+            (json.dumps({"content": payload}),),
+        )
     snap = tmp_path / "snap.db"
     snapshot_sqlite_file(pool.path, snap)
     pool.close()
@@ -486,8 +502,10 @@ def test_sqlite_strip_chats_reclaims_pages(tmp_path: Path) -> None:
     assert after < before
     conn = sqlite3.connect(snap)
     count = conn.execute("SELECT COUNT(*) FROM thread_messages").fetchone()[0]
+    trajectory_count = conn.execute("SELECT COUNT(*) FROM trajectory_events").fetchone()[0]
     conn.close()
     assert count == 0
+    assert trajectory_count == 0
 
 
 def test_backup_can_omit_config_and_workspaces(layout: PathLayout, tmp_path: Path) -> None:

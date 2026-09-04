@@ -186,6 +186,8 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
   const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const trajectoryEnabled =
+    activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
   const noAgents = !agentsLoading && agents.length === 0;
 
@@ -1201,32 +1203,34 @@ function ChatPageInner() {
                       </span>
                     </Tooltip>
                   )}
-                  <Tooltip
-                    title={
-                      !agentChatReady
-                        ? t("workspace.requiresRunning")
-                        : !activeThreadId
-                        ? t(
-                            "chat.trajectorySelectSession",
-                            "Select a session to view trajectory",
-                          )
-                        : t("chat.openTrajectory", "运行轨迹")
-                    }
-                    mouseEnterDelay={0.35}
-                    placement="left"
-                  >
-                    <span className={styles.chatFloatBtnWrap}>
-                      <button
-                        type="button"
-                        className={styles.chatFloatBtn}
-                        disabled={!activeThreadId || !agentChatReady}
-                        onClick={() => setTrajectoryDrawerOpen(true)}
-                        aria-label={t("chat.openTrajectory", "运行轨迹")}
-                      >
-                        <Activity size={20} strokeWidth={2.1} />
-                      </button>
-                    </span>
-                  </Tooltip>
+                  {trajectoryEnabled && (
+                    <Tooltip
+                      title={
+                        !agentChatReady
+                          ? t("workspace.requiresRunning")
+                          : !activeThreadId
+                          ? t(
+                              "chat.trajectorySelectSession",
+                              "Select a session to view trajectory",
+                            )
+                          : t("chat.openTrajectory", "运行轨迹")
+                      }
+                      mouseEnterDelay={0.35}
+                      placement="left"
+                    >
+                      <span className={styles.chatFloatBtnWrap}>
+                        <button
+                          type="button"
+                          className={styles.chatFloatBtn}
+                          disabled={!activeThreadId || !agentChatReady}
+                          onClick={() => setTrajectoryDrawerOpen(true)}
+                          aria-label={t("chat.openTrajectory", "运行轨迹")}
+                        >
+                          <Activity size={20} strokeWidth={2.1} />
+                        </button>
+                      </span>
+                    </Tooltip>
+                  )}
                   <Tooltip
                     title={
                       browserSessionId
@@ -1373,12 +1377,14 @@ function ChatPageInner() {
               />
             </>
           )}
-          <TrajectoryDrawer
-            agentId={resolvedAgentId ?? ""}
-            threadId={activeThreadId}
-            open={trajectoryDrawerOpen}
-            onClose={() => setTrajectoryDrawerOpen(false)}
-          />
+          {trajectoryEnabled && (
+            <TrajectoryDrawer
+              agentId={resolvedAgentId ?? ""}
+              threadId={activeThreadId}
+              open={trajectoryDrawerOpen}
+              onClose={() => setTrajectoryDrawerOpen(false)}
+            />
+          )}
         </div>
       </ChatToolDockProvider>
     </ChatFilePreviewProvider>

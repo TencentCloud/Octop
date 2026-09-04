@@ -137,3 +137,24 @@ def test_thread_delete_cascades_trajectory_events(tmp_path: Path) -> None:
 
     ThreadRepo(db).delete("T1")
     assert repo.list_before("T1", before_seq=None, limit=10, kinds=None) == []
+
+
+def test_list_from_seq_and_prune_older_than_user_turns(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    for seq, kind in (
+        (1, "system"),
+        (2, "user"),
+        (3, "assistant"),
+        (4, "user"),
+        (5, "assistant"),
+        (6, "user"),
+    ):
+        assert repo.append(_event(event_id=f"e{seq}", seq=seq, kind=kind)) is True
+
+    from_seq = repo.list_from_seq("T1", from_seq=4, limit=10)
+    assert [event.seq for event in from_seq] == [4, 5, 6]
+
+    deleted = repo.prune_older_than_user_turns("T1", 2)
+    assert deleted > 0
+    remaining = repo.list_before("T1", before_seq=None, limit=20, kinds=None)
+    assert [event.seq for event in remaining] == [4, 5, 6]

@@ -27,6 +27,7 @@ from octop.infra.agents.experts.publish import (
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.identity import User
 from octop.infra.utils.ulid import new_ulid
 
@@ -44,6 +45,7 @@ class PublishedExpertInstallOptions:
     icon_url: str | None = None
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
+    enable_trajectory: bool = True
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -305,6 +307,7 @@ async def install_published_expert(
         config_extra["providers"] = list(options.providers)
     if options.backend:
         config_extra["backend"] = options.backend
+    apply_enable_trajectory(config_extra, options.enable_trajectory)
 
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)

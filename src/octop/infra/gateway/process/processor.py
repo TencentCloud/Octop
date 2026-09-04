@@ -18,6 +18,7 @@ from harness_gateway.models import (
 )
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -55,6 +56,7 @@ from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
 from octop.infra.knowledge.default_open import merge_knowledge_base_ids
 from octop.infra.knowledge.hint import catalog_for_selected_bases
+from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
@@ -139,7 +141,26 @@ class GlobalProcessor:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
 
-    def _observe_trajectory(self, *, agent_id: str, thread_id: str, chunk: dict[str, Any]) -> None:
+    def _agent_trajectory_enabled(self, agent_id: str, row: Any | None = None) -> bool:
+        if self._trajectory_service is None:
+            return False
+        agent_row = row if row is not None else self._agent_repo.get(agent_id)
+        if agent_row is None:
+            return False
+        return agent_trajectory_enabled(parse_config_json(getattr(agent_row, "config_json", None)))
+
+    def _observe_trajectory(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        chunk: dict[str, Any],
+        enabled: bool | None = None,
+    ) -> None:
+        if enabled is False:
+            return
+        if enabled is None and not self._agent_trajectory_enabled(agent_id):
+            return
         service = self._trajectory_service
         if service is None:
             return
@@ -157,7 +178,10 @@ class GlobalProcessor:
         *,
         thread_id: str,
         usage: dict[str, Any] | None = None,
+        enabled: bool | None = None,
     ) -> None:
+        if enabled is False:
+            return
         service = self._trajectory_service
         if service is None:
             return
@@ -174,8 +198,13 @@ class GlobalProcessor:
         request: dict[str, Any],
         meta: dict[str, Any],
         phase: Literal["system", "context"] = "context",
+        trajectory_enabled: bool | None = None,
     ) -> None:
         """Emit SYSTEM / CONTEXT from harness injection sources of truth."""
+        if trajectory_enabled is False:
+            return
+        if trajectory_enabled is None and not self._agent_trajectory_enabled(agent_id):
+            return
         service = self._trajectory_service
         if service is None:
             return
@@ -215,7 +244,12 @@ class GlobalProcessor:
                 mcp_servers=mcp_names,
                 skills_filter_present=skills_filter_present,
             ):
-                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+                self._observe_trajectory(
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    chunk=chunk,
+                    enabled=True,
+                )
         except Exception:
             logger.exception(
                 "trajectory turn-start context failed agent=%s thread=%s",
@@ -736,6 +770,7 @@ class GlobalProcessor:
             return
 
         agent_row = self._agent_repo.get(agent_id)
+        traj_on = self._agent_trajectory_enabled(agent_id, agent_row)
         user_id = resolve_user_id_for_message(
             msg,
             agent_owner_id=agent_row.user_id if agent_row is not None else None,
@@ -789,11 +824,13 @@ class GlobalProcessor:
             request=request,
             meta=meta,
             phase="system",
+            trajectory_enabled=traj_on,
         )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
             chunk={"type": "user", "content": msg.text or "", "source": channel_type},
+            enabled=traj_on,
         )
         await self._observe_turn_start_context(
             agent_id=agent_id,
@@ -801,6 +838,7 @@ class GlobalProcessor:
             request=request,
             meta=meta,
             phase="context",
+            trajectory_enabled=traj_on,
         )
 
         stream_ok = False
@@ -818,7 +856,12 @@ class GlobalProcessor:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
-                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+                self._observe_trajectory(
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    chunk=chunk,
+                    enabled=traj_on,
+                )
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
@@ -865,7 +908,7 @@ class GlobalProcessor:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             yield {"type": "error", "message": format_stream_error(exc, locale)}
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
+            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(
@@ -889,6 +932,7 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker()
         completed = False
+        traj_on = self._agent_trajectory_enabled(agent_id)
         try:
             async for chunk in self._agent_manager.resume_hitl(
                 agent_id,
@@ -897,11 +941,16 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
-                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+                self._observe_trajectory(
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    chunk=chunk,
+                    enabled=traj_on,
+                )
                 yield chunk
             completed = True
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
+            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
                 self._record_turn_usage(
