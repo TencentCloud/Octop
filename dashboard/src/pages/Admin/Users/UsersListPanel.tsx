@@ -1190,7 +1190,7 @@ export default function UsersListPanel() {
           loading={loading}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 960 }}
+          scroll={{ x: 1360 }}
           rowClassName={(row) =>
             [
               row.disabled ? styles.userTableRowDisabled : "",
@@ -1203,6 +1203,7 @@ export default function UsersListPanel() {
             {
               title: t("adminUsers.colUsername"),
               width: 240,
+              fixed: "left",
               render: (_, row) => {
                 const displayName = row.display_name?.trim() || row.username;
                 return (
@@ -1332,6 +1333,7 @@ export default function UsersListPanel() {
             {
               title: t("adminUsers.colActions"),
               width: 120,
+              fixed: "right",
               render: (_, row) => (
                 <Space size={4}>
                   <Tooltip title={t("common.edit")}>
