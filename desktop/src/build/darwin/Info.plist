@@ -9,7 +9,7 @@
         <key>CFBundleExecutable</key>
         <string>Octop</string>
         <key>CFBundleIdentifier</key>
-        <string>com.octop.desktop</string>
+        <string>com.tencent.octop</string>
         <key>CFBundleVersion</key>
         <string>0.9.26</string>
         <key>CFBundleGetInfoString</key>

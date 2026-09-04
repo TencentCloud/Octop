@@ -5,7 +5,7 @@ version: "3"
 info:
   companyName: "Octop"
   productName: "Octop"
-  productIdentifier: "com.octop.desktop"
+  productIdentifier: "com.tencent.octop"
   description: "Octop desktop shell"
   copyright: "(c) 2026, Octop"
   comments: "Wails v3 + green portable"
