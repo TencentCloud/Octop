@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, Self
 
 from fastapi import APIRouter, Depends
@@ -11,10 +13,12 @@ from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import (
     MAX_REMOTE_BROWSER_BOOKMARKS,
+    PREFERENCES_KEY_TIMEZONE,
     ModelReasoningPreference,
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
+    parse_preferences_json,
 )
 from octop.infra.utils.locale import normalize_locale
 
@@ -45,6 +49,7 @@ class PreferencesResponse(BaseModel):
         default_factory=dict,
         description="Per-model reasoning defaults for this user.",
     )
+    timezone: str | None = Field(default=None, description="Preferred IANA timezone.")
 
 
 class PatchPreferencesBody(BaseModel):
@@ -55,11 +60,12 @@ class PatchPreferencesBody(BaseModel):
     )
     preferred_model: str | None = None
     model_reasoning: dict[str, ModelReasoningPreferenceModel] | None = None
+    timezone: str | None = None
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> Self:
         if not self.model_fields_set.intersection(
-            {"locale", "remote_browser_bookmarks", "preferred_model", "model_reasoning"}
+            {"locale", "remote_browser_bookmarks", "preferred_model", "model_reasoning", "timezone"}
         ):
             raise ValueError("at least one preference field is required")
         if (
@@ -90,6 +96,7 @@ def _response(row: Any) -> PreferencesResponse:
             ref: ModelReasoningPreferenceModel(mode=pref.mode, effort=pref.effort)
             for ref, pref in get_model_reasoning_from_json(raw).items()
         },
+        timezone=parse_preferences_json(raw).get(PREFERENCES_KEY_TIMEZONE),
     )
 
 
@@ -136,5 +143,24 @@ async def patch_preferences(
             preferred_model=preferred,
             model_reasoning=reasoning,
         )
+    if "timezone" in body.model_fields_set:
+        raw_timezone = body.timezone
+        row = server.services.user_repo.get(user.id)
+        data = parse_preferences_json(row.preferences_json if row else None)
+        if raw_timezone is not None:
+            trimmed = raw_timezone.strip()
+            if not trimmed:
+                raise OctopError(ErrorCode.SLASH_BAD_ARGS, "timezone cannot be empty")
+            try:
+                ZoneInfo(trimmed)
+            except ZoneInfoNotFoundError:
+                raise OctopError(
+                    ErrorCode.SLASH_BAD_ARGS,
+                    "timezone must be a valid IANA timezone",
+                ) from None
+            data[PREFERENCES_KEY_TIMEZONE] = trimmed
+        else:
+            data.pop(PREFERENCES_KEY_TIMEZONE, None)
+        server.services.user_repo.set_preferences_json(user.id, json.dumps(data))
     row = server.services.user_repo.get(user.id)
     return _response(row)

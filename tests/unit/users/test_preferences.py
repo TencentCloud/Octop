@@ -10,6 +10,7 @@ from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
+    get_timezone_from_preferences_json,
     merge_model_preferences_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
@@ -63,6 +64,15 @@ def test_get_remote_browser_bookmarks_from_json_roundtrip() -> None:
 def test_get_remote_browser_bookmarks_from_json_invalid_payload() -> None:
     assert get_remote_browser_bookmarks_from_json("not-json") == []
     assert get_remote_browser_bookmarks_from_json('{"remote_browser_bookmarks": "x"}') == []
+
+
+def test_get_timezone_from_preferences_json() -> None:
+    assert (
+        get_timezone_from_preferences_json('{"timezone":"Asia/Shanghai","x":1}') == "Asia/Shanghai"
+    )
+    assert get_timezone_from_preferences_json('{"timezone":"   "}') is None
+    assert get_timezone_from_preferences_json('{"x":1}') is None
+    assert get_timezone_from_preferences_json("not-json") is None
 
 
 def test_merge_preserves_other_keys() -> None:

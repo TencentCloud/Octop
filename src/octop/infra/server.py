@@ -431,6 +431,9 @@ class OctopServer:
             care_service=care_service,
             config_repo=self.services.repos.proactive_care_config_repo,
             session_repo=self.services.repos.session_repo,
+            agent_repo=self.services.repos.agent_repo,
+            user_repo=self.services.repos.user_repo,
+            default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)
 
