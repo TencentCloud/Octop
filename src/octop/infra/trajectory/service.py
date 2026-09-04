@@ -12,6 +12,7 @@ from typing import Any
 from octop.infra.trajectory.live import TrajectoryLiveBus
 from octop.infra.trajectory.metrics import TrajectoryMetrics, aggregate_metrics
 from octop.infra.trajectory.projector import project_harness_chunk
+from octop.infra.trajectory.settings import TRAJECTORY_RETENTION_USER_TURNS
 from octop.infra.trajectory.store import TrajectoryStore
 from octop.infra.trajectory.types import TrajectoryEvent
 
@@ -86,6 +87,15 @@ class TrajectoryService:
     ) -> list[TrajectoryEvent]:
         return self._store.list_before(thread_id, before_seq=before_seq, limit=limit, kinds=kinds)
 
+    def list_from_seq(
+        self,
+        thread_id: str,
+        *,
+        from_seq: int,
+        limit: int,
+    ) -> list[TrajectoryEvent]:
+        return self._store.list_from_seq(thread_id, from_seq=from_seq, limit=limit)
+
     def get_event(self, event_id: str) -> TrajectoryEvent | None:
         return self._store.get(event_id)
 
@@ -145,6 +155,7 @@ class TrajectoryService:
         state.dirty_tools.clear()
         state.tool_call_only = False
         state.last_publish_at.clear()
+        self._prune_retention(thread_id)
 
     def _with_thread_defaults(self, event: TrajectoryEvent) -> TrajectoryEvent:
         """Fill wall-clock ``ts`` and a stable ``turn_id`` when harness omits them."""
@@ -223,6 +234,7 @@ class TrajectoryService:
         seq = self._next_seq(event.thread_id)
         stored = replace(event, seq=seq, event_id=_stable_event_id(event, seq))
         if self._store.append(stored):
+            self._metrics_cache.pop(event.thread_id, None)
             if event.kind == "system":
                 self._inflight[event.thread_id].system_seen = True
             self._publish(stored)
@@ -230,7 +242,15 @@ class TrajectoryService:
 
     def _upsert(self, event: TrajectoryEvent, *, final: bool = False) -> None:
         if self._store.upsert(event):
+            self._metrics_cache.pop(event.thread_id, None)
             self._publish(event, final=final)
+
+    def _prune_retention(self, thread_id: str) -> None:
+        deleted = self._store.prune_older_than_user_turns(
+            thread_id, TRAJECTORY_RETENTION_USER_TURNS
+        )
+        if deleted:
+            self._metrics_cache.pop(thread_id, None)
 
     def _publish(self, event: TrajectoryEvent, *, final: bool = False) -> None:
         message = asdict(event)

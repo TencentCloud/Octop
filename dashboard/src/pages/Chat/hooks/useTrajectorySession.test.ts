@@ -4,6 +4,7 @@ import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 import { useTrajectorySession } from "./useTrajectorySession";
 
 const historyMock = vi.fn();
+const metricsMock = vi.fn();
 const streamUrlMock = vi.fn(
   (_agentId: string, _threadId: string, afterSeq?: number) =>
     `http://trajectory.test/stream?after_seq=${afterSeq ?? ""}`,
@@ -12,6 +13,7 @@ const streamUrlMock = vi.fn(
 vi.mock("../../../api/modules/trajectory", () => ({
   trajectoryApi: {
     history: (...args: unknown[]) => historyMock(...args),
+    metrics: (...args: unknown[]) => metricsMock(...args),
     streamUrl: (agentId: string, threadId: string, afterSeq?: number): string =>
       streamUrlMock(agentId, threadId, afterSeq),
   },
@@ -23,6 +25,7 @@ class MockEventSource {
   static instances: MockEventSource[] = [];
   url: string;
   close = vi.fn();
+  onerror: ((event: Event) => void) | null = null;
   private listeners = new Map<string, Set<Listener>>();
 
   constructor(url: string) {
@@ -83,6 +86,7 @@ describe("useTrajectorySession", () => {
   beforeEach(() => {
     MockEventSource.instances = [];
     historyMock.mockReset();
+    metricsMock.mockReset();
     streamUrlMock.mockClear();
     historyMock.mockResolvedValue({
       thread_id: "T1",
@@ -90,10 +94,23 @@ describe("useTrajectorySession", () => {
       next_before_seq: null,
       has_more: false,
     });
+    metricsMock.mockResolvedValue({
+      turns: 1,
+      steps: 1,
+      llm_duration_ms: null,
+      tool_duration_ms: null,
+      ttft_avg_ms: null,
+      tok_per_s: null,
+      cache_hit_ratio: null,
+      input_tokens: null,
+      output_tokens: null,
+      cache_read_tokens: null,
+    });
     vi.stubGlobal("EventSource", MockEventSource);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -159,7 +176,9 @@ describe("useTrajectorySession", () => {
     );
 
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
-    expect(result.current.metrics).toBeNull();
+    await waitFor(() =>
+      expect(result.current.metrics).toMatchObject({ turns: 1, steps: 1 }),
+    );
 
     act(() => {
       MockEventSource.instances[0].emit("metrics", {
@@ -362,5 +381,65 @@ describe("useTrajectorySession", () => {
     rerender({ visible: false });
 
     expect(MockEventSource.instances[0].close).toHaveBeenCalled();
+  });
+
+  it("reconnects EventSource after an error using the last seq", async () => {
+    renderHook(() =>
+      useTrajectorySession({
+        agentId: "A1",
+        threadId: "T1",
+        visible: true,
+      }),
+    );
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    act(() => {
+      MockEventSource.instances[0].onerror?.(new Event("error"));
+    });
+
+    await waitFor(() =>
+      expect(MockEventSource.instances.length).toBeGreaterThanOrEqual(2),
+    );
+    expect(streamUrlMock).toHaveBeenLastCalledWith("A1", "T1", 1);
+  });
+
+  it("loadEarlier keeps current events when the older page fails", async () => {
+    historyMock.mockImplementation(
+      (
+        _agentId: string,
+        _threadId: string,
+        params?: { beforeSeq?: number },
+      ) => {
+        if (params?.beforeSeq != null) {
+          return Promise.reject(new Error("network"));
+        }
+        return Promise.resolve({
+          thread_id: "T1",
+          events: [toolEvent],
+          next_before_seq: 5,
+          has_more: true,
+        });
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useTrajectorySession({
+        agentId: "A1",
+        threadId: "T1",
+        visible: true,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    await act(async () => {
+      await result.current.loadEarlier();
+    });
+
+    expect(result.current.events.map((row) => row.event_id)).toEqual([
+      "tool-1",
+    ]);
+    expect(result.current.hasMore).toBe(true);
   });
 });

@@ -59,6 +59,7 @@ from octop.infra.agents.experts.skillhub_market import (
     fetch_skillset,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
 router = APIRouter()
@@ -89,6 +90,7 @@ class FromExpertBody(AgentRuntimeFields):
         description="Optional custom agent id; auto-generated when omitted",
     )
     welcome_message: str | None = None
+    enable_trajectory: bool = True
 
 
 class PublishExpertBody(BaseModel):
@@ -122,6 +124,7 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
         description="Optional custom agent id; auto-generated when omitted",
     )
     welcome_message: str | None = None
+    enable_trajectory: bool = True
 
 
 class LocalizedTextResponse(BaseModel):
@@ -468,6 +471,7 @@ async def install_published_expert(
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
+            enable_trajectory=body.enable_trajectory,
         ),
     )
 
@@ -558,6 +562,7 @@ async def install_expert_hub_item(
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
                 skill_package_ids=package_ids,
+                enable_trajectory=body.enable_trajectory,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -627,6 +632,7 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
+    apply_enable_trajectory(config_extra, body.enable_trajectory)
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

@@ -20,6 +20,7 @@ import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
+import AgentTrajectoryField from "./AgentTrajectoryField";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
@@ -133,6 +134,7 @@ interface EditFormValues {
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
+  enable_trajectory?: boolean;
 }
 
 interface EditAgentDrawerProps {
@@ -300,6 +302,7 @@ function EditAgentDrawerBody({
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
           ...readAgentRuntimeFormValues(ag),
+          enable_trajectory: cfg.enable_trajectory !== false,
         });
         setLoading(false);
 
@@ -395,6 +398,7 @@ function EditAgentDrawerBody({
       const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
         backend: backendSpec,
+        enable_trajectory: values.enable_trajectory === true,
       });
       delete nextConfig.color;
       delete nextConfig.icon_name;
@@ -794,6 +798,7 @@ function EditAgentDrawerBody({
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
+              <AgentTrajectoryField />
               {!skillPackagesSupported ? (
                 <Alert
                   type="info"
