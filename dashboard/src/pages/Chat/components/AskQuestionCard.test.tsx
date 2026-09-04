@@ -79,6 +79,24 @@ describe("AskQuestionCard", () => {
     expect(screen.queryByText("chat.ask.other")).not.toBeInTheDocument();
   });
 
+  it("closes the card without answering", () => {
+    const onSubmit = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <AskQuestionCard
+        questions={questions}
+        status="pending"
+        onSubmit={onSubmit}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "chat.ask.dismiss" }));
+
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("collapses an answered question set in message history", () => {
     const { container } = render(
       <AskQuestionCard questions={questions} status="approved" />,

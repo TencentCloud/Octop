@@ -1281,6 +1281,8 @@
       "submit": "Send answers",
       "skip": "You decide",
       "skipMessage": "You decide — pick the best default and tell me what you assumed.",
+      "dismiss": "Close",
+      "dismissMessage": "The user closed these questions without answering. Do not ask again — wrap up this turn.",
       "answered": "Answered",
       "answeredSummary": "Answered {{count}} question(s)",
       "dismissedSummary": "Closed {{count}} question(s)",

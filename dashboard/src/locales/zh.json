@@ -1281,6 +1281,8 @@
       "submit": "提交回答",
       "skip": "你决定",
       "skipMessage": "你决定吧——按最优默认方案继续，并告诉我你依据的假设。",
+      "dismiss": "关闭",
+      "dismissMessage": "用户关闭了这些问题，没有作答。不要再追问，请就此结束本轮。",
       "answered": "已回答",
       "answeredSummary": "已回答 {{count}} 个问题",
       "dismissedSummary": "已关闭 {{count}} 个问题",

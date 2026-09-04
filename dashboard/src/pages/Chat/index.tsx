@@ -686,6 +686,22 @@ function ChatPageInner() {
     [resumeHitl, activeThreadId],
   );
 
+  /** Close an ask pause without answering: ``respond`` is the only decision
+   *  the agent allows for ``ask_user_question``, so tell it to wrap up. */
+  const handleAskDismiss = useCallback(
+    (actions: unknown[]) => {
+      resumeHitl(
+        actions.map(() => ({
+          type: "respond",
+          message: t("chat.ask.dismissMessage"),
+        })),
+        activeThreadId ?? undefined,
+        true,
+      );
+    },
+    [resumeHitl, activeThreadId, t],
+  );
+
   useEffect(() => {
     let cancelled = false;
     browserApi
@@ -1295,6 +1311,7 @@ function ChatPageInner() {
                         })),
                       )
                     }
+                    onDismiss={() => handleAskDismiss(pendingAsk.actions)}
                   />
                 </div>
               </div>

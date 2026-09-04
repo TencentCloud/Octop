@@ -1058,15 +1058,23 @@ export function useChat(
     (
       decisions: Array<{ type: string; message?: string }>,
       storeKey?: string,
+      dismissed?: boolean,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
       const threadId =
         storeKey || (stableSessionId !== "__empty__" ? stableSessionId : "");
       if (!threadId || threadId === "__empty__") return;
-      void chatStore.resumeHitl(key, agentId, threadId, decisions, () => {
-        void refreshHistory(threadId);
-      });
+      void chatStore.resumeHitl(
+        key,
+        agentId,
+        threadId,
+        decisions,
+        () => {
+          void refreshHistory(threadId);
+        },
+        dismissed,
+      );
     },
     [agentId, stableSessionId, refreshHistory],
   );

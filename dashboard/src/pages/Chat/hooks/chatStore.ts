@@ -2160,12 +2160,14 @@ export async function resumeHitl(
   threadId: string,
   decisions: Array<{ type: string; message?: string }>,
   onStreamEnd?: () => void,
+  dismissed = false,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   state.abortController?.abort();
-  const hitlStatus = decisions.some((d) => d.type === "reject")
-    ? "rejected"
-    : "approved";
+  const hitlStatus =
+    dismissed || decisions.some((d) => d.type === "reject")
+      ? "rejected"
+      : "approved";
   resolveHitlPending(state, hitlStatus);
   beginStream(state, sessionId);
   notify(state);
