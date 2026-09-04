@@ -22,6 +22,39 @@
   color: var(--fn-text-primary);
 }
 
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-sm);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--fn-transition-fast),
+    background var(--fn-transition-fast);
+
+  &:hover {
+    color: var(--fn-text-secondary);
+    background: var(--fn-bg-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
 .progress {
   padding: 2px 8px;
   border: 1px solid var(--fn-border-secondary);

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Input } from "antd";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AskQuestion } from "../../../api/types/hitl";
 import styles from "./AskQuestionCard.module.less";
@@ -15,6 +16,8 @@ export interface AskQuestionCardProps {
   questions: AskQuestion[];
   status: "pending" | "approved" | "rejected";
   onSubmit?: (message: string) => void;
+  /** Close the card without answering, ending the pause. */
+  onDismiss?: () => void;
 }
 
 /** What the user picked for one question. */
@@ -150,6 +153,7 @@ function AskQuestionCard({
   questions,
   status,
   onSubmit,
+  onDismiss,
 }: AskQuestionCardProps) {
   const { t } = useTranslation();
   const interactive = status === "pending" && Boolean(onSubmit);
@@ -233,8 +237,21 @@ function AskQuestionCard({
     <div className={styles.card}>
       <div className={styles.titleRow}>
         <span className={styles.title}>{t("chat.ask.title")}</span>
-        <span className={styles.progress}>
-          {reviewing ? t("chat.ask.reviewTag") : `${current + 1} / ${total}`}
+        <span className={styles.titleActions}>
+          <span className={styles.progress}>
+            {reviewing ? t("chat.ask.reviewTag") : `${current + 1} / ${total}`}
+          </span>
+          {onDismiss ? (
+            <button
+              type="button"
+              className={styles.closeButton}
+              onClick={onDismiss}
+              title={t("chat.ask.dismiss")}
+              aria-label={t("chat.ask.dismiss")}
+            >
+              <X size={15} />
+            </button>
+          ) : null}
         </span>
       </div>
 
