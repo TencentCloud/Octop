@@ -14,6 +14,7 @@ MAX_REMOTE_BROWSER_BOOKMARKS = 12
 PREFERENCES_KEY_REMOTE_BROWSER_BOOKMARKS = "remote_browser_bookmarks"
 PREFERENCES_KEY_PREFERRED_MODEL = "preferred_model"
 PREFERENCES_KEY_MODEL_REASONING = "model_reasoning"
+PREFERENCES_KEY_TIMEZONE = "timezone"
 MAX_BOOKMARK_TITLE_LEN = 80
 
 REASONING_MODES = frozenset({"auto", "enabled", "disabled"})
@@ -109,6 +110,15 @@ def get_model_reasoning_from_json(raw: str | None) -> dict[str, ModelReasoningPr
         if ref:
             out[ref] = normalize_reasoning_preference(value)
     return out
+
+
+def get_timezone_from_preferences_json(raw: str | None) -> str | None:
+    """Return the preferred timezone from preferences JSON if present and non-empty."""
+    value = parse_preferences_json(raw).get(PREFERENCES_KEY_TIMEZONE)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
 
 
 def merge_preferences_json(

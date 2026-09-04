@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from zoneinfo import ZoneInfo
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -156,6 +157,17 @@ def test_is_in_active_hours_false_after():
     assert is_in_active_hours(now, active_hours_start="09:00", active_hours_end="22:00") is False
 
 
+def test_is_in_active_hours_with_timezone():
+    # 2026-07-01 01:00 UTC is 09:00 Asia/Shanghai.
+    now = datetime(2026, 7, 1, 1, 0, 0, tzinfo=UTC)
+    assert is_in_active_hours(
+        now,
+        active_hours_start="09:00",
+        active_hours_end="22:00",
+        timezone_name="Asia/Shanghai",
+    ) is True
+
+
 def test_is_in_active_hours_boundary_start():
     """Should return True exactly at the active-window start."""
     now = datetime(2026, 7, 1, 9, 0, 0, tzinfo=UTC)
@@ -166,6 +178,22 @@ def test_is_in_active_hours_boundary_end():
     """Should return False exactly at the active-window end."""
     now = datetime(2026, 7, 1, 22, 0, 0, tzinfo=UTC)
     assert is_in_active_hours(now, active_hours_start="09:00", active_hours_end="22:00") is False
+
+
+def test_compute_next_trigger_with_timezone():
+    now = datetime(2026, 7, 1, 1, 0, 0, tzinfo=UTC)  # 09:00 Shanghai
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", lambda a, b: 60)  # 1 hour
+        result = compute_next_trigger(
+            now=now,
+            active_hours_start="09:00",
+            active_hours_end="22:00",
+            min_interval_hours=1,
+            max_interval_hours=2,
+            timezone_name="Asia/Shanghai",
+        )
+    local = result.astimezone(ZoneInfo("Asia/Shanghai"))
+    assert local.time().hour == 10
 
 
 # ---------------------------------------------------------------------------

@@ -62,3 +62,27 @@ async def test_preferences_reasoning_defaults_roundtrip(env) -> None:
 
     fetched = await client.get("/api/preferences", headers=auth)
     assert fetched.json()["model_reasoning"] == payload["model_reasoning"]
+
+
+@pytest.mark.asyncio
+async def test_preferences_timezone_roundtrip(env) -> None:
+    client, _srv, auth = env
+    payload = {"timezone": "Asia/Shanghai"}
+    r = await client.patch("/api/preferences", headers=auth, json=payload)
+    assert r.status_code == 200
+    assert r.json()["timezone"] == payload["timezone"]
+
+    r = await client.get("/api/preferences", headers=auth)
+    assert r.json()["timezone"] == payload["timezone"]
+
+    r = await client.patch("/api/preferences", headers=auth, json={"timezone": None})
+    assert r.status_code == 200
+    assert "timezone" in r.json()
+    assert r.json()["timezone"] is None
+
+
+@pytest.mark.asyncio
+async def test_preferences_timezone_rejects_invalid_value(env) -> None:
+    client, _srv, auth = env
+    r = await client.patch("/api/preferences", headers=auth, json={"timezone": "BAD_ZONE"})
+    assert r.status_code in (400, 422)
