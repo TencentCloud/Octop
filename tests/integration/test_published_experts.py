@@ -167,6 +167,44 @@ async def test_install_keeps_source_quick_prompts_when_publish_body_omits_them(
     assert fork_welcome.json()["quick_prompts"] == source_prompts
 
 
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+
+async def test_published_list_exposes_snapshot_avatar(
+    env: tuple[Any, Any, dict[str, str]],
+) -> None:
+    client, _server, owner_auth, peer_auth, source_agent_id = await _owner_and_peer(env)
+
+    uploaded = await client.post(
+        f"/api/agents/{source_agent_id}/avatar",
+        headers=owner_auth,
+        files={"file": ("face.png", PNG, "image/png")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+
+    published = await client.post(
+        f"/api/agents/{source_agent_id}/publish-expert",
+        headers=owner_auth,
+        json={"name": "Avatar published"},
+    )
+    assert published.status_code == 201, published.text
+    expert_id = published.json()["id"]
+    icon_url = published.json().get("icon_url")
+    assert isinstance(icon_url, str)
+    assert icon_url.startswith(f"/api/experts/published/{expert_id}/avatar")
+    assert "v=" in icon_url
+
+    listed = await client.get("/api/experts/published", headers=peer_auth)
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json() if item["id"] == expert_id)
+    assert row["icon_url"] == icon_url
+
+    got = await client.get(icon_url, headers=peer_auth)
+    assert got.status_code == 200, got.text
+    assert got.content == PNG
+    assert got.headers["content-type"].startswith("image/png")
+
+
 async def test_creator_can_refresh_published_expert(
     env: tuple[Any, Any, dict[str, str]],
 ) -> None:

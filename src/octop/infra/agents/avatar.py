@@ -43,6 +43,10 @@ def agent_avatar_api_path(agent_id: str) -> str:
     return f"/api/agents/{agent_id}/avatar"
 
 
+def published_expert_avatar_api_path(expert_id: str) -> str:
+    return f"/api/experts/published/{expert_id}/avatar"
+
+
 def display_agent_icon_url(
     *,
     agent_id: str,
@@ -127,6 +131,39 @@ async def copy_workspace_avatar_to_dir(workspace: WorkspaceAvatarIO, dest: Path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
     return rel
+
+
+def read_snapshot_avatar(snapshot_dir: Path) -> tuple[bytes, str] | None:
+    """Load ``.octop/avatar.*`` (or legacy root ``avatar.*``) from a published snapshot."""
+    for relpath in _ALL_AVATAR_RELPATHS:
+        path = snapshot_dir.joinpath(*PurePosixPath(relpath).parts)
+        if not path.is_file():
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if not data:
+            continue
+        media_type = sniff_image_media_type(data[:16]) or "application/octet-stream"
+        return data, media_type
+    return None
+
+
+def display_published_expert_icon_url(
+    *,
+    expert_id: str,
+    snapshot_dir: Path,
+    updated_at: str | int | None = None,
+) -> str | None:
+    """Public ``icon_url`` when the published snapshot contains an avatar file."""
+    if read_snapshot_avatar(snapshot_dir) is None:
+        return None
+    local = published_expert_avatar_api_path(expert_id)
+    version = str(updated_at or "").strip()
+    if not version:
+        return local
+    return f"{local}?v={version}"
 
 
 async def bind_workspace_avatar_icon_url(

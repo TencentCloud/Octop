@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { App, Dropdown } from "antd";
 import { MoreHorizontal } from "lucide-react";
-import { iconForName } from "./iconForName";
+import { ExpertIcon } from "./iconForName";
 import {
   publishedExpertsApi,
   type PublishedExpert,
@@ -62,7 +62,11 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
           className={styles.agentCardIcon}
           style={{ color: accent, background: `${accent}18` }}
         >
-          {iconForName(expert.icon_name, 20)}
+          <ExpertIcon
+            iconUrl={expert.icon_url}
+            iconName={expert.icon_name}
+            size={expert.icon_url ? 28 : 20}
+          />
         </div>
         <div className={styles.agentCardTitleBlock}>
           <div className={styles.agentCardName}>{expert.name}</div>

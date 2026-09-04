@@ -9,6 +9,7 @@ export interface PublishedExpert {
   creator_username: string | null;
   source_agent_id: string | null;
   icon_name: string | null;
+  icon_url?: string | null;
   color: string | null;
   created_at: string;
   updated_at: string;
