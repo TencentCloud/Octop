@@ -122,16 +122,16 @@ describe("summarizeHitlAction", () => {
     ]);
   });
 
-  it("omits default profile noise and skips empty args", () => {
+  it("omits server-owned profile and skips empty args", () => {
     const view = summarizeHitlAction(
       "browser_use",
-      { action: "screenshot", profile: "default" },
+      { action: "screenshot", profile: "user-7" },
       tZh,
       "使用浏览器",
     );
 
     expect(view.summary).toBe("截取当前网页截图");
     expect(view.rows.map((row) => row.label)).toEqual(["操作"]);
-    expect(view.rows.some((row) => row.value === "default")).toBe(false);
+    expect(view.rows.some((row) => row.value === "user-7")).toBe(false);
   });
 });

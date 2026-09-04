@@ -1,14 +1,9 @@
 """tests/integration/test_browser_api.py — remote browser endpoints.
 
-We deliberately don't spawn a real Playwright browser in the test
-suite — that requires the chromium binary to be installed and adds
-~5s of cold-start per test. Instead we drive the *gates* and the
-``_probe_env`` helper directly: env-status shape, install spawn
-returning a pid, 503 when browsers aren't ready, cross-user 404.
-
-The happy path (create session → goto → screenshot) is exercised
-manually via the dashboard; once chromium is installed in CI we can
-flip a feature flag and let ``test_create_session_happy_path`` run.
+We deliberately don't spawn a real Chrome in the test suite. These
+cases drive env-status, ``_probe_env``, install SSE, harness-sessions,
+and shutdown gates. Live screencast is covered by dashboard + WS unit
+tests.
 """
 
 from __future__ import annotations
@@ -43,7 +38,7 @@ def test_probe_env_when_playwright_missing() -> None:
     """``_probe_env`` should not raise even with playwright import broken."""
     import builtins
 
-    from octop.api.routers.browser import sessions as br
+    from octop.api.routers.browser import env as br
 
     original_import = builtins.__import__
 
@@ -62,7 +57,7 @@ def test_probe_env_when_playwright_missing() -> None:
 
 def test_probe_env_harness_browser_without_chromium() -> None:
     """``browsers_ok`` must stay false when no Chrome/Chromium is available."""
-    from octop.api.routers.browser import sessions as br
+    from octop.api.routers.browser import env as br
 
     try:
         import harness_browser  # noqa: F401
@@ -81,7 +76,7 @@ def test_probe_env_harness_browser_without_chromium() -> None:
 
 def test_probe_env_accepts_system_chrome() -> None:
     """System Chrome via find_chrome is enough for browsers_ok (same as launch)."""
-    from octop.api.routers.browser import sessions as br
+    from octop.api.routers.browser import env as br
 
     try:
         import harness_browser  # noqa: F401
@@ -111,7 +106,7 @@ def test_probe_env_accepts_system_chrome() -> None:
 
 
 def test_verify_browser_binary_ok(tmp_path: Path) -> None:
-    from octop.api.routers.browser import sessions as br
+    from octop.api.routers.browser import env as br
 
     if os.name == "nt":
         # Windows cannot exec a shebang script; use a .bat that ignores args.
@@ -126,14 +121,14 @@ def test_verify_browser_binary_ok(tmp_path: Path) -> None:
     assert "Chrome" in msg
 
 
-# --- session list (always permits empty) -----------------------------------
-
-
-async def test_list_sessions_empty(env: Any) -> None:
+async def test_legacy_playwright_session_routes_removed(env: Any) -> None:
+    """In-process Playwright CRUD is gone; the product path is harness-sessions."""
     c, _srv, auth = env
     r = await c.get("/api/browser/sessions", headers=auth)
-    assert r.status_code == 200
-    assert r.json() == []
+    assert r.status_code in (404, 405)
+    r = await c.post("/api/browser/sessions", headers=auth)
+    assert r.status_code in (404, 405)
+    assert r.status_code != 201
 
 
 async def test_harness_sessions_shape(env: Any) -> None:
@@ -204,103 +199,13 @@ async def test_harness_list_tabs_uses_sticky_target_id(monkeypatch) -> None:
     assert [tab["active"] for tab in tabs] == [False, True]
 
 
-async def test_new_tab_bad_restore_url_returns_warning() -> None:
-    """A stale restored tab URL should not crash the whole browser session."""
-    from octop.api.routers.browser import sessions as br
-
-    class FakePage:
-        def __init__(self) -> None:
-            self.closed = False
-
-        async def goto(self, *_args: Any, **_kwargs: Any) -> None:
-            raise RuntimeError("net::ERR_FILE_NOT_FOUND")
-
-        async def close(self) -> None:
-            self.closed = True
-
-        def is_closed(self) -> bool:
-            return self.closed
-
-    class FakeContext:
-        async def new_page(self) -> FakePage:
-            return FakePage()
-
-    class FakeSession:
-        id = "sid"
-        url = "about:blank"
-        context = FakeContext()
-        pages: list[Any] = []
-        active_idx = 0
-
-        async def sync_pages(self) -> None:
-            return None
-
-        async def tab_list(self) -> list[dict[str, Any]]:
-            return [{"idx": 0, "url": "about:blank", "title": "", "active": True}]
-
-    with patch("octop.api.routers.browser.sessions._get_session", return_value=FakeSession()):
-        resp = await br.new_tab(
-            "sid",
-            br.NewTabBody(url="file:///missing.html"),
-            SimpleNamespace(id=1),
-        )
-
-    assert resp["id"] == "sid"
-    assert "warning" in resp
-    assert "file:///missing.html" in resp["warning"]
-
-
-# --- create when env not ready -> 503 -------------------------------------
-
-
-async def test_create_session_503_when_env_broken(env: Any) -> None:
-    c, _srv, auth = env
-
-    with patch(
-        "octop.api.routers.browser.sessions._probe_env",
-        return_value={
-            "playwright": True,
-            "browsers_ok": False,
-            "error": "chromium not installed",
-        },
-    ):
-        r = await c.post("/api/browser/sessions", headers=auth)
-    assert r.status_code == 503
-    body = r.json()
-    # The specific env reason is surfaced via ``details`` (the message is a
-    # generic localized string per the i18n design).
-    assert "chromium" in body["error"]["details"]["error"].lower()
-
-
-# --- cross-user isolation --------------------------------------------------
-
-
-async def test_session_404_for_other_user(env: Any) -> None:
-    c, _srv, auth = env
-    r = await c.get("/api/browser/sessions/no-such-id", headers=auth)
-    assert r.status_code == 404
-    r = await c.delete("/api/browser/sessions/no-such-id", headers=auth)
-    assert r.status_code == 404
-    r = await c.get(
-        "/api/browser/sessions/no-such-id/screenshot",
-        headers=auth,
-    )
-    assert r.status_code == 404
-    r = await c.post(
-        "/api/browser/sessions/no-such-id/goto",
-        headers=auth,
-        json={"url": "https://example.com"},
-    )
-    assert r.status_code == 404
-
-
 async def test_shutdown_requires_auth(env: Any) -> None:
     c, _srv, _auth = env
     r = await c.post("/api/browser/shutdown")
     assert r.status_code == 401
 
 
-async def test_shutdown_stops_named_profile(env: Any) -> None:
+async def test_shutdown_ignores_client_profile(env: Any) -> None:
     c, _srv, auth = env
     result = SimpleNamespace(success=True, error=None)
     with patch(
@@ -309,10 +214,10 @@ async def test_shutdown_stops_named_profile(env: Any) -> None:
     ) as tool:
         r = await c.post("/api/browser/shutdown?profile=work", headers=auth)
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "profile": "work"}
+    assert r.json() == {"ok": True, "profile": "user-1"}
     tool.assert_awaited_once_with(
         action="close_session",
-        profile="work",
+        profile="user-1",
         kill=True,
     )
 

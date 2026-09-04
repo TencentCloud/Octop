@@ -1,22 +1,10 @@
 /**
- * Single source of truth for the harness browser profile identifier.
+ * Harness browser profile for one Octop user.
  *
- * All conversations currently map to one shared "default" profile so the
- * headed chat browser stays consistent with headless/standalone usage (instead
- * of spawning a per-conversation ``thr_*`` profile). The chat status bubble
- * and the chat browser panel must both derive the profile from here rather
- * than hardcoding "default" on independent paths.
+ * Shared across that user's agents and conversations. The backend also
+ * derives this from the authenticated user and ignores client-supplied names.
+ * A leftover on-disk ``default`` profile is not reused.
  */
-
-export const DEFAULT_BROWSER_PROFILE = "default";
-
-/**
- * Resolve the browser profile for a conversation.
- *
- * Currently always the shared default profile; the conversation id is accepted
- * (and ignored) so per-conversation profiles can be introduced later without
- * touching every caller.
- */
-export function resolveBrowserProfile(): string {
-  return DEFAULT_BROWSER_PROFILE;
+export function resolveBrowserProfile(userId?: number | null): string | null {
+  return userId == null || userId <= 0 ? null : `user-${userId}`;
 }
