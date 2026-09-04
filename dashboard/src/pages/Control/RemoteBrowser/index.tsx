@@ -50,7 +50,6 @@ import BrowserViewer, {
 import { useAgent } from "../../../context/AgentContext";
 import { browserApi } from "../../../api/modules/browser";
 import * as chatStore from "../../Chat/hooks/chatStore";
-import type { BrowserSession as HarnessSession } from "../../../api/types/browser";
 import { request } from "../../../api/request";
 import { normalizeUrl } from "../../../utils/normalizeUrl";
 import { clearCanvas } from "../../../utils/browserCanvas";
@@ -76,6 +75,8 @@ import {
 } from "../../../hooks/useViewportMode";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useLandscapeFullscreen } from "../../../hooks/useLandscapeFullscreen";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -127,20 +128,15 @@ const BROWSER_AI_PANEL_MAX_WIDTH = 620;
 const BROWSER_AI_PANEL_MIN_HEIGHT = 200;
 const BROWSER_AI_PANEL_MAX_HEIGHT = 520;
 
-function readStoredProfile(): string | null {
-  try {
-    return (
-      localStorage.getItem(PROFILE_STORAGE_KEY) ??
-      localStorage.getItem(LEGACY_SESSION_STORAGE_KEY)
-    );
-  } catch {
-    return null;
-  }
+function profileStorageKey(userId?: number): string {
+  return userId == null
+    ? PROFILE_STORAGE_KEY
+    : `${PROFILE_STORAGE_KEY}:${userId}`;
 }
 
-function persistProfile(profile: string) {
+function persistProfile(profile: string, userId?: number) {
   try {
-    localStorage.setItem(PROFILE_STORAGE_KEY, profile);
+    localStorage.setItem(profileStorageKey(userId), profile);
     localStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
   } catch {
     /* ignore */
@@ -165,22 +161,6 @@ function setStreamActive(active: boolean) {
   } catch {
     /* ignore */
   }
-}
-
-function pickProfile(
-  sessions: HarnessSession[],
-  threadFromUrl?: string,
-  stored?: string | null,
-): string {
-  if (threadFromUrl) return threadFromUrl;
-  if (stored && sessions.some((s) => s.session_id === stored)) return stored;
-  if (sessions.length > 0) {
-    const sorted = [...sessions].sort(
-      (a, b) => (b.last_activity_at ?? 0) - (a.last_activity_at ?? 0),
-    );
-    return sorted[0].session_id;
-  }
-  return stored ?? "default";
 }
 
 function tabsFromStream(
@@ -313,6 +293,8 @@ export default function RemoteBrowserPage({
   const { t } = useTranslation();
   const { modal, message: antMessage } = App.useApp();
   const isMobile = useIsMobile();
+  const currentUser = useCurrentUser();
+  const browserProfile = resolveBrowserProfile(currentUser?.id);
   const { activeAgent, activeAgentId, agents } = useAgent();
   const [searchParams] = useSearchParams();
   const threadFromUrl =
@@ -471,14 +453,17 @@ export default function RemoteBrowserPage({
     setFrameReady(ready);
   }, []);
 
-  const attachProfile = useCallback((profileId: string, tabs: BrowserTab[]) => {
-    profileIdRef.current = profileId;
-    const view = viewFromProfile(profileId, tabs);
-    setSession(view);
-    persistProfile(profileId);
-    if (urlEditingRef.current) return;
-    if (view.url) setNavUrl(view.url);
-  }, []);
+  const attachProfile = useCallback(
+    (profileId: string, tabs: BrowserTab[]) => {
+      profileIdRef.current = profileId;
+      const view = viewFromProfile(profileId, tabs);
+      setSession(view);
+      persistProfile(profileId, currentUser?.id);
+      if (urlEditingRef.current) return;
+      if (view.url) setNavUrl(view.url);
+    },
+    [currentUser?.id],
+  );
 
   // Shared stream controller — measures the container, resolves the viewport
   // (mobile-aware), opens the WebSocket, and paints frames onto the canvas.
@@ -524,21 +509,20 @@ export default function RemoteBrowserPage({
   }, [t]);
 
   const refreshSessions = useCallback(async (): Promise<string | null> => {
+    if (!browserProfile) return null;
     try {
-      const resp = await browserApi.getSessions();
-      const sessions = resp.ok ? resp.sessions : [];
-      const profile = pickProfile(sessions, threadFromUrl, readStoredProfile());
+      await browserApi.getSessions();
       // Restore stream only when the user left it open, or when deep-linked
       // via ?thread=… — do not auto-open just because Chrome is still alive.
       if (threadFromUrl || readStreamActive()) {
-        startStream(profile, "");
-        return profile;
+        startStream(browserProfile, "");
+        return browserProfile;
       }
       return null;
     } catch {
       return null;
     }
-  }, [startStream, threadFromUrl]);
+  }, [browserProfile, startStream, threadFromUrl]);
 
   useEffect(() => {
     void refreshEnv();
@@ -713,21 +697,16 @@ export default function RemoteBrowserPage({
   }, []);
 
   const createSession = useCallback(async () => {
+    if (!browserProfile) return;
     setCreating(true);
     try {
-      const resp = await browserApi.getSessions();
-      const profile = pickProfile(
-        resp.ok ? resp.sessions : [],
-        threadFromUrl,
-        readStoredProfile(),
-      );
-      startStream(profile, normalizeUrl(navUrl) || DEFAULT_START_URL);
+      startStream(browserProfile, normalizeUrl(navUrl) || DEFAULT_START_URL);
     } catch (err: unknown) {
       showApiError(err, t("remoteBrowser.createSessionFailed"), t);
     } finally {
       setCreating(false);
     }
-  }, [navUrl, startStream, t, threadFromUrl]);
+  }, [browserProfile, navUrl, startStream, t]);
 
   const closeSession = useCallback(() => {
     disconnect();
@@ -736,15 +715,14 @@ export default function RemoteBrowserPage({
     setFrameReady(false);
     setStreamActive(false);
     try {
-      localStorage.removeItem(PROFILE_STORAGE_KEY);
+      localStorage.removeItem(profileStorageKey(currentUser?.id));
     } catch {
       /* ignore */
     }
     clearCanvas(canvasRef.current);
-  }, [disconnect]);
+  }, [currentUser?.id, disconnect]);
 
   const shutdownBrowser = useCallback(() => {
-    const profile = profileIdRef.current || "default";
     modal.confirm({
       title: t("remoteBrowser.shutdownTitle", "关闭浏览器"),
       content: t(
@@ -756,7 +734,7 @@ export default function RemoteBrowserPage({
       cancelText: t("common.cancel"),
       onOk: async () => {
         try {
-          await browserApi.shutdown(profile);
+          await browserApi.shutdown();
         } catch (err: unknown) {
           showApiError(
             err,
@@ -961,11 +939,8 @@ export default function RemoteBrowserPage({
       /* ignore */
     }
 
-    const profileId = profileIdRef.current || "default";
     try {
       const data = await browserApi.startRecording({
-        profile: profileId,
-        agentProfile: profileId,
         name: `browser-skill-${Date.now()}`,
       });
       if (data.ok) {
@@ -993,7 +968,7 @@ export default function RemoteBrowserPage({
           : t("browser.recordReplay.startFailed", "开始录制失败"),
       );
     }
-  }, [t]);
+  }, [antMessage, t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
   const showEdgeControls = Boolean(session) && isStreaming && frameReady;

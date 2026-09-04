@@ -106,3 +106,33 @@ async def test_resolve_harness_session_create_false_returns_none() -> None:
     ):
         result = await resolve_harness_session("default", create=False)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_harness_session_never_falls_back_to_another_profile() -> None:
+    other_session = object()
+    tool_iface = SimpleNamespace(_registry={"user-2": other_session})
+    hb = SimpleNamespace(BrowserSession=object, tool_interface=tool_iface)
+    with patch.dict(
+        sys.modules,
+        {"harness_browser": hb, "harness_browser.tool_interface": tool_iface},
+    ):
+        result = await resolve_harness_session("user-1", create=False)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_harness_session_create_true_rejects_empty_hint() -> None:
+    from octop.infra.errors import OctopError
+
+    fake_registry: dict[str, Any] = {"user-2": object()}
+    tool_iface = SimpleNamespace(_registry=fake_registry)
+    hb = SimpleNamespace(BrowserSession=object, tool_interface=tool_iface)
+    with (
+        patch.dict(
+            sys.modules,
+            {"harness_browser": hb, "harness_browser.tool_interface": tool_iface},
+        ),
+        pytest.raises(OctopError, match="browser profile is required"),
+    ):
+        await resolve_harness_session("auto", create=True)

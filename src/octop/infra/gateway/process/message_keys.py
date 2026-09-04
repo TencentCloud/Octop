@@ -74,6 +74,8 @@ def resolve_user_id_for_message(
     Dashboard and CLI use numeric ``subject_id`` values as Octop user ids.
     External IM subject ids belong to a platform-specific identity domain and
     may also be numeric, so those sessions always belong to the agent owner.
+    Browser cookies follow this same id (``user-<id>``): IM members of one
+    agent share the owner's profile, they are not isolated from each other.
     """
     if msg.channel_type in (
         ThreadRegistry.CHANNEL_DASHBOARD,

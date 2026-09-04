@@ -3,7 +3,8 @@ import api from "../api";
 import { getWsUrl } from "../api/config";
 import { getAuthToken } from "../api/request";
 import type { BrowserSession, DisplayEnvironment } from "../api/types/browser";
-import { DEFAULT_BROWSER_PROFILE } from "../utils/browserProfile";
+import { resolveBrowserProfile } from "../utils/browserProfile";
+import { useCurrentUser } from "./useCurrentUser";
 
 /**
  * Session update event pushed over WebSocket from the backend.
@@ -57,6 +58,9 @@ export function useBrowserSessionState(
   conversationId?: string,
   enabled = true,
 ): BrowserSessionState {
+  const currentUser = useCurrentUser();
+  const browserProfile = resolveBrowserProfile(currentUser?.id);
+  const active = enabled && browserProfile != null;
   const [session, setSession] = useState<BrowserSession | null>(null);
   const [environment, setEnvironment] =
     useState<DisplayEnvironment>("headless-server");
@@ -73,7 +77,7 @@ export function useBrowserSessionState(
 
   const fetchSessions = useCallback(async () => {
     try {
-      const resp = await api.getSessions(conversationIdRef.current);
+      const resp = await api.getSessions();
       if (unmountedRef.current) return;
       if (resp.ok) {
         setEnvironment(resp.environment);
@@ -104,7 +108,7 @@ export function useBrowserSessionState(
   }, []);
 
   const connectWs = useCallback(() => {
-    if (unmountedRef.current) return;
+    if (unmountedRef.current || !browserProfile) return;
 
     // Clean up any previous connection
     if (wsRef.current) {
@@ -149,7 +153,7 @@ export function useBrowserSessionState(
             width: 1,
             height: 1,
             reuse_session: true,
-            session_id: DEFAULT_BROWSER_PROFILE,
+            session_id: browserProfile,
           }),
         );
       } catch {
@@ -168,12 +172,11 @@ export function useBrowserSessionState(
           type: string;
         };
         if (msg.type === "session_update") {
-          // Shared default profile applies across conversations; also accept
-          // updates scoped to the current conversation id when present.
+          // Browser state is scoped to the authenticated user's profile.
           const cid = conversationIdRef.current;
           const shared =
-            msg.session_id === DEFAULT_BROWSER_PROFILE ||
-            msg.conversation_id === DEFAULT_BROWSER_PROFILE;
+            msg.session_id === browserProfile ||
+            msg.conversation_id === browserProfile;
           if (!cid || shared || msg.conversation_id === cid) {
             setSession((prev) => {
               if (!prev) {
@@ -182,7 +185,7 @@ export function useBrowserSessionState(
                 // HTTP fetch to complete.
                 return {
                   session_id: msg.session_id,
-                  profile_name: DEFAULT_BROWSER_PROFILE,
+                  profile_name: browserProfile,
                   conversation_id: msg.conversation_id,
                   channel_source: msg.channel_source,
                   state: msg.state,
@@ -230,7 +233,7 @@ export function useBrowserSessionState(
     };
 
     wsRef.current = ws;
-  }, [fetchSessions, scheduleReconnect]);
+  }, [browserProfile, fetchSessions, scheduleReconnect]);
 
   useEffect(() => {
     connectWsRef.current = connectWs;
@@ -240,7 +243,7 @@ export function useBrowserSessionState(
 
   // Initial HTTP fetch + WS connect
   useEffect(() => {
-    if (!enabled) return;
+    if (!active) return;
     unmountedRef.current = false;
     fetchSessions();
     connectWs();
@@ -260,13 +263,13 @@ export function useBrowserSessionState(
         wsRef.current = null;
       }
     };
-  }, [enabled, fetchSessions, connectWs]);
+  }, [active, fetchSessions, connectWs]);
 
   // Re-fetch when conversationId changes
   useEffect(() => {
-    if (!enabled) return;
+    if (!active) return;
     fetchSessions();
-  }, [enabled, conversationId, fetchSessions]);
+  }, [active, conversationId, fetchSessions]);
 
   return {
     session,

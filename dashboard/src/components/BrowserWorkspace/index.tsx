@@ -32,7 +32,6 @@ import {
 } from "../../hooks/useViewportMode";
 import { normalizeUrl } from "../../utils/normalizeUrl";
 import { viewportModeLabel } from "../../utils/browserViewport";
-import { DEFAULT_BROWSER_PROFILE } from "../../utils/browserProfile";
 import { showApiError } from "../../utils/showApiToast";
 import BrowserViewer, { type BrowserViewerHandle } from "../BrowserViewer";
 import styles from "./index.module.less";
@@ -42,8 +41,7 @@ export type PanelMode = "hidden" | "bottom" | "right" | "popup";
 const DEFAULT_URL = "https://cloud.tencent.com";
 
 interface BrowserWorkspaceProps {
-  /** Conversation/session id used to attach the screencast to the agent's
-   *  Chrome. Falls back to "default" on the backend when absent. */
+  /** Harness profile for the current user. Server enforces the same mapping. */
   sessionId?: string | null;
   environment?: DisplayEnvironment;
   style?: React.CSSProperties;
@@ -171,7 +169,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
       }
       return {
         session_id: sessionInfo.session_id,
-        profile_name: DEFAULT_BROWSER_PROFILE,
+        profile_name: sessionInfo.session_id,
         conversation_id: sessionInfo.conversation_id,
         channel_source: sessionInfo.channel_source,
         state: sessionInfo.state || "idle",
