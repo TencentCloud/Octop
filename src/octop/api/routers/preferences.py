@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, model_validator
