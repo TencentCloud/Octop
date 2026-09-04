@@ -2116,6 +2116,9 @@ export default function KnowledgeBasesPage() {
         title={t("knowledgeBases.settingsTitle")}
         placement="right"
         width={isMobile ? "100%" : 520}
+        // Below antd's default dialog layer (1000) so confirm/progress modals
+        // opened from inside this drawer always stack above it.
+        zIndex={990}
         open={featureModalOpen}
         onClose={() => setFeatureModalOpen(false)}
         destroyOnHidden
@@ -2467,7 +2470,7 @@ export default function KnowledgeBasesPage() {
         onCancel={dismissDownloadProgressToBackground}
         closable
         maskClosable
-        destroyOnClose={false}
+        destroyOnHidden={false}
         footer={
           <Button onClick={dismissDownloadProgressToBackground}>
             {t("models.localDownloadContinueBackground")}

@@ -1076,7 +1076,7 @@ export function ProviderConfigModal({
         onCancel={dismissDownloadProgressToBackground}
         closable
         maskClosable
-        destroyOnClose={false}
+        destroyOnHidden={false}
         footer={
           <Button onClick={dismissDownloadProgressToBackground}>
             {t("models.localDownloadContinueBackground")}
