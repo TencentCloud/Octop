@@ -10,6 +10,8 @@ from octop.infra.agents.avatar import (
     agent_avatar_api_path,
     delete_workspace_avatar,
     display_agent_icon_url,
+    display_published_expert_icon_url,
+    read_snapshot_avatar,
     read_workspace_avatar,
     sniff_avatar_media_type,
     write_workspace_avatar,
@@ -90,4 +92,32 @@ def test_display_agent_icon_url_cache_busts_local_avatar() -> None:
     assert display_agent_icon_url(agent_id="agt1", stored=local, updated_at=42) == f"{local}?v=42"
     assert display_agent_icon_url(agent_id="agt1", stored="https://cdn/x.png", updated_at=42) == (
         "https://cdn/x.png"
+    )
+
+
+def test_read_snapshot_avatar_and_display_url(tmp_path) -> None:
+    assert read_snapshot_avatar(tmp_path) is None
+    assert (
+        display_published_expert_icon_url(
+            expert_id="pexp1",
+            snapshot_dir=tmp_path,
+            updated_at="2026-01-01T00:00:00Z",
+        )
+        is None
+    )
+
+    avatar = tmp_path / ".octop" / "avatar.png"
+    avatar.parent.mkdir(parents=True)
+    avatar.write_bytes(PNG)
+    found = read_snapshot_avatar(tmp_path)
+    assert found is not None
+    assert found[0] == PNG
+    assert found[1] == "image/png"
+    assert (
+        display_published_expert_icon_url(
+            expert_id="pexp1",
+            snapshot_dir=tmp_path,
+            updated_at="2026-01-01T00:00:00Z",
+        )
+        == "/api/experts/published/pexp1/avatar?v=2026-01-01T00:00:00Z"
     )

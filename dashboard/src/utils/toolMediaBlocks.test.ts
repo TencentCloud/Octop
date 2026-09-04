@@ -93,6 +93,12 @@ describe("needsAuthBlobFetch", () => {
   it("requires auth for uploaded expert avatars", () => {
     expect(needsAuthBlobFetch("/api/agents/agt_1/avatar")).toBe(true);
     expect(needsAuthBlobFetch("/api/agents/agt_1/avatar?v=9")).toBe(true);
+    expect(needsAuthBlobFetch("/api/experts/published/pexp_1/avatar")).toBe(
+      true,
+    );
+    expect(needsAuthBlobFetch("/api/experts/published/pexp_1/avatar?v=9")).toBe(
+      true,
+    );
     expect(needsAuthBlobFetch("https://cdn.example.com/icon.png")).toBe(false);
   });
 });
