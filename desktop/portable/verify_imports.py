@@ -7,6 +7,7 @@ Usage:
     --requirements desktop/portable/requirements-<plat>.txt \\
     [--overrides desktop/portable/overrides-<plat>.txt]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,9 +18,7 @@ import site
 import sys
 from pathlib import Path
 
-_REQ_RE = re.compile(
-    r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)(?:\s*==\s*(?P<ver>[^\s;#]+))?"
-)
+_REQ_RE = re.compile(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)(?:\s*==\s*(?P<ver>[^\s;#]+))?")
 
 # Import names that have historically drifted across lock/install environments.
 _SMOKE_IMPORTS = (

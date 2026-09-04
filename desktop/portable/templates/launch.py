@@ -4,8 +4,10 @@ Using plain ``PYTHONPATH=packages`` skips ``.pth`` processing (pywin32 etc.).
 ``site.addsitedir`` loads those hooks. On Windows we also expose
 ``pywin32_system32`` DLLs so ``import pywintypes`` works.
 """
+
 from __future__ import annotations
 
+import contextlib
 import os
 import runpy
 import site
@@ -43,10 +45,8 @@ def _bootstrap() -> Path:
             # Python 3.8+: prefer explicit DLL search path.
             add_dll = getattr(os, "add_dll_directory", None)
             if add_dll is not None:
-                try:
+                with contextlib.suppress(OSError):
                     add_dll(dll_s)
-                except OSError:
-                    pass
     return root
 
 
