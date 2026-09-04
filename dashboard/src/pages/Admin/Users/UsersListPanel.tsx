@@ -63,6 +63,7 @@ import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
 import { authApi } from "../../../api/modules/auth";
 import { useCardTableView } from "../../../hooks/useCardTableView";
+import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -766,6 +767,7 @@ function UserLoginLock({
 export default function UsersListPanel() {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
+  const isMobile = useIsMobile();
   const [agents, setAgents] = useState<OctopAgent[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [rows, setRows] = useState<UserRow[]>([]);
@@ -1203,7 +1205,7 @@ export default function UsersListPanel() {
             {
               title: t("adminUsers.colUsername"),
               width: 240,
-              fixed: "left",
+              fixed: isMobile ? undefined : "left",
               render: (_, row) => {
                 const displayName = row.display_name?.trim() || row.username;
                 return (
@@ -1333,7 +1335,7 @@ export default function UsersListPanel() {
             {
               title: t("adminUsers.colActions"),
               width: 120,
-              fixed: "right",
+              fixed: isMobile ? undefined : "right",
               render: (_, row) => (
                 <Space size={4}>
                   <Tooltip title={t("common.edit")}>
