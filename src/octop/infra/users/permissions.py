@@ -144,11 +144,11 @@ PERMISSIONS: dict[str, PermissionDef] = {
     "search": _p(
         "search",
         "admin",
-        "AI 搜索",
-        "AI search",
-        page="advanced",
-        page_zh="应用设置",
-        page_en="App settings",
+        "搜索引擎",
+        "Search engines",
+        page="models",
+        page_zh="模型",
+        page_en="Models",
     ),
     "knowledge_settings": _p(
         "knowledge_settings",
@@ -162,11 +162,11 @@ PERMISSIONS: dict[str, PermissionDef] = {
     "voice": _p(
         "voice",
         "admin",
-        "语音",
-        "Voice",
-        page="advanced",
-        page_zh="应用设置",
-        page_en="App settings",
+        "语音模型",
+        "Voice models",
+        page="models",
+        page_zh="模型",
+        page_en="Models",
     ),
     "observability": _p(
         "observability",

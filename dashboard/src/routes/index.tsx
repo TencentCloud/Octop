@@ -229,7 +229,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/admin/security", element: <AdminSecurityPage /> },
   {
     path: "/admin/voice",
-    element: <Navigate to="/admin/advanced?tab=voice" replace />,
+    element: <Navigate to="/admin/models?tab=voice" replace />,
   },
   {
     path: "/admin/updates",

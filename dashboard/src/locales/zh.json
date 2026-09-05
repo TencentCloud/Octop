@@ -2350,6 +2350,7 @@
   "voice": {
     "loading": "加载语音配置…",
     "loadError": "加载语音配置失败",
+    "description": "管理语音识别与语音合成模型，并选择当前使用的服务。",
     "sttSection": "语音输入 (STT)",
     "ttsSection": "语音朗读 (TTS)",
     "free": "免费",
@@ -2360,7 +2361,12 @@
     "activeUpdated": "已更新当前语音服务",
     "activeUpdateFailed": "更新失败",
     "configure": "配置",
+    "configureTitle": "配置 {{name}}",
     "saved": "配置已保存",
+    "credentialsRequired": "请先填写完整的连接凭证",
+    "probe": "探测",
+    "probeSuccess": "语音模型探测成功",
+    "probeFailed": "语音模型探测失败",
     "tencentHint": "在腾讯云控制台创建 SecretId / SecretKey，语音识别与合成均有免费试用额度。",
     "openaiHint": "使用 OpenAI Whisper 识别、OpenAI TTS 朗读。",
     "mimoHint": "小米 Mimo 语音识别与合成。选择接入点并填写对应的 API Key。",
@@ -2798,9 +2804,11 @@
     "ollamaNotRunning": "Ollama 服务未启动",
     "testUseSavedConfig": "使用已保存的配置",
     "pageTitle": "模型设置",
-    "pageSubtitle": "统一管理对话模型与图片、视频生成模型服务。",
+    "pageSubtitle": "统一管理对话模型、图片视频生成模型、语音模型与搜索引擎。",
     "chatModelsTab": "对话模型",
     "generationModelsTab": "生成模型",
+    "voiceModelsTab": "语音模型",
+    "searchModelsTab": "搜索引擎",
     "addCustomProvider": "自定义供应商",
     "loadingProviders": "加载中...",
     "noProvidersHint": "还没有 provider,点击右上角新建",
@@ -2912,9 +2920,11 @@
   "advancedSettings": {
     "description": "管理运行配置和环境变量等高级选项。",
     "search": {
-      "desc": "配置 AI 驱动的网络搜索提供商，使您的助手能够搜索互联网。每个提供商需要来自相应服务的 API 密钥。",
+      "desc": "管理网络搜索提供商，供智能体检索互联网。",
       "tip": "您可以在此处配置或修改搜索提供商。更改将在下一次聊天会话时生效。",
       "configure": "配置",
+      "configureTitle": "配置 {{name}}",
+      "probe": "探测",
       "sourceBuiltinTitle": "当前搜索源：内置搜索",
       "sourceBuiltinDesc": "未配置第三方搜索服务时，仍可使用产品内置搜索服务；该服务无需 API Key，但不保证稳定性和可用性。配置第三方服务后会自动切换。",
       "sourceConfiguredTitle": "当前搜索源：{{name}}",
@@ -5091,7 +5101,7 @@
     },
     "models": {
       "title": "模型配置",
-      "subtitle": "配置 LLM 提供商和 API 密钥"
+      "subtitle": "配置对话模型、生成模型、语音模型与搜索引擎"
     },
     "voice": {
       "title": "语音服务",
@@ -5119,7 +5129,7 @@
     },
     "adminAdvanced": {
       "title": "应用设置",
-      "subtitle": "环境变量、搜索、语音、备份、HTTPS 与更新"
+      "subtitle": "环境变量、备份、HTTPS 与更新"
     },
     "security": {
       "title": "安全防护",

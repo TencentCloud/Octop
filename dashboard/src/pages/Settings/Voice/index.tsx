@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Divider, Modal, Space, Typography, Input, Select } from "antd";
+import { Button, Divider, Drawer, Form, Input, Select, Typography } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Mic2, RefreshCw, Check, Settings2 } from "lucide-react";
+import { Activity, Mic2, Check, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   voiceApi,
   type VoicePreset,
+  type VoiceProviderInput,
   type VoiceProviderRow,
 } from "../../../api/modules/voice";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
@@ -25,7 +26,7 @@ interface ConfigureState {
   existing?: VoiceProviderRow;
 }
 
-/** Voice provider settings panel — embeddable in Advanced Settings tab. */
+/** Voice provider settings panel — embeddable in the Models page tab. */
 export function VoiceSettingsPanel() {
   const { t } = useTranslation();
   const [presets, setPresets] = useState<VoicePreset[]>([]);
@@ -41,6 +42,7 @@ export function VoiceSettingsPanel() {
   );
   const [mimoVoiceId, setMimoVoiceId] = useState("冰糖");
   const [saving, setSaving] = useState(false);
+  const [probing, setProbing] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -103,47 +105,88 @@ export function VoiceSettingsPanel() {
     setMimoVoiceId(String(extra.voice_id ?? "冰糖"));
   };
 
+  const buildProviderPayload = (): VoiceProviderInput | null => {
+    if (!configure) return null;
+    const { preset } = configure;
+    let extra: Record<string, unknown>;
+    let baseUrl: string | null = null;
+    if (preset.kind === "tencent") {
+      extra = {
+        secret_id: secretId,
+        secret_key: secretKey,
+        region: "ap-guangzhou",
+      };
+    } else if (preset.kind === "edge") {
+      extra = { voice_id: "zh-CN-XiaoxiaoNeural" };
+    } else if (preset.kind === "mimo") {
+      baseUrl =
+        mimoEndpoint === "tokenplan"
+          ? "https://token-plan-cn.xiaomimimo.com/v1"
+          : "https://api.xiaomimimo.com/v1";
+      extra = {
+        endpoint_type: mimoEndpoint,
+        voice_id: preset.capability === "tts" ? mimoVoiceId : undefined,
+      };
+    } else {
+      extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
+    }
+    return {
+      name: preset.id,
+      kind: preset.kind,
+      capability: preset.capability,
+      base_url: baseUrl,
+      api_key:
+        preset.kind === "tencent"
+          ? secretId && secretKey
+            ? `${secretId}:${secretKey}`
+            : null
+          : apiKey || null,
+      extra_json: JSON.stringify(extra),
+    };
+  };
+
+  const validateCredentials = () => {
+    if (!configure?.preset.requires_key) return true;
+    const complete =
+      configure.preset.kind === "tencent"
+        ? Boolean(secretId.trim() && secretKey.trim())
+        : Boolean(apiKey.trim());
+    if (!complete) message.warning(t("voice.credentialsRequired"));
+    return complete;
+  };
+
+  const handleProbe = async () => {
+    const payload = buildProviderPayload();
+    if (!payload || !validateCredentials() || !configure) return;
+    const modes: ("stt" | "tts")[] =
+      configure.preset.capability === "both"
+        ? ["stt", "tts"]
+        : [configure.preset.capability];
+    setProbing(true);
+    try {
+      for (const mode of modes) {
+        const result = await voiceApi.testConfiguration({ ...payload, mode });
+        if (!result.ok) {
+          message.error(result.error || t("voice.probeFailed"));
+          return;
+        }
+      }
+      message.success(t("voice.probeSuccess"));
+    } catch (err) {
+      message.error(
+        err instanceof Error ? err.message : t("voice.probeFailed"),
+      );
+    } finally {
+      setProbing(false);
+    }
+  };
+
   const handleSaveProvider = async () => {
-    if (!configure) return;
+    const payload = buildProviderPayload();
+    if (!configure || !payload || !validateCredentials()) return;
     setSaving(true);
     try {
       const { preset, existing } = configure;
-      let extra: Record<string, unknown>;
-      let baseUrl: string | null = null;
-      if (preset.kind === "tencent") {
-        extra = {
-          secret_id: secretId,
-          secret_key: secretKey,
-          region: "ap-guangzhou",
-        };
-      } else if (preset.kind === "edge") {
-        extra = { voice_id: "zh-CN-XiaoxiaoNeural" };
-      } else if (preset.kind === "mimo") {
-        const mimoBase =
-          mimoEndpoint === "tokenplan"
-            ? "https://token-plan-cn.xiaomimimo.com/v1"
-            : "https://api.xiaomimimo.com/v1";
-        baseUrl = mimoBase;
-        extra = {
-          endpoint_type: mimoEndpoint,
-          voice_id: preset.capability === "tts" ? mimoVoiceId : undefined,
-        };
-      } else {
-        extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
-      }
-      const payload = {
-        name: preset.id,
-        kind: preset.kind,
-        capability: preset.capability,
-        base_url: baseUrl,
-        api_key:
-          preset.kind === "tencent"
-            ? secretId && secretKey
-              ? `${secretId}:${secretKey}`
-              : null
-            : apiKey || null,
-        extra_json: JSON.stringify(extra),
-      };
       if (existing) {
         await voiceApi.patchProvider(existing.id, payload);
       } else {
@@ -301,16 +344,8 @@ export function VoiceSettingsPanel() {
     <>
       <TabPanelHeader
         icon={<Mic2 size={22} />}
-        title={t("nav.voice")}
-        description={t("pageShell.voice.subtitle")}
-        actions={
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={() => void fetchAll()}
-          >
-            {t("common.refresh")}
-          </Button>
-        }
+        title={t("models.voiceModelsTab")}
+        description={t("voice.description")}
       />
 
       {loading ? (
@@ -335,102 +370,129 @@ export function VoiceSettingsPanel() {
         </>
       )}
 
-      <Modal
-        title={
-          configure ? `${t("voice.configure")} — ${configure.preset.name}` : ""
-        }
+      <Drawer
+        title={t("voice.configureTitle", {
+          name: configure?.preset.name ?? "",
+        })}
         open={!!configure}
-        onCancel={() => setConfigure(null)}
-        onOk={() => void handleSaveProvider()}
-        confirmLoading={saving}
-        okText={t("common.save")}
+        onClose={() => setConfigure(null)}
+        width={440}
+        placement="right"
+        destroyOnHidden
+        footer={
+          <div className={styles.drawerFooter}>
+            <Button onClick={() => setConfigure(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              icon={<Activity size={14} />}
+              loading={probing}
+              onClick={() => void handleProbe()}
+            >
+              {t("voice.probe")}
+            </Button>
+            <Button
+              type="primary"
+              loading={saving}
+              onClick={() => void handleSaveProvider()}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        }
       >
-        {configure?.preset.kind === "tencent" && (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Text type="secondary">{t("voice.tencentHint")}</Text>
-            <Input
-              placeholder="SecretId"
-              value={secretId}
-              onChange={(e) => setSecretId(e.target.value)}
-            />
-            <Input.Password
-              placeholder="SecretKey"
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
-            />
-          </Space>
-        )}
-        {configure?.preset.kind === "openai" && (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Text type="secondary">{t("voice.openaiHint")}</Text>
-            <Input.Password
-              placeholder="API Key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-            <Select
-              style={{ width: "100%" }}
-              defaultValue="https://api.openai.com/v1"
-              disabled
-              options={[
-                { value: "https://api.openai.com/v1", label: "OpenAI API" },
-              ]}
-            />
-          </Space>
-        )}
-        {configure?.preset.kind === "mimo" && (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Text type="secondary">{t("voice.mimoHint")}</Text>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>
-                {t("voice.mimoEndpoint")}
-              </div>
-              <Select
-                style={{ width: "100%" }}
-                value={mimoEndpoint}
-                onChange={(v) => setMimoEndpoint(v)}
-                options={[
-                  {
-                    value: "payg",
-                    label: t("voice.mimoEndpointPayg"),
-                  },
-                  {
-                    value: "tokenplan",
-                    label: t("voice.mimoEndpointTokenplan"),
-                  },
-                ]}
-              />
-            </div>
-            <Input.Password
-              placeholder="API Key (sk-... / tp-...)"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-            {configure.preset.capability === "tts" && (
-              <div>
-                <div style={{ fontSize: 12, marginBottom: 4 }}>
-                  {t("voice.mimoVoice")}
-                </div>
+        <Form layout="vertical">
+          {configure?.preset.kind === "tencent" && (
+            <>
+              <div className={styles.drawerHint}>{t("voice.tencentHint")}</div>
+              <Form.Item label="SecretId" required>
+                <Input
+                  placeholder="SecretId"
+                  value={secretId}
+                  onChange={(e) => setSecretId(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label="SecretKey" required>
+                <Input.Password
+                  placeholder="SecretKey"
+                  value={secretKey}
+                  onChange={(e) => setSecretKey(e.target.value)}
+                />
+              </Form.Item>
+            </>
+          )}
+          {configure?.preset.kind === "openai" && (
+            <>
+              <div className={styles.drawerHint}>{t("voice.openaiHint")}</div>
+              <Form.Item label="API Key" required>
+                <Input.Password
+                  placeholder="API Key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.mimoEndpoint")}>
                 <Select
-                  style={{ width: "100%" }}
-                  value={mimoVoiceId}
-                  onChange={(v) => setMimoVoiceId(v)}
+                  value="https://api.openai.com/v1"
+                  disabled
                   options={[
-                    { value: "冰糖", label: "冰糖 (中文·女)" },
-                    { value: "茉莉", label: "茉莉 (中文·女)" },
-                    { value: "苏打", label: "苏打 (中文·男)" },
-                    { value: "白桦", label: "白桦 (中文·男)" },
-                    { value: "Mia", label: "Mia (EN·Female)" },
-                    { value: "Chloe", label: "Chloe (EN·Female)" },
-                    { value: "Milo", label: "Milo (EN·Male)" },
-                    { value: "Dean", label: "Dean (EN·Male)" },
+                    {
+                      value: "https://api.openai.com/v1",
+                      label: "OpenAI API",
+                    },
                   ]}
                 />
-              </div>
-            )}
-          </Space>
-        )}
-      </Modal>
+              </Form.Item>
+            </>
+          )}
+          {configure?.preset.kind === "mimo" && (
+            <>
+              <div className={styles.drawerHint}>{t("voice.mimoHint")}</div>
+              <Form.Item label={t("voice.mimoEndpoint")} required>
+                <Select
+                  value={mimoEndpoint}
+                  onChange={(v) => setMimoEndpoint(v)}
+                  options={[
+                    {
+                      value: "payg",
+                      label: t("voice.mimoEndpointPayg"),
+                    },
+                    {
+                      value: "tokenplan",
+                      label: t("voice.mimoEndpointTokenplan"),
+                    },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="API Key" required>
+                <Input.Password
+                  placeholder="API Key (sk-... / tp-...)"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+              </Form.Item>
+              {configure.preset.capability === "tts" && (
+                <Form.Item label={t("voice.mimoVoice")}>
+                  <Select
+                    value={mimoVoiceId}
+                    onChange={(v) => setMimoVoiceId(v)}
+                    options={[
+                      { value: "冰糖", label: "冰糖 (中文·女)" },
+                      { value: "茉莉", label: "茉莉 (中文·女)" },
+                      { value: "苏打", label: "苏打 (中文·男)" },
+                      { value: "白桦", label: "白桦 (中文·男)" },
+                      { value: "Mia", label: "Mia (EN·Female)" },
+                      { value: "Chloe", label: "Chloe (EN·Female)" },
+                      { value: "Milo", label: "Milo (EN·Male)" },
+                      { value: "Dean", label: "Dean (EN·Male)" },
+                    ]}
+                  />
+                </Form.Item>
+              )}
+            </>
+          )}
+        </Form>
+      </Drawer>
     </>
   );
 }
