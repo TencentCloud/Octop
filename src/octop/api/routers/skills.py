@@ -44,7 +44,7 @@ import yaml
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from octop.api.common.agent import require_agent_owner_row
+from octop.api.common.agent import require_agent_owner_row, require_agent_row
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.manager import (
     skill_package_ids_list,
@@ -89,10 +89,12 @@ async def _ctx(
     user: Any,
     as_user: int | None,
     server: Any,
+    owner_only: bool = True,
 ) -> _AgentCtx:
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
-    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    require = require_agent_owner_row if owner_only else require_agent_row
+    row = require(agent_id, user=user, as_user=as_user, server=server)
     cfg = registry.get_config(agent_id)
     agent = registry.get_agent(agent_id)
     return _AgentCtx(runtime=row, workspace=agent.workspace, config=cfg)
@@ -415,7 +417,7 @@ async def _enabled_skill_names(
     user: Any,
 ) -> set[str]:
     """Return installed, non-disabled skill names for an agent."""
-    await _ctx(agent_id, user=user, as_user=None, server=server)
+    await _ctx(agent_id, user=user, as_user=None, server=server, owner_only=False)
     assert server.app_runtime is not None
     names: set[str] = set()
     for summary in await server.app_runtime.agent_registry.list_skill_summaries(agent_id):
@@ -450,7 +452,7 @@ async def list_skills(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    await _ctx(agent_id, user=user, as_user=as_user, server=server, owner_only=False)
     assert server.app_runtime is not None
     return cast(
         list[dict[str, Any]],
@@ -528,7 +530,13 @@ async def get_skill(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    ctx = await _ctx(
+        agent_id,
+        user=user,
+        as_user=as_user,
+        server=server,
+        owner_only=False,
+    )
     resolved = await _resolve_skill(ctx.workspace, name)
     if resolved is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")
