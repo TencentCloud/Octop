@@ -227,6 +227,14 @@ class OctopServer:
 
         configure_browser_idle_timeout(config.browser_idle_timeout_minutes)
 
+        # harness_memory recall 质量补丁（实体后缀解析 + 强 token 排序）：
+        # 在任意 MemoryService / MCP 记忆工具创建前应用，保证评测与生产召回一致。
+        from octop.infra.agents.memory_recall_patch import (
+            apply_memory_recall_patch,
+        )
+
+        apply_memory_recall_patch()
+
         registry = AgentManager(
             repos=self.services.repos,
             paths=self.paths,
