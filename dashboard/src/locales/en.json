@@ -2350,6 +2350,7 @@
   "voice": {
     "loading": "Loading voice settings…",
     "loadError": "Failed to load voice settings",
+    "description": "Manage speech-to-text and text-to-speech models, and choose the active services.",
     "sttSection": "Speech Input (STT)",
     "ttsSection": "Read Aloud (TTS)",
     "free": "Free",
@@ -2360,7 +2361,12 @@
     "activeUpdated": "Active voice provider updated",
     "activeUpdateFailed": "Failed to update active provider",
     "configure": "Configure",
+    "configureTitle": "Configure {{name}}",
     "saved": "Configuration saved",
+    "credentialsRequired": "Complete the connection credentials first",
+    "probe": "Probe",
+    "probeSuccess": "Voice model probe succeeded",
+    "probeFailed": "Voice model probe failed",
     "tencentHint": "Create SecretId / SecretKey in Tencent Cloud console. ASR and TTS include free trial quota.",
     "openaiHint": "Uses OpenAI Whisper for STT and OpenAI TTS for read-aloud.",
     "mimoHint": "Xiaomi MiMo ASR/TTS. Choose endpoint and enter the corresponding API key.",
@@ -2800,9 +2806,11 @@
     "ollamaNotRunning": "Ollama service is not running",
     "testUseSavedConfig": "Uses saved configuration",
     "pageTitle": "Models",
-    "pageSubtitle": "Manage conversational, image-generation, and video-generation model services in one place.",
+    "pageSubtitle": "Manage conversational, image/video generation, voice, and search engine services in one place.",
     "chatModelsTab": "Conversation models",
     "generationModelsTab": "Generation models",
+    "voiceModelsTab": "Voice models",
+    "searchModelsTab": "Search engines",
     "addCustomProvider": "New Provider",
     "loadingProviders": "Loading...",
     "noProvidersHint": "No providers yet. Click the top right to create one.",
@@ -2915,9 +2923,11 @@
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",
     "search": {
-      "desc": "Configure AI-powered web search providers to enable your assistant to search the internet. Each provider requires an API key from the respective service.",
+      "desc": "Manage web search providers for agents to retrieve from the internet.",
       "tip": "You can configure or modify search providers here. Changes take effect immediately on the next chat session.",
       "configure": "Configure",
+      "configureTitle": "Configure {{name}}",
+      "probe": "Probe",
       "sourceBuiltinTitle": "Current search source: built-in search",
       "sourceBuiltinDesc": "When no third-party search provider is configured, Octop still provides its built-in search service. It requires no API key, but its stability and availability are not guaranteed. It switches automatically once a third-party provider is configured.",
       "sourceConfiguredTitle": "Current search source: {{name}}",
@@ -4952,7 +4962,7 @@
     },
     "models": {
       "title": "Model Management",
-      "subtitle": "Configure LLM providers and API keys"
+      "subtitle": "Configure conversation, generation, voice, and search engines"
     },
     "voice": {
       "title": "Voice Services",
@@ -4980,7 +4990,7 @@
     },
     "adminAdvanced": {
       "title": "Application Settings",
-      "subtitle": "Environment variables, search, voice, backup, HTTPS, and updates"
+      "subtitle": "Environment variables, backup, HTTPS, and updates"
     },
     "security": {
       "title": "Security",

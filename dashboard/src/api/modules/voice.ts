@@ -28,6 +28,16 @@ export interface ActiveVoice {
   tts: string;
 }
 
+export interface VoiceProviderInput {
+  name: string;
+  kind: string;
+  capability: string;
+  base_url?: string | null;
+  api_key?: string | null;
+  extra_json?: string | null;
+  note?: string | null;
+}
+
 function recordingFilename(type: string): string {
   const lower = type.toLowerCase();
   if (lower.includes("mp4")) return "recording.m4a";
@@ -83,15 +93,7 @@ export const voiceApi = {
         ...(provider ? { provider } : {}),
       }),
     }),
-  createProvider: (body: {
-    name: string;
-    kind: string;
-    capability: string;
-    base_url?: string | null;
-    api_key?: string | null;
-    extra_json?: string | null;
-    note?: string | null;
-  }) =>
+  createProvider: (body: VoiceProviderInput) =>
     request<VoiceProviderRow>("/admin/voice/providers", {
       method: "POST",
       body: JSON.stringify(body),
@@ -120,6 +122,14 @@ export const voiceApi = {
       {
         method: "POST",
         body: JSON.stringify({ mode }),
+      },
+    ),
+  testConfiguration: (body: VoiceProviderInput & { mode: "stt" | "tts" }) =>
+    request<{ ok: boolean; error?: string }>(
+      "/admin/voice/providers/test-configuration",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
       },
     ),
 };

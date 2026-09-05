@@ -44,6 +44,16 @@ describe("pathPermissionKeys", () => {
     expect(NAV_PERMISSIONS["admin-advanced"]).toEqual(PERM.advancedPage);
   });
 
+  it("keeps voice and search on models page, not advanced", () => {
+    expect(pathPermissionKeys("/admin/models")).toEqual([...PERM.modelsPage]);
+    expect(pathPermissionKeys("/admin/voice")).toEqual([...PERM.modelsPage]);
+    expect([...PERM.modelsPage]).toContain("voice");
+    expect([...PERM.modelsPage]).toContain("search");
+    expect([...PERM.advancedPage]).not.toContain("voice");
+    expect([...PERM.advancedPage]).not.toContain("search");
+    expect(NAV_PERMISSIONS.models).toEqual(PERM.modelsPage);
+  });
+
   it("does not gate common pages", () => {
     expect(pathPermissionKeys("/chat")).toBeNull();
     expect(pathPermissionKeys("/experts")).toBeNull();
