@@ -65,7 +65,10 @@ import {
 import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
-import { isSharedExpertViewer } from "../../utils/sharedExpert";
+import {
+  chatSkillCatalogAgentId,
+  isSharedExpertViewer,
+} from "../../utils/sharedExpert";
 import ChatDockPanels from "./components/ChatDockPanels";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import {
@@ -218,9 +221,7 @@ function ChatPageInner() {
   const { quickCards: expertQuickCards, welcomeSuffix } =
     useExpertChatWelcome(activeAgent);
   const { skills: chatSkills } = useSkills(
-    agentChatReady && !agentsLoading && !sharedExpertViewer
-      ? resolvedAgentId ?? null
-      : null,
+    chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
