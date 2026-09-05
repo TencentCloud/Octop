@@ -16,6 +16,7 @@ from harness_gateway.models import (
     MessageEventType,
     TextContent,
 )
+from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.profile import parse_config_json
@@ -40,7 +41,7 @@ from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
 )
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker
+from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
@@ -62,6 +63,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -792,6 +794,18 @@ class GlobalProcessor:
             ),
         )
         if handled:
+            thread_id = meta.get("thread_id")
+            if not isinstance(thread_id, str) or not thread_id.strip():
+                thread_id = await self._thread_registry.get_or_create_by_key(
+                    session_key=session_key,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    channel_channel_id=msg.channel_id or None,
+                    channel_metadata=im_meta,
+                )
+            self._record_slash_history(thread_id, msg.text, slash_lines)
+            self._touch_thread_after_turn(thread_id, msg.text)
             for line in slash_lines:
                 yield {"type": "token", "content": f"{line}\n"}
             for action in slash_actions:
@@ -1209,6 +1223,32 @@ class GlobalProcessor:
             # successful model response into a failed chat turn.
             logger.warning(
                 "failed to append thread history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    def _record_slash_history(
+        self,
+        thread_id: str,
+        command: str,
+        response_lines: list[str],
+    ) -> None:
+        """Persist dashboard slash input/output in the lightweight history projection."""
+        if self._thread_message_repo is None:
+            return
+        turn_id = new_ulid()
+        messages = [HumanMessage(content=command, id=f"slash:{turn_id}:human")]
+        response = "\n".join(response_lines).strip()
+        if response:
+            messages.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
+        try:
+            self._thread_message_repo.append_if_ready(
+                thread_id,
+                message_inputs(messages, dedupe_missing_ids=True),
+            )
+        except Exception:
+            logger.warning(
+                "failed to append slash history projection for thread=%s",
                 thread_id,
                 exc_info=True,
             )

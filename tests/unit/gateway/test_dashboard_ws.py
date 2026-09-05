@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -568,12 +570,31 @@ async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
 
 
 @pytest.mark.asyncio
-async def test_global_processor_iter_turn_chunks_slash() -> None:
+async def test_global_processor_iter_turn_chunks_slash(tmp_path: Path) -> None:
     from unittest.mock import AsyncMock, MagicMock
 
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.agents import AgentRepo
+    from octop.infra.db.repos.thread_messages import ThreadMessageRepo
+    from octop.infra.db.repos.threads import ThreadRepo
+    from octop.infra.db.repos.users import UserRepo
     from octop.infra.gateway.process.processor import GlobalProcessor
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    user_id = UserRepo(db).create(username="u", password_hash="hash", role="user")
+    agent_repo = AgentRepo(db)
+    agent_repo.create(agent_id="agent-1", user_id=user_id, name="Agent")
+    ThreadRepo(db).insert(
+        thread_id="thread-1",
+        agent_id="agent-1",
+        user_id=user_id,
+        channel_type="dashboard",
+        session_key="sk",
+    )
+    history_repo = ThreadMessageRepo(db)
     thread_registry = MagicMock()
     thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
 
@@ -582,11 +603,12 @@ async def test_global_processor_iter_turn_chunks_slash() -> None:
         agent_manager=MagicMock(),
         thread_registry=thread_registry,
         audit_repo=MagicMock(),
-        agent_repo=MagicMock(),
+        agent_repo=agent_repo,
         user_repo=MagicMock(),
         connector_repo=MagicMock(),
         dispatcher=dispatcher,
         usage_repo=None,
+        thread_message_repo=history_repo,
         gateway=None,
     )
 
@@ -596,12 +618,20 @@ async def test_global_processor_iter_turn_chunks_slash() -> None:
         tenant_id="agent-1",
         channel_subject=ChannelSubject(subject_id="1"),
         content=[TextContent(text="/help")],
-        metadata={"session_key": "sk"},
+        metadata={"session_key": "sk", "thread_id": "thread-1"},
     )
 
     chunks = [c async for c in processor.iter_turn_chunks(msg)]
     assert chunks[0]["type"] == "token"
     assert chunks[-1]["type"] == "done"
+    thread_registry.get_or_create_by_key.assert_not_awaited()
+    messages, has_more = history_repo.page("thread-1", limit=10)
+    assert has_more is False
+    assert [message.role for message in messages] == ["human", "ai"]
+    assert json.loads(messages[0].message_json)["data"]["content"] == "/help"
+    response = "".join(chunk.get("content", "") for chunk in chunks).strip()
+    assert json.loads(messages[1].message_json)["data"]["content"] == response
+    db.close()
 
 
 @pytest.mark.asyncio
