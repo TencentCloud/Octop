@@ -1173,6 +1173,16 @@
         "conversation": "Conversation"
       }
     },
+    "tokenCounter": {
+      "label": "{{tokens}} tokens in the composer",
+      "popoverTitle": "This turn’s usage",
+      "input": "Input",
+      "output": "Output",
+      "cacheRead": "Cache hit",
+      "cacheWrite": "Cache write",
+      "total": "Total",
+      "modelCalls": "Model calls"
+    },
     "polish": {
       "tooltip": "Polish prompt with AI",
       "failed": "Polish failed. Please try again.",
