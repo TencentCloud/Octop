@@ -77,6 +77,7 @@
     "SETUP_REQUIRED": "需要完成初始设置。",
     "DATABASE_NOT_EMPTY": "目标数据库已有用户。请改用空库，或直接登录现有管理员账户。",
     "BACKUP_DRIVER_MISMATCH": "该备份与当前数据库引擎不一致（SQLite 与 PostgreSQL 不能互恢）。请将运行时切回备份所用引擎后再恢复，或在当前引擎上重新备份。暂不支持跨引擎恢复。",
+    "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {{archive_schema_version}}，当前 Octop 版本无法恢复（最高支持版本：{{runtime_schema_version}}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
     "NOT_FOUND": "未找到。",

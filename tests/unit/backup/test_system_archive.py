@@ -1088,6 +1088,122 @@ def test_migration_restore_via_none_autodetect(tmp_path: Path) -> None:
     tgt_pool.close()
 
 
+def test_restore_repairs_old_physical_schema_with_current_watermark(tmp_path: Path) -> None:
+    """Restore runs idempotent repairs when a folded migration number is unchanged."""
+    source_layout = PathLayout(tmp_path / "source")
+    source_pool = SqlitePool(source_layout.db)
+    with source_pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("UPDATE _schema_version SET version = 13")
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) "
+            "VALUES ('owner', 'hash', 'admin', 1)"
+        )
+        user_id = conn.execute("SELECT id FROM users WHERE username = 'owner'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO connectors("
+            "instance_id, user_id, kind, display_name, mcp_server_name, created_at, updated_at"
+            ") VALUES ('instance-1', ?, 'github', 'GitHub', 'connector_github_1', 1, 1)",
+            (user_id,),
+        )
+
+    archive = tmp_path / "old-physical-schema.tar.gz"
+    create_system_backup(
+        paths=source_layout,
+        agent_rows=[],
+        pool=source_pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_config=False,
+        include_workspaces=False,
+    )
+    source_pool.close()
+
+    target_layout = PathLayout(tmp_path / "target")
+    target_pool = SqlitePool(target_layout.db)
+    run_migrations(target_pool)
+    result = restore_system_backup(
+        archive,
+        paths=target_layout,
+        pool=target_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+
+    with target_pool.connect() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(connectors)").fetchall()}
+        connector = conn.execute(
+            "SELECT instance_id, shared FROM connectors WHERE instance_id = 'instance-1'"
+        ).fetchone()
+
+    assert result["schema_version"] == 13
+    assert "shared" in columns
+    assert connector is not None
+    assert connector["shared"] == 0
+    target_pool.close()
+
+
+def test_refuse_newer_schema_backup_before_database_replace(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    archive = tmp_path / "newer-schema.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+
+    members: dict[str, bytes] = {}
+    with tarfile.open(archive, mode="r:gz") as tf:
+        for member in tf.getmembers():
+            if member.isfile():
+                extracted = tf.extractfile(member)
+                assert extracted is not None
+                members[member.name] = extracted.read()
+    manifest = json.loads(members["manifest.json"])
+    manifest["schema_version"] = 999
+    members["manifest.json"] = json.dumps(manifest).encode()
+    with tarfile.open(archive, mode="w:gz") as tf:
+        for name, blob in members.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(blob)
+            tf.addfile(info, BytesIO(blob))
+
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) "
+            "VALUES ('still-here', 'hash', 'admin', 1)"
+        )
+
+    with pytest.raises(OctopError) as excinfo:
+        restore_system_backup(
+            archive,
+            paths=layout,
+            pool=pool,
+            db_config=DatabaseConfig(),
+        )
+
+    assert excinfo.value.code == ErrorCode.BACKUP_SCHEMA_INCOMPATIBLE
+    assert excinfo.value.details == {
+        "archive_schema_version": 999,
+        "runtime_schema_version": 13,
+    }
+    with pool.connect() as conn:
+        assert (
+            conn.execute("SELECT 1 FROM users WHERE username = 'still-here'").fetchone() is not None
+        )
+    pool.close()
+
+
 def test_refuse_cross_engine_restore(layout: PathLayout, tmp_path: Path) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)

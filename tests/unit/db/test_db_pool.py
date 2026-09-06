@@ -360,6 +360,50 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
     assert "user_invites" in invite_tables
 
 
+def test_current_watermark_repairs_pre_v13_connectors_schema(tmp_path: Path) -> None:
+    """A folded v13 schema change is repaired even when migration 013 is skipped."""
+    pool = SqlitePool(tmp_path / "octop.db")
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("UPDATE _schema_version SET version = 13")
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) "
+            "VALUES ('owner', 'hash', 'admin', 1)"
+        )
+        user_id = conn.execute("SELECT id FROM users WHERE username = 'owner'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO connectors("
+            "instance_id, user_id, kind, display_name, mcp_server_name, created_at, updated_at"
+            ") VALUES ('instance-1', ?, 'github', 'GitHub', 'connector_github_1', 1, 1)",
+            (user_id,),
+        )
+
+    run_migrations(pool)
+
+    with pool.connect() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(connectors)").fetchall()}
+        user_id = conn.execute("SELECT id FROM users WHERE username = 'owner'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO connectors("
+            "instance_id, user_id, kind, display_name, mcp_server_name, created_at, updated_at"
+            ") VALUES ('instance-2', ?, 'github', 'GitHub Work', 'connector_github_2', 1, 1)",
+            (user_id,),
+        )
+        count = conn.execute(
+            "SELECT COUNT(*) FROM connectors WHERE user_id = ? AND kind = 'github'",
+            (user_id,),
+        ).fetchone()[0]
+
+    assert "shared" in columns
+    assert count == 2
+    pool.close()
+
+
 def test_foreign_keys_enabled(db: SqlitePool):
     with db.connect() as conn:
         fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
