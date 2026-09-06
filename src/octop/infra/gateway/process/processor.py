@@ -804,7 +804,12 @@ class GlobalProcessor:
                     channel_channel_id=msg.channel_id or None,
                     channel_metadata=im_meta,
                 )
-            self._record_slash_history(thread_id, msg.text, slash_lines)
+            await self._append_slash_checkpoint(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                command=msg.text,
+                response_lines=slash_lines,
+            )
             self._touch_thread_after_turn(thread_id, msg.text)
             for line in slash_lines:
                 yield {"type": "token", "content": f"{line}\n"}
@@ -1227,24 +1232,38 @@ class GlobalProcessor:
                 exc_info=True,
             )
 
-    def _record_slash_history(
+    async def _append_slash_checkpoint(
         self,
+        *,
+        agent_id: str,
         thread_id: str,
         command: str,
         response_lines: list[str],
     ) -> None:
-        """Persist dashboard slash input/output in the lightweight history projection."""
+        """Persist slash input/output via harness checkpoint, same as cron text."""
+        turn_id = new_ulid()
+        response = "\n".join(response_lines).strip()
+        canonical: list[HumanMessage | AIMessage] = [
+            HumanMessage(content=command, id=f"slash:{turn_id}:human"),
+        ]
+        if response:
+            canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
+        try:
+            harness = self._agent_manager.get_agent(agent_id)
+            appended = await harness.aappend_messages(thread_id, canonical)
+        except Exception:
+            logger.warning(
+                "failed to append slash checkpoint for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+            return
         if self._thread_message_repo is None:
             return
-        turn_id = new_ulid()
-        messages = [HumanMessage(content=command, id=f"slash:{turn_id}:human")]
-        response = "\n".join(response_lines).strip()
-        if response:
-            messages.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
         try:
             self._thread_message_repo.append_if_ready(
                 thread_id,
-                message_inputs(messages, dedupe_missing_ids=True),
+                message_inputs(appended, dedupe_missing_ids=True),
             )
         except Exception:
             logger.warning(
