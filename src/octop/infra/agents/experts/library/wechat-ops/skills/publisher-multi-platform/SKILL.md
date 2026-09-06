@@ -9,6 +9,16 @@ metadata:
         "requires": { "bins": ["node", "npx", "python3"] },
         "primaryEnv": "WECHAT_APP_ID",
       },
+    "octop":
+      {
+        "emoji": "✍️",
+        "label": { "zh": "一文多发", "en": "Multi-Platform Publisher" },
+        "summary":
+          {
+            "zh": "把一篇 Markdown 同步发布到内容运营平台与社交平台。",
+            "en": "Publish one Markdown article to content and social platforms.",
+          },
+      },
   }
 ---
 

@@ -24,6 +24,14 @@ metadata:
         "lighthouse-openclaw-setup",
         "lighthouse-app-deploy"
       ]
+    },
+    "octop": {
+      "emoji": "☁️",
+      "label": { "zh": "腾讯云基础设施", "en": "Tencent Cloud Infra" },
+      "summary": {
+        "zh": "用 tccli 管理轻量服务器、CVM、网络、证书与监控。",
+        "en": "Manage Lighthouse, CVM, networking, certificates, and monitoring with tccli."
+      }
     }
   }
 ---

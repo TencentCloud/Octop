@@ -7,6 +7,8 @@ export interface CatalogTypeCardProps {
   description: string;
   icon: ReactNode;
   hint?: string;
+  /** Optional chip shown under the title (e.g. a category label). */
+  tag?: ReactNode;
   configuredBadge?: ReactNode;
   disabled?: boolean;
   onClick: () => void;
@@ -18,6 +20,7 @@ export const CatalogTypeCard = memo(function CatalogTypeCard({
   description,
   icon,
   hint,
+  tag,
   configuredBadge,
   disabled = false,
   onClick,
@@ -42,7 +45,10 @@ export const CatalogTypeCard = memo(function CatalogTypeCard({
         >
           {icon}
         </div>
-        <div className={styles.title}>{title}</div>
+        <div className={styles.titleCol}>
+          <div className={styles.title}>{title}</div>
+          {tag}
+        </div>
       </div>
 
       <div className={styles.description}>{description}</div>

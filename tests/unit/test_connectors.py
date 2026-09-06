@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -1255,7 +1256,7 @@ def test_tencent_lexiang_credentials():
     assert payload == {"api_key": "lx-tok", "company_from": "csig"}
 
 
-def test_connector_repo_user_kind_unique(db: SqlitePool):
+def test_connector_repo_supports_multiple_kinds_and_unique_names(db: SqlitePool):
     repo = ConnectorRepo(db)
     with db.transaction() as conn:
         conn.execute(
@@ -1276,6 +1277,27 @@ def test_connector_repo_user_kind_unique(db: SqlitePool):
     assert repo.validate_mcp_servers_for_user(uid, [mcp_name]) == [mcp_name]
     with pytest.raises(ValueError):
         repo.validate_mcp_servers_for_user(uid, ["other"])
+
+    second = new_ulid()
+    repo.create(
+        instance_id=second,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="doc 2",
+        mcp_server_name=mcp_server_name("tencent-docs", second),
+        shared=True,
+    )
+    assert [row.instance_id for row in repo.list_visible(uid)] == [iid, second]
+
+    duplicate_name = new_ulid()
+    with pytest.raises(sqlite3.IntegrityError):
+        repo.create(
+            instance_id=duplicate_name,
+            user_id=uid,
+            kind="qq-mail",
+            display_name="doc",
+            mcp_server_name=mcp_server_name("qq-mail", duplicate_name),
+        )
 
 
 def test_validate_mcp_servers_for_user(db: SqlitePool):

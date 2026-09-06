@@ -74,6 +74,14 @@
   flex-shrink: 0;
 }
 
+.titleCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
 .title {
   font-size: 15px;
   font-weight: 600;
@@ -88,6 +96,8 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* Always reserve two lines so `hint` sits at the same offset on every card. */
+  min-height: 3.1em;
 }
 
 .hint {

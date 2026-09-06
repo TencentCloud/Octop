@@ -134,9 +134,15 @@ export function useChatComposerResources(
           .filter((i) => i.status === "active" && i.has_credentials)
           .map((i) => ({
             mcp_server_name: i.mcp_server_name,
-            label: i.display_name,
+            label:
+              currentUserId !== null && i.owner_user_id !== currentUserId
+                ? `${i.display_name} · ${
+                    i.owner_display_name || i.owner_username || i.owner_user_id
+                  }`
+                : i.display_name,
             kind: i.kind,
-            default_open: i.default_open === true,
+            default_open:
+              i.default_open === true && i.owner_user_id === currentUserId,
           }));
         setChatConnectors(options);
         const allowed = new Set(options.map((o) => o.mcp_server_name));
@@ -165,7 +171,7 @@ export function useChatComposerResources(
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(CONNECTORS_CHANGED_EVENT, loadConnectors);
     };
-  }, [resolvedAgentId]);
+  }, [resolvedAgentId, currentUserId]);
 
   useEffect(() => {
     if (!resolvedAgentId) {

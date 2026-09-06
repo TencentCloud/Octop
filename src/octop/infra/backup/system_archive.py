@@ -38,7 +38,7 @@ from octop.infra.backup.snapshot import (
     snapshot_sqlite_file,
     upsert_users_into_pool,
 )
-from octop.infra.db.migrate import _current_version, run_migrations
+from octop.infra.db.migrate import _current_version, _max_discovered_version, run_migrations
 from octop.infra.db.pool import DatabasePool, SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.secrets import SecretRepo
@@ -439,6 +439,19 @@ def restore_system_backup(
                 details={"archive_driver": archive_driver, "runtime_driver": pool.dialect},
             )
 
+        runtime_schema_version = _max_discovered_version(pool.dialect)
+        if manifest.schema_version > runtime_schema_version:
+            details = {
+                "archive_schema_version": manifest.schema_version,
+                "runtime_schema_version": runtime_schema_version,
+            }
+            raise OctopError(
+                ErrorCode.BACKUP_SCHEMA_INCOMPATIBLE,
+                f"backup schema version {manifest.schema_version} is newer than "
+                f"the maximum supported version {runtime_schema_version}",
+                details=details,
+            )
+
         db_path = extracted / manifest.db_file
         if not db_path.is_file():
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
@@ -478,6 +491,23 @@ def restore_system_backup(
                 restore_sqlite_into_pool(db_path, pool)
             else:
                 raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite restore requires SqlitePool")
+
+        # Upgrade the restored database before any current-version repository or
+        # preservation helper queries it. This keeps old backups usable after
+        # tables gain required columns or are rebuilt by later migrations.
+        try:
+            run_migrations(pool)
+        except Exception as exc:
+            details = {
+                "archive_schema_version": manifest.schema_version,
+                "runtime_schema_version": runtime_schema_version,
+            }
+            raise OctopError(
+                ErrorCode.BACKUP_SCHEMA_INCOMPATIBLE,
+                f"failed to upgrade backup schema version {manifest.schema_version} "
+                f"to {runtime_schema_version}: {exc}",
+                details=details,
+            ) from exc
 
         if restore_config:
             cfg_path = extracted / _CONFIG_DIR / "config.json"
@@ -565,10 +595,6 @@ def restore_system_backup(
                 _KNOWLEDGE_DIR,
             )
 
-        # LightClaw migration exports (and older Octop backups) may ship schema v1
-        # without columns added in later migrations (e.g. cron_jobs.mcp_servers).
-        # API restore keeps the process alive, so re-apply migrations on the live pool.
-        run_migrations(pool)
         preserved_chat_rows, skipped_chat_rows = (
             restore_preserved_chats(pool, saved_chats) if saved_chats is not None else (0, 0)
         )

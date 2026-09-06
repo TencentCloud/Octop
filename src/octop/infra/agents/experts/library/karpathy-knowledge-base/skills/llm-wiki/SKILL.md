@@ -1,6 +1,15 @@
 ---
 name: llm-wiki
 description: Build, ingest, query, and lint a persistent Markdown knowledge base using the Karpathy LLM Wiki pattern. Use for adding sources, maintaining interlinked wiki pages, answering from the knowledge base, filing durable research, or checking contradictions and index health. Do not use it to persist ordinary chat or unverified personal data.
+metadata:
+  octop:
+    emoji: "🗂️"
+    label:
+      zh: "LLM Wiki"
+      en: "LLM Wiki"
+    summary:
+      zh: "摄取来源、维护互链 Wiki，并据此回答与核验知识库。"
+      en: "Ingest sources, maintain a linked wiki, and answer from the knowledge base."
 ---
 
 # LLM Wiki

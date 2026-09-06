@@ -75,6 +75,10 @@ class VoiceTestBody(BaseModel):
     mode: Literal["stt", "tts"] = "tts"
 
 
+class VoiceConfigurationTestBody(VoiceProviderCreateBody):
+    mode: Literal["stt", "tts"] = "tts"
+
+
 @router.get("/presets")
 async def list_voice_presets(_: Any = Depends(current_user)) -> list[dict[str, Any]]:
     return load_voice_presets()
@@ -233,3 +237,20 @@ async def admin_test_voice_provider(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     return await _voice_manager(server).test_provider(provider_id, mode=body.mode)
+
+
+@admin_router.post("/test-configuration")
+async def admin_test_voice_configuration(
+    body: VoiceConfigurationTestBody,
+    _: Any = Depends(require_permission("voice")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    return await _voice_manager(server).test_configuration(
+        name=body.name,
+        kind=body.kind,
+        capability=body.capability,
+        base_url=body.base_url,
+        api_key=body.api_key,
+        extra_json=body.extra_json,
+        mode=body.mode,
+    )

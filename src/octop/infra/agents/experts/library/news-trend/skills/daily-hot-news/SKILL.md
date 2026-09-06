@@ -1,6 +1,15 @@
 ---
 name: daily-hot-news
 description: 获取热点新闻、热搜、早报、金价、汇率，以及论坛帖子、科技资讯等内容。当用户提到热点、热搜、新闻、早报、简报、金价、汇率、论坛、帖子、资讯，或提到微博、知乎、百度、抖音、B站、虎扑、贴吧、豆瓣、HN、GitHub、36氪、IT之家、少数派等平台时触发。即使用户只是随口问"今天有什么新鲜事"或"最近怎么样"，也应使用此 skill。
+metadata:
+  octop:
+    emoji: "🔥"
+    label:
+      zh: "每日热点"
+      en: "Daily Hot News"
+    summary:
+      zh: "汇总热搜、早报、金价汇率与科技资讯，生成个性化简报。"
+      en: "Collect hot searches, briefings, and tech news into a personalized digest."
 ---
 
 # 每日热点新闻播报

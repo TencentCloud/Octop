@@ -315,6 +315,9 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
+          // Preserve the browser-facing origin so OAuth callbacks do not point
+          // at the proxy target (127.0.0.1:8088).
+          xfwd: true,
           // Only proxy API websockets — do not steal Vite's HMR upgrade on `/`.
           ws: true,
         },

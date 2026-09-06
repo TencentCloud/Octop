@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.9.31-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.9.32-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -135,13 +135,6 @@ Here are our mid-to-long term plans:
 
 This roadmap may shift as the community grows; treat it as indicative only.
 
-
-## 🖥️ FnOS (飞牛 NAS) Installation
-
-Octop can be installed on FnOS (飞牛 NAS) devices via the App Center as a `.fpk` package, either as a Docker-backed app or as a native (non-Docker) app. See [`fnos/README.md`](fnos/README.md) for the full packaging guide, the FPK build helper (`scripts/build-fpk.sh`), and the CI pipeline template (`.github/workflows/fnos-build-fpk.yml`).
-
-Initial admin credentials: `admin` / `Octop123` (change after first login). For non-root FnOS installs, the WeCom/Feishu connector CLIs require the fix in [PR #406](https://github.com/TencentCloud/Octop/pull/406) (user-level npm fallback).
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -189,6 +182,17 @@ curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install
 ```
 
 See [scripts/README.md](scripts/README.md) for all install options (`--version`, `--from-source`, `--mirror`, Windows flags).
+
+**Desktop app** (GUI, no terminal) — grab the artifact for your platform from [GitHub Releases](https://github.com/TencentCloud/Octop/releases/latest):
+
+| Platform | Artifact |
+|----------|----------|
+| Windows | `Octop-desktop-windows-amd64-<version>.exe` (64-bit) / `Octop-desktop-windows-arm64-<version>.exe` (ARM64) — NSIS installer |
+| macOS | `Octop-desktop-darwin-arm64-<version>.dmg` (Apple Silicon) / `Octop-desktop-darwin-amd64-<version>.dmg` (Intel) |
+| Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
+| FnOS NAS | `Octop-fnos-docker-<version>.fpk` (Docker-backed) / `Octop-fnos-native-<version>.fpk` (no Docker) — install via App Center |
+
+See [desktop/README.md](desktop/README.md) for the desktop shell and [fnos/README.md](fnos/README.md) for the FnOS packaging guide.
 
 **Alternative — PyPI** (if you already manage Python yourself):
 

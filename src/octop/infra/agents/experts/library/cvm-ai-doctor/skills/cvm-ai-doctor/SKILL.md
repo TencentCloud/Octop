@@ -1,7 +1,19 @@
 ---
 name: cvm-ai-doctor
 description: CVM 实例健康诊断,采用智能快速/深度检查模式。涵盖性能和使用问题专业检查、诊断、和修复。支持服务器、PC、虚拟机、容器场景，支持 Linux/macOS/Windows。
-metadata: {"openclaw": {"requires": {"bins": ["bash", "ps"]}, "os": ["linux", "darwin", "windows"]}}
+metadata:
+  openclaw:
+    requires:
+      bins: ["bash", "ps"]
+    os: ["linux", "darwin", "windows"]
+  octop:
+    emoji: "🩺"
+    label:
+      zh: "CVM AI 诊断"
+      en: "CVM AI Doctor"
+    summary:
+      zh: "快速分诊后再深度检查 CPU、内存、磁盘与网络问题。"
+      en: "Triage then deeply diagnose CPU, memory, disk, and network issues."
 ---
 
 # CVM AI Doctor 技能

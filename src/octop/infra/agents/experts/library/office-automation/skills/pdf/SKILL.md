@@ -4,6 +4,14 @@ description: 当用户需要对PDF文件进行任何操作时，请使用此技�
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
   builtin_skill_version: "1.1"
+  octop:
+    emoji: "📄"
+    label:
+      zh: "PDF 处理"
+      en: "PDF Tools"
+    summary:
+      zh: "读取、合并、拆分、填写表单或 OCR 处理 PDF。"
+      en: "Read, merge, split, fill forms, or OCR PDFs."
 ---
 
 > **重要：** 所有 `scripts/` 路径均相对于此技能目录。

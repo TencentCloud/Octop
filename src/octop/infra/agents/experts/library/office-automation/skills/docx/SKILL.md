@@ -4,6 +4,14 @@ description: "当用户需要创建、读取、编辑或处理 Word 文档（.do
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
   builtin_skill_version: "1.1"
+  octop:
+    emoji: "📝"
+    label:
+      zh: "Word 文档"
+      en: "Word Documents"
+    summary:
+      zh: "创建、读取、编辑或整理专业 .docx 文档。"
+      en: "Create, read, edit, or format professional .docx documents."
 ---
 
 > **重要:** 所有 `scripts/` 路径均相对于本技能目录。

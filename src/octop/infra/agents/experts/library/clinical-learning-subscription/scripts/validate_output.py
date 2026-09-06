@@ -220,6 +220,33 @@ _DEFAULT_SOURCE_RESTRICTED_MODULES = tuple(
     name for name in _DEFAULT_CLINICAL_SAFETY_MODULES if name != "high_risk_refusal"
 )
 
+# 医学安全域终稿不得夹带英文/中文过程句。来源标题里的英文专名不在此列。
+_PROCESS_LANGUAGE_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\bI'll\b", "I'll"),
+    (r"\bI will\b", "I will"),
+    (r"\bLet me\b", "Let me"),
+    (r"\bLet's\b", "Let's"),
+    (r"\bNow running\b", "Now running"),
+    (r"Validation passed", "Validation passed"),
+    (r"Here is the answer", "Here is the answer"),
+    (r"搜索过程", "搜索过程"),
+    (r"检索日志", "检索日志"),
+)
+
+
+def _body_without_source_lines(text: str) -> str:
+    """Drop 来源 lines so English titles in citations are not process-language hits."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.strip().startswith(("来源：", "来源:"))
+    )
+
+
+def _validate_process_language(text: str, errors: list[str]) -> None:
+    body = _body_without_source_lines(text)
+    for pattern, label in _PROCESS_LANGUAGE_PATTERNS:
+        if re.search(pattern, body, flags=re.IGNORECASE):
+            errors.append(f"医学输出不得包含过程语句：{label}")
+
 
 def _policy_modules(policy: dict[str, list[str]], key: str, fallback: tuple[str, ...]) -> set[str]:
     configured = [item for item in policy.get(key, []) if item]
@@ -374,6 +401,7 @@ def validate(text: str, module: str, policy_path: Path, allow_no_source: bool) -
         for pattern in policy.get("blocked_output_patterns", []):
             if re.search(pattern, text, flags=re.IGNORECASE):
                 errors.append(f"命中禁止输出模式：{pattern}")
+        _validate_process_language(text, errors)
 
     markdown_links = _extract_markdown_links(text)
     bare_urls = _extract_bare_urls(text)

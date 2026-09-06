@@ -9,8 +9,21 @@ from octop.infra.db.repos.backends import BackendRow
 
 _OBJECT_KINDS = frozenset({"cos", "s3", "oss", "obs", "custom"})
 _AGENT_RESOLVABLE_KINDS = frozenset(
-    {"cos", "s3", "oss", "obs", "custom", "filesystem", "shell", "postgres", "docker"}
+    {
+        "cos",
+        "s3",
+        "oss",
+        "obs",
+        "custom",
+        "filesystem",
+        "shell",
+        "postgres",
+        "docker",
+        "opensandbox",
+    }
 )
+_OPENSANDBOX_PROTOCOLS = frozenset({"http", "https"})
+_DEFAULT_OPENSANDBOX_IMAGE = "python:3.12"
 
 
 def storage_backend_kind_agent_resolvable(kind: str) -> bool:
@@ -136,4 +149,37 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
         apply_docker_cfg_keys(spec, cfg)
         return spec
 
+    if kind == "opensandbox":
+        image = cfg.get("image") or row.bucket or _DEFAULT_OPENSANDBOX_IMAGE
+        spec = {"type": "opensandbox", "image": str(image)}
+        api_key = row.secret_key or cfg.get("api_key")
+        if api_key:
+            spec["api_key"] = api_key
+        domain = row.endpoint or cfg.get("domain")
+        if domain:
+            spec["domain"] = str(domain)
+        protocol = str(row.region or cfg.get("protocol") or "http").strip().lower()
+        spec["protocol"] = protocol if protocol in _OPENSANDBOX_PROTOCOLS else "http"
+        for key in ("timeout", "command_timeout", "use_server_proxy"):
+            if key in cfg:
+                spec[key] = cfg[key]
+        return spec
+
     return None
+
+
+def storage_spec_previewable(spec: Any) -> bool:
+    """Whether Admin storage UI may browse this backend's files.
+
+    OpenSandbox is an agent-lifecycle remote sandbox (create on start, destroy
+    on stop), so it is not browseable unless ``previewable`` is set.
+    """
+    if not isinstance(spec, dict):
+        return True
+    if str(spec.get("type") or "").lower() == "opensandbox":
+        if "previewable" in spec:
+            return bool(spec["previewable"])
+        return False
+    from octop.infra.backend.docker_spec import docker_spec_previewable
+
+    return docker_spec_previewable(spec)

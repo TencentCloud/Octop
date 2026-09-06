@@ -57,6 +57,7 @@ export const pathToKey: Record<string, string> = {
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
+  "/personalization/plugins": "personalization",
   "/personalization/subagents": "personalization",
   "/personalization/channels": "channels",
   "/personalization/mbti": "personalization",
@@ -229,7 +230,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/admin/security", element: <AdminSecurityPage /> },
   {
     path: "/admin/voice",
-    element: <Navigate to="/admin/advanced?tab=voice" replace />,
+    element: <Navigate to="/admin/models?tab=voice" replace />,
   },
   {
     path: "/admin/updates",

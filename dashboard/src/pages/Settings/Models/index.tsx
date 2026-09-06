@@ -11,7 +11,14 @@
  */
 import { useMemo, useState } from "react";
 import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
-import { Images, MessageSquareText, Plus, RefreshCw } from "lucide-react";
+import {
+  Images,
+  MessageSquareText,
+  Mic2,
+  Plus,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import PageShell from "../../../layouts/PageShell";
@@ -31,6 +38,30 @@ import {
 } from "./components";
 import styles from "./index.module.less";
 import { MediaGenerationSettingsPanel } from "../MediaGeneration";
+import { VoiceSettingsPanel } from "../Voice";
+import { SearchSettingsPanel } from "../SearchConfig";
+
+type ModelCategory = "chat" | "generation" | "voice" | "search";
+
+function resolveModelCategory(
+  requestedTab: string | null,
+  canChat: boolean,
+  canProviders: boolean,
+  canVoice: boolean,
+  canSearch: boolean,
+): ModelCategory {
+  if (requestedTab === "generation" && canProviders) return "generation";
+  if (requestedTab === "voice" && canVoice) return "voice";
+  if (requestedTab === "search" && canSearch) return "search";
+  if ((requestedTab === "chat" || requestedTab === null) && canChat) {
+    return "chat";
+  }
+  if (canChat) return "chat";
+  if (canVoice) return "voice";
+  if (canSearch) return "search";
+  if (canProviders) return "generation";
+  return "chat";
+}
 
 const { Title } = Typography;
 
@@ -40,6 +71,9 @@ export default function ModelsPage() {
   const canProviders = userCan(user, "providers");
   const canOllama = userCan(user, "ollama_models");
   const canOnnx = userCan(user, "onnx_models");
+  const canVoice = userCan(user, "voice");
+  const canSearch = userCan(user, "search");
+  const canChat = canProviders || canOllama || canOnnx;
   const {
     providers,
     presets,
@@ -53,14 +87,18 @@ export default function ModelsPage() {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const modelCategory =
-    canProviders && searchParams.get("tab") === "generation"
-      ? "generation"
-      : "chat";
+  const modelCategory = resolveModelCategory(
+    searchParams.get("tab"),
+    canChat,
+    canProviders,
+    canVoice,
+    canSearch,
+  );
   const setModelCategory = (next: string) => {
     const updated = new URLSearchParams(searchParams);
-    if (next === "generation") updated.set("tab", "generation");
-    else updated.delete("tab");
+    if (next === "generation" || next === "voice" || next === "search") {
+      updated.set("tab", next);
+    } else updated.delete("tab");
     setSearchParams(updated, { replace: true });
   };
 
@@ -159,15 +197,19 @@ export default function ModelsPage() {
         activeKey={modelCategory}
         onChange={setModelCategory}
         items={[
-          {
-            key: "chat",
-            label: (
-              <Space size={6}>
-                <MessageSquareText size={15} />
-                {t("models.chatModelsTab")}
-              </Space>
-            ),
-          },
+          ...(canChat
+            ? [
+                {
+                  key: "chat",
+                  label: (
+                    <Space size={6}>
+                      <MessageSquareText size={15} />
+                      {t("models.chatModelsTab")}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
           ...(canProviders
             ? [
                 {
@@ -181,10 +223,40 @@ export default function ModelsPage() {
                 },
               ]
             : []),
+          ...(canVoice
+            ? [
+                {
+                  key: "voice",
+                  label: (
+                    <Space size={6}>
+                      <Mic2 size={15} />
+                      {t("models.voiceModelsTab")}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
+          ...(canSearch
+            ? [
+                {
+                  key: "search",
+                  label: (
+                    <Space size={6}>
+                      <Search size={15} />
+                      {t("models.searchModelsTab")}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
       {modelCategory === "generation" ? (
         <MediaGenerationSettingsPanel />
+      ) : modelCategory === "voice" ? (
+        <VoiceSettingsPanel />
+      ) : modelCategory === "search" ? (
+        <SearchSettingsPanel />
       ) : loading ? (
         <LoadingState message={t("models.loadingProviders")} />
       ) : error ? (

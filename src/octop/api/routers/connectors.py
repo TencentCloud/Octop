@@ -37,7 +37,7 @@ from octop.infra.connectors.default_open import (
     build_instance_config_json,
     read_default_open,
 )
-from octop.infra.connectors.gateway.cli_dirs import cleanup_creds_cli_dirs, cleanup_keys_for_creds
+from octop.infra.connectors.gateway.cli_dirs import cleanup_creds_cli_dirs
 from octop.infra.connectors.gateway.cli_install import (
     cli_install_status,
     get_cli_install_spec,
@@ -64,7 +64,7 @@ from octop.infra.connectors.probe import (
     probe_connector,
     probe_custom_mcp_server,
 )
-from octop.infra.connectors.service import ConnectorService
+from octop.infra.connectors.service import ConnectorNameTakenError, ConnectorService
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
@@ -78,7 +78,9 @@ router = APIRouter()
 class CreateInstanceBody(BaseModel):
     kind: str
     display_name: str
+    description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] = Field(default_factory=dict)
+    shared: bool = False
     default_open: bool = Field(
         default=False,
         description=(
@@ -91,6 +93,10 @@ class CreateInstanceBody(BaseModel):
 
 class PatchInstanceBody(BaseModel):
     status: str | None = None
+    display_name: str | None = None
+    description: str | None = Field(default=None, max_length=500)
+    credentials: dict[str, Any] | None = None
+    shared: bool | None = None
     default_open: bool | None = Field(
         default=None,
         description=(
@@ -146,11 +152,12 @@ class CustomMcpPutBody(BaseModel):
 class CustomMcpServerPatchBody(BaseModel):
     enabled: bool | None = None
     default_open: bool | None = None
+    shared: bool | None = None
 
     @model_validator(mode="after")
     def _require_one_field(self) -> CustomMcpServerPatchBody:
-        if self.enabled is None and self.default_open is None:
-            raise ValueError("provide enabled and/or default_open")
+        if self.enabled is None and self.default_open is None and self.shared is None:
+            raise ValueError("provide enabled, default_open and/or shared")
         return self
 
 
@@ -273,10 +280,13 @@ def _instance_to_dict(inst: Any) -> dict[str, Any]:
         "instance_id": inst.instance_id,
         "kind": inst.kind,
         "display_name": inst.display_name,
+        "description": config.get("description"),
         "status": inst.status,
         "mcp_server_name": inst.mcp_server_name,
         "has_credentials": inst.has_credentials,
         "default_open": read_default_open(config),
+        "shared": bool(inst.shared),
+        "owner_user_id": inst.user_id,
         "created_at": inst.created_at,
         "updated_at": inst.updated_at,
     }
@@ -404,16 +414,61 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
     return preview
 
 
-def _schedule_connector_reload(server: Any, user_id: int) -> None:
+def _schedule_connector_reload(server: Any, user_id: int, *, all_users: bool = False) -> None:
     assert server.app_runtime is not None
 
     async def _run() -> None:
         try:
-            await server.app_runtime.agent_registry.reload_connectors_for_user(user_id)
+            if all_users:
+                await server.app_runtime.agent_registry.reload_all()
+            else:
+                await server.app_runtime.agent_registry.reload_connectors_for_user(user_id)
         except Exception:
             logger.exception("background connector reload failed for user %s", user_id)
 
     asyncio.create_task(_run())
+
+
+def _can_manage_connector(inst: Any, user: Any) -> bool:
+    return bool(inst.user_id == user.id or user.role == "admin")
+
+
+def _assert_can_manage_connector(inst: Any, user: Any) -> None:
+    if not _can_manage_connector(inst, user):
+        raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+
+
+def _raise_name_taken(name: str) -> None:
+    raise OctopError(
+        ErrorCode.CONNECTOR_NAME_TAKEN,
+        f"connector name {name!r} is already in use",
+    )
+
+
+def _custom_name_exists(svc: ConnectorService, user_id: int, name: str) -> bool:
+    return any(
+        item["display_name"] == name
+        for item in svc.list_instances_for_api(user_id)
+        if item["kind"] == CUSTOM_MCP_KIND and int(item.get("owner_user_id") or user_id) == user_id
+    )
+
+
+def _resolve_custom_target(
+    instance_id: str,
+    *,
+    user: Any,
+    server: Any,
+) -> tuple[int, str] | None:
+    raw = parse_synthetic_instance_id(instance_id)
+    if raw is None:
+        return None
+    parent_id, separator, server_name = raw.partition(":")
+    if separator:
+        parent = server.services.repos.connector_repo.get(parent_id)
+        if parent is not None and is_custom_mcp_kind(parent.kind):
+            _assert_can_manage_connector(parent, user)
+            return parent.user_id, server_name
+    return user.id, raw
 
 
 def _is_public_http_uri(uri: str) -> bool:
@@ -451,7 +506,16 @@ async def list_instances(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """List the current user's connected accounts (custom MCP expanded per server)."""
-    return _connector_service(server).list_instances_for_api(user.id)
+    rows = _connector_service(server).list_instances_for_api(user.id)
+    for item in rows:
+        owner_id = int(item.get("owner_user_id") or user.id)
+        owner = server.services.user_repo.get(owner_id)
+        item["owner_username"] = owner.username if owner is not None else None
+        item["owner_display_name"] = (
+            owner.display_name or owner.username if owner is not None else None
+        )
+        item["can_manage"] = owner_id == user.id or user.role == "admin"
+    return rows
 
 
 @router.get("/connectors/custom-mcp", summary="Get custom MCP servers")
@@ -474,6 +538,8 @@ async def put_custom_mcp(
     svc = _connector_service(server)
     try:
         servers = svc.put_custom_servers(user.id, body.servers)
+    except ConnectorNameTakenError as exc:
+        _raise_name_taken(str(exc))
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     server.services.audit_repo.write(
@@ -482,7 +548,13 @@ async def put_custom_mcp(
         target=CUSTOM_MCP_KIND,
         payload=str(len(servers)),
     )
-    _schedule_connector_reload(server, user.id)
+    _schedule_connector_reload(
+        server,
+        user.id,
+        all_users=any(
+            isinstance(spec, dict) and spec.get("shared") is True for spec in servers.values()
+        ),
+    )
     return {"servers": redact_servers_for_api(servers)}
 
 
@@ -504,6 +576,7 @@ async def patch_custom_mcp_server(
             server_name,
             enabled=body.enabled,
             default_open=body.default_open,
+            shared=body.shared,
         )
     except KeyError as exc:
         raise OctopError(
@@ -511,7 +584,7 @@ async def patch_custom_mcp_server(
         ) from exc
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
-    _schedule_connector_reload(server, user.id)
+    _schedule_connector_reload(server, user.id, all_users=body.shared is not None)
     return {"servers": redact_servers_for_api(servers)}
 
 
@@ -562,8 +635,7 @@ async def get_instance(
     inst = repo.get(instance_id)
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
-    if inst.user_id != user.id:
-        raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+    _assert_can_manage_connector(inst, user)
 
     data = _instance_to_dict(inst)
     config: dict[str, Any] = {}
@@ -593,7 +665,7 @@ async def create_instance(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Connect a third-party account. Replaces any existing instance of the same kind."""
+    """Connect a third-party account as a new named instance."""
     if is_custom_mcp_kind(body.kind):
         raise OctopError(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
@@ -607,15 +679,15 @@ async def create_instance(
 
     repo = server.services.repos.connector_repo
     svc = _connector_service(server)
+    display_name = body.display_name.strip()
+    if not display_name:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "display_name is required")
+    description = body.description.strip() if body.description is not None else entry.description
+    if not description:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "description is required")
+    if repo.name_exists(user.id, display_name) or _custom_name_exists(svc, user.id, display_name):
+        _raise_name_taken(display_name)
     cred_input = dict(body.credentials)
-    old_cli_creds: dict[str, Any] | None = None
-    for old in repo.list_by_user(user.id):
-        if old.kind == body.kind:
-            if old.has_credentials:
-                old_cli_creds = svc.decrypt(old.instance_id)
-                cred_input = _merge_credentials(old_cli_creds, cred_input)
-            repo.delete(old.instance_id)
-            break
 
     try:
         cred_payload = await _prepare_credentials(
@@ -629,19 +701,18 @@ async def create_instance(
         ) from exc
 
     instance_id = new_ulid()
-    if body.kind in ("feishu-cli", "wecom-cli") and old_cli_creds:
-        keep = cleanup_keys_for_creds(body.kind, {**cred_payload, "instance_id": instance_id})
-        cleanup_creds_cli_dirs(body.kind, old_cli_creds, keep=keep)
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
         kind=body.kind,
-        display_name=body.display_name.strip(),
+        display_name=display_name,
         mcp_server_name=mcp_server_name(body.kind, instance_id),
+        shared=body.shared,
         config_json=build_instance_config_json(
             kind=body.kind,
             default_open=bool(body.default_open),
             email=cred_payload.get("email"),
+            description=description,
         ),
     )
     svc.encrypt_and_store(instance_id=instance_id, payload=cred_payload)
@@ -653,7 +724,7 @@ async def create_instance(
     )
     inst = repo.get(instance_id)
     assert inst is not None
-    _schedule_connector_reload(server, user.id)
+    _schedule_connector_reload(server, user.id, all_users=body.shared)
     return _instance_to_dict(inst)
 
 
@@ -664,11 +735,12 @@ async def patch_instance(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Enable/disable a connector or update default_open without deleting credentials."""
-    synthetic_name = parse_synthetic_instance_id(instance_id)
-    if synthetic_name is not None:
+    """Edit a connector instance without replacing its identity."""
+    custom_target = _resolve_custom_target(instance_id, user=user, server=server)
+    if custom_target is not None:
+        custom_user_id, synthetic_name = custom_target
         svc = _connector_service(server)
-        if body.status is None and body.default_open is None:
+        if body.status is None and body.default_open is None and body.shared is None:
             raise OctopError(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
                 "status or default_open is required",
@@ -682,21 +754,23 @@ async def patch_instance(
                         "status must be active or disabled",
                     )
                 svc.patch_custom_server_enabled(
-                    user.id, synthetic_name, enabled=(status == "active")
+                    custom_user_id, synthetic_name, enabled=(status == "active")
                 )
             if body.default_open is not None:
                 svc.patch_custom_server_default_open(
-                    user.id, synthetic_name, default_open=bool(body.default_open)
+                    custom_user_id, synthetic_name, default_open=bool(body.default_open)
                 )
+            if body.shared is not None:
+                svc.patch_custom_server(custom_user_id, synthetic_name, shared=body.shared)
         except KeyError as exc:
             raise OctopError(
                 ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found"
             ) from exc
         except ValueError as exc:
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
-        _schedule_connector_reload(server, user.id)
-        for item in svc.list_instances_for_api(user.id):
-            if item["instance_id"] == instance_id:
+        _schedule_connector_reload(server, custom_user_id, all_users=True)
+        for item in svc.list_instances_for_api(custom_user_id):
+            if item["instance_id"] in {instance_id, f"custom:{synthetic_name}"}:
                 return item
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
 
@@ -704,18 +778,48 @@ async def patch_instance(
     inst = repo.get(instance_id)
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
-    if inst.user_id != user.id:
-        raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+    _assert_can_manage_connector(inst, user)
     if is_custom_mcp_kind(inst.kind):
         raise OctopError(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
             "use PATCH /connectors/custom-mcp/servers/{name} for custom MCP servers",
         )
-    if body.status is None and body.default_open is None:
+    if (
+        body.status is None
+        and body.default_open is None
+        and body.display_name is None
+        and body.description is None
+        and body.credentials is None
+        and body.shared is None
+    ):
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             "status or default_open is required",
         )
+    if body.display_name is not None:
+        display_name = body.display_name.strip()
+        if not display_name:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "display_name is required")
+        svc = _connector_service(server)
+        if repo.name_exists(
+            inst.user_id, display_name, exclude_instance_id=instance_id
+        ) or _custom_name_exists(svc, inst.user_id, display_name):
+            _raise_name_taken(display_name)
+        repo.update_metadata(instance_id, display_name=display_name)
+    if body.shared is not None:
+        repo.update_metadata(instance_id, shared=body.shared)
+    if body.credentials is not None:
+        svc = _connector_service(server)
+        merged = _merge_credentials(svc.decrypt(instance_id), body.credentials)
+        try:
+            prepared = await _prepare_credentials(inst.kind, merged, server.services.settings_repo)
+        except ValueError as exc:
+            raise OctopError(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                str(exc),
+                details={"reason": str(exc)},
+            ) from exc
+        svc.encrypt_and_store(instance_id=instance_id, payload=prepared)
     if body.status is not None:
         status = body.status.strip()
         if status not in ("active", "disabled"):
@@ -723,18 +827,31 @@ async def patch_instance(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "status must be active or disabled"
             )
         repo.update_status(instance_id, status)
-    if body.default_open is not None:
+    if body.default_open is not None or body.description is not None:
         config = dict(ConnectorRepo.parse_config_json(inst))
-        if body.default_open:
-            config["default_open"] = True
-        else:
-            config.pop("default_open", None)
+        if body.default_open is not None:
+            if body.default_open:
+                config["default_open"] = True
+            else:
+                config.pop("default_open", None)
+        if body.description is not None:
+            description = body.description.strip()
+            if not description:
+                raise OctopError(
+                    ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                    "description is required",
+                )
+            config["description"] = description
         repo.update_config_json(
             instance_id, json.dumps(config, ensure_ascii=False) if config else None
         )
     inst = repo.get(instance_id)
     assert inst is not None
-    _schedule_connector_reload(server, user.id)
+    _schedule_connector_reload(
+        server,
+        inst.user_id,
+        all_users=inst.shared or body.shared is True or body.shared is False,
+    )
     return _instance_to_dict(inst)
 
 
@@ -745,15 +862,16 @@ async def delete_instance(
     server: Any = Depends(get_server),
 ) -> None:
     """Disconnect and delete stored credentials for a connector instance."""
-    synthetic_name = parse_synthetic_instance_id(instance_id)
-    if synthetic_name is not None:
+    custom_target = _resolve_custom_target(instance_id, user=user, server=server)
+    if custom_target is not None:
+        custom_user_id, synthetic_name = custom_target
         svc = _connector_service(server)
-        servers = dict(svc.get_custom_servers(user.id))
+        servers = dict(svc.get_custom_servers(custom_user_id))
         if synthetic_name not in servers:
             raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
         del servers[synthetic_name]
         try:
-            svc.put_custom_servers(user.id, servers)
+            svc.put_custom_servers(custom_user_id, servers)
         except ValueError as exc:
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
         server.services.audit_repo.write(
@@ -762,15 +880,14 @@ async def delete_instance(
             target=synthetic_name,
             payload=CUSTOM_MCP_KIND,
         )
-        _schedule_connector_reload(server, user.id)
+        _schedule_connector_reload(server, custom_user_id, all_users=True)
         return
 
     repo = server.services.repos.connector_repo
     inst = repo.get(instance_id)
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
-    if inst.user_id != user.id:
-        raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+    _assert_can_manage_connector(inst, user)
     user_id = inst.user_id
     cli_creds: dict[str, Any] | None = None
     if inst.kind in ("feishu-cli", "wecom-cli") and inst.has_credentials:
@@ -783,7 +900,7 @@ async def delete_instance(
     repo.delete(instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
-    _schedule_connector_reload(server, user_id)
+    _schedule_connector_reload(server, user_id, all_users=inst.shared)
     server.services.audit_repo.write(
         actor=user.username,
         action="connector.instance.delete",
@@ -798,10 +915,11 @@ async def test_instance(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Probe the connector with stored credentials and return success or error details."""
-    synthetic_name = parse_synthetic_instance_id(instance_id)
-    if synthetic_name is not None:
+    custom_target = _resolve_custom_target(instance_id, user=user, server=server)
+    if custom_target is not None:
+        custom_user_id, synthetic_name = custom_target
         svc = _connector_service(server)
-        saved = svc.get_custom_servers(user.id)
+        saved = svc.get_custom_servers(custom_user_id)
         raw = saved.get(synthetic_name)
         if not isinstance(raw, dict):
             raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
@@ -811,8 +929,7 @@ async def test_instance(
     inst = repo.get(instance_id)
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
-    if inst.user_id != user.id:
-        raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
+    _assert_can_manage_connector(inst, user)
 
     entry = get_catalog_entry(inst.kind)
     if entry is None:

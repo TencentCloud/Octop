@@ -21,19 +21,11 @@ export const PERM = {
   desktop: ["desktop"],
   mobile: ["mobile"],
   usersPage: ["users", "sso"],
-  modelsPage: ["providers", "ollama_models", "onnx_models"],
+  modelsPage: ["providers", "ollama_models", "onnx_models", "voice", "search"],
   storage: ["storage_backends"],
   plugins: ["plugins"],
   securityPage: ["security", "admin_console"],
-  advancedPage: [
-    "voice",
-    "update",
-    "envs",
-    "tls",
-    "observability",
-    "backup",
-    "search",
-  ],
+  advancedPage: ["update", "envs", "tls", "observability", "backup"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Sidebar item key → permission keys. Shared with path guards. */
@@ -63,8 +55,6 @@ export const USERS_TAB_PERMISSIONS = {
 
 export const ADVANCED_TAB_PERMISSIONS = {
   "env-vars": "envs",
-  search: "search",
-  voice: "voice",
   observability: "observability",
   backup: "backup",
   https: "tls",
@@ -132,7 +122,11 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   if (pathname.startsWith("/admin/users") || pathname === "/admin/sso") {
     return PERM.usersPage;
   }
-  if (pathname.startsWith("/admin/models") || pathname === "/models") {
+  if (
+    pathname.startsWith("/admin/models") ||
+    pathname === "/models" ||
+    pathname.startsWith("/admin/voice")
+  ) {
     return PERM.modelsPage;
   }
   if (pathname.startsWith("/admin/backend")) {
@@ -153,7 +147,6 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   }
   if (
     pathname.startsWith("/admin/advanced") ||
-    pathname.startsWith("/admin/voice") ||
     pathname.startsWith("/admin/updates")
   ) {
     return PERM.advancedPage;

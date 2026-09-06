@@ -173,12 +173,18 @@ export function JobDrawer({
       .listInstances()
       .then((instances) => {
         setConnectorOptions(
-          (instances || []).map((i) => ({
-            value: i.mcp_server_name,
-            label: i.display_name?.trim()
-              ? `${i.display_name} (${i.mcp_server_name})`
-              : i.mcp_server_name,
-          })),
+          (instances || [])
+            .filter((i) => i.status === "active" && i.has_credentials)
+            .map((i) => ({
+              value: i.mcp_server_name,
+              label: i.display_name?.trim()
+                ? `${i.display_name}${
+                    i.shared && i.owner_display_name
+                      ? ` · ${i.owner_display_name}`
+                      : ""
+                  } (${i.mcp_server_name})`
+                : i.mcp_server_name,
+            })),
         );
       })
       .catch(() => setConnectorOptions([]))
