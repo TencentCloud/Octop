@@ -194,6 +194,17 @@ curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install
 
 完整安装选项见 [scripts/README.md](scripts/README.md)（`--version`、`--from-source`、`--mirror` 及 Windows 参数）。
 
+**桌面客户端**（图形界面，无需终端）— 从 [GitHub Releases](https://github.com/TencentCloud/Octop/releases/latest) 下载对应平台的安装包：
+
+| 平台 | 制品 |
+|------|------|
+| Windows | `Octop-desktop-windows-amd64-<version>.exe`（64 位）/ `Octop-desktop-windows-arm64-<version>.exe`（ARM64）— NSIS 安装程序 |
+| macOS | `Octop-desktop-darwin-arm64-<version>.dmg`（Apple 芯片）/ `Octop-desktop-darwin-amd64-<version>.dmg`（Intel） |
+| Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
+| 飞牛 NAS（FnOS） | `Octop-fnos-docker-<version>.fpk`（依赖 Docker）/ `Octop-fnos-native-<version>.fpk`（无需 Docker）— 通过应用中心安装 |
+
+桌面客户端说明见 [desktop/README.md](desktop/README.md)，飞牛打包指南见 [fnos/README.md](fnos/README.md)。
+
 **备选 — PyPI**（若你已自行管理 Python 环境）：
 
 ```bash
