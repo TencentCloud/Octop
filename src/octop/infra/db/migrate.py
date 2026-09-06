@@ -1195,6 +1195,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     database actually contains conversation tables.
     Version 11 adds cron job display names.
     Version 12 adds the append-only chat trajectory event ledger.
+    Version 13 adds multi-instance and shared connectors.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1280,6 +1281,12 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 12:
         _ensure_trajectory_events_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 13 and not _table_exists(db, "connectors"):
+        # Very old/partial installs may contain only ``users``. There are no
+        # connector rows to rebuild, so only advance the migration watermark.
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return

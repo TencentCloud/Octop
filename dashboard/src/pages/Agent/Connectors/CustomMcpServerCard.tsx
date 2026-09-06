@@ -31,6 +31,7 @@ interface CustomMcpServerCardProps {
   onProbe: () => void;
   onAuthorize?: () => void;
   onDefaultOpenChange?: (defaultOpen: boolean) => void;
+  onSharedChange?: (shared: boolean) => void;
 }
 
 export function CustomMcpServerCard({
@@ -46,6 +47,7 @@ export function CustomMcpServerCard({
   onProbe,
   onAuthorize,
   onDefaultOpenChange,
+  onSharedChange,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
   const { modal } = App.useApp();
@@ -308,9 +310,29 @@ export function CustomMcpServerCard({
           )}
 
           <div className={styles.customMcpField}>
-            <label>
-              {t("connectors.customMcp.defaultOpen", "对话默认选中")}
-            </label>
+            <label>{t("connectors.shared", "是否共享")}</label>
+            <div className={styles.customMcpDefaultOpenRow}>
+              <Switch
+                checked={card.shared}
+                onChange={(checked) => {
+                  if (onSharedChange) {
+                    onSharedChange(checked);
+                    return;
+                  }
+                  onUpdate(card.key, { shared: checked });
+                }}
+              />
+              <span className={styles.customMcpFieldHint}>
+                {t(
+                  "connectors.sharedHint",
+                  "共享后其他用户可以选择使用，但不能查看或修改配置。",
+                )}
+              </span>
+            </div>
+          </div>
+
+          <div className={styles.customMcpField}>
+            <label>{t("connectors.defaultEnabled", "是否默认开启")}</label>
             <div className={styles.customMcpDefaultOpenRow}>
               <Switch
                 checked={card.defaultOpen}
