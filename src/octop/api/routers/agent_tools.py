@@ -60,67 +60,9 @@ class ToolSettingPatchBody(BaseModel):
     plugin_id: str | None = None
 
 
-def _plugin_manager(server: OctopServer) -> Any:
-    mgr = server.plugin_manager
-    if mgr is None:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "plugin manager not initialized")
-    return mgr
-
-
-def _plugin_tool_label(name: str, locale: str) -> str:
-    """Use i18n label when present; otherwise keep the raw tool name."""
-    labeled = tool_display_name(name, locale)
-    return labeled if labeled != name else name
-
-
-def _list_plugin_tool_items(
-    server: OctopServer,
-    agent_cfg: dict[str, Any],
-    *,
-    locale: str,
-) -> list[ToolSettingsItem]:
-    mgr = _plugin_manager(server)
-    raw_plugins = agent_cfg.get("plugins")
-    plugins_cfg: dict[str, Any] = raw_plugins if isinstance(raw_plugins, dict) else {}
-    items: list[ToolSettingsItem] = []
-    for plugin in mgr.list_installed():
-        if plugin.get("error"):
-            continue
-        plugin_id = str(plugin["id"])
-        globally_on = plugin.get("enabled", True) is not False
-        for tool in plugin.get("tools") or []:
-            name = str(tool["name"])
-            tool_cfg: dict[str, Any] = {}
-            plugin_entry = plugins_cfg.get(plugin_id)
-            if isinstance(plugin_entry, dict):
-                tools_map = plugin_entry.get("tools")
-                if isinstance(tools_map, dict):
-                    raw_tool = tools_map.get(name)
-                    if isinstance(raw_tool, dict):
-                        tool_cfg = raw_tool
-            desc = tool.get("description")
-            enabled = bool(tool_cfg.get("enabled")) if tool_cfg and "enabled" in tool_cfg else True
-            items.append(
-                ToolSettingsItem(
-                    name=name,
-                    source="plugin",
-                    category="plugin",
-                    label=_plugin_tool_label(name, locale),
-                    description=(
-                        str(desc).strip() if isinstance(desc, str) and desc.strip() else None
-                    ),
-                    enabled=enabled,
-                    disableable=True,
-                    available=globally_on,
-                    plugin_id=plugin_id,
-                )
-            )
-    return items
-
-
 @router.get(
     "/{agent_id}/tool-settings",
-    summary="List built-in and plugin tools with enable state",
+    summary="List built-in tools with enable state",
     response_model=ToolSettingsResponse,
 )
 async def get_tool_settings(
@@ -160,7 +102,6 @@ async def get_tool_settings(
                 plugin_id=None,
             )
         )
-    tools.extend(_list_plugin_tool_items(server, agent_cfg, locale=locale))
     return ToolSettingsResponse(tools=tools)
 
 

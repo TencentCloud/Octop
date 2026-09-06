@@ -12,9 +12,7 @@ import {
   Collapse,
   Drawer,
   Empty,
-  Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Segmented,
@@ -31,22 +29,13 @@ import {
   List,
   Package,
   Plus,
-  Settings2,
   Trash2,
   Upload,
-  Wrench,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  pluginsApi,
-  type AgentPluginTool,
-  type AgentPluginsConfig,
-  type InstalledPlugin,
-  type PluginConfigField,
-} from "../../../api/modules/plugins";
+import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
 import { ResizableTable } from "../../../components/ResizableTable";
 import { CardSkeleton } from "../../../components/Skeleton";
-import { useAgent } from "../../../context/AgentContext";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import {
   ensureBuiltinToolRenderers,
@@ -76,57 +65,10 @@ function statusTag(row: InstalledPlugin, t: (key: string) => string) {
   );
 }
 
-function buildPluginsConfig(tools: AgentPluginTool[]): AgentPluginsConfig {
-  const out: AgentPluginsConfig = {};
-  for (const tool of tools) {
-    if (!out[tool.plugin_id]) out[tool.plugin_id] = { tools: {} };
-    out[tool.plugin_id].tools![tool.name] = {
-      enabled: tool.enabled,
-      config: { ...tool.config },
-    };
-  }
-  return out;
-}
-
-function renderConfigField(field: PluginConfigField) {
-  const common = {
-    label: field.label || field.name,
-    name: field.name,
-    rules: field.required
-      ? [{ required: true, message: field.label || field.name }]
-      : undefined,
-    extra: field.help,
-  };
-  if (field.type === "password") {
-    return (
-      <Form.Item key={field.name} {...common}>
-        <Input.Password placeholder={field.placeholder} autoComplete="off" />
-      </Form.Item>
-    );
-  }
-  if (field.type === "number") {
-    return (
-      <Form.Item key={field.name} {...common}>
-        <InputNumber
-          style={{ width: "100%" }}
-          placeholder={field.placeholder}
-        />
-      </Form.Item>
-    );
-  }
-  return (
-    <Form.Item key={field.name} {...common}>
-      <Input placeholder={field.placeholder} />
-    </Form.Item>
-  );
-}
-
-/** Server-wide plugin install / uninstall list (+ per-agent tools in detail). */
+/** Server-wide plugin install, reload, enable, detail, and uninstall surface. */
 export function InstalledPluginsPanel() {
   const { t } = useTranslation();
-  const { activeAgentId } = useAgent();
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
-  const [agentTools, setAgentTools] = useState<AgentPluginTool[]>([]);
   const [loading, setLoading] = useState(true);
   const [installOpen, setInstallOpen] = useState(false);
   const [installUrl, setInstallUrl] = useState("");
@@ -136,16 +78,8 @@ export function InstalledPluginsPanel() {
   const [overwrite, setOverwrite] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [toolSavingKey, setToolSavingKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<InstalledPlugin | null>(null);
-  const [configTool, setConfigTool] = useState<AgentPluginTool | null>(null);
-  const [form] = Form.useForm();
-  const agentRef = useRef(activeAgentId);
   const { viewMode, setViewMode, showCardView } = useCardTableView("card");
-
-  useEffect(() => {
-    agentRef.current = activeAgentId;
-  }, [activeAgentId]);
 
   const fetchPlugins = useCallback(async () => {
     setLoading(true);
@@ -163,29 +97,9 @@ export function InstalledPluginsPanel() {
     }
   }, [t]);
 
-  const fetchAgentTools = useCallback(async () => {
-    if (!activeAgentId) {
-      setAgentTools([]);
-      return;
-    }
-    const agentId = activeAgentId;
-    try {
-      const data = await pluginsApi.listAgentTools(agentId);
-      if (agentRef.current === agentId) {
-        setAgentTools(data.tools || []);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }, [activeAgentId]);
-
   useEffect(() => {
     void fetchPlugins();
   }, [fetchPlugins]);
-
-  useEffect(() => {
-    void fetchAgentTools();
-  }, [fetchAgentTools]);
 
   const handleInstall = async () => {
     const url = installUrl.trim();
@@ -197,7 +111,6 @@ export function InstalledPluginsPanel() {
       setInstallOpen(false);
       setInstallUrl("");
       await fetchPlugins();
-      await fetchAgentTools();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
     } finally {
@@ -218,7 +131,6 @@ export function InstalledPluginsPanel() {
       await pluginsApi.upload(next, overwrite);
       message.success(t("plugins.installSuccess"));
       await fetchPlugins();
-      await fetchAgentTools();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
     } finally {
@@ -232,7 +144,6 @@ export function InstalledPluginsPanel() {
       await pluginsApi.reload();
       message.success(t("plugins.reloadSuccess"));
       await fetchPlugins();
-      await fetchAgentTools();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.reloadFailed"), t));
     } finally {
@@ -246,7 +157,6 @@ export function InstalledPluginsPanel() {
       message.success(t("plugins.uninstallSuccess"));
       if (detail?.id === pluginId) setDetail(null);
       await fetchPlugins();
-      await fetchAgentTools();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.uninstallFailed"), t));
     }
@@ -271,70 +181,12 @@ export function InstalledPluginsPanel() {
         enabled ? t("plugins.enabledSuccess") : t("plugins.disabledSuccess"),
       );
       await fetchPlugins();
-      await fetchAgentTools();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.enableFailed"), t));
     } finally {
       setTogglingId(null);
     }
   };
-
-  const toolKey = (tool: AgentPluginTool) => `${tool.plugin_id}:${tool.name}`;
-
-  const persistTools = useCallback(async (nextTools: AgentPluginTool[]) => {
-    const agentId = agentRef.current;
-    if (!agentId) return;
-    await pluginsApi.patchAgentTools(agentId, buildPluginsConfig(nextTools));
-    if (agentRef.current === agentId) setAgentTools(nextTools);
-  }, []);
-
-  const handleToggleTool = async (tool: AgentPluginTool, enabled: boolean) => {
-    const key = toolKey(tool);
-    setToolSavingKey(key);
-    const next = agentTools.map((row) =>
-      row.plugin_id === tool.plugin_id && row.name === tool.name
-        ? { ...row, enabled }
-        : row,
-    );
-    try {
-      await persistTools(next);
-      message.success(t("plugins.saved"));
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("plugins.saveFailed"), t));
-    } finally {
-      setToolSavingKey(null);
-    }
-  };
-
-  const openConfig = (tool: AgentPluginTool) => {
-    setConfigTool(tool);
-    form.setFieldsValue(tool.config || {});
-  };
-
-  const saveConfig = async () => {
-    if (!configTool) return;
-    const values = await form.validateFields();
-    const next = agentTools.map((row) =>
-      row.plugin_id === configTool.plugin_id && row.name === configTool.name
-        ? { ...row, config: values, enabled: true }
-        : row,
-    );
-    setToolSavingKey(toolKey(configTool));
-    try {
-      await persistTools(next);
-      message.success(t("plugins.saved"));
-      setConfigTool(null);
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("plugins.saveFailed"), t));
-    } finally {
-      setToolSavingKey(null);
-    }
-  };
-
-  const detailTools =
-    detail == null
-      ? []
-      : agentTools.filter((tool) => tool.plugin_id === detail.id);
 
   const columns = [
     {
@@ -735,116 +587,8 @@ export function InstalledPluginsPanel() {
                 </div>
               </div>
             </section>
-
-            <section className={styles.drawerSection}>
-              <div className={styles.toolsSectionHead}>
-                <h4 className={styles.drawerSectionTitle}>
-                  {t("plugins.colTools")}
-                </h4>
-                {detailTools.length > 0 ? (
-                  <span className={styles.toolsCountBadge}>
-                    {detailTools.length}
-                  </span>
-                ) : null}
-              </div>
-              {!activeAgentId ? (
-                <div className={styles.toolsEmpty}>{t("plugins.noAgent")}</div>
-              ) : detail.enabled === false ? (
-                <div className={styles.toolsEmpty}>
-                  {t("plugins.enablePluginFirst")}
-                </div>
-              ) : detailTools.length === 0 ? (
-                <div className={styles.toolsEmpty}>
-                  {t("plugins.noToolsListed")}
-                </div>
-              ) : (
-                <>
-                  <p className={styles.toolsHint}>
-                    {t("plugins.detailToolsHint")}
-                  </p>
-                  <div className={styles.detailTools}>
-                    {detailTools.map((tool) => {
-                      const key = toolKey(tool);
-                      const busy = toolSavingKey === key;
-                      const hasConfig = (tool.config_fields?.length ?? 0) > 0;
-                      return (
-                        <div
-                          key={key}
-                          className={`${styles.detailToolItem}${
-                            tool.enabled ? "" : ` ${styles.detailToolItemOff}`
-                          }`}
-                        >
-                          <span className={styles.detailToolIcon} aria-hidden>
-                            <Wrench size={15} />
-                          </span>
-                          <div className={styles.detailToolMeta}>
-                            <div className={styles.detailToolNameRow}>
-                              <span className={styles.detailToolName}>
-                                {tool.name}
-                              </span>
-                              {hasConfig ? (
-                                <Tag className={styles.detailToolBadge}>
-                                  {t("plugins.hasConfig")}
-                                </Tag>
-                              ) : null}
-                            </div>
-                            {tool.description ? (
-                              <div className={styles.detailToolDesc}>
-                                {tool.description}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className={styles.detailToolActions}>
-                            {hasConfig ? (
-                              <Button
-                                type="text"
-                                size="small"
-                                className={styles.iconBtn}
-                                icon={<Settings2 size={15} />}
-                                onClick={() => openConfig(tool)}
-                                disabled={busy}
-                                aria-label={t("plugins.configure")}
-                              />
-                            ) : null}
-                            <Switch
-                              size="small"
-                              checked={tool.enabled}
-                              loading={busy}
-                              onChange={(checked) =>
-                                void handleToggleTool(tool, checked)
-                              }
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </section>
           </div>
         ) : null}
-      </Drawer>
-
-      <Drawer
-        title={configTool ? configTool.name : ""}
-        open={!!configTool}
-        onClose={() => setConfigTool(null)}
-        width={420}
-        destroyOnHidden
-        extra={
-          <Button
-            type="primary"
-            onClick={() => void saveConfig()}
-            loading={!!toolSavingKey}
-          >
-            {t("common.save")}
-          </Button>
-        }
-      >
-        <Form form={form} layout="vertical">
-          {configTool?.config_fields?.map(renderConfigField)}
-        </Form>
       </Drawer>
 
       <Modal

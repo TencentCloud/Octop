@@ -13,7 +13,11 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import current_user, get_server, require_permission
-from octop.infra.agents.plugin_tool_defaults import merge_plugins_tool_settings
+from octop.infra.agents.plugin_tool_defaults import (
+    agent_plugin_enabled,
+    merge_plugins_enabled_settings,
+    merge_plugins_tool_settings,
+)
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
@@ -51,6 +55,38 @@ class AgentPluginToolsPatch(BaseModel):
     plugins: dict[str, dict[str, Any]]
 
 
+class PluginToolMeta(BaseModel):
+    name: str
+    description: str | None = None
+    config_fields: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AgentPluginItem(BaseModel):
+    id: str
+    version: str | None = None
+    name: str | None = None
+    kind: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    loaded: bool = False
+    global_enabled: bool = True
+    agent_enabled: bool = True
+    enabled: bool = True
+    tools: list[PluginToolMeta] = Field(default_factory=list)
+
+
+class AgentPluginsResponse(BaseModel):
+    plugins: list[AgentPluginItem]
+
+
+class AgentPluginEnabledPatch(BaseModel):
+    enabled: bool
+
+
+class AgentPluginsPatch(BaseModel):
+    plugins: dict[str, AgentPluginEnabledPatch]
+
+
 def _plugin_manager(server: OctopServer) -> PluginManager:
     mgr = server.plugin_manager
     if mgr is None:
@@ -63,13 +99,7 @@ async def list_plugins(
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    mgr = _plugin_manager(server)
-    # CLI installs only write to disk; pick them up when the admin list is opened.
-    newly = mgr.load_missing(install_deps=False)
-    if newly and server.app_runtime is not None:
-        await server.app_runtime.agent_registry.reload_all()
-    items: list[dict[str, Any]] = mgr.list_installed()
-    return items
+    return _plugin_manager(server).list_installed()
 
 
 @router.post("/reload", summary="Reload plugins from disk (admin)")
@@ -228,6 +258,101 @@ async def get_plugin_ui_asset(
         filename=target.name,
         content_disposition_type="inline",
     )
+
+
+def _agent_row_and_config(
+    server: OctopServer,
+    agent_id: str,
+    user: Any,
+) -> tuple[Any, dict[str, Any]]:
+    runtime = server.app_runtime
+    assert runtime is not None
+    registry = runtime.agent_registry
+    row = registry.get_row(agent_id)
+    if row is None:
+        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+    _assert_agent_owner(row, user)
+    return row, registry.get_config(agent_id)
+
+
+def _agent_plugins_response(
+    server: OctopServer,
+    agent_cfg: dict[str, Any],
+) -> AgentPluginsResponse:
+    raw_plugins = agent_cfg.get("plugins")
+    plugins_cfg = raw_plugins if isinstance(raw_plugins, dict) else {}
+    items: list[AgentPluginItem] = []
+    for plugin in _plugin_manager(server).list_installed():
+        if plugin.get("error"):
+            continue
+        plugin_id = str(plugin["id"])
+        global_enabled = plugin.get("enabled", True) is not False
+        per_agent_enabled = agent_plugin_enabled(plugins_cfg, plugin_id)
+        items.append(
+            AgentPluginItem(
+                id=plugin_id,
+                version=plugin.get("version"),
+                name=plugin.get("name"),
+                kind=plugin.get("kind"),
+                description=plugin.get("description"),
+                icon=plugin.get("icon"),
+                loaded=bool(plugin.get("loaded")),
+                global_enabled=global_enabled,
+                agent_enabled=per_agent_enabled,
+                enabled=global_enabled and per_agent_enabled,
+                tools=[PluginToolMeta.model_validate(tool) for tool in plugin.get("tools") or []],
+            )
+        )
+    return AgentPluginsResponse(plugins=items)
+
+
+@router.get(
+    "/agents/{agent_id}",
+    summary="List installed plugins for an agent",
+    response_model=AgentPluginsResponse,
+)
+async def list_agent_plugins(
+    agent_id: str,
+    server: OctopServer = Depends(get_server),
+    user: Any = Depends(current_user),
+) -> AgentPluginsResponse:
+    """List global and per-agent plugin state. Missing agent switches default on."""
+    _, cfg = _agent_row_and_config(server, agent_id, user)
+    return _agent_plugins_response(server, cfg)
+
+
+@router.patch(
+    "/agents/{agent_id}",
+    summary="Update agent plugin enablement",
+    response_model=AgentPluginsResponse,
+)
+async def patch_agent_plugins(
+    agent_id: str,
+    body: AgentPluginsPatch,
+    server: OctopServer = Depends(get_server),
+    user: Any = Depends(current_user),
+) -> AgentPluginsResponse:
+    """Merge plugin switches, preserve tool settings, and reload only this agent."""
+    _, cfg = _agent_row_and_config(server, agent_id, user)
+    installed = {
+        str(item["id"])
+        for item in _plugin_manager(server).list_installed()
+        if not item.get("error")
+    }
+    unknown = sorted(set(body.plugins) - installed)
+    if unknown:
+        raise OctopError(ErrorCode.NOT_FOUND, f"plugin {unknown[0]!r} not found")
+
+    runtime = server.app_runtime
+    assert runtime is not None
+    registry = runtime.agent_registry
+    merged = merge_plugins_enabled_settings(
+        cfg.get("plugins"),
+        {plugin_id: patch.enabled for plugin_id, patch in body.plugins.items()},
+    )
+    await registry.persist_plugin_tools_config(agent_id, merged)
+    await registry.reload(agent_id)
+    return _agent_plugins_response(server, registry.get_config(agent_id))
 
 
 @router.get("/agents/{agent_id}/tools", summary="List plugin tools for an agent")

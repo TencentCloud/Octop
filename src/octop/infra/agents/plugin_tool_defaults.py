@@ -14,6 +14,30 @@ from __future__ import annotations
 from typing import Any
 
 
+def agent_plugin_enabled(agent_plugins: object, plugin_id: str) -> bool:
+    """Return the per-agent plugin switch; missing values remain default-on."""
+    if not isinstance(agent_plugins, dict):
+        return True
+    entry = agent_plugins.get(plugin_id)
+    if not isinstance(entry, dict) or "enabled" not in entry:
+        return True
+    return bool(entry.get("enabled"))
+
+
+def merge_plugins_enabled_settings(
+    existing: object,
+    incoming: dict[str, bool],
+) -> dict[str, Any]:
+    """Merge plugin-level switches without dropping per-tool configuration."""
+    out: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+    for plugin_id, enabled in incoming.items():
+        entry = out.get(plugin_id)
+        plugin_out = dict(entry) if isinstance(entry, dict) else {}
+        plugin_out["enabled"] = bool(enabled)
+        out[str(plugin_id)] = plugin_out
+    return out
+
+
 def merge_plugins_tool_settings(
     existing: object,
     incoming: dict[str, dict[str, Any]],
@@ -73,6 +97,8 @@ def expand_plugin_tools_default_on(
 
     for plugin_id, tool_name in registered_tools:
         if global_plugins.get(plugin_id) is False:
+            continue
+        if not agent_plugin_enabled(out, plugin_id):
             continue
         plugin_entry = out.get(plugin_id)
         if not isinstance(plugin_entry, dict):
