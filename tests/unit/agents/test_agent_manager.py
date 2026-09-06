@@ -325,6 +325,39 @@ def test_build_harness_config_keeps_system_prompt_after_bootstrap(
     assert cfg.system_prompt == "MBTI persona prompt"
 
 
+def test_build_harness_config_renders_system_prompt_playbook_vars(
+    manager: AgentManager,
+) -> None:
+    """System prompt template variables render at graph-compile time.
+
+    {agent_id} {agent_name} {date} {datetime} {work_dir} {model} are filled
+    from the row; unknown placeholders are left untouched so template typos
+    stay visible to the model instead of silently vanishing.
+    """
+    from dataclasses import replace
+
+    agent_id = "AGT_PB"
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+    row = replace(
+        _row(agent_id=agent_id, default_model="gpt-4o-mini"),
+        system_prompt=(
+            "agent {agent_id} ({agent_name}) workdir {work_dir} "
+            "model {model} date {date} datetime {datetime} unknown {foo}"
+        ),
+        config_json=json.dumps({"backend": _fs_backend(ws)}),
+    )
+    cfg = manager._build_harness_config(row)
+    assert cfg.system_prompt is not None
+    assert agent_id in cfg.system_prompt
+    assert "bot" in cfg.system_prompt  # row.name
+    assert str(ws) in cfg.system_prompt
+    assert "gpt-4o-mini" in cfg.system_prompt
+    assert "20" in cfg.system_prompt  # rendered date starts with 20xx
+    assert "{foo}" in cfg.system_prompt  # unknown placeholder preserved
+    assert "{date}" not in cfg.system_prompt
+
+
 def test_bootstrap_complete_defers_graph_refresh(manager: AgentManager) -> None:
     agent_id = "AGT_BOOT"
     manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="boot")

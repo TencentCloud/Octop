@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import re
@@ -91,6 +92,51 @@ _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAge
 
 def _memory_namespace(agent_id: str) -> str:
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
+
+
+#: system_prompt template variables rendered at graph-compile time. Dynamic
+#: per-turn state (project facts, current focus) is *not* part of this layer:
+#: it lives in the workspace MEMORY.md hot index, which is injected verbatim
+#: on every turn. Unknown ``{placeholder}``s are left untouched so a typo in a
+#: template is visible to the model instead of silently vanishing.
+_SYSTEM_PROMPT_VARS = (
+    "agent_id",
+    "agent_name",
+    "date",
+    "datetime",
+    "work_dir",
+    "model",
+)
+
+
+def _render_system_prompt(
+    template: str,
+    *,
+    agent_id: str,
+    agent_name: str,
+    work_dir: str,
+    model: str | None,
+) -> str:
+    """Render ``{playbook}`` variables into an agent system prompt.
+
+    Inspired by openresearch-cli's playbook substitution: the persona system
+    prompt may reference the agent's own identity, working directory, and the
+    current date so a single template stays accurate across instances. Values
+    are filled once when the harness graph is compiled, not per turn.
+    """
+    now = datetime.datetime.now()
+    substitutions = {
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "date": now.strftime("%Y-%m-%d"),
+        "datetime": now.strftime("%Y-%m-%d %H:%M"),
+        "work_dir": work_dir,
+        "model": model or "",
+    }
+    out = template
+    for key, value in substitutions.items():
+        out = out.replace("{" + key + "}", value)
+    return out
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -2576,11 +2622,23 @@ class AgentManager:
         )
         acp_config = ACPConfig.from_dict({"runners": runners_dict})
 
+        default_model = (
+            self._providers.resolve_explicit_default_model(row, cfg)
+            or self.resolve_fallback_model_ref()
+        )
         system_prompt = row.system_prompt
         memory: tuple[str, ...] | None = None
         if not bootstrap_marker_exists(ws):
             system_prompt = None
             memory = ()
+        if system_prompt:
+            system_prompt = _render_system_prompt(
+                system_prompt,
+                agent_id=row.agent_id,
+                agent_name=row.name or row.agent_id,
+                work_dir=str(harness_workspace),
+                model=default_model,
+            )
 
         uid = self._connector_uid_for(row)
         mcp_server_configs: dict[str, Any] = {}
@@ -2655,10 +2713,7 @@ class AgentManager:
             # first, else first usable) — so promotion works whenever chat does.
             # Per-turn AUTO routing is unaffected: the gateway resolves models via
             # ``resolve_explicit_default_model`` directly.
-            default_model=(
-                self._providers.resolve_explicit_default_model(row, cfg)
-                or self.resolve_fallback_model_ref()
-            ),
+            default_model=default_model,
             system_prompt=system_prompt,
             memory=memory,
             backend=harness_backend,  # spec, or live OpenSandbox instance
