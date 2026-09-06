@@ -162,7 +162,7 @@ class WebSocketChannel(BaseChannel):
         self._steer.remember_context(
             thread_id, message.metadata if isinstance(message.metadata, dict) else None
         )
-        self._hub.mark_turn_active(thread_id)
+        self._hub.mark_turn_active(thread_id, agent_id=str(message.tenant_id or ""))
         failed = False
         stream = None
         try:
@@ -183,6 +183,18 @@ class WebSocketChannel(BaseChannel):
                 stream = processor.iter_turn_chunks(current)
                 async for chunk in stream:
                     chunk_type = str(chunk.get("type") or "") if isinstance(chunk, dict) else ""
+                    # Phase tracking: a tool that runs for many minutes emits no
+                    # chunks, so tell the watchdog we are inside a tool call and
+                    # let it use the longer tool stall threshold (same semantics
+                    # as the dashboard WS path). Every produced chunk counts as
+                    # progress so the TURN watchdog can tell "model still
+                    # thinking / tool still running" from "turn stuck with no
+                    # output at all".
+                    if chunk_type == "tool_call_chunk":
+                        self._hub.mark_tool_state(thread_id, True)
+                    elif chunk_type == "tool_result":
+                        self._hub.mark_tool_state(thread_id, False)
+                    self._hub.mark_turn_progress(thread_id)
                     if preempted and chunk_type not in ("done", "error"):
                         # Cancel already landed at the tool boundary. Later
                         # tokens are not in the checkpoint — do not show them.

@@ -368,6 +368,11 @@
 - 控制台保存 QQ 通道时写入 `c2c_streaming: true`，并提示工具过程会另占每条入站约 4 条被动回复配额
 - 依赖 `harness-gateway>=0.9.7`（含 QQ C2C 替换流式与飞书话题修复）
 
+### 新增
+
+- TURN watchdog：Dashboard WS 与 IM 通道回合活性看门狗——模型/工具分阶段无进展超时与模型阶段总时长上限，超时自动推 error/done 帧（IM 推超时提示）、cancel_stream 释放会话锁；pre-enqueue 准备阶段超时兜底
+
+
 ## [0.9.32] - 2026-09-06
 
 ### 新增

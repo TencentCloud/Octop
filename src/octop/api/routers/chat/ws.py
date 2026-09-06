@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -30,6 +31,20 @@ from octop.infra.gateway.steer.types import preview_text
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_PREPARE_TIMEOUT_SECONDS = 60
+
+
+def _prepare_timeout() -> float:
+    """Timeout for the pre-enqueue turn preparation phase (env-tunable)."""
+    raw = os.environ.get("OCTOP_TURN_PREPARE_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return _DEFAULT_PREPARE_TIMEOUT_SECONDS
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return _DEFAULT_PREPARE_TIMEOUT_SECONDS
+
 
 router = APIRouter()
 
@@ -201,12 +216,26 @@ async def dashboard_chat_ws(
             turn = frame.to_turn_body()
             # Resolve thread early so busy routing can run before prepare.
             try:
-                prepared_early = await prepare_dashboard_turn(
-                    server,
-                    agent_id=agent_id,
-                    user=user,
-                    turn=turn,
+                # prepare 阶段含 MCP 加载等网络 IO，可能挂住（watchdog 看不到
+                # 未入队的 turn）——加超时让客户端立即拿到报错而不是无回帧。
+                prepared_early = await asyncio.wait_for(
+                    prepare_dashboard_turn(
+                        server,
+                        agent_id=agent_id,
+                        user=user,
+                        turn=turn,
+                    ),
+                    timeout=_prepare_timeout(),
                 )
+            except TimeoutError:
+                await send_frame(
+                    {
+                        "type": "error",
+                        "message": "turn preparation timed out (MCP/skills load took too long)",
+                    }
+                )
+                await send_frame({"type": "done"})
+                continue
             except OctopError as exc:
                 await send_frame({"type": "error", "message": str(exc)})
                 await send_frame({"type": "done"})
