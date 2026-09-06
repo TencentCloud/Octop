@@ -10,6 +10,12 @@ metadata:
   octop:
     emoji: "🍜"
     requires: {}
+    label:
+      zh: "美团优惠"
+      en: "Meituan Deals"
+    summary:
+      zh: "领取美团优惠券，搜索附近团购并协助下单。"
+      en: "Claim Meituan coupons, search nearby deals, and help place orders."
 ---
 
 # 美团生活助手 — 领券下单找我

@@ -1,6 +1,15 @@
 ---
 name: insurance-policy-learning
 description: 为基层医生学习小助手生成地区医保政策学习内容。支持每周二、周五或按需的最新变化摘要，也支持近一年／指定区间的重点政策回顾学习。只输出政策原文摘要、待本地确认事项和权威信源，不输出报销结论、支付比例、HIS提醒、病历要求或医院执行承诺。
+metadata:
+  octop:
+    emoji: "🏥"
+    label:
+      zh: "医保政策学习"
+      en: "Insurance Policy Learning"
+    summary:
+      zh: "摘要地区医保正式文件变化，并标明待本地确认事项。"
+      en: "Summarize local insurance policy changes for learning, not claims."
 ---
 
 # 地区医保政策学习
