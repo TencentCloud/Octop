@@ -42,6 +42,21 @@ def test_render_handles_empty_custom(loader: PersonaLoader):
     assert "{custom}" not in out
 
 
+def test_render_preserves_unknown_placeholders_for_compile_time(loader: PersonaLoader):
+    """Playbook variables rendered later ({date}/{work_dir}/…) must survive
+    the persona pass untouched — ``str.format`` would raise KeyError."""
+    out = loader.render(
+        mbti=None,
+        agent_name="A",
+        user_display="B",
+        custom="Today is {date}. Workdir {work_dir}. Model {model}.",
+    )
+    assert "{date}" in out
+    assert "{work_dir}" in out
+    assert "{model}" in out
+    assert "{agent_name}" not in out
+
+
 def test_render_persona_template_uses_profile_fields():
     profile = get_profile("INTJ")
     assert profile is not None
