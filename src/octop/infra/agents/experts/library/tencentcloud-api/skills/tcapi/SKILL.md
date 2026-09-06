@@ -2,6 +2,15 @@
 name: tcapi
 display_name: 腾讯云 API 助手
 description: Skill to call Cloud API for Tencent Cloud (腾讯云). Used for cloud automation or resource management. 当用户需要查询、创建、管理腾讯云资源，或执行云 API 自动化操作时触发。优先使用 Octop 自带 venv 中的 tccli，凭证支持全自动 OAuth 登录。
+metadata:
+  octop:
+    emoji: "☁️"
+    label:
+      zh: "腾讯云 API"
+      en: "Tencent Cloud API"
+    summary:
+      zh: "用 tccli 查询与管理腾讯云资源，支持 OAuth 登录。"
+      en: "Query and manage Tencent Cloud resources with tccli and OAuth."
 version: 1.0.0
 tags: [tccli, cloud-api, tencent-cloud, automation]
 keywords: [腾讯云, tccli, cloud api, 云资源, 云管理, 自动化运维]

@@ -5,6 +5,7 @@ import {
   Bot,
   Brain,
   Notebook,
+  Puzzle,
   Sparkles,
   Waypoints,
   Wrench,
@@ -19,6 +20,7 @@ import SkillsTabs from "../Skills/components/SkillsTabs";
 import ToolsPanel from "../Tools/ToolsPanel";
 import SubagentManager from "../../Experts/components/SubagentManager";
 import MBTISelector from "./components/MBTISelector";
+import AgentPluginsPanel from "./components/AgentPluginsPanel";
 import MemoryPanel from "../Memory/MemoryPanel";
 import ChannelsPanel from "../Channels/ChannelsPanel";
 import styles from "./index.module.less";
@@ -27,6 +29,7 @@ export type PersonalizationTab =
   | "skills"
   | "subagents"
   | "tools"
+  | "plugins"
   | "mbti"
   | "memory"
   | "channels";
@@ -35,6 +38,7 @@ const PERSONALIZATION_TABS = [
   "skills",
   "subagents",
   "tools",
+  "plugins",
   "mbti",
   "memory",
   "channels",
@@ -44,6 +48,7 @@ const TAB_ICONS = {
   skills: Sparkles,
   subagents: Bot,
   tools: Wrench,
+  plugins: Puzzle,
   mbti: Brain,
   memory: Notebook,
   channels: Waypoints,
@@ -120,6 +125,18 @@ export default function PersonalizationPage() {
           >
             <div className={pageShellStyles.fillChild}>
               <ToolsPanel agentId={activeAgentId} />
+            </div>
+          </div>
+        )}
+
+        {isMounted("plugins") && (
+          <div
+            className={styles.panel}
+            style={{ display: activeTab === "plugins" ? "flex" : "none" }}
+            aria-hidden={activeTab !== "plugins"}
+          >
+            <div className={pageShellStyles.fillChild}>
+              <AgentPluginsPanel agentId={activeAgentId} />
             </div>
           </div>
         )}

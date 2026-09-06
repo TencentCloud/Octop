@@ -4,6 +4,14 @@ description: "当电子表格文件是主要输入或输出时使用此技能。
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
   builtin_skill_version: "1.1"
+  octop:
+    emoji: "📊"
+    label:
+      zh: "Excel 表格"
+      en: "Spreadsheets"
+    summary:
+      zh: "创建、读取、编辑或清理 .xlsx、.csv 等电子表格。"
+      en: "Create, read, edit, or clean .xlsx, .csv, and related spreadsheets."
 ---
 
 > **重要说明：** 所有 `scripts/` 路径均相对于此技能目录。

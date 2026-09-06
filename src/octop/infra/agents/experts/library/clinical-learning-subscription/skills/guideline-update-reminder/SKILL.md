@@ -1,6 +1,15 @@
 ---
 name: guideline-update-reminder
 description: 为基层医生学习小助手生成专业指南更新提醒。适用于每3天一次或按需输出与医生科室、亚专业、职称深度和基层场景相关的指南、共识、规范、临床路径或质控标准更新。只提供学习提醒和权威信源，不输出临床行动、疾病SOP、个体患者建议、药物剂量或院内流程变更。
+metadata:
+  octop:
+    emoji: "🔔"
+    label:
+      zh: "指南更新提醒"
+      en: "Guideline Update Reminder"
+    summary:
+      zh: "按科室与基层场景提醒相关指南、共识与规范更新。"
+      en: "Remind doctors of relevant guideline and consensus updates."
 ---
 
 # 专业指南更新提醒

@@ -8,14 +8,39 @@
 
 .cardGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
   padding: 20px 0 40px;
 
-  @media (max-width: 640px) {
+  @media (max-width: 767px) {
     grid-template-columns: 1fr;
     gap: 12px;
   }
+}
+
+.emptyGuideMascot {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ── Group chip (local / object storage / sandbox / database) ───── */
+
+.groupChip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 /* ── Toolbar row above grid ─────────────────────────────────────── */
@@ -104,12 +129,22 @@
 }
 
 .backendCardKind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-size: 11px;
   color: var(--fn-text-tertiary);
   margin-top: 2px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+
+  > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .backendCardInfo {

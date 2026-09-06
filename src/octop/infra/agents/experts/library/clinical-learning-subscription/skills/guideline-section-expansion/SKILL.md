@@ -1,6 +1,15 @@
 ---
 name: guideline-section-expansion
 description: 把已核验的权威指南按原文结构逐节展开讲解，并给出原文定位，帮医生读懂原文；也可把指南整理为学习路径图（学习顺序）。不得生成诊疗方案、床旁处置步骤、疾病 SOP、急诊行动卡、个体患者建议或药物剂量说明。
+metadata:
+  octop:
+    emoji: "📑"
+    label:
+      zh: "章节展开"
+      en: "Section Expansion"
+    summary:
+      zh: "按原文结构展开指南章节，或整理学习路径图。"
+      en: "Expand verified guideline sections or build a learning pathway."
 ---
 
 # 指南章节展开与学习路径图

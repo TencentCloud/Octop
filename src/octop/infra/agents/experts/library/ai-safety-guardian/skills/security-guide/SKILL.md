@@ -1,6 +1,15 @@
 ---
 name: security-guide
 description: AI 工具安全部署与合规体检的 6 步清单，覆盖 shellward 8 层防御与中文合规（PIPL/等保2.0/数据出境/生成式AI标识）。
+metadata:
+  octop:
+    emoji: "🛡️"
+    label:
+      zh: "安全合规体检"
+      en: "Security Guide"
+    summary:
+      zh: "按 6 步检查 AI 工具部署、命令拦截与中文合规。"
+      en: "Run a 6-step AI deployment, command-block, and compliance checkup."
 ---
 
 # AI 安全部署与合规体检清单

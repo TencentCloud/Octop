@@ -18,11 +18,14 @@ def build_instance_config_json(
     kind: str,
     default_open: bool = False,
     email: Any = None,
+    description: str | None = None,
 ) -> str | None:
     """Build ``connectors.config_json`` payload; None when empty."""
     config: dict[str, Any] = {}
     if kind == "qq-mail" and email:
         config["email"] = email
+    if description:
+        config["description"] = description
     if default_open:
         config["default_open"] = True
     if not config:

@@ -71,3 +71,9 @@ async def test_upload_plugin_requires_admin(env_admin_alice: Any) -> None:
     client, _srv, _admin_auth, alice_auth = env_admin_alice
     r = await client.post("/api/plugins/upload", files=_zip_files(), headers=alice_auth)
     assert r.status_code == 403, r.text
+
+
+async def test_list_plugins_is_available_to_authenticated_users(env_admin_alice: Any) -> None:
+    client, _srv, _admin_auth, alice_auth = env_admin_alice
+    response = await client.get("/api/plugins", headers=alice_auth)
+    assert response.status_code == 200, response.text

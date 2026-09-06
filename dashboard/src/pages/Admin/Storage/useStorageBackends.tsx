@@ -13,6 +13,7 @@ import {
   Archive,
   Package,
   Container,
+  Box,
 } from "lucide-react";
 import { request } from "../../../api/request";
 
@@ -58,6 +59,7 @@ export const AGENT_RESOLVABLE_STORAGE_KINDS = new Set([
   "shell",
   "postgres",
   "docker",
+  "opensandbox",
 ]);
 
 export function isAgentResolvableStorageKind(kind: string): boolean {
@@ -287,6 +289,38 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     ],
   },
   {
+    kind: "opensandbox",
+    nameKey: "storage.kindOpensandbox",
+    descKey: "storage.descOpensandbox",
+    color: "#0f766e",
+    icon: <Box size={20} />,
+    fields: [
+      {
+        key: "bucket",
+        labelKey: "storage.dockerImageLabel",
+        requiredMessageKey: "storage.pleaseEnterDockerImage",
+        required: true,
+        placeholder: "python:3.12",
+      },
+      {
+        key: "endpoint",
+        labelKey: "storage.opensandboxDomainLabel",
+        placeholder: "localhost:8080",
+      },
+      {
+        key: "secret_key",
+        labelKey: "storage.opensandboxApiKeyLabel",
+        secret: true,
+        placeholder: "sk-…",
+      },
+      {
+        key: "region",
+        labelKey: "storage.opensandboxProtocolLabel",
+        placeholder: "http",
+      },
+    ],
+  },
+  {
     kind: "postgres",
     nameKey: "storage.kindPostgres",
     descKey: "storage.descPostgres",
@@ -370,6 +404,41 @@ export const STORAGE_KINDS = STORAGE_TYPE_DEFS.map((t) => ({
   value: t.kind,
   labelKey: t.nameKey,
 }));
+
+export interface StorageTypeGroup {
+  id: string;
+  titleKey: string;
+  kinds: readonly string[];
+}
+
+export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
+  {
+    id: "local",
+    titleKey: "storage.groupLocal",
+    kinds: ["filesystem", "shell"],
+  },
+  {
+    id: "object",
+    titleKey: "storage.groupObject",
+    kinds: ["cos", "s3", "oss", "obs", "custom"],
+  },
+  {
+    id: "sandbox",
+    titleKey: "storage.groupSandbox",
+    kinds: ["docker", "opensandbox"],
+  },
+  {
+    id: "database",
+    titleKey: "storage.groupDatabase",
+    kinds: ["postgres"],
+  },
+];
+
+/** Group a backend kind belongs to (local / object / sandbox / database). */
+export function storageKindGroup(kind: string): StorageTypeGroup | undefined {
+  const normalized = kind.toLowerCase();
+  return STORAGE_TYPE_GROUPS.find((g) => g.kinds.includes(normalized));
+}
 
 export interface UseStorageBackendsResult {
   backends: StorageBackendRow[];

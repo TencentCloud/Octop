@@ -18,6 +18,7 @@ export interface ServerCardState {
   envText: string;
   enabled: boolean;
   defaultOpen: boolean;
+  shared: boolean;
   collapsed: boolean;
   oauthConfigured: boolean;
   oauthExpiresAt?: number;
@@ -125,6 +126,7 @@ export function serversToCards(servers: CustomMcpServers): ServerCardState[] {
     envText: envToText(spec.env),
     enabled: spec.enabled !== false,
     defaultOpen: spec.default_open === true,
+    shared: spec.shared === true,
     collapsed: true,
     oauthConfigured: spec.oauth?.configured === true,
     oauthExpiresAt: spec.oauth?.expires_at,
@@ -151,6 +153,9 @@ export function cardsToServers(cards: ServerCardState[]): CustomMcpServers {
     }
     if (card.defaultOpen) {
       spec.default_open = true;
+    }
+    if (card.shared) {
+      spec.shared = true;
     }
     if (card.transport === "streamable_http") {
       spec.url = card.url.trim();
@@ -243,6 +248,7 @@ export function newCard(
     envText: "",
     enabled: true,
     defaultOpen: false,
+    shared: false,
     collapsed: false,
     oauthConfigured: false,
   };

@@ -72,6 +72,7 @@ async def test_create_tencent_instance(env):
     assert r.status_code == 201
     inst = r.json()
     assert inst["kind"] == "tencent-docs"
+    assert inst["description"]
     assert inst["mcp_server_name"].startswith("tencent-docs__")
     assert inst.get("default_open") is False
 
@@ -101,6 +102,135 @@ async def test_create_instance_default_open(env):
     assert detail.status_code == 200
     assert detail.json()["config"]["default_open"] is True
     assert detail.json()["default_open"] is True
+
+
+async def test_same_connector_kind_supports_multiple_named_instances(env):
+    c, _, auth, _ = env
+    first = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "文档一",
+            "credentials": {"token": "token-1"},
+        },
+    )
+    second = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "文档二",
+            "credentials": {"token": "token-2"},
+        },
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["instance_id"] != second.json()["instance_id"]
+
+    duplicate = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "qq-mail",
+            "display_name": "文档一",
+            "credentials": {"email": "a@qq.com", "password": "code"},
+        },
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "CONNECTOR_NAME_TAKEN"
+
+
+async def test_connector_names_are_unique_across_builtin_and_custom(env):
+    c, _, auth, _ = env
+    custom = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={
+            "servers": {
+                "custom-server": {
+                    "display_name": "重复名称",
+                    "transport": "streamable_http",
+                    "url": "https://mcp.example.com/mcp",
+                }
+            }
+        },
+    )
+    assert custom.status_code == 200
+
+    builtin = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "重复名称",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert builtin.status_code == 409
+    assert builtin.json()["error"]["code"] == "CONNECTOR_NAME_TAKEN"
+
+
+async def test_custom_name_cannot_duplicate_builtin_connector(env):
+    c, _, auth, _ = env
+    builtin = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "内置名称",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert builtin.status_code == 201
+
+    custom = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={
+            "servers": {
+                "custom-server": {
+                    "display_name": "内置名称",
+                    "transport": "streamable_http",
+                    "url": "https://mcp.example.com/mcp",
+                }
+            }
+        },
+    )
+    assert custom.status_code == 409
+    assert custom.json()["error"]["code"] == "CONNECTOR_NAME_TAKEN"
+
+
+async def test_shared_connector_is_visible_but_not_manageable_by_other_user(env):
+    c, _, admin_auth, _ = env
+    created = await c.post(
+        "/api/connector-instances",
+        headers=admin_auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "共享文档",
+            "credentials": {"token": "shared-token"},
+            "shared": True,
+            "default_open": True,
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+
+    user_auth = await create_user(c, admin_auth, username="connector_reader")
+    listed = await c.get("/api/connector-instances", headers=user_auth)
+    assert listed.status_code == 200
+    shared = next(row for row in listed.json() if row["instance_id"] == instance_id)
+    assert shared["shared"] is True
+    assert shared["default_open"] is True
+    assert shared["can_manage"] is False
+
+    patched = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=user_auth,
+        json={"display_name": "不能修改"},
+    )
+    assert patched.status_code == 403
 
 
 async def test_chat_accepts_user_instance_mcp(env):
@@ -145,6 +275,40 @@ async def test_get_instance_detail(env):
     assert detail["display_name"] == "邮箱"
     assert detail["credentials_preview"]["email"] == "a@qq.com"
     assert detail["credentials_preview"]["password_configured"] is True
+
+
+async def test_create_and_edit_instance_description(env):
+    c, _, auth, _ = env
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "文档",
+            "description": "团队文档连接",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert created.status_code == 201, created.text
+    instance_id = created.json()["instance_id"]
+    assert created.json()["description"] == "团队文档连接"
+
+    listed = await c.get("/api/connector-instances", headers=auth)
+    row = next(item for item in listed.json() if item["instance_id"] == instance_id)
+    assert row["description"] == "团队文档连接"
+
+    patched = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=auth,
+        json={"description": "更新后的说明"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["description"] == "更新后的说明"
+
+    detail = await c.get(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["description"] == "更新后的说明"
+    assert detail.json()["config"]["description"] == "更新后的说明"
 
 
 async def test_probe_returns_tools(env, monkeypatch: pytest.MonkeyPatch):
@@ -346,6 +510,37 @@ async def test_patch_custom_mcp_server_default_open_only(env):
     )
     assert patch_off.status_code == 200
     assert "default_open" not in patch_off.json()["servers"]["linear"]
+
+
+async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
+    c, _, admin_auth, _ = env
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=admin_auth,
+        json={
+            "servers": {
+                "linear": {
+                    "transport": "streamable_http",
+                    "url": "https://mcp.linear.app/mcp",
+                    "shared": True,
+                }
+            }
+        },
+    )
+    assert put.status_code == 200
+
+    user_auth = await create_user(c, admin_auth, username="custom_reader")
+    listed = await c.get("/api/connector-instances", headers=user_auth)
+    assert listed.status_code == 200
+    shared = next(
+        row
+        for row in listed.json()
+        if row["kind"] == CUSTOM_MCP_KIND and row["display_name"] == "linear"
+    )
+    assert shared["shared"] is True
+    assert shared["can_manage"] is False
+    assert shared["mcp_server_name"].startswith("custom__")
+    assert shared["mcp_server_name"].endswith("__linear")
 
 
 async def test_custom_mcp_oauth_callback_applies_tokens(env):

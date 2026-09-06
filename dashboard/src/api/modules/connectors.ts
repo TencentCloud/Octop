@@ -43,11 +43,17 @@ export interface ConnectorInstance {
   instance_id: string;
   kind: string;
   display_name: string;
+  description?: string | null;
   status: string;
   mcp_server_name: string;
   has_credentials: boolean;
   /** When true, chat composer pre-selects this connector. */
   default_open?: boolean;
+  shared: boolean;
+  owner_user_id: number;
+  owner_username?: string | null;
+  owner_display_name?: string | null;
+  can_manage: boolean;
   created_at: number;
   updated_at: number;
 }
@@ -129,6 +135,7 @@ export interface CustomMcpServerSpec {
   display_name?: string;
   /** When true, chat composer pre-selects this MCP server. */
   default_open?: boolean;
+  shared?: boolean;
   oauth?: CustomMcpOAuthPreview;
 }
 
@@ -189,8 +196,10 @@ export const connectorsApi = {
   createInstance: (body: {
     kind: string;
     display_name: string;
+    description?: string;
     credentials: Record<string, unknown>;
     default_open?: boolean;
+    shared?: boolean;
   }) =>
     request<ConnectorInstance>("/connector-instances", {
       method: "POST",
@@ -204,7 +213,14 @@ export const connectorsApi = {
 
   patchInstance: (
     instanceId: string,
-    body: { status?: "active" | "disabled"; default_open?: boolean },
+    body: {
+      status?: "active" | "disabled";
+      default_open?: boolean;
+      display_name?: string;
+      description?: string;
+      credentials?: Record<string, unknown>;
+      shared?: boolean;
+    },
   ) =>
     request<ConnectorInstance>(
       `/connector-instances/${encodeURIComponent(instanceId)}`,
@@ -347,7 +363,7 @@ export const connectorsApi = {
 
   patchCustomMcpServer: (
     name: string,
-    body: { enabled?: boolean; default_open?: boolean },
+    body: { enabled?: boolean; default_open?: boolean; shared?: boolean },
   ) =>
     request<{ servers: CustomMcpServers }>(
       `/connectors/custom-mcp/servers/${encodeURIComponent(name)}`,

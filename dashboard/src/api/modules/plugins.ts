@@ -43,6 +43,7 @@ export interface AgentPluginTool {
 export type AgentPluginsConfig = Record<
   string,
   {
+    enabled?: boolean;
     tools?: Record<
       string,
       {
@@ -52,6 +53,21 @@ export type AgentPluginsConfig = Record<
     >;
   }
 >;
+
+export interface AgentPlugin {
+  id: string;
+  version?: string | null;
+  name?: string | null;
+  kind?: string | null;
+  description?: string | null;
+  icon?: string | null;
+  loaded: boolean;
+  global_enabled: boolean;
+  agent_enabled: boolean;
+  /** Effective state: global and Agent switches must both be enabled. */
+  enabled: boolean;
+  tools: InstalledPlugin["tools"];
+}
 
 export const pluginsApi = {
   list(): Promise<InstalledPlugin[]> {
@@ -106,6 +122,20 @@ export const pluginsApi = {
     plugins: AgentPluginsConfig,
   ): Promise<{ status: string }> {
     return request(`/plugins/agents/${encodeURIComponent(agentId)}/tools`, {
+      method: "PATCH",
+      body: JSON.stringify({ plugins }),
+    });
+  },
+
+  listAgentPlugins(agentId: string): Promise<{ plugins: AgentPlugin[] }> {
+    return request(`/plugins/agents/${encodeURIComponent(agentId)}`);
+  },
+
+  patchAgentPlugins(
+    agentId: string,
+    plugins: Record<string, { enabled: boolean }>,
+  ): Promise<{ plugins: AgentPlugin[] }> {
+    return request(`/plugins/agents/${encodeURIComponent(agentId)}`, {
       method: "PATCH",
       body: JSON.stringify({ plugins }),
     });

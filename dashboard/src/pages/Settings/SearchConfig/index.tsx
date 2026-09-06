@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
-import { App, Button, Form, Input, Typography, Spin, Modal } from "antd";
+import { App, Button, Drawer, Form, Input, Typography, Spin } from "antd";
 
 import {
+  Activity,
   Check,
   CheckCircle,
   Search,
   Settings2,
   Trash2,
-  Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { envsApi } from "../../../api/modules/env";
@@ -67,7 +67,7 @@ function searchProviderLogo(providerId: string): string {
   return getProviderLogo(providerId) ?? customProviderLogo;
 }
 
-interface ConfigureModalProps {
+interface ConfigureDrawerProps {
   provider: SearchProvider;
   envVars: Record<string, string>;
   open: boolean;
@@ -75,13 +75,13 @@ interface ConfigureModalProps {
   onSaved: () => void;
 }
 
-function ConfigureModal({
+function ConfigureDrawer({
   provider,
   envVars,
   open,
   onClose,
   onSaved,
-}: ConfigureModalProps) {
+}: ConfigureDrawerProps) {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
   const [form] = Form.useForm();
@@ -120,7 +120,7 @@ function ConfigureModal({
     }
   };
 
-  const handleTest = async () => {
+  const handleProbe = async () => {
     try {
       setTesting(true);
       const values = (await form.validateFields()) as Record<string, string>;
@@ -183,23 +183,37 @@ function ConfigureModal({
     });
   };
 
-  const modalTitle = provider.configured
-    ? `${t("common.edit")} — ${provider.name}`
-    : `${t("advancedSettings.search.configure")} — ${provider.name}`;
-
   return (
-    <Modal
-      title={modalTitle}
+    <Drawer
+      title={t("advancedSettings.search.configureTitle", {
+        name: provider.name,
+      })}
       open={open}
-      onCancel={onClose}
-      onOk={() => void handleSave()}
-      confirmLoading={saving}
-      okText={t("common.save")}
-      cancelText={t("common.cancel")}
-      destroyOnClose
-      width={480}
+      onClose={onClose}
+      width={440}
+      placement="right"
+      destroyOnHidden
+      footer={
+        <div className={styles.drawerFooter}>
+          <Button onClick={onClose}>{t("common.cancel")}</Button>
+          <Button
+            icon={<Activity size={14} />}
+            loading={testing}
+            onClick={() => void handleProbe()}
+          >
+            {t("advancedSettings.search.probe")}
+          </Button>
+          <Button
+            type="primary"
+            loading={saving}
+            onClick={() => void handleSave()}
+          >
+            {t("common.save")}
+          </Button>
+        </div>
+      }
     >
-      <p className={styles.modalHint}>{t(provider.descriptionKey)}</p>
+      <div className={styles.drawerHint}>{t(provider.descriptionKey)}</div>
       <Form form={form} layout="vertical" requiredMark={false}>
         {provider.required_keys.map((key) => (
           <Form.Item
@@ -229,6 +243,14 @@ function ConfigureModal({
                     </>
                   ) : null}
                 </span>
+              ) : provider.docs_url && key === provider.required_keys[0] ? (
+                <a
+                  href={provider.docs_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t("setupWizard.search.getApiKey")}
+                </a>
               ) : undefined
             }
           >
@@ -239,35 +261,17 @@ function ConfigureModal({
           </Form.Item>
         ))}
       </Form>
-
-      <div className={styles.modalActions}>
+      {provider.configured ? (
         <Button
-          icon={<Zap size={14} />}
-          loading={testing}
-          onClick={() => void handleTest()}
+          danger
+          icon={<Trash2 size={14} />}
+          loading={revoking}
+          onClick={handleRevoke}
         >
-          {t("setupWizard.search.test")}
+          {t("setupWizard.search.revoke")}
         </Button>
-        {provider.docs_url ? (
-          <Button
-            type="link"
-            onClick={() => window.open(provider.docs_url, "_blank")}
-          >
-            {t("setupWizard.search.docs")}
-          </Button>
-        ) : null}
-        {provider.configured ? (
-          <Button
-            danger
-            icon={<Trash2 size={14} />}
-            loading={revoking}
-            onClick={handleRevoke}
-          >
-            {t("setupWizard.search.revoke")}
-          </Button>
-        ) : null}
-      </div>
-    </Modal>
+      ) : null}
+    </Drawer>
   );
 }
 
@@ -327,7 +331,7 @@ export default function SearchConfigPage() {
     <>
       <TabPanelHeader
         icon={<Search size={22} />}
-        title={t("nav.search")}
+        title={t("models.searchModelsTab")}
         description={t("advancedSettings.search.desc")}
       />
 
@@ -457,7 +461,7 @@ export default function SearchConfigPage() {
       </Text>
 
       {editing ? (
-        <ConfigureModal
+        <ConfigureDrawer
           provider={editing}
           envVars={envVars}
           open
@@ -468,3 +472,5 @@ export default function SearchConfigPage() {
     </>
   );
 }
+
+export { SearchConfigPage as SearchSettingsPanel };

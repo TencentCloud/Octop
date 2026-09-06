@@ -6,6 +6,14 @@ metadata:
   qwenpaw:
     emoji: "📄"
     requires: {}
+  octop:
+    emoji: "📖"
+    label:
+      zh: "文件读取"
+      en: "File Reader"
+    summary:
+      zh: "读取并总结本地文本文件，不处理 PDF 与 Office。"
+      en: "Read and summarize local text files, not PDF or Office."
 ---
 # 文件读取工具箱
 

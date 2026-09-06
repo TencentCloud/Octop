@@ -9,6 +9,8 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Plug,
+  Plus,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -16,6 +18,8 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
+import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
+import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -36,6 +40,7 @@ import {
   type FeishuUserAuthStartResult,
 } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
+import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
 import { CustomMcpTab } from "./CustomMcpTab";
 import {
   INLINE_CREDENTIAL_GUIDE_KINDS,
@@ -137,15 +142,19 @@ function previewToFormValues(
   if (!detail) {
     return {
       display_name: entry.name,
+      description: entry.description,
       mail_provider: "qq",
       default_open: false,
+      shared: false,
     };
   }
   const preview = detail.credentials_preview ?? {};
   const values: Record<string, unknown> = {
     display_name: detail.display_name || entry.name,
+    description: detail.description || entry.description,
     default_open:
       detail.default_open === true || detail.config?.default_open === true,
+    shared: detail.shared === true,
   };
   if (preview.email) values.email = preview.email;
   if (preview.mail_provider) values.mail_provider = preview.mail_provider;
@@ -353,7 +362,12 @@ function ConnectorConfigDrawer({
     setFeishuAuthNeedsReauth(false);
     setFeishuRefreshExpiresAt(null);
     form.resetFields();
-    form.setFieldsValue({ display_name: entry.name, default_open: false });
+    form.setFieldsValue({
+      display_name: entry.name,
+      description: entry.description,
+      default_open: false,
+      shared: false,
+    });
 
     void connectorsApi
       .authInfo(entry.kind)
@@ -403,6 +417,7 @@ function ConnectorConfigDrawer({
         .catch(() => {
           form.setFieldsValue({
             display_name: instance.display_name || entry.name,
+            description: instance.description || entry.description,
             default_open: instance.default_open === true,
           });
           applyConnectorDraft();
@@ -869,12 +884,24 @@ function ConnectorConfigDrawer({
           return;
         }
 
-        await connectorsApi.createInstance({
-          kind: entry.kind,
-          display_name: String(values.display_name || entry.name),
-          credentials,
-          default_open: values.default_open === true,
-        });
+        if (instance) {
+          await connectorsApi.patchInstance(instance.instance_id, {
+            display_name: String(values.display_name || entry.name),
+            description: String(values.description || entry.description),
+            credentials,
+            default_open: values.default_open === true,
+            shared: values.shared === true,
+          });
+        } else {
+          await connectorsApi.createInstance({
+            kind: entry.kind,
+            display_name: String(values.display_name || entry.name),
+            description: String(values.description || entry.description),
+            credentials,
+            default_open: values.default_open === true,
+            shared: values.shared === true,
+          });
+        }
         clearFormDraft(draftScope);
         message.success(t("connectors.createSuccess", "连接器已创建"));
         onSaved();
@@ -883,6 +910,7 @@ function ConnectorConfigDrawer({
         console.error(e);
         form.setFieldsValue({
           display_name: entry.name,
+          description: entry.description,
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           expires_at: tokens.expires_at,
@@ -1077,12 +1105,24 @@ function ConnectorConfigDrawer({
     setSaving(true);
     try {
       const payload = buildCredentials(entry, values);
-      await connectorsApi.createInstance({
-        kind: entry.kind,
-        display_name: values.display_name as string,
-        credentials: payload,
-        default_open: values.default_open === true,
-      });
+      if (instance) {
+        await connectorsApi.patchInstance(instance.instance_id, {
+          display_name: values.display_name as string,
+          description: values.description as string,
+          credentials: payload,
+          default_open: values.default_open === true,
+          shared: values.shared === true,
+        });
+      } else {
+        await connectorsApi.createInstance({
+          kind: entry.kind,
+          display_name: values.display_name as string,
+          description: values.description as string,
+          credentials: payload,
+          default_open: values.default_open === true,
+          shared: values.shared === true,
+        });
+      }
       message.success(
         hasStoredCredentials
           ? t("connectors.saveSuccess", "连接器已保存")
@@ -1129,11 +1169,11 @@ function ConnectorConfigDrawer({
         hasStoredCredentials
           ? t("connectors.editConnection", {
               name: entry.name,
-              defaultValue: `配置 ${entry.name}`,
+              defaultValue: `编辑 ${entry.name} 连接器`,
             })
-          : t("connectors.configureConnection", {
+          : t("connectors.createConnection", {
               name: entry.name,
-              defaultValue: `配置 ${entry.name}`,
+              defaultValue: `创建 ${entry.name} 连接器`,
             })
       }
       open={open}
@@ -1444,6 +1484,18 @@ function ConnectorConfigDrawer({
             rules={[{ required: true }]}
           >
             <Input placeholder={entry.name} />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label={t("connectors.description", "描述")}
+            rules={[{ required: true }]}
+          >
+            <Input.TextArea
+              rows={3}
+              maxLength={500}
+              showCount
+              placeholder={entry.description}
+            />
           </Form.Item>
 
           {entry.auth_kind === "custom_fields" &&
@@ -1958,8 +2010,20 @@ function ConnectorConfigDrawer({
           )}
 
           <Form.Item
+            name="shared"
+            label={t("connectors.shared", "是否共享")}
+            valuePropName="checked"
+            extra={t(
+              "connectors.sharedHint",
+              "共享后其他用户可以选择使用，但不能查看或修改配置。",
+            )}
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
             name="default_open"
-            label={t("connectors.defaultOpen", "是否默认打开")}
+            label={t("connectors.defaultEnabled", "是否默认开启")}
             valuePropName="checked"
             extra={
               defaultOpen
@@ -2037,32 +2101,22 @@ function ConnectorConfigDrawer({
 export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"builtin" | "custom">("builtin");
+  const [activeTab, setActiveTab] = useState<"enabled" | "builtin" | "custom">(
+    "enabled",
+  );
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
   const [drawerInstance, setDrawerInstance] =
     useState<ConnectorInstance | null>(null);
+  const [customFocusServerName, setCustomFocusServerName] = useState<
+    string | null
+  >(null);
   const { catalog, instances, loading, refresh } = useConnectorInstances();
 
-  const instanceByKind = useMemo(() => {
-    const map = new Map<string, ConnectorInstance>();
-    for (const inst of instances) {
-      if (!map.has(inst.kind)) {
-        map.set(inst.kind, inst);
-      }
-    }
-    return map;
-  }, [instances]);
-
   const configuredCount = useMemo(() => {
-    let count = 0;
-    for (const entry of catalog) {
-      const inst = instanceByKind.get(entry.kind);
-      if (inst?.has_credentials) count += 1;
-    }
-    return count;
-  }, [catalog, instanceByKind]);
+    return instances.filter((instance) => instance.has_credentials).length;
+  }, [instances]);
 
   useEffect(() => {
     const oauthState = searchParams.get("oauth_state");
@@ -2092,6 +2146,7 @@ export default function ConnectorsPage() {
         await connectorsApi.createInstance({
           kind: entry.kind,
           display_name: entry.name,
+          description: entry.description,
           credentials,
           default_open: false,
         });
@@ -2114,26 +2169,6 @@ export default function ConnectorsPage() {
     [],
   );
 
-  const handleToggleEnabled = useCallback(
-    async (instance: ConnectorInstance, enabled: boolean) => {
-      try {
-        await connectorsApi.patchInstance(instance.instance_id, {
-          status: enabled ? "active" : "disabled",
-        });
-        await refresh();
-        message.success(
-          enabled
-            ? t("connectors.enableSuccess", "已启用")
-            : t("connectors.disableSuccess", "已停用"),
-        );
-      } catch (e) {
-        console.error(e);
-        message.error(t("connectors.toggleFailed", "更新失败"));
-      }
-    },
-    [refresh, t],
-  );
-
   const handleSaved = useCallback(async () => {
     await refresh();
     notifyConnectorsChanged();
@@ -2153,6 +2188,15 @@ export default function ConnectorsPage() {
           <button
             type="button"
             className={`${styles.tab}${
+              activeTab === "enabled" ? ` ${styles.active}` : ""
+            }`}
+            onClick={() => setActiveTab("enabled")}
+          >
+            {t("connectors.tabEnabled", "已启用连接器")}
+          </button>
+          <button
+            type="button"
+            className={`${styles.tab}${
               activeTab === "builtin" ? ` ${styles.active}` : ""
             }`}
             onClick={() => setActiveTab("builtin")}
@@ -2164,7 +2208,10 @@ export default function ConnectorsPage() {
             className={`${styles.tab}${
               activeTab === "custom" ? ` ${styles.active}` : ""
             }`}
-            onClick={() => setActiveTab("custom")}
+            onClick={() => {
+              setCustomFocusServerName(null);
+              setActiveTab("custom");
+            }}
           >
             {t("connectors.tabCustom", "自定义连接器")}
           </button>
@@ -2172,7 +2219,92 @@ export default function ConnectorsPage() {
       }
     >
       {activeTab === "custom" ? (
-        <CustomMcpTab />
+        <CustomMcpTab focusServerName={customFocusServerName} />
+      ) : activeTab === "enabled" ? (
+        loading ? (
+          <div className={styles.loadingState}>
+            <Spin />
+          </div>
+        ) : instances.length === 0 ? (
+          <StreamSetupGuide
+            wide
+            icon={
+              <OctopEmptyMascot
+                size={120}
+                className={styles.emptyGuideMascot}
+              />
+            }
+            title={t("connectors.emptyGuideTitle")}
+            description={t("connectors.emptyGuideDesc")}
+            steps={[
+              {
+                label: t("connectors.emptyGuideStepWhat"),
+                detail: t("connectors.emptyGuideStepWhatDetail"),
+              },
+              {
+                label: t("connectors.emptyGuideStepHow"),
+                detail: t("connectors.emptyGuideStepHowDetail"),
+              },
+              {
+                label: t("connectors.emptyGuideStepShare"),
+                detail: t("connectors.emptyGuideStepShareDetail"),
+              },
+            ]}
+            primaryAction={{
+              label: t("connectors.emptyGuideBrowseBuiltin"),
+              onClick: () => setActiveTab("builtin"),
+              icon: <Plug size={14} />,
+            }}
+            secondaryAction={{
+              label: t("connectors.emptyGuideAddCustom"),
+              onClick: () => {
+                setCustomFocusServerName(null);
+                setActiveTab("custom");
+              },
+              icon: <Plus size={14} />,
+              type: "default",
+            }}
+          />
+        ) : (
+          <>
+            <div className={styles.listToolbar}>
+              <span className={styles.listToolbarMeta}>
+                {t("connectors.enabledSummary", {
+                  count: instances.length,
+                  defaultValue: "已启用 {{count}} 个连接器实例",
+                })}
+              </span>
+              <Button
+                icon={<RefreshCw size={14} />}
+                loading={loading}
+                onClick={() => void refresh()}
+              >
+                {t("common.refresh")}
+              </Button>
+            </div>
+            <div className={styles.typeGrid}>
+              {instances.map((instance) => (
+                <ConnectorInstanceCard
+                  key={instance.instance_id}
+                  instance={instance}
+                  catalogEntry={catalog.find(
+                    (entry) => entry.kind === instance.kind,
+                  )}
+                  onEdit={(item) => {
+                    if (item.kind === "custom-mcp") {
+                      setCustomFocusServerName(item.mcp_server_name);
+                      setActiveTab("custom");
+                      return;
+                    }
+                    const entry = catalog.find((row) => row.kind === item.kind);
+                    if (entry) handleConfigure(entry, item);
+                  }}
+                  onChanged={handleSaved}
+                />
+              ))}
+            </div>
+          </>
+        )
       ) : (
         <>
           <div className={styles.listToolbar}>
@@ -2202,11 +2334,7 @@ export default function ConnectorsPage() {
                 <ConnectorCard
                   key={entry.kind}
                   entry={entry}
-                  instance={instanceByKind.get(entry.kind) ?? null}
                   onConfigure={handleConfigure}
-                  onToggleEnabled={(inst, enabled) =>
-                    void handleToggleEnabled(inst, enabled)
-                  }
                 />
               ))}
             </div>

@@ -69,6 +69,8 @@ def test_backend_spec_supports_execution() -> None:
     assert backend_spec_supports_execution({"type": "local_shell", "virtual_mode": True})
     assert backend_spec_supports_execution({"type": "docker", "image": "python:3.12-slim"})
     assert backend_spec_supports_execution("docker")
+    assert backend_spec_supports_execution({"type": "opensandbox", "image": "python:3.12"})
+    assert backend_spec_supports_execution("opensandbox")
     assert not backend_spec_supports_execution({"type": "filesystem", "virtual_mode": True})
     assert not backend_spec_supports_execution({"type": "state"})
     assert backend_spec_supports_execution(
@@ -84,6 +86,37 @@ def test_storage_backend_kind_agent_resolvable() -> None:
     assert storage_backend_kind_agent_resolvable("cos")
     assert storage_backend_kind_agent_resolvable("filesystem")
     assert storage_backend_kind_agent_resolvable("docker")
+    assert storage_backend_kind_agent_resolvable("opensandbox")
+
+
+def test_row_to_backend_spec_opensandbox() -> None:
+    from octop.infra.backend.adapter import storage_spec_previewable
+
+    row = BackendRow(
+        id=1,
+        name="osb",
+        kind="opensandbox",
+        endpoint="127.0.0.1:8080",
+        access_key=None,
+        secret_key="sk-test",
+        bucket="python:3.12",
+        region="https",
+        config_json='{"timeout": 120, "use_server_proxy": true}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    assert row_to_backend_spec(row) == {
+        "type": "opensandbox",
+        "image": "python:3.12",
+        "api_key": "sk-test",
+        "domain": "127.0.0.1:8080",
+        "protocol": "https",
+        "timeout": 120,
+        "use_server_proxy": True,
+    }
+    assert storage_spec_previewable(row_to_backend_spec(row)) is False
 
 
 def test_row_to_backend_spec_docker() -> None:

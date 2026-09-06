@@ -144,7 +144,6 @@ export function buildNavSections(
       path: "/knowledge-bases",
       icon: <Database size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.knowledgeBases",
-      badge: "BETA",
     });
   }
   if (settingsItems.length > 0) {

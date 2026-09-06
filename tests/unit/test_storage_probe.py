@@ -161,3 +161,40 @@ def test_docker_probe_user_scope_uses_test_username(monkeypatch: pytest.MonkeyPa
     assert result["ok"] is True
     assert captured["spec"]["username"] == "test"
     assert captured["spec"]["sandbox_scope"] == "user"
+
+
+def test_opensandbox_probe_installs_and_closes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend import opensandbox_deps
+    from octop.infra.backend import probe as probe_mod
+
+    monkeypatch.setattr(
+        opensandbox_deps, "ensure_opensandbox_deps", lambda allow_install=True: "ready"
+    )
+    monkeypatch.setattr(
+        probe_mod,
+        "probe_backend",
+        lambda spec: {"ok": True, "message": "ok"},
+    )
+
+    result = probe_storage_backend(
+        _row(
+            kind="opensandbox",
+            bucket="python:3.12",
+            endpoint="localhost:8080",
+            secret_key="sk",
+        )
+    )
+    assert result["ok"] is True
+    assert result.get("message_key") == "opensandbox_probe_ok"
+
+
+def test_opensandbox_probe_reports_install_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend import opensandbox_deps
+
+    def _boom(*, allow_install: bool = True) -> str:
+        raise RuntimeError("Could not install optional Python components automatically.")
+
+    monkeypatch.setattr(opensandbox_deps, "ensure_opensandbox_deps", _boom)
+    result = probe_storage_backend(_row(kind="opensandbox", bucket="python:3.12"))
+    assert result["ok"] is False
+    assert "install" in result["message"].lower()

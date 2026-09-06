@@ -4,6 +4,14 @@ description: "当涉及到 .pptx 文件的任何操作时使用此技能——�
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
   builtin_skill_version: "1.1"
+  octop:
+    emoji: "📽️"
+    label:
+      zh: "PPT 演示"
+      en: "Presentations"
+    summary:
+      zh: "创建、读取、编辑或拆分 .pptx 演示文稿。"
+      en: "Create, read, edit, or split .pptx presentations."
 ---
 
 > **重要：** 所有 `scripts/` 路径都相对于此技能目录。
