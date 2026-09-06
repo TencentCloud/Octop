@@ -18,6 +18,15 @@ AuthKind = Literal[
 
 CredentialFieldType = Literal["text", "password", "url", "tags"]
 RemoteTransport = Literal["raw_http", "streamable_http", "sse"]
+ConnectorCategory = Literal[
+    "office",
+    "knowledge",
+    "travel",
+    "productivity",
+    "media",
+    "professional",
+    "self_hosted",
+]
 
 
 @dataclass(frozen=True)
@@ -42,6 +51,7 @@ class ConnectorCatalogEntry:
     color: str
     phase: Literal["available", "coming_soon"]
     mcp_mode: Literal["remote", "gateway"]
+    category: ConnectorCategory
     quick_auth_url: str | None = None
     login_url: str | None = None
     guide_url: str | None = None
@@ -94,6 +104,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#0052d9",
         phase="available",
         mcp_mode="remote",
+        category="office",
         quick_auth_url="https://docs.qq.com/open/auth/mcp.html",
         guide_url="https://developer.cloud.tencent.com/mcp/server/11803",
         manual_url="https://docs.qq.com/open/auth/mcp.html",
@@ -121,6 +132,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#07c160",
         phase="available",
         mcp_mode="gateway",
+        category="knowledge",
         quick_auth_url="https://ima.qq.com/agent-interface",
         manual_url="https://ima.qq.com/agent-interface",
         auth_hint="点击「打开授权页」在 IMA 中获取 API Key 与 Client ID（API Key 仅展示一次）",
@@ -135,6 +147,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#006eff",
         phase="available",
         mcp_mode="remote",
+        category="office",
         quick_auth_url="https://meeting.tencent.com/ai-skill.html",
         guide_url="https://meeting.tencent.com/ai-skill.html",
         manual_url="https://meeting.tencent.com/ai-skill.html",
@@ -150,6 +163,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#1485ee",
         phase="available",
         mcp_mode="gateway",
+        category="media",
         quick_auth_url="https://news.qq.com/exchange?scene=appkey",
         guide_url="https://qclaw.qq.com/docs/207612064014921728/",
         manual_url="https://news.qq.com/exchange?scene=appkey",
@@ -165,6 +179,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#1aad19",
         phase="available",
         mcp_mode="gateway",
+        category="media",
         quick_auth_url="https://weread.qq.com/r/weread-skills",
         auth_hint="登录 https://weread.qq.com/r/weread-skills 获取 wrk- 开头的 API Key 后粘贴到下方",
     ),
@@ -178,6 +193,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#00c1de",
         phase="available",
         mcp_mode="remote",
+        category="office",
         quick_auth_url="https://lexiangla.com/ai/claw",
         guide_url="https://qclaw.qq.com/docs/211858629271314432",
         manual_url="https://lexiangla.com/mcp",
@@ -193,6 +209,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#00a4ff",
         phase="available",
         mcp_mode="remote",
+        category="office",
         quick_auth_url="https://www.weiyun.com/act/openclaw",
         guide_url="https://www.weiyun.com/act/openclaw",
         manual_url="https://www.weiyun.com/act/openclaw",
@@ -222,6 +239,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#12b7f5",
         phase="available",
         mcp_mode="gateway",
+        category="productivity",
         manual_url="https://mail.qq.com/",
         auth_hint="选择邮箱服务商，在邮箱设置中开启 IMAP/SMTP 并生成授权码后填入下方",
     ),
@@ -235,6 +253,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#31c27c",
         phase="available",
         mcp_mode="gateway",
+        category="media",
         quick_auth_url="https://y.qq.com/n/ryqq_v2/qqmusic_skills",
         manual_url="https://y.qq.com/n/ryqq_v2/qqmusic_skills",
         auth_hint="登录 QQ 音乐 Skills 页生成 qmk- 开头的 API Key 并粘贴到下方",
@@ -249,6 +268,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#ffc700",
         phase="available",
         mcp_mode="gateway",
+        category="travel",
         quick_auth_url="https://flyai.open.fliggy.com/console",
         guide_url="https://qclaw.qq.com/docs/208142370404184064.html",
         manual_url="https://flyai.open.fliggy.com/console",
@@ -264,6 +284,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#3385ff",
         phase="available",
         mcp_mode="gateway",
+        category="travel",
         quick_auth_url="https://lbs.baidu.com/apiconsole/agentplan",
         guide_url="https://lbsyun.baidu.com/products/agentplan",
         manual_url="https://lbs.baidu.com/apiconsole/agentplan",
@@ -279,6 +300,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#2577e3",
         phase="available",
         mcp_mode="gateway",
+        category="travel",
         quick_auth_url="http://t.ctrip.cn/28J6RhL",
         guide_url="https://qclaw.qq.com/docs/208231741261246464.html",
         manual_url="http://t.ctrip.cn/28J6RhL",
@@ -296,6 +318,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#ffc300",
         phase="available",
         mcp_mode="gateway",
+        category="travel",
         quick_auth_url="https://developer.meituan.com/zh/v2/dev/token",
         guide_url="https://developer.meituan.com/hotel-travel-skill",
         manual_url="https://developer.meituan.com/zh/v2/dev/token",
@@ -303,6 +326,23 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
             "在美团个人开发者页面获取 Token 并粘贴到下方"
             "（探测仅校验格式；真实可用性在对话调用时验证）"
         ),
+    ),
+    ConnectorCatalogEntry(
+        kind="didi",
+        name="滴滴",
+        description="网约车预估/叫车、地点检索与出行路线规划",
+        auth_kind="api_key",
+        doc_url="https://mcp.didichuxing.com/api",
+        icon="didi",
+        color="#ff6400",
+        phase="available",
+        mcp_mode="remote",
+        category="travel",
+        quick_auth_url="https://mcp.didichuxing.com",
+        guide_url="https://mcp.didichuxing.com/api",
+        manual_url="https://mcp.didichuxing.com",
+        auth_hint="打开滴滴开发者控制台登录并激活个人 MCP Key，复制后粘贴到下方",
+        remote_transport="streamable_http",
     ),
     ConnectorCatalogEntry(
         kind="yuandian",
@@ -314,6 +354,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#1a56db",
         phase="available",
         mcp_mode="gateway",
+        category="professional",
         quick_auth_url="https://open.chineselaw.com/profile",
         guide_url="https://open.chineselaw.com/llms.txt",
         manual_url="https://open.chineselaw.com/profile",
@@ -329,6 +370,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#8b5cf6",
         phase="available",
         mcp_mode="remote",
+        category="office",
         guide_url="https://docs.ardot.tencent.com/ardot-mcp.html",
         auth_hint="点击「一键授权」完成 Ardot 登录（成功后自动保存），或按文档手动粘贴 Token",
         oauth_issuer="https://ardot.tencent.com",
@@ -345,6 +387,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#00c853",
         phase="available",
         mcp_mode="remote",
+        category="knowledge",
         quick_auth_url="https://mopen.163.com/#/dashboard",
         guide_url="https://qclaw.qq.com/docs/207508177113886720",
         manual_url="https://mopen.163.com/#/dashboard",
@@ -360,6 +403,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#000000",
         phase="available",
         mcp_mode="remote",
+        category="knowledge",
         guide_url="https://developers.notion.com/guides/mcp/get-started-with-mcp",
         auth_hint="点击「一键授权」完成 Notion 登录（成功后自动保存），或按官方文档手动获取 Token",
         oauth_issuer="https://mcp.notion.com",
@@ -376,6 +420,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#e74c3c",
         phase="available",
         mcp_mode="remote",
+        category="productivity",
         guide_url="https://help.dida365.com/articles/7438132116019216384",
         manual_url="https://dida365.com",
         auth_hint="点击「一键授权」完成登录（成功后自动保存），或在网页版「头像 → 设置 → 账户与安全 → API 口令」创建并粘贴 Token",
@@ -394,6 +439,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#3370ff",
         phase="available",
         mcp_mode="gateway",
+        category="office",
         guide_url="https://open.feishu.cn/document/mcp_open_tools/feishu-cli/set-up-lark-cli-for-ai-agents-in-openclaw_hermes.md",
         manual_url="https://open.feishu.cn/app",
         auth_hint="填写飞书应用 App ID 与 App Secret；文档搜索需再点「登录授权」",
@@ -408,6 +454,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#2f7bf6",
         phase="available",
         mcp_mode="gateway",
+        category="office",
         guide_url="https://open.work.weixin.qq.com/help2/pc/21676",
         manual_url="https://open.work.weixin.qq.com/help2/pc/cat?doc_id=21677",
         auth_hint="填写长连接智能机器人 Bot ID 与 Secret；主机需已安装 @wecom/cli（wecom-cli）",
@@ -422,6 +469,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#0052d9",
         phase="available",
         mcp_mode="gateway",
+        category="knowledge",
         guide_url="https://github.com/Tencent/WeKnora/blob/main/docs/api/README.md",
         auth_hint="填写 WeKnora 服务地址；API Key 与 Tenant ID 按部署的鉴权设置填写。",
         credential_fields=(
@@ -466,6 +514,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         color="#1c64f2",
         phase="available",
         mcp_mode="remote",
+        category="self_hosted",
         auth_hint="在 Dify 应用的访问点中启用 MCP，然后粘贴完整的 MCP Server URL。",
         credential_fields=(
             ConnectorCredentialField(
@@ -509,6 +558,7 @@ def catalog_entry_to_dict(
         "color": entry.color,
         "phase": entry.phase,
         "mcp_mode": entry.mcp_mode,
+        "category": entry.category,
         "quick_auth_url": entry.quick_auth_url,
         "login_url": entry.login_url,
         "guide_url": entry.guide_url or entry.doc_url,

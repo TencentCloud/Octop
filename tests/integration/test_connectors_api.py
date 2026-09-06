@@ -44,6 +44,7 @@ async def test_catalog(env):
         "baidu-map",
         "ctrip-wendao",
         "meituan-travel",
+        "didi",
         "yuandian",
     ):
         entry = next(e for e in r.json() if e["kind"] == kind)
@@ -51,10 +52,12 @@ async def test_catalog(env):
     docs = next(e for e in r.json() if e["kind"] == "tencent-docs")
     assert docs.get("color")
     assert docs.get("quick_auth_url")
+    assert docs["category"] == "office"
     assert "tools" not in docs
     weiyun = next(e for e in r.json() if e["kind"] == "tencent-weiyun")
     assert weiyun["auth_kind"] == "personal_token"
     assert weiyun["mcp_mode"] == "remote"
+    assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
 
 
@@ -417,6 +420,7 @@ async def test_catalog_weknora_dify_last(env):
     assert "wecom-cli" in kinds
     assert kinds.index("feishu-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
+    assert kinds.index("didi") < kinds.index("weknora")
     assert kinds[-2:] == ["weknora", "dify"]
 
 
