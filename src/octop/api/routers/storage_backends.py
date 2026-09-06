@@ -8,11 +8,21 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
-from octop.infra.backend.adapter import row_to_backend_spec
-from octop.infra.backend.docker_spec import docker_spec_previewable
+from octop.infra.backend.adapter import row_to_backend_spec, storage_spec_previewable
 from octop.infra.errors import ErrorCode, OctopError
 
 admin_router = APIRouter()
+
+
+def _ensure_opensandbox_sdk(kind: str) -> None:
+    if kind != "opensandbox":
+        return
+    from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps
+
+    try:
+        ensure_opensandbox_deps(allow_install=True)
+    except RuntimeError as exc:
+        raise OctopError(ErrorCode.STORAGE_BACKEND_DEPS_FAILED, str(exc)) from exc
 
 
 class StorageBackendCreateBody(BaseModel):
@@ -71,7 +81,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "config_json": r.config_json,
         "note": r.note,
         "enabled": bool(r.enabled),
-        "previewable": docker_spec_previewable(spec) if spec is not None else False,
+        "previewable": storage_spec_previewable(spec) if spec is not None else False,
         "created_at": r.created_at,
         "updated_at": r.updated_at,
     }
@@ -93,6 +103,7 @@ async def create_storage_backend(
 ) -> dict[str, Any]:
     if server.services.storage_backend_repo.get_by_name(body.name) is not None:
         raise OctopError(ErrorCode.STORAGE_BACKEND_NAME_TAKEN, f"name {body.name!r} already exists")
+    _ensure_opensandbox_sdk((body.kind or "").lower())
     bid = server.services.storage_backend_repo.create(
         name=body.name,
         kind=body.kind,
@@ -117,6 +128,9 @@ async def patch_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    next_kind = (body.kind or row.kind or "").lower()
+    if body.enabled is True:
+        _ensure_opensandbox_sdk(next_kind)
     server.services.storage_backend_repo.update(
         backend_id,
         kind=body.kind,
