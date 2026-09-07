@@ -177,7 +177,25 @@ async def set_active_model(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
-    """Set the globally preferred model used when no agent override applies."""
+    """Set the globally preferred model used when no agent override applies.
+
+    Validates the ref before persisting: setting an unknown / disabled provider
+    or a model not in the provider's model list used to silently write a dead
+    ref, after which every turn fell back to the first available model (often a
+    free-tier one with a daily quota) and surfaced as confusing 429 rate-limit
+    errors. A bad ref is now rejected with 400 immediately.
+    """
+    provider = server.services.provider_repo.get_by_name(body.provider_name)
+    if provider is None or not provider.enabled or not provider.api_key or not provider.base_url:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"provider {body.provider_name!r} does not exist or is disabled",
+        )
+    if not any(str(m.get("id") or "") == body.model for m in provider.get_models()):
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"model {body.model!r} is not in provider {body.provider_name!r} model list",
+        )
     server.services.settings_repo.set_active_model(body.provider_name, body.model)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.on_provider_changed(active_model_changed=True)

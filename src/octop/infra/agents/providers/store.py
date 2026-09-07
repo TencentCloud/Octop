@@ -215,13 +215,22 @@ class ProviderStore:
         return upgraded or ref
 
     def resolve_first_model_ref(self) -> str | None:
-        """First chat-eligible enabled model across usable providers."""
+        """First chat-eligible enabled model across usable providers.
+
+        Free-tier models (id containing ``free``) are sorted last: they carry a
+        small daily quota, so falling back to one surfaced as confusing 429
+        rate-limit errors whenever the configured default model was unusable.
+        """
         for row in self.iter_usable_rows():
-            for model in row.get_models():
-                if not is_chat_eligible_model(
-                    model, provider_name=row.name, provider_api_key=row.api_key
-                ):
-                    continue
+            models = [
+                m
+                for m in row.get_models()
+                if is_chat_eligible_model(
+                    m, provider_name=row.name, provider_api_key=row.api_key
+                )
+            ]
+            models.sort(key=lambda m: "free" in str(m.get("id") or "").lower())
+            for model in models:
                 model_id = str(model.get("id") or "").strip()
                 if model_id:
                     return f"{row.name}/{model_id}"

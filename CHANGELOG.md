@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 默认模型设置校验：`set_active_model` 现在校验 provider 存在/启用且模型在列表中，配置错误的默认模型立即 400 报错，不再静默写入死引用（死引用会导致每轮对话 fallback 到免费模型并触发 429 限流）。
+- 默认模型 fallback 跳过免费档：`resolve_first_model_ref` 把 id 含 `free` 的模型排到最后，free 档有日配额，作为 fallback 会在配置异常时触发限流误报。
+
 ## [0.9.32] - 2026-09-06
 
 ### 新增
