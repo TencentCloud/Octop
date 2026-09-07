@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from octop.infra.gateway.ws.turn_watchdog import TurnWatchdog
+from octop.infra.gateway.ws.turn_watchdog import TurnWatchdog, watchdog_disabled
 from octop.infra.gateway.ws.ws_hub import WebSocketHub
 
 
@@ -189,3 +189,18 @@ async def test_ws_turn_recovery_no_im_notice() -> None:
 
     assert am.cancelled == [("agentB", "thrY")]
     assert gw.pushed == []
+
+
+def test_watchdog_disabled_env(monkeypatch) -> None:
+    """OCTOP_TURN_WATCHDOG_DISABLED=1 disables the watchdog; anything else enables it."""
+    monkeypatch.setenv("OCTOP_TURN_WATCHDOG_DISABLED", "1")
+    assert watchdog_disabled() is True
+
+    monkeypatch.setenv("OCTOP_TURN_WATCHDOG_DISABLED", "0")
+    assert watchdog_disabled() is False
+
+    monkeypatch.setenv("OCTOP_TURN_WATCHDOG_DISABLED", "")
+    assert watchdog_disabled() is False
+
+    monkeypatch.delenv("OCTOP_TURN_WATCHDOG_DISABLED")
+    assert watchdog_disabled() is False

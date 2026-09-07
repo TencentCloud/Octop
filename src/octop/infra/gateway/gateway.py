@@ -34,7 +34,7 @@ from octop.infra.gateway.ws import (
     WebSocketChannel,
     WebSocketHub,
 )
-from octop.infra.gateway.ws.turn_watchdog import TurnWatchdog
+from octop.infra.gateway.ws.turn_watchdog import TurnWatchdog, watchdog_disabled
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
@@ -227,13 +227,17 @@ class Gateway:
         )
         await self._channel_manager.add_channel(self._ws_channel)
 
-        self._turn_watchdog = TurnWatchdog(
-            hub=self._ws_hub,
-            agent_manager=self._agent_manager,
-            audit_repo=self._repos.audit_repo,
-            gateway=self,
-        )
-        self._turn_watchdog.start()
+        if not watchdog_disabled():
+            self._turn_watchdog = TurnWatchdog(
+                hub=self._ws_hub,
+                agent_manager=self._agent_manager,
+                audit_repo=self._repos.audit_repo,
+                gateway=self,
+            )
+            self._turn_watchdog.start()
+            logger.info("TurnWatchdog started (interval=%ds)", self._turn_watchdog._interval)
+        else:
+            logger.warning("TurnWatchdog disabled via OCTOP_TURN_WATCHDOG_DISABLED=1")
 
         self._cli_channel = CliChannel(
             self._processor,
