@@ -1180,8 +1180,12 @@ class GlobalProcessor:
         agent_id: str | None = None,
     ) -> None:
         self._thread_registry.touch_last_active(thread_id)
-        if not title_source:
+        if not title_source or not title_source.strip():
+            # Whitespace-only first message is NOT a title source: writing an
+            # empty string via set_title_if_null would mark the thread titled
+            # and permanently skip generation (set_title_if_null is idempotent).
             return
+        title_source = title_source.strip()
         try:
             thread_row = self._thread_registry.get_thread(thread_id)
             if thread_row is not None and thread_row.title is not None:

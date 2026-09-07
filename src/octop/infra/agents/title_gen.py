@@ -22,8 +22,11 @@ logger = logging.getLogger(__name__)
 
 #: Input cap fed to the model (a title only needs the opening intent).
 _TITLE_INPUT_CAP = 2000
-#: Longest title we store (sidebar truncates past this anyway).
-_TITLE_MAX_CHARS = 80
+#: Longest title we store — must stay aligned with the persistence path
+#: (``ThreadRepo.clip_thread_title`` default ``max_len=40``, which also appends
+#: ``…`` when shortened). A larger cap here would be misleading: the stored
+#: title is re-clipped to 40 on write regardless.
+_TITLE_MAX_CHARS = 40
 #: One-shot budget — generous for a cold provider, short enough that a wedged
 #: call does not linger (the fallback title is already acceptable).
 _TITLE_TIMEOUT_SECONDS = 30

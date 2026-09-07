@@ -212,3 +212,36 @@ async def test_resolve_turn_mcp_servers_raises_when_prepare_fails() -> None:
             explicit=None,
         )
     assert ei.value.code == ErrorCode.CONNECTOR_MCP_LOAD_FAILED
+
+
+def test_touch_thread_after_turn_ignores_whitespace_only_title_source() -> None:
+    """Whitespace-only first messages must not be treated as a title source.
+
+    Writing an empty string via set_title_if_null would mark the thread
+    titled (idempotent) and permanently skip title generation.
+    """
+    thread_registry = MagicMock()
+    thread_registry.touch_last_active = MagicMock()
+    thread_registry.set_title_if_null = MagicMock()
+    thread_registry.get_thread = MagicMock(return_value=None)
+
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+    )
+
+    with patch(
+        "octop.infra.gateway.process.processor.asyncio.get_running_loop",
+        side_effect=RuntimeError,
+    ) as mock_loop:
+        processor._touch_thread_after_turn("thr-1", "   \n\t  ", agent_id="agent-1")
+
+    mock_loop.assert_not_called()  # returns before any spawn attempt
+    thread_registry.set_title_if_null.assert_not_called()
