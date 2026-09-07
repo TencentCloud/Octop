@@ -289,6 +289,17 @@ async def admin_delete_provider(
             f"provider {row.name!r} is referenced by {len(refs)} agent(s)",
             details={"agents": refs},
         )
+    # Settings global default model (active_model) may point at this provider even
+    # when no agent pins it; deleting would leave a dead ref so every turn fails to
+    # resolve a default model with no hint. Guard it like the agent refs above.
+    active_name, active_model_id = server.services.settings_repo.get_active_model()
+    if active_name == row.name:
+        raise OctopError(
+            ErrorCode.PROVIDER_REFERENCED,
+            f"provider {row.name!r} is the active default model ({active_name}/{active_model_id}); "
+            "switch the default model before deleting it",
+            details={"active_model": f"{active_name}/{active_model_id}"},
+        )
     name = row.name
     server.services.provider_repo.delete(provider_id)
     if server.app_runtime:
