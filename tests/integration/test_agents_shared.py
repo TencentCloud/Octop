@@ -108,6 +108,12 @@ async def test_peer_cannot_mutate_shared_agent_workspace_or_skills(env) -> None:
     )
     assert response.status_code == 403
 
+    response = await client.get(
+        f"/api/agents/{agent_id}/skills",
+        headers=peer_auth,
+    )
+    assert response.status_code == 200, response.text
+
     response = await client.post(
         "/api/mbti/apply",
         headers={**peer_auth, "X-Octop-Agent-Id": agent_id},
