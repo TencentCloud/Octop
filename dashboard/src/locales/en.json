@@ -1363,7 +1363,9 @@
     "openToolUiInDock": "Open in side panel",
     "toolUiDockedHint": "Moved to side panel",
     "toolUiDockedOpen": "Open side panel",
-    "loadEarlierMessages": "Load earlier messages"
+    "loadEarlierMessages": "Load earlier messages",
+    "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
+    "historyRetry": "Retry"
   },
   "tools": {
     "unknown": "Unknown tool",

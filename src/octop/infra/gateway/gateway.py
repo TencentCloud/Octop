@@ -102,10 +102,12 @@ class Gateway:
         agent_manager: AgentManager,
         repos: RepoBundle,
         trajectory_service: Any | None = None,
+        history_archive: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._repos = repos
         self._trajectory_service = trajectory_service
+        self._history_archive = history_archive
         self._thread_registry = ThreadRegistry(
             session_repo=repos.session_repo,
             thread_repo=repos.thread_repo,
@@ -212,6 +214,7 @@ class Gateway:
             thread_message_repo=self._repos.thread_message_repo,
             gateway=self,
             trajectory_service=self._trajectory_service,
+            history_archive=self._history_archive,
         )
 
         self._channel_manager = ChannelManager(channels={})

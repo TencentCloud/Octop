@@ -244,6 +244,15 @@ def create_system_backup(
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db_dest = root / db_arc
+            history_path = paths.root / "history_v2.sqlite"
+            history_dest = root / "history_v2.sqlite"
+            marker = history_path.with_suffix(".required")
+            if include_chats and marker.exists() and not history_path.exists():
+                raise FileNotFoundError("Required history archive is missing")
+            if include_chats and history_path.exists():
+                # Snapshot the child archive before the main thread registry.
+                # A fully consistent multi-file restore still requires quiescence.
+                snapshot_sqlite_file(history_path, history_dest)
             if pool.dialect == "postgresql":
                 dump_postgres(
                     db_config.postgresql_conninfo(),
@@ -271,6 +280,10 @@ def create_system_backup(
             with tarfile.open(partial, mode="w:gz") as tf:
                 tf.add(manifest_path, arcname=_MANIFEST_NAME)
                 tf.add(db_dest, arcname=db_arc)
+                if history_dest.exists():
+                    tf.add(history_dest, arcname="history/history_v2.sqlite")
+                    if marker.exists():
+                        tf.add(marker, arcname="history/history_v2.required")
                 if include_config and paths.config.is_file():
                     tf.add(
                         root / _CONFIG_DIR / "config.json",
@@ -424,6 +437,15 @@ def restore_system_backup(
         extracted = Path(tmp) / "extracted"
         _extract_archive(source, extracted)
         manifest = _extract_manifest_from_dir(extracted)
+        if (
+            (paths.root / "history_v2.required").exists()
+            or (paths.root / "history_v2.sqlite").exists()
+            or (extracted / "history/history_v2.sqlite").exists()
+        ):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "Versioned history requires a coordinated offline restore; no database was changed",
+            )
         is_migration = _is_migration_backup(manifest)
 
         # Resolve effective preserve_users flag before touching the DB.

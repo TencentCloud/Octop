@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
@@ -108,6 +109,7 @@ class GlobalProcessor:
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
+        history_archive: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -130,6 +132,70 @@ class GlobalProcessor:
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
+        self._history_archive = history_archive
+
+    async def _begin_history(
+        self, agent_id: str, thread_id: str, request: dict[str, Any], *, resume: bool = False
+    ) -> TurnHistoryTracker:
+        from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
+
+        archive = self._history_archive
+        if archive is None:
+            return TurnHistoryTracker.from_request(request)
+        anchor = None
+        segments = await asyncio.to_thread(archive.store.segments, thread_id)
+        if archive.enabled and not segments and not resume:
+            # Pin the pre-switch checkpoint only for legacy threads lacking a
+            # usable projection. Do not load or rewrite their message bodies.
+            status = await asyncio.to_thread(archive.messages.projection_status, thread_id)
+            if status != "ready":
+                harness = self._agent_manager.get_agent(agent_id)
+                state = await harness.graph.aget_state({"configurable": {"thread_id": thread_id}})
+                if state is not None and getattr(state, "next", False):
+                    return TurnHistoryTracker.from_request(request)
+                checkpoint_config = getattr(state, "config", None)
+                if checkpoint_config and checkpoint_config.get("configurable", {}).get(
+                    "checkpoint_id"
+                ):
+                    anchor = {"checkpoint_config": checkpoint_config}
+                elif getattr(state, "values", {}).get("messages"):
+                    raise ValueError("Cannot pin the legacy history boundary")
+        turn = await asyncio.to_thread(
+            archive.begin, agent_id, thread_id, anchor=anchor, resume=resume
+        )
+        if turn is None:
+            return TurnHistoryTracker.from_request(request)
+        try:
+            tracker = await asyncio.to_thread(
+                RecordingTracker, archive, turn, list(request.get("messages") or [])
+            )
+            await tracker.flush()
+            return tracker
+        except BaseException:
+            try:
+                await asyncio.to_thread(
+                    archive.finish, turn["id"], "failed", error="initial_capture_failed"
+                )
+            except Exception:
+                logger.exception("failed to finalize history initialization thread=%s", thread_id)
+            raise
+
+    async def _finish_history(self, tracker: TurnHistoryTracker, *, completed: bool) -> None:
+        from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
+
+        if isinstance(tracker, RecordingTracker):
+            if tracker.turn["format"] == "legacy" and completed and not tracker.paused:
+                return  # Finalize only after the legacy append commits.
+            await tracker.finish(completed=completed)
+
+    async def _complete_resumed_history(
+        self, thread_id: str, tracker: TurnHistoryTracker, *, completed: bool
+    ) -> None:
+        try:
+            if completed:
+                await self._record_turn_history(thread_id, tracker)
+        finally:
+            await self._finish_history(tracker, completed=completed)
 
     @property
     def hitl_coordinator(self) -> HitlChannelCoordinator:
@@ -164,6 +230,9 @@ class GlobalProcessor:
         try:
             service.finish_turn(thread_id, usage)
         except Exception:
+            record_failure = getattr(service, "record_failure", None)
+            if callable(record_failure):
+                record_failure(thread_id)
             logger.exception("trajectory finish_turn failed thread=%s", thread_id)
 
     async def _observe_turn_start_context(
@@ -523,6 +592,8 @@ class GlobalProcessor:
                 locale=locale,
                 usage_tracker=usage_tracker,
                 outcome=slash_outcome,
+                history_factory=self._begin_history,
+                history_finalize=self._complete_resumed_history,
             ):
                 yield ev
             if slash_outcome.completed_turn:
@@ -558,18 +629,32 @@ class GlobalProcessor:
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
-                history_tracker = TurnHistoryTracker()
+                history_tracker = await self._begin_history(
+                    agent_id, ask_record.thread_id, {}, resume=True
+                )
                 answer_outcome = HitlAnswerOutcome()
-                async for ev in self._hitl.iter_answer_resolution(
-                    ask_record,
-                    msg.text,
-                    agent_manager=self._agent_manager,
-                    locale=locale,
-                    usage_tracker=usage_tracker,
-                    history_tracker=history_tracker,
-                    outcome=answer_outcome,
-                ):
-                    yield ev
+                try:
+                    async for ev in self._hitl.iter_answer_resolution(
+                        ask_record,
+                        msg.text,
+                        agent_manager=self._agent_manager,
+                        locale=locale,
+                        usage_tracker=usage_tracker,
+                        history_tracker=history_tracker,
+                        outcome=answer_outcome,
+                    ):
+                        yield ev
+                finally:
+                    from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
+
+                    if (
+                        isinstance(history_tracker, RecordingTracker)
+                        and answer_outcome.awaiting_more
+                    ):
+                        history_tracker.paused = True
+                    await self._finish_history(
+                        history_tracker, completed=answer_outcome.completed_turn
+                    )
                 if answer_outcome.completed_turn:
                     self._touch_thread_after_turn(ask_record.thread_id, msg.text)
                     if usage_tracker.usage:
@@ -579,7 +664,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker)
                 yield MessageEvent.completed()
                 return
 
@@ -673,7 +758,7 @@ class GlobalProcessor:
         stream_ok = False
         hitl_paused = False
         usage_tracker = UsageTracker()
-        history_tracker = TurnHistoryTracker.from_request(request)
+        history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
         try:
             async for ev in project_stream(
@@ -709,7 +794,9 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker)
+        finally:
+            await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
@@ -783,6 +870,7 @@ class GlobalProcessor:
             thread_id=thread_id,
             meta=meta,
         )
+        history_tracker = await self._begin_history(agent_id, thread_id, request)
         await self._observe_turn_start_context(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -806,7 +894,6 @@ class GlobalProcessor:
         stream_ok = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
-        history_tracker = TurnHistoryTracker.from_request(request)
         locale = resolve_user_locale(
             user_repo=self._user_repo,
             user_id=user_id,
@@ -818,6 +905,9 @@ class GlobalProcessor:
             async for chunk in self._agent_manager.stream(agent_id, request):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
+                from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
+
+                await flush_tracker(history_tracker)
                 self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
@@ -866,6 +956,7 @@ class GlobalProcessor:
             yield {"type": "error", "message": format_stream_error(exc, locale)}
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
+            await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(
@@ -874,7 +965,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 usage=usage_tracker.usage,
             )
-            self._record_turn_history(thread_id, history_tracker)
+            await self._record_turn_history(thread_id, history_tracker)
         yield {"type": "done"}
 
     async def iter_hitl_resume_chunks(
@@ -887,7 +978,7 @@ class GlobalProcessor:
     ) -> AsyncIterator[dict[str, Any]]:
         """Resume a dashboard HITL turn with the normal history bookkeeping."""
         usage_tracker = UsageTracker()
-        history_tracker = TurnHistoryTracker()
+        history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
         try:
             async for chunk in self._agent_manager.resume_hitl(
@@ -897,11 +988,15 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
+                from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
+
+                await flush_tracker(history_tracker)
                 self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
                 yield chunk
             completed = True
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
+            await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
                 self._record_turn_usage(
@@ -910,7 +1005,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker)
 
     async def _build_dashboard_request(
         self,
@@ -1146,11 +1241,20 @@ class GlobalProcessor:
             usage=usage,
         )
 
-    def _record_turn_history(
+    async def _record_turn_history(
         self,
         thread_id: str,
         tracker: TurnHistoryTracker,
     ) -> None:
+        from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
+
+        if isinstance(tracker, RecordingTracker):
+            if tracker.turn["format"] == "legacy":
+                await asyncio.to_thread(
+                    tracker.archive.messages.append_legacy_interval, thread_id, tracker.inputs
+                )
+                await tracker.finish(completed=True)
+            return
         if self._thread_message_repo is None:
             return
         try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -103,6 +104,37 @@ def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> N
 
     assert messages is not None
     assert [message.id for message in messages] == ["u1", "a1"]
+
+
+@pytest.mark.parametrize("warm_cache", [False, True])
+def test_isolated_history_reads_compact_checkpoint_with_closed_live_connection(
+    tmp_path: Path, warm_cache: bool
+) -> None:
+    compact = pytest.importorskip("harness_memory.storage.backends.sqlite_checkpoint")
+    from langgraph.checkpoint.base import empty_checkpoint
+
+    path = tmp_path / "compact.sqlite"
+    conn = sqlite3.connect(path, check_same_thread=False)
+    saver = compact.CompactSqliteSaver(conn)
+    cp = empty_checkpoint()
+    cp["channel_values"] = {
+        "messages": [HumanMessage(content="saved", id="u1")],
+        "memory_contents": {"AGENTS.md": "instructions" * 1000},
+    }
+    cp["channel_versions"] = {"messages": 1, "memory_contents": 1}
+    cfg = saver.put({"configurable": {"thread_id": "thr", "checkpoint_ns": ""}}, cp, {}, {})
+    assert conn.execute("SELECT type FROM checkpoints").fetchone()[0] == compact.FORMAT
+    if warm_cache:
+        saver.get_tuple(cfg)
+    conn.close()
+    harness = SimpleNamespace(
+        _checkpointer_instance=SimpleNamespace(
+            _backend=SimpleNamespace(_db_path=path), _checkpointer=saver
+        )
+    )
+    messages = _isolated_sqlite_checkpoint_messages(harness, "thr")
+    assert messages is not None
+    assert [message.id for message in messages] == ["u1"]
 
 
 def test_thread_row_has_messages_uses_title_or_last_active() -> None:

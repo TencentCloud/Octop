@@ -1363,7 +1363,9 @@
     "openToolUiInDock": "在侧栏打开",
     "toolUiDockedHint": "已移到侧栏",
     "toolUiDockedOpen": "打开侧栏",
-    "loadEarlierMessages": "加载更早的消息"
+    "loadEarlierMessages": "加载更早的消息",
+    "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
+    "historyRetry": "重试"
   },
   "tools": {
     "unknown": "未知工具",

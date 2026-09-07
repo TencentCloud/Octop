@@ -11,7 +11,7 @@ import {
   FolderOpen,
   Activity,
 } from "lucide-react";
-import { Tooltip } from "antd";
+import { Alert, Button, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 
@@ -302,6 +302,7 @@ function ChatPageInner() {
     isStreaming,
     thinkingStartedAt,
     historyLoading,
+    historyError,
     historyHasMore,
     historyLoadingMore,
     historyRefreshing,
@@ -313,6 +314,7 @@ function ChatPageInner() {
     loadHistory,
     loadMoreHistory,
     refreshHistory,
+    retryHistory,
     clearMessages,
     resumeHitl,
   } = useChat(activeThreadId, resolvedAgentId);
@@ -868,7 +870,10 @@ function ChatPageInner() {
   // Welcome until history returns looks like a full page flash. Keep the list
   // shell while that thread is still hydrating.
   const awaitingThreadHistory = Boolean(
-    activeThreadId && !hasMessages && (historyLoading || !historyHydrated),
+    activeThreadId &&
+      !hasMessages &&
+      !historyError &&
+      (historyLoading || !historyHydrated),
   );
   const showWelcome = !hasMessages && !awaitingThreadHistory;
 
@@ -1052,6 +1057,24 @@ function ChatPageInner() {
               />
             )}
 
+            {historyError && (
+              <Alert
+                type="error"
+                showIcon
+                message={t("chat.historyLoadFailed")}
+                action={
+                  <Button
+                    size="small"
+                    loading={
+                      historyLoading || historyRefreshing || historyLoadingMore
+                    }
+                    onClick={() => void retryHistory()}
+                  >
+                    {t("chat.historyRetry")}
+                  </Button>
+                }
+              />
+            )}
             <div className={styles.chatContent}>
               {!agentChatReady || noAgents ? (
                 <AgentNotReadyScreen
