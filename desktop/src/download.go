@@ -44,6 +44,18 @@ func ensurePortable(locale Locale, status func(string)) error {
 			status(desktopText(locale, "正在使用已有运行环境…", "Using the existing runtime…"))
 			return nil
 		}
+		status(desktopText(
+			locale,
+			fmt.Sprintf("发现客户端新版 %s，正在备份数据库…", bundledVersion),
+			fmt.Sprintf("Desktop update %s found. Backing up the database…", bundledVersion),
+		))
+		if _, err := backupSQLiteBeforeUpgrade(root, currentVersion, bundledVersion); err != nil {
+			return fmt.Errorf("%s: %w", desktopText(
+				locale,
+				"升级前数据库备份失败，已保留当前版本",
+				"Database backup failed before upgrade; the current version was preserved",
+			), err)
+		}
 		status(desktopText(locale, "正在更新内置运行环境…", "Updating the bundled runtime…"))
 	} else {
 		status(desktopText(locale, "首次启动，正在解压内置运行环境…", "First launch: unpacking the bundled runtime…"))
