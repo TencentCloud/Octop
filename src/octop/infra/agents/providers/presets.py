@@ -211,14 +211,64 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
     return None
 
 
+def _octop_provider_template_path() -> object:
+    """Path to Octop's bundled provider catalog fallback."""
+    from importlib import resources
+
+    return resources.files(__package__).joinpath("provider_template.json")
+
+
+def _load_octop_provider_presets() -> list[dict[str, Any]]:
+    """Serialize Octop's bundled ``provider_template.json``."""
+    from harness_agent.providers import load_provider_templates, serialize_provider_preset
+
+    path = _octop_provider_template_path()
+    return [serialize_provider_preset(p) for p in load_provider_templates(str(path))]
+
+
+def _provider_group_key(preset: dict[str, Any]) -> str:
+    return str(preset.get("provider_group") or preset.get("vendor") or "")
+
+
+def _merge_octop_template_fallback(out: list[dict[str, Any]]) -> None:
+    """Fill gaps from Octop's catalog without overriding harness rows.
+
+    For each preset id present in Octop's ``provider_template.json`` but missing
+    from ``out``, insert the Octop row after the last existing sibling of the
+    same vendor/group (so Agent Plan lands with other Volcano sites). Otherwise
+    append. Shared ids keep the harness definition.
+    """
+    have = {str(p.get("id") or "") for p in out}
+    for row in _load_octop_provider_presets():
+        pid = str(row.get("id") or "")
+        if not pid or pid in have:
+            continue
+        group = _provider_group_key(row)
+        insert_at = len(out)
+        if group:
+            for i, existing in enumerate(out):
+                if _provider_group_key(existing) == group:
+                    insert_at = i + 1
+        out.insert(insert_at, row)
+        have.add(pid)
+
+
 def load_provider_presets() -> list[dict[str, Any]]:
-    """Serialize harness-agent provider templates for API / CLI."""
+    """Serialize provider templates for API / CLI.
+
+    Source order:
+
+    1. harness-agent bundled ``provider_template.json``
+    2. Octop ``provider_template.json`` rows whose ids are still missing (fallback)
+    3. Octop-only overlays (``openai-codex``, ``onnx``) when absent
+    """
     from importlib import resources
 
     from harness_agent.providers import load_provider_templates, serialize_provider_preset
 
     bundled = resources.files("harness_agent.providers").joinpath("provider_template.json")
     out = [serialize_provider_preset(p) for p in load_provider_templates(str(bundled))]
+    _merge_octop_template_fallback(out)
     if not any(p.get("id") == "openai-codex" for p in out):
         out.insert(
             0,
