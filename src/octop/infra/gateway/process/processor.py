@@ -711,6 +711,7 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
+        self._mark_turn_active(thread_id, agent_id=agent_id, session_key=session_key)
         try:
             async for ev in project_stream(
                 self._agent_manager,
@@ -730,6 +731,15 @@ class GlobalProcessor:
                     channel_type=channel_type,
                 ),
             ):
+                # IM turn progress: every event counts, and TOOL_START/TOOL_END
+                # flip the tool phase so the watchdog uses the longer tool
+                # stall threshold while a tool is running (same semantics as
+                # the dashboard WS path).
+                self._mark_turn_progress(thread_id)
+                if ev.type == MessageEventType.TOOL_START:
+                    self._mark_tool_state(thread_id, True)
+                elif ev.type == MessageEventType.TOOL_END:
+                    self._mark_tool_state(thread_id, False)
                 yield ev
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
@@ -746,7 +756,39 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 self._record_turn_history(thread_id, history_tracker)
+        self._mark_turn_idle(thread_id)
         yield MessageEvent.completed()
+
+    # -- TURN watchdog registration for IM turns ------------------------------
+    # IM turns stream through __call__ (MessageEvent). They register into the
+    # same in-process hub table as dashboard WS turns so the single TurnWatchdog
+    # scan covers both transports. The hub is a plain dict — no WebSocket
+    # dependency — and watchdog recovery (cancel_stream) works identically.
+
+    def _hub(self) -> Any:
+        if self._gateway is None:
+            return None
+        return getattr(self._gateway, "ws_hub", None)
+
+    def _mark_turn_active(self, thread_id: str, *, agent_id: str, session_key: str) -> None:
+        hub = self._hub()
+        if hub is not None:
+            hub.mark_turn_active(thread_id, agent_id=agent_id, session_key=session_key)
+
+    def _mark_turn_progress(self, thread_id: str) -> None:
+        hub = self._hub()
+        if hub is not None:
+            hub.mark_turn_progress(thread_id)
+
+    def _mark_tool_state(self, thread_id: str, in_tool: bool) -> None:
+        hub = self._hub()
+        if hub is not None:
+            hub.mark_tool_state(thread_id, in_tool)
+
+    def _mark_turn_idle(self, thread_id: str) -> None:
+        hub = self._hub()
+        if hub is not None:
+            hub.mark_turn_idle(thread_id)
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
     # IM channels (DingTalk, Feishu, …) stream via __call__ → MessageEvent instead.

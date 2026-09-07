@@ -34,6 +34,7 @@ from octop.infra.gateway.ws import (
     WebSocketChannel,
     WebSocketHub,
 )
+from octop.infra.gateway.ws.turn_watchdog import TurnWatchdog, watchdog_disabled
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 if TYPE_CHECKING:
@@ -120,6 +121,7 @@ class Gateway:
         self._cli_channel: CliChannel | None = None
         self._runtime_status: dict[str, ChannelRuntimeStatus] = {}
         self._history_backfill = HistoryBackfillQueue()
+        self._turn_watchdog: TurnWatchdog | None = None
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point channel/thread persistence at a rebound control-plane pool."""
@@ -225,6 +227,18 @@ class Gateway:
         )
         await self._channel_manager.add_channel(self._ws_channel)
 
+        if not watchdog_disabled():
+            self._turn_watchdog = TurnWatchdog(
+                hub=self._ws_hub,
+                agent_manager=self._agent_manager,
+                audit_repo=self._repos.audit_repo,
+                gateway=self,
+            )
+            self._turn_watchdog.start()
+            logger.info("TurnWatchdog started (interval=%ds)", self._turn_watchdog._interval)
+        else:
+            logger.warning("TurnWatchdog disabled via OCTOP_TURN_WATCHDOG_DISABLED=1")
+
         self._cli_channel = CliChannel(
             self._processor,
             hub=self._cli_hub,
@@ -283,6 +297,9 @@ class Gateway:
 
     async def shutdown(self) -> None:
         await self._history_backfill.close()
+        if self._turn_watchdog is not None:
+            await self._turn_watchdog.stop()
+            self._turn_watchdog = None
         if self._channel_manager:
             await self._channel_manager.stop()
         self._channel_manager = None

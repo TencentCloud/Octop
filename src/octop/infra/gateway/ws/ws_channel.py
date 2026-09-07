@@ -143,9 +143,21 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push_to_thread(thread_id, {"type": "done"})
             return
 
-        self._hub.mark_turn_active(thread_id)
+        self._hub.mark_turn_active(thread_id, agent_id=str(message.tenant_id or ""))
         try:
             async for chunk in processor.iter_turn_chunks(message):
+                # Phase tracking: a tool that runs for many minutes emits no
+                # chunks, so tell the watchdog we are inside a tool call and
+                # let it use the longer tool stall threshold.
+                ctype = chunk.get("type")
+                if ctype == "tool_call_chunk":
+                    self._hub.mark_tool_state(thread_id, True)
+                elif ctype == "tool_result":
+                    self._hub.mark_tool_state(thread_id, False)
+                # Every produced chunk counts as progress so the TURN watchdog
+                # can tell "model still thinking / tool still running" from
+                # "turn stuck with no output at all".
+                self._hub.mark_turn_progress(thread_id)
                 # Never let delivery failures abort the harness turn — otherwise a
                 # flaky client disconnect can stop generation mid-node and leave
                 # an incomplete checkpoint.
