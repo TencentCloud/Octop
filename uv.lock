@@ -1981,7 +1981,7 @@ wheels = [
 
 [[package]]
 name = "lark-oapi"
-version = "1.7.0"
+version = "1.7.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1990,8 +1990,9 @@ dependencies = [
     { name = "requests-toolbelt" },
     { name = "websockets" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/5f/a0cc291039501fae117602074006508c17d6c9c83f1daa61b8d029004662/lark_oapi-1.7.3.tar.gz", hash = "sha256:e532e57fa295a1cc10e3432191f80638a082a190dc678cb2eddb6de301ff3573", size = 2346519, upload-time = "2026-08-19T09:27:42.208Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/83/67095719058122617d663eaad89e06c93bffec414b5aff45a76cb4d46ae5/lark_oapi-1.7.0-py3-none-any.whl", hash = "sha256:d38ca7be0f6b42e51d459c00cf0a8975de1e4e5752e8f59e1bbce5bda0735282", size = 7806351, upload-time = "2026-06-30T03:19:35.216Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/65/91961331ba56308101cb932d446bd1b80e7d23234e498cefc6384ca04018/lark_oapi-1.7.3-py3-none-any.whl", hash = "sha256:c91f00087b7977dc9059ab492e8fe435e1a873863dca1d4e660d2be5b801e4cd", size = 7708570, upload-time = "2026-08-19T09:27:33.078Z" },
 ]
 
 [[package]]
@@ -2605,7 +2606,7 @@ requires-dist = [
     { name = "josepy", specifier = ">=2.2.0" },
     { name = "langchain-core", specifier = ">=1.4.8" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
-    { name = "lark-oapi", specifier = ">=1.5.5" },
+    { name = "lark-oapi", specifier = ">=1.7.3" },
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },

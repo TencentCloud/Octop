@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
+from typing import Any
+
 import pytest
 
 from octop.api.routers import update as update_router
@@ -190,3 +194,62 @@ async def test_upgrade_worker_success_includes_mirror_errors(
     assert stored.status == UpgradeTaskStatus.COMPLETE
     assert stored.new_version == "1.2.3"
     assert stored.mirror_errors == ["mirror-a: skipped"]
+
+
+@pytest.mark.asyncio
+async def test_upgrade_worker_records_unexpected_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_upgrade(*, verbose: bool = False) -> UpgradeResult:
+        del verbose
+        raise RuntimeError("installer crashed")
+
+    monkeypatch.setattr(update_router, "run_upgrade", fail_upgrade)
+
+    task = await create_task()
+    await update_router._upgrade_worker(task.task_id)
+
+    stored = await get_task(task.task_id)
+    assert stored is not None
+    assert stored.status == UpgradeTaskStatus.ERROR
+    assert stored.stage == "error"
+    assert stored.error == "installer crashed"
+
+
+@pytest.mark.asyncio
+async def test_upgrade_worker_advances_percent_while_installing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    percents: list[int] = []
+    original_update_task = update_router.update_task
+
+    async def tracking_update_task(task_id: str, **fields: Any) -> Any:
+        result = await original_update_task(task_id, **fields)
+        percent = fields.get("percent")
+        if isinstance(percent, int):
+            percents.append(percent)
+        return result
+
+    real_wait_for = asyncio.wait_for
+
+    async def wait_for_fast(awaitable: Any, timeout: float | None = None) -> Any:
+        del timeout
+        return await real_wait_for(awaitable, timeout=0.01)
+
+    monkeypatch.setattr(update_router, "update_task", tracking_update_task)
+    monkeypatch.setattr(update_router.asyncio, "wait_for", wait_for_fast)
+    monkeypatch.setattr(
+        update_router,
+        "run_upgrade",
+        lambda verbose=False: (
+            time.sleep(0.05) or UpgradeResult(success=True, installed_version="1.2.3")
+        ),
+    )
+
+    task = await create_task()
+    await update_router._upgrade_worker(task.task_id)
+
+    stored = await get_task(task.task_id)
+    assert stored is not None
+    assert stored.status == UpgradeTaskStatus.COMPLETE
+    assert 25 in percents

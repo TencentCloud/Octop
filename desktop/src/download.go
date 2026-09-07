@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,11 +37,22 @@ func pythonExe(root string) string {
 func ensurePortable(locale Locale, status func(string)) error {
 	root := portableDir()
 	if launchReady(root) {
-		status(desktopText(locale, "正在使用已有运行环境…", "Using the existing runtime…"))
-		return nil
+		currentVersion := portableVersion(root)
+		bundledVersion, err := bundledPortableVersion()
+		if err != nil || bundledVersion == "" ||
+			(currentVersion != "" && compareVersions(bundledVersion, currentVersion) <= 0) {
+			status(desktopText(locale, "正在使用已有运行环境…", "Using the existing runtime…"))
+			return nil
+		}
+		status(desktopText(locale, "正在更新内置运行环境…", "Updating the bundled runtime…"))
+	} else {
+		status(desktopText(locale, "首次启动，正在解压内置运行环境…", "First launch: unpacking the bundled runtime…"))
 	}
-	status(desktopText(locale, "首次启动，正在解压内置运行环境…", "First launch: unpacking the bundled runtime…"))
-	if err := extractPortable(root); err != nil {
+	if err := replacePortable(root); err != nil {
+		if launchReady(root) {
+			status(desktopText(locale, "更新内置运行环境失败，继续使用已有运行环境…", "Runtime update failed; using the existing runtime…"))
+			return nil
+		}
 		return err
 	}
 	if runtime.GOOS == "darwin" {
@@ -50,6 +62,190 @@ func ensurePortable(locale Locale, status func(string)) error {
 		return fmt.Errorf("portable extract missing launch.py or python under %s", root)
 	}
 	return nil
+}
+
+func replacePortable(root string) error {
+	next := root + ".new"
+	previous := root + ".previous"
+	_ = os.RemoveAll(next)
+	if err := extractPortable(next); err != nil {
+		_ = os.RemoveAll(next)
+		return err
+	}
+	if !launchReady(next) {
+		_ = os.RemoveAll(next)
+		return fmt.Errorf("portable extract missing launch.py or python under %s", next)
+	}
+
+	_ = os.RemoveAll(previous)
+	hadCurrent := false
+	if _, err := os.Stat(root); err == nil {
+		if err := os.Rename(root, previous); err != nil {
+			_ = os.RemoveAll(next)
+			return err
+		}
+		hadCurrent = true
+	}
+	if err := os.Rename(next, root); err != nil {
+		if hadCurrent {
+			_ = os.Rename(previous, root)
+		}
+		return err
+	}
+	_ = os.RemoveAll(previous)
+	return nil
+}
+
+func portableVersion(root string) string {
+	version := installedPackageVersion(root)
+	data, err := os.ReadFile(filepath.Join(root, "VERSION.txt"))
+	if err == nil {
+		bundledVersion := versionFromText(string(data))
+		if version == "" || compareVersions(bundledVersion, version) > 0 {
+			version = bundledVersion
+		}
+	}
+	return version
+}
+
+func installedPackageVersion(root string) string {
+	matches, _ := filepath.Glob(filepath.Join(root, "packages", "octop-*.dist-info", "METADATA"))
+	version := ""
+	for _, metadata := range matches {
+		data, err := os.ReadFile(metadata)
+		if err != nil {
+			continue
+		}
+		value := metadataVersion(string(data))
+		if value == "" {
+			continue
+		}
+		if version == "" || compareVersions(value, version) > 0 {
+			version = value
+		}
+	}
+	return version
+}
+
+func bundledPortableVersion() (string, error) {
+	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") == "" && len(embeddedPortable) > 0 {
+		reader, err := zip.NewReader(bytes.NewReader(embeddedPortable), int64(len(embeddedPortable)))
+		if err != nil {
+			return "", err
+		}
+		return versionFromZip(reader.File)
+	}
+	zipPath, err := bundledPortableZip()
+	if err != nil {
+		return "", err
+	}
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+	return versionFromZip(reader.File)
+}
+
+func versionFromZip(files []*zip.File) (string, error) {
+	fromFile, err := zipEntryVersion(files, func(name string) bool {
+		return filepath.Base(filepath.FromSlash(name)) == "VERSION.txt"
+	}, versionFromText)
+	if err != nil {
+		return "", err
+	}
+	if fromFile != "" {
+		return fromFile, nil
+	}
+	return zipEntryVersion(files, func(name string) bool {
+		rel := filepath.ToSlash(name)
+		return strings.Contains(rel, "/octop-") && strings.HasSuffix(rel, ".dist-info/METADATA")
+	}, metadataVersion)
+}
+
+func zipEntryVersion(files []*zip.File, match func(string) bool, parse func(string) string) (string, error) {
+	version := ""
+	for _, file := range files {
+		if !match(file.Name) {
+			continue
+		}
+		reader, err := file.Open()
+		if err != nil {
+			return "", err
+		}
+		data, readErr := io.ReadAll(reader)
+		closeErr := reader.Close()
+		if readErr != nil {
+			return "", readErr
+		}
+		if closeErr != nil {
+			return "", closeErr
+		}
+		value := parse(string(data))
+		if value == "" {
+			continue
+		}
+		if version == "" || compareVersions(value, version) > 0 {
+			version = value
+		}
+	}
+	return version, nil
+}
+
+func versionFromText(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "octop_version="); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func metadataVersion(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		value, ok := strings.CutPrefix(strings.TrimSpace(line), "Version:")
+		if ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func compareVersions(left, right string) int {
+	leftParts := strings.Split(left, ".")
+	rightParts := strings.Split(right, ".")
+	count := max(len(leftParts), len(rightParts))
+	for index := 0; index < count; index++ {
+		var leftPart, rightPart int
+		if index < len(leftParts) {
+			leftPart = versionPart(leftParts[index])
+		}
+		if index < len(rightParts) {
+			rightPart = versionPart(rightParts[index])
+		}
+		if leftPart < rightPart {
+			return -1
+		}
+		if leftPart > rightPart {
+			return 1
+		}
+	}
+	return 0
+}
+
+func versionPart(segment string) int {
+	numeric := ""
+	for _, ch := range segment {
+		if ch < '0' || ch > '9' {
+			break
+		}
+		numeric += string(ch)
+	}
+	if numeric == "" {
+		return 0
+	}
+	value, _ := strconv.Atoi(numeric)
+	return value
 }
 
 func extractPortable(root string) error {

@@ -252,6 +252,78 @@ def test_dify_server_code_is_redacted_from_logs():
     assert redacted["dify__x"]["url"] == "https://dify.example.com/mcp/server/***/mcp"
 
 
+def test_didi_builds_streamable_http_spec_from_user_key():
+    entry = get_catalog_entry("didi")
+    assert entry is not None
+    assert entry.auth_kind == "api_key"
+    assert entry.mcp_mode == "remote"
+    assert entry.remote_transport == "streamable_http"
+
+    creds = validate_create_credentials("didi", {"api_key": "mcp key/1"})
+    assert creds == {"api_key": "mcp key/1"}
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds=creds,
+        config=OctopConfig(),
+    )
+    assert spec == {
+        "transport": "http",
+        "url": "https://mcp.didichuxing.com/mcp-servers?key=mcp%20key%2F1",
+        "headers": {"Accept": "application/json, text/event-stream"},
+    }
+
+
+def test_didi_requires_api_key():
+    with pytest.raises(ValueError, match="api_key is required"):
+        validate_create_credentials("didi", {})
+
+
+def test_didi_mcp_key_is_redacted_from_logs():
+    from octop.infra.connectors.builder import _redact_mcp_configs_for_log
+
+    redacted = _redact_mcp_configs_for_log(
+        {
+            "didi__x": {
+                "transport": "http",
+                "url": "https://mcp.didichuxing.com/mcp-servers?key=secret-key",
+            }
+        }
+    )
+    assert redacted["didi__x"]["url"] == "https://mcp.didichuxing.com/mcp-servers?key=***"
+
+
+@pytest.mark.asyncio
+async def test_didi_probe_uses_streamable_http(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    seen: dict[str, object] = {}
+
+    async def _probe(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        seen.update(url=url, headers=headers, kind=kind)
+        return {
+            "ok": True,
+            "tool_count": 1,
+            "tools": [{"name": "maps_textsearch", "description": ""}],
+        }
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _probe)
+    entry = get_catalog_entry("didi")
+    assert entry is not None
+    result = await probe_connector(
+        entry,
+        {"api_key": "mcp-key"},
+        instance_id="probe",
+        config=OctopConfig(),
+    )
+    assert result["ok"] is True
+    assert seen == {
+        "url": "https://mcp.didichuxing.com/mcp-servers?key=mcp-key",
+        "headers": {"Accept": "application/json, text/event-stream"},
+        "kind": "didi",
+    }
+
+
 def test_custom_field_preview_redacts_secrets():
     from octop.api.routers.connectors import _credentials_preview
 
@@ -823,6 +895,34 @@ def test_catalog_entry_dict_has_no_tools():
     assert entry is not None
     data = catalog_entry_to_dict(entry)
     assert "tools" not in data
+    assert data["category"] == "knowledge"
+
+
+def test_every_catalog_entry_has_category():
+    from octop.infra.connectors.catalog import get_catalog_entry, list_catalog
+
+    allowed = {
+        "office",
+        "knowledge",
+        "travel",
+        "productivity",
+        "media",
+        "professional",
+        "self_hosted",
+    }
+    expected = {
+        "tencent-docs": "office",
+        "didi": "travel",
+        "dify": "self_hosted",
+        "yuandian": "professional",
+        "qq-mail": "productivity",
+    }
+    for entry in list_catalog():
+        assert entry.category in allowed, entry.kind
+    for kind, category in expected.items():
+        entry = get_catalog_entry(kind)
+        assert entry is not None
+        assert entry.category == category
 
 
 def test_oauth_ready_notion():
