@@ -41,6 +41,7 @@ import {
   CustomProviderModal,
   ActiveModelPool,
   LoadingState,
+  ModelRouting,
   PresetGroupCard,
   PresetProviderCard,
   ProviderCard,
@@ -102,6 +103,7 @@ export default function ModelsPage() {
     resolvedModels,
     activeModel,
     modelReasoning,
+    modelRouting,
     loading,
     error,
     fetchAll,
@@ -411,6 +413,14 @@ export default function ModelsPage() {
             activeModel={activeModel}
             modelReasoning={modelReasoning}
             providers={providers}
+            onSaved={fetchAll}
+          />
+
+          <Divider style={{ margin: "24px 0" }} />
+
+          <ModelRouting
+            resolvedModels={resolvedModels}
+            routing={modelRouting}
             onSaved={fetchAll}
           />
 
