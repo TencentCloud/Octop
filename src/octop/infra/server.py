@@ -6,6 +6,7 @@ import gzip
 import logging
 import os
 import shutil
+import sys
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -203,6 +204,23 @@ def _attach_log_handler(target: logging.Logger, handler: TimedRotatingFileHandle
         for h in target.handlers
     ):
         target.addHandler(handler)
+
+
+def _attach_harness_stderr_handler() -> None:
+    """Mirror ``harness_agent`` WARNING+ records to stderr (journald visibility).
+
+    The root handler writes everything to the log file, which hides harness
+    diagnostics (model failover, tool guard, ...) from ``journalctl -u octop``.
+    The marker attribute keeps this idempotent across repeated setup.
+    """
+    logger = logging.getLogger("harness_agent")
+    if any(getattr(h, "_octop_harness_stderr", False) for h in logger.handlers):
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(logging.WARNING)
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
+    handler._octop_harness_stderr = True  # type: ignore[attr-defined]
+    logger.addHandler(handler)
 
 
 @dataclass
@@ -536,6 +554,10 @@ class OctopServer:
         # Persist framework (uvicorn) request/error logs into the same file too.
         for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
             _attach_log_handler(logging.getLogger(name), handler)
+
+        # Harness diagnostics (WARNING+) also go to stderr so journald picks
+        # them up; the file handler alone hides them from `journalctl -u octop`.
+        _attach_harness_stderr_handler()
 
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
