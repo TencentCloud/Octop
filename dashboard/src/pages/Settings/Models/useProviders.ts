@@ -82,6 +82,7 @@ export interface UseProvidersResult {
     string,
     { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
   >;
+  modelRouting: string[];
   loading: boolean;
   error: string | null;
   fetchAll: () => Promise<void>;
@@ -99,6 +100,7 @@ export function useProviders(): UseProvidersResult {
   const [modelReasoning, setModelReasoning] = useState<
     UseProvidersResult["modelReasoning"]
   >({});
+  const [modelRouting, setModelRouting] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
@@ -166,6 +168,11 @@ export function useProviders(): UseProvidersResult {
           : { provider_name: "", model: "" },
       );
       setModelReasoning(preferences?.model_reasoning || {});
+      setModelRouting(
+        Array.isArray(preferences?.model_routing)
+          ? preferences.model_routing
+          : [],
+      );
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : t("models.loadProvidersFailed");
@@ -187,6 +194,7 @@ export function useProviders(): UseProvidersResult {
     resolvedModels,
     activeModel,
     modelReasoning,
+    modelRouting,
     loading,
     error,
     fetchAll,
