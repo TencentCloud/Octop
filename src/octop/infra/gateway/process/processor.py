@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
@@ -573,7 +574,7 @@ class GlobalProcessor:
                         channel_metadata=im_meta,
                     )
                 if thread_id:
-                    self._touch_thread_after_turn(thread_id, msg.text)
+                    self._touch_thread_after_turn(thread_id, msg.text, agent_id)
                     if usage_tracker.usage:
                         self._record_turn_usage(
                             agent_id=agent_id,
@@ -607,7 +608,7 @@ class GlobalProcessor:
                 ):
                     yield ev
                 if answer_outcome.completed_turn:
-                    self._touch_thread_after_turn(ask_record.thread_id, msg.text)
+                    self._touch_thread_after_turn(ask_record.thread_id, msg.text, agent_id)
                     if usage_tracker.usage:
                         self._record_turn_usage(
                             agent_id=agent_id,
@@ -738,7 +739,7 @@ class GlobalProcessor:
             yield MessageEvent.error_event(format_stream_error(exc, locale))
         else:
             if stream_ok and not hitl_paused:
-                self._touch_thread_after_turn(thread_id, msg.text)
+                self._touch_thread_after_turn(thread_id, msg.text, agent_id)
                 self._record_turn_usage(
                     agent_id=agent_id,
                     user_id=user_id,
@@ -929,7 +930,7 @@ class GlobalProcessor:
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
         if stream_ok:
-            self._touch_thread_after_turn(thread_id, msg.text)
+            self._touch_thread_after_turn(thread_id, msg.text, agent_id)
             self._record_turn_usage(
                 agent_id=agent_id,
                 user_id=user_id,
@@ -1191,10 +1192,92 @@ class GlobalProcessor:
             payload=str(exc),
         )
 
-    def _touch_thread_after_turn(self, thread_id: str, title_source: str | None) -> None:
+    def _touch_thread_after_turn(
+        self,
+        thread_id: str,
+        title_source: str | None,
+        agent_id: str | None = None,
+    ) -> None:
         self._thread_registry.touch_last_active(thread_id)
-        if title_source:
-            self._thread_registry.set_title_if_null(thread_id, title_source)
+        if not title_source or not title_source.strip():
+            # Whitespace-only first message is NOT a title source: writing an
+            # empty string via set_title_if_null would mark the thread titled
+            # and permanently skip generation (set_title_if_null is idempotent).
+            return
+        title_source = title_source.strip()
+        try:
+            thread_row = self._thread_registry.get_thread(thread_id)
+            if thread_row is not None and thread_row.title is not None:
+                return  # already titled
+        except Exception:  # noqa: BLE001 - title probe must not block the turn
+            pass
+        # First turn: generate a concise title asynchronously (never blocks the
+        # response). On failure/timeout the task falls back to a truncated line.
+        self._maybe_spawn_title_gen(thread_id, title_source, agent_id)
+
+    def _maybe_spawn_title_gen(self, thread_id: str, title_source: str, agent_id: str | None) -> None:
+        """Async one-shot title generation (2026-09-06, openresearch title.rs).
+        Fire-and-forget: a title that does not finish before the process exits
+        stays NULL and is retried on the next turn (set_title_if_null is idempotent)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            from octop.infra.agents.title_gen import _fallback_title
+
+            self._thread_registry.set_title_if_null(thread_id, _fallback_title(title_source))
+            return
+
+        async def _gen() -> None:
+            try:
+                title = None
+                if agent_id:
+                    title = await self._generate_title_with_agent_model(agent_id, title_source)
+                from octop.infra.agents.title_gen import _fallback_title
+
+                self._thread_registry.set_title_if_null(
+                    thread_id, title or _fallback_title(title_source)
+                )
+            except Exception:  # noqa: BLE001 - titling must not break the turn
+                logger.exception("title generation failed (fallback)")
+                try:
+                    from octop.infra.agents.title_gen import _fallback_title
+
+                    self._thread_registry.set_title_if_null(thread_id, _fallback_title(title_source))
+                except Exception:  # noqa: BLE001
+                    pass
+
+        loop.create_task(_gen())
+
+    async def _generate_title_with_agent_model(self, agent_id: str, text: str) -> str | None:
+        """Generate a title with the first usable provider model (any chat model
+        works for titling; returns None when nothing is usable)."""
+        del agent_id  # titling is provider-level, not agent-bound
+        try:
+            from octop.infra.agents.title_gen import generate_title_async
+
+            providers = self._agent_manager.providers
+            for row in providers.iter_usable_rows():
+                model_id = None
+                for model in row.get_models():
+                    from octop.infra.agents.providers.store import is_chat_eligible_model
+
+                    if is_chat_eligible_model(
+                        model, provider_name=row.name, provider_api_key=row.api_key
+                    ):
+                        model_id = str(model.get("id") or "").strip()
+                        break
+                if not model_id:
+                    continue
+                return await generate_title_async(
+                    text,
+                    base_url=row.base_url,
+                    api_key=row.api_key,
+                    model_id=model_id,
+                )
+            return None
+        except Exception:  # noqa: BLE001
+            logger.debug("title model resolution failed", exc_info=True)
+            return None
 
     def _record_turn_usage(
         self,
