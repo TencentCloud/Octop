@@ -9,7 +9,7 @@ tasks:
     deps:
       - task: common:go:mod:tidy
       - task: common:build:frontend
-      - task: common:generate:icons
+      - task: common:generate:icons:darwin
     cmds:
       - go build {{.BUILD_FLAGS}} -o {{.OUTPUT}}
     vars:
