@@ -56,17 +56,21 @@ _FRAME_INTERVAL_S = 0.25  # ~4 fps (poll fallback only)
 # screencast is event-driven; the frame rate follows page changes. This is just
 # an upper throttle so scrolling/animations do not flood the WS and the client.
 _SCREENCAST_MIN_INTERVAL_S = 0.05  # ~20fps cap (bounds bandwidth for remote clients)
-# Registered screencast listeners keyed by CDP client id, so the old listener
-# can be detached after a tab switch replaces the client.
-_screencast_handlers: dict[int, Any] = {}
+# Registered screencast listeners keyed by CDP client id. Values are
+# (client, handler) pairs so a tab switch can detach the *old* client's
+# handler (which would otherwise leak and keep acking a dead session).
+_screencast_handlers: dict[int, tuple[Any, Any]] = {}
 
 
-def _make_screencast_handler(sess: Any, ws: WebSocket) -> Any:
-    """Construct a Page.screencastFrame listener: forward frame + ack.
+def _make_screencast_handler(client: Any, ws: WebSocket) -> Any:
+    """Construct a Page.screencastFrame listener: ack + forward frame.
 
-    The ack is sent through ``sess._internal.client`` (the *current* client)
-    rather than the one captured at registration, so frames keep being acked
-    after a tab switch replaces the CDP client.
+    The CDP client is captured at registration time: a tab switch replaces
+    ``sess._internal.client``, and acking via the *new* client would send the
+    ack for the old screencast session to the wrong connection, which makes
+    Chrome stop delivering frames for the old session. The ack is also sent
+    *before* forwarding so WS backpressure never delays it (a late ack halts
+    frame delivery too).
     """
     last_sent = 0.0
 
@@ -74,15 +78,17 @@ def _make_screencast_handler(sess: Any, ws: WebSocket) -> Any:
         nonlocal last_sent
         data = params.get("data")
         sid = params.get("sessionId")
+        # Ack FIRST and always — Chrome halts frame delivery when an ack is
+        # late or goes to the wrong client.
+        if sid is not None:
+            with contextlib.suppress(Exception):
+                await _cdp_send_fast(
+                    None, "Page.screencastFrameAck", {"sessionId": sid}, client=client
+                )
         now = time.monotonic()
         if data and (now - last_sent) >= _SCREENCAST_MIN_INTERVAL_S:
             last_sent = now
             await _send_json(ws, {"type": "frame", "data": data})
-        # Must ack regardless of forwarding, otherwise Chrome stops sending
-        # subsequent screencast frames.
-        if sid is not None:
-            with contextlib.suppress(Exception):
-                await _cdp_send_fast(sess, "Page.screencastFrameAck", {"sessionId": sid})
 
     return _on_frame
 
@@ -99,10 +105,10 @@ async def _start_screencast(sess: Any, ws: WebSocket, width: int, height: int) -
     cid = id(client)
     prev = _screencast_handlers.pop(cid, None)
     if prev is not None:
-        client.off("Page.screencastFrame", prev)
-    handler = _make_screencast_handler(sess, ws)
+        client.off("Page.screencastFrame", prev[1])
+    handler = _make_screencast_handler(client, ws)
     client.on("Page.screencastFrame", handler)
-    _screencast_handlers[cid] = handler
+    _screencast_handlers[cid] = (client, handler)
     try:
         # Do not set maxWidth/maxHeight (default 0 = unlimited): the frame
         # size always follows the page viewport, so canvas coordinates stay
@@ -125,13 +131,15 @@ async def _start_screencast(sess: Any, ws: WebSocket, width: int, height: int) -
 
 
 async def _stop_screencast(sess: Any) -> None:
+    # Stop on the *current* client and detach every registered handler —
+    # including handlers on replaced (pre-tab-switch) clients, which would
+    # otherwise leak and keep acking a dead screencast session.
     with contextlib.suppress(Exception):
         await sess._internal.client.send("Page.stopScreencast")  # noqa: SLF001
-    cid = id(sess._internal.client)  # noqa: SLF001
-    handler = _screencast_handlers.pop(cid, None)
-    if handler is not None:
+    for cid, (client, handler) in list(_screencast_handlers.items()):
+        _screencast_handlers.pop(cid, None)
         with contextlib.suppress(Exception):
-            sess._internal.client.off("Page.screencastFrame", handler)  # noqa: SLF001
+            client.off("Page.screencastFrame", handler)
 
 
 def _normalize_nav_url(raw: str) -> str:
@@ -286,20 +294,28 @@ def _cdp_buttons(msg: dict[str, Any], *, button: str, event: str) -> int:
 
 
 
-async def _cdp_send_fast(sess: Any, method: str, params: dict[str, Any] | None = None) -> None:
+async def _cdp_send_fast(
+    sess: Any,
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    client: Any | None = None,
+) -> None:
     """Send a CDP command without waiting for its response, when supported.
 
     harness-browser >= 0.7.7 exposes ``CDPClient.send_no_wait`` for
     fire-and-forget high-frequency commands (input events, screencast acks).
     Fall back to the awaiting ``send`` on older versions so the stream keeps
-    working without a hard dependency bump.
+    working without a hard dependency bump. ``client`` overrides the session's
+    current client — callers that hold a captured client (screencast ack)
+    must pass it so the command goes to the right connection.
     """
-    client = sess._internal.client  # noqa: SLF001
-    fn = getattr(client, "send_no_wait", None)
+    c = client if client is not None else sess._internal.client  # noqa: SLF001
+    fn = getattr(c, "send_no_wait", None)
     if fn is not None:
         await fn(method, params)
     else:
-        await client.send(method, params)
+        await c.send(method, params)
 
 
 async def _dispatch_mouse(
