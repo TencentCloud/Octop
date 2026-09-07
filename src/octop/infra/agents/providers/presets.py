@@ -269,6 +269,121 @@ def load_provider_presets() -> list[dict[str, Any]]:
             len(out),
         )
         out.insert(insert_at, onnx_preset)
+    # Prefer harness-bundled Agent Plan when present; otherwise inject so Octop
+    # can ship the site before orcakit-harness-agent publishes the template row.
+    if not any(p.get("id") == "volcengine-cn-agentplan" for p in out):
+        agent_plan = {
+            "id": "volcengine-cn-agentplan",
+            "name": "Volcano Engine Agent Plan",
+            "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+            "protocol": "openai",
+            "api_key_prefix": "",
+            "models": [
+                {
+                    "id": "ark-code-latest",
+                    "name": "Ark Code Latest (Auto)",
+                    "max_input_tokens": 256000,
+                    "max_output_tokens": 32000,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "doubao-seed-2.1-turbo",
+                    "name": "Doubao Seed 2.1 Turbo",
+                    "max_input_tokens": 256000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "doubao-seed-evolving",
+                    "name": "Doubao Seed Evolving",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "glm-5.3",
+                    "name": "GLM 5.3",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text"],
+                },
+                {
+                    "id": "glm-5.3-flash",
+                    "name": "GLM 5.3 Flash",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "glm-latest",
+                    "name": "GLM Latest",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text"],
+                },
+                {
+                    "id": "deepseek-v4-flash",
+                    "name": "DeepSeek V4 Flash",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text"],
+                },
+                {
+                    "id": "deepseek-v4-pro",
+                    "name": "DeepSeek V4 Pro",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text"],
+                },
+                {
+                    "id": "doubao-seed-2.0-lite",
+                    "name": "Doubao Seed 2.0 Lite",
+                    "max_input_tokens": 256000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "doubao-seed-2.0-mini",
+                    "name": "Doubao Seed 2.0 Mini",
+                    "max_input_tokens": 256000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "minimax-m3",
+                    "name": "MiniMax M3",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "kimi-k2.7-code",
+                    "name": "Kimi K2.7 Code",
+                    "max_input_tokens": 256000,
+                    "max_output_tokens": 32000,
+                    "input": ["text", "image"],
+                },
+                {
+                    "id": "kimi-k3",
+                    "name": "Kimi K3",
+                    "max_input_tokens": 1024000,
+                    "max_output_tokens": 65536,
+                    "input": ["text", "image"],
+                },
+            ],
+            "logo_id": "volces",
+            "vendor": "volcengine",
+            "vendor_name": "Volcano Engine",
+            "provider_group": "volcengine",
+            "provider_group_name": "Volcano Engine",
+            "variant": "agent_plan",
+            "provider_variant": "agent_plan",
+        }
+        insert_at = next(
+            (i + 1 for i, p in enumerate(out) if p.get("id") == "volcengine-cn-codingplan"),
+            len(out),
+        )
+        out.insert(insert_at, agent_plan)
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:
