@@ -211,14 +211,64 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
     return None
 
 
+def _octop_provider_template_path() -> object:
+    """Path to Octop's bundled provider catalog fallback."""
+    from importlib import resources
+
+    return resources.files(__package__).joinpath("provider_template.json")
+
+
+def _load_octop_provider_presets() -> list[dict[str, Any]]:
+    """Serialize Octop's bundled ``provider_template.json``."""
+    from harness_agent.providers import load_provider_templates, serialize_provider_preset
+
+    path = _octop_provider_template_path()
+    return [serialize_provider_preset(p) for p in load_provider_templates(str(path))]
+
+
+def _provider_group_key(preset: dict[str, Any]) -> str:
+    return str(preset.get("provider_group") or preset.get("vendor") or "")
+
+
+def _merge_octop_template_fallback(out: list[dict[str, Any]]) -> None:
+    """Fill gaps from Octop's catalog without overriding harness rows.
+
+    For each preset id present in Octop's ``provider_template.json`` but missing
+    from ``out``, insert the Octop row after the last existing sibling of the
+    same vendor/group (so Agent Plan lands with other Volcano sites). Otherwise
+    append. Shared ids keep the harness definition.
+    """
+    have = {str(p.get("id") or "") for p in out}
+    for row in _load_octop_provider_presets():
+        pid = str(row.get("id") or "")
+        if not pid or pid in have:
+            continue
+        group = _provider_group_key(row)
+        insert_at = len(out)
+        if group:
+            for i, existing in enumerate(out):
+                if _provider_group_key(existing) == group:
+                    insert_at = i + 1
+        out.insert(insert_at, row)
+        have.add(pid)
+
+
 def load_provider_presets() -> list[dict[str, Any]]:
-    """Serialize harness-agent provider templates for API / CLI."""
+    """Serialize provider templates for API / CLI.
+
+    Source order:
+
+    1. harness-agent bundled ``provider_template.json``
+    2. Octop ``provider_template.json`` rows whose ids are still missing (fallback)
+    3. Octop-only overlays (``openai-codex``, ``onnx``) when absent
+    """
     from importlib import resources
 
     from harness_agent.providers import load_provider_templates, serialize_provider_preset
 
     bundled = resources.files("harness_agent.providers").joinpath("provider_template.json")
     out = [serialize_provider_preset(p) for p in load_provider_templates(str(bundled))]
+    _merge_octop_template_fallback(out)
     if not any(p.get("id") == "openai-codex" for p in out):
         out.insert(
             0,
@@ -269,121 +319,6 @@ def load_provider_presets() -> list[dict[str, Any]]:
             len(out),
         )
         out.insert(insert_at, onnx_preset)
-    # Prefer harness-bundled Agent Plan when present; otherwise inject so Octop
-    # can ship the site before orcakit-harness-agent publishes the template row.
-    if not any(p.get("id") == "volcengine-cn-agentplan" for p in out):
-        agent_plan = {
-            "id": "volcengine-cn-agentplan",
-            "name": "Volcano Engine Agent Plan",
-            "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
-            "protocol": "openai",
-            "api_key_prefix": "",
-            "models": [
-                {
-                    "id": "ark-code-latest",
-                    "name": "Ark Code Latest (Auto)",
-                    "max_input_tokens": 256000,
-                    "max_output_tokens": 32000,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "doubao-seed-2.1-turbo",
-                    "name": "Doubao Seed 2.1 Turbo",
-                    "max_input_tokens": 256000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "doubao-seed-evolving",
-                    "name": "Doubao Seed Evolving",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "glm-5.3",
-                    "name": "GLM 5.3",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text"],
-                },
-                {
-                    "id": "glm-5.3-flash",
-                    "name": "GLM 5.3 Flash",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "glm-latest",
-                    "name": "GLM Latest",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text"],
-                },
-                {
-                    "id": "deepseek-v4-flash",
-                    "name": "DeepSeek V4 Flash",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text"],
-                },
-                {
-                    "id": "deepseek-v4-pro",
-                    "name": "DeepSeek V4 Pro",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text"],
-                },
-                {
-                    "id": "doubao-seed-2.0-lite",
-                    "name": "Doubao Seed 2.0 Lite",
-                    "max_input_tokens": 256000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "doubao-seed-2.0-mini",
-                    "name": "Doubao Seed 2.0 Mini",
-                    "max_input_tokens": 256000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "minimax-m3",
-                    "name": "MiniMax M3",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "kimi-k2.7-code",
-                    "name": "Kimi K2.7 Code",
-                    "max_input_tokens": 256000,
-                    "max_output_tokens": 32000,
-                    "input": ["text", "image"],
-                },
-                {
-                    "id": "kimi-k3",
-                    "name": "Kimi K3",
-                    "max_input_tokens": 1024000,
-                    "max_output_tokens": 65536,
-                    "input": ["text", "image"],
-                },
-            ],
-            "logo_id": "volces",
-            "vendor": "volcengine",
-            "vendor_name": "Volcano Engine",
-            "provider_group": "volcengine",
-            "provider_group_name": "Volcano Engine",
-            "variant": "agent_plan",
-            "provider_variant": "agent_plan",
-        }
-        insert_at = next(
-            (i + 1 for i, p in enumerate(out) if p.get("id") == "volcengine-cn-codingplan"),
-            len(out),
-        )
-        out.insert(insert_at, agent_plan)
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:

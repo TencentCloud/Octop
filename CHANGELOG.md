@@ -9,6 +9,7 @@
 ### 新增
 
 - 火山引擎模型站点增加 Agent Plan（`/api/plan/v3`）及对应预设模型列表
+- 新增 Octop 内置 `provider_template.json` 作为 harness 目录兜底：harness 缺少的 provider id 从此补齐（同 id 仍以 harness 为准）
 
 ## [0.9.32] - 2026-09-06
 

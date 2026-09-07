@@ -93,6 +93,17 @@ def test_load_provider_presets_integration() -> None:
         "deepseek-v4-flash",
         "kimi-k3",
     } <= agent_ids
+    # Fallback keeps Agent Plan adjacent to other Volcano Engine sites.
+    volc_ids = [p["id"] for p in presets if p.get("provider_group") == "volcengine"]
+    assert "volcengine-cn-agentplan" in volc_ids
+    assert volc_ids.index("volcengine-cn-codingplan") < volc_ids.index("volcengine-cn-agentplan")
+
+    from octop.infra.agents.providers.presets import _load_octop_provider_presets
+
+    octop_ids = {p["id"] for p in _load_octop_provider_presets()}
+    assert "volcengine-cn-agentplan" in octop_ids
+    # Shared ids stay on the harness definition (fallback must not duplicate).
+    assert len([p for p in presets if p["id"] == "volcengine-cn"]) == 1
 
     opencode_ids = {
         "opencode-zen-openai",
