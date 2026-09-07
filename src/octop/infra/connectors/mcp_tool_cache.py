@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import threading
 from typing import Any
 
 from langchain_core.tools import StructuredTool
@@ -79,7 +80,19 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
                 asyncio.get_running_loop()
             except RuntimeError:
                 return asyncio.run(_run())
-            return _tool.invoke(kwargs)
+            # 2026-09-07 修复：原代码在 running loop 存在时直接 `_tool.invoke(kwargs)`
+            # ——不持共享锁（共享 MCP 会话并发交错）且阻塞事件循环。
+            # 改为独立线程起新 loop 跑带锁协程：持锁序列化 + 不阻塞当前 loop；
+            # 不用 run_coroutine_threadsafe（调用方恰在 loop 线程时会死锁）。
+            box: dict[str, Any] = {}
+
+            def _worker() -> None:
+                box["value"] = asyncio.run(_run())
+
+            t = threading.Thread(target=_worker, daemon=True)
+            t.start()
+            t.join()
+            return box["value"]
 
         st_kwargs: dict[str, Any] = {
             "name": name,

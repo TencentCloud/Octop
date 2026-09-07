@@ -77,6 +77,9 @@ from octop.infra.users.groups import (
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
+# 2026-09-07 修复：后台任务强引用集合（asyncio 要求保存引用防 GC 回收）。
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -534,7 +537,9 @@ def _schedule_connector_reload(
         except Exception:
             logger.exception("background connector reload failed for user %s", user_id)
 
-    asyncio.create_task(_run())
+    task = asyncio.create_task(_run(), name=f"connector-reload-user-{user_id}")
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 def _can_manage_connector(inst: Any, user: Any) -> bool:
