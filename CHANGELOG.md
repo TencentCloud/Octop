@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 模型切换失败回退、工具守卫等 harness 警告（WARNING 及以上）同步输出到 stderr，`journalctl -u octop` 可直接查看；此前仅写入日志文件
+
 ## [1.0.3b1] - 2026-10-25
 
 ### 新增
