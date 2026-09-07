@@ -28,6 +28,7 @@ class UserCreateBody(BaseModel):
 
 class UserPatchBody(BaseModel):
     role: str | None = None
+    username: str | None = None
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     disabled: bool | None = None
@@ -187,20 +188,24 @@ async def patch_user(
             target_user_id=user_id,
             new_permissions=body.permissions,
         )
+    username = row.username
     if body.role is not None:
         if user_id == actor.id and Role(body.role) is not Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
-        await server.user_manager.set_role(row.username, Role(body.role))
+        await server.user_manager.set_role(username, Role(body.role))
     if body.display_name is not None:
-        await server.user_manager.set_display_name(row.username, body.display_name)
+        await server.user_manager.set_display_name(username, body.display_name)
+    if body.username is not None:
+        await server.user_manager.set_username(username, body.username)
+        username = body.username
     if "email" in body.model_fields_set:
-        await server.user_manager.set_email(row.username, body.email)
+        await server.user_manager.set_email(username, body.email)
     if body.disabled is True:
-        await server.user_manager.disable(row.username)
+        await server.user_manager.disable(username)
     elif body.disabled is False:
-        await server.user_manager.enable(row.username)
+        await server.user_manager.enable(username)
     if body.permissions is not None:
-        await server.user_manager.set_permissions(row.username, body.permissions)
+        await server.user_manager.set_permissions(username, body.permissions)
     updated = server.user_manager.get_row(user_id)
     assert updated is not None
     return _row_to_dict(updated)

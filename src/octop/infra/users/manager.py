@@ -441,6 +441,25 @@ class UserManager:
             if current is not None:
                 current.display_name = display_name
 
+    async def set_username(self, username: str, new_username: str) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        if new_username == row.username:
+            return
+        self._services.user_repo.set_username(row.id, new_username)
+        async with self._lock:
+            current = self._users.pop(username, None)
+            if current is not None:
+                current.username = new_username
+                self._users[new_username] = current
+        self._services.audit_repo.write(
+            actor=ACTOR_ADMIN,
+            action="user.set_username",
+            target=username,
+            payload=new_username,
+        )
+
     async def set_email(self, username: str, email: str | None) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
