@@ -3493,6 +3493,45 @@
       "deprecate": "Deprecate this memory",
       "actions": "Actions"
     },
+    "create": {
+      "title": "New memory",
+      "titleInTopic": "Add a memory under this topic",
+      "ok": "Save",
+      "success": "Memory added",
+      "failed": "Could not add memory: {{message}}",
+      "topic": "Topic",
+      "existingTopic": "Existing topic",
+      "newTopic": "New topic",
+      "pickTopic": "Choose a topic",
+      "topicRequired": "Please choose a topic",
+      "topicName": "Topic name",
+      "topicNameRequired": "Please enter a topic name",
+      "topicNamePlaceholder": "e.g. drink preferences",
+      "topicType": "Topic type",
+      "kind": "Memory type",
+      "assertion": "Memory",
+      "assertionRequired": "Please enter the memory",
+      "assertionPlaceholder": "e.g. prefers americano",
+      "addToTopicTip": "Add a memory under this topic"
+    },
+    "edit": {
+      "title": "Edit this memory",
+      "action": "Edit this memory",
+      "tooltip": "Edit this memory",
+      "description": "After saving, Octop will use the new text. The previous version stays in the change history.",
+      "ok": "Save",
+      "success": "Memory updated",
+      "failed": "Could not update memory: {{message}}",
+      "empty": "Memory text cannot be empty"
+    },
+    "lineage": {
+      "manualCorrection": "Manually corrected memory",
+      "beforeCorrection": "Before correction: {{assertion}}",
+      "originalContext": "Original source context:",
+      "manualEntry": "Manually added memory:",
+      "conversationSource": "Source conversation excerpt:",
+      "noOriginalContext": "No original source is available"
+    },
     "deprecate": {
       "title": "Deprecate this memory?",
       "description": "Octop will no longer use this memory once it is deprecated. If it was recorded incorrectly, describe the correct content as the deprecation reason.",

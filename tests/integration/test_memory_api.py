@@ -272,6 +272,64 @@ async def test_deprecate_atom_round_trip(env_with_main_agent) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_and_replace_atom_round_trip(env_with_main_agent) -> None:
+    client, srv, auth, aid = env_with_main_agent
+    _seed_memory(srv, aid)
+
+    created = await client.post(
+        f"/api/agents/{aid}/memory/atoms",
+        headers=auth,
+        json={
+            "assertion": "喜欢早起跑步",
+            "entity_name": "作息",
+            "entity_type": "Fact",
+            "kind": "Preference",
+            "actor": "rule",
+        },
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["status"] == "created"
+    assert body["created_entity"] is True
+    atom_id = body["atom"]["id"]
+    assert body["atom"]["assertion"] == "喜欢早起跑步"
+
+    create_journal = await client.post(
+        f"/api/agents/{aid}/memory/journal/list",
+        headers=auth,
+        json={"action": "create", "target_atom_id": atom_id},
+    )
+    assert create_journal.status_code == 200
+    assert create_journal.json()["items"][0]["actor"] == "user"
+
+    replaced = await client.post(
+        f"/api/agents/{aid}/memory/atoms/{atom_id}:replace",
+        headers=auth,
+        json={"assertion": "改成晚上跑步", "actor": "auto"},
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["status"] == "replaced"
+    assert replaced.json()["atom"]["assertion"] == "改成晚上跑步"
+    assert replaced.json()["old_atom_id"] == atom_id
+
+    replacement_id = replaced.json()["atom"]["id"]
+    edit_journal = await client.post(
+        f"/api/agents/{aid}/memory/journal/list",
+        headers=auth,
+        json={"action": "user_edit", "target_atom_id": replacement_id},
+    )
+    assert edit_journal.status_code == 200
+    assert edit_journal.json()["items"][0]["actor"] == "user"
+
+    again = await client.post(
+        f"/api/agents/{aid}/memory/atoms/{atom_id}:replace",
+        headers=auth,
+        json={"assertion": "这条已经弃用了"},
+    )
+    assert again.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_list_raw_events(env_with_main_agent) -> None:
     client, srv, auth, aid = env_with_main_agent
     _seed_memory(srv, aid)

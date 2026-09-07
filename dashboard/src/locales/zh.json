@@ -3484,6 +3484,45 @@
       "deprecate": "弃用这条记忆",
       "actions": "操作"
     },
+    "create": {
+      "title": "新建记忆",
+      "titleInTopic": "在此主题下添加记忆",
+      "ok": "保存",
+      "success": "记忆已添加",
+      "failed": "添加失败：{{message}}",
+      "topic": "主题",
+      "existingTopic": "已有主题",
+      "newTopic": "新建主题",
+      "pickTopic": "选择主题",
+      "topicRequired": "请选择主题",
+      "topicName": "主题名称",
+      "topicNameRequired": "请填写主题名称",
+      "topicNamePlaceholder": "例如：饮品偏好",
+      "topicType": "主题类型",
+      "kind": "记忆类型",
+      "assertion": "记忆内容",
+      "assertionRequired": "请填写记忆内容",
+      "assertionPlaceholder": "例如：喜欢喝美式咖啡",
+      "addToTopicTip": "在此主题下添加记忆"
+    },
+    "edit": {
+      "title": "编辑这条记忆",
+      "action": "编辑这条记忆",
+      "tooltip": "编辑这条记忆",
+      "description": "保存后 Octop 会使用新内容；原来的记录会留在变更历史里。",
+      "ok": "保存",
+      "success": "记忆已更新",
+      "failed": "更新失败：{{message}}",
+      "empty": "记忆内容不能为空"
+    },
+    "lineage": {
+      "manualCorrection": "人工修正的记忆",
+      "beforeCorrection": "修正前：{{assertion}}",
+      "originalContext": "原始来源上下文：",
+      "manualEntry": "人工添加的记忆：",
+      "conversationSource": "来源对话片段：",
+      "noOriginalContext": "没有可展示的原始来源"
+    },
     "deprecate": {
       "title": "弃用这条记忆？",
       "description": "弃用后 Octop 将不再使用这条记忆。如果是记录有误，建议先描述正确内容作为弃用原因。",
