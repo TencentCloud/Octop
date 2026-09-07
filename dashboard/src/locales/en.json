@@ -2395,7 +2395,15 @@
     "readAloud": "Read aloud",
     "micNotAvailable": "Audio recording unavailable — please use HTTPS",
     "sttNotAvailable": "Voice input not available on this device (HTTPS required)",
-    "ttsAutoplayBlocked": "Autoplay blocked by browser — tap read-aloud again"
+    "ttsAutoplayBlocked": "Autoplay blocked by browser — tap read-aloud again",
+    "siliconflowHint": "SiliconFlow cloud TTS (CosyVoice2) / STT (SenseVoice) via the OpenAI-compatible API. Voice ids look like FunAudioLLM/CosyVoice2-0.5B:alex (presets: alex/bella/amber and more).",
+    "openaiCompatHint": "Any OpenAI-compatible relay or gateway (one-api, new-api, custom endpoint). Enter its base URL and key.",
+    "endpoint": "API endpoint",
+    "ttsModel": "TTS model",
+    "sttModel": "STT model",
+    "voiceId": "Voice ID",
+    "piperHint": "Local Piper TTS (free, zero token / cloud cost). Served by the qwerty companion service at 127.0.0.1:8081.",
+    "piperVoice": "Voice"
   },
   "security": {
     "intro": "Configure runtime security policies for agents. Running agents reload automatically after save.",
@@ -2515,7 +2523,8 @@
     "imageTestSuccess": "Image model call succeeded",
     "videoTestSuccess": "The video model accepted the test task and cancellation was requested",
     "modelTestFailed": "Generation model test failed",
-    "modelTestBillingHint": "Model tests submit real requests to Ark and may incur a small charge. A successful video task is cancelled immediately after submission."
+    "modelTestBillingHint": "Model tests submit real requests to Ark and may incur a small charge. A successful video task is cancelled immediately after submission.",
+    "baseUrlHint": "Prefilled for the selected provider; set your relay base URL for OpenAI-compatible gateways"
   },
   "toolFeedback": {
     "failed": "Failed",

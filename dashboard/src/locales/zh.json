@@ -2394,7 +2394,15 @@
     "readAloud": "朗读",
     "micNotAvailable": "此设备不支持录音，请通过 HTTPS 访问",
     "sttNotAvailable": "此设备不支持语音输入（需要 HTTPS）",
-    "ttsAutoplayBlocked": "浏览器阻止了自动播放，请再次点击朗读按钮"
+    "ttsAutoplayBlocked": "浏览器阻止了自动播放，请再次点击朗读按钮",
+    "siliconflowHint": "硅基流动 TTS（CosyVoice2）/STT（SenseVoice），OpenAI 兼容协议。音色名形如 FunAudioLLM/CosyVoice2-0.5B:alex（预置音色：alex/bella/amber 等）。",
+    "openaiCompatHint": "任意 OpenAI 兼容中转站或网关（one-api/new-api 等），填写它的 base URL 与密钥。",
+    "endpoint": "API 地址",
+    "ttsModel": "TTS 模型",
+    "sttModel": "STT 模型",
+    "voiceId": "音色（TTS Voice ID）",
+    "piperHint": "本机 Piper TTS（免费，零 token 零云端费用）。朗读走 qwerty 服务 127.0.0.1:8081。",
+    "piperVoice": "音色"
   },
   "security": {
     "intro": "配置 Agent 运行时的安全防护策略。保存后已运行的 Agent 会自动重新加载配置。",
@@ -2513,7 +2521,8 @@
     "imageTestSuccess": "图片模型调用成功",
     "videoTestSuccess": "视频模型已接受测试任务并已请求取消",
     "modelTestFailed": "生成模型测试失败",
-    "modelTestBillingHint": "模型测试会向方舟提交真实请求，可能产生少量费用；视频任务会在提交成功后立即请求取消。"
+    "modelTestBillingHint": "模型测试会向方舟提交真实请求，可能产生少量费用；视频任务会在提交成功后立即请求取消。",
+    "baseUrlHint": "按所选服务商预填默认地址；中转站请填自己的 OpenAI 兼容地址"
   },
   "toolFeedback": {
     "failed": "调用失败",

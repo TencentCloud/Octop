@@ -6,6 +6,7 @@ import {
   Divider,
   Form,
   Input,
+  Select,
   Space,
   Switch,
   Typography,
@@ -23,28 +24,60 @@ const { Text } = Typography;
 const IMAGE_MODEL_OPTIONS = [
   {
     value: "doubao-seedream-5-0-lite-260128",
-    label: "Doubao Seedream 5.0 Lite",
+    label: "Doubao Seedream 5.0 Lite (Volcengine)",
   },
   {
     value: "doubao-seedream-5-0-260128",
-    label: "Doubao Seedream 5.0",
+    label: "Doubao Seedream 5.0 (Volcengine)",
+  },
+  {
+    value: "Qwen/Qwen-Image",
+    label: "Qwen-Image (SiliconFlow)",
+  },
+  {
+    value: "Kwai-Kolors/Kolors",
+    label: "Kolors (SiliconFlow)",
+  },
+  {
+    value: "dall-e-3",
+    label: "DALL-E 3 (OpenAI protocol)",
   },
 ];
 
 const VIDEO_MODEL_OPTIONS = [
   {
     value: "doubao-seedance-2-0-mini-260615",
-    label: "Doubao Seedance 2.0 Mini",
+    label: "Doubao Seedance 2.0 Mini (Volcengine)",
   },
   {
     value: "doubao-seedance-2-0-fast-260128",
-    label: "Doubao Seedance 2.0 Fast",
+    label: "Doubao Seedance 2.0 Fast (Volcengine)",
   },
   {
     value: "doubao-seedance-2-0-260128",
-    label: "Doubao Seedance 2.0",
+    label: "Doubao Seedance 2.0 (Volcengine)",
+  },
+  {
+    value: "Wan-AI/Wan2.2-T2V-A14B",
+    label: "Wan2.2 T2V (SiliconFlow)",
+  },
+  {
+    value: "Wan-AI/Wan2.2-I2V-A14B",
+    label: "Wan2.2 I2V (SiliconFlow)",
   },
 ];
+
+const PROVIDER_OPTIONS = [
+  { value: "volcengine", label: "Volcengine Ark (火山方舟)" },
+  { value: "siliconflow", label: "SiliconFlow (硅基流动)" },
+  { value: "openai-compatible", label: "OpenAI Compatible (中转站)" },
+];
+
+const DEFAULT_BASE_URL: Record<string, string> = {
+  volcengine: "https://ark.cn-beijing.volces.com/api/v3",
+  siliconflow: "https://api.siliconflow.cn/v1",
+  "openai-compatible": "https://api.openai.com/v1",
+};
 
 export function MediaGenerationSettingsPanel() {
   const { t } = useTranslation();
@@ -94,6 +127,8 @@ export function MediaGenerationSettingsPanel() {
         video_enabled: Boolean(values.video_enabled),
         image_model: String(values.image_model || "").trim(),
         video_model: String(values.video_model || "").trim(),
+        provider: String(values.provider || "volcengine").trim(),
+        base_url: String(values.base_url || "").trim(),
         api_key: values.api_key ? String(values.api_key).trim() : null,
       });
       setApiKeySet(cfg.api_key_set);
@@ -116,6 +151,9 @@ export function MediaGenerationSettingsPanel() {
       const result = await mediaGenerationApi.test({
         kind: "credentials",
         api_key: draft || null,
+        provider: String(form.getFieldValue("provider") || "volcengine").trim(),
+        base_url:
+          String(form.getFieldValue("base_url") || "").trim() || undefined,
       });
       if (result.ok) message.success(t("mediaGeneration.testSuccess"));
       else message.error(result.error || t("mediaGeneration.testFailed"));
@@ -137,6 +175,9 @@ export function MediaGenerationSettingsPanel() {
         api_key: draft || null,
         image_model: String(form.getFieldValue("image_model") || "").trim(),
         video_model: String(form.getFieldValue("video_model") || "").trim(),
+        provider: String(form.getFieldValue("provider") || "volcengine").trim(),
+        base_url:
+          String(form.getFieldValue("base_url") || "").trim() || undefined,
       });
       if (result.ok) {
         message.success(
@@ -166,6 +207,7 @@ export function MediaGenerationSettingsPanel() {
   const imageModel = Form.useWatch("image_model", form);
   const videoModel = Form.useWatch("video_model", form);
   const apiKey = Form.useWatch("api_key", form);
+  const provider = Form.useWatch("provider", form);
 
   return (
     <>
@@ -196,10 +238,20 @@ export function MediaGenerationSettingsPanel() {
                 message={t("mediaGeneration.hint")}
               />
               <Form.Item name="provider" label={t("mediaGeneration.provider")}>
-                <Input disabled />
+                <Select
+                  options={PROVIDER_OPTIONS}
+                  onChange={(value: string) => {
+                    const next = DEFAULT_BASE_URL[value];
+                    if (next) form.setFieldValue("base_url", next);
+                  }}
+                />
               </Form.Item>
-              <Form.Item name="base_url" label={t("mediaGeneration.baseUrl")}>
-                <Input disabled />
+              <Form.Item
+                name="base_url"
+                label={t("mediaGeneration.baseUrl")}
+                extra={t("mediaGeneration.baseUrlHint")}
+              >
+                <Input placeholder={DEFAULT_BASE_URL.volcengine} />
               </Form.Item>
               <Form.Item
                 name="api_key"
@@ -224,7 +276,13 @@ export function MediaGenerationSettingsPanel() {
                 }
               >
                 <Input.Password
-                  placeholder="ark-..."
+                  placeholder={
+                    provider === "siliconflow"
+                      ? "sk-..."
+                      : provider === "openai-compatible"
+                        ? "sk-..."
+                        : "ark-..."
+                  }
                   autoComplete="new-password"
                 />
               </Form.Item>

@@ -41,6 +41,11 @@ export function VoiceSettingsPanel() {
     "payg",
   );
   const [mimoVoiceId, setMimoVoiceId] = useState("冰糖");
+  const [endpointInput, setEndpointInput] = useState("");
+  const [modelInput, setModelInput] = useState("");
+  const [sttModelInput, setSttModelInput] = useState("");
+  const [voiceIdInput, setVoiceIdInput] = useState("");
+  const [piperVoiceId, setPiperVoiceId] = useState("zh");
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
 
@@ -103,6 +108,11 @@ export function VoiceSettingsPanel() {
     setSecretKey(String(extra.secret_key ?? ""));
     setMimoEndpoint(extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg");
     setMimoVoiceId(String(extra.voice_id ?? "冰糖"));
+    setEndpointInput(String(existing?.base_url ?? ""));
+    setModelInput(String(extra.model ?? ""));
+    setSttModelInput(String(extra.stt_model ?? ""));
+    setVoiceIdInput(String(extra.voice_id ?? ""));
+    setPiperVoiceId(String(extra.voice_id ?? "zh"));
   };
 
   const buildProviderPayload = (): VoiceProviderInput | null => {
@@ -127,8 +137,24 @@ export function VoiceSettingsPanel() {
         endpoint_type: mimoEndpoint,
         voice_id: preset.capability === "tts" ? mimoVoiceId : undefined,
       };
+    } else if (preset.id === "siliconflow") {
+      baseUrl = "https://api.siliconflow.cn/v1";
+      extra = {
+        model: modelInput || "FunAudioLLM/CosyVoice2-0.5B",
+        stt_model: sttModelInput || "FunAudioLLM/SenseVoiceSmall",
+        voice_id: voiceIdInput || "FunAudioLLM/CosyVoice2-0.5B:alex",
+      };
+    } else if (preset.id === "openai-compatible") {
+      baseUrl = endpointInput.trim() || "https://api.openai.com/v1";
+      extra = {
+        model: modelInput || "tts-1",
+        stt_model: sttModelInput || "whisper-1",
+        voice_id: voiceIdInput || "alloy",
+      };
+    } else if (preset.kind === "piper") {
+      extra = { voice_id: piperVoiceId || "zh" };
     } else {
-      extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
+      extra = { model: "tts-1", stt_model: "whisper-1" };
     }
     return {
       name: preset.id,
@@ -421,9 +447,74 @@ export function VoiceSettingsPanel() {
               </Form.Item>
             </>
           )}
-          {configure?.preset.kind === "openai" && (
+          {configure?.preset.kind === "openai" &&
+            configure?.preset.id === "openai" && (
+              <>
+                <div className={styles.drawerHint}>{t("voice.openaiHint")}</div>
+                <Form.Item label="API Key" required>
+                  <Input.Password
+                    placeholder="API Key"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                  />
+                </Form.Item>
+                <Form.Item label={t("voice.mimoEndpoint")}>
+                  <Select
+                    value="https://api.openai.com/v1"
+                    disabled
+                    options={[
+                      {
+                        value: "https://api.openai.com/v1",
+                        label: "OpenAI API",
+                      },
+                    ]}
+                  />
+                </Form.Item>
+              </>
+            )}
+          {configure?.preset.id === "siliconflow" && (
             <>
-              <div className={styles.drawerHint}>{t("voice.openaiHint")}</div>
+              <div className={styles.drawerHint}>
+                {t("voice.siliconflowHint")}
+              </div>
+              <Form.Item label="API Key" required>
+                <Input.Password
+                  placeholder="SK-..."
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.endpoint")}>
+                <Input value="https://api.siliconflow.cn/v1" disabled />
+              </Form.Item>
+              <Form.Item label={t("voice.ttsModel")}>
+                <Input
+                  placeholder="FunAudioLLM/CosyVoice2-0.5B"
+                  value={modelInput}
+                  onChange={(e) => setModelInput(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.sttModel")}>
+                <Input
+                  placeholder="FunAudioLLM/SenseVoiceSmall"
+                  value={sttModelInput}
+                  onChange={(e) => setSttModelInput(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.voiceId")}>
+                <Input
+                  placeholder="FunAudioLLM/CosyVoice2-0.5B:alex"
+                  value={voiceIdInput}
+                  onChange={(e) => setVoiceIdInput(e.target.value)}
+                />
+              </Form.Item>
+            </>
+          )}
+          {configure?.preset.id === "openai-compatible" && (
+            <>
+              <div className={styles.drawerHint}>
+                {t("voice.openaiCompatHint")}
+              </div>
               <Form.Item label="API Key" required>
                 <Input.Password
                   placeholder="API Key"
@@ -431,14 +522,49 @@ export function VoiceSettingsPanel() {
                   onChange={(e) => setApiKey(e.target.value)}
                 />
               </Form.Item>
-              <Form.Item label={t("voice.mimoEndpoint")}>
+              <Form.Item label={t("voice.endpoint")} required>
+                <Input
+                  placeholder="https://api.openai.com/v1"
+                  value={endpointInput}
+                  onChange={(e) => setEndpointInput(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.ttsModel")}>
+                <Input
+                  placeholder="tts-1"
+                  value={modelInput}
+                  onChange={(e) => setModelInput(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.sttModel")}>
+                <Input
+                  placeholder="whisper-1"
+                  value={sttModelInput}
+                  onChange={(e) => setSttModelInput(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.voiceId")}>
+                <Input
+                  placeholder="alloy"
+                  value={voiceIdInput}
+                  onChange={(e) => setVoiceIdInput(e.target.value)}
+                />
+              </Form.Item>
+            </>
+          )}
+          {configure?.preset.kind === "piper" && (
+            <>
+              <div className={styles.drawerHint}>{t("voice.piperHint")}</div>
+              <Form.Item label={t("voice.piperVoice")} required>
                 <Select
-                  value="https://api.openai.com/v1"
-                  disabled
+                  value={piperVoiceId}
+                  onChange={(v: string) => setPiperVoiceId(v)}
                   options={[
+                    { value: "zh", label: "中文（华妍）" },
+                    { value: "en", label: "English（Lessac）" },
                     {
-                      value: "https://api.openai.com/v1",
-                      label: "OpenAI API",
+                      value: "mix",
+                      label: "中英混合（自动切换）",
                     },
                   ]}
                 />

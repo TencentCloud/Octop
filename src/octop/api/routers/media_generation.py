@@ -12,6 +12,8 @@ from octop.infra.agents.media_generation import (
     DEFAULT_ARK_BASE_URL,
     DEFAULT_IMAGE_MODEL,
     DEFAULT_VIDEO_MODEL,
+    SUPPORTED_MEDIA_PROVIDERS,
+    default_media_base_url,
 )
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -36,9 +38,11 @@ class MediaGenerationSettingsBody(BaseModel):
     video_enabled: bool = True
     image_model: str = DEFAULT_IMAGE_MODEL
     video_model: str = DEFAULT_VIDEO_MODEL
+    provider: str = "volcengine"
+    base_url: str | None = None
     api_key: str | None = Field(
         default=None,
-        description="Write-only Ark inference API key; omit to keep the stored key.",
+        description="Write-only provider inference API key; omit to keep the stored key.",
     )
 
 
@@ -46,10 +50,12 @@ class MediaGenerationTestBody(BaseModel):
     kind: Literal["credentials", "image", "video"] = "credentials"
     api_key: str | None = Field(
         default=None,
-        description="Draft Ark API key; omit to test the stored key.",
+        description="Draft provider API key; omit to test the stored key.",
     )
     image_model: str = DEFAULT_IMAGE_MODEL
     video_model: str = DEFAULT_VIDEO_MODEL
+    provider: str | None = None
+    base_url: str | None = None
 
 
 class MediaGenerationTestResponse(BaseModel):
@@ -74,7 +80,7 @@ def _response(view: Any) -> MediaGenerationSettingsResponse:
 @router.get(
     "",
     summary="Get media generation settings",
-    description="Return instance-wide Volcengine Ark generation settings. The stored API key is never returned.",
+    description="Return instance-wide media generation settings (Volcengine Ark, SiliconFlow, or an OpenAI-compatible relay). The stored API key is never returned.",
     response_model=MediaGenerationSettingsResponse,
 )
 async def get_media_generation_settings(
@@ -87,7 +93,7 @@ async def get_media_generation_settings(
 @router.put(
     "",
     summary="Update media generation settings",
-    description="Verify a new Ark API key when supplied, persist the settings, and reload running agents.",
+    description="Verify a new provider API key when supplied, persist the settings, and reload running agents.",
     response_model=MediaGenerationSettingsResponse,
 )
 async def put_media_generation_settings(
@@ -96,13 +102,27 @@ async def put_media_generation_settings(
     server: Any = Depends(get_server),
 ) -> MediaGenerationSettingsResponse:
     api_key = (body.api_key or "").strip() or None
+    provider = (body.provider or "volcengine").strip()
+    if provider not in SUPPORTED_MEDIA_PROVIDERS:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"unsupported media generation provider {provider!r}; "
+            f"choose from {', '.join(SUPPORTED_MEDIA_PROVIDERS)}",
+        )
+    base_url = (body.base_url or default_media_base_url(provider)).strip()
+    if not base_url.startswith(("https://", "http://")):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "media generation base URL must be an HTTP(S) URL")
     store = server.app_runtime.agent_registry.media_generation
     if api_key is not None:
-        result = await store.test_connection(api_key=api_key)
+        result = await store.test_connection(
+            api_key=api_key,
+            provider=provider,
+            base_url=base_url,
+        )
         if not result.get("ok"):
             raise OctopError(
                 ErrorCode.SLASH_BAD_ARGS,
-                str(result.get("error") or "Ark API key verification failed"),
+                str(result.get("error") or "provider API key verification failed"),
             )
     view = await server.app_runtime.agent_registry.save_media_generation(
         enabled=body.enabled,
@@ -111,13 +131,15 @@ async def put_media_generation_settings(
         image_model=body.image_model,
         video_model=body.video_model,
         api_key=api_key,
+        provider=provider,
+        base_url=base_url,
     )
     return _response(view)
 
 
 @router.post(
     "/test",
-    summary="Test Ark media generation credentials",
+    summary="Test media generation credentials",
     description="Test credentials or submit a real image/video model request. Model tests may incur provider charges.",
     response_model=MediaGenerationTestResponse,
 )
@@ -129,12 +151,18 @@ async def test_media_generation_credentials(
     store = server.app_runtime.agent_registry.media_generation
     api_key = (body.api_key or "").strip() or None
     if body.kind == "credentials":
-        result = await store.test_connection(api_key=api_key)
+        result = await store.test_connection(
+            api_key=api_key,
+            provider=body.provider,
+            base_url=body.base_url,
+        )
     else:
         result = await store.test_model(
             kind=body.kind,
             model=body.image_model if body.kind == "image" else body.video_model,
             api_key=api_key,
+            provider=body.provider,
+            base_url=body.base_url,
         )
     return MediaGenerationTestResponse(
         ok=bool(result.get("ok")),

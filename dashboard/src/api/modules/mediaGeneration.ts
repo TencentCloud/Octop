@@ -2,7 +2,7 @@ import { request } from "../request";
 
 export interface MediaGenerationSettings {
   enabled: boolean;
-  provider: "volcengine";
+  provider: string;
   base_url: string;
   image_enabled: boolean;
   video_enabled: boolean;
@@ -18,6 +18,8 @@ export interface MediaGenerationSettingsInput {
   video_enabled: boolean;
   image_model: string;
   video_model: string;
+  provider: string;
+  base_url: string;
   api_key?: string | null;
 }
 
@@ -26,6 +28,8 @@ export interface MediaGenerationTestInput {
   api_key?: string | null;
   image_model?: string;
   video_model?: string;
+  provider?: string;
+  base_url?: string;
 }
 
 export const mediaGenerationApi = {

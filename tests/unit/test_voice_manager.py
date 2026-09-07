@@ -86,3 +86,66 @@ async def test_configuration_probe_uses_unsaved_values(
     assert captured_row.name == "draft"
     assert captured_row.api_key == "sk-draft"
     assert captured_row.base_url == "https://example.test/v1"
+
+
+def test_set_active_siliconflow_preset(voice_mgr: VoiceManager) -> None:
+    active = voice_mgr.set_active(tts="siliconflow")
+    assert active["tts"] == "siliconflow"
+    assert active["stt"] == "browser"
+
+
+def test_resolve_siliconflow_preset_kind_is_openai(voice_mgr: VoiceManager) -> None:
+    resolved = voice_mgr.resolve("siliconflow")
+    assert resolved.kind == "openai"
+
+
+def test_resolve_openai_compatible_preset_kind_is_openai(voice_mgr: VoiceManager) -> None:
+    resolved = voice_mgr.resolve("openai-compatible")
+    assert resolved.kind == "openai"
+
+
+@pytest.mark.asyncio
+async def test_configuration_probe_openai_compatible_custom_base_url(
+    voice_mgr: VoiceManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_test_tts(row: VoiceProviderRow | None, kind: str) -> dict[str, object]:
+        assert row is not None
+        captured["base_url"] = row.base_url
+        captured["extra"] = row.get_extra()
+        return {"ok": True}
+
+    monkeypatch.setattr(adapters, "test_tts", fake_test_tts)
+
+    result = await voice_mgr.test_configuration(
+        name="draft-relay",
+        kind="openai",
+        capability="tts",
+        base_url="https://relay.example.com/v1",
+        api_key="sk-test",
+        extra_json='{"model":"tts-custom","stt_model":"whisper-1","voice_id":"alloy"}',
+        mode="tts",
+    )
+
+    assert result == {"ok": True}
+    assert captured["base_url"] == "https://relay.example.com/v1"
+    assert captured["extra"].get("model") == "tts-custom"
+
+
+def test_set_active_piper_preset(voice_mgr: VoiceManager) -> None:
+    active = voice_mgr.set_active(tts="piper")
+    assert active["tts"] == "piper"
+    assert active["stt"] == "browser"
+
+
+def test_resolve_piper_preset_kind() -> None:
+    from octop.infra.voice.manager import _preset_kind
+
+    assert _preset_kind("piper") == "piper"
+
+
+def test_piper_cannot_be_stt(voice_mgr: VoiceManager) -> None:
+    with pytest.raises(OctopError) as exc:
+        voice_mgr.set_active(stt="piper")
+    assert exc.value.code == ErrorCode.VOICE_CAPABILITY_MISMATCH

@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 媒体生成支持多服务商：火山方舟 / 硅基流动（Qwen-Image、Wan2.2）/ 任意 OpenAI 兼容中转站，服务商与 API 地址可配置
+- 语音合成（TTS）新增两个预置：SiliconFlow（CosyVoice2 TTS + SenseVoice STT）与 OpenAI Compatible（通用中转站，base URL / 模型 / 音色可配）
+- 语音合成新增本地 Piper 预置（127.0.0.1:8081 qwerty 服务，免费零 token，中文华妍 / 英文 Lessac / 中英 mix 自动切换）
+- STT 模型可与 TTS 模型分开配置（extra.stt_model）；OpenAI 官方卡片消息模型修正为 tts-1 + whisper-1
+
+
 ## [0.9.32] - 2026-09-06
 
 ### 新增

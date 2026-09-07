@@ -74,7 +74,7 @@ async def transcribe_openai(
     base_url = (row.base_url or "https://api.openai.com/v1").rstrip("/")
     await _guard_voice_base_url(base_url)
     extra = row.get_extra()
-    model = str(extra.get("model") or "whisper-1")
+    model = str(extra.get("stt_model") or extra.get("model") or "whisper-1")
     ext = "webm" if "webm" in mime else "wav"
     files = {"file": (f"audio.{ext}", audio, mime or "audio/webm")}
     data: dict[str, str] = {"model": model}
@@ -238,6 +238,34 @@ async def synthesize_edge(
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             yield chunk["data"]
+
+
+async def synthesize_piper(
+    row: VoiceProviderRow,
+    text: str,
+    *,
+    voice_id: str | None,
+    speed: float,
+) -> AsyncIterator[bytes]:
+    """Local Piper TTS served by the qwerty companion service (127.0.0.1:8081).
+
+    Free, runs entirely on-device — no API token, no cloud billing. Voices:
+    ``zh`` (Huayan Chinese, default), ``en`` (Lessac English) and ``mix``
+    (auto-switching between the two by character class).
+    """
+    extra = row.get_extra()
+    base_url = (row.base_url or "http://127.0.0.1:8081").rstrip("/")
+    voice = voice_id or str(extra.get("voice_id") or "zh")
+    if voice not in {"zh", "en", "mix"}:
+        raise ValueError(f"local Piper voice must be zh, en or mix (received {voice!r})")
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(
+            f"{base_url}/tts",
+            params={"voice": voice, "audio": text},
+        )
+        resp.raise_for_status()
+        if resp.content:
+            yield resp.content
 
 
 async def _guard_mimo_base_url(base_url: str) -> None:
@@ -448,6 +476,29 @@ async def test_tts(row: VoiceProviderRow | None, kind: str) -> dict[str, Any]:
                 id=0,
                 name="edge",
                 kind="edge",
+                capability="tts",
+                base_url=None,
+                api_key=None,
+                extra_json=None,
+                note=None,
+                enabled=1,
+                created_at=0,
+                updated_at=0,
+            ),
+            "ping",
+            voice_id=None,
+            speed=1.0,
+        ):
+            chunks.append(part)
+        return {"ok": bool(chunks), "bytes": sum(len(c) for c in chunks)}
+    if kind == "piper":
+        chunks: list[bytes] = []
+        async for part in synthesize_piper(
+            row
+            or VoiceProviderRow(
+                id=0,
+                name="piper",
+                kind="piper",
                 capability="tts",
                 base_url=None,
                 api_key=None,

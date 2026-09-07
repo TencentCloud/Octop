@@ -1532,6 +1532,8 @@ class AgentManager:
         image_model: str,
         video_model: str,
         api_key: str | None = None,
+        provider: str | None = None,
+        base_url: str | None = None,
     ) -> MediaGenerationSettings:
         """Persist media settings and rebuild running harness agents."""
         view = self._media_generation.save(
@@ -1541,6 +1543,8 @@ class AgentManager:
             image_model=image_model,
             video_model=video_model,
             api_key=api_key,
+            provider=provider,
+            base_url=base_url,
         )
         await self.reload_all()
         return view

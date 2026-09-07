@@ -145,3 +145,117 @@ async def test_verify_ark_video_model_cancels_accepted_task() -> None:
         ("POST", "/api/v3/contents/generations/tasks"),
         ("DELETE", "/api/v3/contents/generations/tasks/video-test-task"),
     ]
+
+
+def test_media_generation_save_provider_and_base_url(
+    store: tuple[MediaGenerationSettingsStore, SecretRepo],
+) -> None:
+    settings, _ = store
+    settings.save(
+        enabled=True,
+        image_enabled=True,
+        video_enabled=False,
+        image_model="Qwen/Qwen-Image",
+        video_model="",
+        api_key="sk-test",
+        provider="siliconflow",
+        base_url="https://api.siliconflow.cn/v1",
+    )
+
+    view = settings.load()
+    assert view.provider == "siliconflow"
+    assert view.base_url == "https://api.siliconflow.cn/v1"
+    assert view.image_model == "Qwen/Qwen-Image"
+
+    config = settings.harness_config()
+    assert config is not None
+    assert config.provider == "siliconflow"
+    assert config.base_url == "https://api.siliconflow.cn/v1"
+
+
+def test_media_generation_default_base_url_follows_provider(
+    store: tuple[MediaGenerationSettingsStore, SecretRepo],
+) -> None:
+    settings, _ = store
+    settings.save(
+        enabled=True,
+        image_enabled=True,
+        video_enabled=False,
+        image_model="m",
+        video_model="",
+        api_key="sk-test",
+        provider="openai-compatible",
+        base_url="",
+    )
+
+    view = settings.load()
+    assert view.provider == "openai-compatible"
+    assert view.base_url == "https://api.openai.com/v1"
+
+
+@pytest.mark.asyncio
+async def test_verify_provider_api_key_siliconflow_uses_models() -> None:
+    seen: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"data": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        from octop.infra.agents.media_generation import verify_provider_api_key
+
+        result = await verify_provider_api_key(
+            "sk-test",
+            provider="siliconflow",
+            base_url="https://api.siliconflow.cn/v1",
+            client=client,
+        )
+
+    assert result == {"ok": True}
+    assert seen == {
+        "url": "https://api.siliconflow.cn/v1/models",
+        "auth": "Bearer sk-test",
+    }
+
+
+@pytest.mark.asyncio
+async def test_verify_siliconflow_image_probe_uses_image_size() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["body"] = request.content.decode()
+        return httpx.Response(200, json={"images": [{"url": "https://example.com/test.png"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        from octop.infra.agents.media_generation import verify_provider_media_model
+
+        result = await verify_provider_media_model(
+            "sk-test",
+            kind="image",
+            model="Qwen/Qwen-Image",
+            provider="siliconflow",
+            base_url="https://api.siliconflow.cn/v1",
+            client=client,
+        )
+
+    assert result == {"ok": True}
+    assert seen["path"] == "/v1/images/generations"
+    assert '"image_size":"1024x1024"' in str(seen["body"])
+
+
+@pytest.mark.asyncio
+async def test_verify_openai_compatible_video_unsupported() -> None:
+    from octop.infra.agents.media_generation import verify_provider_media_model
+
+    result = await verify_provider_media_model(
+        "sk-test",
+        kind="video",
+        model="gen-1",
+        provider="openai-compatible",
+        base_url="https://relay.example.com/v1",
+    )
+
+    assert result.get("ok") is False
+    assert "video" in str(result.get("error")).lower()
