@@ -262,6 +262,7 @@ async def test_user_export_xlsx(env: Any) -> None:
         isinstance(v, str) and len(v) == 19 and v[4] == "-" and v[10] == " " and "+" not in v
         for v in time_vals
     )
+    assert time_vals == sorted(time_vals)
     assert wb["按天"]._charts
     assert wb["按专家"]._charts
     assert wb["按模型"]._charts

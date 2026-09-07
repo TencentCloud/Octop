@@ -404,7 +404,11 @@ class UsageRepo:
         timezone: str = "UTC",
         limit: int = DETAIL_EXPORT_LIMIT,
     ) -> list[UsageRow]:
-        """Return raw usage_log rows for Excel export (newest first)."""
+        """Return usage_log rows for Excel export (oldest → newest).
+
+        When ``limit`` truncates, keep the *newest* ``limit`` rows, then
+        return them in ascending time order for the sheet.
+        """
         where_sql, params, _start, _end = self._scope_filter(
             user_id=user_id,
             agent_id=agent_id,
@@ -428,7 +432,8 @@ class UsageRepo:
                 """,
                 [*params, cap],
             ).fetchall()
-        return [UsageRow.from_row(r) for r in rows]
+        # Newest-first fetch (for LIMIT), then chronological for Excel.
+        return list(reversed([UsageRow.from_row(r) for r in rows]))
 
     def thread_totals(self, *, agent_id: str, thread_id: str) -> dict[str, int]:
         """Aggregate token usage for a single thread."""
