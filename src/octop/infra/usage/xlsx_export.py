@@ -2,7 +2,8 @@
 
 Formatting follows the MiniMax XLSX skill conventions adapted for openpyxl
 (runtime API export): bold headers, thousands separators, freeze panes,
-auto-filter, TOTAL rows as Excel formulas, and readable IO charts.
+auto-filter, TOTAL rows as Excel formulas (blank spacer above so Excel
+Sort/Filter does not move them), and readable IO charts.
 """
 
 from __future__ import annotations
@@ -116,11 +117,17 @@ def _append_total_row(
     data_end: int,
     ncols: int,
 ) -> int:
-    """Append a TOTAL row with SUM formulas. Returns the total row index."""
+    """Append a TOTAL row with SUM formulas. Returns the total row index.
+
+    Leaves one blank row between the last data row and TOTAL so Excel's
+    Sort / AutoFilter contiguous-region detection does not pull TOTAL
+    into the sortable block.
+    """
     from openpyxl.styles import Alignment
     from openpyxl.utils import get_column_letter
 
-    total_row = data_end + 1
+    # Blank spacer: data_end + 1 stays empty on purpose.
+    total_row = data_end + 2
     for col in range(1, ncols + 1):
         cell = ws.cell(total_row, col)
         cell.font = _font(bold=True)

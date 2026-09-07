@@ -261,9 +261,14 @@ async def test_user_export_xlsx(env: Any) -> None:
     name_col = headers.index("专家名称") + 1
     assert any(row[name_col - 1].value == "Export Expert" for row in detail.iter_rows(min_row=2))
     time_col = headers.index(next(h for h in headers if h and h.startswith("时间"))) + 1
+    # TOTAL sits two rows below the last data row (blank spacer in between)
+    # so Excel Sort does not treat 合计 as part of the contiguous data block.
+    assert detail.cell(detail.max_row, 1).value == "合计"
+    assert all(detail.cell(detail.max_row - 1, col).value is None for col in range(1, 5))
+    assert detail.auto_filter.ref == f"A1:P{detail.max_row - 2}"
     time_vals = [
         row[time_col - 1].value
-        for row in detail.iter_rows(min_row=2, max_row=detail.max_row - 1)
+        for row in detail.iter_rows(min_row=2, max_row=detail.max_row - 2)
         if row[time_col - 1].value
     ]
     assert len(time_vals) >= 2
@@ -436,7 +441,7 @@ async def test_admin_filters_by_user_agent_and_windows(env: Any) -> None:
     uid_col = headers.index("用户 ID")
     user_ids = {
         row[uid_col].value
-        for row in detail.iter_rows(min_row=2, max_row=detail.max_row - 1)
+        for row in detail.iter_rows(min_row=2, max_row=detail.max_row - 2)
         if row[uid_col].value is not None
     }
     assert user_ids == {bob_id}
