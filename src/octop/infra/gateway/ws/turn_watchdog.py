@@ -39,6 +39,7 @@ notified 记录由 harness 收尾 finally 的 mark_turn_idle 删除；若极端�
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
@@ -141,7 +142,7 @@ class TurnWatchdog:
         if task is None or task.done():
             return
         task.cancel()
-        with __import__("contextlib").suppress(asyncio.CancelledError):
+        with contextlib.suppress(asyncio.CancelledError):
             await task
 
     async def _scan_loop(self) -> None:

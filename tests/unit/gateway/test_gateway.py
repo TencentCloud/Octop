@@ -51,9 +51,32 @@ async def test_gateway_boot_and_shutdown(tmp_path: Path) -> None:
         await gw.boot()
         assert gw._channel_manager is not None
         assert gw._processor is not None
+        assert gw._turn_watchdog is not None  # enabled by default
 
         await gw.shutdown()
         assert gw._channel_manager is None
+        await registry.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_gateway_boot_respects_watchdog_disabled(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    with patch("octop.infra.agents.manager.HarnessAgentManager") as mock_hm_cls:
+        mock_hm_cls.return_value = MagicMock()
+
+        registry = AgentManager(
+            repos=services.repos,
+            paths=services.paths,
+            config=services.config,
+        )
+        await registry.boot()
+
+        gw = Gateway(agent_manager=registry, repos=services.repos)
+        with patch.dict("os.environ", {"OCTOP_TURN_WATCHDOG_DISABLED": "1"}):
+            await gw.boot()
+        assert gw._turn_watchdog is None  # escape hatch honored
+
+        await gw.shutdown()
         await registry.shutdown()
 
 
