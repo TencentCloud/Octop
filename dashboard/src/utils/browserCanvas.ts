@@ -20,7 +20,12 @@ export function getCanvasCoords(
   // map by the uniform scale factor.
   const imgW = canvas.width;
   const imgH = canvas.height;
+  // Bitmap may be 0 when no frame has been painted yet (or cleared by the
+  // caller); mapping against a zero bitmap would produce Infinity/NaN and
+  // round() to NaN, which JSON serializes as null -> pointer jumps to origin.
+  if (imgW === 0 || imgH === 0) return { x: 0, y: 0 };
   const scale = Math.min(rect.width / imgW, rect.height / imgH);
+  if (!Number.isFinite(scale) || scale <= 0) return { x: 0, y: 0 };
   const drawW = imgW * scale;
   const drawH = imgH * scale;
   const offsetX = rect.left + (rect.width - drawW) / 2;

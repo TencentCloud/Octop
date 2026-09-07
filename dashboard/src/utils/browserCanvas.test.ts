@@ -81,4 +81,18 @@ describe("getCanvasCoords", () => {
     const canvas = fakeCanvas(200, 100, { left: 0, top: 0, width: 0, height: 0 });
     expect(getCanvasCoords(canvas, { clientX: 10, clientY: 10 })).toEqual({ x: 0, y: 0 });
   });
+
+  it("returns origin when the bitmap is unpainted (0-sized)", () => {
+    // canvas.width/height === 0 happens before the first frame is painted
+    // (or when the caller clears it); mapping must not produce NaN.
+    const canvas = fakeCanvas(0, 0, { left: 0, top: 0, width: 200, height: 100 });
+    expect(getCanvasCoords(canvas, { clientX: 10, clientY: 10 })).toEqual({ x: 0, y: 0 });
+  });
+
+  it("returns origin when only one bitmap dimension is zero", () => {
+    const canvas = fakeCanvas(200, 0, { left: 0, top: 0, width: 200, height: 100 });
+    expect(getCanvasCoords(canvas, { clientX: 10, clientY: 10 })).toEqual({ x: 0, y: 0 });
+    const canvas2 = fakeCanvas(0, 100, { left: 0, top: 0, width: 200, height: 100 });
+    expect(getCanvasCoords(canvas2, { clientX: 10, clientY: 10 })).toEqual({ x: 0, y: 0 });
+  });
 });
