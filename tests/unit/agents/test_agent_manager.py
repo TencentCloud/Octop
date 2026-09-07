@@ -336,6 +336,8 @@ def test_build_harness_config_renders_system_prompt_playbook_vars(
     """
     from dataclasses import replace
 
+    _seed_test_provider(manager)
+
     agent_id = "AGT_PB"
     ws = manager._paths.ensure_agent_workspace(agent_id)
     (ws / ".bootstrapped").write_text("", encoding="utf-8")
@@ -347,13 +349,17 @@ def test_build_harness_config_renders_system_prompt_playbook_vars(
         ),
         config_json=json.dumps({"backend": _fs_backend(ws)}),
     )
+    import re
+
     cfg = manager._build_harness_config(row)
     assert cfg.system_prompt is not None
     assert agent_id in cfg.system_prompt
     assert "bot" in cfg.system_prompt  # row.name
     assert str(ws) in cfg.system_prompt
     assert "gpt-4o-mini" in cfg.system_prompt
-    assert "20" in cfg.system_prompt  # rendered date starts with 20xx
+    # rendered date is a real YYYY-MM-DD, not just a bare substring
+    assert re.search(r"date \d{4}-\d{2}-\d{2}", cfg.system_prompt)
+    assert re.search(r"datetime \d{4}-\d{2}-\d{2} \d{2}:\d{2}", cfg.system_prompt)
     assert "{foo}" in cfg.system_prompt  # unknown placeholder preserved
     assert "{date}" not in cfg.system_prompt
 
@@ -1445,3 +1451,38 @@ def test_prepare_stream_request_maps_model_settings_and_max_input_tokens(
         "max_tokens": 2048,
     }
     assert req["configurable"]["max_input_tokens"] == 32000
+
+
+def test_render_system_prompt_timezone_aware() -> None:
+    """Rendered {date}/{datetime} follow the configured IANA zone; invalid or
+    missing zones fall back to UTC instead of the machine's local time."""
+    import re
+
+    from octop.infra.agents.manager import _render_system_prompt
+
+    base = dict(
+        agent_id="AGT_TZ",
+        agent_name="tz",
+        work_dir="/tmp/ws",
+        model="m",
+    )
+
+    rendered = _render_system_prompt(
+        "{date} {datetime}", timezone="Asia/Shanghai", **base
+    )
+    # template renders to "<date> <date> <time>"
+    m = re.match(r"^(\d{4}-\d{2}-\d{2}) (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$", rendered)
+    assert m is not None
+    # Shanghai is UTC+8 without DST: local wall-clock is always >= UTC.
+    from datetime import datetime, timezone as dt_timezone
+
+    utc_wall = datetime.now(dt_timezone.utc).strftime("%H:%M")
+    assert m.group(2) >= utc_wall or m.group(1) > datetime.now(dt_timezone.utc).strftime(
+        "%Y-%m-%d"
+    )
+
+    # Invalid zone -> UTC fallback (renders without error).
+    rendered_fallback = _render_system_prompt(
+        "{date}", timezone="Not/AZone", **base
+    )
+    assert re.match(r"\d{4}-\d{2}-\d{2}$", rendered_fallback)

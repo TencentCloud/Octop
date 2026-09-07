@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import shutil
+import zoneinfo
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, fields, replace
@@ -116,6 +117,7 @@ def _render_system_prompt(
     agent_name: str,
     work_dir: str,
     model: str | None,
+    timezone: str | None = None,
 ) -> str:
     """Render ``{playbook}`` variables into an agent system prompt.
 
@@ -123,8 +125,13 @@ def _render_system_prompt(
     prompt may reference the agent's own identity, working directory, and the
     current date so a single template stays accurate across instances. Values
     are filled once when the harness graph is compiled, not per turn.
+
+    ``timezone`` is the configured IANA zone (``OctopConfig.default_timezone``);
+    when unset or invalid we fall back to UTC so ``{date}``/``{datetime}`` never
+    silently use the machine's local time, which may disagree with the
+    server-wide configured timezone.
     """
-    now = datetime.datetime.now()
+    now = _now_in_timezone(timezone)
     substitutions = {
         "agent_id": agent_id,
         "agent_name": agent_name,
@@ -137,6 +144,16 @@ def _render_system_prompt(
     for key, value in substitutions.items():
         out = out.replace("{" + key + "}", value)
     return out
+
+
+def _now_in_timezone(timezone: str | None) -> datetime.datetime:
+    """Tz-aware now; UTC fallback when the zone is unset or unknown."""
+    if timezone:
+        try:
+            return datetime.datetime.now(zoneinfo.ZoneInfo(timezone))
+        except (ValueError, KeyError, OSError):
+            logger.warning("unknown default_timezone %r, falling back to UTC", timezone)
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -2638,6 +2655,7 @@ class AgentManager:
                 agent_name=row.name or row.agent_id,
                 work_dir=str(harness_workspace),
                 model=default_model,
+                timezone=self._config.default_timezone,
             )
 
         uid = self._connector_uid_for(row)
