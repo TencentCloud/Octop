@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import secrets
@@ -414,6 +415,10 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
     return preview
 
 
+# 2026-09-07 修复：后台任务强引用集合（asyncio 要求保存引用防 GC 回收）。
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
 def _schedule_connector_reload(server: Any, user_id: int, *, all_users: bool = False) -> None:
     assert server.app_runtime is not None
 
@@ -426,7 +431,9 @@ def _schedule_connector_reload(server: Any, user_id: int, *, all_users: bool = F
         except Exception:
             logger.exception("background connector reload failed for user %s", user_id)
 
-    asyncio.create_task(_run())
+    task = asyncio.create_task(_run(), name=f"connector-reload-user-{user_id}")
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 def _can_manage_connector(inst: Any, user: Any) -> bool:
@@ -1350,18 +1357,22 @@ async def oauth_callback(
     redirect = row.redirect_after or "/connectors"
     locale = resolve_request_locale(request)
     success_message = tr("connector.oauth.callback_success", locale)
-    html = f"""<!DOCTYPE html><html><body>
+    # 2026-09-07 修复：redirect_after 为用户可控（OAuth start body），原样拼入
+    # JS 字符串可被注入（self-XSS）。转义后再嵌入。
+    redirect_esc = html.escape(redirect, quote=True)
+    state_esc = html.escape(row.state_id, quote=True)
+    html_doc = f"""<!DOCTYPE html><html><body>
 <script>
   if (window.opener) {{
-    window.opener.postMessage({{ type: 'octop:connector-oauth', state_id: '{row.state_id}' }}, '*');
+    window.opener.postMessage({{ type: 'octop:connector-oauth', state_id: '{state_esc}' }}, '*');
     window.close();
   }} else {{
-    window.location.href = '{redirect}?oauth_state={row.state_id}';
+    window.location.href = '{redirect_esc}?oauth_state={state_esc}';
   }}
 </script>
 <p>{success_message}</p>
 </body></html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(html_doc)
 
 
 @router.get("/connectors/oauth/pending/{state_id}", summary="Poll OAuth result")

@@ -86,18 +86,41 @@ class _MemoryCache:
                 backend_config=backend_config,
             )
             bridge = Bridge(memory)
+            # 2026-09-07 修复：替换旧实例（fingerprint 变化）时先释放旧资源
+            old = self._entries.get(agent_id)
+            if old is not None and old[2] != fingerprint:
+                _close_memory_instances(old[0], old[1])
             self._entries[agent_id] = (memory, bridge, fingerprint)
             while len(self._entries) > self._max_size:
-                _, evicted = self._entries.popitem(last=False)
-                logger.debug("memory dashboard cache evicted agent_id=%s", evicted)
+                evicted_id, evicted_val = self._entries.popitem(last=False)
+                _close_memory_instances(evicted_val[0], evicted_val[1])
+                logger.debug("memory dashboard cache evicted agent_id=%s", evicted_id)
             return memory, bridge
 
     def invalidate(self, agent_id: str | None = None) -> None:
         with self._lock:
             if agent_id is None:
+                for _id, val in self._entries.items():
+                    _close_memory_instances(val[0], val[1])
                 self._entries.clear()
             else:
-                self._entries.pop(agent_id, None)
+                val = self._entries.pop(agent_id, None)
+                if val is not None:
+                    _close_memory_instances(val[0], val[1])
+
+
+def _close_memory_instances(memory: Any, bridge: Any) -> None:
+    """防御性释放：harness-memory 无公开 teardown，sqlite 连接随 GC 关闭；
+    兜底尝试 close/teardown（若未来版本新增），静默忽略异常。"""
+    for inst in (bridge, memory):
+        for name in ("close", "teardown", "aclose"):
+            fn = getattr(inst, name, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:  # noqa: BLE001 - 释放失败不影响主流程
+                    logger.debug("memory instance %s.%s failed", type(inst).__name__, name, exc_info=True)
+                break
 
 
 _CACHE = _MemoryCache()
