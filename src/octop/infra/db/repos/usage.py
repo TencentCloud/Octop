@@ -425,15 +425,23 @@ class UsageRepo:
                     cache_read_tokens, cache_write_tokens,
                     output_tokens, reasoning_tokens, total_tokens,
                     model_calls, source
-                FROM usage_log
-                WHERE {where_sql}
-                ORDER BY ts DESC, id DESC
-                LIMIT ?
+                FROM (
+                    SELECT
+                        id, ts, agent_id, user_id, thread_id, model,
+                        input_tokens, uncached_input_tokens,
+                        cache_read_tokens, cache_write_tokens,
+                        output_tokens, reasoning_tokens, total_tokens,
+                        model_calls, source
+                    FROM usage_log
+                    WHERE {where_sql}
+                    ORDER BY ts DESC, id DESC
+                    LIMIT ?
+                ) AS recent
+                ORDER BY ts ASC, id ASC
                 """,
                 [*params, cap],
             ).fetchall()
-        # Newest-first fetch (for LIMIT), then chronological for Excel.
-        return list(reversed([UsageRow.from_row(r) for r in rows]))
+        return [UsageRow.from_row(r) for r in rows]
 
     def thread_totals(self, *, agent_id: str, thread_id: str) -> dict[str, int]:
         """Aggregate token usage for a single thread."""

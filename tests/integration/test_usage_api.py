@@ -230,17 +230,26 @@ async def test_user_export_xlsx(env: Any) -> None:
         model="openai:gpt-4o-mini",
         input_tokens=11,
         output_tokens=7,
+        ts=1_700_000_100,
+    )
+    repo.record(
+        agent_id="y",
+        user_id=ctx["alice_id"],
+        thread_id="t-export",
+        model="openai:gpt-4o-mini",
+        input_tokens=3,
+        output_tokens=1,
+        ts=1_700_000_000,
     )
     r = await c.get(
-        "/api/usage/export.xlsx?window=last_30d",
+        "/api/usage/export.xlsx?window=all",
         headers={**alice_auth, "Accept-Language": "zh"},
     )
     assert r.status_code == 200
     assert "spreadsheetml" in r.headers.get("content-type", "")
     disposition = r.headers.get("content-disposition", "")
     assert "filename*" in disposition
-    # zh: Token用量_last_30d.xlsx
-    assert "Token%E7%94%A8%E9%87%8F_last_30d.xlsx" in disposition
+    assert "_all.xlsx" in disposition
     wb = load_workbook(BytesIO(r.content))
     assert "明细" in wb.sheetnames
     assert "按天" in wb.sheetnames
@@ -257,12 +266,13 @@ async def test_user_export_xlsx(env: Any) -> None:
         for row in detail.iter_rows(min_row=2, max_row=detail.max_row - 1)
         if row[time_col - 1].value
     ]
-    assert time_vals
+    assert len(time_vals) >= 2
+    assert time_vals == sorted(time_vals)
+    assert time_vals[0] < time_vals[-1]
     assert all(
         isinstance(v, str) and len(v) == 19 and v[4] == "-" and v[10] == " " and "+" not in v
         for v in time_vals
     )
-    assert time_vals == sorted(time_vals)
     assert wb["按天"]._charts
     assert wb["按专家"]._charts
     assert wb["按模型"]._charts
