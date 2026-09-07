@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 智能体 system_prompt 支持 playbook 插值变量（{agent_id}/{agent_name}/{date}/{datetime}/{work_dir}/{model}）：编译图时按当前 agent/工作目录/时间渲染，动态状态仍由 MEMORY.md 热索引承载（每轮注入）；未知占位符原样保留，模板写错变量名不静默丢失
+
 ## [0.9.32] - 2026-09-06
 
 ### 新增

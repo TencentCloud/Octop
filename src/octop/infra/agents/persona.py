@@ -62,11 +62,19 @@ class PersonaLoader:
         custom: str | None,
     ) -> str:
         template = self.load(mbti)
-        return template.format(
-            agent_name=agent_name,
-            user_display=user_display,
-            custom=(custom or "").strip(),
-        )
+        # Replace the three known placeholders via ``str.replace`` instead of
+        # ``str.format``: a persona that carries playbook variables rendered
+        # later (e.g. {date} / {work_dir}, see ``_render_system_prompt`` in
+        # AgentManager) must survive this pass unchanged — ``.format`` would
+        # raise ``KeyError`` on any unknown placeholder.
+        out = template.replace("{agent_name}", agent_name).replace("{user_display}", user_display)
+        custom_text = (custom or "").strip()
+        if custom_text:
+            out = out.replace("{custom}", custom_text)
+        else:
+            # Custom block absent: drop the placeholder line entirely.
+            out = out.replace("{custom}\n", "").replace("{custom}", "")
+        return out
 
 
 def resolve_persona_code(
