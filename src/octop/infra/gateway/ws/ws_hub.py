@@ -37,6 +37,9 @@ class ActiveTurn:
     in_tool: bool = False
     tool_segment_started_at: float | None = None
     tool_budget_spent: float = 0.0
+    # 2026-09-07 修复：同一 thread 多并发 WS 连接（多标签页）各自开启 turn 时，
+    # 先结束的一方不能把登记删掉（另一 turn 仍在跑）——引用计数，最后一个结束才置 idle。
+    refcount: int = 1
 
     def __post_init__(self) -> None:
         if self.started_at == self.last_progress_at:
@@ -152,6 +155,10 @@ class WebSocketHub:
             # The old turn's finally-path will mark_turn_idle soon, after
             # which a retry registers fresh.
             return
+        if existing is not None:
+            # 并发 turn（同 thread 多连接）：递增引用计数，不覆盖既有登记。
+            existing.refcount += 1
+            return
         self._active_turns[tid] = ActiveTurn(
             agent_id=agent_id,
             thread_id=tid,
@@ -187,7 +194,13 @@ class WebSocketHub:
             rec.last_progress_at = now
 
     def mark_turn_idle(self, thread_id: str) -> None:
-        self._active_turns.pop(thread_id.strip(), None)
+        tid = thread_id.strip()
+        rec = self._active_turns.get(tid)
+        if rec is None:
+            return
+        rec.refcount -= 1
+        if rec.refcount <= 0:
+            self._active_turns.pop(tid, None)
 
     def is_turn_active(self, thread_id: str) -> bool:
         rec = self._active_turns.get(thread_id.strip())

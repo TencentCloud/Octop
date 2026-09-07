@@ -165,6 +165,20 @@ def test_ws_hub_turn_active_flags() -> None:
     assert hub.is_turn_active("t1") is False
 
 
+def test_ws_hub_concurrent_turns_refcount() -> None:
+    """Two overlapping turns on the same thread: the first to finish must not
+    idle the registration while the second is still streaming (multi-tab)."""
+    hub = WebSocketHub()
+    hub.mark_turn_active("t1")
+    hub.mark_turn_active("t1")  # second connection starts a turn on same thread
+    hub.mark_turn_idle("t1")  # first connection finishes
+    assert hub.is_turn_active("t1") is True, "second turn still streaming"
+    hub.mark_turn_idle("t1")  # second finishes
+    assert hub.is_turn_active("t1") is False
+    hub.mark_turn_idle("t1")  # redundant idle is a no-op
+    assert hub.is_turn_active("t1") is False
+
+
 @pytest.mark.asyncio
 async def test_ws_channel_streams_chunks() -> None:
     hub = WebSocketHub()
