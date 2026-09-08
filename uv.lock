@@ -1345,7 +1345,7 @@ wheels = [
 
 [[package]]
 name = "harness-gateway"
-version = "0.9.5"
+version = "0.9.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1363,9 +1363,9 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/2c/a037fca7d181c97fb3a19e434830ab0e2ca556ea9627a42976325566c43d/harness_gateway-0.9.5.tar.gz", hash = "sha256:4d7f1c6db78b90072e739fdaf07fd0d88b339a0d65030f0bd2de2884b76a62f2", size = 499064, upload-time = "2026-09-03T08:18:28.814Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/65/57805814f4abebf3b660a25945e52d4acf461da99b7b260488cd479f6e28/harness_gateway-0.9.6.tar.gz", hash = "sha256:f50fcaae953dd9ba082fcc2cd0029893728f8d21d1c459502b60782dadef79bb", size = 500496, upload-time = "2026-09-08T08:12:12.288Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/77/82/3cca28f17f7d0b5e42c802570b7b599b4149795cb7c5f73ed0fd59515124/harness_gateway-0.9.5-py3-none-any.whl", hash = "sha256:0d76d3148898501d3c71acec57c47f7cfd97fba1ee42eb96b1766560b7398051", size = 138899, upload-time = "2026-09-03T08:18:25.786Z" },
+    { url = "https://files.pythonhosted.org/packages/19/7d/531b55e908525b5c90ba723ef32fd12bd68e691d51f8e1f90c3744d6d09f/harness_gateway-0.9.6-py3-none-any.whl", hash = "sha256:e5a434fa79c562e28c5b8efabc5b17626d936cb0b2d171b8e2e98e5470e0780f", size = 139515, upload-time = "2026-09-08T08:12:10.29Z" },
 ]
 
 [[package]]
@@ -2599,7 +2599,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "harness-browser", specifier = ">=0.7.8" },
-    { name = "harness-gateway", specifier = ">=0.9.5" },
+    { name = "harness-gateway", specifier = ">=0.9.6" },
     { name = "harness-memory", specifier = ">=0.9.10" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
