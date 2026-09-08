@@ -22,6 +22,18 @@ PORT="${OCTOP_PORT:-8088}"
 
 mkdir -p "$OCTOP_HOME"
 
+# 运行时修复: harness-agent MRO 顺序问题（与 Dockerfile 补丁配合，覆盖已运行旧镜像的场景）
+# 上游修复发布后可移除此段
+_patch_mro() {
+    local server_py
+    server_py="$(find /app/.venv/lib -path '*/harness_agent/acp/server.py' -print -quit 2>/dev/null || true)"
+    if [ -n "$server_py" ] && [ -f "$server_py" ] && grep -q 'class _Agent(Agent, HarnessACPAgent):' "$server_py"; then
+        sed -i 's/class _Agent(Agent, HarnessACPAgent):/class _Agent(HarnessACPAgent, Agent):/' "$server_py"
+        echo "[entrypoint] Patched harness_agent MRO order in: $server_py"
+    fi
+}
+_patch_mro
+
 if [ ! -f "$DB_FILE" ]; then
     echo "[entrypoint] 首次启动，正在初始化 Octop..."
 
