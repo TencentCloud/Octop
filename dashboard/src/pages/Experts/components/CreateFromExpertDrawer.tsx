@@ -450,7 +450,7 @@ export default function CreateFromExpertDrawer({
           showIcon
           message={t("experts.noModelsWarning")}
           action={
-            <a href="/admin/providers" style={{ whiteSpace: "nowrap" }}>
+            <a href="/admin/models" style={{ whiteSpace: "nowrap" }}>
               {t("experts.goToAdmin")}
             </a>
           }
