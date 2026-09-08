@@ -275,7 +275,7 @@ export default function SkillPackagesTab({
           setDetailPackage(null);
         }}
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailLoading ? (
           <Spin className={styles.skillPackagesLoading} />

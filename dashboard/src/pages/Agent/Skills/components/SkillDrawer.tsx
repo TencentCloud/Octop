@@ -829,6 +829,7 @@ export function SkillDrawer({
       title={drawerTitle}
       open={open}
       onClose={onClose}
+      forceRender
       destroyOnHidden
       styles={{
         body: {

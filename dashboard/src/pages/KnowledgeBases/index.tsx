@@ -1971,7 +1971,7 @@ export default function KnowledgeBasesPage() {
         onCancel={() => setPreviewOpen(false)}
         footer={null}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <Spin spinning={previewLoading}>
           <pre className={styles.previewBody}>{previewText}</pre>
@@ -1985,7 +1985,7 @@ export default function KnowledgeBasesPage() {
         onOk={() => void createFolder()}
         okText={t("common.create")}
         cancelText={t("common.cancel")}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input
           value={folderName}
@@ -2002,7 +2002,7 @@ export default function KnowledgeBasesPage() {
         onOk={() => void renameFolder()}
         okText={t("common.save")}
         cancelText={t("common.cancel")}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input
           value={renameName}
@@ -2032,7 +2032,8 @@ export default function KnowledgeBasesPage() {
         okText={t(editingBase ? "common.save" : "common.create")}
         cancelText={t("common.cancel")}
         width={520}
-        destroyOnClose
+        forceRender
+        destroyOnHidden
         className={styles.baseModal}
       >
         <Form

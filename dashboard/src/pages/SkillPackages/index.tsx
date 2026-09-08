@@ -922,7 +922,8 @@ export default function SkillPackagesPage() {
         okText={t(editingPackage ? "common.save" : "common.create")}
         cancelText={t("common.cancel")}
         width={520}
-        destroyOnClose
+        forceRender
+        destroyOnHidden
         className={styles.packageModal}
       >
         {!editingPackage ? (
@@ -1031,7 +1032,7 @@ export default function SkillPackagesPage() {
         open={hubOpen}
         onClose={() => setHubOpen(false)}
         width={860}
-        destroyOnClose
+        destroyOnHidden
       >
         {selected ? (
           <SkillHubTab
