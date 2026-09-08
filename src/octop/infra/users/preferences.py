@@ -14,8 +14,10 @@ MAX_REMOTE_BROWSER_BOOKMARKS = 12
 PREFERENCES_KEY_REMOTE_BROWSER_BOOKMARKS = "remote_browser_bookmarks"
 PREFERENCES_KEY_PREFERRED_MODEL = "preferred_model"
 PREFERENCES_KEY_MODEL_REASONING = "model_reasoning"
+PREFERENCES_KEY_MODEL_ROUTING = "model_routing"
 PREFERENCES_KEY_TIMEZONE = "timezone"
 MAX_BOOKMARK_TITLE_LEN = 80
+MAX_MODEL_ROUTING = 8
 
 REASONING_MODES = frozenset({"auto", "enabled", "disabled"})
 
@@ -88,6 +90,34 @@ def get_preferred_model_from_json(raw: str | None) -> str | None:
     return normalize_model_ref(parse_preferences_json(raw).get(PREFERENCES_KEY_PREFERRED_MODEL))
 
 
+def validate_model_routing(items: list[Any]) -> list[str]:
+    """校验路由链：每项是合法 model ref，去重保序，上限 MAX_MODEL_ROUTING。"""
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        ref = normalize_model_ref(item)
+        if ref is None or ref in seen:
+            continue
+        seen.add(ref)
+        out.append(ref)
+    if len(out) > MAX_MODEL_ROUTING:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"model_routing limit is {MAX_MODEL_ROUTING}",
+        )
+    return out
+
+
+def get_model_routing_from_json(raw: str | None) -> list[str]:
+    data = parse_preferences_json(raw).get(PREFERENCES_KEY_MODEL_ROUTING, [])
+    if not isinstance(data, list):
+        return []
+    try:
+        return validate_model_routing(data)
+    except OctopError:
+        return []
+
+
 def normalize_reasoning_preference(value: Any) -> ModelReasoningPreference:
     if not isinstance(value, dict):
         return ModelReasoningPreference()
@@ -137,6 +167,7 @@ def merge_model_preferences_json(
     *,
     preferred_model: str | None | object = ...,
     model_reasoning: dict[str, ModelReasoningPreference] | None = None,
+    model_routing: list[str] | None | object = ...,
 ) -> str:
     data = parse_preferences_json(current_raw)
     if preferred_model is not ...:
@@ -151,4 +182,9 @@ def merge_model_preferences_json(
         data[PREFERENCES_KEY_MODEL_REASONING] = {
             ref: {"mode": pref.mode, "effort": pref.effort} for ref, pref in model_reasoning.items()
         }
+    if model_routing is not ...:
+        if model_routing is None:
+            data.pop(PREFERENCES_KEY_MODEL_ROUTING, None)
+        else:
+            data[PREFERENCES_KEY_MODEL_ROUTING] = validate_model_routing(model_routing)
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))

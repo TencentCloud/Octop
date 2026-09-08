@@ -2921,7 +2921,18 @@
     "onnxNotReady": "not ready",
     "onnxCacheDir": "Cache: {{dir}}",
     "onnxLocalCached": "Cached models",
-    "onnxQuickDownload": "Quick download from catalog…"
+    "onnxQuickDownload": "Quick download from catalog…",
+    "routingTitle": "Model Routing",
+    "routingTooltip": "Models are tried in order: when one fails (rate limit / outage / unavailable), the next is called automatically. When routing is set it takes precedence; the star preference above only applies when routing is empty.",
+    "routingDesc": "Models are called in order; on failure (rate limit / outage) the next one takes over automatically. 2-4 models recommended: primary first, fallbacks after.",
+    "routingCount": "{{count}} set",
+    "routingEmpty": "No routing configured. Add models in order below — if the first fails, the next takes over automatically.",
+    "routingAdd": "Add Model",
+    "routingAddPlaceholder": "Pick a model to add",
+    "routingMoveUp": "Move up",
+    "routingMoveDown": "Move down",
+    "routingRemove": "Remove",
+    "routingSaved": "Model routing updated"
   },
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",

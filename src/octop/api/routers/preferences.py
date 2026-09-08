@@ -12,13 +12,16 @@ from pydantic import BaseModel, Field, model_validator
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import (
+    MAX_MODEL_ROUTING,
     MAX_REMOTE_BROWSER_BOOKMARKS,
     PREFERENCES_KEY_TIMEZONE,
     ModelReasoningPreference,
     get_model_reasoning_from_json,
+    get_model_routing_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
     parse_preferences_json,
+    validate_model_routing,
 )
 from octop.infra.utils.locale import normalize_locale
 
@@ -49,6 +52,10 @@ class PreferencesResponse(BaseModel):
         default_factory=dict,
         description="Per-model reasoning defaults for this user.",
     )
+    model_routing: list[str] = Field(
+        default_factory=list,
+        description="Ordered model failover chain (1st tried first, failover on errors).",
+    )
     timezone: str | None = Field(default=None, description="Preferred IANA timezone.")
 
 
@@ -60,12 +67,13 @@ class PatchPreferencesBody(BaseModel):
     )
     preferred_model: str | None = None
     model_reasoning: dict[str, ModelReasoningPreferenceModel] | None = None
+    model_routing: list[str] | None = None
     timezone: str | None = None
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> Self:
         if not self.model_fields_set.intersection(
-            {"locale", "remote_browser_bookmarks", "preferred_model", "model_reasoning", "timezone"}
+            {"locale", "remote_browser_bookmarks", "preferred_model", "model_reasoning", "model_routing", "timezone"}
         ):
             raise ValueError("at least one preference field is required")
         if (
@@ -74,6 +82,10 @@ class PatchPreferencesBody(BaseModel):
         ):
             raise ValueError(
                 f"remote_browser_bookmarks must have at most {MAX_REMOTE_BROWSER_BOOKMARKS} items"
+            )
+        if self.model_routing is not None and len(self.model_routing) > MAX_MODEL_ROUTING:
+            raise ValueError(
+                f"model_routing must have at most {MAX_MODEL_ROUTING} items"
             )
         return self
 
@@ -96,6 +108,7 @@ def _response(row: Any) -> PreferencesResponse:
             ref: ModelReasoningPreferenceModel(mode=pref.mode, effort=pref.effort)
             for ref, pref in get_model_reasoning_from_json(raw).items()
         },
+        model_routing=get_model_routing_from_json(raw),
         timezone=parse_preferences_json(raw).get(PREFERENCES_KEY_TIMEZONE),
     )
 
@@ -120,7 +133,11 @@ async def patch_preferences(
     if body.remote_browser_bookmarks is not None:
         items = [b.model_dump() for b in body.remote_browser_bookmarks]
         await server.user_manager.set_remote_browser_bookmarks(user.username, items)
-    if "preferred_model" in body.model_fields_set or body.model_reasoning is not None:
+    if (
+        "preferred_model" in body.model_fields_set
+        or body.model_reasoning is not None
+        or "model_routing" in body.model_fields_set
+    ):
         preferred: str | None | object = ...
         if "preferred_model" in body.model_fields_set:
             preferred = body.preferred_model
@@ -138,10 +155,23 @@ async def patch_preferences(
                 ref: ModelReasoningPreference(mode=value.mode, effort=value.effort)
                 for ref, value in body.model_reasoning.items()
             }
+        routing: list[str] | None | object = ...
+        if "model_routing" in body.model_fields_set:
+            routing = []
+            if body.model_routing:
+                routing = validate_model_routing(body.model_routing)
+                providers = server.app_runtime.agent_registry.providers
+                for ref in routing:
+                    if not providers.is_model_ref_usable(ref):
+                        raise OctopError(
+                            ErrorCode.SLASH_BAD_ARGS,
+                            f"model_routing contains an unavailable model: {ref}",
+                        )
         await server.user_manager.set_model_preferences(
             user.username,
             preferred_model=preferred,
             model_reasoning=reasoning,
+            model_routing=routing,
         )
     if "timezone" in body.model_fields_set:
         raw_timezone = body.timezone

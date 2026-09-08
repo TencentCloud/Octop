@@ -504,6 +504,7 @@ class UserManager:
         *,
         preferred_model: str | None | object = ...,
         model_reasoning: dict[str, ModelReasoningPreference] | None = None,
+        model_routing: list[str] | None | object = ...,
     ) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
@@ -512,6 +513,7 @@ class UserManager:
             row.preferences_json,
             preferred_model=preferred_model,
             model_reasoning=model_reasoning,
+            model_routing=model_routing,
         )
         self._services.user_repo.set_preferences_json(row.id, merged)
 

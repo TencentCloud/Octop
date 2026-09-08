@@ -1231,3 +1231,56 @@
   border: 1px dashed var(--fn-border-input);
   border-radius: var(--fn-radius-md);
 }
+
+/* ---- ModelRouting（模型路由 failover 链）---- */
+
+.routingList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.routingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--fn-border-input);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-container);
+}
+
+.routingIndex {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--fn-primary, #1668dc);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.routingName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.routingActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.routingAddRow {
+  margin-top: 4px;
+}

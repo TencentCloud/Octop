@@ -2918,7 +2918,18 @@
     "onnxNotReady": "未就绪",
     "onnxCacheDir": "缓存目录：{{dir}}",
     "onnxLocalCached": "已缓存模型",
-    "onnxQuickDownload": "从目录快速下载…"
+    "onnxQuickDownload": "从目录快速下载…",
+    "routingTitle": "模型路由",
+    "routingTooltip": "按顺序依次调用：第 1 个模型失败（限流/故障/不可用）时自动切换下一个，全部失败才报错。启用路由后优先按此顺序调用，上方星星偏好仅在未配置路由时生效。",
+    "routingDesc": "按顺序依次调用：第 1 个模型失败（限流/故障）时自动切换下一个。建议放 2-4 个：主用模型在前，备用在后。",
+    "routingCount": "{{count}} 个",
+    "routingEmpty": "未配置路由。点击下方按钮按顺序添加模型，第 1 个失败时自动切换下一个。",
+    "routingAdd": "添加模型",
+    "routingAddPlaceholder": "选择要加入路由的模型",
+    "routingMoveUp": "上移",
+    "routingMoveDown": "下移",
+    "routingRemove": "移除",
+    "routingSaved": "模型路由已更新"
   },
   "advancedSettings": {
     "description": "管理运行配置和环境变量等高级选项。",

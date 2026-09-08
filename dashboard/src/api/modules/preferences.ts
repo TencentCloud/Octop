@@ -13,6 +13,7 @@ export interface UserPreferences {
     string,
     { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
   >;
+  model_routing: string[];
 }
 
 export type PatchPreferencesBody = {
@@ -20,6 +21,7 @@ export type PatchPreferencesBody = {
   remote_browser_bookmarks?: RemoteBrowserBookmark[];
   preferred_model?: string | null;
   model_reasoning?: UserPreferences["model_reasoning"];
+  model_routing?: string[] | null;
 };
 
 export const preferencesApi = {
