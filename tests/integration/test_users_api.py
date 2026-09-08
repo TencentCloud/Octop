@@ -103,3 +103,74 @@ async def test_admin_can_unlock_login(env):
 
     r = await c.post("/api/auth/login", json={"username": "lock_user", "password": "TestPass12"})
     assert r.status_code == 200
+
+
+async def test_admin_can_set_resource_policy(env, tmp_path):
+    from tests.support.auth import TEST_PASSWORD, create_user
+
+    c, _srv, auth = env
+    jail = tmp_path / "jail"
+    nested = jail / "ok"
+    outside = tmp_path / "outside"
+    jail.mkdir()
+    nested.mkdir()
+    outside.mkdir()
+
+    user_auth = await create_user(c, auth, username="policy_user", password=TEST_PASSWORD)
+    listed = (await c.get("/api/users", headers=auth)).json()
+    row = next(u for u in listed if u["username"] == "policy_user")
+    uid = row["id"]
+    assert row["workspace_root_dir"] is None
+    assert row["token_quota"] is None
+
+    r = await c.patch(
+        f"/api/users/{uid}",
+        headers=auth,
+        json={"workspace_root_dir": jail.as_posix(), "token_quota": 1000},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["workspace_root_dir"] == jail.resolve().as_posix()
+    assert body["token_quota"] == 1000
+
+    ok = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "inside-root",
+            "config": {
+                "backend": {
+                    "type": "local_shell",
+                    "virtual_mode": True,
+                    "root_dir": nested.as_posix(),
+                }
+            },
+        },
+    )
+    assert ok.status_code == 201, ok.text
+
+    denied = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "outside-root",
+            "config": {
+                "backend": {
+                    "type": "local_shell",
+                    "virtual_mode": True,
+                    "root_dir": outside.as_posix(),
+                }
+            },
+        },
+    )
+    assert denied.status_code == 400, denied.text
+    assert denied.json()["error"]["code"] == "WORKSPACE_ROOT_RESTRICTED"
+
+    r = await c.patch(
+        f"/api/users/{uid}",
+        headers=auth,
+        json={"workspace_root_dir": None, "token_quota": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["workspace_root_dir"] is None
+    assert r.json()["token_quota"] is None

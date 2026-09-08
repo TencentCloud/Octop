@@ -252,7 +252,11 @@ async def create_agent(
 
     assert server.app_runtime is not None
     if isinstance(body.config, dict):
-        assert_user_backend_root_dirs(user, body.config.get("backend"))
+        assert_user_backend_root_dirs(
+            user,
+            body.config.get("backend"),
+            policy_repo=server.services.user_policy_repo,
+        )
     spec = AgentCreateSpec(
         name=body.name,
         user_id=user.id,
@@ -332,7 +336,11 @@ async def patch_agent(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     if body.config is not None and isinstance(body.config, dict):
-        assert_user_backend_root_dirs(user, body.config.get("backend"))
+        assert_user_backend_root_dirs(
+            user,
+            body.config.get("backend"),
+            policy_repo=server.services.user_policy_repo,
+        )
     updates = {
         key: value
         for key, value in body.model_dump(exclude_unset=True).items()

@@ -25,6 +25,7 @@
     "create": "创建",
     "add": "添加",
     "actions": "操作",
+    "more": "更多",
     "upload": "上传",
     "download": "下载",
     "refresh": "刷新",
@@ -162,7 +163,9 @@
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
-    "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。"
+    "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
+    "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
+    "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。"
   },
   "nav": {
     "chat": "对话",
@@ -879,6 +882,7 @@
       "not_directory": "所选路径不是有效目录。",
       "not_allowed": "该路径因安全策略被禁止，不能作为存储根目录。",
       "outside_home": "路径不在 home 目录内。",
+      "outside_root": "该路径超出了当前账号允许的工作区根目录。",
       "permission_denied": "Octop 服务对该目录没有完整的读、写、执行权限。",
       "write_failed": "无法在该目录创建测试文件：{{detail}}",
       "guidance": "请改用有权限的目录，或调整目录所有权/权限（例如 chown、chmod）后重试。"
@@ -935,6 +939,8 @@
     "subagentsBtn": "子智能体",
     "skillsBtn": "技能",
     "toolsBtn": "工具",
+    "pluginsBtn": "插件",
+    "mbtiBtn": "MBTI",
     "channelsBtn": "通道",
     "memoryBtn": "记忆"
   },
@@ -1031,7 +1037,8 @@
   },
   "chat": {
     "sharedExpert": {
-      "banner": "共享专家 · 由 {{name}} 提供"
+      "banner": "共享专家 · 由 {{name}} 提供",
+      "flag": "共享"
     },
     "pushToast": {
       "title": "{{name}} 发来提醒",
@@ -1160,6 +1167,8 @@
     "expertPickerSearch": "搜索专家",
     "expertPickerEmpty": "暂无其他专家",
     "expertPickerManage": "管理专家",
+    "modelPickerManage": "管理模型",
+    "sessionWorking": "正在回复",
     "composerContextLabel": "消息附加上下文",
     "contextWindow": {
       "tooltip": "上下文占用 {{used}} / {{max}} · {{percent}}%（最近一次模型请求）",
@@ -2205,7 +2214,13 @@
     "last7d": "近 7 天",
     "last30d": "近 30 天",
     "allTime": "全部",
-    "customRange": "自定义日期",
+    "thisMonth": "本月",
+    "lastMonth": "上月",
+    "rangeStart": "开始日期",
+    "rangeEnd": "结束日期",
+    "exportExcel": "导出 Excel",
+    "exportFailed": "导出失败",
+    "exportFilenamePrefix": "Token用量",
     "summary": "汇总",
     "byDay": "按天",
     "byExpert": "按专家",
@@ -4621,6 +4636,13 @@
     "permCount": "{{count}} 项",
     "createSectionAccount": "账号信息",
     "createSectionAccess": "角色与权限",
+    "createSectionPolicy": "资源使用策略",
+    "policyWorkspaceRoot": "允许的工作区根目录",
+    "policyWorkspaceRootHint": "限制该用户创建专家时「{{localShell}}」/「{{filesystem}}」的根目录。关闭表示不额外限制。",
+    "policyWorkspaceRootRequired": "请选择允许的根目录",
+    "policyTokenQuota": "Token 使用上限",
+    "policyTokenQuotaHint": "该用户所有专家累计的输入+输出 token。关闭表示不限制。",
+    "policyTokenQuotaRequired": "请输入 token 上限",
     "modalEditTitle": "编辑用户 {{username}}"
   },
   "adminSso": {
@@ -4740,6 +4762,15 @@
     "tabBuiltin": "内置连接器",
     "tabEnabled": "已启用连接器",
     "tabCustom": "自定义连接器",
+    "category": {
+      "office": "办公协作",
+      "knowledge": "笔记与知识",
+      "travel": "出行与地图",
+      "productivity": "通讯与效率",
+      "media": "资讯与娱乐",
+      "professional": "专业工具",
+      "self_hosted": "自托管 / 扩展"
+    },
     "listSummary": "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
     "enabledSummary": "已启用 {{count}} 个连接器实例",
     "emptyGuideTitle": "还没有已启用的连接器",

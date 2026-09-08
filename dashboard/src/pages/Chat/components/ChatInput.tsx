@@ -27,6 +27,7 @@ import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
+import { isSlashCommandText } from "../utils/slashText";
 import {
   consumePendingPrefillAttachments,
   readInputDraft,
@@ -671,7 +672,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             just surfaces a small inline pill so the user sees they're
             issuing a command, not a regular message.
           */}
-            {text.startsWith("/") && (
+            {isSlashCommandText(text) && (
               <span
                 data-testid="slash-badge"
                 style={{

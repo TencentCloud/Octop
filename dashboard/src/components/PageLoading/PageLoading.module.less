@@ -1,0 +1,23 @@
+/* Fade in late so a cached route chunk swaps in without flashing the ring. */
+.host {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  animation: pageLoadingFadeIn 160ms ease-out 140ms both;
+}
+
+@keyframes pageLoadingFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .host {
+    animation: none;
+  }
+}

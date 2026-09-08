@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Dropdown, Tooltip } from "antd";
+import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
   Pencil,
@@ -10,16 +10,15 @@ import {
   Pin,
   PinOff,
   Search,
-  Users,
   GitFork,
 } from "lucide-react";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SharedExpertHint from "./SharedExpertHint";
 import styles from "../index.module.less";
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -32,25 +31,6 @@ function AgentUnreadBadge({ count }: { count: number }) {
     >
       {count > 99 ? "99+" : count}
     </span>
-  );
-}
-
-function SharedExpertHint({ agent }: { agent: OctopAgent }) {
-  const { t } = useTranslation();
-  if (!isSharedExpertViewer(agent)) return null;
-  const tip = t("chat.sharedExpert.banner", {
-    name: agent.owner_username || "—",
-  });
-  return (
-    <Tooltip title={tip} mouseEnterDelay={0.35}>
-      <span
-        className={styles.sharedExpertHint}
-        aria-label={tip}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Users size={12} strokeWidth={2} aria-hidden />
-      </span>
-    </Tooltip>
   );
 }
 
@@ -310,8 +290,10 @@ function ActiveAgentCard({
         </div>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
-            <div className={styles.agentCardName}>{agent.name}</div>
-            <SharedExpertHint agent={agent} />
+            <div className={styles.agentNameCluster}>
+              <div className={styles.agentCardName}>{agent.name}</div>
+              <SharedExpertHint agent={agent} />
+            </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
           </div>
           {agent.description ? (
@@ -398,8 +380,10 @@ function InactiveAgentRow({ agent, onSelect }: AgentRowProps) {
       </div>
       <div className={styles.agentRowInfo}>
         <div className={styles.agentRowNameRow}>
-          <div className={styles.agentRowName}>{agent.name}</div>
-          <SharedExpertHint agent={agent} />
+          <div className={styles.agentNameCluster}>
+            <div className={styles.agentRowName}>{agent.name}</div>
+            <SharedExpertHint agent={agent} />
+          </div>
           <AgentUnreadBadge count={agent.unread_count ?? 0} />
         </div>
         <div className={styles.agentRowDesc}>{agent.description || "—"}</div>

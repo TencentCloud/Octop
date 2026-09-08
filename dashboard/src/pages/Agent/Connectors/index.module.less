@@ -138,6 +138,26 @@
   min-height: 44px;
 }
 
+.typeCardTitleCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.categoryChip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
 .typeCardIconLarge {
   width: 44px;
   height: 44px;
@@ -184,6 +204,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.typeCardTitleCol .typeCardTitle {
+  flex: none;
+  width: 100%;
 }
 
 .typeCardDesc {
@@ -605,15 +630,6 @@
 
 /* ── Tabs ──────────────────────────────────────────────────────── */
 
-.tabBar {
-  display: flex;
-  gap: 0;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-  flex-shrink: 0;
-  background: var(--fn-bg-container, var(--fn-bg-elevated));
-}
-
 .listToolbar {
   display: flex;
   align-items: center;
@@ -628,30 +644,6 @@
   line-height: 1.4;
   color: var(--fn-text-secondary);
   min-width: 0;
-}
-
-.tab {
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--fn-text-secondary);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-  margin-bottom: -1px;
-
-  &:hover {
-    color: var(--fn-text-primary);
-  }
-
-  &.active {
-    color: var(--fn-color-brand);
-    border-bottom-color: var(--fn-color-brand);
-  }
 }
 
 /* ── Custom MCP tab ────────────────────────────────────────────── */

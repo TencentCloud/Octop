@@ -1,9 +1,10 @@
-import { Layout, Spin } from "antd";
+import { Layout } from "antd";
 import { lazy, Suspense, useEffect, useState, useCallback } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "../Sidebar";
 import Header from "../Header";
 import RailEdgeControl from "../../components/RailEdgeControl";
+import PageLoading from "../../components/PageLoading";
 import { ServiceRestartProvider } from "../../context/ServiceRestartContext";
 import { BackupOperationProvider } from "../../context/BackupOperationContext";
 import PwaUpdatePrompt from "../../components/PwaUpdatePrompt";
@@ -151,20 +152,7 @@ export default function MainLayout() {
   }, [collapsed, isMinimalLayout, persistNavCollapsed, setChatSidebarOpen]);
 
   const routes = (
-    <Suspense
-      fallback={
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            flex: 1,
-          }}
-        >
-          <Spin size="large" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PageLoading />}>
       <Routes>
         {routeConfigs.map((rc) => {
           let el = rc.useWrapper ? <ChatWithKey /> : rc.element;
@@ -313,20 +301,7 @@ export default function MainLayout() {
                     }}
                   >
                     <RequirePermission>
-                      <Suspense
-                        fallback={
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "center",
-                              alignItems: "center",
-                              flex: 1,
-                            }}
-                          >
-                            <Spin size="large" />
-                          </div>
-                        }
-                      >
+                      <Suspense fallback={<PageLoading />}>
                         <WorkbenchPage isVisible={onWorkbench} />
                       </Suspense>
                     </RequirePermission>

@@ -36,7 +36,15 @@ export const ConnectorCard = memo(function ConnectorCard({
           <div className={styles.typeCardIconLarge}>
             <ConnectorLogo kind={entry.kind} icon={entry.icon} size={40} />
           </div>
-          <div className={styles.typeCardTitle}>{entry.name}</div>
+          <div className={styles.typeCardTitleCol}>
+            <div className={styles.typeCardTitle}>{entry.name}</div>
+            <span
+              className={styles.categoryChip}
+              style={{ color: accent, background: `${accent}18` }}
+            >
+              {t(`connectors.category.${entry.category}`, entry.category)}
+            </span>
+          </div>
         </div>
 
         <div className={styles.typeCardDesc}>{entry.description}</div>

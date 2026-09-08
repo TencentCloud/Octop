@@ -630,6 +630,7 @@ function ChatPageInner() {
 
   const {
     handleNewChat: startNewChat,
+    handleNewChatWithAgent,
     handleSelectSession,
     navigateToAgent,
     handleDeleteSession,
@@ -951,6 +952,10 @@ function ChatPageInner() {
         handleSelectSession(sessionId);
       }}
       onAgentSelect={navigateToAgent}
+      onNewChatWithAgent={(agentId) => {
+        clearQueued();
+        handleNewChatWithAgent(agentId);
+      }}
       onDeleteSession={handleDeleteSession}
       onRenameSession={renameSession}
       onPinSession={pinSession}

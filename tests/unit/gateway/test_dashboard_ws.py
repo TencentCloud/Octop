@@ -582,7 +582,7 @@ async def test_global_processor_iter_turn_chunks_slash(tmp_path: Path) -> None:
     from octop.infra.db.repos.threads import ThreadRepo
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.gateway.process.processor import GlobalProcessor
-    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+    from octop.infra.gateway.slash.dispatcher import build_default_dispatcher
 
     db = SqlitePool(tmp_path / "octop.db")
     run_migrations(db)
@@ -606,7 +606,7 @@ async def test_global_processor_iter_turn_chunks_slash(tmp_path: Path) -> None:
     agent_manager = MagicMock()
     agent_manager.get_agent.return_value = harness
 
-    dispatcher = SlashDispatcher()
+    dispatcher = build_default_dispatcher()
     processor = GlobalProcessor(
         agent_manager=agent_manager,
         thread_registry=thread_registry,

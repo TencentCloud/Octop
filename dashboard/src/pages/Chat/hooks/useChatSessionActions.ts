@@ -44,6 +44,37 @@ export function useChatSessionActions({
     navigate(`/chat/${agent}`);
   }, [navigate, resolvedAgentId, setSelectedModel, setHasBrowserTool]);
 
+  /**
+   * New chat with an arbitrary expert. Unlike {@link navigateToAgent} this stays
+   * on the empty-chat view instead of jumping to that expert's latest thread.
+   */
+  const handleNewChatWithAgent = useCallback(
+    (agentId: string) => {
+      if (!agentId) return;
+      setSelectedModel(null);
+      setHasBrowserTool(false);
+      if (agentId !== resolvedAgentId) {
+        resetNavForAgentSwitch();
+        setActiveAgent(agentId);
+      }
+      markInitialNavDone(agentId);
+      navigate(`/chat/${agentId}`);
+      chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
+      if (isMobile) setSidebarOpen(false);
+    },
+    [
+      navigate,
+      resolvedAgentId,
+      isMobile,
+      setActiveAgent,
+      setSidebarOpen,
+      setSelectedModel,
+      setHasBrowserTool,
+      resetNavForAgentSwitch,
+      markInitialNavDone,
+    ],
+  );
+
   const handleSelectSession = useCallback(
     (id: string) => {
       const agent = resolvedAgentId;
@@ -129,6 +160,7 @@ export function useChatSessionActions({
 
   return {
     handleNewChat,
+    handleNewChatWithAgent,
     handleSelectSession,
     navigateToAgent,
     handleDeleteSession,

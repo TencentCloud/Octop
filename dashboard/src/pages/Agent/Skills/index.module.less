@@ -733,45 +733,6 @@
   }
 }
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-
-.tabBar {
-  display: flex;
-  gap: 0;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-  flex-shrink: 0;
-}
-
-.tab {
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--fn-text-secondary);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-  margin-bottom: -1px;
-
-  &:hover {
-    color: var(--fn-text-primary);
-  }
-
-  &.active {
-    color: var(--fn-color-brand);
-    border-bottom-color: var(--fn-color-brand);
-  }
-
-  @media (max-width: 767px) {
-    padding: 8px 12px;
-    font-size: 14px;
-  }
-}
-
 // ── SkillHub tab ──────────────────────────────────────────────────────────────
 
 .skillHubContainer {

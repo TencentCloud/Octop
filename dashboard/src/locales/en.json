@@ -25,6 +25,7 @@
     "create": "Create",
     "add": "Add",
     "actions": "Actions",
+    "more": "More",
     "upload": "Upload",
     "download": "Download",
     "refresh": "Refresh",
@@ -162,7 +163,9 @@
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
-    "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later."
+    "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
+    "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
+    "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}})."
   },
   "nav": {
     "chat": "Conversation",
@@ -878,6 +881,7 @@
       "not_directory": "The selected path is not a valid directory.",
       "not_allowed": "This path is blocked for security reasons and cannot be used as a storage root.",
       "outside_home": "Path is outside the home directory.",
+      "outside_root": "This path is outside the allowed workspace root for this account.",
       "permission_denied": "The Octop service does not have full read, write, and execute access to this directory.",
       "write_failed": "Could not create a test file in this directory: {{detail}}",
       "guidance": "Choose a directory with sufficient permissions, or adjust ownership/permissions (e.g. chown, chmod) and try again."
@@ -935,6 +939,8 @@
     "subagentsBtn": "Subagents",
     "skillsBtn": "Skills",
     "toolsBtn": "Tools",
+    "pluginsBtn": "Plugins",
+    "mbtiBtn": "MBTI",
     "channelsBtn": "Channels",
     "memoryBtn": "Memory"
   },
@@ -1031,7 +1037,8 @@
   },
   "chat": {
     "sharedExpert": {
-      "banner": "Shared expert · provided by {{name}}"
+      "banner": "Shared expert · provided by {{name}}",
+      "flag": "Shared"
     },
     "pushToast": {
       "title": "{{name}} sent a reminder",
@@ -1160,6 +1167,8 @@
     "expertPickerSearch": "Search experts",
     "expertPickerEmpty": "No other experts available",
     "expertPickerManage": "Manage experts",
+    "modelPickerManage": "Manage models",
+    "sessionWorking": "Working",
     "composerContextLabel": "Message context",
     "contextWindow": {
       "tooltip": "Context {{used}} / {{max}} · {{percent}}% (last model request)",
@@ -2205,7 +2214,13 @@
     "last7d": "Last 7 Days",
     "last30d": "Last 30 Days",
     "allTime": "All Time",
-    "customRange": "Custom Date",
+    "thisMonth": "This month",
+    "lastMonth": "Last month",
+    "rangeStart": "Start date",
+    "rangeEnd": "End date",
+    "exportExcel": "Export Excel",
+    "exportFailed": "Export failed",
+    "exportFilenamePrefix": "token-usage",
     "summary": "Summary",
     "byDay": "By day",
     "byExpert": "By expert",
@@ -4482,6 +4497,13 @@
     "permCount": "{{count}} selected",
     "createSectionAccount": "Account",
     "createSectionAccess": "Role & permissions",
+    "createSectionPolicy": "Resource usage policy",
+    "policyWorkspaceRoot": "Allowed workspace root",
+    "policyWorkspaceRootHint": "Restricts roots for “{{localShell}}” and “{{filesystem}}” when creating experts. Off means no extra limit.",
+    "policyWorkspaceRootRequired": "Choose an allowed root directory",
+    "policyTokenQuota": "Token usage limit",
+    "policyTokenQuotaHint": "Lifetime input + output tokens across this user's experts. Off means no limit.",
+    "policyTokenQuotaRequired": "Enter a token quota",
     "modalEditTitle": "Edit user {{username}}"
   },
   "adminSso": {
@@ -4601,6 +4623,15 @@
     "tabBuiltin": "Built-in connectors",
     "tabEnabled": "Enabled connectors",
     "tabCustom": "Custom connectors",
+    "category": {
+      "office": "Office",
+      "knowledge": "Notes & knowledge",
+      "travel": "Travel & maps",
+      "productivity": "Mail & tasks",
+      "media": "News & media",
+      "professional": "Professional",
+      "self_hosted": "Self-hosted"
+    },
     "listSummary": "{{total}} connectors available, {{configured}} configured",
     "enabledSummary": "{{count}} connector instances enabled",
     "emptyGuideTitle": "No enabled connectors yet",
