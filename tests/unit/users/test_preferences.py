@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import (
     ModelReasoningPreference,
     get_model_reasoning_from_json,
+    get_model_routing_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
     get_timezone_from_preferences_json,
     merge_model_preferences_json,
     merge_preferences_json,
+    validate_model_routing,
     validate_remote_browser_bookmarks,
 )
 
@@ -111,3 +115,33 @@ def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     cleared = merge_model_preferences_json(raw, preferred_model=None)
     assert get_preferred_model_from_json(cleared) is None
     assert "token/glm-5" in get_model_reasoning_from_json(cleared)
+
+
+def test_validate_model_routing_dedupes_and_keeps_order() -> None:
+    out = validate_model_routing(["p/a", "bad", "p/a", "q/b", 123, ""])
+    assert out == ["p/a", "q/b"]
+
+
+def test_validate_model_routing_rejects_over_limit() -> None:
+    with pytest.raises(OctopError) as exc:
+        validate_model_routing([f"p/m{i}" for i in range(9)])
+    assert exc.value.code == ErrorCode.SLASH_BAD_ARGS
+
+
+def test_model_routing_roundtrip_and_clear() -> None:
+    merged = merge_model_preferences_json(
+        '{"foo":1}',
+        model_routing=["p/a", "q/b"],
+    )
+    assert get_model_routing_from_json(merged) == ["p/a", "q/b"]
+    assert get_preferred_model_from_json(merged) is None
+
+    cleared = merge_model_preferences_json(merged, model_routing=None)
+    assert get_model_routing_from_json(cleared) == []
+    assert "model_routing" not in json.loads(cleared)
+
+
+def test_get_model_routing_from_json_invalid_payload() -> None:
+    assert get_model_routing_from_json(None) == []
+    assert get_model_routing_from_json('{"model_routing": "p/a"}') == []
+    assert get_model_routing_from_json('{"model_routing": ["bad", "p/a"]}') == ["p/a"]
