@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import json
+import logging
+import uuid
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from harness_agent.config import ModelConfig, ProviderConfig
 
 from octop.infra.agents.providers.model_flags import is_chat_eligible_model
+from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRow
     from octop.infra.db.repos.providers import ProviderRepo
+
+logger = logging.getLogger(__name__)
 
 KIND_TO_PROTOCOL: dict[str, str] = {
     "openai": "openai",
@@ -143,13 +148,34 @@ class ProviderStore:
             if not models:
                 continue
             headers: dict[str, str] = {}
+            extra: dict[str, Any] = {}
             if row.extra_json:
                 try:
-                    extra = json.loads(row.extra_json)
-                    if isinstance(extra, dict) and isinstance(extra.get("headers"), dict):
-                        headers = {str(k): str(v) for k, v in extra["headers"].items()}
+                    parsed = json.loads(row.extra_json)
+                    if isinstance(parsed, dict):
+                        extra = parsed
+                        if isinstance(extra.get("headers"), dict):
+                            headers = {str(k): str(v) for k, v in extra["headers"].items()}
                 except Exception:
                     pass
+            # OpenCode Go rejects requests without a stable x-opencode-session
+            # header (HTTP 400 MissingSessionID). Assign one UUID per provider
+            # and persist it so the id survives restarts.
+            headers, injected = ensure_opencode_session_header(
+                row.base_url, headers, session_id=uuid.uuid4().hex
+            )
+            if injected is not None:
+                extra["headers"] = headers
+                try:
+                    self._provider_repo.update(row.id, extra_json=json.dumps(extra))
+                except Exception:
+                    # Persistence is best-effort: keep the in-memory header so
+                    # requests still pass; it will be re-generated next build.
+                    logger.warning(
+                        "failed to persist opencode session header for provider %s",
+                        row.name,
+                        exc_info=True,
+                    )
             out.append(
                 ProviderConfig(
                     id=row.name,

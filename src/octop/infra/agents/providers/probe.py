@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
+from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
     headers = provider_headers(row)
     base_url = row.base_url or "https://api.openai.com/v1"
+    # OpenCode Go rejects header-less requests with 400 MissingSessionID;
+    # each probe is its own conversation, so a throwaway UUID is fine.
+    headers, _ = ensure_opencode_session_header(base_url, headers)
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
@@ -163,9 +167,8 @@ async def _probe_embedding_endpoint(
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
-    extra = provider_headers(row)
-    if extra:
-        headers.update(extra)
+    extra, _ = ensure_opencode_session_header(getattr(row, "base_url", None), provider_headers(row))
+    headers.update(extra)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
             response = await client.post(
@@ -260,6 +263,7 @@ async def fetch_openai_compatible_models(
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
+    extra_headers, _ = ensure_opencode_session_header(base_url, extra_headers)
     if extra_headers:
         headers.update(extra_headers)
     try:
