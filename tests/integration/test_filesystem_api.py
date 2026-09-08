@@ -276,3 +276,57 @@ async def test_rename_host_dir_renames_child(
     assert body["name"] == "workspace"
     assert (tmp_path / "workspace").is_dir()
     assert not target.exists()
+
+
+@pytest.mark.asyncio
+async def test_filesystem_respects_user_workspace_root(
+    env: tuple[httpx.AsyncClient, Any, dict[str, str]],
+    tmp_path: Path,
+) -> None:
+    from tests.support.auth import TEST_PASSWORD, create_user
+
+    client, _srv, admin_auth = env
+    jail = tmp_path / "jail"
+    nested = jail / "ok"
+    outside = tmp_path / "outside"
+    jail.mkdir()
+    nested.mkdir()
+    outside.mkdir()
+
+    user_auth = await create_user(client, admin_auth, username="fs_policy", password=TEST_PASSWORD)
+    listed = (await client.get("/api/users", headers=admin_auth)).json()
+    uid = next(u["id"] for u in listed if u["username"] == "fs_policy")
+    patched = await client.patch(
+        f"/api/users/{uid}",
+        headers=admin_auth,
+        json={"workspace_root_dir": jail.as_posix()},
+    )
+    assert patched.status_code == 200, patched.text
+
+    defaults = await client.get("/api/filesystem/defaults", headers=user_auth)
+    assert defaults.status_code == 200, defaults.text
+    body = defaults.json()
+    assert body["tree_root"] == jail.resolve().as_posix()
+    assert body["default_root_dir"] == jail.resolve().as_posix()
+    assert body["allow_outside_home"] is False
+
+    inside = await client.get(
+        f"/api/filesystem/dirs?path={nested.as_posix()}",
+        headers=user_auth,
+    )
+    assert inside.status_code == 200, inside.text
+
+    listed_out = await client.get(
+        f"/api/filesystem/dirs?path={outside.as_posix()}",
+        headers=user_auth,
+    )
+    assert listed_out.status_code == 400, listed_out.text
+
+    probe = await client.post(
+        "/api/filesystem/probe",
+        headers=user_auth,
+        json={"path": outside.as_posix()},
+    )
+    assert probe.status_code == 200, probe.text
+    assert probe.json()["ok"] is False
+    assert probe.json()["code"] == "outside_root"

@@ -133,6 +133,7 @@ class OctopConfig:
     default_timezone: str = "Asia/Shanghai"
     enable_dashboard: bool = True
     enable_api_docs: bool = False
+    history_v2_enabled: bool = False
     require_setup_password: bool = True
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     # False when config.json omits ``database`` (use PathLayout.db unless env overrides).
@@ -563,6 +564,13 @@ def load_config(path: Path) -> OctopConfig:
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
+        history_v2_enabled=_coerce_bool(
+            "OCTOP_HISTORY_V2_ENABLED",
+            os.environ.get(
+                "OCTOP_HISTORY_V2_ENABLED", str(merged.get("history_v2_enabled", False))
+            ),
+            False,
+        ),
         require_setup_password=bool(merged["require_setup_password"]),
         database=parse_database_config(merged_db),
         database_in_file=database_in_file,

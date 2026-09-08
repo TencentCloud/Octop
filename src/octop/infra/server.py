@@ -11,7 +11,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
@@ -215,12 +215,15 @@ class AppRuntime:
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
     trajectory_service: TrajectoryService | None = None
+    history_archive: Any | None = None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
         """Retarget all runtime singletons onto a new SharedServices / config.
 
         Used when the setup wizard hot-swaps the control-plane DB while empty.
         """
+        if self.history_archive is not None:
+            raise ValueError("Restart the server to rebind a database with versioned history")
         self.user_manager.replace_services(services)
         self.agent_registry.replace_persistence(services.repos, config)
         self.gateway.replace_repos(services.repos)
@@ -373,8 +376,30 @@ class OctopServer:
         from octop.infra.trajectory.service import TrajectoryService  # noqa: PLC0415
         from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
+        history_archive = None
+        trajectory_store = TrajectoryStore(self.services.trajectory_event_repo)
+        archive_path = self.paths.root / "history_v2.sqlite"
+        if (
+            config.history_v2_enabled
+            or archive_path.exists()
+            or archive_path.with_suffix(".required").exists()
+        ):
+            from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
+            from octop.infra.history.store import HistoryStore  # noqa: PLC0415
+            from octop.infra.history.trajectory import ArchiveTrajectoryStore  # noqa: PLC0415
+
+            identity = str(config.database.resolve_sqlite_path(self.paths.root).resolve())
+            if not config.database.is_sqlite:
+                raise ValueError("Versioned history currently requires the SQLite control plane")
+            history_archive = HistoryArchive(
+                HistoryStore(archive_path, identity=identity),
+                self.services.thread_message_repo,
+                self.services.trajectory_event_repo,
+                enabled=config.history_v2_enabled,
+            )
+            trajectory_store = ArchiveTrajectoryStore(history_archive)
         trajectory_service = TrajectoryService(
-            TrajectoryStore(self.services.trajectory_event_repo),
+            trajectory_store,
             TrajectoryLiveBus(),
         )
 
@@ -382,6 +407,7 @@ class OctopServer:
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
+            history_archive=history_archive,
         )
         await gateway.boot()
 
@@ -451,6 +477,7 @@ class OctopServer:
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
             trajectory_service=trajectory_service,
+            history_archive=history_archive,
         )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 
@@ -497,6 +524,8 @@ class OctopServer:
                 await rt.gateway.shutdown()
                 await rt.agent_registry.shutdown()
                 await rt.user_manager.shutdown_all()
+                if rt.history_archive is not None:
+                    rt.history_archive.store.close()
         finally:
             if self.services is not None:
                 self.services.db.close()

@@ -145,6 +145,9 @@ async def _project_chunks(
             usage_tracker.observe(chunk)
         if history_tracker is not None:
             history_tracker.observe(chunk)
+            from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
+
+            await flush_tracker(history_tracker)
         ctype: str = chunk.get("type", "")
         node: str | None = chunk.get("node")
 

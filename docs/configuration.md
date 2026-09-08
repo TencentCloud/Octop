@@ -234,3 +234,9 @@ old secret is overwritten in place — no zero-downtime rotation today.
 Per-agent provider credentials (e.g. API keys) live in the SQLite
 `providers` table and are surfaced through
 `infra/connectors/credential_crypto.py` for connector OAuth flows.
+
+## 可选分段历史归档
+
+`history_v2_enabled` 默认 `false`，可用 `OCTOP_HISTORY_V2_ENABLED=true` 开启。
+该开关只决定下一完整回合的写入格式，关闭后仍读取已经保存的新格式。
+启用前请阅读 [分段历史归档与回退](versioned-history.md)，尤其是配套版本与备份恢复边界。

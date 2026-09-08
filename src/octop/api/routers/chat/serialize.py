@@ -425,7 +425,16 @@ def _isolated_sqlite_checkpoint_messages(
     try:
         conn.execute("PRAGMA query_only = ON")
         conn.execute("PRAGMA busy_timeout = 5000")
-        isolated = SqliteSaver(conn=conn, serde=getattr(disk_saver, "serde", None))
+        serde = getattr(disk_saver, "serde", None)
+        rebind = getattr(serde, "with_connection", None)
+        if callable(rebind):
+            serde = rebind(conn)
+        isolated = SqliteSaver(conn=conn, serde=serde)
+        # This is an existing database: skip setup DDL/executescript, which
+        # would end the read transaction. Rows and referenced bodies must come
+        # from this connection's same snapshot, never the live saver/cache.
+        isolated.is_setup = True
+        conn.execute("BEGIN")
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         for checkpoint_tuple in isolated.list(config, limit=1):
             messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
@@ -477,6 +486,11 @@ async def _backfill_thread_projection(
     user: Any,
 ) -> None:
     """Decode one legacy checkpoint off-request and atomically publish it."""
+    from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
+
+    archive = getattr(server.app_runtime, "history_archive", None)
+    if isinstance(archive, HistoryArchive):
+        raise ValueError("History backfill is disabled while versioned history is in use")
     repo = server.services.thread_message_repo
     registry = server.app_runtime.agent_registry
     reserve = getattr(registry, "try_begin_history_backfill", None)

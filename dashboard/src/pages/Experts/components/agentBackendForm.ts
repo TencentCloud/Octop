@@ -63,7 +63,8 @@ export type RootDirProbeCode =
   | "permission_denied"
   | "write_failed"
   | "not_allowed"
-  | "outside_home";
+  | "outside_home"
+  | "outside_root";
 
 export interface RootDirProbeResult {
   ok: boolean;

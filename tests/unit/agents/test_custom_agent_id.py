@@ -58,7 +58,10 @@ def _make_manager(*, existing_agent_ids: set[str]):
         raise WorkspaceReached(agent_id)
 
     mgr = object.__new__(manager_mod.AgentManager)
-    mgr._repos = SimpleNamespace(agent_repo=SimpleNamespace(get=repo_get))
+    mgr._repos = SimpleNamespace(
+        agent_repo=SimpleNamespace(get=repo_get),
+        user_policy_repo=SimpleNamespace(get=lambda *args, **kwargs: None),
+    )
     mgr._paths = SimpleNamespace(ensure_agent_workspace=ensure_workspace)
     mgr._lock = asyncio.Lock()
     mgr._assert_agent_name_available = lambda user_id, name: None  # type: ignore[method-assign]

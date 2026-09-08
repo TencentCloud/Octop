@@ -8,18 +8,18 @@ import {
 import {
   Button,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
   List,
-  Modal,
-  Popconfirm,
   Segmented,
   Spin,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
+import type { MenuProps } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -27,6 +27,7 @@ import {
   Download,
   LayoutGrid,
   List as ListIcon,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -73,6 +74,7 @@ import {
   EXPERT_ICON_NAMES,
   iconForName,
 } from "../Experts/components/iconForName";
+import { showConfirmModal } from "../../utils/confirmModal";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { PackageSkillCard } from "./PackageSkillCard";
@@ -94,6 +96,15 @@ const SKILL_URL_PREFIXES = [
   "https://skillsmp.com/",
   "https://github.com/",
 ];
+
+function canMutatePackage(
+  item: Pick<SkillPackage, "created_by">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(
+    user && (user.role === "admin" || item.created_by === String(user.id)),
+  );
+}
 
 function formatPackageCreator(
   item: Pick<
@@ -153,13 +164,13 @@ export default function SkillPackagesPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [packageModalOpen, setPackageModalOpen] = useState(false);
+  const [packageDrawerOpen, setPackageDrawerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
   const [skillsetHubOpen, setSkillsetHubOpen] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [editingPackage, setEditingPackage] = useState(false);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] =
     useState<SkillPackageSkillDetail | null>(null);
   const [packageForm] = Form.useForm<PackageFormValues>();
@@ -263,11 +274,7 @@ export default function SkillPackagesPage() {
     if (!isMobile) setMobilePane("list");
   }, [isMobile]);
 
-  const canMutate = Boolean(
-    selected &&
-      user &&
-      (user.role === "admin" || selected.created_by === String(user.id)),
-  );
+  const canMutate = Boolean(selected && canMutatePackage(selected, user));
 
   const selectPackage = (item: SkillPackage) => {
     if (item.id !== selectedId) {
@@ -296,26 +303,25 @@ export default function SkillPackagesPage() {
   };
 
   const openCreatePackage = () => {
-    setEditingPackage(false);
+    setEditingPackageId(null);
     packageForm.setFieldsValue({
       name: "",
       description: "",
       icon_name: undefined,
       icon_url: "",
     });
-    setPackageModalOpen(true);
+    setPackageDrawerOpen(true);
   };
 
-  const openEditPackage = () => {
-    if (!selected) return;
-    setEditingPackage(true);
+  const openEditPackage = (item: SkillPackage) => {
+    setEditingPackageId(item.id);
     packageForm.setFieldsValue({
-      name: selected.name,
-      description: selected.description,
-      icon_name: selected.icon_name,
-      icon_url: selected.icon_url,
+      name: item.name,
+      description: item.description,
+      icon_name: item.icon_name,
+      icon_url: item.icon_url,
     });
-    setPackageModalOpen(true);
+    setPackageDrawerOpen(true);
   };
 
   const savePackage = async () => {
@@ -325,45 +331,81 @@ export default function SkillPackagesPage() {
       icon_url: values.icon_url?.trim() || undefined,
     };
     try {
-      const next =
-        editingPackage && selected
-          ? await skillPackagesApi.update(selected.id, payload)
-          : await skillPackagesApi.create(payload);
-      setPackageModalOpen(false);
+      const next = editingPackageId
+        ? await skillPackagesApi.update(editingPackageId, payload)
+        : await skillPackagesApi.create(payload);
+      setPackageDrawerOpen(false);
       await loadPackages({ silent: true });
       setSelected(next);
       setSelectedId(next.id);
       if (isMobile) setMobilePane("detail");
       message.success(
-        t(editingPackage ? "skillPackages.updated" : "skillPackages.created"),
+        t(editingPackageId ? "skillPackages.updated" : "skillPackages.created"),
       );
     } catch (error) {
       message.error(apiErrorMessage(error, t("skillPackages.saveFailed"), t));
     }
   };
 
-  const deletePackage = async () => {
-    if (!selected) return;
-    const deletedId = selected.id;
-    detailRequestGate.current.begin();
-    setSelected(null);
-    setSelectedId(null);
-    setDetailLoading(false);
+  const deletePackage = async (item: SkillPackage) => {
+    const deletedId = item.id;
+    const deletingSelected = deletedId === selectedId;
+    if (deletingSelected) {
+      detailRequestGate.current.begin();
+      setSelected(null);
+      setSelectedId(null);
+      setDetailLoading(false);
+    }
     try {
       await skillPackagesApi.delete(deletedId);
       const rows = await skillPackagesApi.list();
       setPackages(rows);
       initialLoadDone.current = true;
-      if (isMobile) {
-        setMobilePane("list");
-      } else if (rows.length > 0) {
-        await loadDetail(rows[0].id);
+      if (deletingSelected) {
+        if (isMobile) {
+          setMobilePane("list");
+        } else if (rows.length > 0) {
+          await loadDetail(rows[0].id);
+        }
       }
       message.success(t("skillPackages.deleted"));
     } catch (error) {
       message.error(apiErrorMessage(error, t("skillPackages.deleteFailed"), t));
     }
   };
+
+  const confirmDeletePackage = (item: SkillPackage) => {
+    showConfirmModal({
+      title: t("skillPackages.deletePackageConfirm"),
+      content: t("skillPackages.deletePackageMountedHint"),
+      okText: t("common.delete"),
+      cancelText: t("common.cancel"),
+      okButtonProps: { danger: true },
+      onOk: () => deletePackage(item),
+    });
+  };
+
+  const packageMenuItems = (item: SkillPackage): MenuProps["items"] => [
+    {
+      key: "edit",
+      icon: <Pencil size={14} />,
+      label: t("common.edit"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        openEditPackage(item);
+      },
+    },
+    {
+      key: "delete",
+      icon: <Trash2 size={14} />,
+      label: t("common.delete"),
+      danger: true,
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        confirmDeletePackage(item);
+      },
+    },
+  ];
 
   const openCreateSkill = () => {
     setEditingSkill(null);
@@ -669,7 +711,25 @@ export default function SkillPackagesPage() {
                               imageClassName={styles.listIconImage}
                             />
                           </span>
-                          <span>{item.name}</span>
+                          <span className={styles.listNameText}>
+                            {item.name}
+                          </span>
+                          {canMutatePackage(item, user) ? (
+                            <Dropdown
+                              menu={{ items: packageMenuItems(item) }}
+                              trigger={["click"]}
+                              placement="bottomRight"
+                            >
+                              <button
+                                type="button"
+                                className={styles.listMoreBtn}
+                                aria-label={t("common.more")}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <MoreHorizontal size={15} />
+                              </button>
+                            </Dropdown>
+                          ) : null}
                         </div>
                         <div className={styles.listDescription}>
                           {item.description || "—"}
@@ -759,40 +819,6 @@ export default function SkillPackagesPage() {
                         >
                           {selected.name}
                         </Typography.Title>
-                        {canMutate ? (
-                          <div className={styles.titleActions}>
-                            <Tooltip title={t("common.edit")}>
-                              <Button
-                                type="text"
-                                size="small"
-                                className={styles.titleActionBtn}
-                                icon={<Pencil size={14} />}
-                                aria-label={t("common.edit")}
-                                onClick={openEditPackage}
-                              />
-                            </Tooltip>
-                            <Popconfirm
-                              title={t("skillPackages.deletePackageConfirm")}
-                              description={t(
-                                "skillPackages.deletePackageMountedHint",
-                              )}
-                              okText={t("common.delete")}
-                              cancelText={t("common.cancel")}
-                              onConfirm={() => void deletePackage()}
-                            >
-                              <Tooltip title={t("common.delete")}>
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  danger
-                                  className={styles.titleActionBtn}
-                                  icon={<Trash2 size={14} />}
-                                  aria-label={t("common.delete")}
-                                />
-                              </Tooltip>
-                            </Popconfirm>
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                     <Typography.Paragraph
@@ -910,22 +936,29 @@ export default function SkillPackagesPage() {
         </div>
       )}
 
-      <Modal
+      <Drawer
         title={t(
-          editingPackage
+          editingPackageId
             ? "skillPackages.editPackage"
             : "skillPackages.createPackage",
         )}
-        open={packageModalOpen}
-        onCancel={() => setPackageModalOpen(false)}
-        onOk={() => void savePackage()}
-        okText={t(editingPackage ? "common.save" : "common.create")}
-        cancelText={t("common.cancel")}
-        width={520}
-        destroyOnClose
-        className={styles.packageModal}
+        open={packageDrawerOpen}
+        onClose={() => setPackageDrawerOpen(false)}
+        width={isMobile ? "100%" : 480}
+        destroyOnHidden
+        className={styles.packageDrawer}
+        footer={
+          <div className={styles.drawerFooter}>
+            <Button onClick={() => setPackageDrawerOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="primary" onClick={() => void savePackage()}>
+              {t(editingPackageId ? "common.save" : "common.create")}
+            </Button>
+          </div>
+        }
       >
-        {!editingPackage ? (
+        {!editingPackageId ? (
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
             {t("skillPackages.createPackageHint")}
           </Typography.Paragraph>
@@ -981,7 +1014,7 @@ export default function SkillPackagesPage() {
             />
           </Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
 
       <SkillImportModal
         open={importModalOpen}

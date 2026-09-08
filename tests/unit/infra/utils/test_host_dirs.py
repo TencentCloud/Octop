@@ -238,6 +238,20 @@ def test_probe_host_root_dir_rejects_outside_home_when_restricted(
     assert ok == {"ok": True, "path": home.resolve().as_posix()}
 
 
+def test_assert_safe_host_path_restrict_to_root(tmp_path: Path) -> None:
+    jail = tmp_path / "jail"
+    nested = jail / "docs"
+    outside = tmp_path / "other"
+    jail.mkdir()
+    nested.mkdir()
+    outside.mkdir()
+    allowed = str(jail)
+
+    assert assert_safe_host_path(str(nested), restrict_to_root=allowed) == nested.resolve()
+    with pytest.raises(ValueError, match="path outside allowed workspace root"):
+        assert_safe_host_path(str(outside), restrict_to_root=allowed)
+
+
 def test_host_fs_tree_root_admin_posix(monkeypatch: pytest.MonkeyPatch) -> None:
     if os.name != "posix":
         pytest.skip("POSIX tree root")

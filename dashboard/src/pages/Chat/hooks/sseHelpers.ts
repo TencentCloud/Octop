@@ -96,6 +96,7 @@ export interface SessionStreamState {
   toolCallIdIndex: Record<string, string>;
   historyHasMore: boolean;
   historyNextOffset: number;
+  historyNextCursor?: string | null;
   historyLoadingMore: boolean;
   /** True after the first history fetch finished (even if empty). */
   historyHydrated: boolean;
@@ -114,5 +115,6 @@ export interface SessionSnapshot {
   historyHasMore: boolean;
   historyLoadingMore: boolean;
   historyNextOffset: number;
+  historyNextCursor?: string | null;
   historyHydrated: boolean;
 }

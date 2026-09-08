@@ -6,6 +6,13 @@
   border-radius: 10px;
 }
 
+.modelMenuColumn {
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  max-width: 320px;
+}
+
 .modelMenu {
   min-width: 240px;
   max-width: 320px;
@@ -16,13 +23,37 @@
   gap: 2px;
 }
 
+.modelMenuFooter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: none;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+    color: var(--fn-text-primary);
+  }
+}
+
 .modelPickerPanel {
   display: flex;
   align-items: stretch;
   max-width: min(620px, calc(100vw - 32px));
 }
 
-.modelPickerPanelExpanded .modelMenu {
+.modelPickerPanelExpanded .modelMenuColumn {
   padding-right: 6px;
   border-right: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
 }

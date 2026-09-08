@@ -10,6 +10,7 @@ import {
   type MentionPick,
 } from "../components/MentionPickerMenu";
 import { getMentionAtCursor } from "../utils/mentionAtCursor";
+import { isSlashNamePrefix } from "../utils/slashText";
 import {
   slashCommandNeedsInput,
   slashCommandPrefillText,
@@ -248,7 +249,7 @@ export function useSlashMentionInput({
   const handleTextChange = useCallback(
     (val: string) => {
       setText(val);
-      if (val.startsWith("/") && !val.includes(" ") && !val.includes("\n")) {
+      if (isSlashNamePrefix(val)) {
         setSlashMenuOpen(true);
         setSlashMenuIndex(0);
         setMentionMenuOpen(false);

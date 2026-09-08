@@ -11,6 +11,7 @@ import {
   App,
   Button,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -28,6 +29,7 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import type { MenuProps } from "antd";
 import { ResizableTable } from "@/components/ResizableTable";
 import {
   Check,
@@ -40,6 +42,8 @@ import {
   FolderPlus,
   LayoutGrid,
   List as ListIcon,
+  MessageSquarePlus,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -55,6 +59,7 @@ import { useNavigate } from "react-router-dom";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
+import type { OctopUser } from "../../api/modules/auth";
 import {
   DEFAULT_KNOWLEDGE_LIMITS,
   knowledgeBasesApi,
@@ -81,6 +86,7 @@ import { formatBytes, formatSizeGb } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
 import { stripFrontmatter } from "../../utils/markdown";
+import { setPendingAttachKnowledgeBaseId } from "../Chat/utils/pendingAttachKnowledgeBase";
 import skillStyles from "../Agent/Skills/index.module.less";
 import { KNOWLEDGE_ICON_NAMES, knowledgeIconForName } from "./knowledgeIcons";
 import {
@@ -143,6 +149,15 @@ function fileMatchesAccept(file: File, acceptCsv: string): boolean {
   const name = file.name.toLowerCase();
   return tokens.some((token) =>
     token.startsWith(".") ? name.endsWith(token) : false,
+  );
+}
+
+function canManageKnowledgeBase(
+  base: Pick<KnowledgeBase, "owner_user_id">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(
+    user && (user.role === "admin" || base.owner_user_id === user.id),
   );
 }
 
@@ -288,8 +303,8 @@ export default function KnowledgeBasesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [mobilePane, setMobilePane] = useState<"list" | "detail">("list");
-  const [baseModalOpen, setBaseModalOpen] = useState(false);
-  const [editingBase, setEditingBase] = useState(false);
+  const [baseDrawerOpen, setBaseDrawerOpen] = useState(false);
+  const [editingBaseId, setEditingBaseId] = useState<string | null>(null);
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
   const [onnxProbe, setOnnxProbe] = useState<{
     ok: boolean;
@@ -366,9 +381,7 @@ export default function KnowledgeBasesPage() {
     useListPanelCollapsed("octop:knowledge-bases:list-collapsed");
 
   const canManageSelected = Boolean(
-    selected &&
-      user &&
-      (user.role === "admin" || selected.owner_user_id === user.id),
+    selected && canManageKnowledgeBase(selected, user),
   );
   const canWriteSelected = canManageSelected;
   const usable = Boolean(capability?.usable);
@@ -672,22 +685,21 @@ export default function KnowledgeBasesPage() {
     });
     setDefaultOpenChecked(false);
     setSharedChecked(false);
-    setEditingBase(false);
-    setBaseModalOpen(true);
+    setEditingBaseId(null);
+    setBaseDrawerOpen(true);
   };
 
-  const openEdit = () => {
-    if (!selected) return;
+  const openEdit = (base: KnowledgeBase) => {
     baseForm.setFieldsValue({
-      name: selected.name,
-      description: selected.description,
-      icon_name: selected.icon_name || undefined,
-      max_documents: selected.max_documents,
+      name: base.name,
+      description: base.description,
+      icon_name: base.icon_name || undefined,
+      max_documents: base.max_documents,
     });
-    setDefaultOpenChecked(selected.default_open);
-    setSharedChecked(selected.shared);
-    setEditingBase(true);
-    setBaseModalOpen(true);
+    setDefaultOpenChecked(base.default_open);
+    setSharedChecked(base.shared);
+    setEditingBaseId(base.id);
+    setBaseDrawerOpen(true);
   };
 
   const saveBase = async () => {
@@ -698,37 +710,40 @@ export default function KnowledgeBasesPage() {
       shared: sharedChecked,
     };
     try {
-      const next =
-        editingBase && selected
-          ? await knowledgeBasesApi.update(selected.id, payload)
-          : await knowledgeBasesApi.create(payload);
-      setBaseModalOpen(false);
+      const next = editingBaseId
+        ? await knowledgeBasesApi.update(editingBaseId, payload)
+        : await knowledgeBasesApi.create(payload);
+      setBaseDrawerOpen(false);
       await loadBases();
       await loadDetail(next.id);
       if (isMobile) setMobilePane("detail");
       message.success(
-        t(editingBase ? "knowledgeBases.updated" : "knowledgeBases.created"),
+        t(editingBaseId ? "knowledgeBases.updated" : "knowledgeBases.created"),
       );
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.saveFailed"), t));
     }
   };
 
-  const deleteBase = async () => {
-    if (!selected) return;
-    const deletedId = selected.id;
-    detailRequestGate.current.begin();
-    setSelected(null);
-    setDocuments([]);
-    setDetailLoading(false);
+  const deleteBase = async (base: KnowledgeBase) => {
+    const deletedId = base.id;
+    const deletingSelected = deletedId === selected?.id;
+    if (deletingSelected) {
+      detailRequestGate.current.begin();
+      setSelected(null);
+      setDocuments([]);
+      setDetailLoading(false);
+    }
     try {
       await knowledgeBasesApi.delete(deletedId);
       const rows = await knowledgeBasesApi.list();
       setBases(rows);
-      if (isMobile) {
-        setMobilePane("list");
-      } else if (rows.length > 0) {
-        await loadDetail(rows[0].id);
+      if (deletingSelected) {
+        if (isMobile) {
+          setMobilePane("list");
+        } else if (rows.length > 0) {
+          await loadDetail(rows[0].id);
+        }
       }
       message.success(t("knowledgeBases.deleted"));
     } catch (error) {
@@ -736,6 +751,64 @@ export default function KnowledgeBasesPage() {
         apiErrorMessage(error, t("knowledgeBases.deleteFailed"), t),
       );
     }
+  };
+
+  const confirmDeleteBase = (base: KnowledgeBase) => {
+    modal.confirm({
+      title: t("knowledgeBases.deleteConfirm"),
+      okText: t("common.delete"),
+      cancelText: t("common.cancel"),
+      okButtonProps: { danger: true },
+      onOk: () => deleteBase(base),
+    });
+  };
+
+  const addBaseToChat = (base: KnowledgeBase) => {
+    setPendingAttachKnowledgeBaseId(base.id);
+    navigate("/chat", { state: { attachKnowledgeBaseId: base.id } });
+  };
+
+  const baseMenuItems = (base: KnowledgeBase): MenuProps["items"] => {
+    const canManage = canManageKnowledgeBase(base, user);
+    const items: MenuProps["items"] = [];
+    if (usable) {
+      items.push({
+        key: "addToChat",
+        icon: <MessageSquarePlus size={14} />,
+        label: t("knowledgeBases.addToChat"),
+        onClick: ({ domEvent }) => {
+          domEvent.stopPropagation();
+          addBaseToChat(base);
+        },
+      });
+    }
+    if (canManage) {
+      if (items.length > 0) {
+        items.push({ type: "divider" });
+      }
+      items.push(
+        {
+          key: "edit",
+          icon: <Pencil size={14} />,
+          label: t("common.edit"),
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            openEdit(base);
+          },
+        },
+        {
+          key: "delete",
+          icon: <Trash2 size={14} />,
+          label: t("common.delete"),
+          danger: true,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            confirmDeleteBase(base);
+          },
+        },
+      );
+    }
+    return items;
   };
 
   // A probe describes one model; drop it as soon as the draft points elsewhere.
@@ -1578,7 +1651,25 @@ export default function KnowledgeBasesPage() {
                           <span className={styles.listIcon}>
                             {knowledgeIconForName(base.icon_name, 18)}
                           </span>
-                          <span>{base.name}</span>
+                          <span className={styles.listNameText}>
+                            {base.name}
+                          </span>
+                          {canManageKnowledgeBase(base, user) || usable ? (
+                            <Dropdown
+                              menu={{ items: baseMenuItems(base) }}
+                              trigger={["click"]}
+                              placement="bottomRight"
+                            >
+                              <button
+                                type="button"
+                                className={styles.listMoreBtn}
+                                aria-label={t("common.more")}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <MoreHorizontal size={15} />
+                              </button>
+                            </Dropdown>
+                          ) : null}
                         </div>
                         <div className={styles.listDescription}>
                           {base.description ||
@@ -1680,37 +1771,6 @@ export default function KnowledgeBasesPage() {
                         >
                           {selected.name}
                         </Typography.Title>
-                        {canManageSelected ? (
-                          <div className={styles.titleActions}>
-                            <Tooltip title={t("common.edit")}>
-                              <Button
-                                type="text"
-                                size="small"
-                                className={styles.titleActionBtn}
-                                icon={<Pencil size={14} />}
-                                aria-label={t("common.edit")}
-                                onClick={openEdit}
-                              />
-                            </Tooltip>
-                            <Popconfirm
-                              title={t("knowledgeBases.deleteConfirm")}
-                              okText={t("common.delete")}
-                              cancelText={t("common.cancel")}
-                              onConfirm={() => void deleteBase()}
-                            >
-                              <Tooltip title={t("common.delete")}>
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  danger
-                                  className={styles.titleActionBtn}
-                                  icon={<Trash2 size={14} />}
-                                  aria-label={t("common.delete")}
-                                />
-                              </Tooltip>
-                            </Popconfirm>
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                     <Typography.Paragraph
@@ -2284,16 +2344,26 @@ export default function KnowledgeBasesPage() {
         onSubmit={saveTextDocument}
       />
 
-      <Modal
-        title={t(editingBase ? "knowledgeBases.edit" : "knowledgeBases.create")}
-        open={baseModalOpen}
-        onCancel={() => setBaseModalOpen(false)}
-        onOk={() => void saveBase()}
-        okText={t(editingBase ? "common.save" : "common.create")}
-        cancelText={t("common.cancel")}
-        width={520}
-        destroyOnClose
-        className={styles.baseModal}
+      <Drawer
+        title={t(
+          editingBaseId ? "knowledgeBases.edit" : "knowledgeBases.create",
+        )}
+        placement="right"
+        open={baseDrawerOpen}
+        onClose={() => setBaseDrawerOpen(false)}
+        width={isMobile ? "100%" : 480}
+        destroyOnHidden
+        className={styles.baseDrawer}
+        footer={
+          <div className={styles.drawerFooter}>
+            <Button onClick={() => setBaseDrawerOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="primary" onClick={() => void saveBase()}>
+              {t(editingBaseId ? "common.save" : "common.create")}
+            </Button>
+          </div>
+        }
       >
         <Form
           form={baseForm}
@@ -2370,7 +2440,7 @@ export default function KnowledgeBasesPage() {
             </div>
           </div>
         </Form>
-      </Modal>
+      </Drawer>
 
       <Drawer
         title={t("knowledgeBases.settingsTitle")}

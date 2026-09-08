@@ -11,13 +11,11 @@ from harness_agent.slash import (
     build_runtime_dispatcher,
 )
 
-from octop.i18n.domains.slash import tr
 from octop.infra.errors import OctopError
 from octop.infra.gateway.slash.catalog import SlashCommandSpec, list_specs, spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx
 from octop.infra.gateway.slash.runtime_bridge import build_runtime_ctx
 from octop.infra.gateway.slash.types import GatewayHandler
-from octop.infra.utils.locale import normalize_locale
 
 if TYPE_CHECKING:
     pass
@@ -39,10 +37,7 @@ class SlashDispatcher:
                 runtime_ctx = await build_runtime_ctx(cmd, ctx)
                 await self._runtime.handle(cmd, runtime_ctx, sink)
                 return True
-            lang = normalize_locale(ctx.locale)
-            await sink.text(tr("error.unknown_command", lang, name=cmd.name))
-            await sink.complete()
-            return True
+            return False
         try:
             await handler(self, cmd, ctx, sink)
         except OctopError as exc:

@@ -318,6 +318,8 @@ class HitlChannelCoordinator:
         locale: str,
         usage_tracker: UsageTracker | None = None,
         outcome: HitlSlashOutcome | None = None,
+        history_factory: Any | None = None,
+        history_finalize: Any | None = None,
     ) -> AsyncIterator[MessageEvent]:
         lang = normalize_locale(locale)
         if cmd.name == "pending":
@@ -355,8 +357,14 @@ class HitlChannelCoordinator:
             project_resume_stream,
         )
 
+        history_tracker = (
+            await history_factory(ctx.agent_id, thread_id, {}, resume=True)
+            if history_factory
+            else None
+        )
         tracker = usage_tracker or UsageTracker()
         projection_state = StreamProjectionState()
+        history_completed = False
         had_output = False
         ack_sent = False
         resolved_status: Literal["approved", "rejected"] | None = (
@@ -369,6 +377,7 @@ class HitlChannelCoordinator:
                 thread_id,
                 decisions,
                 usage_tracker=tracker,
+                history_tracker=history_tracker,
                 locale=lang,
                 projection_state=projection_state,
                 hitl_coordinator=self,
@@ -382,12 +391,17 @@ class HitlChannelCoordinator:
                     ack_sent = True
                 had_output = True
                 yield ev
+            history_completed = True
         except Exception as exc:
             if record is None and not had_output:
                 yield MessageEvent.text(tr("hitl.none_pending", lang))
             else:
                 yield MessageEvent.error_event(tr("hitl.resume_failed", lang, error=str(exc)))
             return
+
+        finally:
+            if history_finalize and history_tracker is not None:
+                await history_finalize(thread_id, history_tracker, completed=history_completed)
 
         if record is None and not had_output and not projection_state.hitl_paused:
             yield MessageEvent.text(tr("hitl.none_pending", lang))

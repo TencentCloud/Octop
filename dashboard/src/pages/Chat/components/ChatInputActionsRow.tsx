@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   Send,
   Square,
@@ -164,6 +165,7 @@ export default function ChatInputActionsRow({
   onSubmit,
 }: ChatInputActionsRowProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
   const [isCompact, setIsCompact] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
@@ -369,70 +371,84 @@ export default function ChatInputActionsRow({
       }`}
     >
       {(!useCompactControls || !reasoningMenu) && (
-        <div className={styles.modelMenu}>
-          <button
-            type="button"
-            className={`${styles.modelMenuItem} ${
-              !selectedModel ? styles.modelMenuItemActive : ""
-            }`}
-            onClick={() => {
-              onModelChange?.(null);
-              closeCompactPicker();
-              setModelPickerOpen(false);
-            }}
-          >
-            <span className={styles.modelMenuLabel}>
-              {t("chat.modelAuto", "Auto")}
-            </span>
-            <span className={styles.modelMenuHint}>
-              {t("chat.modelAutoHint", "Use agent default")}
-            </span>
-          </button>
-          {availableModels?.map((model) => {
-            const value = modelOptionValue(model);
-            const active = selectedModel === value;
-            const capability = model.reasoning_config;
-            const summary = reasoningSummary(model, active);
-            return (
-              <div
-                key={value}
-                className={`${styles.modelMenuRow} ${
-                  active ? styles.modelMenuItemActive : ""
-                }`}
-              >
-                <button
-                  type="button"
-                  className={styles.modelMenuSelect}
-                  onClick={() => {
-                    onModelChange?.(active ? null : value);
-                    closeCompactPicker();
-                    setModelPickerOpen(false);
-                  }}
+        <div className={styles.modelMenuColumn}>
+          <div className={styles.modelMenu}>
+            <button
+              type="button"
+              className={`${styles.modelMenuItem} ${
+                !selectedModel ? styles.modelMenuItemActive : ""
+              }`}
+              onClick={() => {
+                onModelChange?.(null);
+                closeCompactPicker();
+                setModelPickerOpen(false);
+              }}
+            >
+              <span className={styles.modelMenuLabel}>
+                {t("chat.modelAuto", "Auto")}
+              </span>
+              <span className={styles.modelMenuHint}>
+                {t("chat.modelAutoHint", "Use agent default")}
+              </span>
+            </button>
+            {availableModels?.map((model) => {
+              const value = modelOptionValue(model);
+              const active = selectedModel === value;
+              const capability = model.reasoning_config;
+              const summary = reasoningSummary(model, active);
+              return (
+                <div
+                  key={value}
+                  className={`${styles.modelMenuRow} ${
+                    active ? styles.modelMenuItemActive : ""
+                  }`}
                 >
-                  <span className={styles.modelMenuLabel}>
-                    {modelOptionLabel(model)}
-                  </span>
-                </button>
-                {capability && onReasoningChange && (
                   <button
                     type="button"
-                    className={styles.modelMenuReasoning}
-                    onClick={() => openModelReasoning(value)}
-                    aria-label={`${modelOptionLabel(model)} ${t(
-                      "chat.reasoningMode",
-                      "思考模式",
-                    )}`}
+                    className={styles.modelMenuSelect}
+                    onClick={() => {
+                      onModelChange?.(active ? null : value);
+                      closeCompactPicker();
+                      setModelPickerOpen(false);
+                    }}
                   >
-                    <Brain size={14} />
-                    {summary && <span>{summary}</span>}
-                    {capability.adapter !== "status_only" && (
-                      <ChevronRight size={15} />
-                    )}
+                    <span className={styles.modelMenuLabel}>
+                      {modelOptionLabel(model)}
+                    </span>
                   </button>
-                )}
-              </div>
-            );
-          })}
+                  {capability && onReasoningChange && (
+                    <button
+                      type="button"
+                      className={styles.modelMenuReasoning}
+                      onClick={() => openModelReasoning(value)}
+                      aria-label={`${modelOptionLabel(model)} ${t(
+                        "chat.reasoningMode",
+                        "思考模式",
+                      )}`}
+                    >
+                      <Brain size={14} />
+                      {summary && <span>{summary}</span>}
+                      {capability.adapter !== "status_only" && (
+                        <ChevronRight size={15} />
+                      )}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className={styles.modelMenuFooter}
+            onClick={() => {
+              closeCompactPicker();
+              setModelPickerOpen(false);
+              navigate("/admin/models");
+            }}
+          >
+            <Cpu size={15} aria-hidden />
+            <span>{t("chat.modelPickerManage")}</span>
+          </button>
         </div>
       )}
       {reasoningMenu}

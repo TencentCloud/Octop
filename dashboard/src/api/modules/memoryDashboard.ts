@@ -175,10 +175,11 @@ export interface JournalItem {
   target_atom_id?: string | null;
   target_candidate_id?: string | null;
   note?: string | null;
+  before?: Record<string, unknown> | null;
   /** Short target memory/topic text enriched by the backend for specific action display. */
   target_summary?: string | null;
   /** Present on ``extract_run`` rows: structured stats for this extraction pass. */
-  after?: ExtractRunStats | null;
+  after?: ExtractRunStats | Record<string, unknown> | null;
 }
 
 export interface ListJournalResponse {
@@ -235,6 +236,19 @@ export interface PromoteCandidateResponse {
 export interface RejectCandidateResponse {
   candidate_id: string;
   status: "rejected";
+}
+
+export interface CreateAtomResponse {
+  atom: AtomItem;
+  entity: EntityItem;
+  created_entity: boolean;
+  status: "created";
+}
+
+export interface ReplaceAtomResponse {
+  old_atom_id: string;
+  atom: AtomItem;
+  status: "replaced" | "unchanged";
 }
 
 export interface LastExtractRun {
@@ -448,6 +462,34 @@ export const memoryDashboardApi = {
     request<unknown>(
       `${base(aid)}/atoms/${encodeURIComponent(atomId)}:deprecate`,
       { method: "POST", body: JSON.stringify(body ?? {}) },
+    ),
+
+  createAtom: (
+    aid: string,
+    body: {
+      assertion: string;
+      entity_id?: string;
+      entity_name?: string;
+      entity_type?: string;
+      kind?: AtomKind;
+      importance?: Importance;
+      confidence?: Confidence;
+      reason?: string;
+    },
+  ) =>
+    request<CreateAtomResponse>(`${base(aid)}/atoms`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  replaceAtom: (
+    aid: string,
+    atomId: string,
+    body: { assertion: string; reason?: string },
+  ) =>
+    request<ReplaceAtomResponse>(
+      `${base(aid)}/atoms/${encodeURIComponent(atomId)}:replace`,
+      { method: "POST", body: JSON.stringify(body) },
     ),
 
   // terminal aggregator (5 cards)

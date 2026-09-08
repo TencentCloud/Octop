@@ -9,7 +9,7 @@ tasks:
     deps:
       - task: common:go:mod:tidy
       - task: common:build:frontend
-      - task: common:generate:icons
+      - task: common:generate:icons:darwin
     cmds:
       - go build {{.BUILD_FLAGS}} -o {{.OUTPUT}}
     vars:
@@ -59,6 +59,23 @@ tasks:
           done
           hdiutil detach "$dev" -force -quiet >/dev/null 2>&1
         }
+        # create/convert hit "Resource busy" on CI while background scanners still
+        # hold the freshly staged bundle. Retry; the last attempt stays unmuted so
+        # a genuine failure keeps hdiutil's diagnostics.
+        retry_hdiutil() {
+          local out="$1" attempt
+          shift
+          for attempt in 1 2 3 4; do
+            sync
+            if hdiutil "$@" >/dev/null 2>&1; then
+              return 0
+            fi
+            rm -f "$out"
+            sleep $((attempt * 5))
+          done
+          sync
+          hdiutil "$@"
+        }
         cleanup() {
           if [[ -n "$device" ]]; then
             detach_device "$device" || true
@@ -77,13 +94,14 @@ tasks:
           hdiutil detach "/Volumes/${volname}" -quiet >/dev/null 2>&1 || \
             hdiutil detach "/Volumes/${volname}" -force -quiet >/dev/null 2>&1 || true
         fi
-        hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRW "$rw_dmg" >/dev/null
+        retry_hdiutil "$rw_dmg" create -volname "$volname" -srcfolder "$staging" -ov -format UDRW "$rw_dmg"
         attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg" || true)"
         device="$(awk '/^\/dev\// { print $1; exit }' <<<"$attach_out")"
         mount_point="$(awk -F'\t' '/\/Volumes\// { print $NF; exit }' <<<"$attach_out")"
         if [[ -z "$device" || ! -d "$mount_point" ]]; then
           echo "warning: could not mount writable DMG; writing a plain image" >&2
-          hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output"
+          retry_hdiutil "$output" create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output"
+          test -s "$output"
           exit 0
         fi
         osascript - "$volname" "$app_name" <<'APPLESCRIPT' || \
@@ -118,13 +136,13 @@ tasks:
         if ! detach_device "$device"; then
           echo "warning: could not detach ${device}; writing a plain image" >&2
           device=""
-          hdiutil create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output" >/dev/null
+          retry_hdiutil "$output" create -volname "$volname" -srcfolder "$staging" -ov -format UDRO "$output"
           test -s "$output"
           exit 0
         fi
         device=""
         rm -f "$output"
-        hdiutil convert "$rw_dmg" -ov -format UDRO -o "$output" >/dev/null
+        retry_hdiutil "$output" convert "$rw_dmg" -ov -format UDRO -o "$output"
         test -s "$output"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"

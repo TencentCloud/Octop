@@ -26,20 +26,44 @@ tasks:
       - echo "skip generate bindings"
 
   generate:icons:
-    summary: Generates .ico from appicon.png and .icns from appicon-macos.png
+    summary: Generates .ico from appicon.png
     dir: build
     sources:
       - appicon.png
-      - appicon-macos.png
     generates:
-      - darwin/icons.icns
       - windows/icon.ico
     cmds:
       # Windows / Linux keep the full-bleed artwork.
       - wails3 generate icons -input appicon.png -windowsfilename windows/icon.ico -macfilename ""
+
+  generate:icons:darwin:
+    summary: Generates .icns from appicon-macos.png via sips + iconutil
+    dir: build
+    sources:
+      - appicon-macos.png
+    generates:
+      - darwin/icons.icns
+    cmds:
       # macOS expects 824x824 artwork on a 1024x1024 canvas; a full-bleed tile
       # renders ~24% larger than every other app in the Dock and Launchpad.
-      - wails3 generate icons -input appicon-macos.png -macfilename darwin/icons.icns -windowsfilename ""
+      #
+      # sips downsamples through Core Graphics. wails3's encoder resizes with
+      # Mitchell-Netravali, which rings on the logo's high-contrast edges and
+      # leaves stray pixels in the 32/64/128 layers.
+      - |
+        set -euo pipefail
+        work="$(mktemp -d "${TMPDIR:-/tmp}/octop-iconset.XXXXXX")"
+        trap 'rm -rf "$work"' EXIT
+        iconset="${work}/AppIcon.iconset"
+        mkdir -p "$iconset"
+        for spec in 16:icon_16x16 32:icon_16x16@2x 32:icon_32x32 64:icon_32x32@2x \
+                    128:icon_128x128 256:icon_128x128@2x 256:icon_256x256 \
+                    512:icon_256x256@2x 512:icon_512x512 1024:icon_512x512@2x; do
+          px="${spec%%:*}"
+          sips -s format png -z "$px" "$px" appicon-macos.png \
+            --out "${iconset}/${spec#*:}.png" >/dev/null
+        done
+        iconutil -c icns "$iconset" -o darwin/icons.icns
 
   dev:frontend:
     summary: Serves the embedded shell assets for Wails dev mode

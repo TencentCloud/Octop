@@ -21,6 +21,10 @@ import {
   saveSkills,
 } from "../utils/chatStorage";
 import { resolveInitialConnectors } from "../utils/resolveInitialConnectors";
+import {
+  consumePendingAttachKnowledgeBaseId,
+  peekPendingAttachKnowledgeBaseId,
+} from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
 import { isPendingThread } from "./useSessions";
 
@@ -190,12 +194,17 @@ export function useChatComposerResources(
 
   useEffect(() => {
     let cancelled = false;
-    setSelectedKnowledgeBaseIds([]);
+    const pendingId = peekPendingAttachKnowledgeBaseId();
+    setSelectedKnowledgeBaseIds(pendingId ? [pendingId] : []);
     setChatKnowledgeBases(undefined);
     void knowledgeBasesApi
       .getCapability()
       .then((capability) => {
-        if (cancelled || !capability.usable) return;
+        if (cancelled) return;
+        if (!capability.usable) {
+          if (pendingId) consumePendingAttachKnowledgeBaseId();
+          return;
+        }
         return knowledgeBasesApi.list().then((bases) => {
           if (cancelled) return;
           setChatKnowledgeBases(bases);
@@ -208,8 +217,14 @@ export function useChatComposerResources(
             )
             .map((base) => base.id);
           setSelectedKnowledgeBaseIds((previous) =>
-            withDefaultOpenKnowledgeBases(previous, ownedDefaults),
+            withDefaultOpenKnowledgeBases(
+              pendingId && !previous.includes(pendingId)
+                ? [...previous, pendingId]
+                : previous,
+              ownedDefaults,
+            ),
           );
+          if (pendingId) consumePendingAttachKnowledgeBaseId();
         });
       })
       .catch(() => {

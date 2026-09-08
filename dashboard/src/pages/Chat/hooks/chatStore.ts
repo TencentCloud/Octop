@@ -335,6 +335,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyHasMore: state.historyHasMore,
     historyLoadingMore: state.historyLoadingMore,
     historyNextOffset: state.historyNextOffset,
+    historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
   };
 }
@@ -516,7 +517,7 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
 export function setHistoryPage(
   sessionId: string,
   messages: ChatMessage[],
-  opts: { hasMore: boolean; nextOffset: number },
+  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
@@ -524,6 +525,7 @@ export function setHistoryPage(
   usageSamplesByState.delete(state);
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
+  state.historyNextCursor = opts.nextCursor ?? null;
   state.historyLoadingMore = false;
   state.historyHydrated = true;
   notify(state);
@@ -542,7 +544,7 @@ function dedupePrependMessages(
 export function prependHistoryMessages(
   sessionId: string,
   older: ChatMessage[],
-  opts: { hasMore: boolean; nextOffset: number },
+  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
   const uniqueOlder = dedupePrependMessages(older, state.messages);
@@ -551,6 +553,7 @@ export function prependHistoryMessages(
   }
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
+  state.historyNextCursor = opts.nextCursor ?? null;
   notify(state);
 }
 
@@ -642,6 +645,7 @@ export function clearMessages(sessionId: string) {
   state.toolCallIdIndex = {};
   state.historyHasMore = false;
   state.historyNextOffset = 0;
+  state.historyNextCursor = null;
   state.historyLoadingMore = false;
   state.historyHydrated = false;
   notify(state);
@@ -942,7 +946,7 @@ function handleHarnessChunk(
       finalizeStreamingMessages(state);
       break;
     case "error":
-      appendErrorBubble(state, chunk.message);
+      appendErrorBubble(state, chunk.message, chunk.error_code);
       break;
     case "hitl_required":
       handleHitlRequired(state, chunk.request);
@@ -1522,14 +1526,21 @@ function handleHitlRequired(
 
 /** Append an assistant error bubble — used for backend-emitted error
  *  chunks and HTTP-layer failures. */
-function appendErrorBubble(state: SessionStreamState, message: string): void {
+function appendErrorBubble(
+  state: SessionStreamState,
+  message: string,
+  errorCode?: string,
+): void {
   state.messages = [
     ...state.messages,
     {
       id: generateId(),
       role: "assistant",
       content: message,
-      errorInfo: { code: "stream_error", source: "frontend_stream" },
+      errorInfo: {
+        code: errorCode || "stream_error",
+        source: "frontend_stream",
+      },
       status: "error",
       timestamp: Date.now(),
     },

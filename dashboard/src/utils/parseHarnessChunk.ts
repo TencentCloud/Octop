@@ -74,6 +74,7 @@ export interface DoneChunk {
 export interface ErrorChunk {
   type: "error";
   message: string;
+  error_code?: string;
 }
 
 export interface HitlRequiredChunk {
@@ -208,6 +209,8 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         type: "error",
         message:
           typeof obj.message === "string" ? obj.message : "unknown error",
+        error_code:
+          typeof obj.error_code === "string" ? obj.error_code : undefined,
       };
     case "hitl_required":
       return {

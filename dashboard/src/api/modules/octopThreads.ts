@@ -34,6 +34,7 @@ export interface OctopThreadHistory {
   has_more?: boolean;
   limit?: number;
   offset?: number;
+  next_cursor?: string | null;
   /** Legacy checkpoint is being projected by the bounded background worker. */
   history_loading?: boolean;
   history_status?: "pending" | "queued" | "running" | "ready" | "failed";
@@ -113,14 +114,16 @@ export const octopThreadsApi = {
   history: (
     agentId: string,
     threadId: string,
-    params: { limit?: number; offset?: number } = {},
+    params: { limit?: number; offset?: number; cursor?: string | null } = {},
   ) => {
     const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
     const offset = params.offset ?? 0;
     return request<OctopThreadHistory>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
-      )}/history?limit=${limit}&offset=${offset}`,
+      )}/history?limit=${limit}&offset=${offset}${
+        params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""
+      }`,
     );
   },
 
