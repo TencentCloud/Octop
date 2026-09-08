@@ -4,6 +4,7 @@ import { agentChatApi } from "../../../api/modules/agentChat";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { pickLocale, type LocalizedText } from "../../../utils/localizedText";
 import type { WelcomeQuickCard } from "../components/WelcomeScreen";
+import { resolveWelcomeSuffix } from "../utils/resolveWelcomeSuffix";
 
 interface WelcomePromptDto {
   title: LocalizedText;
@@ -32,7 +33,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
 } {
   const { i18n } = useTranslation();
   const [quickCards, setQuickCards] = useState<WelcomeQuickCard[]>([]);
-  const [welcomeSuffix, setWelcomeSuffix] = useState<string | null>(null);
+  const [apiWelcomeSuffix, setApiWelcomeSuffix] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +41,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
     const agentId = agent?.agent_id;
     if (!agentId) {
       setQuickCards([]);
-      setWelcomeSuffix(null);
+      setApiWelcomeSuffix(null);
       return;
     }
 
@@ -49,7 +50,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       .then((data) => {
         if (cancelled) return;
         setQuickCards(mapQuickPrompts(data.quick_prompts, locale));
-        setWelcomeSuffix(
+        setApiWelcomeSuffix(
           pickLocale(data.welcome_message, locale, { crossFallback: false }) ||
             null,
         );
@@ -57,7 +58,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       .catch(() => {
         if (!cancelled) {
           setQuickCards([]);
-          setWelcomeSuffix(null);
+          setApiWelcomeSuffix(null);
         }
       });
 
@@ -65,6 +66,11 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       cancelled = true;
     };
   }, [agent?.agent_id, i18n.language]);
+
+  const welcomeSuffix = resolveWelcomeSuffix(
+    agent?.description,
+    apiWelcomeSuffix,
+  );
 
   return { quickCards, welcomeSuffix };
 }
