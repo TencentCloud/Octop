@@ -171,13 +171,21 @@ async def test_paused_turn_resumes_original_format_after_switch_disabled(archive
     assert any("partial thought" in json.dumps(d["value"]) for d in docs)
 
 
-def test_archive_mismatch_or_missing_is_not_empty_history(archive, tmp_path):
+def test_archive_identity_mismatch_is_rejected(archive):
     with pytest.raises(ValueError, match="identity"):
         HistoryStore(archive.store.path, identity="different")
-    path = archive.store.path
+
+
+def test_missing_archive_is_not_empty_history(tmp_path):
+    path = tmp_path / "history.sqlite"
+    store = HistoryStore(path, identity="test")
+    store.close()
     path.rename(tmp_path / "moved.sqlite")
+
     with pytest.raises(FileNotFoundError):
-        archive.store.segments("t")
+        store.segments("t")
+    with pytest.raises(FileNotFoundError, match="required history archive"):
+        HistoryStore(path, identity="test")
 
 
 def test_failed_document_write_rolls_back_bodies(archive):
