@@ -2055,6 +2055,7 @@
     "responseModeStream": "Live progress",
     "showToolHints": "Show tool hints",
     "showToolHintsDesc": "When enabled, channel messages show tool-call activity and status hints",
+    "showToolHintsQqDesc": "Tool hints send extra bubbles. QQ C2C allows only a few replies per inbound message, so turning this on may exhaust that quota and make replies worse or fail. Leave it off unless you need it.",
     "globalSettings": "Global Settings",
     "checking": "Connecting...",
     "connected": "Connected",

@@ -2054,6 +2054,7 @@
     "responseModeStream": "实时过程",
     "showToolHints": "显示工具调用提示",
     "showToolHintsDesc": "开启后，频道消息中将展示工具调用过程与状态提示",
+    "showToolHintsQqDesc": "开启后会另发气泡展示工具过程。QQ 私聊每条消息只能回有限几条，打开后可能占满配额，回复变差或发不出去。默认建议关闭。",
     "globalSettings": "全局设置",
     "checking": "连接中...",
     "connected": "连接正常",
