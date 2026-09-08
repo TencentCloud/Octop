@@ -296,6 +296,7 @@
     "unavailableDescriptionNonAdmin": "Knowledge bases are not enabled or not configured yet. Please contact an administrator.",
     "create": "Create knowledge base",
     "edit": "Edit knowledge base",
+    "addToChat": "Add to chat",
     "name": "Name",
     "nameRequired": "Please enter a knowledge base name",
     "description": "Description",

@@ -296,6 +296,7 @@
     "unavailableDescriptionNonAdmin": "知识库尚未启用或未配置向量模型，请联系管理员。",
     "create": "创建知识库",
     "edit": "编辑知识库",
+    "addToChat": "添加到会话",
     "name": "名称",
     "nameRequired": "请输入知识库名称",
     "description": "描述",
