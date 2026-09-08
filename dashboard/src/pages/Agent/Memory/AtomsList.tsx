@@ -15,7 +15,7 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -23,6 +23,7 @@ import {
   isAtomDeprecated,
   type AtomItem,
   type AtomKind,
+  type EntityItem,
   type Importance,
   type ListAtomsBody,
 } from "../../../api/modules/memoryDashboard";
@@ -30,6 +31,8 @@ import MemoryLayerView from "./shared/MemoryLayerView";
 import LineageStrip from "./shared/LineageStrip";
 import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 import { confirmDeprecateAtom } from "./shared/deprecateAtom";
+import { confirmEditAtom } from "./shared/editAtom";
+import CreateAtomModal from "./shared/createAtom";
 
 const PAGE_SIZE = 20;
 
@@ -64,6 +67,8 @@ export default function AtomsList({ agentId }: Props) {
   const [importance, setImportance] = useState<Importance | "">("");
   const [selected, setSelected] = useState<AtomItem | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [entities, setEntities] = useState<EntityItem[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +90,14 @@ export default function AtomsList({ agentId }: Props) {
   useEffect(() => {
     if (!agentId) return;
     void load();
+    void memoryDashboardApi
+      .listEntities(agentId, {
+        limit: 200,
+        order_by: "atom_count",
+        order: "desc",
+      })
+      .then((r) => setEntities(r.items))
+      .catch(() => setEntities([]));
   }, [agentId, load]);
 
   const handleDeprecate = (atom: AtomItem) => {
@@ -93,6 +106,17 @@ export default function AtomsList({ agentId }: Props) {
       atom,
       onSuccess: () => {
         setSelected(null);
+        void load();
+      },
+    });
+  };
+
+  const handleEdit = (atom: AtomItem) => {
+    confirmEditAtom({
+      agentId,
+      atom,
+      onSuccess: (next) => {
+        setSelected(next);
         void load();
       },
     });
@@ -122,6 +146,13 @@ export default function AtomsList({ agentId }: Props) {
         }}
         options={IMPORTANCE_OPTIONS}
       />
+      <Button
+        size="small"
+        icon={<Plus size={14} />}
+        onClick={() => setCreateOpen(true)}
+      >
+        {t("memory.create.title", "新建记忆")}
+      </Button>
     </>
   );
 
@@ -130,128 +161,175 @@ export default function AtomsList({ agentId }: Props) {
   const noFilterActive = !kind && !importance;
 
   return (
-    <MemoryLayerView<AtomItem>
-      toolbar={toolbar}
-      items={items}
-      total={total}
-      page={page}
-      pageSize={PAGE_SIZE}
-      onPageChange={setPage}
-      loading={loading}
-      emptyContent={
-        noFilterActive ? <MemoryPipelineEmpty agentId={agentId} /> : undefined
-      }
-      keyOf={(a) => a.id}
-      selected={selected}
-      onItemClick={setSelected}
-      onCloseDrawer={() => setSelected(null)}
-      drawerTitle={t("memory.atomDetail", "记忆详情")}
-      drawerWidth={560}
-      renderItem={(a) => (
-        <div
-          style={{
-            position: "relative",
-            paddingRight: isAtomDeprecated(a) ? 0 : 32,
-          }}
-          onMouseEnter={() => setHoveredId(a.id)}
-          onMouseLeave={() => setHoveredId(null)}
-        >
-          <Space size={4}>
-            <ImportanceStars importance={a.importance} />
-            {isAtomDeprecated(a) ? <Tag color="red">已忘记</Tag> : null}
-          </Space>
-          <div style={{ marginTop: 4, fontSize: 13 }}>{a.assertion}</div>
-          <div style={{ marginTop: 2, fontSize: 12, color: "#8c8c8c" }}>
-            {formatRelativeTime(a.created_at)}
-            {a.kind ? ` · ${kindLabel(a.kind)}` : ""}
-          </div>
-          {!isAtomDeprecated(a) && hoveredId === a.id ? (
-            <Tooltip title={t("memory.tree.deprecateTooltip", "弃用这条记忆")}>
+    <>
+      <MemoryLayerView<AtomItem>
+        toolbar={toolbar}
+        items={items}
+        total={total}
+        page={page}
+        pageSize={PAGE_SIZE}
+        onPageChange={setPage}
+        loading={loading}
+        emptyContent={
+          noFilterActive ? <MemoryPipelineEmpty agentId={agentId} /> : undefined
+        }
+        keyOf={(a) => a.id}
+        selected={selected}
+        onItemClick={setSelected}
+        onCloseDrawer={() => setSelected(null)}
+        drawerTitle={t("memory.atomDetail", "记忆详情")}
+        drawerWidth={560}
+        renderItem={(a) => (
+          <div
+            style={{
+              position: "relative",
+              paddingRight: isAtomDeprecated(a) ? 0 : 56,
+            }}
+            onMouseEnter={() => setHoveredId(a.id)}
+            onMouseLeave={() => setHoveredId(null)}
+          >
+            <Space size={4}>
+              <ImportanceStars importance={a.importance} />
+              {isAtomDeprecated(a) ? <Tag color="red">已忘记</Tag> : null}
+            </Space>
+            <div style={{ marginTop: 4, fontSize: 13 }}>{a.assertion}</div>
+            <div style={{ marginTop: 2, fontSize: 12, color: "#8c8c8c" }}>
+              {formatRelativeTime(a.created_at)}
+              {a.kind ? ` · ${kindLabel(a.kind)}` : ""}
+            </div>
+            {!isAtomDeprecated(a) && hoveredId === a.id ? (
               <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeprecate(a);
-                }}
                 style={{
                   position: "absolute",
                   right: 0,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  color: "#ff4d4f",
-                  cursor: "pointer",
-                  fontSize: 15,
-                  padding: "2px 4px",
-                  borderRadius: 4,
-                  lineHeight: 1,
+                  display: "inline-flex",
+                  gap: 4,
                 }}
               >
-                <Trash2 size={14} />
+                <Tooltip title={t("memory.edit.tooltip", "编辑这条记忆")}>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(a);
+                    }}
+                    style={{
+                      color: "#1677ff",
+                      cursor: "pointer",
+                      padding: "2px 4px",
+                      borderRadius: 4,
+                      lineHeight: 1,
+                    }}
+                  >
+                    <Pencil size={14} />
+                  </span>
+                </Tooltip>
+                <Tooltip
+                  title={t("memory.tree.deprecateTooltip", "弃用这条记忆")}
+                >
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeprecate(a);
+                    }}
+                    style={{
+                      color: "#ff4d4f",
+                      cursor: "pointer",
+                      padding: "2px 4px",
+                      borderRadius: 4,
+                      lineHeight: 1,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </span>
+                </Tooltip>
               </span>
-            </Tooltip>
-          ) : null}
-        </div>
-      )}
-      renderDrawer={(atom) => (
-        <div>
-          <Space size={8} wrap style={{ marginBottom: 12 }}>
-            {atom.kind ? <Tag>{kindLabel(atom.kind)}</Tag> : null}
-            <ImportanceStars importance={atom.importance} />
-            <Tag color={isAtomDeprecated(atom) ? "red" : "green"}>
-              {isAtomDeprecated(atom) ? "已忘记" : "在用"}
-            </Tag>
-          </Space>
+            ) : null}
+          </div>
+        )}
+        renderDrawer={(atom) => (
+          <div>
+            <Space size={8} wrap style={{ marginBottom: 12 }}>
+              {atom.kind ? <Tag>{kindLabel(atom.kind)}</Tag> : null}
+              <ImportanceStars importance={atom.importance} />
+              <Tag color={isAtomDeprecated(atom) ? "red" : "green"}>
+                {isAtomDeprecated(atom) ? "已忘记" : "在用"}
+              </Tag>
+            </Space>
 
-          {/* Source, shown only as user-facing lineage after view consolidation */}
-          <LineageStrip agentId={agentId} atom={atom} />
+            <LineageStrip agentId={agentId} atom={atom} />
 
-          <Typography.Title level={5}>记忆内容</Typography.Title>
-          <Typography.Paragraph>{atom.assertion}</Typography.Paragraph>
+            <Typography.Title level={5}>记忆内容</Typography.Title>
+            <Typography.Paragraph>{atom.assertion}</Typography.Paragraph>
 
-          <Typography.Title level={5}>原话依据</Typography.Title>
-          <Typography.Paragraph type="secondary">
-            {atom.verbatim_quote}
-          </Typography.Paragraph>
+            <Typography.Title level={5}>原话依据</Typography.Title>
+            <Typography.Paragraph type="secondary">
+              {atom.verbatim_quote}
+            </Typography.Paragraph>
 
-          <Typography.Title level={5}>可信度</Typography.Title>
-          <ConfidenceBar confidence={atom.confidence} />
+            <Typography.Title level={5}>可信度</Typography.Title>
+            <ConfidenceBar confidence={atom.confidence} />
 
-          {(atom.search_terms ?? []).length > 0 ? (
-            <>
-              <Typography.Title level={5} style={{ marginTop: 12 }}>
-                关联关键词
-              </Typography.Title>
-              <Space size={4} wrap>
-                {(atom.search_terms ?? []).map((s) => (
-                  <Tag key={s}>{s}</Tag>
-                ))}
-              </Space>
-            </>
-          ) : null}
+            {(atom.search_terms ?? []).length > 0 ? (
+              <>
+                <Typography.Title level={5} style={{ marginTop: 12 }}>
+                  关联关键词
+                </Typography.Title>
+                <Space size={4} wrap>
+                  {(atom.search_terms ?? []).map((s) => (
+                    <Tag key={s}>{s}</Tag>
+                  ))}
+                </Space>
+              </>
+            ) : null}
 
-          <Typography.Paragraph
-            type="secondary"
-            style={{ fontSize: 12, marginTop: 16 }}
-          >
-            首次记录于 {formatRelativeTime(atom.created_at)}
-            {atom.occurred_at
-              ? ` · 发生于 ${formatRelativeTime(atom.occurred_at)}`
-              : ""}
-          </Typography.Paragraph>
+            <Typography.Paragraph
+              type="secondary"
+              style={{ fontSize: 12, marginTop: 16 }}
+            >
+              首次记录于 {formatRelativeTime(atom.created_at)}
+              {atom.occurred_at
+                ? ` · 发生于 ${formatRelativeTime(atom.occurred_at)}`
+                : ""}
+            </Typography.Paragraph>
 
-          {/* Actions, shown only for active atoms */}
-          {!isAtomDeprecated(atom) ? (
-            <>
-              <Typography.Title level={5} style={{ marginTop: 12 }}>
-                {t("memory.tree.actions", "操作")}
-              </Typography.Title>
-              <Button danger onClick={() => handleDeprecate(atom)}>
-                {t("memory.tree.deprecate", "弃用这条记忆")}
-              </Button>
-            </>
-          ) : null}
-        </div>
-      )}
-    />
+            {!isAtomDeprecated(atom) ? (
+              <>
+                <Typography.Title level={5} style={{ marginTop: 12 }}>
+                  {t("memory.tree.actions", "操作")}
+                </Typography.Title>
+                <Space>
+                  <Button onClick={() => handleEdit(atom)}>
+                    {t("memory.edit.action", "编辑这条记忆")}
+                  </Button>
+                  <Button danger onClick={() => handleDeprecate(atom)}>
+                    {t("memory.tree.deprecate", "弃用这条记忆")}
+                  </Button>
+                </Space>
+              </>
+            ) : null}
+          </div>
+        )}
+      />
+      <CreateAtomModal
+        open={createOpen}
+        agentId={agentId}
+        entities={entities}
+        onClose={() => setCreateOpen(false)}
+        onSuccess={() => {
+          void load();
+          void memoryDashboardApi
+            .listEntities(agentId, {
+              limit: 200,
+              order_by: "atom_count",
+              order: "desc",
+            })
+            .then((r) => setEntities(r.items))
+            .catch(() => undefined);
+        }}
+      />
+    </>
   );
 }
 

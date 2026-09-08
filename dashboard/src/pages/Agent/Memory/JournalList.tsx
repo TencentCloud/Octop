@@ -31,6 +31,8 @@ const ACTION_OPTIONS = [
   { value: "promote", label: "采纳" },
   { value: "reject", label: "忽略" },
   { value: "deprecate", label: "弃用" },
+  { value: "create", label: "新建" },
+  { value: "user_edit", label: "编辑" },
   { value: "page_regen", label: "刷新主题" },
 ];
 
@@ -44,6 +46,7 @@ const ACTION_COLOR: Record<string, string> = {
   page_regen: "geekblue",
   create: "green",
   update: "blue",
+  user_edit: "blue",
   merge: "gold",
 };
 
@@ -57,6 +60,7 @@ const ACTION_HEX: Record<string, string> = {
   page_regen: "#2f54eb",
   create: "#52c41a",
   update: "#1677ff",
+  user_edit: "#1677ff",
   merge: "#faad14",
 };
 
@@ -601,6 +605,7 @@ function singleEventStory(item: JournalItem): { icon: string } {
     case "create":
       return { icon: "🆕" };
     case "update":
+    case "user_edit":
       return { icon: "✏️" };
     case "merge":
       return { icon: "🔗" };
@@ -637,6 +642,7 @@ function actionLabel(action: string): string {
     case "create":
       return "创建";
     case "update":
+    case "user_edit":
       return "更新";
     case "merge":
       return "合并";

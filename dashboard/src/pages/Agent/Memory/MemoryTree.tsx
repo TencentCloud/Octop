@@ -39,6 +39,8 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
+  Pencil,
+  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -56,6 +58,9 @@ import {
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 import { confirmDeprecateAtom } from "./shared/deprecateAtom";
+import { confirmEditAtom } from "./shared/editAtom";
+import CreateAtomModal from "./shared/createAtom";
+import LineageStrip from "./shared/LineageStrip";
 
 interface Props {
   agentId: string;
@@ -78,6 +83,8 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
   );
   const [atomsByEntity, setAtomsByEntity] = useState<AtomCache>(new Map());
   const [selectedAtom, setSelectedAtom] = useState<AtomItem | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createEntityId, setCreateEntityId] = useState<string | undefined>();
   // Entity whose long-form summary page is being viewed in the drawer.
   const [summaryEntity, setSummaryEntity] = useState<EntityItem | null>(null);
   // Used for scroll positioning.
@@ -190,6 +197,21 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
     void fetchAtoms(atom.entity_id);
   };
 
+  const handleReplaced = (next: AtomItem) => {
+    setSelectedAtom(next);
+    void fetchAtoms(next.entity_id);
+  };
+
+  const handleCreated = (atom: AtomItem) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.add(atom.entity_id);
+      return next;
+    });
+    void loadEntities();
+    void fetchAtoms(atom.entity_id);
+  };
+
   const totalAtoms = useMemo(
     () => entities.reduce((sum, e) => sum + e.atom_count, 0),
     [entities],
@@ -221,9 +243,24 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
             {t("memory.tree.atomCount", "{{n}} 条记忆", { n: totalAtoms })}
           </Tag>
         </Space>
-        <a onClick={handleRefresh} style={{ fontSize: 12, cursor: "pointer" }}>
-          <RefreshCw size={14} /> {t("common.refresh", "刷新")}
-        </a>
+        <Space size={12}>
+          <Button
+            size="small"
+            icon={<Plus size={14} />}
+            onClick={() => {
+              setCreateEntityId(undefined);
+              setCreateOpen(true);
+            }}
+          >
+            {t("memory.create.title", "新建记忆")}
+          </Button>
+          <a
+            onClick={handleRefresh}
+            style={{ fontSize: 12, cursor: "pointer" }}
+          >
+            <RefreshCw size={14} /> {t("common.refresh", "刷新")}
+          </a>
+        </Space>
       </div>
 
       <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 8 }}>
@@ -262,11 +299,22 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
                     expanded={isExpanded}
                     onToggle={() => handleToggleEntity(entity.id)}
                     onViewSummary={() => setSummaryEntity(entity)}
+                    onAdd={() => {
+                      setCreateEntityId(entity.id);
+                      setCreateOpen(true);
+                    }}
                   />
                   {isExpanded ? (
                     <AtomChildren
                       cache={cache}
                       onSelect={setSelectedAtom}
+                      onEdit={(atom) =>
+                        confirmEditAtom({
+                          agentId,
+                          atom,
+                          onSuccess: handleReplaced,
+                        })
+                      }
                       onDeprecate={(atom) =>
                         confirmDeprecateAtom({
                           agentId,
@@ -289,12 +337,25 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
         agentId={agentId}
         onClose={() => setSelectedAtom(null)}
         onDeprecated={handleDeprecated}
+        onReplaced={handleReplaced}
       />
 
       <EntitySummaryDrawer
         agentId={agentId}
         entity={summaryEntity}
         onClose={() => setSummaryEntity(null)}
+      />
+
+      <CreateAtomModal
+        open={createOpen}
+        agentId={agentId}
+        entities={entities}
+        presetEntityId={createEntityId}
+        onClose={() => {
+          setCreateOpen(false);
+          setCreateEntityId(undefined);
+        }}
+        onSuccess={(atom) => handleCreated(atom)}
       />
     </Card>
   );
@@ -343,11 +404,13 @@ function EntityRow({
   expanded,
   onToggle,
   onViewSummary,
+  onAdd,
 }: {
   entity: EntityItem;
   expanded: boolean;
   onToggle: () => void;
   onViewSummary: () => void;
+  onAdd: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const { t } = useTranslation();
@@ -413,6 +476,21 @@ function EntityRow({
           待刷新
         </Tag>
       ) : null}
+      <Tooltip title={t("memory.create.addToTopicTip", "在此主题下添加记忆")}>
+        <Button
+          size="small"
+          type="text"
+          icon={<Plus size={13} />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd();
+          }}
+          style={{
+            flexShrink: 0,
+            color: hovered ? "#1677ff" : "#8c8c8c",
+          }}
+        />
+      </Tooltip>
       <Tooltip title={t("memory.tree.viewSummaryTip")}>
         <Button
           size="small"
@@ -439,10 +517,12 @@ function EntityRow({
 function AtomChildren({
   cache,
   onSelect,
+  onEdit,
   onDeprecate,
 }: {
   cache: { loading: boolean; items: AtomItem[] | null } | undefined;
   onSelect: (atom: AtomItem) => void;
+  onEdit?: (atom: AtomItem) => void;
   onDeprecate?: (atom: AtomItem) => void;
 }) {
   if (!cache || cache.loading) {
@@ -482,6 +562,7 @@ function AtomChildren({
           <AtomRow
             atom={atom}
             onClick={() => onSelect(atom)}
+            onEdit={onEdit}
             onDeprecate={onDeprecate}
           />
         </li>
@@ -493,15 +574,17 @@ function AtomChildren({
 function AtomRow({
   atom,
   onClick,
+  onEdit,
   onDeprecate,
 }: {
   atom: AtomItem;
   onClick: () => void;
+  onEdit?: (atom: AtomItem) => void;
   onDeprecate?: (atom: AtomItem) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const { t } = useTranslation();
-  const showDeprecateBtn = hovered && !isAtomDeprecated(atom) && !!onDeprecate;
+  const showActions = hovered && !isAtomDeprecated(atom);
 
   return (
     <div
@@ -550,7 +633,32 @@ function AtomRow({
       <span style={{ fontSize: 11, color: "#8c8c8c", whiteSpace: "nowrap" }}>
         {formatRelativeTime(atom.created_at)}
       </span>
-      {showDeprecateBtn ? (
+      {showActions && onEdit ? (
+        <Tooltip title={t("memory.edit.tooltip", "编辑这条记忆")}>
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(atom);
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 22,
+              height: 22,
+              borderRadius: 4,
+              color: "#1677ff",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <Pencil size={13} />
+          </span>
+        </Tooltip>
+      ) : (
+        <span style={{ width: 22, flexShrink: 0 }} />
+      )}
+      {showActions && onDeprecate ? (
         <Tooltip title={t("memory.tree.deprecateTooltip")}>
           <span
             onClick={(e) => {
@@ -581,7 +689,6 @@ function AtomRow({
           </span>
         </Tooltip>
       ) : (
-        // Placeholder to prevent row-width jitter.
         <span style={{ width: 22, flexShrink: 0 }} />
       )}
     </div>
@@ -640,12 +747,14 @@ function AtomDetailDrawer({
   agentId,
   onClose,
   onDeprecated,
+  onReplaced,
 }: {
   open: boolean;
   atom: AtomItem | null;
   agentId: string;
   onClose: () => void;
   onDeprecated: (atom: AtomItem) => void;
+  onReplaced: (atom: AtomItem) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -665,12 +774,9 @@ function AtomDetailDrawer({
               {isAtomDeprecated(atom) ? "已忘记" : "在用"}
             </Tag>
           </Space>
+          <LineageStrip agentId={agentId} atom={atom} />
           <Typography.Title level={5}>记忆内容</Typography.Title>
           <Typography.Paragraph>{atom.assertion}</Typography.Paragraph>
-          <Typography.Title level={5}>原话依据</Typography.Title>
-          <Typography.Paragraph type="secondary">
-            {atom.verbatim_quote || "—"}
-          </Typography.Paragraph>
           {(atom.search_terms ?? []).length > 0 ? (
             <>
               <Typography.Title level={5}>关联关键词</Typography.Title>
@@ -697,18 +803,31 @@ function AtomDetailDrawer({
               <Typography.Title level={5} style={{ marginTop: 12 }}>
                 {t("memory.tree.actions")}
               </Typography.Title>
-              <Button
-                danger
-                onClick={() =>
-                  confirmDeprecateAtom({
-                    agentId,
-                    atom,
-                    onSuccess: () => onDeprecated(atom),
-                  })
-                }
-              >
-                {t("memory.tree.deprecate")}
-              </Button>
+              <Space>
+                <Button
+                  onClick={() =>
+                    confirmEditAtom({
+                      agentId,
+                      atom,
+                      onSuccess: onReplaced,
+                    })
+                  }
+                >
+                  {t("memory.edit.action", "编辑这条记忆")}
+                </Button>
+                <Button
+                  danger
+                  onClick={() =>
+                    confirmDeprecateAtom({
+                      agentId,
+                      atom,
+                      onSuccess: () => onDeprecated(atom),
+                    })
+                  }
+                >
+                  {t("memory.tree.deprecate")}
+                </Button>
+              </Space>
             </>
           ) : null}
         </div>
