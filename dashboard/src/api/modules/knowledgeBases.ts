@@ -1,4 +1,4 @@
-import { request, requestUpload } from "../request";
+import { request, requestBlob, requestUpload } from "../request";
 
 export interface KnowledgeLimits {
   max_bases_per_owner: number;
@@ -69,6 +69,8 @@ export interface KnowledgeDocument {
   chunk_count: number;
   created_at: number;
   updated_at: number;
+  /** True when the uploaded original still exists on disk. */
+  has_original?: boolean;
 }
 
 export interface KnowledgeOnnxModel {
@@ -283,6 +285,16 @@ export const knowledgeBasesApi = {
   previewDocument: (id: string, documentId: string) =>
     request<{ id: string; filename: string; text: string }>(
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
+    ),
+
+  /** Authenticated original-file bytes (download or preview). */
+  fetchDocumentFile: (
+    id: string,
+    documentId: string,
+    disposition: "attachment" | "inline" = "attachment",
+  ) =>
+    requestBlob(
+      `/knowledge-bases/${id}/documents/${documentId}/file?disposition=${disposition}`,
     ),
 
   reindex: (id: string) =>
