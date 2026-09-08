@@ -1,5 +1,14 @@
 import { request } from "../request";
 
+export type ConnectorCategory =
+  | "office"
+  | "knowledge"
+  | "travel"
+  | "productivity"
+  | "media"
+  | "professional"
+  | "self_hosted";
+
 export interface ConnectorCatalogEntry {
   kind: string;
   name: string;
@@ -10,6 +19,7 @@ export interface ConnectorCatalogEntry {
   color: string;
   phase: "available" | "coming_soon";
   mcp_mode: "remote" | "gateway";
+  category: ConnectorCategory;
   quick_auth_url?: string | null;
   login_url?: string | null;
   guide_url?: string | null;

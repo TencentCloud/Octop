@@ -942,7 +942,7 @@ function handleHarnessChunk(
       finalizeStreamingMessages(state);
       break;
     case "error":
-      appendErrorBubble(state, chunk.message);
+      appendErrorBubble(state, chunk.message, chunk.error_code);
       break;
     case "hitl_required":
       handleHitlRequired(state, chunk.request);
@@ -1522,14 +1522,21 @@ function handleHitlRequired(
 
 /** Append an assistant error bubble — used for backend-emitted error
  *  chunks and HTTP-layer failures. */
-function appendErrorBubble(state: SessionStreamState, message: string): void {
+function appendErrorBubble(
+  state: SessionStreamState,
+  message: string,
+  errorCode?: string,
+): void {
   state.messages = [
     ...state.messages,
     {
       id: generateId(),
       role: "assistant",
       content: message,
-      errorInfo: { code: "stream_error", source: "frontend_stream" },
+      errorInfo: {
+        code: errorCode || "stream_error",
+        source: "frontend_stream",
+      },
       status: "error",
       timestamp: Date.now(),
     },

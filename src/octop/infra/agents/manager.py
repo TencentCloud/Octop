@@ -519,6 +519,14 @@ class AgentManager:
                 DEFAULT_SYSTEM_FILES_PATH,
                 seed_workspace_dir_on_create,
             )
+            from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+
+            if spec.user_id is not None:
+                raise_if_backend_outside_user_root(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config.get("backend"),
+                )
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
@@ -633,6 +641,15 @@ class AgentManager:
                 kwargs["config_json"] if isinstance(kwargs["config_json"], str) else None
             )
             parsed_profile_cfg = self._preserve_system_files_path(agent_id, parsed_profile_cfg)
+            owner_row = self._repos.agent_repo.get(agent_id)
+            if owner_row is not None and owner_row.user_id is not None:
+                from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+
+                raise_if_backend_outside_user_root(
+                    self._repos.user_policy_repo,
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
             for key, value in lifted.items():
@@ -2533,6 +2550,7 @@ class AgentManager:
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
+        from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
             WorkspaceImageMaterializeMiddleware,
         )
@@ -2544,6 +2562,10 @@ class AgentManager:
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
         agent_middleware: list[Any] = [
             *plugin_middleware,
+            TokenQuotaMiddleware(
+                policy_repo=self._repos.user_policy_repo,
+                usage_repo=self._repos.usage_repo,
+            ),
             ReasoningRequestMiddleware(),
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),

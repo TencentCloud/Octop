@@ -125,28 +125,7 @@
   min-width: 0;
 }
 
-.agentCard2NameActions {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  opacity: 1;
-}
-
-@media (hover: hover) {
-  .agentCard2NameActions {
-    opacity: 1;
-    transition: opacity 0.15s;
-  }
-
-  .agentCardIdRow:hover .agentCard2NameActions,
-  .agentCardIdRow:focus-within .agentCard2NameActions {
-    opacity: 1;
-  }
-}
-
-.agentCard2NameActionBtn,
-.agentCard2NameDelBtn {
+.agentCard2NameActionBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -164,10 +143,6 @@
     color: var(--fn-text-secondary);
     background: var(--fn-sidebar-item-hover);
   }
-}
-
-.agentCard2NameDelBtn:hover {
-  color: #ff4d4f;
 }
 
 .agentCardIdRow {
@@ -513,6 +488,13 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+}
+
+.tableStateMain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .tableErrorWrap {

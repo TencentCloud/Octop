@@ -8,7 +8,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Card, Select, Spin, Table, Empty, Tag, Segmented } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  DatePicker,
+  Empty,
+  Select,
+  Segmented,
+  Spin,
+  Table,
+  Tag,
+} from "antd";
 import {
   BarChart,
   Bar,
@@ -22,15 +33,18 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import dayjs, { type Dayjs } from "dayjs";
+import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { UsageStats, type UsageStatItem } from "./UsageStats";
 import { useUserRole } from "../../../hooks/useUserRole";
-import { request } from "../../../api/request";
+import { request, requestBlob } from "../../../api/request";
 import { useAgent } from "../../../context/AgentContext";
 import { useTheme } from "../../../context/ThemeContext";
 import { brandPrimary } from "../../../styles/themePalettes";
+import { message } from "../../../utils/antdMessage";
 import styles from "./index.module.less";
 
 interface UsageUserOption {
@@ -416,6 +430,59 @@ function fetchSummary(
   return request<UsageSummary>(`/usage/summary?${params}`);
 }
 
+function usageExportPath(
+  windowKey: string,
+  agentFilter: string | "all",
+  userFilter: number | "all" | null,
+): string {
+  const params = new URLSearchParams({ window: windowKey });
+  if (agentFilter !== "all") {
+    params.set("agent_id", agentFilter);
+  }
+  if (userFilter === "all") {
+    return `/admin/usage/export.xlsx?${params}`;
+  }
+  if (typeof userFilter === "number") {
+    params.set("user_id", String(userFilter));
+    return `/admin/usage/export.xlsx?${params}`;
+  }
+  return `/usage/export.xlsx?${params}`;
+}
+
+/** ``{title}_{YYYY-MM-DD-YYYY-MM-DD}.xlsx`` — strip ``range:`` / ``day:`` kind tags. */
+function usageExportFilename(prefix: string, windowKey: string): string {
+  const rangeMatch = /^range:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(
+    windowKey,
+  );
+  if (rangeMatch) {
+    return `${prefix}_${rangeMatch[1]}-${rangeMatch[2]}.xlsx`;
+  }
+  const dayMatch = /^day:(\d{4}-\d{2}-\d{2})$/.exec(windowKey);
+  if (dayMatch) {
+    return `${prefix}_${dayMatch[1]}.xlsx`;
+  }
+  const monthMatch = /^month:(\d{4}-\d{2})$/.exec(windowKey);
+  if (monthMatch) {
+    return `${prefix}_${monthMatch[1]}.xlsx`;
+  }
+  const period =
+    windowKey.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_|_$/g, "") ||
+    "usage";
+  return `${prefix}_${period}.xlsx`;
+}
+
+const { RangePicker } = DatePicker;
+
+function rangeToWindowKey(range: [Dayjs, Dayjs] | null): string {
+  if (range === null) return "all";
+  const [start, end] = range;
+  return `range:${start.format("YYYY-MM-DD")}:${end.format("YYYY-MM-DD")}`;
+}
+
+function defaultLast30dRange(): [Dayjs, Dayjs] {
+  return [dayjs().add(-29, "day").startOf("day"), dayjs().endOf("day")];
+}
+
 function DonutCard({
   title,
   data,
@@ -765,11 +832,14 @@ export default function TokenUsagePage() {
   const role = useUserRole();
   const isAdmin = role === "admin";
   const isMobile = useIsMobile();
-  const [windowKey, setWindowKey] = useState("last_30d");
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(() =>
+    defaultLast30dRange(),
+  );
   const [view, setView] = useState<ViewMode>("summary");
   const [agentFilter, setAgentFilter] = useState<string | "all">("all");
   const [userFilter, setUserFilter] = useState<number | "all">("all");
   const [users, setUsers] = useState<UsageUserOption[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   const [totals, setTotals] = useState<UsageSummary | null>(null);
   const [dimBuckets, setDimBuckets] = useState<UsageBucket[]>([]);
@@ -791,13 +861,46 @@ export default function TokenUsagePage() {
   // Admin-only: null while role unknown so we don't hit /admin before ready.
   const adminUserFilter: number | "all" | null = isAdmin ? userFilter : null;
 
-  const windowOptions = useMemo(
+  const windowKey = useMemo(() => rangeToWindowKey(dateRange), [dateRange]);
+
+  const rangePresets = useMemo(
     () => [
-      { value: "today", label: t("tokenUsage.today") },
-      { value: "yesterday", label: t("tokenUsage.yesterday") },
-      { value: "last_7d", label: t("tokenUsage.last7d") },
-      { value: "last_30d", label: t("tokenUsage.last30d") },
-      { value: "all", label: t("tokenUsage.allTime") },
+      {
+        label: t("tokenUsage.today"),
+        value: [dayjs().startOf("day"), dayjs().endOf("day")] as [Dayjs, Dayjs],
+      },
+      {
+        label: t("tokenUsage.yesterday"),
+        value: [
+          dayjs().add(-1, "day").startOf("day"),
+          dayjs().add(-1, "day").endOf("day"),
+        ] as [Dayjs, Dayjs],
+      },
+      {
+        label: t("tokenUsage.last7d"),
+        value: [
+          dayjs().add(-6, "day").startOf("day"),
+          dayjs().endOf("day"),
+        ] as [Dayjs, Dayjs],
+      },
+      {
+        label: t("tokenUsage.last30d"),
+        value: defaultLast30dRange(),
+      },
+      {
+        label: t("tokenUsage.thisMonth"),
+        value: [dayjs().startOf("month"), dayjs().endOf("day")] as [
+          Dayjs,
+          Dayjs,
+        ],
+      },
+      {
+        label: t("tokenUsage.lastMonth"),
+        value: [
+          dayjs().add(-1, "month").startOf("month"),
+          dayjs().add(-1, "month").endOf("month"),
+        ] as [Dayjs, Dayjs],
+      },
     ],
     [t],
   );
@@ -892,6 +995,29 @@ export default function TokenUsagePage() {
     void refresh();
   }, [refresh]);
 
+  const onExportExcel = useCallback(async () => {
+    if (role === null) return;
+    setExporting(true);
+    try {
+      const blob = await requestBlob(
+        usageExportPath(windowKey, agentFilter, adminUserFilter),
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = usageExportFilename(
+        t("tokenUsage.exportFilenamePrefix"),
+        windowKey,
+      );
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error(t("tokenUsage.exportFailed"));
+    } finally {
+      setExporting(false);
+    }
+  }, [windowKey, agentFilter, adminUserFilter, role, t]);
+
   return (
     <PageShell
       title={t("pageShell.tokenUsage.title")}
@@ -926,12 +1052,26 @@ export default function TokenUsagePage() {
                 optionFilterProp="label"
               />
             )}
-            <Select
-              value={windowKey}
-              onChange={setWindowKey}
+            <RangePicker
+              value={dateRange}
+              onChange={(values) => {
+                if (values?.[0] && values[1]) {
+                  setDateRange([values[0], values[1]]);
+                } else {
+                  setDateRange(null);
+                }
+              }}
+              disabledDate={(current) =>
+                current != null && current.isAfter(dayjs().endOf("day"))
+              }
+              presets={rangePresets}
+              allowClear
               className={styles.toolbarFilterSelect}
-              style={{ width: isMobile ? undefined : 140 }}
-              options={windowOptions}
+              style={{ width: isMobile ? undefined : 280 }}
+              placeholder={[
+                t("tokenUsage.rangeStart"),
+                t("tokenUsage.rangeEnd"),
+              ]}
             />
             <Select
               value={agentFilter}
@@ -940,6 +1080,15 @@ export default function TokenUsagePage() {
               style={{ width: isMobile ? undefined : 200 }}
               options={agentOptions}
             />
+            <Button
+              icon={<Download size={14} />}
+              loading={exporting}
+              disabled={role === null}
+              onClick={() => void onExportExcel()}
+              aria-label={t("tokenUsage.exportExcel")}
+            >
+              {isMobile ? null : t("tokenUsage.exportExcel")}
+            </Button>
           </div>
         </div>
 

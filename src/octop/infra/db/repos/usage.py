@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
@@ -13,6 +16,12 @@ from octop.infra.db.repos._base import (
     now_ts,
     sql_unix_day_bucket,
 )
+
+_DAY_S = 86_400
+_DAY_WINDOW_RE = re.compile(r"^day:(\d{4}-\d{2}-\d{2})$")
+_MONTH_WINDOW_RE = re.compile(r"^month:(\d{4}-\d{2})$")
+_RANGE_WINDOW_RE = re.compile(r"^range:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$")
+DETAIL_EXPORT_LIMIT = 50_000
 
 
 @dataclass(frozen=True)
@@ -54,32 +63,77 @@ class UsageRow:
         )
 
 
-# Time-window aliases used by the API. Each maps to ``(start_seconds, end_seconds)``
-# tuples computed against ``time.time()`` at query time. Buckets that span
-# calendar months/days respect the server's local timezone — finnie's API
-# also accepts a ``tz`` override but for octop's MVP the server's TZ is the
-# only reference; that's fine for self-hosted single-tenant deploys.
-_DAY_S = 86_400
+def _zoneinfo(timezone: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
 
 
-def _resolve_window(window: str) -> tuple[int, int]:
-    now = int(time.time())
-    end = now + 1
+def resolve_usage_window(
+    window: str,
+    *,
+    timezone: str = "UTC",
+    now: int | None = None,
+) -> tuple[int, int]:
+    """Map a window alias to ``[start, end)`` unix seconds in *timezone*.
+
+    Supported:
+      today | yesterday | last_7d | last_30d | all
+      day:YYYY-MM-DD | month:YYYY-MM
+      range:YYYY-MM-DD:YYYY-MM-DD  (inclusive calendar days)
+    """
+    tz = _zoneinfo(timezone)
+    now_ts_val = int(time.time() if now is None else now)
+    now_dt = datetime.fromtimestamp(now_ts_val, tz=tz)
+    end_open = now_ts_val + 1
+
+    day_match = _DAY_WINDOW_RE.fullmatch(window)
+    if day_match is not None:
+        day = datetime.strptime(day_match.group(1), "%Y-%m-%d").date()
+        start_dt = datetime(day.year, day.month, day.day, tzinfo=tz)
+        end_dt = start_dt + timedelta(days=1)
+        return int(start_dt.timestamp()), int(end_dt.timestamp())
+
+    month_match = _MONTH_WINDOW_RE.fullmatch(window)
+    if month_match is not None:
+        year_s, month_s = month_match.group(1).split("-")
+        year, month = int(year_s), int(month_s)
+        start_dt = datetime(year, month, 1, tzinfo=tz)
+        if month == 12:
+            end_dt = datetime(year + 1, 1, 1, tzinfo=tz)
+        else:
+            end_dt = datetime(year, month + 1, 1, tzinfo=tz)
+        return int(start_dt.timestamp()), int(end_dt.timestamp())
+
+    range_match = _RANGE_WINDOW_RE.fullmatch(window)
+    if range_match is not None:
+        start_day = datetime.strptime(range_match.group(1), "%Y-%m-%d").date()
+        end_day = datetime.strptime(range_match.group(2), "%Y-%m-%d").date()
+        if end_day < start_day:
+            raise ValueError(f"invalid usage window: {window!r}")
+        start_dt = datetime(start_day.year, start_day.month, start_day.day, tzinfo=tz)
+        end_dt = datetime(end_day.year, end_day.month, end_day.day, tzinfo=tz) + timedelta(days=1)
+        return int(start_dt.timestamp()), int(end_dt.timestamp())
+
+    if window.startswith("day:") or window.startswith("month:") or window.startswith("range:"):
+        raise ValueError(f"invalid usage window: {window!r}")
+
     if window == "today":
-        # Midnight today (server local TZ)
-        start = now - (now % _DAY_S)
-        return start, end
+        start_dt = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        return int(start_dt.timestamp()), end_open
     if window == "yesterday":
-        start_today = now - (now % _DAY_S)
-        return start_today - _DAY_S, start_today
+        today_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_dt = today_start - timedelta(days=1)
+        return int(start_dt.timestamp()), int(today_start.timestamp())
     if window == "last_7d":
-        return now - 7 * _DAY_S, end
+        return now_ts_val - 7 * _DAY_S, end_open
     if window == "last_30d":
-        return now - 30 * _DAY_S, end
+        return now_ts_val - 30 * _DAY_S, end_open
     if window == "all":
-        return 0, end
+        return 0, end_open
     # Default: last_30d
-    return now - 30 * _DAY_S, end
+    return now_ts_val - 30 * _DAY_S, end_open
 
 
 class UsageRepo:
@@ -139,21 +193,15 @@ class UsageRepo:
 
     # --- read / aggregate ------------------------------------------------
 
-    def summary(
+    def _scope_filter(
         self,
         *,
-        user_id: int | None = None,
-        agent_id: str | None = None,
-        window: str = "last_30d",
-        granularity: str = "by_day",
-    ) -> dict[str, Any]:
-        """Aggregate usage rows, optionally filtered to one user/agent.
-
-        ``user_id=None`` and ``agent_id=None`` returns global totals
-        (admin scope); otherwise rows are scoped accordingly.
-        """
-        start, end = _resolve_window(window)
-
+        user_id: int | None,
+        agent_id: str | None,
+        window: str,
+        timezone: str,
+    ) -> tuple[str, list[Any], int, int]:
+        start, end = resolve_usage_window(window, timezone=timezone)
         where: list[str] = ["ts >= ?", "ts < ?"]
         params: list[Any] = [start, end]
         if user_id is not None:
@@ -162,7 +210,28 @@ class UsageRepo:
         if agent_id is not None:
             where.append("agent_id = ?")
             params.append(agent_id)
-        where_sql = " AND ".join(where)
+        return " AND ".join(where), params, start, end
+
+    def summary(
+        self,
+        *,
+        user_id: int | None = None,
+        agent_id: str | None = None,
+        window: str = "last_30d",
+        granularity: str = "by_day",
+        timezone: str = "UTC",
+    ) -> dict[str, Any]:
+        """Aggregate usage rows, optionally filtered to one user/agent.
+
+        ``user_id=None`` and ``agent_id=None`` returns global totals
+        (admin scope); otherwise rows are scoped accordingly.
+        """
+        where_sql, params, start, end = self._scope_filter(
+            user_id=user_id,
+            agent_id=agent_id,
+            window=window,
+            timezone=timezone,
+        )
 
         # Roll-up totals
         with self._db.connect() as conn:
@@ -326,6 +395,54 @@ class UsageRepo:
             "buckets": buckets,
         }
 
+    def list_detail(
+        self,
+        *,
+        user_id: int | None = None,
+        agent_id: str | None = None,
+        window: str = "last_30d",
+        timezone: str = "UTC",
+        limit: int = DETAIL_EXPORT_LIMIT,
+    ) -> list[UsageRow]:
+        """Return usage_log rows for Excel export (oldest → newest).
+
+        When ``limit`` truncates, keep the *newest* ``limit`` rows, then
+        return them in ascending time order for the sheet.
+        """
+        where_sql, params, _start, _end = self._scope_filter(
+            user_id=user_id,
+            agent_id=agent_id,
+            window=window,
+            timezone=timezone,
+        )
+        cap = max(1, min(int(limit), DETAIL_EXPORT_LIMIT))
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id, ts, agent_id, user_id, thread_id, model,
+                    input_tokens, uncached_input_tokens,
+                    cache_read_tokens, cache_write_tokens,
+                    output_tokens, reasoning_tokens, total_tokens,
+                    model_calls, source
+                FROM (
+                    SELECT
+                        id, ts, agent_id, user_id, thread_id, model,
+                        input_tokens, uncached_input_tokens,
+                        cache_read_tokens, cache_write_tokens,
+                        output_tokens, reasoning_tokens, total_tokens,
+                        model_calls, source
+                    FROM usage_log
+                    WHERE {where_sql}
+                    ORDER BY ts DESC, id DESC
+                    LIMIT ?
+                ) AS recent
+                ORDER BY ts ASC, id ASC
+                """,
+                [*params, cap],
+            ).fetchall()
+        return [UsageRow.from_row(r) for r in rows]
+
     def thread_totals(self, *, agent_id: str, thread_id: str) -> dict[str, int]:
         """Aggregate token usage for a single thread."""
         with self._db.connect() as conn:
@@ -373,3 +490,12 @@ class UsageRepo:
         if row is None:
             return 0
         return int(row["input_tokens"] or 0)
+
+    def total_tokens_for_user(self, user_id: int) -> int:
+        """Lifetime ``total_tokens`` for one user (all agents and sources)."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(total_tokens), 0) AS total FROM usage_log WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return int(row["total"] if row is not None else 0)
