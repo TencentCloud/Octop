@@ -79,14 +79,36 @@ export default function TextDocumentEditorModal({
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      const name = String(values.name ?? initialName ?? "").trim();
+      const format = values.format ?? initialFormat;
+      const nextContent = values.content ?? "";
+
+      // Edit mode: unchanged content → just close; skip API / reindex.
+      if (mode === "edit" && nextContent === initialContent) {
+        onCancel();
+        return;
+      }
+
       setSubmitting(true);
       await onSubmit({
-        name: values.name.trim(),
-        format: values.format,
-        content: values.content ?? "",
+        // Edit mode does not mount name/format fields, so validateFields() may
+        // omit them — fall back to the props used to open the drawer.
+        name,
+        format,
+        content: nextContent,
       });
-    } catch {
-      // validation errors stay in the form
+    } catch (error) {
+      // Ant Design validation rejects with `{ errorFields }`; keep those silent.
+      // Real submit failures are handled inside `onSubmit` (toast) and must not
+      // be mistaken for a no-op click.
+      if (
+        error &&
+        typeof error === "object" &&
+        "errorFields" in error &&
+        Array.isArray((error as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
     } finally {
       setSubmitting(false);
     }

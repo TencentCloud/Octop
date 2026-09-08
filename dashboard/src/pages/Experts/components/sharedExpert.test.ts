@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  chatSkillCatalogAgentId,
   isOwnedExpert,
   isSharedExpertViewer,
   ownedExperts,
@@ -19,6 +20,25 @@ describe("isSharedExpertViewer", () => {
     expect(isSharedExpertViewer({ is_shared: false, is_owner: false })).toBe(
       false,
     );
+  });
+});
+
+describe("chatSkillCatalogAgentId", () => {
+  it("loads skills for a ready shared expert viewed by a non-owner", () => {
+    const shared = {
+      agent_id: "shared",
+      is_shared: true,
+      is_owner: false,
+    };
+    expect(isSharedExpertViewer(shared)).toBe(true);
+    expect(chatSkillCatalogAgentId(shared.agent_id, true, false)).toBe(
+      "shared",
+    );
+  });
+
+  it("waits until the expert is ready and agent loading has finished", () => {
+    expect(chatSkillCatalogAgentId("shared", false, false)).toBeNull();
+    expect(chatSkillCatalogAgentId("shared", true, true)).toBeNull();
   });
 });
 
