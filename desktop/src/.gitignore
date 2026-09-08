@@ -5,5 +5,7 @@ bundled/portable.zip
 build/windows/*.syso
 build/darwin/icons.icns
 build/windows/icon.ico
+build/windows/info.generated.json
+build/windows/wails.exe.generated.manifest
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 build/linux/icon.png

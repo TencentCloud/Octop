@@ -65,7 +65,10 @@ import {
 import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
-import { isSharedExpertViewer } from "../../utils/sharedExpert";
+import {
+  chatSkillCatalogAgentId,
+  isSharedExpertViewer,
+} from "../../utils/sharedExpert";
 import ChatDockPanels from "./components/ChatDockPanels";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import {
@@ -186,6 +189,8 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
   const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const trajectoryEnabled =
+    activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
   const noAgents = !agentsLoading && agents.length === 0;
 
@@ -216,9 +221,7 @@ function ChatPageInner() {
   const { quickCards: expertQuickCards, welcomeSuffix } =
     useExpertChatWelcome(activeAgent);
   const { skills: chatSkills } = useSkills(
-    agentChatReady && !agentsLoading && !sharedExpertViewer
-      ? resolvedAgentId ?? null
-      : null,
+    chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
@@ -684,6 +687,22 @@ function ChatPageInner() {
       resumeHitl(decisions, activeThreadId ?? undefined);
     },
     [resumeHitl, activeThreadId],
+  );
+
+  /** Close an ask pause without answering: ``respond`` is the only decision
+   *  the agent allows for ``ask_user_question``, so tell it to wrap up. */
+  const handleAskDismiss = useCallback(
+    (actions: unknown[]) => {
+      resumeHitl(
+        actions.map(() => ({
+          type: "respond",
+          message: t("chat.ask.dismissMessage"),
+        })),
+        activeThreadId ?? undefined,
+        true,
+      );
+    },
+    [resumeHitl, activeThreadId, t],
   );
 
   useEffect(() => {
@@ -1224,32 +1243,34 @@ function ChatPageInner() {
                       </span>
                     </Tooltip>
                   )}
-                  <Tooltip
-                    title={
-                      !agentChatReady
-                        ? t("workspace.requiresRunning")
-                        : !activeThreadId
-                        ? t(
-                            "chat.trajectorySelectSession",
-                            "Select a session to view trajectory",
-                          )
-                        : t("chat.openTrajectory", "运行轨迹")
-                    }
-                    mouseEnterDelay={0.35}
-                    placement="left"
-                  >
-                    <span className={styles.chatFloatBtnWrap}>
-                      <button
-                        type="button"
-                        className={styles.chatFloatBtn}
-                        disabled={!activeThreadId || !agentChatReady}
-                        onClick={() => setTrajectoryDrawerOpen(true)}
-                        aria-label={t("chat.openTrajectory", "运行轨迹")}
-                      >
-                        <Activity size={20} strokeWidth={2.1} />
-                      </button>
-                    </span>
-                  </Tooltip>
+                  {trajectoryEnabled && (
+                    <Tooltip
+                      title={
+                        !agentChatReady
+                          ? t("workspace.requiresRunning")
+                          : !activeThreadId
+                          ? t(
+                              "chat.trajectorySelectSession",
+                              "Select a session to view trajectory",
+                            )
+                          : t("chat.openTrajectory", "运行轨迹")
+                      }
+                      mouseEnterDelay={0.35}
+                      placement="left"
+                    >
+                      <span className={styles.chatFloatBtnWrap}>
+                        <button
+                          type="button"
+                          className={styles.chatFloatBtn}
+                          disabled={!activeThreadId || !agentChatReady}
+                          onClick={() => setTrajectoryDrawerOpen(true)}
+                          aria-label={t("chat.openTrajectory", "运行轨迹")}
+                        >
+                          <Activity size={20} strokeWidth={2.1} />
+                        </button>
+                      </span>
+                    </Tooltip>
+                  )}
                   <Tooltip
                     title={
                       browserSessionId
@@ -1314,6 +1335,7 @@ function ChatPageInner() {
                         })),
                       )
                     }
+                    onDismiss={() => handleAskDismiss(pendingAsk.actions)}
                   />
                 </div>
               </div>
@@ -1396,12 +1418,14 @@ function ChatPageInner() {
               />
             </>
           )}
-          <TrajectoryDrawer
-            agentId={resolvedAgentId ?? ""}
-            threadId={activeThreadId}
-            open={trajectoryDrawerOpen}
-            onClose={() => setTrajectoryDrawerOpen(false)}
-          />
+          {trajectoryEnabled && (
+            <TrajectoryDrawer
+              agentId={resolvedAgentId ?? ""}
+              threadId={activeThreadId}
+              open={trajectoryDrawerOpen}
+              onClose={() => setTrajectoryDrawerOpen(false)}
+            />
+          )}
         </div>
       </ChatToolDockProvider>
     </ChatFilePreviewProvider>

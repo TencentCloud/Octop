@@ -133,6 +133,17 @@ def plugin_tool_explicitly_disabled(
     return not bool(tool_cfg.get("enabled"))
 
 
+def agent_plugin_enabled(cfg: Mapping[str, Any], plugin_id: str) -> bool:
+    """Whether a plugin is enabled for this agent (missing switch defaults on)."""
+    raw_plugins = cfg.get("plugins")
+    if not isinstance(raw_plugins, dict):
+        return True
+    plugin_entry = raw_plugins.get(plugin_id)
+    if not isinstance(plugin_entry, dict) or "enabled" not in plugin_entry:
+        return True
+    return bool(plugin_entry.get("enabled"))
+
+
 def plugin_tools_disabled_names(
     cfg: Mapping[str, Any],
     *,
@@ -145,7 +156,11 @@ def plugin_tools_disabled_names(
     for plugin_id, tool_name in registered_tools:
         if global_plugins.get(plugin_id) is False:
             continue
-        if plugin_tool_explicitly_disabled(cfg, plugin_id=plugin_id, tool_name=tool_name):
+        if not agent_plugin_enabled(cfg, plugin_id) or plugin_tool_explicitly_disabled(
+            cfg,
+            plugin_id=plugin_id,
+            tool_name=tool_name,
+        ):
             out.add(tool_name)
     return out
 
@@ -200,6 +215,7 @@ __all__ = [
     "BUILTIN_TOOL_CATALOG",
     "BuiltinToolEntry",
     "CRITICAL_TOOLS",
+    "agent_plugin_enabled",
     "builtin_tool_available",
     "effective_tools_disabled",
     "normalize_tools_disabled",

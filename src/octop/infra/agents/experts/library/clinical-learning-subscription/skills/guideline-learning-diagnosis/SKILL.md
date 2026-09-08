@@ -5,6 +5,15 @@ description: >-
   做教育性小测，或学习指南中的诊断标准、鉴别框架和流程关系时使用。
   本技能只做学习诊断与诊断标准教学，不对具体患者作疾病诊断、治疗、处方、剂量、
   急诊处置或医保报销判断。
+metadata:
+  octop:
+    emoji: "🧩"
+    label:
+      zh: "学习诊断"
+      en: "Learning Diagnosis"
+    summary:
+      zh: "评估指南掌握情况，讲解诊断标准，不做个体诊疗。"
+      en: "Assess guideline mastery and teach diagnostic criteria, not cases."
 ---
 
 # 指南学习诊断与诊断标准学习

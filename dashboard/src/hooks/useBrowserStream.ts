@@ -29,11 +29,7 @@ interface BrowserStreamCallbacks {
 }
 
 interface ConnectOptions {
-  /** Optional harness profile name. All surfaces (chat panel, standalone
-   *  page, and the agent's `browser_use` tool) share the same `"default"`
-   *  profile so cookies/login and open tabs stay consistent across
-   *  conversations and between headed and headless runs. When unset, the
-   *  backend falls back to `"default"` as well. */
+  /** Harness profile for the current user. The WebSocket also binds from JWT. */
   sessionId?: string | null;
 }
 
@@ -119,8 +115,6 @@ export function useBrowserStream() {
         };
         if (options.sessionId) {
           startMsg.session_id = options.sessionId;
-        } else {
-          startMsg.session_id = "default";
         }
         ws.send(JSON.stringify(startMsg));
         setCurrentUrl(url);

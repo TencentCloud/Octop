@@ -125,14 +125,8 @@ export const browserApi = {
 
   // -- Sessions --
 
-  getSessions: (conversationId?: string) => {
-    const path = conversationId
-      ? `/browser/harness-sessions?conversation_id=${encodeURIComponent(
-          conversationId,
-        )}`
-      : "/browser/harness-sessions";
-    return request<BrowserSessionsResponse>(path);
-  },
+  getSessions: () =>
+    request<BrowserSessionsResponse>("/browser/harness-sessions"),
 
   handoff: (sessionId: string, target: "agent" | "user", reason = "") =>
     request<{ ok: boolean; session: BrowserSession }>(
@@ -144,12 +138,10 @@ export const browserApi = {
     ),
 
   /** Stop the local Chrome process. Login cookies stay in the on-disk profile. */
-  shutdown: (profile?: string) => {
-    const path = profile
-      ? `/browser/shutdown?profile=${encodeURIComponent(profile)}`
-      : "/browser/shutdown";
-    return request<{ ok: boolean; profile: string }>(path, { method: "POST" });
-  },
+  shutdown: () =>
+    request<{ ok: boolean; profile: string }>("/browser/shutdown", {
+      method: "POST",
+    }),
 
   // -- Browser stream (WebSocket CDP screencast, ~10 fps) --
 
@@ -180,44 +172,6 @@ export const browserApi = {
     const wsUrl = `${getWsUrl("/browser-stream/ws")}?${params.toString()}`;
     return new WebSocket(wsUrl);
   },
-
-  // -- Tabs (REST fallback when WebSocket is unavailable) --
-
-  /**
-   * Switch the active tab by page_id.
-   */
-  switchTab: (sessionId: string, pageId: string) =>
-    request<{ ok: boolean; page_id: string; url: string }>(
-      `/browser/sessions/${sessionId}/tabs/switch`,
-      {
-        method: "POST",
-        body: JSON.stringify({ page_id: pageId }),
-      },
-    ),
-
-  /**
-   * Create a new browser tab, optionally navigating to a URL.
-   */
-  newTab: (sessionId: string, url = "about:blank") =>
-    request<{ ok: boolean; page_id: string; url: string; tabs: TabInfo[] }>(
-      `/browser/sessions/${sessionId}/tabs/new`,
-      {
-        method: "POST",
-        body: JSON.stringify({ url }),
-      },
-    ),
-
-  /**
-   * Close a browser tab by page_id.
-   */
-  closeTab: (sessionId: string, pageId: string) =>
-    request<{ ok: boolean; closed: string; tabs: TabInfo[] }>(
-      `/browser/sessions/${sessionId}/tabs/close`,
-      {
-        method: "POST",
-        body: JSON.stringify({ page_id: pageId }),
-      },
-    ),
 
   // -- Browser record/replay --
 
@@ -264,11 +218,3 @@ export const browserApi = {
       },
     ),
 };
-
-// -- Tab info type --
-export interface TabInfo {
-  page_id: string;
-  url: string;
-  title?: string;
-  active: boolean;
-}

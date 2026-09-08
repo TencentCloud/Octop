@@ -23,6 +23,7 @@ from octop.api.routers.chat.sse import format_sse
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.trajectory.live import TrajectoryLiveBus
 from octop.infra.trajectory.service import TrajectoryService
+from octop.infra.trajectory.settings import TRAJECTORY_SSE_REPLAY_MAX
 from octop.infra.trajectory.types import TrajectoryEvent
 
 router = APIRouter()
@@ -169,6 +170,12 @@ async def _metrics_frame(
     return format_sse("metrics", asdict(metrics))
 
 
+def _client_event_payload(message: dict[str, Any]) -> dict[str, Any]:
+    outgoing = dict(message)
+    outgoing.pop("_final", None)
+    return outgoing
+
+
 async def _iter_trajectory_sse(
     *,
     request: Request,
@@ -181,17 +188,21 @@ async def _iter_trajectory_sse(
     last_seq = _resume_after_seq(after_seq, request.headers.get("last-event-id"))
     try:
         if last_seq is not None:
-            for line in service.export_jsonl(thread_id):
-                payload = json.loads(line)
-                seq = payload.get("seq") if isinstance(payload, dict) else None
-                if not isinstance(seq, int) or seq < last_seq:
-                    continue
+            replay = await asyncio.to_thread(
+                service.list_from_seq,
+                thread_id,
+                from_seq=last_seq,
+                limit=TRAJECTORY_SSE_REPLAY_MAX,
+            )
+            for event in replay:
+                payload = asdict(event)
+                event_seq = event.seq
                 # Re-emit ``seq == after_seq`` so a same-seq tool upsert that
                 # landed between REST history and this subscribe still reaches
                 # the browser (clients upsert by event_id). Newer seqs follow.
-                yield _sse_named("event", payload, sse_id=seq)
-                if seq > last_seq:
-                    last_seq = seq
+                yield _sse_named("event", payload, sse_id=event_seq)
+                if event_seq > last_seq:
+                    last_seq = event_seq
         yield await _metrics_frame(service, thread_id, refresh=True)
         last_metrics_at = time.monotonic()
         while True:
@@ -207,7 +218,8 @@ async def _iter_trajectory_sse(
             # drop strictly older frames that can appear after a replay race.
             if isinstance(seq, int) and last_seq is not None and seq < last_seq:
                 continue
-            yield _sse_named("event", message, sse_id=seq if isinstance(seq, int) else None)
+            outgoing = _client_event_payload(message) if isinstance(message, dict) else message
+            yield _sse_named("event", outgoing, sse_id=seq if isinstance(seq, int) else None)
             if isinstance(seq, int):
                 last_seq = seq
             force_metrics = isinstance(message, dict) and message.get("_final") is True
@@ -249,12 +261,18 @@ async def get_thread_trajectory(
     """
     _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_limit(limit)
-    events = _trajectory_service(server).list_events(
-        thread_id,
-        before_seq=before_seq,
-        limit=page_limit + 1,
-        kinds=_parse_kinds(kinds),
-    )
+    parsed_kinds = _parse_kinds(kinds)
+    service = _trajectory_service(server)
+
+    def _list() -> list[TrajectoryEvent]:
+        return service.list_events(
+            thread_id,
+            before_seq=before_seq,
+            limit=page_limit + 1,
+            kinds=parsed_kinds,
+        )
+
+    events = await asyncio.to_thread(_list)
     has_more = len(events) > page_limit
     page = events[1:] if has_more else events
     return TrajectoryHistoryOut(

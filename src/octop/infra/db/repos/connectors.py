@@ -1,4 +1,4 @@
-"""Connector database access — one row per (user, kind)."""
+"""Connector database access."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, map_rows, now_ts
+from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class ConnectorRow:
     kind: str
     display_name: str
     status: str
+    shared: bool
     mcp_server_name: str
     credential_blob: bytes | None
     credential_expires_at: int | None
@@ -35,6 +36,7 @@ class ConnectorRow:
             kind=r["kind"],
             display_name=r["display_name"],
             status=r["status"],
+            shared=bool(r["shared"]),
             mcp_server_name=r["mcp_server_name"],
             credential_blob=bytes(blob) if blob is not None else None,
             credential_expires_at=r["credential_expires_at"],
@@ -87,19 +89,21 @@ class ConnectorRepo:
         display_name: str,
         mcp_server_name: str,
         config_json: str | None = None,
+        shared: bool = False,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO connectors("
-                "instance_id, user_id, kind, display_name, status, mcp_server_name, "
+                "instance_id, user_id, kind, display_name, status, shared, mcp_server_name, "
                 "config_json, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)",
+                ") VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)",
                 (
                     instance_id,
                     user_id,
                     kind,
                     display_name,
+                    bool_int(shared),
                     mcp_server_name,
                     config_json,
                     ts,
@@ -131,6 +135,42 @@ class ConnectorRepo:
             ).fetchall()
         return map_rows(rows, ConnectorRow)
 
+    def list_visible(self, user_id: int) -> list[ConnectorRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM connectors "
+                "WHERE user_id = ? OR shared = 1 "
+                "ORDER BY display_name, instance_id",
+                (user_id,),
+            ).fetchall()
+        return map_rows(rows, ConnectorRow)
+
+    def list_by_kind(self, kind: str) -> list[ConnectorRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM connectors WHERE kind = ? ORDER BY id",
+                (kind,),
+            ).fetchall()
+        return map_rows(rows, ConnectorRow)
+
+    def name_exists(
+        self,
+        user_id: int,
+        display_name: str,
+        *,
+        exclude_instance_id: str | None = None,
+    ) -> bool:
+        sql = (
+            "SELECT 1 FROM connectors "
+            "WHERE user_id = ? AND display_name = ? AND kind <> 'custom-mcp'"
+        )
+        params: list[object] = [user_id, display_name]
+        if exclude_instance_id is not None:
+            sql += " AND instance_id <> ?"
+            params.append(exclude_instance_id)
+        with self._db.connect() as conn:
+            return conn.execute(sql, tuple(params)).fetchone() is not None
+
     def update_status(self, instance_id: str, status: str) -> None:
         with self._db.transaction() as conn:
             conn.execute(
@@ -143,6 +183,31 @@ class ConnectorRepo:
             conn.execute(
                 "UPDATE connectors SET config_json = ?, updated_at = ? WHERE instance_id = ?",
                 (config_json, now_ts(), instance_id),
+            )
+
+    def update_metadata(
+        self,
+        instance_id: str,
+        *,
+        display_name: str | None = None,
+        shared: bool | None = None,
+    ) -> None:
+        updates: list[str] = []
+        params: list[object] = []
+        if display_name is not None:
+            updates.append("display_name = ?")
+            params.append(display_name)
+        if shared is not None:
+            updates.append("shared = ?")
+            params.append(bool_int(shared))
+        if not updates:
+            return
+        updates.append("updated_at = ?")
+        params.extend((now_ts(), instance_id))
+        with self._db.transaction() as conn:
+            conn.execute(
+                f"UPDATE connectors SET {', '.join(updates)} WHERE instance_id = ?",
+                tuple(params),
             )
 
     def upsert_credentials(

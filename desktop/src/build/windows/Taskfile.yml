@@ -14,6 +14,7 @@ tasks:
       - task: generate:syso
         vars:
           ARCH: "{{.ARCH}}"
+          VERSION: "{{.VERSION}}"
       - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
       - cmd: powershell Remove-item *.syso
         platforms: [windows]
@@ -21,6 +22,7 @@ tasks:
         platforms: [linux, darwin]
     vars:
       BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
+      VERSION: '{{.VERSION | default "dev"}}'
     env:
       GOOS: windows
       CGO_ENABLED: "0"
@@ -49,6 +51,7 @@ tasks:
         vars:
           PRODUCTION: "true"
           ARCH: "{{.ARCH}}"
+          VERSION: "{{.VERSION}}"
       - task: create:nsis:installer
         vars:
           ARCH: "{{.ARCH}}"
@@ -79,13 +82,14 @@ tasks:
           New-Item -ItemType Directory -Force '{{.ROOT_DIR}}/{{.BIN_DIR}}' | Out-Null"
       - |
         {{if eq OS "windows"}}
-        makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" -DINSTALLER_OUTFILE="{{.ROOT_DIR}}\{{.ARCHIVE}}" project.nsi
+        makensis {{.VERSION_NSIS_DEFINE}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" -DINSTALLER_OUTFILE="{{.ROOT_DIR}}\{{.ARCHIVE}}" project.nsi
         {{else}}
-        makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" -DINSTALLER_OUTFILE="{{.ROOT_DIR}}/{{.ARCHIVE}}" project.nsi
+        makensis {{.VERSION_NSIS_DEFINE}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" -DINSTALLER_OUTFILE="{{.ROOT_DIR}}/{{.ARCHIVE}}" project.nsi
         {{end}}
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       VERSION: '{{.VERSION | default "dev"}}'
+      VERSION_NSIS_DEFINE: '{{if and .VERSION (ne .VERSION "dev")}}-DINFO_PRODUCTVERSION="{{.VERSION}}" {{end}}'
       ARG_FLAG: '{{if eq (.ARCH | default ARCH) "amd64"}}AMD64{{else}}ARM64{{end}}'
       ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-windows-{{.ARCH}}-{{.VERSION}}.exe'
 
@@ -97,6 +101,15 @@ tasks:
     summary: Generates Windows .syso (linked from module root)
     dir: build
     cmds:
-      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
+      - cmd: python stamp_version.py json windows/info.json windows/info.generated.json "{{.VERSION}}"
+        platforms: [windows]
+      - cmd: python3 stamp_version.py json windows/info.json windows/info.generated.json "{{.VERSION}}"
+        platforms: [linux, darwin]
+      - cmd: python stamp_version.py manifest windows/wails.exe.manifest windows/wails.exe.generated.manifest "{{.VERSION}}"
+        platforms: [windows]
+      - cmd: python3 stamp_version.py manifest windows/wails.exe.manifest windows/wails.exe.generated.manifest "{{.VERSION}}"
+        platforms: [linux, darwin]
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.generated.manifest -info windows/info.generated.json -out ../wails_windows_{{.ARCH}}.syso
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
+      VERSION: '{{.VERSION | default "dev"}}'

@@ -6,6 +6,14 @@ metadata:
   qwenpaw:
     emoji: "📰"
     requires: {}
+  octop:
+    emoji: "📰"
+    label:
+      zh: "新闻速览"
+      en: "News Digest"
+    summary:
+      zh: "按政治、财经、科技等分类抓取并总结最新新闻。"
+      en: "Fetch and summarize latest news by category."
 ---
 
 # 新闻参考

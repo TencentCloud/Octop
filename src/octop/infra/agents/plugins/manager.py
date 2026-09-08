@@ -184,6 +184,7 @@ class PluginManager:
         # Last-known tool metadata so Admin / Experts can still list tools after
         # a global disable unloads the plugin from the process registry.
         self._tool_catalog: dict[str, list[dict[str, Any]]] = {}
+        self._skill_catalog: dict[str, set[str]] = {}
 
     @property
     def plugins_dir(self) -> Path:
@@ -292,6 +293,12 @@ class PluginManager:
                     for t in loaded.tools
                 ]
                 self._tool_catalog[manifest.id] = tools_meta
+                if loaded.skills_dir is not None:
+                    self._skill_catalog[manifest.id] = {
+                        path.name
+                        for path in loaded.skills_dir.iterdir()
+                        if path.is_dir() and (path / "SKILL.md").is_file()
+                    }
             else:
                 tools_meta = list(self._tool_catalog.get(manifest.id) or [])
             out.append(
@@ -347,6 +354,12 @@ class PluginManager:
                     }
                     for t in loaded.tools
                 ]
+                if loaded.skills_dir is not None:
+                    self._skill_catalog[plugin_id] = {
+                        path.name
+                        for path in loaded.skills_dir.iterdir()
+                        if path.is_dir() and (path / "SKILL.md").is_file()
+                    }
             unload_plugin(plugin_id)
 
         for item in self.list_installed():
@@ -509,12 +522,33 @@ class PluginManager:
     def uninstall(self, plugin_id: str) -> None:
         unload_plugin(plugin_id)
         self._tool_catalog.pop(plugin_id, None)
+        self._skill_catalog.pop(plugin_id, None)
         dest = self._plugins_dir / plugin_id
         if dest.is_dir():
             shutil.rmtree(dest)
 
-    def sync_skills_to_workspace(self, workspace: Any) -> None:
+    def plugin_skill_names(self, plugin_id: str) -> set[str]:
+        """Return skill directory names registered by one loaded plugin."""
+        plugin = PluginRegistry().get(plugin_id)
+        if plugin is None or plugin.skills_dir is None:
+            return set(self._skill_catalog.get(plugin_id) or ())
+        names = {
+            path.name
+            for path in plugin.skills_dir.iterdir()
+            if path.is_dir() and (path / "SKILL.md").is_file()
+        }
+        self._skill_catalog[plugin_id] = names
+        return set(names)
+
+    def sync_skills_to_workspace(
+        self,
+        workspace: Any,
+        *,
+        agent_plugins: object = None,
+    ) -> None:
         from harness_agent.backends.workspace import BackendWorkspace
+
+        from octop.infra.agents.plugin_tool_defaults import agent_plugin_enabled
 
         if not isinstance(workspace, BackendWorkspace):
             return
@@ -522,6 +556,8 @@ class PluginManager:
         pairs: list[tuple[str, bytes]] = []
         for plugin in PluginRegistry().list_plugins():
             if enabled.get(plugin.manifest.id) is False:
+                continue
+            if not agent_plugin_enabled(agent_plugins, plugin.manifest.id):
                 continue
             if plugin.skills_dir is None:
                 continue

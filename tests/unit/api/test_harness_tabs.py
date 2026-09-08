@@ -92,7 +92,7 @@ async def test_harness_list_tabs_marks_profile_target_active() -> None:
 
 
 @pytest.mark.asyncio
-async def test_shutdown_browser_kills_named_profile() -> None:
+async def test_shutdown_browser_forces_current_user_profile() -> None:
     result = SimpleNamespace(success=True, error=None)
     with (
         patch(
@@ -101,10 +101,12 @@ async def test_shutdown_browser_kills_named_profile() -> None:
         ) as tool,
         patch("harness_browser.tool_interface._registry", {"work": object()}),
     ):
-        body = await harness_mod.shutdown_browser(profile="work", _=object())
-    assert body == {"ok": True, "profile": "work"}
+        body = await harness_mod.shutdown_browser(
+            user=SimpleNamespace(id=7),
+        )
+    assert body == {"ok": True, "profile": "user-7"}
     tool.assert_awaited_once_with(
         action="close_session",
-        profile="work",
+        profile="user-7",
         kill=True,
     )

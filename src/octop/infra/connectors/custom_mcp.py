@@ -12,7 +12,7 @@ CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_META_KEYS = frozenset({"enabled", "display_name", "default_open"})
+_META_KEYS = frozenset({"enabled", "display_name", "default_open", "shared"})
 _OAUTH_KEY = "oauth"
 _SECRET_KEYS = frozenset({_OAUTH_KEY})
 _HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS
@@ -28,6 +28,14 @@ def is_custom_mcp_kind(kind: str) -> bool:
 
 def synthetic_instance_id(server_name: str) -> str:
     return f"custom:{server_name}"
+
+
+def shared_synthetic_instance_id(parent_instance_id: str, server_name: str) -> str:
+    return f"custom:{parent_instance_id}:{server_name}"
+
+
+def shared_mcp_server_name(parent_instance_id: str, server_name: str) -> str:
+    return f"custom__{parent_instance_id}__{server_name}"
 
 
 def parse_synthetic_instance_id(instance_id: str) -> str | None:
@@ -145,6 +153,8 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
     spec: dict[str, Any] = {"transport": transport, "enabled": enabled}
     if raw.get("default_open") is True:
         spec["default_open"] = True
+    if raw.get("shared") is True:
+        spec["shared"] = True
 
     display_name = str(raw.get("display_name") or "").strip()
     if display_name:
@@ -362,6 +372,7 @@ def expand_custom_instances(
     *,
     parent: Any,
     servers: dict[str, Any],
+    shared_view: bool = False,
 ) -> list[dict[str, Any]]:
     """Build list-API dicts for each custom server (independent status)."""
     items: list[dict[str, Any]] = []
@@ -369,15 +380,25 @@ def expand_custom_instances(
         if not isinstance(spec, dict):
             continue
         enabled = server_enabled(spec)
+        if shared_view and spec.get("shared") is not True:
+            continue
         items.append(
             {
-                "instance_id": synthetic_instance_id(name),
+                "instance_id": (
+                    shared_synthetic_instance_id(parent.instance_id, name)
+                    if shared_view
+                    else synthetic_instance_id(name)
+                ),
                 "kind": CUSTOM_MCP_KIND,
                 "display_name": server_display_name(name, spec),
                 "status": "active" if enabled else "disabled",
-                "mcp_server_name": name,
+                "mcp_server_name": (
+                    shared_mcp_server_name(parent.instance_id, name) if shared_view else name
+                ),
                 "has_credentials": True,
                 "default_open": spec.get("default_open") is True,
+                "shared": spec.get("shared") is True,
+                "owner_user_id": parent.user_id,
                 "created_at": parent.created_at,
                 "updated_at": parent.updated_at,
             }

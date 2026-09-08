@@ -141,7 +141,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "update", "description": "In-place server update checks and apply flow."},
     {
         "name": "browser",
-        "description": "Remote browser sessions: navigate, screenshot, live stream.",
+        "description": "Remote browser: env/install, harness sessions, live stream, record/replay.",
     },
     {
         "name": "mobile",

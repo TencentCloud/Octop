@@ -12,6 +12,7 @@ from octop.infra.db.pool import DatabasePool
 
 # Child-first for DELETE; reverse for INSERT.
 CHAT_TABLES_CHILD_FIRST = (
+    "trajectory_events",
     "thread_messages",
     "thread_history_projection",
     "threads",
@@ -76,8 +77,9 @@ def strip_chat_tables_from_sqlite_file(path: Path) -> None:
             if table in existing:
                 conn.execute(f"DELETE FROM {table}")
         if "sqlite_sequence" in existing:
+            placeholders = ", ".join("?" for _ in CHAT_TABLES_CHILD_FIRST)
             conn.execute(
-                "DELETE FROM sqlite_sequence WHERE name IN (?, ?, ?, ?)",
+                f"DELETE FROM sqlite_sequence WHERE name IN ({placeholders})",
                 CHAT_TABLES_CHILD_FIRST,
             )
         conn.commit()
@@ -308,7 +310,7 @@ def _remap_chat_row(
         if old_uid != new_uid:
             _apply_user_id_rewrite(table, values, col_index, old_uid=old_uid, new_uid=new_uid)
     if (
-        table in ("thread_messages", "thread_history_projection")
+        table in ("trajectory_events", "thread_messages", "thread_history_projection")
         and "thread_id" in col_index
         and str(values[col_index["thread_id"]]) not in kept_threads
     ):

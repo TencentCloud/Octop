@@ -24,6 +24,7 @@ import BrowserWorkspace, {
 } from "../../../components/BrowserWorkspace";
 import ChatDockPanelShell from "../../../components/BrowserWorkspace/ChatDockPanelShell";
 import type { DisplayEnvironment } from "../../../api/types/browser";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import type { DockTab, DockTabId } from "../hooks/useChatDockPanel";
 import { dockFileBasename } from "../utils/dockFilePath";
@@ -79,6 +80,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   surfaceVisible = true,
 }) => {
   const { t } = useTranslation();
+  const currentUser = useCurrentUser();
   const [browserMounted, setBrowserMounted] = useState(
     openTabs.some((tab) => tab.kind === "browser"),
   );
@@ -171,7 +173,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     return handler;
   }, []);
 
-  const sessionId = resolveBrowserProfile();
+  const sessionId = resolveBrowserProfile(currentUser?.id);
   const activeTab =
     openTabs.find((tab) => tab.id === activeTabId) ?? openTabs[0] ?? null;
   const terminalVisible = surfaceVisible && activeTab?.kind === "terminal";

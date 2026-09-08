@@ -71,3 +71,22 @@ def test_append_is_idempotent_on_duplicate_event_id(tmp_path: Path) -> None:
     page = store.list_before("T1", before_seq=None, limit=10, kinds=None)
     assert [item.event_id for item in page] == ["e1"]
     assert store.get("e1") == event
+
+
+def test_append_clips_oversized_payload_and_summary(tmp_path: Path) -> None:
+    from octop.infra.trajectory.settings import PAYLOAD_MAX_CHARS, SUMMARY_MAX_CHARS
+
+    store = _store(tmp_path)
+    huge = "x" * (PAYLOAD_MAX_CHARS + 50)
+    event = _event(
+        event_id="big",
+        seq=1,
+        summary="s" * (SUMMARY_MAX_CHARS + 20),
+        payload={"content": huge, "args": huge},
+    )
+    assert store.append(event) is True
+    stored = store.get("big")
+    assert stored is not None
+    assert len(stored.summary) <= SUMMARY_MAX_CHARS
+    assert len(str(stored.payload["content"])) <= PAYLOAD_MAX_CHARS
+    assert len(str(stored.payload["args"])) <= PAYLOAD_MAX_CHARS

@@ -18,6 +18,7 @@ import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
+import AgentTrajectoryField from "./AgentTrajectoryField";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   expertPaletteColor,
@@ -160,6 +161,7 @@ export default function CreateFromExpertDrawer({
       composite_default: string;
       root_dir?: string;
       skill_package_ids?: string[];
+      enable_trajectory?: boolean;
     } & AgentRuntimeFormValues
   >();
   const [submitting, setSubmitting] = useState(false);
@@ -218,6 +220,7 @@ export default function CreateFromExpertDrawer({
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
+      enable_trajectory: true,
     });
 
     if (source.kind === "market") {
@@ -332,6 +335,7 @@ export default function CreateFromExpertDrawer({
           : colorPalette,
         ...(welcomeText ? { welcome_message: welcomeText } : {}),
         ...buildAgentRuntimeRequest(values),
+        enable_trajectory: values.enable_trajectory === true,
       };
 
       let body: { agent_id: string; name: string };
@@ -572,6 +576,7 @@ export default function CreateFromExpertDrawer({
           onRemovePathMapping={removePathMapping}
           onUpdatePathMapping={updatePathMapping}
         />
+        <AgentTrajectoryField />
 
         <Form.Item
           name="skill_package_ids"

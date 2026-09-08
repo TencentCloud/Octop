@@ -268,10 +268,7 @@ export function useChatSend({
         setTimeout(async () => {
           try {
             const { browserApi } = await import("../../../api/modules/browser");
-            const profile = activeThreadId || "default";
             const data = await browserApi.startRecording({
-              profile,
-              agentProfile: profile,
               name: activeThreadId
                 ? `chat-${activeThreadId}`
                 : "skill-recording",

@@ -46,6 +46,7 @@ from octop.api.routers.browser.harness import (
     harness_page_url,
     resolve_harness_session,
 )
+from octop.infra.utils.browser_media import user_browser_profile
 
 logger = logging.getLogger(__name__)
 
@@ -335,14 +336,14 @@ async def browser_stream_ws(
         await websocket.close(code=4001, reason="missing token")
         return
     try:
-        resolve_user_from_token(server, token)
+        user = resolve_user_from_token(server, token)
     except Exception as exc:
         await websocket.close(code=4001, reason=f"auth failed: {exc}")
         return
 
     await websocket.accept()
     sess: Any | None = None
-    profile = "default"
+    profile = user_browser_profile(user.id)
     stream_task: asyncio.Task[None] | None = None
     listen = bool(listen_only)
 
@@ -354,14 +355,11 @@ async def browser_stream_ws(
             await _send_json(websocket, {"type": "error", "message": "expected start message"})
             return
 
-        profile_hint = str(start_msg.get("session_id") or "auto")
-        profile = profile_hint if profile_hint not in {"", "auto"} else "default"
-
         if listen:
             # Status-only clients (chat browser badge) must not spawn Chrome.
             stream_task = asyncio.create_task(_listen_state_loop(websocket, profile))
         else:
-            sess = await resolve_harness_session(profile_hint)
+            sess = await resolve_harness_session(profile)
             assert sess is not None  # create=True always returns or raises
 
             start_url = _normalize_nav_url(str(start_msg.get("url") or ""))

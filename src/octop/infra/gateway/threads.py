@@ -57,6 +57,37 @@ class ThreadRegistry:
         self._sessions = session_repo
         self._threads = thread_repo
 
+    def _refresh_session_if_needed(
+        self,
+        row: SessionRow,
+        *,
+        channel_id: str | None,
+        channel_metadata: dict[str, Any] | None,
+    ) -> None:
+        """Update a live session when inbound channel id or routing metadata changed."""
+        merged_meta = dict(row.channel_metadata or {})
+        if channel_metadata:
+            merged_meta.update(channel_metadata)
+        if channel_id:
+            merged_meta["channel_id"] = channel_id
+        if not (
+            (channel_id and channel_id != row.channel_id)
+            or merged_meta != (row.channel_metadata or {})
+        ):
+            return
+        self._sessions.upsert(
+            session_key=row.session_key,
+            agent_id=row.agent_id,
+            user_id=row.user_id,
+            channel_type=row.channel_type,
+            chat_type=row.chat_type,
+            thread_id=row.thread_id,
+            channel_subject_id=row.channel_subject_id,
+            channel_chat_type=row.channel_chat_type,
+            channel_metadata=merged_meta,
+            channel_id=channel_id or row.channel_id,
+        )
+
     async def get_or_create(
         self,
         *,
@@ -76,53 +107,23 @@ class ThreadRegistry:
         )
         row = self._sessions.get(session_key)
         if row is not None:
-            merged_meta = dict(row.channel_metadata or {})
-            if channel_metadata:
-                merged_meta.update(channel_metadata)
-            needs_upsert = (channel_id and not row.channel_id) or (
-                channel_metadata and merged_meta != (row.channel_metadata or {})
+            self._refresh_session_if_needed(
+                row, channel_id=channel_id, channel_metadata=channel_metadata
             )
-            if needs_upsert:
-                self._sessions.upsert(
-                    session_key=session_key,
-                    agent_id=row.agent_id,
-                    user_id=row.user_id,
-                    channel_type=row.channel_type,
-                    chat_type=row.chat_type,
-                    thread_id=row.thread_id,
-                    channel_subject_id=row.channel_subject_id,
-                    channel_chat_type=row.channel_chat_type,
-                    channel_metadata=merged_meta,
-                    channel_id=channel_id or row.channel_id,
-                )
             return row.thread_id
         async with self._lock:
             row = self._sessions.get(session_key)
             if row is not None:
-                merged_meta = dict(row.channel_metadata or {})
-                if channel_metadata:
-                    merged_meta.update(channel_metadata)
-                needs_upsert = (channel_id and not row.channel_id) or (
-                    channel_metadata and merged_meta != (row.channel_metadata or {})
+                self._refresh_session_if_needed(
+                    row, channel_id=channel_id, channel_metadata=channel_metadata
                 )
-                if needs_upsert:
-                    self._sessions.upsert(
-                        session_key=session_key,
-                        agent_id=row.agent_id,
-                        user_id=row.user_id,
-                        channel_type=row.channel_type,
-                        chat_type=row.chat_type,
-                        thread_id=row.thread_id,
-                        channel_subject_id=row.channel_subject_id,
-                        channel_chat_type=row.channel_chat_type,
-                        channel_metadata=merged_meta,
-                        channel_id=channel_id or row.channel_id,
-                    )
                 return row.thread_id
             tid = _new_thread_id()
             meta = dict(channel_metadata or {})
             meta.setdefault("channel_type", channel_type)
             meta.setdefault("user_id", user_id)
+            if channel_id:
+                meta["channel_id"] = channel_id
             self._threads.insert(
                 thread_id=tid,
                 agent_id=agent_id,
@@ -161,25 +162,9 @@ class ThreadRegistry:
             if row.agent_id != agent_id:
                 msg = f"session {session_key!r} belongs to agent {row.agent_id!r}, not {agent_id!r}"
                 raise ValueError(msg)
-            merged_meta = dict(row.channel_metadata or {})
-            if channel_metadata:
-                merged_meta.update(channel_metadata)
-            needs_upsert = (channel_channel_id and not row.channel_id) or (
-                channel_metadata and merged_meta != (row.channel_metadata or {})
+            self._refresh_session_if_needed(
+                row, channel_id=channel_channel_id, channel_metadata=channel_metadata
             )
-            if needs_upsert:
-                self._sessions.upsert(
-                    session_key=session_key,
-                    agent_id=row.agent_id,
-                    user_id=row.user_id,
-                    channel_type=row.channel_type,
-                    chat_type=row.chat_type,
-                    thread_id=row.thread_id,
-                    channel_subject_id=row.channel_subject_id,
-                    channel_chat_type=row.channel_chat_type,
-                    channel_metadata=merged_meta,
-                    channel_id=channel_channel_id or row.channel_id,
-                )
             return row.thread_id
         parts = session_key.split(":", 3)
         subject_id = parts[2] if len(parts) >= 3 else str(user_id)
@@ -263,6 +248,8 @@ class ThreadRegistry:
         meta = dict(channel_metadata or {})
         meta.setdefault("channel_type", channel_type)
         meta.setdefault("user_id", user_id)
+        if channel_id:
+            meta["channel_id"] = channel_id
         async with self._lock:
             tid = _new_thread_id()
             self._threads.insert(

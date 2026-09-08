@@ -1,5 +1,6 @@
 # Shared NSIS helpers for the Octop desktop installer.
-# Keep INFO_* defaults in sync with desktop/src/build/config.yml.
+# INFO_PRODUCTVERSION fallback for a local makensis without -D.
+# Release packaging passes -DINFO_PRODUCTVERSION from pyproject.toml.
 
 !include "x64.nsh"
 !include "WinVer.nsh"

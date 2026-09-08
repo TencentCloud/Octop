@@ -40,6 +40,15 @@
   gap: 16px;
 }
 
+.emptyGuideMascot {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 /* ── Type Card (service catalog) ───────────────────────────────── */
 
 .typeCard {
@@ -154,16 +163,6 @@
   flex-shrink: 0;
 }
 
-.typeCardSwitch {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.typeCardSwitchLabel {
-  display: none;
-}
-
 .typeCardIcon {
   width: 40px;
   height: 40px;
@@ -208,67 +207,45 @@
 
 /* ── Instance Card (my connections) ────────────────────────────── */
 
-.instanceCard {
-  background: var(--fn-bg-primary);
-  border: 2px solid var(--fn-card-border-normal);
-  border-radius: var(--fn-radius-lg);
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
-
-  &:hover {
-    border-color: color-mix(
-      in srgb,
-      var(--connector-accent, var(--fn-color-brand)) 40%,
-      var(--fn-card-border-normal)
-    );
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  }
-}
-
-.instanceCardMain {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.instanceCardIcon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--fn-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.instanceCardTag {
   flex-shrink: 0;
+  margin-inline-end: 0;
 }
 
-.instanceCardMeta {
-  min-width: 0;
-}
-
-.instanceCardName {
-  font-weight: 600;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.instanceCardKind {
-  font-size: 12px;
-  color: var(--fn-text-tertiary);
+.instanceCardHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .instanceCardActions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.instanceCardDelBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--fn-radius-sm);
+  border: 1px solid var(--fn-border-primary);
+  background: transparent;
+  cursor: pointer;
+  color: var(--fn-text-tertiary);
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    color: #ff4d4f;
+    border-color: #ff4d4f;
+    background: color-mix(in srgb, #ff4d4f 8%, transparent);
+  }
 }
 
 .connectorLogo {

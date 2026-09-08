@@ -189,3 +189,31 @@ class VoiceManager:
         if mode == "stt":
             return await adapters.test_stt(row, row.kind)
         return await adapters.test_tts(row, row.kind)
+
+    async def test_configuration(
+        self,
+        *,
+        name: str,
+        kind: str,
+        capability: str,
+        base_url: str | None,
+        api_key: str | None,
+        extra_json: str | None,
+        mode: str,
+    ) -> dict[str, Any]:
+        row = VoiceProviderRow(
+            id=0,
+            name=name,
+            kind=kind,
+            capability=capability,
+            base_url=base_url,
+            api_key=api_key,
+            extra_json=extra_json,
+            note=None,
+            enabled=1,
+            created_at=0,
+            updated_at=0,
+        )
+        if mode == "stt":
+            return await adapters.test_stt(row, kind)
+        return await adapters.test_tts(row, kind)

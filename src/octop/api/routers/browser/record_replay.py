@@ -9,13 +9,12 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.browser_media import user_browser_profile
 
 router = APIRouter()
 
 
 class RecordStartBody(BaseModel):
-    profile: str = "default"
-    agent_profile: str | None = Field(default=None, alias="agentProfile")
     name: str | None = None
     privacy: str = "mask-sensitive"
 
@@ -36,7 +35,6 @@ class RecordStopAndGenerateSkillBody(BaseModel):
 
 class ReplayBody(BaseModel):
     recording_id: str = Field(alias="recordingId")
-    profile: str = "default"
     inputs: dict[str, str] = Field(default_factory=dict)
 
 
@@ -87,21 +85,47 @@ async def run_replay_recording(
     return await ReplayRunner().run(recording_id, profile=profile, inputs=inputs)
 
 
-def _latest_recording_id() -> str | None:
+def _latest_recording_id(profile: str) -> str | None:
     try:
         from harness_browser.record.store import RecordingStore
     except ImportError:
         return None
-    recordings = RecordingStore().list_recordings()
+    recordings = [
+        manifest for manifest in RecordingStore().list_recordings() if manifest.profile == profile
+    ]
     if not recordings:
         return None
     latest = max(recordings, key=lambda m: m.created_at)
     return latest.recording_id
 
 
-def _effective_profile(profile: str | None, agent_profile: str | None = None) -> str:
-    chosen = (agent_profile or profile or "default").strip()
-    return chosen or "default"
+def _require_owned_recording(recording_id: str, profile: str) -> Any:
+    try:
+        from harness_browser.record.store import RecordingStore
+    except ImportError as exc:
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR,
+            "harness-browser record/replay is not installed",
+            status=503,
+        ) from exc
+    try:
+        manifest = RecordingStore().read_manifest(recording_id)
+    except FileNotFoundError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, "recording not found") from exc
+    except Exception as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, "recording not found") from exc
+    if str(getattr(manifest, "profile", "") or "") != profile:
+        raise OctopError(ErrorCode.NOT_FOUND, "recording not found")
+    return manifest
+
+
+def _active_for_profile(data: dict[str, Any], profile: str) -> Any:
+    active = data.get("active")
+    if not isinstance(active, dict):
+        return None
+    if str(active.get("profile") or "") != profile:
+        return None
+    return active
 
 
 def _raise_if_not_ok(data: dict[str, Any], *, status: int = 500) -> None:
@@ -116,26 +140,28 @@ def _raise_if_not_ok(data: dict[str, Any], *, status: int = 500) -> None:
 
 
 @router.get("/browser/record-replay/status")
-async def record_status(_: Any = Depends(current_user)) -> dict[str, Any]:
+async def record_status(user: Any = Depends(current_user)) -> dict[str, Any]:
+    profile = user_browser_profile(user.id)
     try:
         data = await send_record_request({"command": "status"})
     except Exception:
         data = {"ok": True, "active": None}
-    data["latestRecordingId"] = _latest_recording_id()
+    data["active"] = _active_for_profile(data, profile)
+    data["latestRecordingId"] = _latest_recording_id(profile)
     return data
 
 
 @router.post("/browser/record-replay/start")
 async def record_start(
     body: RecordStartBody,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> dict[str, Any]:
     daemon = await ensure_record_daemon()
     _raise_if_not_ok(daemon, status=503)
     data = await send_record_request(
         {
             "command": "start",
-            "profile": _effective_profile(body.profile, body.agent_profile),
+            "profile": user_browser_profile(user.id),
             "name": body.name,
             "privacy": body.privacy or "mask-sensitive",
             "screenshots": "off",
@@ -148,12 +174,23 @@ async def record_start(
 @router.post("/browser/record-replay/stop")
 async def record_stop(
     body: RecordStopBody,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> dict[str, Any]:
+    profile = user_browser_profile(user.id)
+    recording_id = body.recording_id
+    if recording_id:
+        _require_owned_recording(recording_id, profile)
+    else:
+        try:
+            status = await send_record_request({"command": "status"})
+        except Exception:
+            status = {}
+        if _active_for_profile(status if isinstance(status, dict) else {}, profile) is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "recording not found")
     data = await send_record_request(
         {
             "command": "stop",
-            "recording_id": body.recording_id,
+            "recording_id": recording_id,
             "generate_steps": body.generate_steps,
             "name": body.name,
         }
@@ -165,7 +202,7 @@ async def record_stop(
 @router.post("/browser/record-replay/stop-and-generate-skill")
 async def record_stop_and_generate_skill(
     body: RecordStopAndGenerateSkillBody,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> dict[str, Any]:
     """Stop recording, generate steps + skill draft, and return the skill content.
 
@@ -173,6 +210,18 @@ async def record_stop_and_generate_skill(
     generate-skill into a single call, returning the generated skill markdown
     content so the frontend can display it for user confirmation.
     """
+    profile = user_browser_profile(user.id)
+    recording_id = body.recording_id
+    if recording_id:
+        _require_owned_recording(recording_id, profile)
+    else:
+        try:
+            status = await send_record_request({"command": "status"})
+        except Exception:
+            status = {}
+        if _active_for_profile(status if isinstance(status, dict) else {}, profile) is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "recording not found")
+
     # 1) Stop the recording
     data = await send_record_request(
         {
@@ -187,6 +236,7 @@ async def record_stop_and_generate_skill(
     recording_id = data.get("recordingId") or body.recording_id
     if not recording_id:
         return {**data, "skillContent": None, "skillName": None}
+    _require_owned_recording(str(recording_id), profile)
 
     # 2) Generate skill from the recording
     await send_record_request(
@@ -232,35 +282,23 @@ async def record_stop_and_generate_skill(
 @router.post("/browser/record-replay/skill-content")
 async def get_skill_content(
     body: SkillContentBody,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> dict[str, Any]:
     """Read the generated skill content (draft.skill.md) for a given recording."""
     skill_content = None
     skill_name = None
     skill_exists = False
+    profile = user_browser_profile(user.id)
+    manifest = _require_owned_recording(body.recording_id, profile)
+    from harness_browser.record.store import RecordingStore
 
-    try:
-        from harness_browser.record.store import RecordingStore
-
-        store = RecordingStore()
-        manifest = store.read_manifest(body.recording_id)
-        if manifest is not None:
-            import pathlib
-
-            rec_dir = pathlib.Path(store.recordings_dir) / body.recording_id
-            skill_path = rec_dir / "draft.skill.md"
-            if skill_path.exists():
-                skill_content = skill_path.read_text(encoding="utf-8")
-                skill_exists = True
-                skill_name = manifest.target.title.strip() or body.recording_id
-    except ImportError as exc:
-        raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            "harness-browser record/replay is not installed",
-            status=503,
-        ) from exc
-    except Exception as exc:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
+    store = RecordingStore()
+    rec_dir = store.recording_dir(body.recording_id)
+    skill_path = rec_dir / "draft.skill.md"
+    if skill_path.exists():
+        skill_content = skill_path.read_text(encoding="utf-8")
+        skill_exists = True
+        skill_name = manifest.target.title.strip() or body.recording_id
 
     return {
         "ok": True,
@@ -274,11 +312,13 @@ async def get_skill_content(
 @router.post("/browser/record-replay/replay")
 async def replay_recording(
     body: ReplayBody,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> dict[str, Any]:
+    profile = user_browser_profile(user.id)
+    _require_owned_recording(body.recording_id, profile)
     data = await run_replay_recording(
         body.recording_id,
-        profile=body.profile or "default",
+        profile=profile,
         inputs=body.inputs,
     )
     return data

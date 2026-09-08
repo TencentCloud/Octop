@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -41,7 +42,11 @@ class _BoomService:
         raise RuntimeError("finish down")
 
 
-def _processor(*, trajectory_service: object | None) -> GlobalProcessor:
+def _processor(
+    *,
+    trajectory_service: object | None,
+    enable_trajectory: bool = True,
+) -> GlobalProcessor:
     async def _stream(*_args: object, **_kwargs: object):
         yield dict(_TOOL_CHUNK)
 
@@ -50,11 +55,18 @@ def _processor(*, trajectory_service: object | None) -> GlobalProcessor:
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
 
+    agent_row = MagicMock()
+    agent_row.user_id = 1
+    agent_row.config_json = json.dumps({} if enable_trajectory else {"enable_trajectory": False})
+    agent_row.system_prompt = None
+    agent_repo = MagicMock()
+    agent_repo.get = MagicMock(return_value=agent_row)
+
     return GlobalProcessor(
         agent_manager=agent_manager,
         thread_registry=MagicMock(),
         audit_repo=MagicMock(),
-        agent_repo=MagicMock(),
+        agent_repo=agent_repo,
         user_repo=MagicMock(),
         connector_repo=MagicMock(),
         dispatcher=SlashDispatcher(),
@@ -144,3 +156,16 @@ async def test_iter_turn_chunks_finishes_trajectory_when_cancelled() -> None:
         _ = [chunk async for chunk in processor.iter_turn_chunks(_dashboard_msg())]
 
     assert service.finished == [("thread-1", None)]
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_skips_observe_when_trajectory_disabled() -> None:
+    service = _RecordingService()
+    processor = _processor(trajectory_service=service, enable_trajectory=False)
+
+    chunks = [c async for c in processor.iter_turn_chunks(_dashboard_msg())]
+
+    assert any(c.get("type") == "tool_call_chunk" for c in chunks)
+    assert chunks[-1]["type"] == "done"
+    assert service.calls == []
+    assert service.finished == []

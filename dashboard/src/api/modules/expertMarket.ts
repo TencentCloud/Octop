@@ -70,6 +70,7 @@ export interface CreateMarketExpertBody {
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  enable_trajectory?: boolean;
 }
 
 function hubListPath(query: string, scene: string): string {

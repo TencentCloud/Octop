@@ -7,6 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from tests.support.auth import create_user
+
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "plugins" / "echo-tool"
 
 
@@ -74,13 +76,7 @@ async def test_disable_plugin_tool_via_admin_plugins_api(env_with_provider: Any)
 
     settings = await client.get(f"/api/agents/{aid}/tool-settings", headers=auth)
     assert settings.status_code == 200, settings.text
-    by_name = {
-        t["name"]: t
-        for t in settings.json()["tools"]
-        if t["source"] == "plugin" and t["plugin_id"] == "echo-tool"
-    }
-    assert by_name["echo_message"]["enabled"] is False
-    assert by_name["echo_message"]["available"] is True
+    assert all(t["source"] == "builtin" for t in settings.json()["tools"])
 
 
 async def test_disable_plugin_tool_via_expert_tool_settings(env_with_provider: Any) -> None:
@@ -94,13 +90,6 @@ async def test_disable_plugin_tool_via_expert_tool_settings(env_with_provider: A
         json={"enabled": False, "source": "plugin", "plugin_id": "echo-tool"},
     )
     assert r.status_code == 200, r.text
-    by_name = {
-        t["name"]: t
-        for t in r.json()["tools"]
-        if t["source"] == "plugin" and t["plugin_id"] == "echo-tool"
-    }
-    assert by_name["echo_message"]["enabled"] is False
-
     cfg = srv.app_runtime.agent_registry.get_config(aid)
     assert cfg["plugins"]["echo-tool"]["tools"]["echo_message"]["enabled"] is False
     _assert_echo_disabled_on_harness(srv, aid, disabled=True)
@@ -149,7 +138,63 @@ async def test_admin_and_expert_share_plugin_tool_config(env_with_provider: Any)
     assert tool_cfg.get("config", {}).get("prefix") == "x"
 
 
-async def test_global_plugin_disable_marks_tools_unavailable(env_with_provider: Any) -> None:
+async def test_agent_plugin_switch_defaults_on_and_preserves_tools(
+    env_with_provider: Any,
+) -> None:
+    client, srv, auth = env_with_provider
+    await _install_echo(client, auth)
+    aid = await _create_agent(client, auth, "agent-plugin-switch")
+
+    listed = await client.get(f"/api/plugins/agents/{aid}", headers=auth)
+    assert listed.status_code == 200, listed.text
+    plugin = next(p for p in listed.json()["plugins"] if p["id"] == "echo-tool")
+    assert plugin["agent_enabled"] is True
+    assert plugin["enabled"] is True
+
+    configured = await client.patch(
+        f"/api/plugins/agents/{aid}/tools",
+        headers=auth,
+        json={
+            "plugins": {
+                "echo-tool": {
+                    "tools": {
+                        "echo_message": {
+                            "enabled": True,
+                            "config": {"prefix": "kept"},
+                        }
+                    }
+                }
+            }
+        },
+    )
+    assert configured.status_code == 200, configured.text
+
+    off = await client.patch(
+        f"/api/plugins/agents/{aid}",
+        headers=auth,
+        json={"plugins": {"echo-tool": {"enabled": False}}},
+    )
+    assert off.status_code == 200, off.text
+    plugin = next(p for p in off.json()["plugins"] if p["id"] == "echo-tool")
+    assert plugin["agent_enabled"] is False
+    assert plugin["enabled"] is False
+    _assert_echo_disabled_on_harness(srv, aid, disabled=True)
+
+    cfg = srv.app_runtime.agent_registry.get_config(aid)
+    tool_cfg = cfg["plugins"]["echo-tool"]["tools"]["echo_message"]
+    assert tool_cfg == {"enabled": True, "config": {"prefix": "kept"}}
+
+    on = await client.patch(
+        f"/api/plugins/agents/{aid}",
+        headers=auth,
+        json={"plugins": {"echo-tool": {"enabled": True}}},
+    )
+    assert on.status_code == 200, on.text
+    cfg = srv.app_runtime.agent_registry.get_config(aid)
+    assert cfg["plugins"]["echo-tool"]["tools"]["echo_message"] == tool_cfg
+
+
+async def test_global_plugin_disable_takes_priority(env_with_provider: Any) -> None:
     client, _srv, auth = env_with_provider
     await _install_echo(client, auth)
     aid = await _create_agent(client, auth, "global-plugin-off")
@@ -161,11 +206,26 @@ async def test_global_plugin_disable_marks_tools_unavailable(env_with_provider: 
     )
     assert off.status_code == 200, off.text
 
-    settings = await client.get(f"/api/agents/{aid}/tool-settings", headers=auth)
-    assert settings.status_code == 200, settings.text
-    echo = next(
-        t
-        for t in settings.json()["tools"]
-        if t["source"] == "plugin" and t["name"] == "echo_message"
+    listed = await client.get(f"/api/plugins/agents/{aid}", headers=auth)
+    assert listed.status_code == 200, listed.text
+    plugin = next(p for p in listed.json()["plugins"] if p["id"] == "echo-tool")
+    assert plugin["global_enabled"] is False
+    assert plugin["agent_enabled"] is True
+    assert plugin["enabled"] is False
+
+
+async def test_agent_plugin_endpoints_enforce_owner(env_with_provider: Any) -> None:
+    client, _srv, admin_auth = env_with_provider
+    await _install_echo(client, admin_auth)
+    owner_auth = await create_user(client, admin_auth, username="plugin_owner")
+    other_auth = await create_user(client, admin_auth, username="plugin_other")
+    aid = await _create_agent(client, owner_auth, "owned-plugin-agent")
+
+    listed = await client.get(f"/api/plugins/agents/{aid}", headers=other_auth)
+    assert listed.status_code == 403, listed.text
+    patched = await client.patch(
+        f"/api/plugins/agents/{aid}",
+        headers=other_auth,
+        json={"plugins": {"echo-tool": {"enabled": False}}},
     )
-    assert echo["available"] is False
+    assert patched.status_code == 403, patched.text

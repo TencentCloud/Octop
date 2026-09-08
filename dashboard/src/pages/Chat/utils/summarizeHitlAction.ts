@@ -20,8 +20,7 @@ export type HitlTranslate = (
   options?: string | Record<string, unknown>,
 ) => string;
 
-const HIDDEN_WHEN_DEFAULT = new Set(["profile"]);
-const ALWAYS_HIDDEN = new Set(["session_id"]);
+const ALWAYS_HIDDEN = new Set(["session_id", "profile"]);
 const TRUNCATE_KEYS = new Set([
   "content",
   "body",
@@ -84,7 +83,6 @@ function isEmpty(value: unknown): boolean {
 
 function shouldHide(key: string, value: unknown): boolean {
   if (ALWAYS_HIDDEN.has(key) || isEmpty(value)) return true;
-  if (HIDDEN_WHEN_DEFAULT.has(key) && value === "default") return true;
   return false;
 }
 

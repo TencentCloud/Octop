@@ -17,8 +17,10 @@ from harness_gateway.models import (
     MessageEventType,
     TextContent,
 )
+from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -40,7 +42,7 @@ from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
 )
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker
+from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
@@ -56,11 +58,13 @@ from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.runner import try_handle_slash
 from octop.infra.knowledge.default_open import merge_knowledge_base_ids
 from octop.infra.knowledge.hint import catalog_for_selected_bases
+from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -205,7 +209,26 @@ class GlobalProcessor:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
 
-    def _observe_trajectory(self, *, agent_id: str, thread_id: str, chunk: dict[str, Any]) -> None:
+    def _agent_trajectory_enabled(self, agent_id: str, row: Any | None = None) -> bool:
+        if self._trajectory_service is None:
+            return False
+        agent_row = row if row is not None else self._agent_repo.get(agent_id)
+        if agent_row is None:
+            return False
+        return agent_trajectory_enabled(parse_config_json(getattr(agent_row, "config_json", None)))
+
+    def _observe_trajectory(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        chunk: dict[str, Any],
+        enabled: bool | None = None,
+    ) -> None:
+        if enabled is False:
+            return
+        if enabled is None and not self._agent_trajectory_enabled(agent_id):
+            return
         service = self._trajectory_service
         if service is None:
             return
@@ -223,7 +246,10 @@ class GlobalProcessor:
         *,
         thread_id: str,
         usage: dict[str, Any] | None = None,
+        enabled: bool | None = None,
     ) -> None:
+        if enabled is False:
+            return
         service = self._trajectory_service
         if service is None:
             return
@@ -243,8 +269,13 @@ class GlobalProcessor:
         request: dict[str, Any],
         meta: dict[str, Any],
         phase: Literal["system", "context"] = "context",
+        trajectory_enabled: bool | None = None,
     ) -> None:
         """Emit SYSTEM / CONTEXT from harness injection sources of truth."""
+        if trajectory_enabled is False:
+            return
+        if trajectory_enabled is None and not self._agent_trajectory_enabled(agent_id):
+            return
         service = self._trajectory_service
         if service is None:
             return
@@ -284,7 +315,12 @@ class GlobalProcessor:
                 mcp_servers=mcp_names,
                 skills_filter_present=skills_filter_present,
             ):
-                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+                self._observe_trajectory(
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    chunk=chunk,
+                    enabled=True,
+                )
         except Exception:
             logger.exception(
                 "trajectory turn-start context failed agent=%s thread=%s",
@@ -823,6 +859,7 @@ class GlobalProcessor:
             return
 
         agent_row = self._agent_repo.get(agent_id)
+        traj_on = self._agent_trajectory_enabled(agent_id, agent_row)
         user_id = resolve_user_id_for_message(
             msg,
             agent_owner_id=agent_row.user_id if agent_row is not None else None,
@@ -844,6 +881,23 @@ class GlobalProcessor:
             ),
         )
         if handled:
+            thread_id = meta.get("thread_id")
+            if not isinstance(thread_id, str) or not thread_id.strip():
+                thread_id = await self._thread_registry.get_or_create_by_key(
+                    session_key=session_key,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    channel_channel_id=msg.channel_id or None,
+                    channel_metadata=im_meta,
+                )
+            await self._append_slash_checkpoint(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                command=msg.text,
+                response_lines=slash_lines,
+            )
+            self._touch_thread_after_turn(thread_id, msg.text)
             for line in slash_lines:
                 yield {"type": "token", "content": f"{line}\n"}
             for action in slash_actions:
@@ -877,11 +931,13 @@ class GlobalProcessor:
             request=request,
             meta=meta,
             phase="system",
+            trajectory_enabled=traj_on,
         )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
             chunk={"type": "user", "content": msg.text or "", "source": channel_type},
+            enabled=traj_on,
         )
         await self._observe_turn_start_context(
             agent_id=agent_id,
@@ -889,6 +945,7 @@ class GlobalProcessor:
             request=request,
             meta=meta,
             phase="context",
+            trajectory_enabled=traj_on,
         )
 
         stream_ok = False
@@ -908,7 +965,12 @@ class GlobalProcessor:
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
 
                 await flush_tracker(history_tracker)
-                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+                self._observe_trajectory(
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    chunk=chunk,
+                    enabled=traj_on,
+                )
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
@@ -955,7 +1017,7 @@ class GlobalProcessor:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             yield {"type": "error", "message": format_stream_error(exc, locale)}
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
+            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
@@ -980,6 +1042,7 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
+        traj_on = self._agent_trajectory_enabled(agent_id)
         try:
             async for chunk in self._agent_manager.resume_hitl(
                 agent_id,
@@ -991,11 +1054,16 @@ class GlobalProcessor:
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
 
                 await flush_tracker(history_tracker)
-                self._observe_trajectory(agent_id=agent_id, thread_id=thread_id, chunk=chunk)
+                self._observe_trajectory(
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    chunk=chunk,
+                    enabled=traj_on,
+                )
                 yield chunk
             completed = True
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage)
+            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
@@ -1264,6 +1332,46 @@ class GlobalProcessor:
             # successful model response into a failed chat turn.
             logger.warning(
                 "failed to append thread history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    async def _append_slash_checkpoint(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        command: str,
+        response_lines: list[str],
+    ) -> None:
+        """Persist slash input/output via harness checkpoint, same as cron text."""
+        turn_id = new_ulid()
+        response = "\n".join(response_lines).strip()
+        canonical: list[HumanMessage | AIMessage] = [
+            HumanMessage(content=command, id=f"slash:{turn_id}:human"),
+        ]
+        if response:
+            canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
+        try:
+            harness = self._agent_manager.get_agent(agent_id)
+            appended = await harness.aappend_messages(thread_id, canonical)
+        except Exception:
+            logger.warning(
+                "failed to append slash checkpoint for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+            return
+        if self._thread_message_repo is None:
+            return
+        try:
+            self._thread_message_repo.append_if_ready(
+                thread_id,
+                message_inputs(appended, dedupe_missing_ids=True),
+            )
+        except Exception:
+            logger.warning(
+                "failed to append slash history projection for thread=%s",
                 thread_id,
                 exc_info=True,
             )

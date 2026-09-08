@@ -44,6 +44,14 @@ def test_build_instance_config_json_includes_when_true():
     assert '"email": "a@qq.com"' in raw_mail
 
 
+def test_build_instance_config_json_includes_description():
+    raw = build_instance_config_json(
+        kind="tencent-docs",
+        description="团队文档连接",
+    )
+    assert raw == '{"description": "团队文档连接"}'
+
+
 def test_merge_mcp_servers_with_defaults_unions_and_dedupes():
     # Default: apply defaults only when explicit is None (IM-style).
     assert merge_mcp_servers_with_defaults(None, ["a", "b"]) == ["a", "b"]

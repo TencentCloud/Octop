@@ -28,7 +28,7 @@ GATED_FILES = [
     "routers/connectors.py",
     "routers/knowledge_bases.py",
     "routers/browser/uninstall.py",
-    "routers/browser/sessions.py",
+    "routers/browser/env.py",
     "routers/desktop/install.py",
     "routers/desktop/uninstall.py",
     "routers/desktop/status.py",

@@ -120,6 +120,10 @@ export function StorageBackendDrawer({
           form.setFieldValue("sandbox_scope", "agent");
           form.setFieldValue("sandbox_prefix", "octop_sandbox");
         }
+        if (kind === "opensandbox") {
+          form.setFieldValue("bucket", "python:3.12");
+          form.setFieldValue("region", "http");
+        }
       }
       const draft = loadFormDraft<Partial<StorageForm>>(draftScope);
       if (draft) {
@@ -199,9 +203,20 @@ export function StorageBackendDrawer({
         message.success(t("storage.createSuccess", { name: backendName }));
       }
 
-      // New docker backends are enabled by default — start image pull right away.
-      if (values.kind === "docker" && backendId != null) {
-        const hide = message.loading(t("storage.dockerPulling"), 0);
+      // New docker / OpenSandbox backends are enabled by default — probe (and
+      // install optional SDK) immediately.
+      if (
+        (values.kind === "docker" || values.kind === "opensandbox") &&
+        backendId != null
+      ) {
+        const hide = message.loading(
+          t(
+            values.kind === "opensandbox"
+              ? "storage.opensandboxInstalling"
+              : "storage.dockerPulling",
+          ),
+          0,
+        );
         try {
           const result = await request<{
             ok: boolean;

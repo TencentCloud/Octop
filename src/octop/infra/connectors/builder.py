@@ -20,6 +20,8 @@ from octop.infra.utils.ulid import new_ulid
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
 
+DIDI_MCP_BASE_URL = "https://mcp.didichuxing.com/mcp-servers"
+
 
 def _mcp_http_headers() -> dict[str, str]:
     return {"Accept": _MCP_STREAMABLE_HTTP_ACCEPT}
@@ -86,6 +88,13 @@ def build_http_mcp_spec(
 
 
 def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> dict[str, Any]:
+    if entry.kind == "didi":
+        api_key = str(creds.get("api_key") or "").strip()
+        return {
+            "transport": "http",
+            "url": f"{DIDI_MCP_BASE_URL}?key={quote(api_key, safe='')}",
+            "headers": _mcp_http_headers(),
+        }
     if entry.kind == "dify":
         url = validate_mcp_http_url(str(creds.get("mcp_url") or ""))
         return {
@@ -314,6 +323,8 @@ def validate_create_credentials(
             raise ValueError(
                 "元典需使用 sk_ 开头的 API Key，请登录 https://open.chineselaw.com/profile 获取"
             )
+        if entry.kind == "didi":
+            return {"api_key": api_key}
         internal_token = new_internal_token()
         out = {"api_key": api_key, "internal_token": internal_token}
         if entry.kind == "tencent-ima":
@@ -425,6 +436,8 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
             entry["url"] = url.split("token=", 1)[0] + "token=***"
         elif "/mcp/server/" in url:
             entry["url"] = re.sub(r"(/mcp/server/)[^/?#]+", r"\1***", url)
+        elif "key=" in url:
+            entry["url"] = re.sub(r"([?&]key=)[^&]*", r"\1***", url)
         headers = entry.get("headers")
         if isinstance(headers, dict):
             redacted = dict(headers)
@@ -441,7 +454,7 @@ def _iter_active_connectors(
     connector_repo: Any,
     user_id: int,
 ) -> Any:
-    for inst in connector_repo.list_by_user(user_id):
+    for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue
         entry = get_catalog_entry(inst.kind)
@@ -476,7 +489,7 @@ def build_mcp_server_configs_for_user(
             agent_id,
             agent_user_id,
             user_id,
-            len(connector_repo.list_by_user(user_id)),
+            len(connector_repo.list_visible(user_id)),
         )
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         try:
@@ -537,7 +550,7 @@ def gateway_mcp_server_names(*, connector_repo: Any, user_id: int) -> set[str]:
     of rebuilding it.
     """
     names: set[str] = set()
-    for inst in connector_repo.list_by_user(user_id):
+    for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue
         entry = get_catalog_entry(inst.kind)
@@ -581,7 +594,7 @@ def inject_missing_gateway_tools(
     if not extra:
         gateway_names = [
             inst.mcp_server_name
-            for inst in connector_repo.list_by_user(user_id)
+            for inst in connector_repo.list_visible(user_id)
             if inst.status == "active"
             and (entry := get_catalog_entry(inst.kind)) is not None
             and entry.mcp_mode == "gateway"

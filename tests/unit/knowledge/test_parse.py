@@ -2,11 +2,64 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
 
 from octop.infra.knowledge.parse import parse_document
+
+_DOCX_NAMESPACES = (
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+    'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+    'xmlns:v="urn:schemas-microsoft-com:vml"'
+)
+_DOCX_MAIN_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_ALT_CHUNK_RELATIONSHIP = (
+    '<Relationship Id="rId99" Target="../{name}" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk"/>'
+)
+
+
+def _docx_paragraph(text: str) -> str:
+    return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+
+def _docx_with_body(
+    path: Path, body_xml: str, *, alt_chunk: tuple[str, str, bytes] | None = None
+) -> Path:
+    """Write a .docx whose ``w:body`` holds *body_xml* verbatim.
+
+    *alt_chunk* is ``(part_name, content_type, blob)`` for a part related as ``rId99``,
+    matching what converters emit for ``<w:altChunk r:id="rId99"/>``.
+    """
+    from docx import Document
+
+    Document().save(path)
+    document = f"<w:document {_DOCX_NAMESPACES}><w:body>{body_xml}</w:body></w:document>".encode()
+    with zipfile.ZipFile(path) as source:
+        entries = [(info.filename, source.read(info.filename)) for info in source.infolist()]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as target:
+        for name, data in entries:
+            if name == "word/document.xml":
+                data = document
+            elif alt_chunk is not None and name == "word/_rels/document.xml.rels":
+                relationship = _ALT_CHUNK_RELATIONSHIP.format(name=alt_chunk[0])
+                data = data.replace(
+                    b"</Relationships>", relationship.encode() + b"</Relationships>"
+                )
+            elif alt_chunk is not None and name == "[Content_Types].xml":
+                override = f'<Override PartName="/{alt_chunk[0]}" ContentType="{alt_chunk[1]}"/>'
+                data = data.replace(b"</Types>", override.encode() + b"</Types>")
+            target.writestr(name, data)
+        if alt_chunk is not None:
+            target.writestr(alt_chunk[0], alt_chunk[2])
+    path.write_bytes(buffer.getvalue())
+    return path
 
 
 def test_parse_plain_text_and_markdown(tmp_path: Path) -> None:
@@ -43,6 +96,55 @@ def test_parse_pdf_docx_and_pptx(tmp_path: Path) -> None:
     assert parse_document(pdf) == ""
     assert parse_document(docx) == "Word notes"
     assert parse_document(pptx) == "Slide title"
+
+
+def test_parse_docx_reads_tables_content_controls_and_revisions(tmp_path: Path) -> None:
+    body = (
+        _docx_paragraph("发布说明")
+        + "<w:p/>"
+        + f"<w:tbl><w:tr><w:tc>{_docx_paragraph('第一章 总则')}</w:tc></w:tr></w:tbl>"
+        + f"<w:sdt><w:sdtContent>{_docx_paragraph('第一条 为了规范')}</w:sdtContent></w:sdt>"
+        + '<w:ins w:id="1" w:author="u" w:date="2026-08-27T00:00:00Z">'
+        + f"{_docx_paragraph('第二条 本办法适用于')}</w:ins>"
+    )
+    path = _docx_with_body(tmp_path / "nested.docx", body)
+
+    assert parse_document(path) == "发布说明\n\n第一章 总则\n第一条 为了规范\n第二条 本办法适用于"
+
+
+def test_parse_docx_reads_text_box_once(tmp_path: Path) -> None:
+    text_box = f"<w:txbxContent>{_docx_paragraph('文本框内容')}</w:txbxContent>"
+    body = _docx_paragraph("正文段落") + (
+        "<w:p><w:r><mc:AlternateContent>"
+        f'<mc:Choice Requires="wps"><wps:txbx>{text_box}</wps:txbx></mc:Choice>'
+        f"<mc:Fallback><v:textbox>{text_box}</v:textbox></mc:Fallback>"
+        "</mc:AlternateContent></w:r></w:p>"
+    )
+    path = _docx_with_body(tmp_path / "textbox.docx", body)
+
+    assert parse_document(path) == "正文段落\n\n文本框内容"
+
+
+def test_parse_docx_expands_html_alt_chunk(tmp_path: Path) -> None:
+    chunk = "<html><body><p>第一章 总则</p><p>第一条 为了规范</p></body></html>".encode()
+    path = _docx_with_body(
+        tmp_path / "html_chunk.docx",
+        _docx_paragraph("发布说明") + '<w:altChunk r:id="rId99"/>',
+        alt_chunk=("chunk.xhtml", "application/xhtml+xml", chunk),
+    )
+
+    assert parse_document(path) == "发布说明\n第一章 总则\n第一条 为了规范"
+
+
+def test_parse_docx_expands_word_alt_chunk(tmp_path: Path) -> None:
+    nested = _docx_with_body(tmp_path / "nested.docx", _docx_paragraph("嵌套正文"))
+    path = _docx_with_body(
+        tmp_path / "word_chunk.docx",
+        _docx_paragraph("发布说明") + '<w:altChunk r:id="rId99"/>',
+        alt_chunk=("chunk.docx", _DOCX_MAIN_TYPE, nested.read_bytes()),
+    )
+
+    assert parse_document(path) == "发布说明\n嵌套正文"
 
 
 def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:

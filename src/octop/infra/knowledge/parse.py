@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 from collections.abc import Iterable
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from octop.infra.knowledge.ocr import OCR_IMAGE_SUFFIXES
 
@@ -23,6 +24,9 @@ _PLAIN_TEXT_SUFFIXES = {
     ".yml",
     ".jsonl",
 }
+_DOCX_FALLBACK_TAG = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+_DOCX_HTML_TYPES = {"application/xhtml+xml", "text/html"}
+_DOCX_MAIN_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
@@ -50,9 +54,7 @@ def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
             return text
         return ocr(path)
     if suffix == ".docx":
-        from docx import Document
-
-        return "\n".join(paragraph.text for paragraph in Document(str(path)).paragraphs)
+        return _parse_docx(path)
     if suffix == ".pptx":
         from pptx import Presentation
 
@@ -82,9 +84,67 @@ def _parse_json(path: Path) -> str:
     return json.dumps(parsed, ensure_ascii=False, indent=2)
 
 
+def _parse_docx(path: Path) -> str:
+    from docx import Document
+
+    document = Document(str(path))
+    return _docx_body_text(document.element.body, document.part)
+
+
+def _docx_body_text(body: Any, part: Any) -> str:
+    """Collect every ``w:p`` and ``w:altChunk`` in a body, in document order.
+
+    ``Document.paragraphs`` only lists ``w:p`` children of ``w:body``, so text inside
+    tables, content controls (``w:sdt``), revision wrappers (``w:ins``), and text boxes
+    is silently dropped. ``mc:Fallback`` duplicates its ``mc:Choice`` sibling, so its
+    paragraphs are skipped.
+    """
+    from docx.oxml.ns import qn
+
+    alt_chunk_tag = qn("w:altChunk")
+    lines: list[str] = []
+    for element in body.iter(qn("w:p"), alt_chunk_tag):
+        if next(element.iterancestors(_DOCX_FALLBACK_TAG), None) is not None:
+            continue
+        if element.tag == alt_chunk_tag:
+            lines.append(_docx_alt_chunk_text(element, part))
+        else:
+            lines.append(element.text)
+    return "\n".join(lines)
+
+
+def _docx_alt_chunk_text(element: Any, part: Any) -> str:
+    """Expand a ``w:altChunk`` reference the way Word does when opening the file.
+
+    Converters keep the bulk of the text in an embedded HTML or Word part and leave
+    only a stub in ``document.xml``; unexpanded, that body is lost.
+    """
+    from docx.oxml.ns import qn
+
+    chunk = part.related_parts.get(element.get(qn("r:id")) or "")
+    if chunk is None:
+        return ""
+    content_type = str(chunk.content_type)
+    blob: bytes = chunk.blob
+    if content_type in _DOCX_HTML_TYPES:
+        return _html_text(blob.decode("utf-8-sig", errors="replace"))
+    if content_type == "text/plain":
+        return blob.decode("utf-8-sig", errors="replace")
+    if content_type == _DOCX_MAIN_TYPE:
+        from docx import Document
+
+        nested = Document(io.BytesIO(blob))
+        return _docx_body_text(nested.element.body, nested.part)
+    return ""
+
+
 def _parse_html(path: Path) -> str:
+    return _html_text(_read_text(path))
+
+
+def _html_text(raw: str) -> str:
     parser = _HTMLTextParser()
-    parser.feed(_read_text(path))
+    parser.feed(raw)
     parser.close()
     lines = [" ".join(line.split()) for line in parser.text().splitlines()]
     return "\n".join(line for line in lines if line)

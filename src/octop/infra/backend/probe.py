@@ -77,6 +77,9 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     if kind == "docker":
         return _probe_docker(row)
 
+    if kind == "opensandbox":
+        return _probe_opensandbox(row)
+
     spec = row_to_backend_spec(row)
     if spec is None:
         return {"ok": False, "message": "configuration incomplete"}
@@ -212,3 +215,21 @@ def _probe_docker(row: BackendRow) -> dict[str, Any]:
                     with contextlib.suppress(Exception):
                         close()
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def _probe_opensandbox(row: BackendRow) -> dict[str, Any]:
+    """Install the SDK if needed, then run harness write→read and destroy the sandbox."""
+    from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps
+
+    try:
+        ensure_opensandbox_deps(allow_install=True)
+    except RuntimeError as exc:
+        return {"ok": False, "message": str(exc)}
+
+    spec = row_to_backend_spec(row)
+    if spec is None:
+        return {"ok": False, "message": "configuration incomplete"}
+    result = probe_backend(spec)
+    if result.get("ok"):
+        result["message_key"] = "opensandbox_probe_ok"
+    return result

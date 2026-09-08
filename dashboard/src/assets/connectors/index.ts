@@ -1,6 +1,7 @@
 import tencentArdot from "./tencent-ardot.png";
 import baiduMap from "./baidu-map.png";
 import ctripWendao from "./ctrip-wendao.png";
+import didi from "./didi.svg";
 import dida365 from "./dida365.png";
 import dify from "./dify.svg";
 import feishuCli from "./feishu-cli.png";
@@ -29,6 +30,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "qq-music": qqMusic,
   fliggy,
   "ctrip-wendao": ctripWendao,
+  didi,
   "meituan-travel": meituanTravel,
   yuandian,
   "tencent-ima": tencentIma,

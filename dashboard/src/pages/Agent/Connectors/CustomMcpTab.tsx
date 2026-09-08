@@ -28,7 +28,11 @@ import {
 } from "./customMcpUtils";
 import styles from "./index.module.less";
 
-export function CustomMcpTab() {
+interface CustomMcpTabProps {
+  focusServerName?: string | null;
+}
+
+export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,9 +96,25 @@ export function CustomMcpTab() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!focusServerName || loading) return;
+    setMode("visual");
+    setCards((prev) =>
+      prev.map((card) =>
+        card.name.trim() === focusServerName
+          ? { ...card, collapsed: false }
+          : card,
+      ),
+    );
+  }, [focusServerName, loading]);
+
   const persistServerPatch = async (
     card: ServerCardState,
-    apiPatch: { enabled?: boolean; default_open?: boolean },
+    apiPatch: {
+      enabled?: boolean;
+      default_open?: boolean;
+      shared?: boolean;
+    },
     localPatch: Partial<ServerCardState>,
   ) => {
     const optimisticCards = cards.map((item) =>
@@ -750,6 +770,9 @@ export function CustomMcpTab() {
                           { default_open: defaultOpen },
                           { defaultOpen },
                         );
+                      }}
+                      onSharedChange={(shared) => {
+                        void persistServerPatch(card, { shared }, { shared });
                       }}
                       onRemove={() => handleRemove(card.key)}
                       onProbe={() => void handleProbe(card)}

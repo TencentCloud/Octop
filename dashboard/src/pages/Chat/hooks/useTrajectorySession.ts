@@ -66,6 +66,8 @@ export function useTrajectorySession({
   const [nextBeforeSeq, setNextBeforeSeq] = useState<number | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const sessionGenRef = useRef(0);
+  const loadEarlierLockRef = useRef(false);
+  const lastSeqRef = useRef<number | undefined>(undefined);
 
   const retry = useCallback(() => {
     setReloadToken((token) => token + 1);
@@ -82,20 +84,28 @@ export function useTrajectorySession({
 
   const loadEarlier = useCallback(async () => {
     if (!agentId || !threadId || nextBeforeSeq == null) return;
+    if (loadEarlierLockRef.current) return;
 
+    loadEarlierLockRef.current = true;
     const loadGen = sessionGenRef.current;
-    const page = await trajectoryApi.history(agentId, threadId, {
-      beforeSeq: nextBeforeSeq,
-    });
-    if (loadGen !== sessionGenRef.current) return;
+    try {
+      const page = await trajectoryApi.history(agentId, threadId, {
+        beforeSeq: nextBeforeSeq,
+      });
+      if (loadGen !== sessionGenRef.current) return;
 
-    setHasMore(page.has_more);
-    setNextBeforeSeq(page.next_before_seq);
-    setEvents((prev) => {
-      const seen = new Set(prev.map((row) => row.event_id));
-      const older = page.events.filter((row) => !seen.has(row.event_id));
-      return [...older, ...prev];
-    });
+      setHasMore(page.has_more);
+      setNextBeforeSeq(page.next_before_seq);
+      setEvents((prev) => {
+        const seen = new Set(prev.map((row) => row.event_id));
+        const older = page.events.filter((row) => !seen.has(row.event_id));
+        return [...older, ...prev];
+      });
+    } catch {
+      /* Keep the already-loaded page; caller can retry. */
+    } finally {
+      loadEarlierLockRef.current = false;
+    }
   }, [agentId, threadId, nextBeforeSeq]);
 
   useEffect(() => {
@@ -105,6 +115,7 @@ export function useTrajectorySession({
     setError(false);
     setHasMore(false);
     setNextBeforeSeq(null);
+    lastSeqRef.current = undefined;
   }, [agentId, threadId]);
 
   useEffect(() => {
@@ -114,34 +125,64 @@ export function useTrajectorySession({
     const fetchGen = sessionGenRef.current;
     let cancelled = false;
     let source: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempt = 0;
 
-    const openStream = (afterSeq?: number) => {
-      if (cancelled) return;
-      source = new EventSource(
-        trajectoryApi.streamUrl(agentId, threadId, afterSeq),
-      );
-      source.addEventListener("event", (raw) => {
+    const bindSource = (es: EventSource) => {
+      es.addEventListener("event", (raw) => {
         const parsed = parseSseData(raw as MessageEvent<string>);
         if (!isTrajectoryEvent(parsed)) return;
+        lastSeqRef.current = parsed.seq;
         setEvents((prev) => upsertByEventId(prev, parsed));
       });
-      source.addEventListener("metrics", (raw) => {
+      es.addEventListener("metrics", (raw) => {
         const parsed = parseSseData(raw as MessageEvent<string>);
         if (!isTrajectoryMetrics(parsed)) return;
         setMetrics(parsed);
       });
+      es.onerror = () => {
+        es.close();
+        if (cancelled || fetchGen !== sessionGenRef.current) return;
+        const delay =
+          reconnectAttempt === 0
+            ? 0
+            : Math.min(1000 * 2 ** reconnectAttempt, 15_000);
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(() => {
+          if (cancelled || fetchGen !== sessionGenRef.current) return;
+          openStream(lastSeqRef.current);
+        }, delay);
+      };
+    };
+
+    const openStream = (afterSeq?: number) => {
+      if (cancelled) return;
+      source?.close();
+      source = new EventSource(
+        trajectoryApi.streamUrl(agentId, threadId, afterSeq),
+      );
+      bindSource(source);
     };
 
     setLoading(true);
     setError(false);
     void trajectoryApi
       .history(agentId, threadId)
-      .then((page) => {
+      .then(async (page) => {
         if (cancelled || fetchGen !== sessionGenRef.current) return;
         setEvents(page.events);
         setHasMore(page.has_more);
         setNextBeforeSeq(page.next_before_seq);
         const lastSeq = page.events[page.events.length - 1]?.seq;
+        lastSeqRef.current = lastSeq;
+        try {
+          const snapshot = await trajectoryApi.metrics(agentId, threadId);
+          if (!cancelled && fetchGen === sessionGenRef.current) {
+            setMetrics(snapshot);
+          }
+        } catch {
+          /* Live SSE metrics remain the primary source. */
+        }
         openStream(lastSeq);
       })
       .catch(() => {
@@ -153,6 +194,7 @@ export function useTrajectorySession({
 
     return () => {
       cancelled = true;
+      if (reconnectTimer != null) clearTimeout(reconnectTimer);
       source?.close();
     };
   }, [visible, agentId, threadId, reloadToken]);

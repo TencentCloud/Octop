@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -49,7 +50,7 @@ async def test_record_replay_start_ensures_daemon_and_starts_recording(env: Any)
     mock_send.assert_awaited_once_with(
         {
             "command": "start",
-            "profile": "thr_demo",
+            "profile": "user-1",
             "name": "demo",
             "privacy": "mask-sensitive",
             "screenshots": "off",
@@ -57,7 +58,7 @@ async def test_record_replay_start_ensures_daemon_and_starts_recording(env: Any)
     )
 
 
-async def test_record_replay_start_falls_back_to_profile_without_agent_profile(env: Any) -> None:
+async def test_record_replay_start_ignores_requested_profile(env: Any) -> None:
     client, _srv, auth = env
 
     with (
@@ -80,7 +81,7 @@ async def test_record_replay_start_falls_back_to_profile_without_agent_profile(e
     mock_send.assert_awaited_once_with(
         {
             "command": "start",
-            "profile": "thr_demo",
+            "profile": "user-1",
             "name": "demo",
             "privacy": "mask-sensitive",
             "screenshots": "off",
@@ -108,11 +109,17 @@ async def test_record_replay_start_returns_503_when_daemon_fails(env: Any) -> No
 
 async def test_record_replay_stop_generates_steps(env: Any) -> None:
     client, _srv, auth = env
+    owned = SimpleNamespace(read_manifest=lambda _rid: SimpleNamespace(profile="user-1"))
 
-    with patch(
-        "octop.api.routers.browser.record_replay.send_record_request",
-        new=AsyncMock(return_value={"ok": True, "recordingId": "rec_1", "events": 4, "steps": 2}),
-    ) as mock_send:
+    with (
+        patch("harness_browser.record.store.RecordingStore", return_value=owned),
+        patch(
+            "octop.api.routers.browser.record_replay.send_record_request",
+            new=AsyncMock(
+                return_value={"ok": True, "recordingId": "rec_1", "events": 4, "steps": 2}
+            ),
+        ) as mock_send,
+    ):
         r = await client.post(
             "/api/browser/record-replay/stop",
             headers=auth,
@@ -131,7 +138,7 @@ async def test_record_replay_stop_generates_steps(env: Any) -> None:
     )
 
 
-async def test_record_replay_start_uses_agent_profile_when_requested(env: Any) -> None:
+async def test_record_replay_start_ignores_requested_agent_profile(env: Any) -> None:
     client, _srv, auth = env
 
     with (
@@ -154,7 +161,7 @@ async def test_record_replay_start_uses_agent_profile_when_requested(env: Any) -
     mock_send.assert_awaited_once_with(
         {
             "command": "start",
-            "profile": "default",
+            "profile": "user-1",
             "name": None,
             "privacy": "mask-sensitive",
             "screenshots": "off",
@@ -166,9 +173,17 @@ async def test_record_replay_replay_runs_runner(env: Any) -> None:
     client, _srv, auth = env
     runner = AsyncMock(return_value={"status": "passed", "recordingId": "rec_1"})
 
-    with patch(
-        "octop.api.routers.browser.record_replay.run_replay_recording",
-        new=runner,
+    with (
+        patch(
+            "harness_browser.record.store.RecordingStore",
+            return_value=SimpleNamespace(
+                read_manifest=lambda _rid: SimpleNamespace(profile="user-1")
+            ),
+        ),
+        patch(
+            "octop.api.routers.browser.record_replay.run_replay_recording",
+            new=runner,
+        ),
     ):
         r = await client.post(
             "/api/browser/record-replay/replay",
@@ -178,4 +193,40 @@ async def test_record_replay_replay_runs_runner(env: Any) -> None:
 
     assert r.status_code == 200
     assert r.json()["status"] == "passed"
-    runner.assert_awaited_once_with("rec_1", profile="thr_demo-replay", inputs={})
+    runner.assert_awaited_once_with("rec_1", profile="user-1", inputs={})
+
+
+async def test_record_status_hides_other_user_active(env: Any) -> None:
+    client, _srv, auth = env
+    with (
+        patch(
+            "octop.api.routers.browser.record_replay.send_record_request",
+            new=AsyncMock(
+                return_value={
+                    "ok": True,
+                    "active": {"recordingId": "rec_x", "profile": "user-99"},
+                }
+            ),
+        ),
+        patch(
+            "octop.api.routers.browser.record_replay._latest_recording_id",
+            return_value=None,
+        ),
+    ):
+        r = await client.get("/api/browser/record-replay/status", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["active"] is None
+
+
+async def test_record_skill_content_hides_other_user_recording(env: Any) -> None:
+    client, _srv, auth = env
+    store = SimpleNamespace(
+        read_manifest=lambda _rid: SimpleNamespace(profile="user-99"),
+    )
+    with patch("harness_browser.record.store.RecordingStore", return_value=store):
+        r = await client.post(
+            "/api/browser/record-replay/skill-content",
+            headers=auth,
+            json={"recordingId": "rec_other"},
+        )
+    assert r.status_code == 404

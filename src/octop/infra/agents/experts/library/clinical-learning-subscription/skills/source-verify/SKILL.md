@@ -1,6 +1,15 @@
 ---
 name: source-verify
 description: 医学信源快速或完整核验。普通教育性医学问答用单一权威正文快速核验；最新版本、精确推荐、高风险药品、医保监管或跨版本请求升级为完整核验。只整理学习依据，不生成诊疗、处方、急诊处置、医保报销结论或HIS执行建议。
+metadata:
+  octop:
+    emoji: "🔍"
+    label:
+      zh: "信源核验"
+      en: "Source Verify"
+    summary:
+      zh: "核验医学权威原文、版本时效与修订替代关系。"
+      en: "Verify authoritative medical sources, versions, and replacements."
 ---
 
 # 统一信源核验

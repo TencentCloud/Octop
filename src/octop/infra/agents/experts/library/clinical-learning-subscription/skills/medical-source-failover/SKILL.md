@@ -1,6 +1,15 @@
 ---
 name: medical-source-failover
 description: Route retrieval of Chinese medical guidelines, consensus statements, regulatory documents, drug information, safety notices, standards, and public-health materials through authoritative originals and verified fallback copies. Use when a canonical medical source is blocked, slow, unavailable, moved, paywalled, or difficult to parse, or when designing and auditing domestic medical-source fallback rules. Do not treat secondary summaries or reposts as independent clinical evidence.
+metadata:
+  octop:
+    emoji: "🛟"
+    label:
+      zh: "信源熔断降级"
+      en: "Medical Source Failover"
+    summary:
+      zh: "原文受阻时按可信路径降级访问，不降低证据标准。"
+      en: "Failover blocked originals without lowering evidence standards."
 ---
 
 # Medical Source Failover
