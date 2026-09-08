@@ -61,6 +61,14 @@ export default function MinimalRecordsHost() {
     [navigate, setActiveAgent],
   );
 
+  const handleNewChat = useCallback(
+    (agentId: string) => {
+      setActiveAgent(agentId);
+      navigate(`/chat/${agentId}`, { state: { newChat: true } });
+    },
+    [navigate, setActiveAgent],
+  );
+
   const handleDeleteActive = useCallback(
     async (sessionId: string) => {
       if (!resolvedAgentId || !sessionId) return;
@@ -124,6 +132,7 @@ export default function MinimalRecordsHost() {
       activeSessions={[]}
       onSelect={handleSelect}
       onAgentSelect={handleAgentSelect}
+      onNewChat={handleNewChat}
       onDeleteActive={(id) => void handleDeleteActive(id)}
       onRenameActive={handleRenameActive}
       onPinActive={handlePinActive}

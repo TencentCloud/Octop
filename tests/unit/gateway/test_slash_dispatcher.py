@@ -19,6 +19,7 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.gateway.slash import BufferSink, SlashCommand, build_default_dispatcher
 from octop.infra.gateway.slash.ctx import SlashCtx
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+from octop.infra.gateway.slash.runner import try_handle_slash
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.utils.paths import PathLayout
 
@@ -55,13 +56,25 @@ def dispatcher() -> SlashDispatcher:
     return build_default_dispatcher()
 
 
-async def test_unknown_returns_error_message(dispatcher, ctx):
+async def test_unknown_is_not_handled(dispatcher, ctx):
     sink = BufferSink()
     handled = await dispatcher.handle(SlashCommand("zzz", ""), ctx, sink)
+    assert handled is False
+    assert sink.lines == []
+
+
+async def test_unknown_try_handle_falls_through_to_chat(dispatcher, ctx):
+    handled, lines, actions = await try_handle_slash("/zzz", dispatcher=dispatcher, ctx=ctx)
+    assert handled is False
+    assert lines == []
+    assert actions == []
+
+    handled, _, _ = await try_handle_slash("/root/ddd", dispatcher=dispatcher, ctx=ctx)
+    assert handled is False
+
+    handled, lines, _ = await try_handle_slash("/help", dispatcher=dispatcher, ctx=ctx)
     assert handled is True
-    text = "\n".join(sink.lines)
-    assert "/zzz" in text
-    assert "未知指令" in text
+    assert lines
 
 
 async def test_help_lists_commands(dispatcher, ctx):

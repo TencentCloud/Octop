@@ -397,7 +397,9 @@
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
-    "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later."
+    "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
+    "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
+    "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota})."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",

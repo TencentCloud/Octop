@@ -17,6 +17,7 @@ try:
 except ImportError:  # pragma: no cover - optional PostgreSQL driver
     pg_errors = None  # type: ignore[assignment]
 
+from octop.infra.db.repos._base import UNSET
 from octop.infra.db.repos.audit import ACTOR_ADMIN
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.services import SharedServices
@@ -414,6 +415,56 @@ class UserManager:
             target=username,
             payload=",".join(keys),
         )
+
+    async def set_resource_policy(
+        self,
+        username: str,
+        *,
+        workspace_root_dir: Any = UNSET,
+        token_quota: Any = UNSET,
+    ) -> None:
+        from octop.infra.users.resource_policy import (
+            POLICY_TOKEN_QUOTA,
+            POLICY_WORKSPACE_ROOT_DIR,
+            normalize_token_quota,
+            normalize_workspace_root_dir,
+        )
+
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        updates: dict[str, str | None] = {}
+        root_arg: Any = UNSET
+        quota_arg: Any = UNSET
+        if workspace_root_dir is not UNSET:
+            root_arg = normalize_workspace_root_dir(workspace_root_dir)
+            updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
+        if token_quota is not UNSET:
+            quota_arg = normalize_token_quota(token_quota)
+            updates[POLICY_TOKEN_QUOTA] = None if quota_arg is None else str(quota_arg)
+        if not updates:
+            return
+        self._services.user_policy_repo.merge(row.id, updates)
+        if workspace_root_dir is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_workspace_root_dir",
+                target=username,
+                payload=root_arg or "",
+            )
+        if token_quota is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_token_quota",
+                target=username,
+                payload=str(quota_arg) if quota_arg is not None else "",
+            )
+
+    async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
+        await self.set_resource_policy(username, workspace_root_dir=workspace_root_dir)
+
+    async def set_token_quota(self, username: str, token_quota: int | None) -> None:
+        await self.set_resource_policy(username, token_quota=token_quota)
 
     async def set_role(self, username: str, role: Role) -> None:
         row = self._services.user_repo.get_by_username(username)

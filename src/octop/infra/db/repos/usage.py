@@ -373,3 +373,12 @@ class UsageRepo:
         if row is None:
             return 0
         return int(row["input_tokens"] or 0)
+
+    def total_tokens_for_user(self, user_id: int) -> int:
+        """Lifetime ``total_tokens`` for one user (all agents and sources)."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(total_tokens), 0) AS total FROM usage_log WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return int(row["total"] if row is not None else 0)

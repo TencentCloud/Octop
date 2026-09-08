@@ -12,14 +12,9 @@ import {
   Trash2,
   ChevronRight,
   AlertCircle,
-  RefreshCw,
   FolderOpen,
+  RefreshCw,
   MessageSquare,
-  Bot,
-  Sparkles,
-  Notebook,
-  Waypoints,
-  Wrench,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -28,6 +23,7 @@ import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import ToolCatalogDrawer from "./ToolCatalogDrawer";
+import PluginCatalogDrawer from "./PluginCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
@@ -43,6 +39,7 @@ import styles from "../index.module.less";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
+import AgentMoreActions from "./AgentMoreActions";
 
 const STATE_META: Record<
   string,
@@ -99,6 +96,7 @@ export const AgentCard = memo(function AgentCard({
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
   const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
   const [toolSettingsOpen, setToolSettingsOpen] = useState(false);
+  const [pluginCatalogOpen, setPluginCatalogOpen] = useState(false);
   const [channelCatalogOpen, setChannelCatalogOpen] = useState(false);
   const [memoryCatalogOpen, setMemoryCatalogOpen] = useState(false);
   const [mbtiCatalogOpen, setMbtiCatalogOpen] = useState(false);
@@ -331,51 +329,6 @@ export const AgentCard = memo(function AgentCard({
                   <Copy size={11} className={styles.agentCardIdIcon} />
                 </button>
               </Tooltip>
-              {isOwner && (
-                <div className={styles.agentCard2NameActions}>
-                  <Tooltip
-                    title={t("common.edit", "Edit")}
-                    mouseEnterDelay={0.5}
-                  >
-                    <button
-                      type="button"
-                      className={styles.agentCard2NameActionBtn}
-                      onClick={() => onEdit(agent.agent_id)}
-                      aria-label={t("common.edit", "Edit")}
-                    >
-                      <Pencil size={12} />
-                    </button>
-                  </Tooltip>
-                  <Popconfirm
-                    title={t("experts.confirmDelete", { name: agent.name })}
-                    description={t("experts.confirmDeleteHint")}
-                    onConfirm={() => void handleDelete()}
-                    okText={t("common.delete", "Delete")}
-                    cancelText={t("common.cancel")}
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Tooltip
-                      title={t("common.delete", "Delete")}
-                      mouseEnterDelay={0.5}
-                    >
-                      <button
-                        type="button"
-                        className={styles.agentCard2NameDelBtn}
-                        aria-label={t("common.delete", "Delete")}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </Tooltip>
-                  </Popconfirm>
-                  {onPublishedChange && (
-                    <PublishTemplateButton
-                      agent={agent}
-                      published={publishedExpert}
-                      onChanged={onPublishedChange}
-                    />
-                  )}
-                </div>
-              )}
             </div>
             <div className={styles.agentCard2Meta}>
               <div
@@ -400,18 +353,6 @@ export const AgentCard = memo(function AgentCard({
 
           {isOwner && (
             <div className={styles.agentCard2HeaderActions}>
-              <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  disabled={isTransient || actionLoading}
-                  onClick={() => void handleReload()}
-                  aria-label={t("experts.reloadAgent")}
-                >
-                  <RefreshCw size={13} />
-                </button>
-              </Tooltip>
-
               <Switch
                 size="small"
                 checked={switchChecked}
@@ -476,60 +417,70 @@ export const AgentCard = memo(function AgentCard({
                 </button>
               </Tooltip>
 
-              <Tooltip title={t("experts.skillsBtn")} mouseEnterDelay={0.5}>
+              <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
                 <button
                   type="button"
                   className={styles.agentCard2EditBtn}
-                  onClick={() => setSkillCatalogOpen(true)}
-                  aria-label={t("experts.skillsBtn")}
+                  disabled={isTransient || actionLoading}
+                  onClick={() => void handleReload()}
+                  aria-label={t("experts.reloadAgent")}
                 >
-                  <Sparkles size={13} />
+                  <RefreshCw size={13} />
                 </button>
               </Tooltip>
 
-              <Tooltip title={t("experts.subagentsBtn")} mouseEnterDelay={0.5}>
+              <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
                 <button
                   type="button"
                   className={styles.agentCard2EditBtn}
-                  onClick={openSubagentCatalog}
-                  aria-label={t("experts.subagentsBtn")}
+                  onClick={() => onEdit(agent.agent_id)}
+                  aria-label={t("common.edit", "Edit")}
                 >
-                  <Bot size={13} />
+                  <Pencil size={13} />
                 </button>
               </Tooltip>
 
-              <Tooltip title={t("experts.toolsBtn")} mouseEnterDelay={0.5}>
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  onClick={() => setToolSettingsOpen(true)}
-                  aria-label={t("experts.toolsBtn")}
+              <Popconfirm
+                title={t("experts.confirmDelete", { name: agent.name })}
+                description={t("experts.confirmDeleteHint")}
+                onConfirm={() => void handleDelete()}
+                okText={t("common.delete", "Delete")}
+                cancelText={t("common.cancel")}
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip
+                  title={t("common.delete", "Delete")}
+                  mouseEnterDelay={0.5}
                 >
-                  <Wrench size={13} />
-                </button>
-              </Tooltip>
+                  <button
+                    type="button"
+                    className={styles.agentCard2DelBtn}
+                    aria-label={t("common.delete", "Delete")}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </Tooltip>
+              </Popconfirm>
 
-              <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  onClick={() => setChannelCatalogOpen(true)}
-                  aria-label={t("experts.channelsBtn")}
-                >
-                  <Waypoints size={13} />
-                </button>
-              </Tooltip>
+              {onPublishedChange && (
+                <PublishTemplateButton
+                  agent={agent}
+                  published={publishedExpert}
+                  onChanged={onPublishedChange}
+                  buttonClassName={styles.agentCard2EditBtn}
+                />
+              )}
 
-              <Tooltip title={t("experts.memoryBtn")} mouseEnterDelay={0.5}>
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  onClick={() => setMemoryCatalogOpen(true)}
-                  aria-label={t("experts.memoryBtn")}
-                >
-                  <Notebook size={13} />
-                </button>
-              </Tooltip>
+              <AgentMoreActions
+                buttonClassName={styles.agentCard2EditBtn}
+                onSkills={() => setSkillCatalogOpen(true)}
+                onSubagents={openSubagentCatalog}
+                onTools={() => setToolSettingsOpen(true)}
+                onPlugins={() => setPluginCatalogOpen(true)}
+                onMbti={() => setMbtiCatalogOpen(true)}
+                onMemory={() => setMemoryCatalogOpen(true)}
+                onChannels={() => setChannelCatalogOpen(true)}
+              />
             </>
           )}
 
@@ -585,6 +536,11 @@ export const AgentCard = memo(function AgentCard({
         agentId={agent.agent_id}
         open={toolSettingsOpen}
         onClose={() => setToolSettingsOpen(false)}
+      />
+      <PluginCatalogDrawer
+        agentId={agent.agent_id}
+        open={pluginCatalogOpen}
+        onClose={() => setPluginCatalogOpen(false)}
       />
       <ChannelCatalogDrawer
         agentId={agent.agent_id}

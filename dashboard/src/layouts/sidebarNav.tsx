@@ -14,7 +14,7 @@ import {
   Sparkles,
   Puzzle,
   Package,
-  FolderOpen,
+  HardDrive,
   GraduationCap,
   Shield,
   PanelsTopLeft,
@@ -205,7 +205,7 @@ export function buildNavSections(
     adminItems.push({
       key: "admin-storage",
       path: "/admin/backend",
-      icon: <FolderOpen size={iconSize} strokeWidth={iconStroke} />,
+      icon: <HardDrive size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.adminStorage",
     });
   }

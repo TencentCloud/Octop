@@ -11,9 +11,37 @@ import {
 } from "react";
 import { Alert, App, Empty, Form, Input, Spin, Tabs } from "antd";
 
-import { CircleCheck, Download, Plus, RefreshCw, Search } from "lucide-react";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Box,
+  Boxes,
+  CircleCheck,
+  ClipboardList,
+  Code,
+  DollarSign,
+  Download,
+  Eye,
+  FlaskConical,
+  Gamepad2,
+  GraduationCap,
+  Layers,
+  LayoutGrid,
+  LifeBuoy,
+  Map,
+  Megaphone,
+  Pencil,
+  PenTool,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Trash2,
+  TrendingUp,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import TabLabel from "../../../components/TabLabel";
 import {
   installSubagent,
   listAgentSubagents,
@@ -45,6 +73,29 @@ import styles from "../index.module.less";
 
 const INSTALLED_TAB = "installed";
 const ALL_TAB = "all";
+
+const DIVISION_ICONS: Record<string, LucideIcon> = {
+  Box,
+  Boxes,
+  ClipboardList,
+  Code,
+  DollarSign,
+  FlaskConical,
+  Gamepad2,
+  GraduationCap,
+  LifeBuoy,
+  Map,
+  Megaphone,
+  PenTool,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  TrendingUp,
+};
+
+function tabIcon(name: string | null | undefined): LucideIcon {
+  return (name && DIVISION_ICONS[name]) || Layers;
+}
 
 function subagentFilePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
@@ -215,16 +266,27 @@ export default function SubagentManager({
     () => [
       {
         key: INSTALLED_TAB,
-        label: t("subagents.installedTab"),
+        label: (
+          <TabLabel icon={CircleCheck}>{t("subagents.installedTab")}</TabLabel>
+        ),
       },
       {
         key: ALL_TAB,
-        label: t("subagents.allDivisions"),
+        label: (
+          <TabLabel icon={LayoutGrid}>{t("subagents.allDivisions")}</TabLabel>
+        ),
       },
-      ...divisions.map((d) => ({
-        key: d.id,
-        label: `${divisionLabel(d.id, d.label, d.labels)} (${d.count})`,
-      })),
+      ...divisions.map((d) => {
+        const Icon = tabIcon(d.icon);
+        return {
+          key: d.id,
+          label: (
+            <TabLabel icon={Icon}>
+              {`${divisionLabel(d.id, d.label, d.labels)} (${d.count})`}
+            </TabLabel>
+          ),
+        };
+      }),
     ],
     [divisions, divisionLabel, t],
   );

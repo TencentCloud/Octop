@@ -22,8 +22,16 @@ import { useTranslation } from "react-i18next";
 import { Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { LayoutGrid, List, RefreshCw } from "lucide-react";
+import {
+  BookOpen,
+  GraduationCap,
+  LayoutGrid,
+  List,
+  RefreshCw,
+  Store,
+} from "lucide-react";
 import PageShell from "../../layouts/PageShell";
+import TabLabel from "../../components/TabLabel";
 import { request } from "../../api/request";
 import {
   publishedExpertsApi,
@@ -526,17 +534,23 @@ export default function ExpertsPage() {
         items={[
           {
             key: "my",
-            label: t("experts.myExperts"),
+            label: (
+              <TabLabel icon={GraduationCap}>{t("experts.myExperts")}</TabLabel>
+            ),
             children: myExpertsContent,
           },
           {
             key: "library",
-            label: t("experts.expertLibrary"),
+            label: (
+              <TabLabel icon={BookOpen}>{t("experts.expertLibrary")}</TabLabel>
+            ),
             children: libraryContent,
           },
           {
             key: "market",
-            label: t("experts.expertMarket"),
+            label: (
+              <TabLabel icon={Store}>{t("experts.expertMarket")}</TabLabel>
+            ),
             children: marketContent,
           },
         ]}

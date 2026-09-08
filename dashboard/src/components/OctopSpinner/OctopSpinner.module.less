@@ -3,8 +3,8 @@
 .host {
   position: relative;
   display: inline-block;
-  width: var(--octop-spinner-size, 24px);
-  height: var(--octop-spinner-size, 24px);
+  width: var(--octop-spinner-size, 48px);
+  height: var(--octop-spinner-size, 48px);
   font-size: 0;
   vertical-align: middle;
 }
@@ -13,31 +13,11 @@
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  border: var(--octop-spinner-ring-width, 2.5px) solid
+  border: var(--octop-spinner-ring-width, 4px) solid
     color-mix(in srgb, var(--fn-color-brand) 20%, transparent);
   border-top-color: var(--fn-color-brand);
   border-radius: 50%;
   animation: octopSpinnerSpin 0.85s linear infinite;
-}
-
-// Percent box, not `inset`: an absolutely positioned replaced element with
-// `width: auto` falls back to its intrinsic size (logo.svg is 512px).
-.logo {
-  position: absolute;
-  top: 16%;
-  left: 16%;
-  display: none;
-  width: 68%;
-  height: 68%;
-  border-radius: 22%;
-  object-fit: contain;
-  animation: octopSpinnerBreathe 1.6s ease-in-out infinite;
-}
-
-// Only the large ring is roomy enough for a legible logo; smaller spins sit in
-// selects, list rows and inline labels and stay ring-only.
-:global(.octop-spin-lg) .logo {
-  display: block;
 }
 
 @keyframes octopSpinnerSpin {
@@ -46,21 +26,8 @@
   }
 }
 
-@keyframes octopSpinnerBreathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(0.94);
-    opacity: 0.88;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ring,
-  .logo {
+  .ring {
     animation: none;
   }
 }

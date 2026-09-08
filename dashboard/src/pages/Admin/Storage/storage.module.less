@@ -80,21 +80,34 @@
 
 .backendCard {
   background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-card-border-normal);
+  border: 2px solid var(--fn-card-border-normal);
   border-radius: var(--fn-radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   height: 100%;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
 
   &:hover {
-    box-shadow: var(--fn-shadow-md);
-    transform: translateY(-1px);
+    border-color: var(--catalog-accent, var(--fn-color-brand));
+    background: color-mix(
+      in srgb,
+      var(--catalog-accent, var(--fn-color-brand)) 4%,
+      var(--fn-bg-primary)
+    );
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  @media (max-width: 640px) {
+    &:hover {
+      transform: none;
+    }
   }
 }
 
@@ -298,7 +311,7 @@
     box-shadow: 0 0 0 3px var(--fn-color-brand);
   }
   100% {
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: none;
   }
 }
 

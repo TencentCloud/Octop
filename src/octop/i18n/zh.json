@@ -397,7 +397,9 @@
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
-    "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。"
+    "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
+    "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
+    "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

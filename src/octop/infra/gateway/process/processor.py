@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
 
-from harness_agent.slash import SlashSink, parse_slash
+from harness_agent.slash import SlashSink
 from harness_agent.teams.inbox import InboxMessage
 from harness_agent.teams.processor import ReplyEvent, default_compose_followup
 from harness_gateway.models import (
@@ -21,6 +21,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
+from octop.infra.errors import OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
     HitlChannelCoordinator,
@@ -54,6 +55,7 @@ from octop.infra.gateway.process.stream_project import (
 )
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
+from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
 from octop.infra.knowledge.default_open import merge_knowledge_base_ids
 from octop.infra.knowledge.hint import catalog_for_selected_bases
@@ -76,6 +78,12 @@ if TYPE_CHECKING:
     from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
+    if isinstance(exc, OctopError):
+        return exc.localized_message(locale), exc.code.value
+    return format_stream_error(exc, locale), None
 
 
 class _MessageEventSink(SlashSink):
@@ -735,7 +743,10 @@ class GlobalProcessor:
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
-            yield MessageEvent.error_event(format_stream_error(exc, locale))
+            message, error_code = _stream_error(exc, locale)
+            if error_code:
+                message = f"[{error_code}] {message}"
+            yield MessageEvent.error_event(message)
         else:
             if stream_ok and not hitl_paused:
                 self._touch_thread_after_turn(thread_id, msg.text)
@@ -818,6 +829,12 @@ class GlobalProcessor:
             yield {"type": "done"}
             return
 
+        locale = resolve_user_locale(
+            user_repo=self._user_repo,
+            user_id=user_id,
+            channel_type=channel_type,
+            metadata=meta,
+        )
         thread_id = meta.get("thread_id")
         if not isinstance(thread_id, str) or not thread_id.strip():
             thread_id = await self._thread_registry.get_or_create_by_key(
@@ -864,12 +881,6 @@ class GlobalProcessor:
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request(request)
-        locale = resolve_user_locale(
-            user_repo=self._user_repo,
-            user_id=user_id,
-            channel_type=channel_type,
-            metadata=meta,
-        )
 
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
@@ -925,7 +936,11 @@ class GlobalProcessor:
             stream_ok = True
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
-            yield {"type": "error", "message": format_stream_error(exc, locale)}
+            message, error_code = _stream_error(exc, locale)
+            payload = {"type": "error", "message": message}
+            if error_code:
+                payload["error_code"] = error_code
+            yield payload
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
         if stream_ok:

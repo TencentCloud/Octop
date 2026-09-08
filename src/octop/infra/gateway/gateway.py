@@ -490,9 +490,8 @@ class Gateway:
         Same-session IM turns are serialized by ChannelManager. Without this hook,
         ``/stop`` waits behind the in-flight turn and never interrupts it.
         """
-        from harness_agent.slash import parse_slash
-
         from octop.infra.gateway.process.message_keys import session_key_from_message
+        from octop.infra.gateway.slash.parser import parse_slash
 
         text = getattr(message, "text", None)
         cmd = parse_slash(text if isinstance(text, str) else None)

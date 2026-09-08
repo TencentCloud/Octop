@@ -20,14 +20,9 @@ import {
   Trash2,
   ChevronRight,
   AlertCircle,
-  RefreshCw,
   FolderOpen,
+  RefreshCw,
   MessageSquare,
-  Bot,
-  Sparkles,
-  Notebook,
-  Waypoints,
-  Wrench,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -35,6 +30,7 @@ import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
 import ToolCatalogDrawer from "./ToolCatalogDrawer";
+import PluginCatalogDrawer from "./PluginCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
@@ -52,6 +48,7 @@ import styles from "../index.module.less";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
+import AgentMoreActions from "./AgentMoreActions";
 
 const STATE_COLORS: Record<string, string> = {
   running: "success",
@@ -94,6 +91,9 @@ export default function AgentExpertsTable({
   const [toolSettingsAgentId, setToolSettingsAgentId] = useState<string | null>(
     null,
   );
+  const [pluginCatalogAgentId, setPluginCatalogAgentId] = useState<
+    string | null
+  >(null);
   const [channelCatalogAgentId, setChannelCatalogAgentId] = useState<
     string | null
   >(null);
@@ -324,15 +324,31 @@ export default function AgentExpertsTable({
       align: "center",
       render: (_state, row) => {
         const state = localStates[row.agent_id] ?? row.state;
+        const isTransient = TRANSIENT.has(state);
+        const switchChecked = state === "running" || state === "starting";
+        const isOwner = row.is_owner !== false;
         const friendlyError =
           state === "failed" && row.last_error
             ? formatAgentError(row.last_error, t)
             : "";
         return (
           <div className={styles.tableStateCell}>
-            <Tag color={STATE_COLORS[state] ?? "default"}>
-              {formatAgentState(state, t)}
-            </Tag>
+            <div className={styles.tableStateMain}>
+              <Tag
+                color={STATE_COLORS[state] ?? "default"}
+                style={{ marginInlineEnd: 0 }}
+              >
+                {formatAgentState(state, t)}
+              </Tag>
+              {isOwner && (
+                <Switch
+                  size="small"
+                  checked={switchChecked}
+                  loading={isTransient || actionLoadingId === row.agent_id}
+                  onChange={(checked) => void handleToggle(row, checked)}
+                />
+              )}
+            </div>
             {friendlyError ? (
               <div className={styles.tableErrorWrap}>
                 <Tooltip title={friendlyError} overlayStyle={{ maxWidth: 360 }}>
@@ -387,34 +403,17 @@ export default function AgentExpertsTable({
     {
       title: t("experts.table.actions", "操作"),
       key: "actions",
-      width: 370,
+      width: 280,
       fixed: isMobile ? undefined : "right",
       render: (_v, row) => {
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
-        const switchChecked = state === "running" || state === "starting";
         const chatReady = isAgentChatReady(state);
         const isOwner = row.is_owner !== false;
         return (
           <div className={styles.tableActions}>
             {isOwner && (
               <>
-                <Tooltip title={t("experts.reloadAgent")}>
-                  <button
-                    type="button"
-                    className={styles.tableActionBtn}
-                    disabled={isTransient || actionLoadingId === row.agent_id}
-                    onClick={() => void handleReload(row)}
-                  >
-                    <RefreshCw size={13} />
-                  </button>
-                </Tooltip>
-                <Switch
-                  size="small"
-                  checked={switchChecked}
-                  loading={isTransient || actionLoadingId === row.agent_id}
-                  onChange={(checked) => void handleToggle(row, checked)}
-                />
                 <Tooltip
                   title={
                     chatReady
@@ -433,57 +432,15 @@ export default function AgentExpertsTable({
                     <FolderOpen size={13} />
                   </button>
                 </Tooltip>
-                <Tooltip title={t("experts.skillsBtn")} mouseEnterDelay={0.5}>
+                <Tooltip title={t("experts.reloadAgent")}>
                   <button
                     type="button"
                     className={styles.tableActionBtn}
-                    onClick={() => setSkillCatalogAgentId(row.agent_id)}
-                    aria-label={t("experts.skillsBtn")}
+                    disabled={isTransient || actionLoadingId === row.agent_id}
+                    onClick={() => void handleReload(row)}
+                    aria-label={t("experts.reloadAgent")}
                   >
-                    <Sparkles size={13} />
-                  </button>
-                </Tooltip>
-                <Tooltip
-                  title={t("experts.subagentsBtn")}
-                  mouseEnterDelay={0.5}
-                >
-                  <button
-                    type="button"
-                    className={styles.tableActionBtn}
-                    onClick={() => openSubagentCatalog(row.agent_id)}
-                    aria-label={t("experts.subagentsBtn")}
-                  >
-                    <Bot size={13} />
-                  </button>
-                </Tooltip>
-                <Tooltip title={t("experts.toolsBtn")} mouseEnterDelay={0.5}>
-                  <button
-                    type="button"
-                    className={styles.tableActionBtn}
-                    onClick={() => setToolSettingsAgentId(row.agent_id)}
-                    aria-label={t("experts.toolsBtn")}
-                  >
-                    <Wrench size={13} />
-                  </button>
-                </Tooltip>
-                <Tooltip title={t("experts.channelsBtn")} mouseEnterDelay={0.5}>
-                  <button
-                    type="button"
-                    className={styles.tableActionBtn}
-                    onClick={() => setChannelCatalogAgentId(row.agent_id)}
-                    aria-label={t("experts.channelsBtn")}
-                  >
-                    <Waypoints size={13} />
-                  </button>
-                </Tooltip>
-                <Tooltip title={t("experts.memoryBtn")} mouseEnterDelay={0.5}>
-                  <button
-                    type="button"
-                    className={styles.tableActionBtn}
-                    onClick={() => setMemoryCatalogAgentId(row.agent_id)}
-                    aria-label={t("experts.memoryBtn")}
-                  >
-                    <Notebook size={13} />
+                    <RefreshCw size={13} />
                   </button>
                 </Tooltip>
                 <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
@@ -508,7 +465,11 @@ export default function AgentExpertsTable({
                     title={t("common.delete", "Delete")}
                     mouseEnterDelay={0.5}
                   >
-                    <button type="button" className={styles.tableActionBtn}>
+                    <button
+                      type="button"
+                      className={styles.tableActionBtn}
+                      aria-label={t("common.delete", "Delete")}
+                    >
                       <Trash2 size={13} />
                     </button>
                   </Tooltip>
@@ -521,6 +482,16 @@ export default function AgentExpertsTable({
                     buttonClassName={styles.tableActionBtn}
                   />
                 )}
+                <AgentMoreActions
+                  buttonClassName={styles.tableActionBtn}
+                  onSkills={() => setSkillCatalogAgentId(row.agent_id)}
+                  onSubagents={() => openSubagentCatalog(row.agent_id)}
+                  onTools={() => setToolSettingsAgentId(row.agent_id)}
+                  onPlugins={() => setPluginCatalogAgentId(row.agent_id)}
+                  onMbti={() => openMbtiCatalog(row.agent_id)}
+                  onMemory={() => setMemoryCatalogAgentId(row.agent_id)}
+                  onChannels={() => setChannelCatalogAgentId(row.agent_id)}
+                />
               </>
             )}
             {chatReady ? (
@@ -562,7 +533,7 @@ export default function AgentExpertsTable({
           rowKey="agent_id"
           dataSource={agents}
           columns={columns}
-          scroll={isMobile ? { x: 1370 } : { x: 1370, y: scrollY }}
+          scroll={isMobile ? { x: 1280 } : { x: 1280, y: scrollY }}
           pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,
@@ -585,6 +556,11 @@ export default function AgentExpertsTable({
         agentId={toolSettingsAgentId ?? ""}
         open={toolSettingsAgentId !== null}
         onClose={() => setToolSettingsAgentId(null)}
+      />
+      <PluginCatalogDrawer
+        agentId={pluginCatalogAgentId ?? ""}
+        open={pluginCatalogAgentId !== null}
+        onClose={() => setPluginCatalogAgentId(null)}
       />
       <ChannelCatalogDrawer
         agentId={channelCatalogAgentId ?? ""}
