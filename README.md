@@ -351,6 +351,7 @@ OpenAI-compatible APIs, DashScope (Qwen), Ollama, and other presets — configur
 | `octop channel` | Install and manage IM channels |
 | `octop chats` | REPL and session management |
 | `octop acp` | Stdio ACP server for IDE integration |
+| `octop mcp` | Stdio MCP server for managing custom MCP connectors |
 | `octop cron` | Manage scheduled tasks |
 | `octop models` | Provider presets and model resolution |
 | `octop skills` | Enable/disable per-agent skills |

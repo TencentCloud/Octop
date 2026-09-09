@@ -31,6 +31,7 @@ Commands:
   config     CLI state (base URL, defaults).
   cron       Cron job management commands.
   init       Bootstrap an Octop server install.
+  mcp        Expose Octop connector management as an MCP server (stdio).
   models     Model catalog and active-model settings.
   plugin     Install and manage plugins.
   provider   Provider management (admin write).
@@ -63,6 +64,9 @@ Octop commands pick one of three transports:
 | **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active` |
 | **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
 | **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
+
+`octop mcp` is an adapter transport: it reads local identity material, then
+calls the running Octop HTTP API so normal permission and audit paths apply.
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
 share `~/.octop/cli_state.json`.
@@ -410,6 +414,27 @@ Options:
 
 See [ACP integration](./acp.md) for the Zed setup example and the
 runner object schema.
+
+## `octop mcp`
+
+Expose custom MCP connector management as a local stdio MCP server. Unlike
+`octop acp`, this command requires an existing `octop run` process.
+
+```
+Usage: octop mcp [OPTIONS]
+
+  Expose Octop connector management over MCP stdio.
+
+Options:
+  --user TEXT      Octop user identity for API permissions.
+  --base-url TEXT  Running Octop URL (default: local configured port).
+                   [env: OCTOP_MCP_BASE_URL]
+  --debug          Enable MCP logs on stderr.
+  -h, --help       Show this message and exit.
+```
+
+See [connector-management MCP](./mcp.md) for client configuration, tools,
+and security behavior.
 
 ## `octop clean`
 
