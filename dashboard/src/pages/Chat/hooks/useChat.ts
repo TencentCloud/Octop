@@ -871,7 +871,11 @@ export function useChat(
       }
 
       // Already have local history: only re-probe when we still expect a stream.
-      if (snap.messages.length > 0 || snap.historyHydrated) {
+      // A server push (cron, IM) marks history stale and forces a refetch.
+      if (
+        (snap.messages.length > 0 || snap.historyHydrated) &&
+        !chatStore.isHistoryStale(key)
+      ) {
         if (shouldProbeActiveTurn({ isStreaming: snap.isStreaming })) {
           attachAfterHistory(key, targetThreadId);
         }

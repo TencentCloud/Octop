@@ -299,10 +299,12 @@ function emitSlashAction(event: SlashActionEvent) {
 }
 
 // Session lifecycle events (e.g. deletion) for cross-module bridging.
-export type SessionEventKind = "sessionDeleted";
+export type SessionEventKind = "sessionDeleted" | "sessionsChanged";
 export interface SessionEvent {
   kind: SessionEventKind;
   sessionId: string;
+  /** Owning agent, when the event comes from a server push. */
+  agentId?: string;
 }
 type SessionEventListener = (event: SessionEvent) => void;
 const sessionEventListeners = new Set<SessionEventListener>();
@@ -358,6 +360,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       historyNextOffset: 0,
       historyLoadingMore: false,
       historyHydrated: false,
+      historyStale: false,
       listeners: new Set(),
       _snapshot: EMPTY_SNAPSHOT,
     };
@@ -528,7 +531,26 @@ export function setHistoryPage(
   state.historyNextCursor = opts.nextCursor ?? null;
   state.historyLoadingMore = false;
   state.historyHydrated = true;
+  state.historyStale = false;
   notify(state);
+}
+
+/**
+ * Mark history as stale so the next `loadHistory` refetches from the server.
+ * A live turn owns the message list, so leave a streaming session untouched.
+ * Messages and the hydration flag stay put: the reload replaces them once it
+ * lands, which keeps the view from flashing an empty loading state.
+ */
+export function invalidateHistory(sessionId: string) {
+  const state = sessionStates.get(sessionId);
+  if (!state || !state.historyHydrated) return;
+  if (state.isStreaming || isLiveSocketOpen(sessionId)) return;
+  state.historyStale = true;
+}
+
+/** True when a server push arrived after the last history fetch. */
+export function isHistoryStale(sessionId: string): boolean {
+  return sessionStates.get(sessionId)?.historyStale ?? false;
 }
 
 function dedupePrependMessages(
@@ -648,6 +670,7 @@ export function clearMessages(sessionId: string) {
   state.historyNextCursor = null;
   state.historyLoadingMore = false;
   state.historyHydrated = false;
+  state.historyStale = false;
   notify(state);
 }
 

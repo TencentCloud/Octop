@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseDashboardPushFrame,
+  parseThreadActivityFrame,
   truncatePushText,
 } from "./dashboardPushToast";
 
@@ -35,6 +36,39 @@ describe("parseDashboardPushFrame", () => {
       }),
     ).toBeNull();
     expect(parseDashboardPushFrame(null)).toBeNull();
+  });
+});
+
+describe("parseThreadActivityFrame", () => {
+  it("accepts a thread_activity frame", () => {
+    expect(
+      parseThreadActivityFrame({
+        type: "thread_activity",
+        agent_id: "a1",
+        thread_id: "thr_1",
+        reason: "cron_started",
+      }),
+    ).toEqual({
+      type: "thread_activity",
+      agent_id: "a1",
+      thread_id: "thr_1",
+      reason: "cron_started",
+    });
+  });
+
+  it("rejects other frame types and missing ids", () => {
+    expect(
+      parseThreadActivityFrame({
+        type: "dashboard_push",
+        agent_id: "a1",
+        thread_id: "thr_1",
+        text: "hi",
+      }),
+    ).toBeNull();
+    expect(
+      parseThreadActivityFrame({ type: "thread_activity", agent_id: "a1" }),
+    ).toBeNull();
+    expect(parseThreadActivityFrame(null)).toBeNull();
   });
 });
 

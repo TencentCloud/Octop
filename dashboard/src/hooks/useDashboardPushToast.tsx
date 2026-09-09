@@ -7,8 +7,10 @@ import { buildDashboardNotifyWsUrl } from "../api/modules/wsNotifications";
 import { getAuthToken } from "../api/request";
 import { useAgent } from "../context/AgentContext";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
+import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
 import {
   parseDashboardPushFrame,
+  parseThreadActivityFrame,
   truncatePushText,
 } from "../utils/dashboardPushToast";
 import styles from "./useDashboardPushToast.module.less";
@@ -113,9 +115,24 @@ export function useDashboardPushToast(): void {
         ) {
           return;
         }
+        const activity = parseThreadActivityFrame(raw);
+        if (activity) {
+          // Cron created/reused a thread: refresh the sidebar without a reload.
+          emitSessionEvent({
+            kind: "sessionsChanged",
+            sessionId: activity.thread_id,
+            agentId: activity.agent_id,
+          });
+          return;
+        }
         const parsed = parseDashboardPushFrame(raw);
         if (!parsed) return;
         void refreshRef.current({ silent: true });
+        emitSessionEvent({
+          kind: "sessionsChanged",
+          sessionId: parsed.thread_id,
+          agentId: parsed.agent_id,
+        });
         const agent = agentsRef.current.find(
           (a) => a.agent_id === parsed.agent_id,
         );

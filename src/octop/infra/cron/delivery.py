@@ -74,6 +74,7 @@ class CronDeliveryService:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
+            await self._notify_activity_best_effort(session, command.agent_id, "cron_started")
             if command.task_type == "text":
                 await self._deliver_text(command, session)
             else:
@@ -254,6 +255,23 @@ class CronDeliveryService:
         except Exception:
             logger.warning(
                 "failed to send cron dashboard notification for thread=%s",
+                session.thread_id,
+                exc_info=True,
+            )
+
+    async def _notify_activity_best_effort(
+        self,
+        session: SessionRow,
+        agent_id: str,
+        reason: str,
+    ) -> None:
+        if session.channel_type != ThreadRegistry.CHANNEL_DASHBOARD:
+            return
+        try:
+            await self._gateway.notify_thread_activity(session, agent_id, reason=reason)
+        except Exception:
+            logger.warning(
+                "failed to send cron thread activity for thread=%s",
                 session.thread_id,
                 exc_info=True,
             )

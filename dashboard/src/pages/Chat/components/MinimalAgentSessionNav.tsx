@@ -329,6 +329,23 @@ export default function MinimalAgentSessionNav({
     [onAgentSelect],
   );
 
+  const refreshAgentPreview = useCallback(async (agentId: string) => {
+    if (!agentId) return;
+    try {
+      const rows = await octopThreadsApi.list(
+        agentId,
+        MINIMAL_AGENT_SESSION_PREVIEW,
+      );
+      const list = sortSessions(rows.map(toSession)).slice(
+        0,
+        MINIMAL_AGENT_SESSION_PREVIEW,
+      );
+      setByAgent((prev) => ({ ...prev, [agentId]: list }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // Fetch preview threads for every expert (independent of classic session store).
   useEffect(() => {
     if (!agentKey) {
@@ -399,17 +416,21 @@ export default function MinimalAgentSessionNav({
 
   useEffect(() => {
     return onSessionEvent((event) => {
-      if (event.kind !== "sessionDeleted") return;
-      const { sessionId } = event;
-      setByAgent((prev) => {
-        const next: Record<string, Session[]> = {};
-        for (const [aid, list] of Object.entries(prev)) {
-          next[aid] = list.filter((s) => s.id !== sessionId);
-        }
-        return next;
-      });
+      if (event.kind === "sessionDeleted") {
+        const { sessionId } = event;
+        setByAgent((prev) => {
+          const next: Record<string, Session[]> = {};
+          for (const [aid, list] of Object.entries(prev)) {
+            next[aid] = list.filter((s) => s.id !== sessionId);
+          }
+          return next;
+        });
+        return;
+      }
+      const target = event.agentId || activeAgentId;
+      if (target) void refreshAgentPreview(target);
     });
-  }, []);
+  }, [activeAgentId, refreshAgentPreview]);
 
   const patchLocal = useCallback(
     (agentId: string, updater: (prev: Session[]) => Session[]) => {

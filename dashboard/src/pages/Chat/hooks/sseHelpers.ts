@@ -100,6 +100,8 @@ export interface SessionStreamState {
   historyLoadingMore: boolean;
   /** True after the first history fetch finished (even if empty). */
   historyHydrated: boolean;
+  /** Server-side messages changed outside this client — refetch on next load. */
+  historyStale: boolean;
   listeners: Set<() => void>;
   /** Cached snapshot reference (updated on every notify). */
   _snapshot: SessionSnapshot;
