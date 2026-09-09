@@ -5,11 +5,17 @@ export interface SkillPackage {
   created_by: string;
   creator_username?: string | null;
   creator_display_name?: string | null;
+  can_write?: boolean;
   skill_count: number;
   icon_name?: string;
   icon_url?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface CopyPackageSkillsBody {
+  skill_slugs: string[];
+  overwrite?: boolean;
 }
 
 export interface SkillPackageSkill {

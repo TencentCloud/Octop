@@ -134,6 +134,71 @@ async def test_other_user_cannot_mutate_skill_package(env_boundary: Any) -> None
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
+async def test_writable_package_list_respects_creator_permissions(
+    env_boundary: Any,
+) -> None:
+    client, _server, admin_auth, alice_auth, bob_auth, _ctx = env_boundary
+    alice_package = (
+        await client.post(
+            "/api/skill-packages",
+            headers=alice_auth,
+            json={"name": "Alice writable"},
+        )
+    ).json()
+    bob_package = (
+        await client.post(
+            "/api/skill-packages",
+            headers=bob_auth,
+            json={"name": "Bob writable"},
+        )
+    ).json()
+
+    alice_list = await client.get(
+        "/api/skill-packages?writable_only=true",
+        headers=alice_auth,
+    )
+    assert alice_list.status_code == 200, alice_list.text
+    assert [row["id"] for row in alice_list.json()] == [alice_package["id"]]
+    assert alice_list.json()[0]["can_write"] is True
+
+    admin_list = await client.get(
+        "/api/skill-packages?writable_only=true",
+        headers=admin_auth,
+    )
+    assert admin_list.status_code == 200, admin_list.text
+    assert {row["id"] for row in admin_list.json()} >= {
+        alice_package["id"],
+        bob_package["id"],
+    }
+    assert all(row["can_write"] is True for row in admin_list.json())
+
+
+async def test_regular_user_cannot_push_to_another_users_package(
+    env_alice_bob_agent: Any,
+) -> None:
+    client, _server, alice_auth, bob_auth, alice_agent_id = env_alice_bob_agent
+    bob_package = (
+        await client.post(
+            "/api/skill-packages",
+            headers=bob_auth,
+            json={"name": "Bob push target"},
+        )
+    ).json()
+    created_skill = await client.post(
+        f"/api/agents/{alice_agent_id}/skills",
+        headers=alice_auth,
+        json={"name": "private-skill", "content": SAMPLE_SKILL},
+    )
+    assert created_skill.status_code == 201, created_skill.text
+    forbidden = await client.post(
+        f"/api/agents/{alice_agent_id}/skills/private-skill/push-to-package",
+        headers=alice_auth,
+        json={"package_id": bob_package["id"]},
+    )
+    assert forbidden.status_code == 403, forbidden.text
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN"
+
+
 async def test_import_skill_url_into_package(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.skills import skills_hub
 

@@ -545,6 +545,11 @@
   gap: 12px;
 }
 
+.packageCardSwitch {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
 .iconWrapper {
   width: 44px;
   height: 44px;
@@ -664,6 +669,43 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.skillTransferAlert {
+  margin-bottom: 16px;
+}
+
+.skillTransferList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 280px;
+  margin-bottom: 16px;
+  overflow-y: auto;
+
+  :global(.ant-checkbox-wrapper) {
+    align-items: flex-start;
+  }
+}
+
+.skillTransferSkillName,
+.skillTransferSkillSlug {
+  display: block;
+  line-height: 1.4;
+}
+
+.skillTransferSkillName {
+  color: var(--fn-text-primary);
+}
+
+.skillTransferSkillSlug {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.skillTransferSelect {
+  width: 100%;
+  margin-bottom: 16px;
 }
 
 .deleteIconBtn {
