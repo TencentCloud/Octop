@@ -71,10 +71,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dashboard/dist/
+dashboard/dist-desktop/
 src/octop/dashboard/**
 src/octop/dashboard/assets/*
 !src/octop/dashboard/__init__.py
 !src/octop/dashboard/.gitkeep
+
+# Wails embeds the Vite desktop-shell output; keep only tray icons in git.
+desktop/src/assets/index.html
+desktop/src/assets/assets/
 
 # Ship Meituan pt-passport runtime; override global node_modules/ ignore.
 !src/octop/infra/agents/experts/library/meituan-living-assistant/skills/meituan-deals/scripts/node_modules/

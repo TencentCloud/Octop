@@ -12,6 +12,22 @@
     "maximize": "最大化",
     "close": "关闭"
   },
+  "desktopShell": {
+    "statusWait": "正在启动，请稍候…",
+    "loadingHint": "正在检查运行环境，可能需要几分钟。",
+    "settingsTitle": "Octop 设置",
+    "settingsSubtitle": "桌面端偏好",
+    "lang": "语言",
+    "langHint": "选择偏好语言 / Choose your preferred language",
+    "autostart": "开机启动",
+    "autostartHint": "登录系统后自动启动",
+    "tray": "最小化到托盘",
+    "trayHint": "点击最小化时隐藏窗口并保留在系统托盘",
+    "sleep": "防止系统休眠",
+    "sleepHint": "应用运行期间阻止系统自动休眠",
+    "showMain": "显示 Octop",
+    "quit": "退出"
+  },
   "common": {
     "save": "保存",
     "saveSuccess": "保存成功",

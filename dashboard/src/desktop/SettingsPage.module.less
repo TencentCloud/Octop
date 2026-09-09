@@ -1,0 +1,162 @@
+.wrap {
+  max-width: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 44px 20px 28px;
+}
+
+.title {
+  margin: 0 0 6px;
+  padding-right: var(--window-controls-inset-end);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border);
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.hint {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 108px;
+  outline: none;
+}
+
+.select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(232, 93, 117, 0.12);
+}
+
+.switch {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch span {
+  position: absolute;
+  inset: 0;
+  background: #e5e7eb;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.switch span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: transform 0.18s ease;
+}
+
+.switch input:checked + span {
+  background: var(--brand);
+}
+
+.switch input:checked + span::after {
+  transform: translateX(16px);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-shrink: 0;
+}
+
+.actions button {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.primary {
+  background: var(--brand);
+  color: var(--on-brand);
+  border: 0;
+}
+
+.primary:hover {
+  background: var(--brand-hover);
+}
+
+.ghost {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.ghost:hover {
+  background: var(--bg-secondary);
+}
+
+.error {
+  min-height: 1.4em;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.errorHidden {
+  display: none;
+}

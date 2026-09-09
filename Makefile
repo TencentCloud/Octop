@@ -41,7 +41,7 @@ help:
 	@echo ""
 	@echo "Build targets:"
 	@echo "  build            Build frontend + Python wheel (full package)"
-	@echo "  build-frontend   Build React dashboard only → $(DASHBOARD_DEST)"
+	@echo "  build-frontend   Build React dashboard + desktop shell"
 	@echo "  build-wheel      Build Python wheel only (assumes frontend built)"
 	@echo ""
 	@echo "Publish targets:"
@@ -98,6 +98,8 @@ build-frontend:
 	cd $(DASHBOARD_DIR) && npm ci
 	@echo "[build-frontend] Building dashboard (output: $(DASHBOARD_DEST))..."
 	cd $(DASHBOARD_DIR) && NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npm run build
+	@echo "[build-frontend] Building desktop shell (output: desktop/src/assets)..."
+	cd $(DASHBOARD_DIR) && npm run build:desktop-shell
 	@echo "[build-frontend] Done."
 
 .PHONY: build-wheel

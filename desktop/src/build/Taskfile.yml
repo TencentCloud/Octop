@@ -1,6 +1,7 @@
 version: "3"
 
-# Shell UI is Go-embedded HTML (desktop/src/assets). No Vite/npm frontend.
+# Shell UI is a Vite entry in dashboard/ (desktop.html → src/desktop/).
+# Production copies hashed assets into desktop/src/assets for go:embed.
 
 tasks:
   go:mod:tidy:
@@ -11,14 +12,16 @@ tasks:
       - go mod tidy
 
   install:frontend:deps:
-    summary: Builds the embedded-assets development server
+    summary: Installs dashboard npm deps for the desktop shell
+    dir: ..
     cmds:
-      - go build -o .task/devserver.exe ./cmd/devserver
+      - npm --prefix ../../dashboard install
 
   build:frontend:
-    summary: No Vite build (assets embedded)
+    summary: Builds the Wails loading/settings shell from dashboard
+    dir: ..
     cmds:
-      - echo "embedded assets; skip vite"
+      - test -f assets/index.html && echo "using existing desktop shell assets" || npm --prefix ../../dashboard run build:desktop-shell
 
   generate:bindings:
     summary: Bindings unused (Call.ByName)
@@ -66,11 +69,12 @@ tasks:
         iconutil -c icns "$iconset" -o darwin/icons.icns
 
   dev:frontend:
-    summary: Serves the embedded shell assets for Wails dev mode
+    summary: Serves the desktop shell via Vite for Wails dev mode
+    dir: ..
     deps:
       - task: install:frontend:deps
     cmds:
-      - ./.task/devserver.exe
+      - npm --prefix ../../dashboard run dev:desktop-shell
 
   update:build-assets:
     summary: Updates generated build assets from config.yml

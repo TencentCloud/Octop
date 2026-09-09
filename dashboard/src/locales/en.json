@@ -12,6 +12,22 @@
     "maximize": "Maximize",
     "close": "Close"
   },
+  "desktopShell": {
+    "statusWait": "Starting, please wait…",
+    "loadingHint": "Checking the runtime. This may take a few minutes.",
+    "settingsTitle": "Octop Settings",
+    "settingsSubtitle": "Desktop preferences",
+    "lang": "Language",
+    "langHint": "Choose your preferred language",
+    "autostart": "Launch at login",
+    "autostartHint": "Start automatically after you sign in",
+    "tray": "Minimize to tray",
+    "trayHint": "Hide the window on minimize and keep Octop in the tray",
+    "sleep": "Prevent system sleep",
+    "sleepHint": "Keeps the system awake while Octop is running",
+    "showMain": "Show Octop",
+    "quit": "Quit"
+  },
   "common": {
     "save": "Save",
     "saveSuccess": "Saved successfully",

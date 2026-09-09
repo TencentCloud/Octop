@@ -7,6 +7,7 @@ All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
 |------|------|
 | [`portable/`](portable/) | Green zip packaging (was `scripts/green/`) |
 | [`src/`](src/) | Wails v3 shell: load bundled zip, spawn Octop, tray/settings |
+| [`../dashboard/src/desktop/`](../dashboard/src/desktop/) | Loading + settings UI (Vite entry `dashboard/desktop.html`) |
 | [`package-release.sh`](package-release.sh) | Native end-to-end portable + Wails release build |
 
 ## Data directory
@@ -68,6 +69,12 @@ Dev against an already-running Octop (skips the bundled green zip):
 cd desktop/src
 OCTOP_DESKTOP_URL=http://127.0.0.1:8088 wails3 dev
 ```
+
+The loading and settings windows are a second Vite entry in `dashboard/`
+(`desktop.html` → `src/desktop/`), built with `npm run build:desktop-shell`
+into `desktop/src/assets` for `go:embed`. `wails3 dev` runs that entry on
+port 9245. Ready Octop still replaces the WebView URL with the Python-hosted
+dashboard.
 
 Without `OCTOP_DESKTOP_URL`, first launch uses `~/.octop/portable/` if valid,
 otherwise extracts the matching zip shipped with the desktop package (embedded

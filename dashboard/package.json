@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:desktop-shell": "vite --config vite.desktop.config.ts --host localhost",
     "build": "tsc -b && vite build",
+    "build:desktop-shell": "vite build --config vite.desktop.config.ts && node scripts/finalize-desktop-shell.mjs",
     "build:docker": "vite build",
     "build:prod": "tsc -b && vite build --mode production",
     "build:test": "tsc -b && vite build --mode test",

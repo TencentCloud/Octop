@@ -41,4 +41,17 @@ describe("DesktopWindowControls", () => {
     await user.click(buttons[0]);
     expect(emitDesktopWindowAction).toHaveBeenCalledWith("minimise");
   });
+
+  it("hides min/max in close-only mode and uses onClose", async () => {
+    emitDesktopWindowAction.mockClear();
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<DesktopWindowControls chrome="mac" closeOnly onClose={onClose} />);
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName(/close/i);
+    await user.click(buttons[0]);
+    expect(onClose).toHaveBeenCalled();
+    expect(emitDesktopWindowAction).not.toHaveBeenCalled();
+  });
 });

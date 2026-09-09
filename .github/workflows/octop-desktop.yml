@@ -11,6 +11,10 @@ on:
   pull_request:
     paths:
       - "desktop/**"
+      - "dashboard/desktop.html"
+      - "dashboard/src/desktop/**"
+      - "dashboard/vite.desktop.config.ts"
+      - "dashboard/scripts/finalize-desktop-shell.mjs"
       - ".github/workflows/octop-desktop.yml"
   workflow_dispatch:
     inputs:
@@ -75,6 +79,13 @@ jobs:
         with:
           name: dashboard-dist
           path: src/octop/dashboard/
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-shell-dist
+          path: desktop/src/assets/
           if-no-files-found: error
           retention-days: 7
 
@@ -154,6 +165,11 @@ jobs:
         with:
           name: dashboard-dist
           path: src/octop/dashboard
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-shell-dist
+          path: desktop/src/assets
 
       - uses: astral-sh/setup-uv@v6
         with:
