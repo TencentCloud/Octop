@@ -40,6 +40,7 @@ export function useChatComposerResources(
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
   defaultConversationMode?: ConversationMode | string | null,
+  defaultKnowledgeBaseIds?: string[] | null,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
@@ -232,6 +233,9 @@ export function useChatComposerResources(
         return knowledgeBasesApi.list().then((bases) => {
           if (cancelled) return;
           setChatKnowledgeBases(bases);
+          const agentDefaults = (defaultKnowledgeBaseIds ?? []).filter((id) =>
+            bases.some((base) => base.id === id),
+          );
           const ownedDefaults = bases
             .filter(
               (base) =>
@@ -240,12 +244,14 @@ export function useChatComposerResources(
                 base.owner_user_id === currentUserId,
             )
             .map((base) => base.id);
+          const seedDefaults =
+            agentDefaults.length > 0 ? agentDefaults : ownedDefaults;
           setSelectedKnowledgeBaseIds((previous) =>
             withDefaultOpenKnowledgeBases(
               pendingId && !previous.includes(pendingId)
                 ? [...previous, pendingId]
                 : previous,
-              ownedDefaults,
+              seedDefaults,
             ),
           );
           if (pendingId) consumePendingAttachKnowledgeBaseId();
@@ -257,7 +263,7 @@ export function useChatComposerResources(
     return () => {
       cancelled = true;
     };
-  }, [resolvedAgentId, currentUserId]);
+  }, [resolvedAgentId, currentUserId, defaultKnowledgeBaseIds]);
 
   useEffect(() => {
     let cancelled = false;

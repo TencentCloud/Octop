@@ -29,12 +29,13 @@ def _processor(agent_manager: MagicMock) -> GlobalProcessor:
     )
 
 
-def _agent_manager() -> MagicMock:
+def _agent_manager(*, config: dict | None = None) -> MagicMock:
     mgr = MagicMock()
     mgr.merge_turn_mcp_servers = MagicMock(return_value=None)
     mgr.prepare_chat_mcp = AsyncMock(return_value=[])
     mgr.get_row = MagicMock(return_value=None)
-    mgr.get_config = MagicMock(return_value={"tools_disabled": ["web_fetch"]})
+    mgr.get_config = MagicMock(return_value=config or {"tools_disabled": ["web_fetch"]})
+    mgr.get_thread_conversation_mode = MagicMock(return_value=None)
     mgr.sync_effective_tools_disabled = MagicMock()
     mgr.sync_tools_disabled = MagicMock()
     mgr.providers = MagicMock()
@@ -120,6 +121,75 @@ async def test_dashboard_request_defaults_conversation_mode_to_craft() -> None:
         session_key="sk",
         thread_id="thr",
         meta={},
+    )
+    assert (request.get("configurable") or {})["conversation_mode"] == "craft"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_request_falls_back_to_agent_default_conversation_mode() -> None:
+    processor = _processor(
+        _agent_manager(config={"default_conversation_mode": "ask", "tools_disabled": []})
+    )
+    request = await processor._build_dashboard_request(
+        InboundMessage(
+            channel_id="ws",
+            channel_type="dashboard",
+            tenant_id="agent-1",
+            channel_subject=ChannelSubject(subject_id="1"),
+            content=[TextContent(text="hi")],
+            metadata={},
+        ),
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        thread_id="thr",
+        meta={},
+    )
+    assert (request.get("configurable") or {})["conversation_mode"] == "ask"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_request_thread_sticky_mode_beats_agent_default() -> None:
+    mgr = _agent_manager(config={"default_conversation_mode": "ask"})
+    mgr.get_thread_conversation_mode = MagicMock(return_value="plan")
+    processor = _processor(mgr)
+    request = await processor._build_dashboard_request(
+        InboundMessage(
+            channel_id="ws",
+            channel_type="dashboard",
+            tenant_id="agent-1",
+            channel_subject=ChannelSubject(subject_id="1"),
+            content=[TextContent(text="hi")],
+            metadata={},
+        ),
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        thread_id="thr",
+        meta={},
+    )
+    assert (request.get("configurable") or {})["conversation_mode"] == "plan"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_request_explicit_mode_beats_sticky_and_agent_default() -> None:
+    mgr = _agent_manager(config={"default_conversation_mode": "ask"})
+    mgr.get_thread_conversation_mode = MagicMock(return_value="plan")
+    processor = _processor(mgr)
+    request = await processor._build_dashboard_request(
+        InboundMessage(
+            channel_id="ws",
+            channel_type="dashboard",
+            tenant_id="agent-1",
+            channel_subject=ChannelSubject(subject_id="1"),
+            content=[TextContent(text="hi")],
+            metadata={"conversation_mode": "craft"},
+        ),
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        thread_id="thr",
+        meta={"conversation_mode": "craft"},
     )
     assert (request.get("configurable") or {})["conversation_mode"] == "craft"
 

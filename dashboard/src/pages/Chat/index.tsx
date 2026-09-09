@@ -458,6 +458,7 @@ function ChatPageInner() {
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
     activeAgent?.default_conversation_mode,
+    activeAgent?.default_knowledge_base_ids,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(

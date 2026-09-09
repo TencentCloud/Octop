@@ -89,6 +89,18 @@ export function planBriefPreview(brief: string, maxLen = 320): string {
 }
 
 /** Collect plan brief from the latest assistant turn (text + write_todos). */
+export const PLAN_READY_MIN_SUMMARY_CHARS = 80;
+
+/** True when a built brief is substantial enough to show PlanReadyCard. */
+export function isPlanReadyBrief(brief: string | null | undefined): boolean {
+  if (!brief?.trim()) return false;
+  const hasSteps = /^### Steps$/m.test(brief) && /^\d+\. /m.test(brief);
+  if (hasSteps) return true;
+  const preview = planBriefPreview(brief, Number.MAX_SAFE_INTEGER);
+  return preview.trim().length >= PLAN_READY_MIN_SUMMARY_CHARS;
+}
+
+/** Collect plan brief from the latest assistant turn (text + write_todos). */
 export function buildPlanBriefFromMessages(
   messages: readonly ChatMessage[],
 ): string | null {
@@ -104,7 +116,8 @@ export function buildPlanBriefFromMessages(
     if (summary) break;
   }
   if (!summary && todos.length === 0) return null;
-  return formatPlanBrief({ summary, todos });
+  const brief = formatPlanBrief({ summary, todos });
+  return isPlanReadyBrief(brief) ? brief : null;
 }
 
 /** Minimal user-turn text for silent Plan→Craft (matched on history reload). */

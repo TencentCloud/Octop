@@ -1,4 +1,10 @@
-"""Conversation modes (Ask / Plan / Craft) — turn-scoped tool overlays (#616)."""
+"""Conversation modes (Ask / Plan / Craft) — turn-scoped tool overlays (#616).
+
+Ask / Plan denylists cover **builtin** Octop / harness tool names only. MCP and
+custom connector tools are not name-denylisted here; mutating MCP tools may still
+appear unless blocked by agent ``tools_disabled`` or connector policy. Prefer an
+allowlist / mutating tag on MCP tools for stricter Ask if needed.
+"""
 
 from __future__ import annotations
 
@@ -12,8 +18,8 @@ DEFAULT_CONVERSATION_MODE: ConversationMode = "craft"
 
 _VALID_MODES: frozenset[str] = frozenset({"ask", "plan", "craft"})
 
-# Mutating / side-effect tools blocked in Ask (and Plan). Must not intersect CRITICAL_TOOLS.
-_ASK_TOOLS_DISABLED: frozenset[str] = frozenset(
+# Mutating / side-effect tools blocked in Ask and Plan. Must not intersect CRITICAL_TOOLS.
+_ASK_PLAN_TOOLS_DISABLED: frozenset[str] = frozenset(
     {
         "write_file",
         "edit_file",
@@ -38,6 +44,9 @@ _ASK_TOOLS_DISABLED: frozenset[str] = frozenset(
     }
 )
 
+# Ask-only: no structured plan todos (Plan keeps write_todos).
+_ASK_ONLY_TOOLS_DISABLED: frozenset[str] = frozenset({"write_todos"})
+
 # Delegation / ACP / team tools that would escape Ask/Plan into a full-autonomy child.
 # ``task`` is CRITICAL for agent settings (cannot be permanently disabled) but MUST be
 # turn-blocked in Ask/Plan — same idea as Cursor Plan: explore + write the plan only.
@@ -49,7 +58,9 @@ _ORCHESTRATION_ESCAPE_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-assert _ASK_TOOLS_DISABLED.isdisjoint(CRITICAL_TOOLS)
+assert _ASK_PLAN_TOOLS_DISABLED.isdisjoint(CRITICAL_TOOLS)
+# write_todos is CRITICAL (cannot be permanently disabled in agent settings) but Ask
+# still turn-blocks it via middleware — same pattern as ``task``.
 
 
 def parse_conversation_mode(value: object | None) -> ConversationMode:
@@ -62,18 +73,39 @@ def parse_conversation_mode(value: object | None) -> ConversationMode:
 
 
 def conversation_mode_tools_disabled(mode: ConversationMode) -> frozenset[str]:
-    """Turn-scoped denylist. ``craft`` → empty; Ask/Plan → mutating + no orchestration escape."""
+    """Turn-scoped builtin denylist.
+
+    ``craft`` → empty; Plan → mutating + no orchestration escape; Ask → Plan set
+    plus ``write_todos``. Does **not** cover MCP/custom tool names (see module doc).
+    """
     if mode == "craft":
         return frozenset()
-    return _ASK_TOOLS_DISABLED | _ORCHESTRATION_ESCAPE_TOOLS
+    base = _ASK_PLAN_TOOLS_DISABLED | _ORCHESTRATION_ESCAPE_TOOLS
+    if mode == "ask":
+        return base | _ASK_ONLY_TOOLS_DISABLED
+    return base
 
 
-def merge_tools_disabled(
-    agent_disabled: frozenset[str] | set[str],
-    mode: ConversationMode,
-) -> frozenset[str]:
-    """Union agent denylist with mode overlay (Ask/Plan never re-enable tools)."""
-    return frozenset(agent_disabled) | conversation_mode_tools_disabled(mode)
+def resolve_conversation_mode(
+    *,
+    explicit: object | None = None,
+    thread_override: ConversationMode | None = None,
+    agent_default: ConversationMode | None = None,
+) -> ConversationMode:
+    """Resolve turn mode: explicit → thread sticky → agent default → craft.
+
+    Unknown non-null *explicit* values resolve to craft (compat) and do not fall
+    through to sticky/agent defaults.
+    """
+    if isinstance(explicit, str) and explicit in _VALID_MODES:
+        return explicit  # type: ignore[return-value]
+    if explicit is not None:
+        return DEFAULT_CONVERSATION_MODE
+    if thread_override is not None:
+        return thread_override
+    if agent_default is not None:
+        return agent_default
+    return DEFAULT_CONVERSATION_MODE
 
 
 DEFAULT_CONVERSATION_MODE_CONFIG_KEY = "default_conversation_mode"

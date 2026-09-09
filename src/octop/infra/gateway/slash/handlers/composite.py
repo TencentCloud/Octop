@@ -322,10 +322,61 @@ async def cmd_model(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: 
     await sink.text(tr("model.set", lang, model=name))
 
 
+_MODE_ALIASES = {
+    "ask": "ask",
+    "plan": "plan",
+    "craft": "craft",
+    "default": "craft",
+    "问答": "ask",
+    "计划": "plan",
+    "默认": "craft",
+}
+
+
+async def cmd_mode(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:
+    """Set sticky conversation mode for this thread (IM + slash)."""
+    from octop.infra.agents.conversation_mode import (  # noqa: PLC0415
+        default_conversation_mode_from_config,
+    )
+
+    lang = lang_of(ctx)
+    tid = await ensure_thread_id(ctx)
+    # /ask /plan /craft as aliases — treat command name as the mode when args empty.
+    raw = cmd.args.strip() or (cmd.name if cmd.name in ("ask", "plan", "craft") else "")
+    if not raw:
+        override = d.get_thread_conversation_mode_override(ctx, tid)
+        agent_default = "craft"
+        if ctx.agent_manager is not None:
+            agent_default = default_conversation_mode_from_config(
+                ctx.agent_manager.get_config(ctx.agent_id)
+            )
+        if override:
+            await sink.text(tr("mode.override", lang, mode=override))
+        else:
+            await sink.text(tr("mode.current_default", lang, mode=agent_default))
+        return
+    key = raw.lower()
+    if key == "reset":
+        d.clear_thread_conversation_mode_override(ctx, tid)
+        if hasattr(sink, "action"):
+            await sink.action("clear_conversation_mode")
+        await sink.text(tr("mode.cleared", lang))
+        return
+    mode = _MODE_ALIASES.get(key) or _MODE_ALIASES.get(raw)
+    if mode is None:
+        await sink.text(tr("mode.usage", lang))
+        return
+    d.set_thread_conversation_mode_override(ctx, tid, mode)
+    if hasattr(sink, "action"):
+        await sink.action("set_conversation_mode", mode=mode)
+    await sink.text(tr("mode.set", lang, mode=mode))
+
+
 COMPOSITE_HANDLERS: dict[str, GatewayHandler] = {
     "compact": cmd_compact,
     "history": cmd_history,
     "status": cmd_status,
     "model": cmd_model,
     "models": cmd_model,
+    "mode": cmd_mode,
 }

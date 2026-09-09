@@ -21,9 +21,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.conversation_mode import (
-    DEFAULT_CONVERSATION_MODE,
     ConversationMode,
-    parse_conversation_mode,
 )
 from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
@@ -799,8 +797,15 @@ class GlobalProcessor:
             is_admin=False,
             explicit_ids=None,
             locale=locale,
+            agent_id=agent_id,
         )
-        self._attach_conversation_mode_config(request, msg.metadata, locale=locale)
+        self._attach_conversation_mode_config(
+            request,
+            msg.metadata,
+            locale=locale,
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
 
@@ -1207,8 +1212,15 @@ class GlobalProcessor:
             if isinstance(meta.get("knowledge_base_ids"), list)
             else None,
             locale=locale,
+            agent_id=agent_id,
         )
-        self._attach_conversation_mode_config(request, meta, locale=locale)
+        self._attach_conversation_mode_config(
+            request,
+            meta,
+            locale=locale,
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
 
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
@@ -1242,6 +1254,7 @@ class GlobalProcessor:
         is_admin: bool,
         explicit_ids: list[str] | None,
         locale: str,
+        agent_id: str | None = None,
     ) -> None:
         """Expose selected knowledge-base ids for the search_knowledge tool."""
         if self._knowledge_services is None:
@@ -1251,7 +1264,22 @@ class GlobalProcessor:
             if is_admin
             else self._knowledge_services.knowledge_repo.list_visible(user_id)
         )
-        selected_ids = merge_knowledge_base_ids(bases, explicit_ids, owner_user_id=user_id)
+        agent_defaults: list[str] | None = None
+        if agent_id and self._agent_manager is not None:
+            from octop.infra.knowledge.default_open import (  # noqa: PLC0415
+                default_knowledge_base_ids_from_config,
+            )
+
+            agent_defaults = (
+                default_knowledge_base_ids_from_config(self._agent_manager.get_config(agent_id))
+                or None
+            )
+        selected_ids = merge_knowledge_base_ids(
+            bases,
+            explicit_ids,
+            owner_user_id=user_id,
+            agent_default_ids=agent_defaults,
+        )
         configurable = dict(request.get("configurable") or {})
         configurable["knowledge_base_ids"] = selected_ids
         configurable["knowledge_base_catalog"] = catalog_for_selected_bases(bases, selected_ids)
@@ -1259,13 +1287,35 @@ class GlobalProcessor:
         configurable["locale"] = locale
         request["configurable"] = configurable
 
-    @staticmethod
-    def _conversation_mode_from_meta(meta: dict[str, Any] | None) -> ConversationMode:
-        """Parse turn mode; unknown / missing → craft (compat default)."""
-        raw = (meta or {}).get("conversation_mode")
-        if raw not in ("ask", "plan", "craft"):
-            return DEFAULT_CONVERSATION_MODE
-        return parse_conversation_mode(raw)
+    def _resolve_conversation_mode(
+        self,
+        meta: dict[str, Any] | None,
+        *,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> ConversationMode:
+        """explicit meta → thread /mode sticky → agent default → craft."""
+        from octop.infra.agents.conversation_mode import (  # noqa: PLC0415
+            default_conversation_mode_from_config,
+            resolve_conversation_mode,
+        )
+
+        explicit = (meta or {}).get("conversation_mode")
+        thread_override: ConversationMode | None = None
+        if agent_id and thread_id and self._agent_manager is not None:
+            raw_sticky = self._agent_manager.get_thread_conversation_mode(agent_id, thread_id)
+            if raw_sticky in ("ask", "plan", "craft"):
+                thread_override = raw_sticky  # type: ignore[assignment]
+        agent_default: ConversationMode | None = None
+        if agent_id and self._agent_manager is not None:
+            agent_default = default_conversation_mode_from_config(
+                self._agent_manager.get_config(agent_id)
+            )
+        return resolve_conversation_mode(
+            explicit=explicit,
+            thread_override=thread_override,
+            agent_default=agent_default,
+        )
 
     def _attach_conversation_mode_config(
         self,
@@ -1273,6 +1323,8 @@ class GlobalProcessor:
         meta: dict[str, Any] | None,
         *,
         locale: str | None = None,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
     ) -> None:
         """Stamp resolved conversation_mode (+ localized system hint) onto configurable."""
         from octop.i18n.domains.conversation import (
@@ -1280,7 +1332,7 @@ class GlobalProcessor:
             conversation_mode_system_hint,
         )
 
-        mode = self._conversation_mode_from_meta(meta)
+        mode = self._resolve_conversation_mode(meta, agent_id=agent_id, thread_id=thread_id)
         configurable = dict(request.get("configurable") or {})
         configurable["conversation_mode"] = mode
         hint_locale = locale or str(configurable.get("locale") or "en")

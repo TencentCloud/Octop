@@ -48,7 +48,7 @@ def test_ask_filters_mutating_tools_and_keeps_read_tools() -> None:
     ):
         out = apply_conversation_mode_to_request(request)
     names = [getattr(t, "name", None) for t in (out.tools or [])]
-    assert names == ["read_file", "write_todos"]
+    assert names == ["read_file"]
     assert out.system_message is not None
     assert "base" in str(out.system_message.content)
     assert "ASK_HINT" in str(out.system_message.content)

@@ -74,6 +74,21 @@ class SlashDispatcher:
         if ctx.agent_manager is not None:
             ctx.agent_manager.clear_thread_model(ctx.agent_id, thread_id)
 
+    def get_thread_conversation_mode_override(self, ctx: SlashCtx, thread_id: str) -> str | None:
+        if ctx.agent_manager is None:
+            return None
+        return ctx.agent_manager.get_thread_conversation_mode(ctx.agent_id, thread_id)
+
+    def set_thread_conversation_mode_override(
+        self, ctx: SlashCtx, thread_id: str, mode: str
+    ) -> None:
+        if ctx.agent_manager is not None:
+            ctx.agent_manager.set_thread_conversation_mode(ctx.agent_id, thread_id, mode)
+
+    def clear_thread_conversation_mode_override(self, ctx: SlashCtx, thread_id: str) -> None:
+        if ctx.agent_manager is not None:
+            ctx.agent_manager.clear_thread_conversation_mode(ctx.agent_id, thread_id)
+
 
 def build_default_dispatcher() -> SlashDispatcher:
     from octop.infra.gateway.slash.handlers import register_all  # noqa: PLC0415

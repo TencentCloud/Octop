@@ -64,6 +64,7 @@ from octop.infra.agents.experts.skillhub_market import (
     fetch_skillset,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.default_open import apply_default_knowledge_base_ids
 from octop.infra.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
@@ -102,6 +103,10 @@ class FromExpertBody(AgentRuntimeFields):
             "Initial chat permission mode for new threads "
             "(ask / plan / craft). Omit to default to craft."
         ),
+    )
+    default_knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge bases auto-attached when a turn omits an explicit list.",
     )
 
 
@@ -143,6 +148,10 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
             "Initial chat permission mode for new threads "
             "(ask / plan / craft). Omit to default to craft."
         ),
+    )
+    default_knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge bases auto-attached when a turn omits an explicit list.",
     )
 
 
@@ -520,6 +529,7 @@ async def install_published_expert(
             runtime_config=runtime_field_updates(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
             default_conversation_mode=body.default_conversation_mode,
+            default_knowledge_base_ids=body.default_knowledge_base_ids,
         ),
     )
 
@@ -616,6 +626,7 @@ async def install_expert_hub_item(
                 skill_package_ids=package_ids,
                 enable_trajectory=body.enable_trajectory,
                 default_conversation_mode=body.default_conversation_mode,
+                default_knowledge_base_ids=body.default_knowledge_base_ids,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -691,6 +702,7 @@ async def create_agent_from_expert(
         config_extra["backend"] = body.backend
     apply_enable_trajectory(config_extra, body.enable_trajectory)
     apply_default_conversation_mode(config_extra, body.default_conversation_mode)
+    apply_default_knowledge_base_ids(config_extra, body.default_knowledge_base_ids)
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

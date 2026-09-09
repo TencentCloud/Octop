@@ -36,6 +36,10 @@ from octop.infra.agents.runtime_limits import (
     agent_runtime_values,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.default_open import (
+    default_knowledge_base_ids_from_config,
+    normalize_config_default_knowledge_base_ids,
+)
 from octop.infra.users.permissions import user_has_permission
 
 logger = logging.getLogger(__name__)
@@ -44,11 +48,12 @@ router = APIRouter()
 
 
 def _validated_agent_config(config: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Normalize conversation-mode fields; raise OctopError on invalid values."""
+    """Normalize conversation-mode / KB default fields; raise OctopError on invalid values."""
     if config is None:
         return None
     try:
-        return normalize_config_default_conversation_mode(config)
+        out = normalize_config_default_conversation_mode(config)
+        return normalize_config_default_knowledge_base_ids(out)
     except ValueError as exc:
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc), status=400) from exc
 
@@ -160,6 +165,7 @@ def _row_dict(
         "persona_mbti": row.persona_mbti,
         "default_model": row.default_model,
         "default_conversation_mode": default_conversation_mode_from_config(cfg),
+        "default_knowledge_base_ids": default_knowledge_base_ids_from_config(cfg),
         "system_prompt": row.system_prompt,
         "state": row.last_state or "unknown",
         "last_error": row.last_error,

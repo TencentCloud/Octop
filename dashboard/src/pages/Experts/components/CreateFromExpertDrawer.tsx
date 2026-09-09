@@ -59,6 +59,7 @@ import AgentBackendFields from "./AgentBackendFields";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import styles from "../index.module.less";
 import { conversationModeSelectOptions } from "../../Chat/utils/conversationMode";
+import { knowledgeBasesApi } from "../../../api/modules/knowledgeBases";
 
 type FileContent = NamedFileContent;
 
@@ -159,6 +160,7 @@ export default function CreateFromExpertDrawer({
       welcome_message?: string;
       default_model: string;
       default_conversation_mode: "ask" | "plan" | "craft";
+      default_knowledge_base_ids?: string[];
       backend_choice: string;
       composite_default: string;
       root_dir?: string;
@@ -180,6 +182,9 @@ export default function CreateFromExpertDrawer({
   const [colorPalette, setColorPalette] = useState<string>("rose");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
@@ -188,6 +193,28 @@ export default function CreateFromExpertDrawer({
     backendChoice,
     rootDir: watchedRootDir,
   });
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void knowledgeBasesApi
+      .list()
+      .then((bases) => {
+        if (cancelled) return;
+        setKnowledgeBaseOptions(
+          bases.map((base) => ({
+            value: base.id,
+            label: base.name?.trim() || base.id,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setKnowledgeBaseOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (skillPackagesSupported) return;
@@ -220,6 +247,7 @@ export default function CreateFromExpertDrawer({
       welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
       default_conversation_mode: "craft",
+      default_knowledge_base_ids: [],
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
@@ -340,6 +368,7 @@ export default function CreateFromExpertDrawer({
         ...buildAgentRuntimeRequest(values),
         enable_trajectory: values.enable_trajectory === true,
         default_conversation_mode: values.default_conversation_mode,
+        default_knowledge_base_ids: values.default_knowledge_base_ids ?? [],
       };
 
       let body: { agent_id: string; name: string };
@@ -575,10 +604,29 @@ export default function CreateFromExpertDrawer({
           label={t("experts.defaultConversationModeLabel", "默认对话模式")}
           extra={t(
             "experts.defaultConversationModeHint",
-            "新对话的初始权限模式；可在聊天输入栏随时切换。不限制可检索的知识库范围。",
+            "新对话的初始权限模式；可在聊天输入栏随时切换。",
           )}
         >
           <Select options={conversationModeSelectOptions(t)} />
+        </Form.Item>
+        <Form.Item
+          name="default_knowledge_base_ids"
+          label={t("experts.defaultKnowledgeBasesLabel", "默认知识库")}
+          extra={t(
+            "experts.defaultKnowledgeBasesHint",
+            "新对话未手动选择知识库时自动附带；仍可在输入栏增减。",
+          )}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            optionFilterProp="label"
+            options={knowledgeBaseOptions}
+            placeholder={t(
+              "experts.defaultKnowledgeBasesPlaceholder",
+              "选择知识库",
+            )}
+          />
         </Form.Item>
 
         <AgentBackendFields

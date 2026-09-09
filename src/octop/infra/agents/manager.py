@@ -376,6 +376,8 @@ class AgentManager:
         self._mcp_tool_cache_guard = asyncio.Lock()
         # Sanitized plugin tool name → original label (per agent, rebuilt on reload).
         self._plugin_tool_labels: dict[str, dict[str, str]] = {}
+        # Sticky /mode overrides for IM (and slash) — not persisted across process restart.
+        self._thread_conversation_modes: dict[tuple[str, str], str] = {}
 
     def replace_persistence(self, repos: RepoBundle, config: OctopConfig) -> None:
         """Retarget repos/config and rebuild settings stores after control-plane rebind."""
@@ -1027,6 +1029,19 @@ class AgentManager:
     def clear_thread_model(self, agent_id: str, thread_id: str) -> None:
         if self._harness_manager is not None:
             self._harness_manager.clear_thread_model(agent_id, thread_id)
+
+    def get_thread_conversation_mode(self, agent_id: str, thread_id: str) -> str | None:
+        """Sticky IM/slash conversation mode for *(agent_id, thread_id)*, if any."""
+        return self._thread_conversation_modes.get((agent_id, thread_id))
+
+    def set_thread_conversation_mode(self, agent_id: str, thread_id: str, mode: str) -> None:
+        from octop.infra.agents.conversation_mode import parse_conversation_mode
+
+        parsed = parse_conversation_mode(mode)
+        self._thread_conversation_modes[(agent_id, thread_id)] = parsed
+
+    def clear_thread_conversation_mode(self, agent_id: str, thread_id: str) -> None:
+        self._thread_conversation_modes.pop((agent_id, thread_id), None)
 
     def resolve_fallback_model_ref(self) -> str | None:
         """Settings active model when usable, else the first enabled catalog model."""

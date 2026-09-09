@@ -115,4 +115,24 @@ describe("planArtifact (#616 P5/P7)", () => {
     expect(brief).toContain("Here is the plan.");
     expect(brief).toContain("Write tests");
   });
+
+  it("buildPlanBriefFromMessages ignores short replies without todos", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "1",
+        role: "user",
+        content: "plan",
+        status: "done",
+        timestamp: 1,
+      },
+      {
+        id: "2",
+        role: "assistant",
+        content: "好的，我先想想。",
+        status: "done",
+        timestamp: 2,
+      },
+    ];
+    expect(buildPlanBriefFromMessages(messages)).toBeNull();
+  });
 });

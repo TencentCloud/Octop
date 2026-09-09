@@ -21,6 +21,7 @@ from octop.infra.agents.experts.skillhub_market import (
     install_skillset_template,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.default_open import apply_default_knowledge_base_ids
 from octop.infra.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
@@ -58,6 +59,7 @@ class SkillHubMarketAgentCreateOptions:
     max_tokens: int | None = None
     enable_trajectory: bool = True
     default_conversation_mode: str | None = None
+    default_knowledge_base_ids: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -288,6 +290,7 @@ async def create_agent_from_skillhub_skillset(
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
     apply_default_conversation_mode(config_extra, options.default_conversation_mode)
+    apply_default_knowledge_base_ids(config_extra, options.default_knowledge_base_ids)
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

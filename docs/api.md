@@ -80,9 +80,9 @@ routes until the wizard finishes.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents` | user | `[{id, agent_id, name, …, default_conversation_mode}]` (`ask` / `plan` / `craft`) |
-| `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201`; optional `config.default_conversation_mode` |
-| `GET`    | `/agents/{id}` | owner | full agent row (includes top-level `default_conversation_mode`) |
+| `GET`    | `/agents` | user | `[{id, agent_id, name, …, default_conversation_mode, default_knowledge_base_ids}]` |
+| `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201`; optional `config.default_conversation_mode`, `config.default_knowledge_base_ids` |
+| `GET`    | `/agents/{id}` | owner | full agent row (includes top-level `default_conversation_mode`, `default_knowledge_base_ids`) |
 | `PATCH`  | `/agents/{id}` | owner | body subset of create body |
 | `DELETE` | `/agents/{id}` | owner | `204` |
 | `POST`   | `/agents/{id}/start` | owner | `204` |
@@ -110,7 +110,7 @@ destination synchronized after the request completes.
 
 | Path | Auth | Notes |
 |------|------|-------|
-| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", …, "conversation_mode"?: "ask"|"plan"|"craft", "plan_brief"?: string}` frames; server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. Omit `conversation_mode` → craft. `plan_brief` is injected into the turn system prompt (Craft handoff) and is not required in chat text. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
+| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", …, "conversation_mode"?: "ask"|"plan"|"craft", "plan_brief"?: string}` frames; server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. Omit `conversation_mode` → agent `default_conversation_mode` (else craft); IM `/mode` sticky override also applies when meta omits mode. `plan_brief` is injected into the turn system prompt (Craft handoff) and is not required in chat text. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...]}` → SSE chunk stream; finishes with `{"type":"done"}` |
 

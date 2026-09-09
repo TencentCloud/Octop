@@ -7,8 +7,8 @@ import pytest
 from octop.infra.agents.conversation_mode import (
     DEFAULT_CONVERSATION_MODE,
     conversation_mode_tools_disabled,
-    merge_tools_disabled,
     parse_conversation_mode,
+    resolve_conversation_mode,
 )
 
 
@@ -56,8 +56,9 @@ def test_ask_tools_disabled_includes_mutating_builtins() -> None:
 
 def test_ask_tools_disabled_keeps_explore_tools_blocks_orchestration_escape() -> None:
     disabled = conversation_mode_tools_disabled("ask")
-    for name in ("ls", "read_file", "glob", "grep", "write_todos"):
+    for name in ("ls", "read_file", "glob", "grep"):
         assert name not in disabled, name
+    assert "write_todos" in disabled  # Ask is Q&A only — no plan todos
     assert "search_knowledge" not in disabled
     assert "web_fetch" not in disabled
     # CRITICAL ``task`` must still be turn-blocked so Plan/Ask cannot escape via subagents.
@@ -67,25 +68,6 @@ def test_ask_tools_disabled_keeps_explore_tools_blocks_orchestration_escape() ->
 
 def test_craft_tools_disabled_is_empty() -> None:
     assert conversation_mode_tools_disabled("craft") == frozenset()
-
-
-def test_merge_unions_agent_disabled_with_ask_overlay() -> None:
-    agent = frozenset({"web_fetch", "tavily_search"})
-    merged = merge_tools_disabled(agent, "ask")
-    assert "web_fetch" in merged
-    assert "tavily_search" in merged
-    assert "write_file" in merged
-    assert "execute" in merged
-    assert "task" in merged
-    # Ask never re-enables: craft merge keeps only agent disables
-    assert merge_tools_disabled(agent, "craft") == agent
-
-
-def test_plan_tools_disabled_matches_ask_overlay() -> None:
-    """Plan uses the same denylist as Ask (mutating + no orchestration escape)."""
-    ask = conversation_mode_tools_disabled("ask")
-    plan = conversation_mode_tools_disabled("plan")
-    assert plan == ask
 
 
 def test_plan_allows_write_todos_and_forbids_mutating_and_delegation() -> None:
@@ -98,6 +80,22 @@ def test_plan_allows_write_todos_and_forbids_mutating_and_delegation() -> None:
     assert "task" in disabled
     assert "acp_runner" in disabled
     assert "ask_agent" in disabled
+    # Ask is stricter than Plan on write_todos.
+    assert "write_todos" in conversation_mode_tools_disabled("ask")
+
+
+def test_resolve_conversation_mode_priority() -> None:
+    """explicit → thread sticky → agent default → craft."""
+    assert resolve_conversation_mode(explicit="ask") == "ask"
+    assert resolve_conversation_mode(explicit=None, thread_override="plan") == "plan"
+    assert (
+        resolve_conversation_mode(explicit=None, thread_override=None, agent_default="ask") == "ask"
+    )
+    assert resolve_conversation_mode(explicit=None) == "craft"
+    # Unknown explicit stays craft (compat); does not fall through.
+    assert resolve_conversation_mode(explicit="nope", agent_default="ask") == "craft"
+    # Explicit craft wins over agent ask.
+    assert resolve_conversation_mode(explicit="craft", agent_default="ask") == "craft"
 
 
 def test_default_conversation_mode_from_config() -> None:

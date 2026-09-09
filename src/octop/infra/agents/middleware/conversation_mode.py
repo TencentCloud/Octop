@@ -1,4 +1,7 @@
-"""Turn-scoped Ask / Plan / Craft: filter tools, inject system hint, block denylist calls."""
+"""Turn-scoped Ask / Plan / Craft: filter tools, inject system hint, block denylist calls.
+
+Denylist covers builtin tool names only — see ``conversation_mode`` module docs for MCP limits.
+"""
 
 from __future__ import annotations
 
