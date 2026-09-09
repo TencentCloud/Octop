@@ -279,3 +279,53 @@ async def test_metadata_refresh_keeps_bound_channel_id(registry: ThreadRegistry)
     assert row.channel_metadata is not None
     assert row.channel_metadata["channel_id"] == "ch-keep"
     assert row.channel_metadata["chat_id"] == "oc_1"
+
+
+def test_peer_session_key_rewrites_agent_segment() -> None:
+    src = ThreadRegistry.make_key(
+        agent_id="a1",
+        channel_type="dashboard",
+        channel_subject_id="7",
+    )
+    out = ThreadRegistry.peer_session_key(src, "a2")
+    assert out == "a2:dashboard:7:dm"
+    assert ThreadRegistry.peer_session_key("not-a-key", "a2") is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_thread_is_stable_and_does_not_rebind(registry: ThreadRegistry) -> None:
+    bound = await registry.get_or_create(
+        agent_id="a2",
+        user_id=1,
+        channel_type="dashboard",
+        channel_subject_id="1",
+    )
+    sk = ThreadRegistry.make_key(agent_id="a2", channel_type="dashboard", channel_subject_id="1")
+    derived = "thr_src~a2"
+    assert (
+        registry.ensure_thread(
+            thread_id=derived,
+            agent_id="a2",
+            user_id=1,
+            channel_type="dashboard",
+            session_key=sk,
+        )
+        == derived
+    )
+    assert (
+        registry.ensure_thread(
+            thread_id=derived,
+            agent_id="a2",
+            user_id=1,
+            channel_type="dashboard",
+            session_key=sk,
+        )
+        == derived
+    )
+    assert registry.get_bound_thread_id(sk) == bound
+    row = registry.get_thread(derived)
+    assert row is not None
+    assert row.agent_id == "a2"
+    ids = {t.thread_id for t in registry.list_threads(agent_id="a2", user_id=1)}
+    assert derived in ids
+    assert bound in ids

@@ -30,6 +30,22 @@ class ThreadRegistry:
         return f"{agent_id}:{channel_type}:{channel_subject_id}:{channel_chat_type}"
 
     @staticmethod
+    def peer_session_key(source_session_key: str, agent_id: str) -> str | None:
+        """Rewrite the agent segment of a session key; keep channel / subject / chat type."""
+        parts = source_session_key.split(":", 3)
+        if len(parts) != 4:
+            return None
+        _src_agent, channel_type, subject_id, chat_type = parts
+        if not channel_type or not subject_id or not chat_type:
+            return None
+        return ThreadRegistry.make_key(
+            agent_id=agent_id,
+            channel_type=channel_type,
+            channel_subject_id=subject_id,
+            channel_chat_type=chat_type,
+        )
+
+    @staticmethod
     def dashboard_key(*, agent_id: str, user_id: int) -> str:
         return ThreadRegistry.make_key(
             agent_id=agent_id,
@@ -365,6 +381,28 @@ class ThreadRegistry:
             last_active=last_active,
         )
         return tid
+
+    def ensure_thread(
+        self,
+        *,
+        thread_id: str,
+        agent_id: str,
+        user_id: int,
+        channel_type: str,
+        session_key: str,
+    ) -> str:
+        """Insert *thread_id* if missing. Does not rebind the active session."""
+        existing = self.get_thread(thread_id)
+        if existing is not None:
+            return existing.thread_id
+        return self.create_thread(
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type=channel_type,
+            session_key=session_key,
+            thread_id=thread_id,
+            last_active=0,
+        )
 
     def delete_thread(self, thread_id: str) -> None:
         self._threads.delete(thread_id)

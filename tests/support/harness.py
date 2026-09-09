@@ -168,7 +168,6 @@ def build_harness_manager_mock(
     mock_manager.shared_factory = None
     mock_manager._providers = []
     mock_manager.team = MagicMock()
-    mock_manager.team.team_tools.return_value = []
     _wire_add_provider(mock_manager)
     for provider in providers or []:
         mock_manager.add_provider(provider)

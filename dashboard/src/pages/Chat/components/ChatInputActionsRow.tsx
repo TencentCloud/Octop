@@ -18,6 +18,7 @@ import {
   Brain,
   GraduationCap,
   BookOpen,
+  Bot,
   MoreHorizontal,
   Check,
   ChevronLeft,
@@ -28,6 +29,7 @@ import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
+import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import {
   modelOptionLabel,
   modelOptionValue,
@@ -36,6 +38,7 @@ import {
 import ContextWindowRing from "./ContextWindowRing";
 import SkillPickerPopover from "./SkillPickerPopover";
 import ExpertPickerPopover from "./ExpertPickerPopover";
+import SubagentPickerPopover from "./SubagentPickerPopover";
 import ConnectorPickerPopover from "./ConnectorPickerPopover";
 import KnowledgePickerPopover from "./KnowledgePickerPopover";
 import SlashCommandMenu from "./SlashCommandMenu";
@@ -44,6 +47,10 @@ import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
+import {
+  mentionedExpertIds,
+  mentionedSubagentSlugs,
+} from "../utils/expertMention";
 import styles from "../index.module.less";
 
 /** Shared by mobile drawers and narrow-desktop popovers. */
@@ -53,6 +60,7 @@ type CompactPickerKey =
   | "knowledge"
   | "skill"
   | "expert"
+  | "subagent"
   | "shortcut";
 
 // These browser APIs never change at runtime — compute once.
@@ -99,11 +107,11 @@ interface ChatInputActionsRowProps {
   selectedKnowledgeBaseIds?: string[];
   onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   availableSkills?: SkillSpec[];
-  selectedSkills?: string[];
-  onSkillsChange?: (names: string[]) => void;
+  onInsertSkillCommand?: (slug: string) => void;
   availableExperts?: ChatAgentOption[];
-  selectedTargetAgents?: string[];
-  onTargetAgentsChange?: (ids: string[]) => void;
+  onInsertExpertMention?: (agent: ChatAgentOption) => void;
+  availableSubagents?: AgentSubagentSummary[];
+  onInsertSubagentMention?: (subagent: AgentSubagentSummary) => void;
   slashPickerGroups: SlashMenuGroup<SlashMenuItem>[] | null;
   slashMenuItems: SlashMenuItem[];
   onSlashShortcutSelect: (command: string) => void;
@@ -149,11 +157,11 @@ export default function ChatInputActionsRow({
   selectedKnowledgeBaseIds = [],
   onKnowledgeBaseIdsChange,
   availableSkills,
-  selectedSkills = [],
-  onSkillsChange,
+  onInsertSkillCommand,
   availableExperts,
-  selectedTargetAgents = [],
-  onTargetAgentsChange,
+  onInsertExpertMention,
+  availableSubagents,
+  onInsertSubagentMention,
   slashPickerGroups,
   slashMenuItems,
   onSlashShortcutSelect,
@@ -170,6 +178,7 @@ export default function ChatInputActionsRow({
   const [isCompact, setIsCompact] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
+  const [subagentPickerOpen, setSubagentPickerOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
@@ -220,9 +229,19 @@ export default function ChatInputActionsRow({
   const showKnowledgePicker = Boolean(
     availableKnowledgeBases && onKnowledgeBaseIdsChange,
   );
-  const showSkillPicker = Boolean(availableSkills && onSkillsChange);
+  const showSkillPicker = Boolean(availableSkills && onInsertSkillCommand);
   const showExpertPicker = Boolean(
-    availableExperts && onTargetAgentsChange && availableExperts.length > 0,
+    availableExperts && onInsertExpertMention && availableExperts.length > 0,
+  );
+  const showSubagentPicker = Boolean(
+    availableSubagents &&
+      onInsertSubagentMention &&
+      availableSubagents.length > 0,
+  );
+  const mentionedExperts = mentionedExpertIds(text, availableExperts ?? []);
+  const mentionedSubagents = mentionedSubagentSlugs(
+    text,
+    availableSubagents ?? [],
   );
   const showShortcutPicker = true;
   const showOverflowMenu =
@@ -230,13 +249,14 @@ export default function ChatInputActionsRow({
     showKnowledgePicker ||
     showSkillPicker ||
     showExpertPicker ||
+    showSubagentPicker ||
     showShortcutPicker;
 
   const overflowBadgeCount =
     selectedConnectors.length +
     selectedKnowledgeBaseIds.length +
-    selectedSkills.length +
-    selectedTargetAgents.length;
+    mentionedExperts.length +
+    mentionedSubagents.length;
 
   const closeCompactPicker = () => {
     setCompactPicker(null);
@@ -248,12 +268,25 @@ export default function ChatInputActionsRow({
     setCompactPicker(key);
   };
 
+  const handleExpertSelect = (agent: ChatAgentOption) => {
+    onInsertExpertMention?.(agent);
+    setExpertPickerOpen(false);
+    closeCompactPicker();
+  };
+
+  const handleSubagentSelect = (subagent: AgentSubagentSummary) => {
+    onInsertSubagentMention?.(subagent);
+    setSubagentPickerOpen(false);
+    closeCompactPicker();
+  };
+
   const compactPickerTitle: Record<CompactPickerKey, string> = {
     model: t("chat.selectModel", "Select model"),
     connector: t("connectors.chatPicker"),
     knowledge: t("chat.knowledgePicker"),
     skill: t("chat.skillPicker"),
     expert: t("chat.expertPicker"),
+    subagent: t("chat.subagentPicker"),
     shortcut: t("shortcut.title", "快捷指令"),
   };
 
@@ -540,13 +573,6 @@ export default function ChatInputActionsRow({
             <span>{t("chat.skillPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {selectedSkills.length > 0 && (
-              <span
-                className={`${styles.toolbarBadge} ${styles.toolbarBadgeSkill}`}
-              >
-                {selectedSkills.length}
-              </span>
-            )}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -562,11 +588,33 @@ export default function ChatInputActionsRow({
             <span>{t("chat.expertPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {selectedTargetAgents.length > 0 && (
+            {mentionedExperts.length > 0 && (
               <span
                 className={`${styles.toolbarBadge} ${styles.toolbarBadgeExpert}`}
               >
-                {selectedTargetAgents.length}
+                {mentionedExperts.length}
+              </span>
+            )}
+            <ChevronRight size={16} />
+          </span>
+        </button>
+      )}
+      {showSubagentPicker && (
+        <button
+          type="button"
+          className={styles.mobileOverflowItem}
+          onClick={() => openCompactPicker("subagent")}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <Bot size={18} />
+            <span>{t("chat.subagentPicker")}</span>
+          </span>
+          <span className={styles.mobileOverflowItemMeta}>
+            {mentionedSubagents.length > 0 && (
+              <span
+                className={`${styles.toolbarBadge} ${styles.toolbarBadgeSubagent}`}
+              >
+                {mentionedSubagents.length}
               </span>
             )}
             <ChevronRight size={16} />
@@ -617,8 +665,10 @@ export default function ChatInputActionsRow({
         return (
           <SkillPickerPopover
             skills={availableSkills ?? []}
-            selectedSkills={selectedSkills}
-            onSkillsChange={onSkillsChange!}
+            onSelectSkill={(slug) => {
+              onInsertSkillCommand?.(slug);
+              closeCompactPicker();
+            }}
             onNavigateAway={closeCompactPicker}
           />
         );
@@ -626,8 +676,17 @@ export default function ChatInputActionsRow({
         return (
           <ExpertPickerPopover
             agents={availableExperts ?? []}
-            selectedAgentIds={selectedTargetAgents}
-            onAgentsChange={onTargetAgentsChange!}
+            selectedAgentIds={mentionedExperts}
+            onSelect={handleExpertSelect}
+            onNavigateAway={closeCompactPicker}
+          />
+        );
+      case "subagent":
+        return (
+          <SubagentPickerPopover
+            subagents={availableSubagents ?? []}
+            selectedSlugs={mentionedSubagents}
+            onSelect={handleSubagentSelect}
             onNavigateAway={closeCompactPicker}
           />
         );
@@ -905,29 +964,17 @@ export default function ChatInputActionsRow({
             content={
               <SkillPickerPopover
                 skills={availableSkills!}
-                selectedSkills={selectedSkills}
-                onSkillsChange={onSkillsChange!}
+                onSelectSkill={(slug) => {
+                  onInsertSkillCommand?.(slug);
+                  setSkillPickerOpen(false);
+                }}
                 onNavigateAway={() => setSkillPickerOpen(false)}
               />
             }
           >
             <Tooltip title={t("chat.skillPicker")} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  selectedSkills.length > 0
-                    ? styles.secondaryBtnSkillActive
-                    : ""
-                }`}
-                type="button"
-              >
+              <button className={styles.secondaryBtn} type="button">
                 <Sparkles size={16} />
-                {selectedSkills.length > 0 && (
-                  <span
-                    className={`${styles.toolbarBadge} ${styles.toolbarBadgeSkill}`}
-                  >
-                    {selectedSkills.length}
-                  </span>
-                )}
               </button>
             </Tooltip>
           </Popover>
@@ -942,8 +989,8 @@ export default function ChatInputActionsRow({
             content={
               <ExpertPickerPopover
                 agents={availableExperts!}
-                selectedAgentIds={selectedTargetAgents}
-                onAgentsChange={onTargetAgentsChange!}
+                selectedAgentIds={mentionedExperts}
+                onSelect={handleExpertSelect}
                 onNavigateAway={() => setExpertPickerOpen(false)}
               />
             }
@@ -951,18 +998,55 @@ export default function ChatInputActionsRow({
             <Tooltip title={t("chat.expertPicker")} mouseEnterDelay={0.4}>
               <button
                 className={`${styles.secondaryBtn} ${
-                  selectedTargetAgents.length > 0
+                  mentionedExperts.length > 0
                     ? styles.secondaryBtnExpertActive
                     : ""
                 }`}
                 type="button"
               >
                 <GraduationCap size={16} />
-                {selectedTargetAgents.length > 0 && (
+                {mentionedExperts.length > 0 && (
                   <span
                     className={`${styles.toolbarBadge} ${styles.toolbarBadgeExpert}`}
                   >
-                    {selectedTargetAgents.length}
+                    {mentionedExperts.length}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+          </Popover>
+        )}
+        {showSubagentPicker && (
+          <Popover
+            trigger="click"
+            placement="topLeft"
+            open={subagentPickerOpen}
+            onOpenChange={setSubagentPickerOpen}
+            overlayClassName={styles.skillPickerPopover}
+            content={
+              <SubagentPickerPopover
+                subagents={availableSubagents!}
+                selectedSlugs={mentionedSubagents}
+                onSelect={handleSubagentSelect}
+                onNavigateAway={() => setSubagentPickerOpen(false)}
+              />
+            }
+          >
+            <Tooltip title={t("chat.subagentPicker")} mouseEnterDelay={0.4}>
+              <button
+                className={`${styles.secondaryBtn} ${
+                  mentionedSubagents.length > 0
+                    ? styles.secondaryBtnSubagentActive
+                    : ""
+                }`}
+                type="button"
+              >
+                <Bot size={16} />
+                {mentionedSubagents.length > 0 && (
+                  <span
+                    className={`${styles.toolbarBadge} ${styles.toolbarBadgeSubagent}`}
+                  >
+                    {mentionedSubagents.length}
                   </span>
                 )}
               </button>
@@ -1013,7 +1097,6 @@ export default function ChatInputActionsRow({
           agentId={agentId}
           threadId={threadId}
           selectedConnectors={selectedConnectors}
-          selectedSkills={selectedSkills}
           isMobile={isMobile}
         />
         {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}

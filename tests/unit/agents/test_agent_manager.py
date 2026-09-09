@@ -1412,3 +1412,87 @@ def test_prepare_stream_request_maps_model_settings_and_max_input_tokens(
         "max_tokens": 2048,
     }
     assert req["configurable"]["max_input_tokens"] == 32000
+
+
+def test_peer_manifest_metadata_missing_file(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=None, name="demo")
+    assert manager._peer_manifest_metadata("AGT1", None) == {}
+
+
+def test_peer_manifest_metadata_bad_json(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=None, name="demo")
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text("{", encoding="utf-8")
+    assert manager._peer_manifest_metadata("AGT1", "row") == {}
+
+
+def test_peer_manifest_metadata_reads_cards(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(
+        agent_id="AGT1", user_id=None, name="demo", description="from-db"
+    )
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "description": {"zh": "manifest-only", "en": "manifest-only"},
+                "quick_prompts": [
+                    {
+                        "title": {"zh": "画图", "en": "Plot"},
+                        "description": {"zh": "说明", "en": "Hint"},
+                        "prompt": {"zh": "机密", "en": "secret"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    extra = manager._peer_manifest_metadata("AGT1", "from-db")
+    assert extra["quick_prompts"][0]["title"]["zh"] == "画图"
+    assert "description" not in extra
+
+
+def test_refresh_peer_entry_picks_up_manifest_edits(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(
+        agent_id="AGT1", user_id=None, name="demo", description="from-db"
+    )
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "quick_prompts": [
+                    {
+                        "title": {"zh": "新卡", "en": "New"},
+                        "description": {"zh": "说明", "en": "Hint"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    entry = MagicMock()
+    entry.agent_id = "AGT1"
+    entry.metadata = {
+        "description": "stale",
+        "quick_prompts": [{"title": "old"}],
+    }
+    manager._refresh_peer_entry(entry)
+    assert entry.metadata["description"] == "from-db"
+    assert entry.metadata["quick_prompts"][0]["title"]["zh"] == "新卡"
+
+
+def test_refresh_peer_entry_clears_empty_cards(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=None, name="demo")
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text(
+        json.dumps({"quick_prompts": []}),
+        encoding="utf-8",
+    )
+    entry = MagicMock()
+    entry.agent_id = "AGT1"
+    entry.metadata = {"quick_prompts": [{"title": "old"}]}
+    manager._refresh_peer_entry(entry)
+    assert "quick_prompts" not in entry.metadata

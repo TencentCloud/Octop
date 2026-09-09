@@ -1824,7 +1824,6 @@ async function sendTurnWebSocket(
   threadId?: string | null,
   mcpServers?: string[] | null,
   knowledgeBaseIds?: string[] | null,
-  skills?: string[] | null,
   targetAgentIds?: string[] | null,
   onStreamEnd?: () => void,
   reasoningMode?: "auto" | "enabled" | "disabled",
@@ -1901,7 +1900,6 @@ async function sendTurnWebSocket(
       if (knowledgeBaseIds !== undefined && knowledgeBaseIds !== null) {
         payload.knowledge_base_ids = knowledgeBaseIds;
       }
-      if (skills && skills.length > 0) payload.skills = skills;
       if (targetAgentIds && targetAgentIds.length > 0) {
         payload.target_agent_ids = targetAgentIds;
       }
@@ -2028,7 +2026,6 @@ export async function sendTurn(
   threadId?: string | null,
   mcpServers?: string[] | null,
   knowledgeBaseIds?: string[] | null,
-  skills?: string[] | null,
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
@@ -2099,7 +2096,6 @@ export async function sendTurn(
     threadId,
     mcpServers,
     knowledgeBaseIds,
-    skills,
     targetAgentIds,
     onStreamEnd,
     reasoningMode,
