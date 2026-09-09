@@ -11,6 +11,7 @@ import type {
   TokenUsage,
 } from "../../../api/types";
 import type { ContentBlockItem } from "../../../utils/messageParser";
+import type { ConversationMode } from "../utils/conversationMode";
 
 export interface ToolCallData {
   name?: string;
@@ -53,7 +54,7 @@ export interface UserComposerContext {
   model?: string;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
-  conversationMode?: "ask" | "plan" | "craft";
+  conversationMode?: ConversationMode;
 }
 
 export interface ChatMessage {

@@ -18,6 +18,7 @@ import type {
   SessionSnapshot,
   SessionStreamState,
 } from "./sseHelpers";
+import type { ConversationMode } from "../utils/conversationMode";
 import {
   parseHarnessChunk,
   type HarnessChunk,
@@ -1829,7 +1830,7 @@ async function sendTurnWebSocket(
   onStreamEnd?: () => void,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
-  conversationMode?: "ask" | "plan" | "craft",
+  conversationMode?: ConversationMode,
   planBrief?: string,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
@@ -2036,7 +2037,7 @@ export async function sendTurn(
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
-  conversationMode?: "ask" | "plan" | "craft",
+  conversationMode?: ConversationMode,
   planBrief?: string,
 ): Promise<void> {
   const state = getOrCreate(sessionId);

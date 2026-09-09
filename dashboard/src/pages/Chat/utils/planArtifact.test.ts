@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../hooks/useChat";
 import {
   buildPlanBriefFromMessages,
-  buildPlanExecuteMessage,
   formatPlanBrief,
+  planBriefPreview,
   planContinueHandoff,
   planExecuteHandoff,
   stripConversationModeUiInstructions,
@@ -21,10 +21,16 @@ describe("planArtifact (#616 P5/P7)", () => {
     expect(brief).toContain("Execute this plan now.");
   });
 
-  it("buildPlanExecuteMessage preserves brief for craft payload", () => {
-    const brief = formatPlanBrief({ summary: "Do it." });
-    expect(buildPlanExecuteMessage(brief)).toContain("Do it.");
-    expect(buildPlanExecuteMessage("")).toMatch(/plan/i);
+  it("planBriefPreview drops headers and truncates", () => {
+    const brief = formatPlanBrief({
+      summary: "Do the thing.",
+      todos: [{ id: "1", content: "Step one", status: "pending" }],
+    });
+    const preview = planBriefPreview(brief);
+    expect(preview).toContain("Do the thing.");
+    expect(preview).toContain("Step one");
+    expect(preview).not.toContain("Approved plan");
+    expect(preview).not.toMatch(/Execute this plan now/i);
   });
 
   it("planExecuteHandoff switches to craft with silent planBrief metadata", () => {
@@ -65,6 +71,14 @@ describe("planArtifact (#616 P5/P7)", () => {
         ].join("\n"),
       ),
     ).toBe("");
+  });
+
+  it("keeps ordinary mentions of chat input", () => {
+    expect(
+      stripConversationModeUiInstructions(
+        "You can paste content into the chat input area.",
+      ),
+    ).toContain("chat input");
   });
 
   it("buildPlanBriefFromMessages merges assistant text and write_todos", () => {

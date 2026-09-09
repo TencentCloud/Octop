@@ -6,9 +6,12 @@ import {
 import type { ChatMessage } from "../hooks/useChat";
 import { deriveMessageContent } from "./messageContent";
 
-/** Lines that tell the user how to operate Plan/Craft UI — never show in chat. */
+/**
+ * Lines that tell the user how to operate Plan/Craft UI — never show in chat.
+ * Keep patterns mode-specific so ordinary assistant prose is not stripped.
+ */
 const MODE_UI_INSTRUCTION_RE =
-  /手动切换|模式选择按钮|输入框旁边|切换入口|切换到\s*默认|切换到\s*做一做|切回默认|请.*切换.*模式|switch to (?:default|craft)|mode (?:selection )?button|chat input|做一做[）)]?\s*模式|Craft\s*[/／]\s*做一做|修改类工具不可用|仍在计划模式/i;
+  /手动切换|模式选择按钮|输入框旁边|切换入口|切换到\s*默认\s*模式|切换到\s*做一做|切回默认|请.{0,24}切换.{0,24}模式|switch to (?:default|craft)\s+mode|mode (?:selection )?button|(?:near|beside|next to) (?:the )?chat input|做一做[）)]?\s*模式|Craft\s*[/／]\s*做一做|修改类工具不可用|仍在计划模式/i;
 
 /**
  * Remove assistant copy that instructs the user to flip the composer mode
@@ -25,7 +28,7 @@ export function stripConversationModeUiInstructions(text: string): string {
     if (MODE_UI_INSTRUCTION_RE.test(block)) return false;
     // Whole block is only a mode-name reminder.
     if (
-      /^(当前)?(仍?在)?计划|仅问答|Ask|Plan|Craft/.test(compact) &&
+      /^(当前)?(仍?在)?计划|仅问答|问答|Ask|Plan|Craft/.test(compact) &&
       compact.length < 40
     ) {
       return !/模式|mode|不可用|unavailable/i.test(block);
@@ -41,15 +44,6 @@ export function stripConversationModeUiInstructions(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   return cleaned;
-}
-
-/** Build the Craft-turn user message that carries an approved plan brief. */
-export function buildPlanExecuteMessage(brief: string): string {
-  const cleaned = brief.trim();
-  if (!cleaned) {
-    return "Execute the plan we just prepared.";
-  }
-  return cleaned.endsWith("\n") ? cleaned : `${cleaned}\n`;
 }
 
 export function formatPlanBrief(params: {
@@ -74,6 +68,24 @@ export function formatPlanBrief(params: {
   }
   lines.push("Execute this plan now.");
   return `${lines.join("\n").trim()}\n`;
+}
+
+/** Short preview of an approved brief for PlanReadyCard (drop headers / footer). */
+export function planBriefPreview(brief: string, maxLen = 320): string {
+  const lines = brief
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        Boolean(line) &&
+        !/^#{1,6}\s/.test(line) &&
+        !/^Execute this plan now\.?$/i.test(line),
+    );
+  const text = lines.join("\n").trim();
+  if (!text) return "";
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen).trimEnd()}…`;
 }
 
 /** Collect plan brief from the latest assistant turn (text + write_todos). */

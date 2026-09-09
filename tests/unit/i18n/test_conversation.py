@@ -21,7 +21,7 @@ def test_conversation_mode_system_hint_helper() -> None:
     ask_en = conversation_mode_system_hint("ask", "en")
     ask_zh = conversation_mode_system_hint("ask", "zh")
     assert "Ask" in ask_en or "read-only" in ask_en or "Ask mode" in ask_en
-    assert "仅问答" in ask_zh
+    assert "问答" in ask_zh
     assert ask_en != ask_zh
     plan_en = conversation_mode_system_hint("plan", "en")
     assert "task" in plan_en.lower() or "ACP" in plan_en or "delegate" in plan_en.lower()

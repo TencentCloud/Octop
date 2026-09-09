@@ -18,7 +18,8 @@ def format_plan_brief(*, summary: str = "", todos: list[dict[str, Any]] | None =
     items = todos or []
     if items:
         lines.append("### Steps")
-        for idx, raw in enumerate(items, start=1):
+        step_num = 0
+        for raw in items:
             if isinstance(raw, str):
                 content = raw.strip()
             elif isinstance(raw, dict):
@@ -32,7 +33,8 @@ def format_plan_brief(*, summary: str = "", todos: list[dict[str, Any]] | None =
             status = ""
             if isinstance(raw, dict) and raw.get("status"):
                 status = f" ({raw['status']})"
-            lines.append(f"{idx}. {content}{status}")
+            step_num += 1
+            lines.append(f"{step_num}. {content}{status}")
         lines.append("")
     lines.append("Execute this plan now.")
     return "\n".join(lines).strip() + "\n"

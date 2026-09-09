@@ -90,7 +90,7 @@ describe("ChatInputActionsRow conversation mode (#616 M13)", () => {
     expect(menu).toHaveTextContent("当前为默认模式");
     expect(menu).toHaveTextContent("默认");
     expect(menu).toHaveTextContent("计划");
-    expect(menu).toHaveTextContent("仅问答");
+    expect(menu).toHaveTextContent("问答");
 
     fireEvent.click(screen.getAllByTestId("conversation-mode-option-ask")[0]!);
     expect(onConversationModeChange).toHaveBeenCalledWith("ask");

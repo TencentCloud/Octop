@@ -83,14 +83,25 @@ export function useChatComposerResources(
         model: string | null;
         mode: "auto" | "enabled" | "disabled";
         effort: string | null;
+        conversationMode?: ConversationMode;
       }
     >
   >({});
 
-  // Seed Ask/Craft from agent default when the expert changes (M14).
+  // Seed from agent default, then restore any per-thread override (#616 OCR).
   useEffect(() => {
-    setConversationMode(parseConversationMode(defaultConversationMode));
-  }, [resolvedAgentId, defaultConversationMode]);
+    const local = activeThreadId
+      ? conversationOverrides[activeThreadId]?.conversationMode
+      : undefined;
+    setConversationMode(
+      local ?? parseConversationMode(defaultConversationMode),
+    );
+  }, [
+    resolvedAgentId,
+    activeThreadId,
+    defaultConversationMode,
+    conversationOverrides,
+  ]);
 
   // Auto = omit turn model; backend applies the expert default.
   useEffect(() => {
@@ -326,9 +337,25 @@ export function useChatComposerResources(
     setSelectedKnowledgeBaseIds(ids);
   }, []);
 
-  const handleConversationModeChange = useCallback((mode: ConversationMode) => {
-    setConversationMode(mode);
-  }, []);
+  const handleConversationModeChange = useCallback(
+    (mode: ConversationMode) => {
+      setConversationMode(mode);
+      if (!activeThreadId) return;
+      setConversationOverrides((current) => {
+        const prev = current[activeThreadId];
+        return {
+          ...current,
+          [activeThreadId]: {
+            model: prev?.model ?? selectedModel,
+            mode: prev?.mode ?? reasoningMode,
+            effort: prev?.effort ?? reasoningEffort,
+            conversationMode: mode,
+          },
+        };
+      });
+    },
+    [activeThreadId, selectedModel, reasoningMode, reasoningEffort],
+  );
 
   const handleModelChange = useCallback(
     (model: string | null) => {
@@ -342,14 +369,18 @@ export function useChatComposerResources(
       setReasoningMode(nextMode);
       setReasoningEffort(nextEffort);
       if (activeThreadId) {
-        setConversationOverrides((current) => ({
-          ...current,
-          [activeThreadId]: {
-            model,
-            mode: nextMode,
-            effort: nextEffort,
-          },
-        }));
+        setConversationOverrides((current) => {
+          const prev = current[activeThreadId];
+          return {
+            ...current,
+            [activeThreadId]: {
+              model,
+              mode: nextMode,
+              effort: nextEffort,
+              conversationMode: prev?.conversationMode,
+            },
+          };
+        });
       }
       if (
         resolvedAgentId &&
@@ -371,14 +402,18 @@ export function useChatComposerResources(
       setReasoningMode(mode);
       setReasoningEffort(effort);
       if (activeThreadId) {
-        setConversationOverrides((current) => ({
-          ...current,
-          [activeThreadId]: {
-            model: selectedModel,
-            mode,
-            effort,
-          },
-        }));
+        setConversationOverrides((current) => {
+          const prev = current[activeThreadId];
+          return {
+            ...current,
+            [activeThreadId]: {
+              model: selectedModel,
+              mode,
+              effort,
+              conversationMode: prev?.conversationMode,
+            },
+          };
+        });
       }
       if (
         resolvedAgentId &&

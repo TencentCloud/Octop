@@ -632,9 +632,6 @@ function ChatPageInner() {
       conversationMode: handoff.conversationMode,
       planBrief: handoff.planBrief,
       hideUserMessage: handoff.hideUserMessage,
-      composerContext: {
-        conversationMode: handoff.conversationMode,
-      },
     });
   }, [planReadyBrief, handleConversationModeChange, wrappedHandleSend]);
 
