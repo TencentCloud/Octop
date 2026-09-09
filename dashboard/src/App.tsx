@@ -83,7 +83,7 @@ function ThemedApp() {
             colorBgContainer: "#0f1117",
             colorBgElevated: "#1a1c28",
             colorBgLayout: "#0b0d14",
-            colorBgSpotlight: "rgba(255, 255, 255, 0.08)",
+            colorBgSpotlight: "rgba(0, 0, 0, 0.85)",
             colorBgMask: "rgba(5, 5, 8, 0.80)",
             colorBorder: "rgba(255,255,255,0.08)",
             colorBorderSecondary: "rgba(255,255,255,0.05)",
