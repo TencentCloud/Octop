@@ -9,6 +9,7 @@
 ### 新增
 
 - 知识库支持下载上传原文；PDF / DOCX / PPTX / XLSX 在预览弹窗中按原排版查看；文档区支持拖拽上传（#591）
+- 知识库 / 工作区 PDF 预览改用 PDF.js（react-pdf），替代浏览器内置 iframe 查看器
 - 记忆树支持手动新建主题/记忆，以及编辑已有记忆（replace/supersede，保留变更历史）。
 - Token 统计支持日期范围筛选（RangePicker 预设 + 自定义起止）并导出 Excel 用量明细（#154）
 - Token 用量 Excel 含专家名称、中英列表头，以及按天/专家/模型汇总 sheet 与图表

@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { isNotFoundApiError } from "../utils/apiError";
 import type { DocKind } from "../utils/docKind";
 import styles from "./DocumentPreviewCore.module.less";
+import PdfDocumentPreview from "./PdfDocumentPreview";
 
 export interface DocumentPreviewCoreProps {
   kind: DocKind;
@@ -557,11 +558,9 @@ export default function DocumentPreviewCore({
       );
     }
     return (
-      <iframe
-        title={filename.split("/").filter(Boolean).pop() || "PDF"}
-        src={src}
-        className={styles.docFrame}
-      />
+      <div className={styles.documentPreview}>
+        <PdfDocumentPreview fileUrl={src} filename={filename} />
+      </div>
     );
   }
 
