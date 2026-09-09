@@ -682,5 +682,14 @@
     "row_total": "Total",
     "axis_tokens": "Tokens",
     "filename_prefix": "token-usage"
+  },
+  "conversation": {
+    "mode": {
+      "ask_system_hint": "You are in Ask mode (仅问答): answer with read-only tools (knowledge search, file read, web fetch). Do not create, edit, delete, or execute anything. Do not send files, run browser/desktop/mobile actions, or delegate via task / ACP / ask_agent. If the user needs changes, say they can use Plan or Default mode — do not tell them how to operate the UI.",
+      "plan_system_hint": "You are in Plan mode (计划): explore with read-only tools and produce a clear step-by-step plan/spec only. Prefer write_todos and structured plan text. Do not execute, edit files, or delegate via task / ACP / ask_agent. When the plan is ready, stop — the product UI will offer confirmation to execute. Do not ask the user to change mode controls or paste internal prompts.",
+      "craft_system_hint": "You are in Default / Craft mode (默认): you may use the full set of allowed tools to carry out the user's request, subject to existing safety and HITL rules.",
+      "plan_brief_prefix": "The user confirmed the following approved plan. Execute it now in Default mode. Do not repeat the plan verbatim unless needed for clarification:",
+      "tool_blocked": "Tool `{tool_name}` is not available in {mode} mode. Switch to Default (Craft) to run mutating or delegated tools."
+    }
   }
 }

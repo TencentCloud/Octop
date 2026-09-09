@@ -157,6 +157,7 @@ export default function CreateFromExpertDrawer({
       agent_id?: string;
       welcome_message?: string;
       default_model: string;
+      default_conversation_mode: "ask" | "plan" | "craft";
       backend_choice: string;
       composite_default: string;
       root_dir?: string;
@@ -217,6 +218,7 @@ export default function CreateFromExpertDrawer({
       agent_id: undefined,
       welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
+      default_conversation_mode: "craft",
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
@@ -336,6 +338,7 @@ export default function CreateFromExpertDrawer({
         ...(welcomeText ? { welcome_message: welcomeText } : {}),
         ...buildAgentRuntimeRequest(values),
         enable_trajectory: values.enable_trajectory === true,
+        default_conversation_mode: values.default_conversation_mode,
       };
 
       let body: { agent_id: string; name: string };
@@ -563,6 +566,33 @@ export default function CreateFromExpertDrawer({
                 .toLowerCase()
                 .includes(input.toLowerCase())
             }
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="default_conversation_mode"
+          label={t("experts.defaultConversationModeLabel", "默认对话模式")}
+          extra={t(
+            "experts.defaultConversationModeHint",
+            "新对话的初始权限模式；可在聊天输入栏随时切换。不限制可检索的知识库范围。",
+          )}
+          initialValue="craft"
+        >
+          <Select
+            options={[
+              {
+                value: "craft",
+                label: t("chat.conversationModeCraft", "默认"),
+              },
+              {
+                value: "plan",
+                label: t("chat.conversationModePlan", "计划"),
+              },
+              {
+                value: "ask",
+                label: t("chat.conversationModeAsk", "仅问答"),
+              },
+            ]}
           />
         </Form.Item>
 

@@ -27,6 +27,10 @@ import {
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
 import { isPendingThread } from "./useSessions";
+import {
+  parseConversationMode,
+  type ConversationMode,
+} from "../utils/conversationMode";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -35,6 +39,7 @@ export function useChatComposerResources(
   stickyModel?: string | null,
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
+  defaultConversationMode?: ConversationMode | string | null,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
@@ -68,6 +73,9 @@ export function useChatComposerResources(
     "auto" | "enabled" | "disabled"
   >("auto");
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(null);
+  const [conversationMode, setConversationMode] = useState<ConversationMode>(
+    () => parseConversationMode(defaultConversationMode),
+  );
   const [conversationOverrides, setConversationOverrides] = useState<
     Record<
       string,
@@ -78,6 +86,11 @@ export function useChatComposerResources(
       }
     >
   >({});
+
+  // Seed Ask/Craft from agent default when the expert changes (M14).
+  useEffect(() => {
+    setConversationMode(parseConversationMode(defaultConversationMode));
+  }, [resolvedAgentId, defaultConversationMode]);
 
   // Auto = omit turn model; backend applies the expert default.
   useEffect(() => {
@@ -313,6 +326,10 @@ export function useChatComposerResources(
     setSelectedKnowledgeBaseIds(ids);
   }, []);
 
+  const handleConversationModeChange = useCallback((mode: ConversationMode) => {
+    setConversationMode(mode);
+  }, []);
+
   const handleModelChange = useCallback(
     (model: string | null) => {
       setSelectedModel(model);
@@ -383,6 +400,8 @@ export function useChatComposerResources(
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
     selectedConnectors,
     selectedSkills,
     selectedKnowledgeBaseIds,

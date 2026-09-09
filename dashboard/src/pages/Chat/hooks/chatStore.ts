@@ -1829,6 +1829,8 @@ async function sendTurnWebSocket(
   onStreamEnd?: () => void,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
+  conversationMode?: "ask" | "plan" | "craft",
+  planBrief?: string,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -1907,6 +1909,8 @@ async function sendTurnWebSocket(
       }
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
+      if (conversationMode) payload.conversation_mode = conversationMode;
+      if (planBrief?.trim()) payload.plan_brief = planBrief.trim();
       ws.send(JSON.stringify(payload));
     };
 
@@ -2032,6 +2036,8 @@ export async function sendTurn(
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
+  conversationMode?: "ask" | "plan" | "craft",
+  planBrief?: string,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
 
@@ -2104,6 +2110,8 @@ export async function sendTurn(
     onStreamEnd,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
+    planBrief,
   );
   if (!wsOk) {
     state.messages = [

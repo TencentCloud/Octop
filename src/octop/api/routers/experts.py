@@ -12,7 +12,7 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ from octop.infra.agents.avatar import (
     display_published_expert_icon_url,
     read_snapshot_avatar,
 )
+from octop.infra.agents.conversation_mode import apply_default_conversation_mode
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     build_create_spec_from_expert,
@@ -95,6 +96,13 @@ class FromExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    default_conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description=(
+            "Initial chat permission mode for new threads "
+            "(ask / plan / craft). Omit to default to craft."
+        ),
+    )
 
 
 class PublishExpertBody(BaseModel):
@@ -129,6 +137,13 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    default_conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description=(
+            "Initial chat permission mode for new threads "
+            "(ask / plan / craft). Omit to default to craft."
+        ),
+    )
 
 
 class LocalizedTextResponse(BaseModel):
@@ -504,6 +519,7 @@ async def install_published_expert(
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
+            default_conversation_mode=body.default_conversation_mode,
         ),
     )
 
@@ -599,6 +615,7 @@ async def install_expert_hub_item(
                 welcome_message=body.welcome_message,
                 skill_package_ids=package_ids,
                 enable_trajectory=body.enable_trajectory,
+                default_conversation_mode=body.default_conversation_mode,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -673,6 +690,7 @@ async def create_agent_from_expert(
     if body.backend:
         config_extra["backend"] = body.backend
     apply_enable_trajectory(config_extra, body.enable_trajectory)
+    apply_default_conversation_mode(config_extra, body.default_conversation_mode)
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

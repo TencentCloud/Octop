@@ -53,6 +53,7 @@ export interface UserComposerContext {
   model?: string;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
+  conversationMode?: "ask" | "plan" | "craft";
 }
 
 export interface ChatMessage {
@@ -71,6 +72,8 @@ export interface ChatMessage {
   errorInfo?: ProcessErrorInfo;
   status?: "streaming" | "done" | "error";
   timestamp: number;
+  /** Plan→Craft silent handoff — omit from chat transcript UI. */
+  uiHidden?: boolean;
 }
 
 /** Per-session state held in the chat store's module-scoped Map. */

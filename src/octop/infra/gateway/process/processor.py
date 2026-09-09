@@ -20,6 +20,11 @@ from harness_gateway.models import (
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.agents.conversation_mode import (
+    DEFAULT_CONVERSATION_MODE,
+    ConversationMode,
+    parse_conversation_mode,
+)
 from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.errors import OctopError
@@ -795,6 +800,7 @@ class GlobalProcessor:
             explicit_ids=None,
             locale=locale,
         )
+        self._attach_conversation_mode_config(request, msg.metadata, locale=locale)
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
 
@@ -1103,6 +1109,7 @@ class GlobalProcessor:
         from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
             COMPOSER_CTX_KEY,
             INBOUND_ATTACHMENTS_KEY,
+            UI_HIDDEN_KEY,
         )
 
         media_backend = media_backend_for_agent(self._agent_manager, agent_id)
@@ -1139,6 +1146,10 @@ class GlobalProcessor:
         attachments = meta.get(INBOUND_ATTACHMENTS_KEY)
         if isinstance(attachments, list) and attachments:
             message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
+        raw_brief = meta.get("plan_brief")
+        if isinstance(raw_brief, str) and raw_brief.strip():
+            # Dashboard PlanReady CTA — do not render the trigger as a user bubble.
+            message_kwargs[UI_HIDDEN_KEY] = True
 
         explicit_mcp = meta.get("mcp_servers")
         # Dashboard always sends mcp_servers (possibly []); trust that list so
@@ -1197,6 +1208,7 @@ class GlobalProcessor:
             else None,
             locale=locale,
         )
+        self._attach_conversation_mode_config(request, meta, locale=locale)
 
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
@@ -1245,6 +1257,40 @@ class GlobalProcessor:
         configurable["knowledge_base_catalog"] = catalog_for_selected_bases(bases, selected_ids)
         configurable["user_is_admin"] = is_admin
         configurable["locale"] = locale
+        request["configurable"] = configurable
+
+    @staticmethod
+    def _conversation_mode_from_meta(meta: dict[str, Any] | None) -> ConversationMode:
+        """Parse turn mode; unknown / missing → craft (compat default)."""
+        raw = (meta or {}).get("conversation_mode")
+        if raw not in ("ask", "plan", "craft"):
+            return DEFAULT_CONVERSATION_MODE
+        return parse_conversation_mode(raw)
+
+    def _attach_conversation_mode_config(
+        self,
+        request: dict[str, Any],
+        meta: dict[str, Any] | None,
+        *,
+        locale: str | None = None,
+    ) -> None:
+        """Stamp resolved conversation_mode (+ localized system hint) onto configurable."""
+        from octop.i18n.domains.conversation import (
+            conversation_mode_plan_brief_block,
+            conversation_mode_system_hint,
+        )
+
+        mode = self._conversation_mode_from_meta(meta)
+        configurable = dict(request.get("configurable") or {})
+        configurable["conversation_mode"] = mode
+        hint_locale = locale or str(configurable.get("locale") or "en")
+        hint = conversation_mode_system_hint(mode, hint_locale)
+        raw_brief = (meta or {}).get("plan_brief")
+        brief = raw_brief.strip() if isinstance(raw_brief, str) else ""
+        if brief:
+            configurable["plan_brief"] = brief
+            hint = f"{hint}\n\n{conversation_mode_plan_brief_block(brief, hint_locale)}"
+        configurable["conversation_mode_hint"] = hint
         request["configurable"] = configurable
 
     async def _resolve_turn_mcp_servers(

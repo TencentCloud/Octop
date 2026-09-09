@@ -20,6 +20,7 @@ from octop.infra.agents.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
+    UI_HIDDEN_KEY,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 from octop.infra.utils.locale import normalize_locale
@@ -978,6 +979,8 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
             entry["composer_context"] = raw_ctx
         if has_user_attachments:
             entry["inbound_attachments"] = raw_att
+        if additional_kwargs.get(UI_HIDDEN_KEY):
+            entry["ui_hidden"] = True
     ts_ms = _extract_message_timestamp_ms(msg)
     if ts_ms is not None:
         entry["timestamp"] = ts_ms

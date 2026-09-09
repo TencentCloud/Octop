@@ -44,6 +44,10 @@ import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
+import {
+  COMPOSER_CONVERSATION_MODES,
+  type ConversationMode,
+} from "../utils/conversationMode";
 import styles from "../index.module.less";
 
 /** Shared by mobile drawers and narrow-desktop popovers. */
@@ -88,6 +92,8 @@ interface ChatInputActionsRowProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
+  conversationMode?: "ask" | "plan" | "craft";
+  onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -142,6 +148,8 @@ export default function ChatInputActionsRow({
   reasoningMode = "auto",
   reasoningEffort = null,
   onReasoningChange,
+  conversationMode = "craft",
+  onConversationModeChange,
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
@@ -172,6 +180,7 @@ export default function ChatInputActionsRow({
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false);
+  const [conversationModeOpen, setConversationModeOpen] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
@@ -288,6 +297,72 @@ export default function ChatInputActionsRow({
     if (selectedModel !== modelRef) onModelChange?.(modelRef);
     setReasoningModelRef(modelRef);
   };
+
+  const conversationModeLabel = (mode: ConversationMode) => {
+    if (mode === "ask") return t("chat.conversationModeAsk", "仅问答");
+    if (mode === "plan") return t("chat.conversationModePlan", "计划");
+    return t("chat.conversationModeCraft", "默认");
+  };
+
+  const conversationModeStatus = (mode: ConversationMode) => {
+    if (mode === "ask") {
+      return t(
+        "chat.conversationModeStatusAsk",
+        "当前为仅问答模式，只回答与分析，不改动环境。",
+      );
+    }
+    if (mode === "plan") {
+      return t(
+        "chat.conversationModeStatusPlan",
+        "当前为计划模式，先梳理方案与步骤，再动手执行。",
+      );
+    }
+    return t(
+      "chat.conversationModeStatusCraft",
+      "当前为默认模式，可高效执行并完成任务。",
+    );
+  };
+
+  const conversationModeIcon = (mode: ConversationMode) => {
+    if (mode === "ask") return <MessageSquarePlus size={16} />;
+    if (mode === "plan") return <Wand2 size={16} />;
+    return <Zap size={16} />;
+  };
+
+  const conversationModeMenu = (
+    <div
+      className={`${styles.reasoningMenuPanel} ${styles.conversationModeMenuPanel}`}
+      data-testid="conversation-mode-menu"
+    >
+      <div
+        className={styles.conversationModeStatus}
+        data-testid="conversation-mode-status"
+      >
+        {conversationModeStatus(conversationMode)}
+      </div>
+      <div className={styles.reasoningMenuDivider} />
+      {COMPOSER_CONVERSATION_MODES.map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          data-testid={`conversation-mode-option-${mode}`}
+          className={`${styles.reasoningMenuChoice} ${
+            conversationMode === mode ? styles.reasoningMenuChoiceActive : ""
+          }`}
+          onClick={() => {
+            onConversationModeChange?.(mode);
+            setConversationModeOpen(false);
+          }}
+        >
+          <span className={styles.conversationModeChoiceLabel}>
+            {conversationModeIcon(mode)}
+            <span>{conversationModeLabel(mode)}</span>
+          </span>
+          {conversationMode === mode && <Check size={16} />}
+        </button>
+      ))}
+    </div>
+  );
 
   const reasoningMenu = reasoningModelCapability ? (
     <div className={styles.reasoningMenuPanel}>
@@ -1143,6 +1218,35 @@ export default function ChatInputActionsRow({
               )}
             </button>
           </Tooltip>
+        )}
+        {onConversationModeChange && (
+          <Popover
+            trigger="click"
+            placement="topLeft"
+            open={conversationModeOpen}
+            onOpenChange={setConversationModeOpen}
+            overlayClassName={styles.skillPickerPopover}
+            content={conversationModeMenu}
+          >
+            <Tooltip
+              title={`${t(
+                "chat.conversationMode",
+                "模式",
+              )}: ${conversationModeLabel(conversationMode)}`}
+              mouseEnterDelay={0.4}
+            >
+              <button
+                className={`${styles.secondaryBtn} ${
+                  conversationMode !== "craft" ? styles.secondaryBtnActive : ""
+                }`}
+                type="button"
+                data-testid="conversation-mode-trigger"
+                aria-label={conversationModeLabel(conversationMode)}
+              >
+                {conversationModeIcon(conversationMode)}
+              </button>
+            </Tooltip>
+          </Popover>
         )}
         {isStreaming ? (
           canSend ? (

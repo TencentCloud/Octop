@@ -8,6 +8,8 @@
 
 ### 新增
 
+- 对话权限模式 Ask / Plan / Craft：turn 级 `conversation_mode`、`ConversationModeMiddleware`（工具过滤 + 系统提示 + denylist 硬拒；Ask/Plan 额外拦截 `task` / `acp_runner` / `ask_agent` 防委派逃逸）、agent `default_conversation_mode`；Composer 模式菜单（默认 / 计划 / 仅问答）（#616）
+- 想一想模式回合结束后展示「按计划执行 / 继续改计划」；确认后切到默认模式，计划 brief 经 `plan_brief` 由网关注入 system（不落对话气泡）（#616）
 - 记忆树支持手动新建主题/记忆，以及编辑已有记忆（replace/supersede，保留变更历史）。
 - Token 统计支持日期范围筛选（RangePicker 预设 + 自定义起止）并导出 Excel 用量明细（#154）
 - Token 用量 Excel 含专家名称、中英列表头，以及按天/专家/模型汇总 sheet 与图表
