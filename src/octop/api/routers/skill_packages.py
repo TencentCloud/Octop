@@ -251,13 +251,19 @@ def _package_skill_or_404(
 
 @router.get("", summary="List global skill packages")
 async def list_skill_packages(
+    writable_only: bool = False,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(require_permission("skill_packages")),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     store = _store(server)
     return [
-        {**_row_public_dict(row), **_creator_fields(server, row.created_by)}
+        {
+            **_row_public_dict(row),
+            **_creator_fields(server, row.created_by),
+            "can_write": store.can_mutate(row, user),
+        }
         for row in store.repo.list_all()
+        if not writable_only or store.can_mutate(row, user)
     ]
 
 

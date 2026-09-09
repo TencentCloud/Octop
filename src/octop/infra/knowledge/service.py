@@ -196,6 +196,31 @@ class KnowledgeService:
             "text": text,
         }
 
+    def resolve_document_file(
+        self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
+    ) -> tuple[Path, str, str]:
+        """Return ``(path, filename, content_type)`` for the on-disk original.
+
+        Raises ``LookupError`` when the document row is missing and
+        ``FileNotFoundError`` when the original bytes are gone from disk.
+        """
+        self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        if document.is_dir:
+            raise LookupError("knowledge document not found")
+        path = document_path(kb_id, doc_id, document.filename)
+        if not path.is_file():
+            raise FileNotFoundError("knowledge document original file not found")
+        return path, document.filename, document.content_type
+
+    def document_has_original(self, document: KnowledgeDocumentRow) -> bool:
+        """True when the uploaded original still exists on disk."""
+        if document.is_dir:
+            return False
+        return document_path(document.kb_id, document.id, document.filename).is_file()
+
     def read_text_document(
         self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
     ) -> dict[str, str]:

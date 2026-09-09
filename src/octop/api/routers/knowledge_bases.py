@@ -7,8 +7,10 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from octop.api.common.content_disposition import content_disposition
 from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import DEFAULT_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB, upload_mb_to_bytes
@@ -33,6 +35,7 @@ from octop.infra.agents.providers.onnx_service import (
     status_payload,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.files import document_path
 from octop.infra.knowledge.gate import (
     assert_knowledge_usable,
     get_capability,
@@ -140,9 +143,15 @@ def _knowledge_service(server: OctopServer) -> KnowledgeService:
     return KnowledgeService(server.services)
 
 
-def _row_payload(row: Any) -> dict[str, Any]:
+def _row_payload(row: Any, *, has_original: bool | None = None) -> dict[str, Any]:
     payload = asdict(row)
     payload["document_id"] = row.id
+    if has_original is None:
+        if getattr(row, "is_dir", False):
+            has_original = False
+        else:
+            has_original = document_path(row.kb_id, row.id, row.filename).is_file()
+    payload["has_original"] = bool(has_original)
     return payload
 
 
@@ -192,7 +201,7 @@ def _map_knowledge_error(
 ) -> OctopError:
     if isinstance(exc, OctopError):
         return exc
-    if isinstance(exc, LookupError):
+    if isinstance(exc, (LookupError, FileNotFoundError)):
         return OctopError.localized(ErrorCode.KNOWLEDGE_NOT_FOUND, locale)
     if isinstance(exc, PermissionError):
         return OctopError.localized(ErrorCode.KNOWLEDGE_FORBIDDEN, locale)
@@ -746,6 +755,38 @@ async def preview_document(
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
         ) from exc
+
+
+@router.get(
+    "/{kb_id}/documents/{doc_id}/file",
+    summary="Download or inline-open the original uploaded document",
+    response_class=FileResponse,
+)
+async def download_document_file(
+    kb_id: str,
+    doc_id: str,
+    request: Request,
+    disposition: str = Query(
+        "attachment",
+        pattern="^(attachment|inline)$",
+        description="Content-Disposition type: attachment (download) or inline (preview).",
+    ),
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> FileResponse:
+    try:
+        path, filename, content_type = _knowledge_service(server).resolve_document_file(
+            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+    return FileResponse(
+        path=path,
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": content_disposition(filename, disposition=disposition)},
+    )
 
 
 @router.get(

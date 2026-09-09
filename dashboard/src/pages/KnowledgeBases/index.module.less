@@ -681,11 +681,40 @@
 }
 
 .detailBody {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
   overflow: auto;
+}
+
+.detailBodyDropActive {
+  outline: 2px dashed var(--fn-color-brand, #1677ff);
+  outline-offset: -8px;
+  border-radius: 8px;
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-container, #fff) 82%,
+    var(--fn-color-brand, #1677ff) 18%
+  );
+  color: var(--fn-color-brand, #1677ff);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .docsToolbar {
@@ -944,6 +973,41 @@
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.richPreviewBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-container, #fff);
+}
+
+.mdPreviewBody {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 20px 24px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-container, #fff);
+}
+
+.mdPreviewSpin {
+  /* Keep Spin from eating the scroll container height. */
+  display: block;
+  min-height: 120px;
+
+  :global(.ant-spin-nested-loading),
+  :global(.ant-spin-container) {
+    min-height: inherit;
+  }
 }
 
 .memberList {

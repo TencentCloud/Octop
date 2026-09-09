@@ -155,9 +155,12 @@ class SkillPackageStore:
         shutil.rmtree(self.root / pack_id, ignore_errors=True)
 
     def assert_can_mutate(self, row: SkillPackageRow, user: User) -> None:
-        if user.is_admin or str(user.id) == row.created_by:
+        if self.can_mutate(row, user):
             return
         raise OctopError(ErrorCode.FORBIDDEN, "skill package can only be modified by its creator")
+
+    def can_mutate(self, row: SkillPackageRow, user: User) -> bool:
+        return user.is_admin or str(user.id) == row.created_by
 
     def _update_skill_count(self, pack_id: str) -> None:
         self.repo.update_skill_count(pack_id, len(self.list_skill_summaries(pack_id)))

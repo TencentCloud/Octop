@@ -41,16 +41,20 @@ func ensurePortable(locale Locale, status func(string)) error {
 		bundledVersion, err := bundledPortableVersion()
 		if err != nil || bundledVersion == "" ||
 			(currentVersion != "" && compareVersions(bundledVersion, currentVersion) <= 0) {
-			status(desktopText(locale, "正在使用已有运行环境…", "Using the existing runtime…"))
+			status(desktopText(locale, copyStatusUsingRuntime))
 			return nil
 		}
-		status(desktopText(locale, "正在更新内置运行环境…", "Updating the bundled runtime…"))
+		status(desktopText(locale, copyStatusBackupDatabase, bundledVersion))
+		if _, err := backupSQLiteBeforeUpgrade(root, currentVersion, bundledVersion); err != nil {
+			return fmt.Errorf("%s: %w", desktopText(locale, copyErrorBackupFailed), err)
+		}
+		status(desktopText(locale, copyStatusUpdatingRuntime))
 	} else {
-		status(desktopText(locale, "首次启动，正在解压内置运行环境…", "First launch: unpacking the bundled runtime…"))
+		status(desktopText(locale, copyStatusFirstExtract))
 	}
 	if err := replacePortable(root); err != nil {
 		if launchReady(root) {
-			status(desktopText(locale, "更新内置运行环境失败，继续使用已有运行环境…", "Runtime update failed; using the existing runtime…"))
+			status(desktopText(locale, copyStatusUpdateFailedKeep))
 			return nil
 		}
 		return err
@@ -415,23 +419,16 @@ func formatWaitDuration(locale Locale, d time.Duration) string {
 	if minutes {
 		n = sec / 60
 	}
-	if locale == LocaleEN {
-		unit := "seconds"
-		if minutes {
-			unit = "minutes"
-		}
-		if n == 1 {
-			if minutes {
-				return "1 minute"
-			}
-			return "1 second"
-		}
-		return fmt.Sprintf("%d %s", n, unit)
+	switch {
+	case minutes && n == 1:
+		return desktopText(locale, copyWait1Minute)
+	case minutes:
+		return desktopText(locale, copyWaitNMinutes, n)
+	case n == 1:
+		return desktopText(locale, copyWait1Second)
+	default:
+		return desktopText(locale, copyWaitNSeconds, n)
 	}
-	if minutes {
-		return fmt.Sprintf("%d 分钟", n)
-	}
-	return fmt.Sprintf("%d 秒", n)
 }
 
 func formatHealthWaitError(locale Locale, base string, timeout time.Duration, lastErr error, lastStatus int) error {
@@ -439,19 +436,10 @@ func formatHealthWaitError(locale Locale, base string, timeout time.Duration, la
 	wait := formatWaitDuration(locale, timeout)
 	switch {
 	case lastStatus >= 500:
-		return fmt.Errorf("%s", desktopText(locale,
-			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。服务已响应但尚未就绪，请稍后再试，或查看终端日志。", wait, addr),
-			fmt.Sprintf("Octop did not become ready within %s (%s). The service responded but is not ready yet. Try again, or check the terminal logs.", wait, addr),
-		))
+		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReady5xx, wait, addr))
 	case lastErr != nil:
-		return fmt.Errorf("%s", desktopText(locale,
-			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。目前无法连接该地址，请确认 Octop 正在运行。", wait, addr),
-			fmt.Sprintf("Octop did not become ready within %s (%s). Could not connect — make sure Octop is running.", wait, addr),
-		))
+		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReadyConnect, wait, addr))
 	default:
-		return fmt.Errorf("%s", desktopText(locale,
-			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。请确认本机已启动 Octop，且地址、端口正确；也可查看终端日志。", wait, addr),
-			fmt.Sprintf("Octop did not become ready within %s (%s). Make sure Octop is running at this address, or check the terminal logs.", wait, addr),
-		))
+		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReady, wait, addr))
 	}
 }

@@ -1,0 +1,157 @@
+.viewerEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.viewerLoading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.documentPreview {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.documentLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fn-bg-container, #fff);
+}
+
+.docxWrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  padding: 12px 16px 20px;
+  background: #fff;
+  overscroll-behavior: contain;
+}
+
+.pptxWrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  padding: 16px;
+  background: var(--fn-bg-secondary);
+  overscroll-behavior: contain;
+}
+
+.xlsxWrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  padding: 12px 16px;
+  background: var(--fn-bg-container, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.xlsxHint {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.xlsxTableHost {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--fn-border-secondary, #f0f0f0);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.xlsxTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fn-text-primary, rgba(0, 0, 0, 0.88));
+}
+
+.xlsxTable th,
+.xlsxTable td {
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-right: 1px solid var(--fn-border-secondary, #f0f0f0);
+  border-bottom: 1px solid var(--fn-border-secondary, #f0f0f0);
+  vertical-align: top;
+  text-align: left;
+}
+
+.xlsxTable th:last-child,
+.xlsxTable td:last-child {
+  border-right: none;
+}
+
+.xlsxTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 600;
+  background: var(--fn-bg-secondary, #fafafa);
+  border-bottom: 1px solid var(--fn-border, #e5e5e5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xlsxImageTd {
+  width: 168px;
+}
+
+.xlsxImageTd :global(.ant-image) {
+  display: block;
+  line-height: 0;
+}
+
+.xlsxTextTd {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.xlsxImageCell {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.xlsxCellThumb {
+  width: 120px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 4px;
+  border: 1px solid var(--fn-border-secondary, #eee);
+  background: var(--fn-bg-secondary, #f5f6f8);
+}

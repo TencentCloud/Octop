@@ -91,8 +91,79 @@ func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("old runtime was not replaced: %v", err)
 	}
-	if len(statuses) == 0 || statuses[0] != "正在更新内置运行环境…" {
+	if len(statuses) < 2 ||
+		statuses[0] != "发现客户端新版 0.9.32，正在备份数据库…" ||
+		statuses[1] != "正在更新内置运行环境…" {
 		t.Fatalf("unexpected statuses: %v", statuses)
+	}
+}
+
+func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.29")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	database := filepath.Join(home, "octop.db")
+	if err := os.WriteFile(database, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+
+	previousBackup := runSQLiteBackup
+	runSQLiteBackup = func(_ string, source string, destination string) error {
+		if source != database {
+			t.Fatalf("backup source = %q, want %q", source, database)
+		}
+		return os.WriteFile(destination, []byte("backup"), 0o600)
+	}
+	t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := portableVersion(root); got != "0.9.32" {
+		t.Fatalf("portable version = %q, want 0.9.32", got)
+	}
+	backups, err := filepath.Glob(filepath.Join(home, "backups", "octop-desktop-pre-upgrade-*.db"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("upgrade backup = %v, err = %v", backups, err)
+	}
+}
+
+func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.29")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "octop.db"), []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+
+	previousBackup := runSQLiteBackup
+	runSQLiteBackup = func(_, _, _ string) error { return errors.New("backup unavailable") }
+	t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+	if err := ensurePortable(LocaleZH, func(string) {}); err == nil {
+		t.Fatal("backup failure should abort the runtime upgrade")
+	}
+	if got := portableVersion(root); got != "0.9.29" {
+		t.Fatalf("portable version = %q, want preserved 0.9.29", got)
 	}
 }
 

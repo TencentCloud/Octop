@@ -9,6 +9,9 @@
 ### 新增
 
 - 新增 `octop mcp` 自管理服务与配套配置 Skill，可通过聊天查询、添加、测试、启停和删除自定义 MCP 连接器。
+- 知识库支持下载上传原文；PDF / DOCX / PPTX / XLSX 在预览弹窗中按原排版查看；文档区支持拖拽上传（#591）
+- 知识库 / 工作区 PDF 预览改用 PDF.js（react-pdf），替代浏览器内置 iframe 查看器
+- 技能包支持将选定技能一次性复制到专家工作区，工作区技能也可推送到当前用户有写权限的技能包（#618）。
 - 记忆树支持手动新建主题/记忆，以及编辑已有记忆（replace/supersede，保留变更历史）。
 - Token 统计支持日期范围筛选（RangePicker 预设 + 自定义起止）并导出 Excel 用量明细（#154）
 - Token 用量 Excel 含专家名称、中英列表头，以及按天/专家/模型汇总 sheet 与图表
@@ -21,6 +24,7 @@
 - 共享专家的技能列表现在会在聊天输入框中加载，非所有者可查看并选择专家已配置的技能
 - 知识库文本文档编辑抽屉在「编辑」模式下点「保存」无响应（`name`/`format` 字段未挂载时 `validateFields` 缺值导致抛错被吞掉；#592）
 - 知识库文本文档编辑内容未改时点「保存」只关闭抽屉，不触发更新与重建索引
+- 版本升级界面的检查失败提示支持中英本地化：`/update/status` 与 `/update/check` 增加 `error_code` 字段（`pypi_unreachable`），界面按语言展示可读文案；版本信息来自镜像时显示来源提示；`octop update` 失败提示补充网络/代理排查建议
 - SQLite 历史回填为 checkpoint 内容引用创建绑定只读连接的独立解码器和缓存，并在同一读事务内读取，避免访问运行中的 saver 连接；兼容原有 inline 格式。新格式需要配套安装提供 `CheckpointSerializer.with_connection` 的 harness-memory。PostgreSQL 保持原生 graph 历史读取路径。
 
 ### 变更

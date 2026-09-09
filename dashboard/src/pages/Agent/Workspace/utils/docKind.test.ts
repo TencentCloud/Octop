@@ -32,4 +32,10 @@ describe("getDocKind (regression)", () => {
     expect(getDocKind("/a.docx")).toBe("word");
     expect(getDocKind("/a.doc")).toBe("word");
   });
+
+  it("classifies spreadsheet variants as excel", () => {
+    expect(getDocKind("/a.xlsx")).toBe("excel");
+    expect(getDocKind("/a.xls")).toBe("excel");
+    expect(getDocKind("/a.xlsm")).toBe("excel");
+  });
 });
