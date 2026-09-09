@@ -19,6 +19,8 @@
 
 ### 修复
 
+- OpenCode Go：发往 `opencode.ai/zen/go` 的聊天请求通过 harness `session_header` 携带当前对话 `thread_id` 作为 `x-opencode-session`，修复模型调用报 `400 MissingSessionID`。连接测试与模型列表使用一次性 UUID。用户手动配置的同名请求头优先。需要 `orcakit-harness-agent>=1.0.7`。
+- harness 进程日志目录改为传给 `HarnessAgentManager(log_dir=…)`（`HarnessAgentConfig.log_dir` 在 1.0.7 已是丢弃的 InitVar），避免诊断日志落到 `~/.harness-agent/logs`。
 - `octop service start` / `restart` 通过 systemd drop-in 设置 `LimitNOFILE`（系统服务 65535；用户服务不超过当前 hard rlimit），不改写已有 unit。`restart` 在 drop-in 失败时仍会 `systemctl restart`，保证升级后能起来。
 - 记忆树详情接入 `user_edit` lineage，人工修正后显示“人工修正的记忆”、修正前内容和原始来源上下文。
 - 共享专家的技能列表现在会在聊天输入框中加载，非所有者可查看并选择专家已配置的技能
