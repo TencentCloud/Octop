@@ -422,6 +422,7 @@ class AgentManager:
             providers=providers,
             langfuse=self._langfuse.harness_config(),
             team_processor=self._team_processor,
+            log_dir=str(self.paths.logs_dir),
         )
         if self._harness_manager is not None:
             self._harness_manager.team.bind_peer_enrich(self._refresh_peer_entry)

@@ -258,7 +258,17 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
     assert cfg.bootstrap_enabled is True
     # Kept for harness FilesystemGuardMiddleware (not passed to deepagents).
     assert cfg.permissions is not None
-    assert cfg.log_dir == str(manager.paths.logs_dir)
+
+
+@pytest.mark.asyncio
+async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
+    await manager.boot()
+    try:
+        hm = manager._harness_manager
+        assert hm is not None
+        assert hm._log_dir == manager.paths.logs_dir.resolve()
+    finally:
+        await manager.shutdown()
 
 
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:
@@ -787,6 +797,7 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     row = manager._repos.agent_repo.create(
         agent_id="REAL01",
@@ -817,6 +828,7 @@ async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     manager._repos.agent_repo.create(
         agent_id="STOP01",
@@ -852,6 +864,7 @@ async def test_save_security_rebuilds_running_harness_agent(manager: AgentManage
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     manager._repos.agent_repo.create(
         agent_id="SEC01",
@@ -880,6 +893,7 @@ async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     manager._repos.agent_repo.create(
         agent_id="SKIP01",
@@ -912,6 +926,7 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     row = await manager.create(AgentCreateSpec(name="seeded", config=dict(_MEMORY_OFF)))
     agent = manager.get_agent(row.agent_id)
@@ -945,6 +960,7 @@ async def test_create_keeps_user_workspace_dir(
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     custom = tmp_path / "custom-user-ws"
     try:
@@ -983,6 +999,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     try:
         # manager fixture uses ``{tmp_path}/.octop`` as OCTOP_HOME, so scoping
@@ -1059,6 +1076,7 @@ async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     row = await manager.create(
         AgentCreateSpec(
