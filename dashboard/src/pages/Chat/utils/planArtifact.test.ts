@@ -135,4 +135,52 @@ describe("planArtifact (#616 P5/P7)", () => {
     ];
     expect(buildPlanBriefFromMessages(messages)).toBeNull();
   });
+
+  it("buildPlanBriefFromMessages ignores stale write_todos from earlier turns", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "1",
+        role: "user",
+        content: "plan a file",
+        status: "done",
+        timestamp: 1,
+      },
+      {
+        id: "2",
+        role: "assistant",
+        content: "",
+        toolData: {
+          name: "write_todos",
+          arguments: JSON.stringify({
+            todos: [{ id: "1", content: "Write tests", status: "pending" }],
+          }),
+        },
+        status: "done",
+        timestamp: 2,
+      },
+      {
+        id: "3",
+        role: "assistant",
+        content:
+          "Here is a detailed plan with plenty of substance for the card.",
+        status: "done",
+        timestamp: 3,
+      },
+      {
+        id: "4",
+        role: "user",
+        content: "嗯",
+        status: "done",
+        timestamp: 4,
+      },
+      {
+        id: "5",
+        role: "assistant",
+        content: "好的",
+        status: "done",
+        timestamp: 5,
+      },
+    ];
+    expect(buildPlanBriefFromMessages(messages)).toBeNull();
+  });
 });

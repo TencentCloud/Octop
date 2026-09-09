@@ -104,11 +104,22 @@ export function isPlanReadyBrief(brief: string | null | undefined): boolean {
 export function buildPlanBriefFromMessages(
   messages: readonly ChatMessage[],
 ): string | null {
-  const sources = messages as unknown as WriteTodosMessageSource[];
-  const todos = collectWriteTodosFromMessages(sources);
-  let summary = "";
+  // Only the latest user→assistant turn. Older write_todos must not resurrect
+  // PlanReady when the model later replies with a short ack ("好的").
+  let lastUserIdx = -1;
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
+    if (messages[i]?.role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  const turn = messages.slice(lastUserIdx + 1);
+  const todos = collectWriteTodosFromMessages(
+    turn as unknown as WriteTodosMessageSource[],
+  );
+  let summary = "";
+  for (let i = turn.length - 1; i >= 0; i -= 1) {
+    const msg = turn[i];
     if (!msg || msg.role !== "assistant" || msg.toolData) continue;
     summary = stripConversationModeUiInstructions(
       deriveMessageContent(msg).textContent,
