@@ -92,8 +92,8 @@ interface ChatInputActionsRowProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
-  conversationMode?: "ask" | "plan" | "craft";
-  onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  conversationMode?: ConversationMode;
+  onConversationModeChange?: (mode: ConversationMode) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -299,7 +299,7 @@ export default function ChatInputActionsRow({
   };
 
   const conversationModeLabel = (mode: ConversationMode) => {
-    if (mode === "ask") return t("chat.conversationModeAsk", "仅问答");
+    if (mode === "ask") return t("chat.conversationModeAsk", "问答");
     if (mode === "plan") return t("chat.conversationModePlan", "计划");
     return t("chat.conversationModeCraft", "默认");
   };
@@ -308,7 +308,7 @@ export default function ChatInputActionsRow({
     if (mode === "ask") {
       return t(
         "chat.conversationModeStatusAsk",
-        "当前为仅问答模式，只回答与分析，不改动环境。",
+        "当前为问答模式，只回答与分析，不改动环境。",
       );
     }
     if (mode === "plan") {

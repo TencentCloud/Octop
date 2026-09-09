@@ -25,6 +25,7 @@ import {
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
 import { PLAN_EXECUTE_USER_TRIGGER } from "../utils/planArtifact";
+import type { ConversationMode } from "../utils/conversationMode";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
@@ -838,7 +839,7 @@ export function useChat(
       composerContext?: UserComposerContext,
       reasoningMode?: "auto" | "enabled" | "disabled",
       reasoningEffort?: string | null,
-      conversationMode?: "ask" | "plan" | "craft",
+      conversationMode?: ConversationMode,
       planBrief?: string,
       hideUserMessage?: boolean,
     ) => {

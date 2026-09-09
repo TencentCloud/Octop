@@ -77,6 +77,7 @@ import {
 import AgentBackendFields from "./AgentBackendFields";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import styles from "../index.module.less";
+import { conversationModeSelectOptions } from "../../Chat/utils/conversationMode";
 
 interface AgentDetail {
   id: string;
@@ -808,22 +809,7 @@ function EditAgentDrawerBody({
                   "新对话的初始权限模式；可在聊天输入栏随时切换。不限制可检索的知识库范围。",
                 )}
               >
-                <Select
-                  options={[
-                    {
-                      value: "craft",
-                      label: t("chat.conversationModeCraft", "默认"),
-                    },
-                    {
-                      value: "plan",
-                      label: t("chat.conversationModePlan", "计划"),
-                    },
-                    {
-                      value: "ask",
-                      label: t("chat.conversationModeAsk", "仅问答"),
-                    },
-                  ]}
-                />
+                <Select options={conversationModeSelectOptions(t)} />
               </Form.Item>
 
               <AgentBackendFields

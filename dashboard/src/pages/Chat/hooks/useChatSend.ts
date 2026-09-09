@@ -244,6 +244,7 @@ export function useChatSend({
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
           composerContext?.conversationMode ?? conversationMode,
+          overrides?.planBrief,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });

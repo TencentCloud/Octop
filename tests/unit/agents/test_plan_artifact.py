@@ -25,3 +25,16 @@ def test_format_plan_brief_summary_only() -> None:
     brief = format_plan_brief(summary="Just do the thing.")
     assert "Just do the thing." in brief
     assert parse_plan_brief_steps(brief) == []
+
+
+def test_format_plan_brief_skips_empty_todos_without_gaps() -> None:
+    brief = format_plan_brief(
+        todos=[
+            {"content": "First"},
+            {"content": ""},
+            {"content": "Third"},
+        ]
+    )
+    assert "1. First" in brief
+    assert "2. Third" in brief
+    assert "3." not in brief
