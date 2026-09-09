@@ -4,7 +4,8 @@ import { act, renderHook } from "@testing-library/react";
 import type { UpdateStatus } from "../api/modules/update";
 import {
   UPDATE_STATUS_CHANGED_EVENT,
-  UPDATE_STATUS_POLL_MS,
+  UPDATE_STATUS_ERROR_TTL_MS,
+  UPDATE_STATUS_TTL_MS,
   clearStoredUpdateStatus,
   storeUpdateStatus,
 } from "../utils/updateStatusCache";
@@ -26,6 +27,8 @@ const sample: UpdateStatus = {
   is_editable: false,
   service_mode: null,
   error: null,
+  error_code: null,
+  source: null,
   last_check_time: "2026-07-14T00:00:00Z",
   release_notes: null,
 };
@@ -67,12 +70,42 @@ describe("useUpdateStatus", () => {
     expect(getUpdateStatus).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      // One poll tick lands at TTL; cache is expired so the probe runs again.
-      vi.advanceTimersByTime(UPDATE_STATUS_POLL_MS);
+      // 1h TTL is a multiple of the 60s tick; the first tick past TTL
+      // finds the cache expired and probes again.
+      vi.advanceTimersByTime(UPDATE_STATUS_TTL_MS);
       await Promise.resolve();
     });
 
     expect(getUpdateStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("self-heals: re-probes a failed status once the error TTL passes", async () => {
+    const failed: UpdateStatus = {
+      ...sample,
+      latest_version: null,
+      has_update: false,
+      error: "could not reach PyPI",
+      error_code: "pypi_unreachable",
+    };
+    getUpdateStatus
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(sample)
+      .mockResolvedValue(sample);
+    const { result } = renderHook(() => useUpdateStatus());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.hasUpdate).toBe(false);
+
+    await act(async () => {
+      // 5min error TTL is also a multiple of the 60s tick.
+      vi.advanceTimersByTime(UPDATE_STATUS_ERROR_TTL_MS);
+      await Promise.resolve();
+    });
+
+    expect(getUpdateStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(result.current.hasUpdate).toBe(true);
   });
 
   it("picks up status written by another screen", async () => {

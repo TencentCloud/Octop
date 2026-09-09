@@ -12,6 +12,7 @@ from octop.api.routers import update as update_router
 from octop.api.routers import update_store
 from octop.api.routers.update_store import UpgradeTaskStatus, create_task, get_task
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.setup import self_update
 from octop.infra.setup.self_update import UpgradeResult
 
 
@@ -253,3 +254,64 @@ async def test_upgrade_worker_advances_percent_while_installing(
     assert stored is not None
     assert stored.status == UpgradeTaskStatus.COMPLETE
     assert 25 in percents
+
+
+def test_build_status_failure_carries_error_code_and_short_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: None)
+
+    payload = update_router._build_status()
+
+    assert payload["latest_version"] is None
+    assert payload["error"] == "could not reach PyPI"
+    assert payload["error_code"] == "pypi_unreachable"
+    assert payload["source"] is None
+
+    now = time.time()
+    assert (
+        update_store.get_cached_status(now=now + update_store.ERROR_CACHE_TTL_SECONDS - 1)
+        == payload
+    )
+    assert (
+        update_store.get_cached_status(now=now + update_store.ERROR_CACHE_TTL_SECONDS + 1) is None
+    )
+
+
+def test_build_status_success_reports_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    info = self_update.PyPIInfo(version="1.2.3", description="desc", source="mirrors.aliyun.com")
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
+
+    payload = update_router._build_status()
+
+    assert payload["latest_version"] == "1.2.3"
+    assert payload["error"] is None
+    assert payload["error_code"] is None
+    assert payload["source"] == "mirrors.aliyun.com"
+    assert update_store.get_cached_status() == payload
+
+
+@pytest.mark.asyncio
+async def test_check_endpoint_reports_error_code_when_pypi_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: None)
+
+    result = await update_router.check_for_updates(_=None)
+
+    assert result["latest_version"] is None
+    assert result["error_code"] == "pypi_unreachable"
+
+
+@pytest.mark.asyncio
+async def test_check_endpoint_success_passes_mirror_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    info = self_update.PyPIInfo(version="1.2.3", source="pypi.org")
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
+
+    result = await update_router.check_for_updates(_=None)
+
+    assert result["latest_version"] == "1.2.3"
+    assert result["source"] == "pypi.org"
+    assert result["error"] is None

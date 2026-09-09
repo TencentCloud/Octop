@@ -4,6 +4,7 @@ import type { UpdateStatus } from "../api/modules/update";
 import {
   UPDATE_STATUS_STORAGE_KEY,
   UPDATE_STATUS_TTL_MS,
+  UPDATE_STATUS_ERROR_TTL_MS,
   UPDATE_STATUS_CHANGED_EVENT,
   clearStoredUpdateStatus,
   isUpdateStatusCacheExpired,
@@ -18,6 +19,8 @@ const sample: UpdateStatus = {
   is_editable: false,
   service_mode: null,
   error: null,
+  error_code: null,
+  source: null,
   last_check_time: "2026-07-14T00:00:00Z",
   release_notes: null,
 };
@@ -51,6 +54,31 @@ describe("updateStatusCache", () => {
     localStorage.setItem(UPDATE_STATUS_STORAGE_KEY, "{not-json");
     expect(readStoredUpdateStatus()).toBeNull();
     expect(isUpdateStatusCacheExpired()).toBe(true);
+  });
+
+  it("expires failed probes after the short error TTL", () => {
+    const failed: UpdateStatus = {
+      ...sample,
+      latest_version: null,
+      has_update: false,
+      error: "could not reach PyPI",
+      error_code: "pypi_unreachable",
+    };
+    storeUpdateStatus(failed);
+
+    vi.setSystemTime(Date.now() + UPDATE_STATUS_ERROR_TTL_MS - 1000);
+    expect(readStoredUpdateStatus()).toEqual(failed);
+    expect(isUpdateStatusCacheExpired()).toBe(false);
+
+    vi.setSystemTime(Date.now() + UPDATE_STATUS_ERROR_TTL_MS + 1);
+    expect(readStoredUpdateStatus()).toBeNull();
+    expect(isUpdateStatusCacheExpired()).toBe(true);
+  });
+
+  it("keeps successful probes for the full hour in expiry check too", () => {
+    storeUpdateStatus(sample);
+    vi.setSystemTime(Date.now() + UPDATE_STATUS_ERROR_TTL_MS + 60 * 1000);
+    expect(isUpdateStatusCacheExpired()).toBe(false);
   });
 
   it("clear removes the entry", () => {

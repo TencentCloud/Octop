@@ -13,6 +13,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
 from octop.api.deps import current_user, require_permission
 from octop.api.routers.update_store import (
+    ERROR_CACHE_TTL_SECONDS,
+    STATUS_CACHE_TTL_SECONDS,
     UpgradeTaskStatus,
     cache_status,
     create_task,
@@ -49,11 +51,19 @@ def _build_status(
     *,
     latest: str | None = None,
     error: str | None = None,
+    error_code: str | None = None,
+    source: str | None = None,
     release_notes: str | None = None,
 ) -> dict[str, Any]:
     current = get_local_version()
     if latest is None and error is None:
-        latest = fetch_latest_pypi_version()
+        info = fetch_pypi_info()
+        if info is None:
+            error = "could not reach PyPI"
+            error_code = "pypi_unreachable"
+        else:
+            latest = info.version
+            source = info.source
     has_update = bool(latest and is_newer(latest, current))
     payload = {
         "current_version": current,
@@ -63,10 +73,17 @@ def _build_status(
         "service_mode": detect_service_mode(),
         "desktop": _is_desktop_process(),
         "error": error,
+        "error_code": error_code if latest is None else None,
+        "source": source if latest is not None else None,
         "last_check_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "release_notes": release_notes if has_update else None,
     }
-    cache_status(payload)
+    # Failed probes must not be pinned for the full hour: a transient PyPI
+    # outage would otherwise shadow a recovered network on every dashboard
+    # poll. Success keeps the long TTL, failures expire quickly so the next
+    # /update/status re-probes.
+    ttl = STATUS_CACHE_TTL_SECONDS if latest is not None else ERROR_CACHE_TTL_SECONDS
+    cache_status(payload, ttl=ttl)
     return payload
 
 
@@ -83,10 +100,18 @@ async def update_status(_: Any = Depends(current_user)) -> dict[str, Any]:
 async def check_for_updates(_: Any = Depends(require_permission("update"))) -> dict[str, Any]:
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
-        return await asyncio.to_thread(_build_status, latest=None, error="could not reach PyPI")
+        return await asyncio.to_thread(
+            _build_status,
+            latest=None,
+            error="could not reach PyPI",
+            error_code="pypi_unreachable",
+        )
     release_notes = parse_changelog_for_version(pypi_info.description, pypi_info.version)
     return await asyncio.to_thread(
-        _build_status, latest=pypi_info.version, release_notes=release_notes
+        _build_status,
+        latest=pypi_info.version,
+        source=pypi_info.source,
+        release_notes=release_notes,
     )
 
 
