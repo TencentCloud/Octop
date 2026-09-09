@@ -4,6 +4,7 @@ import { Collapse } from "antd";
 import {
   BookOpen,
   CheckCircle,
+  Info,
   RefreshCw,
   XCircle,
   AlertTriangle,
@@ -346,7 +347,24 @@ export default function UpdateConfig() {
           {status?.error && (
             <div className={`${styles.alert} ${styles.alertError}`}>
               <XCircle size={15} />
-              <span>{status.error}</span>
+              <span>
+                {status.error_code
+                  ? t(`advancedSettings.update.errors.${status.error_code}`, {
+                      defaultValue: status.error,
+                    })
+                  : status.error}
+              </span>
+            </div>
+          )}
+
+          {status?.source && status.source !== "pypi.org" && !status.error && (
+            <div className={`${styles.alert} ${styles.alertInfo}`}>
+              <Info size={15} />
+              <span>
+                {t("advancedSettings.update.mirrorSource", {
+                  source: status.source,
+                })}
+              </span>
             </div>
           )}
 

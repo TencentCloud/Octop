@@ -24,7 +24,10 @@ def update(check: bool, yes: bool, verbose: bool) -> None:
     latest = fetch_latest_pypi_version()
     click.echo(f"installed: {current}")
     if latest is None:
-        click.echo("could not reach PyPI", err=True)
+        click.echo(
+            "could not reach PyPI — check your network or proxy settings and retry",
+            err=True,
+        )
         raise SystemExit(1)
     click.echo(f"latest:    {latest}")
     if not is_newer(latest, current):

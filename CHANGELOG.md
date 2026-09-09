@@ -20,6 +20,7 @@
 - 共享专家的技能列表现在会在聊天输入框中加载，非所有者可查看并选择专家已配置的技能
 - 知识库文本文档编辑抽屉在「编辑」模式下点「保存」无响应（`name`/`format` 字段未挂载时 `validateFields` 缺值导致抛错被吞掉；#592）
 - 知识库文本文档编辑内容未改时点「保存」只关闭抽屉，不触发更新与重建索引
+- 版本升级界面的检查失败提示支持中英本地化：`/update/status` 与 `/update/check` 增加 `error_code` 字段（`pypi_unreachable`），界面按语言展示可读文案；版本信息来自镜像时显示来源提示；`octop update` 失败提示补充网络/代理排查建议
 - SQLite 历史回填为 checkpoint 内容引用创建绑定只读连接的独立解码器和缓存，并在同一读事务内读取，避免访问运行中的 saver 连接；兼容原有 inline 格式。新格式需要配套安装提供 `CheckpointSerializer.with_connection` 的 harness-memory。PostgreSQL 保持原生 graph 历史读取路径。
 
 ### 变更
