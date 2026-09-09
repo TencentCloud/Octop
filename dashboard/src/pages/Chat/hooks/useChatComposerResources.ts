@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { connectorsApi } from "../../../api/modules/connectors";
 import { providerApi } from "../../../api/modules/provider";
 import { preferencesApi } from "../../../api/modules/preferences";
@@ -26,11 +26,13 @@ import {
   peekPendingAttachKnowledgeBaseId,
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
+import { PENDING_THREAD_ID } from "../constants";
 import { isPendingThread } from "./useSessions";
 import {
   parseConversationMode,
   type ConversationMode,
 } from "../utils/conversationMode";
+import { resolveSeedConversationMode } from "../utils/seedConversationMode";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -89,14 +91,69 @@ export function useChatComposerResources(
     >
   >({});
 
+  // Keep refs so thread-id transitions can stamp the composer mode the user
+  // already picked on an empty / pending chat (PlanReady P0).
+  const conversationModeRef = useRef(conversationMode);
+  conversationModeRef.current = conversationMode;
+  const selectedModelRef = useRef(selectedModel);
+  selectedModelRef.current = selectedModel;
+  const reasoningModeRef = useRef(reasoningMode);
+  reasoningModeRef.current = reasoningMode;
+  const reasoningEffortRef = useRef(reasoningEffort);
+  reasoningEffortRef.current = reasoningEffort;
+  const prevThreadIdRef = useRef(activeThreadId);
+
   // Seed from agent default, then restore any per-thread override (#616 OCR).
+  // When a new chat first gets a thread id (empty → pending → real), preserve
+  // the composer selection instead of wiping it back to the agent default —
+  // otherwise Plan turns never show PlanReady on the first send.
   useEffect(() => {
-    const local = activeThreadId
-      ? conversationOverrides[activeThreadId]?.conversationMode
-      : undefined;
-    setConversationMode(
-      local ?? parseConversationMode(defaultConversationMode),
-    );
+    const prevThreadId = prevThreadIdRef.current;
+    prevThreadIdRef.current = activeThreadId;
+    const decision = resolveSeedConversationMode({
+      activeThreadId,
+      previousThreadId: prevThreadId,
+      override: activeThreadId
+        ? conversationOverrides[activeThreadId]?.conversationMode
+        : undefined,
+      agentDefault: defaultConversationMode,
+      currentComposerMode: conversationModeRef.current,
+    });
+
+    if (decision.action === "set") {
+      setConversationMode(decision.mode);
+      // Drop the reusable pending bucket so the next new-chat first-send does
+      // not revive a previous Plan/Ask selection.
+      if (!activeThreadId) {
+        setConversationOverrides((current) => {
+          if (!(PENDING_THREAD_ID in current)) return current;
+          const next = { ...current };
+          delete next[PENDING_THREAD_ID];
+          return next;
+        });
+      }
+      return;
+    }
+
+    if (decision.action === "stamp-override" && activeThreadId) {
+      const mode = decision.mode;
+      setConversationMode(mode);
+      setConversationOverrides((current) => {
+        const prev = current[activeThreadId];
+        if (prev?.conversationMode === mode) {
+          return current;
+        }
+        return {
+          ...current,
+          [activeThreadId]: {
+            model: prev?.model ?? selectedModelRef.current,
+            mode: prev?.mode ?? reasoningModeRef.current,
+            effort: prev?.effort ?? reasoningEffortRef.current,
+            conversationMode: mode,
+          },
+        };
+      });
+    }
   }, [
     resolvedAgentId,
     activeThreadId,

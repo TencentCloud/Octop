@@ -582,7 +582,13 @@ function ChatPageInner() {
     setBrowserLastRecordingId,
   });
 
-  // Wrap handleSend to intercept skill recording workflow keywords
+  const [planReadyBrief, setPlanReadyBrief] = useState<string | null>(null);
+  const wasStreamingRef = useRef(false);
+  const planModeTurnRef = useRef(false);
+
+  // Wrap handleSend to intercept skill recording workflow keywords.
+  // Also latch plan-mode at send time so PlanReady still appears if the
+  // composer reseeds while the new thread id is assigned mid-turn.
   const wrappedHandleSend = useCallback(
     (
       text: string,
@@ -593,14 +599,17 @@ function ChatPageInner() {
         // The workflow intercepted the message — don't send it to the agent
         return;
       }
+      const modeForTurn =
+        overrides?.conversationMode ??
+        overrides?.composerContext?.conversationMode ??
+        conversationMode;
+      if (modeForTurn === "plan") {
+        planModeTurnRef.current = true;
+      }
       handleSend(text, attachments, overrides);
     },
-    [interceptUserMessage, handleSend],
+    [interceptUserMessage, handleSend, conversationMode],
   );
-
-  const [planReadyBrief, setPlanReadyBrief] = useState<string | null>(null);
-  const wasStreamingRef = useRef(false);
-  const planModeTurnRef = useRef(false);
 
   useEffect(() => {
     if (conversationMode === "plan" && isStreaming) {
@@ -614,10 +623,9 @@ function ChatPageInner() {
     if (!wasStreaming || isStreaming) return;
     if (!planModeTurnRef.current) return;
     planModeTurnRef.current = false;
-    if (conversationMode !== "plan") return;
     const brief = buildPlanBriefFromMessages(messages);
     if (brief) setPlanReadyBrief(brief);
-  }, [isStreaming, conversationMode, messages]);
+  }, [isStreaming, messages]);
 
   useEffect(() => {
     setPlanReadyBrief(null);
