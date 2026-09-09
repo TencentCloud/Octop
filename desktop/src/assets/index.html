@@ -762,6 +762,10 @@
         );
         document.getElementById("loading-panel").classList.toggle("is-error", stuck);
       });
+
+      if (!settingsMode) {
+        call("BootReady");
+      }
     </script>
   </body>
 </html>

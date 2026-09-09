@@ -21,6 +21,10 @@ var assets embed.FS
 
 const trayDoubleClick = 400 * time.Millisecond
 
+// bootReadyFallback starts boot even if the loading page never reports itself
+// ready, so a broken webview cannot leave the shell idle forever.
+const bootReadyFallback = 5 * time.Second
+
 // App is the Wails service bound to the shell UI.
 type App struct {
 	app            *application.App
@@ -35,6 +39,9 @@ type App struct {
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
 	trayClickTimer *time.Timer
+
+	bootOnce sync.Once
+	bootFn   func()
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -154,6 +161,23 @@ func (a *App) setStatus(msg string) {
 		return
 	}
 	a.app.Event.Emit("desktop:status", msg)
+}
+
+// BootReady is called by the loading page once it subscribes to desktop:status.
+// Emitting before that drops the message, which hides startup errors and leaves
+// the page stuck on its initial "starting" text.
+func (a *App) BootReady() {
+	a.startBoot()
+}
+
+func (a *App) startBoot() {
+	a.bootOnce.Do(func() {
+		if a.bootFn != nil {
+			go a.bootFn()
+			return
+		}
+		go a.boot()
+	})
 }
 
 func (a *App) boot() {
@@ -404,7 +428,7 @@ func main() {
 	}
 
 	api.scheduleDragOverlay()
-	go api.boot()
+	time.AfterFunc(bootReadyFallback, api.startBoot)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
