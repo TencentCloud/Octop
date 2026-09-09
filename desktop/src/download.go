@@ -37,10 +37,19 @@ func pythonExe(root string) string {
 func ensurePortable(locale Locale, status func(string)) error {
 	root := portableDir()
 	if launchReady(root) {
-		currentVersion := portableVersion(root)
+		currentVersion := installedPackageVersion(root)
 		bundledVersion, err := bundledPortableVersion()
-		if err != nil || bundledVersion == "" ||
-			(currentVersion != "" && compareVersions(bundledVersion, currentVersion) <= 0) {
+		if err != nil || bundledVersion == "" {
+			status(desktopText(locale, copyStatusUsingRuntime))
+			return nil
+		}
+		if currentVersion != "" && compareVersions(currentVersion, bundledVersion) > 0 {
+			return fmt.Errorf(
+				"%s",
+				desktopText(locale, copyErrorAppTooOld, currentVersion, bundledVersion, currentVersion),
+			)
+		}
+		if currentVersion != "" && compareVersions(bundledVersion, currentVersion) == 0 {
 			status(desktopText(locale, copyStatusUsingRuntime))
 			return nil
 		}
@@ -101,15 +110,7 @@ func replacePortable(root string) error {
 }
 
 func portableVersion(root string) string {
-	version := installedPackageVersion(root)
-	data, err := os.ReadFile(filepath.Join(root, "VERSION.txt"))
-	if err == nil {
-		bundledVersion := versionFromText(string(data))
-		if version == "" || compareVersions(bundledVersion, version) > 0 {
-			version = bundledVersion
-		}
-	}
-	return version
+	return installedPackageVersion(root)
 }
 
 func installedPackageVersion(root string) string {
@@ -152,15 +153,6 @@ func bundledPortableVersion() (string, error) {
 }
 
 func versionFromZip(files []*zip.File) (string, error) {
-	fromFile, err := zipEntryVersion(files, func(name string) bool {
-		return filepath.Base(filepath.FromSlash(name)) == "VERSION.txt"
-	}, versionFromText)
-	if err != nil {
-		return "", err
-	}
-	if fromFile != "" {
-		return fromFile, nil
-	}
 	return zipEntryVersion(files, func(name string) bool {
 		rel := filepath.ToSlash(name)
 		return strings.Contains(rel, "/octop-") && strings.HasSuffix(rel, ".dist-info/METADATA")
@@ -194,15 +186,6 @@ func zipEntryVersion(files []*zip.File, match func(string) bool, parse func(stri
 		}
 	}
 	return version, nil
-}
-
-func versionFromText(text string) string {
-	for _, line := range strings.Split(text, "\n") {
-		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "octop_version="); ok {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func metadataVersion(text string) string {

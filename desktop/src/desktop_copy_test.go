@@ -22,4 +22,10 @@ func TestDesktopTextFormatsArgs(t *testing.T) {
 	if got != "Desktop update 0.9.32 found. Backing up the database…" {
 		t.Fatalf("format: %s", got)
 	}
+
+	got = desktopText(LocaleEN, copyErrorAppTooOld, "0.9.33", "0.9.32", "0.9.33")
+	want := "Local data version 0.9.33 is newer than this App version 0.9.32. The App version is too old; install version 0.9.33 or later."
+	if got != want {
+		t.Fatalf("format: %s", got)
+	}
 }

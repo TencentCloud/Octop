@@ -77,8 +77,10 @@ Wails shell never downloads Octop. For local runtime debugging, set
 On later launches, a newer bundled portable version replaces the extracted
 runtime after creating a consistent SQLite backup under `~/.octop/backups/`.
 The upgraded Octop process then applies the normal database migrations during
-startup. Newer extracted runtimes are never downgraded; PostgreSQL remains
-externally managed and is not copied by the desktop shell.
+startup. The shell compares `packages/octop-*.dist-info/METADATA` with the
+App's bundled zip: if the installed package is newer, startup stops and asks
+to install that version or later. PostgreSQL remains externally managed and is
+not copied by the desktop shell.
 
 GitHub Release names follow `Octop-<kind>-<os>-<arch>-<version>.<ext>`:
 

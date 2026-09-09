@@ -9,12 +9,13 @@ const (
 	copyStatusReady            = "status.ready"
 	copyStatusUsingRuntime     = "status.using_runtime"
 	copyStatusBackupDatabase   = "status.backup_database"
-	copyStatusInstallingUpdate  = "status.installing_update"
-	copyStatusUpdatingRuntime   = "status.updating_runtime"
-	copyStatusFirstExtract      = "status.first_extract"
-	copyStatusUpdateFailedKeep  = "status.update_failed_keep"
-	copyErrorBackupFailed       = "error.backup_failed"
-	copyErrorUpgradeFailed      = "error.upgrade_failed"
+	copyStatusInstallingUpdate = "status.installing_update"
+	copyStatusUpdatingRuntime  = "status.updating_runtime"
+	copyStatusFirstExtract     = "status.first_extract"
+	copyStatusUpdateFailedKeep = "status.update_failed_keep"
+	copyErrorAppTooOld         = "error.app_too_old"
+	copyErrorBackupFailed      = "error.backup_failed"
+	copyErrorUpgradeFailed     = "error.upgrade_failed"
 	copyWait1Minute            = "wait.1_minute"
 	copyWaitNMinutes           = "wait.n_minutes"
 	copyWait1Second            = "wait.1_second"
@@ -36,6 +37,7 @@ var desktopCopy = map[Locale]map[string]string{
 		copyStatusUpdatingRuntime:  "Updating the bundled runtime…",
 		copyStatusFirstExtract:     "First launch: unpacking the bundled runtime…",
 		copyStatusUpdateFailedKeep: "Runtime update failed; using the existing runtime…",
+		copyErrorAppTooOld:         "Local data version %s is newer than this App version %s. The App version is too old; install version %s or later.",
 		copyErrorBackupFailed:      "Database backup failed before upgrade; the current version was preserved",
 		copyErrorUpgradeFailed:     "Desktop runtime upgrade failed; the current version was preserved",
 		copyWait1Minute:            "1 minute",
@@ -57,6 +59,7 @@ var desktopCopy = map[Locale]map[string]string{
 		copyStatusUpdatingRuntime:  "正在更新内置运行环境…",
 		copyStatusFirstExtract:     "首次启动，正在解压内置运行环境…",
 		copyStatusUpdateFailedKeep: "更新内置运行环境失败，继续使用已有运行环境…",
+		copyErrorAppTooOld:         "本地数据版本 %s 高于当前 App 版本 %s。App 版本过低，请安装 %s 或更高版本。",
 		copyErrorBackupFailed:      "升级前数据库备份失败，已保留当前版本",
 		copyErrorUpgradeFailed:     "客户端运行环境升级失败，已保留当前版本",
 		copyWait1Minute:            "1 分钟",

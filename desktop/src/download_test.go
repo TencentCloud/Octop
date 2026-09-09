@@ -167,7 +167,7 @@ func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
 	}
 }
 
-func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
+func TestEnsurePortableRejectsAppOlderThanLocalData(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OCTOP_HOME", home)
 	root := portableDir()
@@ -175,13 +175,6 @@ func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.33")
 	if err := unzipGreen(newZip, root); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(root, "VERSION.txt"),
-		[]byte("octop_version=0.9.31\n"),
-		0o644,
-	); err != nil {
 		t.Fatal(err)
 	}
 	sentinel := filepath.Join(root, "keep.txt")
@@ -192,8 +185,13 @@ func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
 	oldZip := filepath.Join(t.TempDir(), "old.zip")
 	writeTestGreenZip(t, oldZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", oldZip)
-	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
-		t.Fatal(err)
+	err := ensurePortable(LocaleZH, func(string) {})
+	if err == nil {
+		t.Fatal("older App should be rejected")
+	}
+	want := "本地数据版本 0.9.33 高于当前 App 版本 0.9.32。App 版本过低，请安装 0.9.33 或更高版本。"
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
 	}
 
 	if got := portableVersion(root); got != "0.9.33" {
@@ -201,6 +199,40 @@ func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
 	}
 	if _, err := os.Stat(sentinel); err != nil {
 		t.Fatalf("newer runtime was unexpectedly replaced: %v", err)
+	}
+}
+
+func TestEnsurePortableComparesPackageMetadataNotVersionTxt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.31")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	newerMeta := filepath.Join(root, "packages", "octop-0.9.33.dist-info", "METADATA")
+	if err := os.MkdirAll(filepath.Dir(newerMeta), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newerMeta, []byte("Name: octop\nVersion: 0.9.33\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	err := ensurePortable(LocaleZH, func(string) {})
+	if err == nil {
+		t.Fatal("older App should be rejected based on METADATA")
+	}
+	want := "本地数据版本 0.9.33 高于当前 App 版本 0.9.32。App 版本过低，请安装 0.9.33 或更高版本。"
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+	if got := installedPackageVersion(root); got != "0.9.33" {
+		t.Fatalf("METADATA version = %q, want 0.9.33", got)
 	}
 }
 
@@ -216,7 +248,7 @@ func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T)
 	}
 
 	invalidZip := filepath.Join(t.TempDir(), "invalid.zip")
-	writeVersionOnlyZip(t, invalidZip, "0.9.32")
+	writeMetadataOnlyZip(t, invalidZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", invalidZip)
 	var statuses []string
 	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
@@ -262,7 +294,7 @@ func TestEnsurePortableReplacesLegacyRuntimeWithoutVersionFiles(t *testing.T) {
 	}
 }
 
-func TestBundledPortableVersionFallsBackToMetadata(t *testing.T) {
+func TestBundledPortableVersionReadsMetadata(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "meta-only.zip")
 	writeMetadataOnlyZip(t, zipPath, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", zipPath)
@@ -456,28 +488,6 @@ func writeMetadataOnlyZip(t *testing.T, path, version string) {
 		t.Fatal(err)
 	}
 	if _, err := entry.Write([]byte("Name: octop\nVersion: " + version + "\n")); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeVersionOnlyZip(t *testing.T, path, version string) {
-	t.Helper()
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := zip.NewWriter(f)
-	entry, err := w.Create("Octop-test/VERSION.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := entry.Write([]byte("octop_version=" + version + "\n")); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Close(); err != nil {
