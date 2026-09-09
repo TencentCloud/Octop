@@ -2,6 +2,8 @@ import type { UpdateStatus } from "../api/modules/update";
 
 export const UPDATE_STATUS_STORAGE_KEY = "octop:update-status";
 export const UPDATE_STATUS_TTL_MS = 60 * 60 * 1000;
+/** Failed probes expire quickly so a transient outage isn't pinned for an hour. */
+export const UPDATE_STATUS_ERROR_TTL_MS = 5 * 60 * 1000;
 /** How often the UI re-evaluates the local cache / probes the API. */
 export const UPDATE_STATUS_POLL_MS = UPDATE_STATUS_TTL_MS;
 export const UPDATE_STATUS_CHANGED_EVENT = "octop:update-status-changed";
@@ -9,6 +11,17 @@ export const UPDATE_STATUS_CHANGED_EVENT = "octop:update-status-changed";
 interface StoredUpdateStatus {
   checkedAt: number;
   status: UpdateStatus;
+}
+
+/** True when the cached payload describes a failed probe (nothing to show). */
+export function isFailedUpdateStatus(status: UpdateStatus): boolean {
+  return !status.latest_version;
+}
+
+function ttlFor(status: UpdateStatus): number {
+  return isFailedUpdateStatus(status)
+    ? UPDATE_STATUS_ERROR_TTL_MS
+    : UPDATE_STATUS_TTL_MS;
 }
 
 export function readStoredUpdateStatus(now = Date.now()): UpdateStatus | null {
@@ -24,7 +37,7 @@ export function readStoredUpdateStatus(now = Date.now()): UpdateStatus | null {
     ) {
       return null;
     }
-    if (now - parsed.checkedAt >= UPDATE_STATUS_TTL_MS) {
+    if (now - parsed.checkedAt >= ttlFor(parsed.status)) {
       return null;
     }
     return parsed.status;

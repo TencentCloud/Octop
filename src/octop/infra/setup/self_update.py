@@ -30,6 +30,26 @@ _MIRRORS = [
     "https://mirrors.ustc.edu.cn/pypi/simple",
 ]
 
+# JSON-API sources for version checks, tried in order. pypi.org stays first
+# (authoritative); mirrors bridge networks where pypi.org is intermittently
+# unreachable (the historic "could not reach PyPI" on the dashboard). Each
+# tuple is (label, url, attempts). Mirror URLs are the JSON endpoints that
+# mirror the pypi.org schema (info.version / info.description).
+_PYPI_JSON_SOURCES: tuple[tuple[str, str, int], ...] = (
+    ("pypi.org", _PYPI_URL, 2),
+    (
+        "mirrors.cloud.tencent.com",
+        "https://mirrors.cloud.tencent.com/pypi/json/octop",
+        2,
+    ),
+    (
+        "mirrors.aliyun.com",
+        "https://mirrors.aliyun.com/pypi/web/json/octop",
+        1,
+    ),
+)
+_PYPI_RETRY_DELAY_SECONDS = 0.5
+
 _COMMON_UV_PATHS = [
     os.path.expanduser("~/.local/bin/uv"),
     os.path.expanduser("~/.cargo/bin/uv"),
@@ -116,28 +136,60 @@ def fetch_latest_pypi_version(timeout: int = 10) -> str | None:
 class PyPIInfo:
     version: str
     description: str | None = None
+    """Package long description (None when fetched from a mirror without one)."""
+
+    source: str | None = None
+    """Label of the source that served this payload (e.g. ``pypi.org``)."""
 
 
-def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
-    """Fetch version and long description from the PyPI JSON API.
+def _fetch_pypi_json_once(url: str, timeout: int) -> PyPIInfo:
+    """Single JSON fetch; raises on any network or parse failure."""
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    info = data["info"]
+    return PyPIInfo(
+        version=str(info["version"]),
+        description=info.get("description"),
+    )
 
-    Returns None on any network or parse failure.
+
+def fetch_pypi_info(timeout: int = 8) -> PyPIInfo | None:
+    """Fetch version and long description, retrying and falling back to mirrors.
+
+    ``pypi.org`` is probed first (with a retry); if it stays unreachable the
+    mirror JSON endpoints are tried so that version checks keep working on
+    networks where pypi.org is flaky. Returns None only when every source
+    fails.
     """
-    try:
-        req = urllib.request.Request(
-            _PYPI_URL,
-            headers={"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        info = data["info"]
-        return PyPIInfo(
-            version=str(info["version"]),
-            description=info.get("description"),
-        )
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
-        logger.warning("failed to fetch PyPI info: %s", exc)
-        return None
+    for source, url, attempts in _PYPI_JSON_SOURCES:
+        for attempt in range(attempts):
+            try:
+                info = _fetch_pypi_json_once(url, timeout)
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                KeyError,
+                json.JSONDecodeError,
+            ) as exc:
+                logger.warning(
+                    "failed to fetch PyPI info from %s (attempt %d/%d): %s",
+                    source,
+                    attempt + 1,
+                    attempts,
+                    exc,
+                )
+            else:
+                if source != _PYPI_JSON_SOURCES[0][0]:
+                    logger.info("fetched PyPI info from mirror %s", source)
+                info.source = source
+                return info
+            if attempt < attempts - 1:
+                time.sleep(_PYPI_RETRY_DELAY_SECONDS)
+    return None
 
 
 def parse_changelog_for_version(description: str | None, version: str) -> str | None:

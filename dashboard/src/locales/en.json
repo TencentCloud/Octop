@@ -2973,6 +2973,10 @@
       "restartCommand": "Restart command",
       "editableHint": "Development install detected. Use git pull to update.",
       "networkError": "Could not reach update server. Check your network.",
+      "mirrorSource": "Version info served by mirror {{source}}; it may lag slightly behind pypi.org.",
+      "errors": {
+        "pypi_unreachable": "Could not reach PyPI (retries and mirrors were tried). Check your network and try again."
+      },
       "notChecked": "Not checked yet",
       "stageStarting": "Starting...",
       "stageDownloading": "Downloading...",

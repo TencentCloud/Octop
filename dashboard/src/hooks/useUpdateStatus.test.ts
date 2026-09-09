@@ -26,6 +26,8 @@ const sample: UpdateStatus = {
   is_editable: false,
   service_mode: null,
   error: null,
+  error_code: null,
+  source: null,
   last_check_time: "2026-07-14T00:00:00Z",
   release_notes: null,
 };

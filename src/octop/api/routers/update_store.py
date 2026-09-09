@@ -12,6 +12,10 @@ from pydantic import BaseModel, Field
 
 # Align with dashboard ``UPDATE_STATUS_TTL_MS`` (1 hour).
 STATUS_CACHE_TTL_SECONDS = 60 * 60
+# Failed probes are cached far shorter: a transient "could not reach PyPI"
+# should not be pinned on the dashboard for a full hour after the network
+# recovers. Align with dashboard ``UPDATE_STATUS_ERROR_TTL_MS``.
+ERROR_CACHE_TTL_SECONDS = 5 * 60
 
 
 class UpgradeTaskStatus(StrEnum):
@@ -37,27 +41,35 @@ _tasks: dict[str, UpgradeTask] = {}
 _lock = asyncio.Lock()
 _last_status: dict[str, Any] | None = None
 _last_status_at: float | None = None
+_last_status_ttl: float = STATUS_CACHE_TTL_SECONDS
 
 
-def cache_status(payload: dict[str, Any], *, cached_at: float | None = None) -> None:
-    global _last_status, _last_status_at
+def cache_status(
+    payload: dict[str, Any],
+    *,
+    cached_at: float | None = None,
+    ttl: float = STATUS_CACHE_TTL_SECONDS,
+) -> None:
+    global _last_status, _last_status_at, _last_status_ttl
     _last_status = payload
     _last_status_at = time.time() if cached_at is None else cached_at
+    _last_status_ttl = ttl
 
 
 def get_cached_status(*, now: float | None = None) -> dict[str, Any] | None:
     if _last_status is None or _last_status_at is None:
         return None
     t = time.time() if now is None else now
-    if t - _last_status_at >= STATUS_CACHE_TTL_SECONDS:
+    if t - _last_status_at >= _last_status_ttl:
         return None
     return _last_status
 
 
 def clear_cached_status() -> None:
-    global _last_status, _last_status_at
+    global _last_status, _last_status_at, _last_status_ttl
     _last_status = None
     _last_status_at = None
+    _last_status_ttl = STATUS_CACHE_TTL_SECONDS
 
 
 async def create_task() -> UpgradeTask:
