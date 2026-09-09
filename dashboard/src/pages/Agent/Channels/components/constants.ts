@@ -367,6 +367,7 @@ export const CHANNEL_DISPLAY_CONFIG_KEYS = [
   "show_thinking",
   "show_tool_hints",
   "response_mode",
+  "c2c_streaming",
 ] as const;
 
 /** Default per-channel display settings (harness-gateway ChannelConfig). */
@@ -375,6 +376,19 @@ export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
   show_thinking: false,
   show_tool_hints: false,
 } as const;
+
+/** Persist QQ C2C stream on, and drop QQ-only leftovers. Other channels unchanged. */
+export function applyQqChannelSaveConfig(
+  config: Record<string, unknown>,
+  kind: string,
+): void {
+  if (kind !== "qq") {
+    return;
+  }
+  config.c2c_streaming = true;
+  delete config.streaming;
+  delete config.show_progress;
+}
 
 /** Parse structured values from schema-driven channel form fields. */
 export function normalizeChannelFieldValue(

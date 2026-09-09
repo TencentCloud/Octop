@@ -16,6 +16,7 @@ import {
   useChannels,
   CHANNEL_KEYS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  applyQqChannelSaveConfig,
   CHANNEL_DISPLAY_CONFIG_KEYS,
   CHANNEL_FIELDS,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
@@ -51,7 +52,8 @@ function configFromFormValues(
         k === "__raw_config" ||
         k === "response_mode" ||
         k === "show_thinking" ||
-        k === "show_tool_hints"
+        k === "show_tool_hints" ||
+        k === "c2c_streaming"
       ) {
         continue;
       }
@@ -76,6 +78,7 @@ function configFromFormValues(
     show_tool_hints:
       show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
   };
+  applyQqChannelSaveConfig(config, values.kind);
   return config;
 }
 
@@ -172,6 +175,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         const formCfg: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(cfg)) {
           if (v === undefined || v === null) continue;
+          if (row.kind === "qq" && k === "show_progress") continue;
           if (
             CHANNEL_DISPLAY_CONFIG_KEYS.includes(
               k as (typeof CHANNEL_DISPLAY_CONFIG_KEYS)[number],

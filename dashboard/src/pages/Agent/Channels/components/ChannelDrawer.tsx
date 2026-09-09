@@ -25,6 +25,7 @@ import {
   CHANNEL_LABEL_KEYS,
   CHANNEL_URLS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  applyQqChannelSaveConfig,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
@@ -407,9 +408,12 @@ function QqGroupContextPolicyFields({
 
 function DisplaySettingsFields() {
   const { t } = useTranslation();
+  const kind = Form.useWatch("kind");
+  const isQq = kind === "qq";
   const responseMode =
     Form.useWatch("response_mode") ??
     DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode;
+  const disableStreamToggles = !isQq && responseMode === "invoke";
   return (
     <div className={styles.displaySettings}>
       <div className={styles.displaySettingsTitle}>
@@ -423,39 +427,43 @@ function DisplaySettingsFields() {
       >
         <Switch />
       </Form.Item>
-      <Form.Item
-        name="response_mode"
-        label={t("channels.responseMode")}
-        tooltip={t("channels.responseModeDesc")}
-      >
-        <Segmented
-          options={[
-            {
-              label: t("channels.responseModeInvoke"),
-              value: "invoke",
-            },
-            {
-              label: t("channels.responseModeStream"),
-              value: "stream",
-            },
-          ]}
-        />
-      </Form.Item>
+      {!isQq && (
+        <Form.Item
+          name="response_mode"
+          label={t("channels.responseMode")}
+          tooltip={t("channels.responseModeDesc")}
+        >
+          <Segmented
+            options={[
+              {
+                label: t("channels.responseModeInvoke"),
+                value: "invoke",
+              },
+              {
+                label: t("channels.responseModeStream"),
+                value: "stream",
+              },
+            ]}
+          />
+        </Form.Item>
+      )}
       <Form.Item
         name="show_thinking"
         label={t("channels.showThinking")}
         tooltip={t("channels.showThinkingDesc")}
         valuePropName="checked"
       >
-        <Switch disabled={responseMode === "invoke"} />
+        <Switch disabled={disableStreamToggles} />
       </Form.Item>
       <Form.Item
         name="show_tool_hints"
         label={t("channels.showToolHints")}
-        tooltip={t("channels.showToolHintsDesc")}
+        tooltip={t(
+          isQq ? "channels.showToolHintsQqDesc" : "channels.showToolHintsDesc",
+        )}
         valuePropName="checked"
       >
-        <Switch disabled={responseMode === "invoke"} />
+        <Switch disabled={disableStreamToggles} />
       </Form.Item>
     </div>
   );
@@ -922,11 +930,12 @@ export function ChannelDrawer({
   }, [form]);
 
   const mergeDisplayConfig = useCallback(
-    (config: Record<string, unknown>) => ({
-      ...config,
-      ...getDisplayConfig(),
-    }),
-    [getDisplayConfig],
+    (config: Record<string, unknown>) => {
+      const next = { ...config, ...getDisplayConfig() };
+      applyQqChannelSaveConfig(next, selectedKind);
+      return next;
+    },
+    [getDisplayConfig, selectedKind],
   );
 
   const getQqGroupContextConfig = useCallback(
@@ -1130,7 +1139,15 @@ export function ChannelDrawer({
     };
     if (hasSchema) {
       for (const [k, v] of Object.entries(rest)) {
-        if (k === "name" || v === undefined || v === null || v === "") continue;
+        if (
+          k === "name" ||
+          k === "c2c_streaming" ||
+          v === undefined ||
+          v === null ||
+          v === ""
+        ) {
+          continue;
+        }
         config[k] = normalizeChannelFieldValue(k, v);
       }
     } else if (__raw_config !== undefined) {
@@ -1155,6 +1172,7 @@ export function ChannelDrawer({
       show_tool_hints:
         show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
     };
+    applyQqChannelSaveConfig(config, kind);
     void (async () => {
       const ok = await onSubmit(kind, kind, config, values.enabled ?? false);
       if (ok) clearFormDraft(draftScope);
@@ -1764,6 +1782,9 @@ export function ChannelDrawer({
             />
           )}
 
+          <Form.Item name="kind" hidden>
+            <Input />
+          </Form.Item>
           {selectedKind === "qq" && <QqGroupContextPolicyFields form={form} />}
 
           {(configMode === "quick" || isQuickOnly) &&
