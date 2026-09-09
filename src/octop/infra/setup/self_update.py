@@ -33,19 +33,26 @@ _MIRRORS = [
 # JSON-API sources for version checks, tried in order. pypi.org stays first
 # (authoritative); mirrors bridge networks where pypi.org is intermittently
 # unreachable (the historic "could not reach PyPI" on the dashboard). Each
-# tuple is (label, url, attempts). Mirror URLs are the JSON endpoints that
+# tuple is (label, url, attempts, per-request timeout). The official source
+# uses a deliberately short timeout: on networks where pypi.org is blocked
+# the TCP SYN is usually dropped (not RST), so a long timeout would stall
+# every check before the mirrors even get a chance. Worst case with all
+# sources dead is ~31s; the common "official down, mirror fine" case falls
+# through to a mirror after ~6.5s. Mirror URLs are the JSON endpoints that
 # mirror the pypi.org schema (info.version / info.description).
-_PYPI_JSON_SOURCES: tuple[tuple[str, str, int], ...] = (
-    ("pypi.org", _PYPI_URL, 2),
+_PYPI_JSON_SOURCES: tuple[tuple[str, str, int, int], ...] = (
+    ("pypi.org", _PYPI_URL, 2, 3),
     (
         "mirrors.cloud.tencent.com",
         "https://mirrors.cloud.tencent.com/pypi/json/octop",
         2,
+        8,
     ),
     (
         "mirrors.aliyun.com",
         "https://mirrors.aliyun.com/pypi/web/json/octop",
         1,
+        8,
     ),
 )
 _PYPI_RETRY_DELAY_SECONDS = 0.5
@@ -127,8 +134,8 @@ def get_local_version() -> str:
         return "0.0.0"
 
 
-def fetch_latest_pypi_version(timeout: int = 10) -> str | None:
-    info = fetch_pypi_info(timeout=timeout)
+def fetch_latest_pypi_version() -> str | None:
+    info = fetch_pypi_info()
     return info.version if info else None
 
 
@@ -157,15 +164,15 @@ def _fetch_pypi_json_once(url: str, timeout: int) -> PyPIInfo:
     )
 
 
-def fetch_pypi_info(timeout: int = 8) -> PyPIInfo | None:
+def fetch_pypi_info() -> PyPIInfo | None:
     """Fetch version and long description, retrying and falling back to mirrors.
 
-    ``pypi.org`` is probed first (with a retry); if it stays unreachable the
-    mirror JSON endpoints are tried so that version checks keep working on
-    networks where pypi.org is flaky. Returns None only when every source
-    fails.
+    ``pypi.org`` is probed first with a short timeout and a retry; if it stays
+    unreachable the mirror JSON endpoints are tried so that version checks
+    keep working on networks where pypi.org is flaky. Returns None only when
+    every source fails.
     """
-    for source, url, attempts in _PYPI_JSON_SOURCES:
+    for source, url, attempts, timeout in _PYPI_JSON_SOURCES:
         for attempt in range(attempts):
             try:
                 info = _fetch_pypi_json_once(url, timeout)

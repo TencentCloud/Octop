@@ -68,9 +68,17 @@ describe("updateStatusCache", () => {
 
     vi.setSystemTime(Date.now() + UPDATE_STATUS_ERROR_TTL_MS - 1000);
     expect(readStoredUpdateStatus()).toEqual(failed);
+    expect(isUpdateStatusCacheExpired()).toBe(false);
 
     vi.setSystemTime(Date.now() + UPDATE_STATUS_ERROR_TTL_MS + 1);
     expect(readStoredUpdateStatus()).toBeNull();
+    expect(isUpdateStatusCacheExpired()).toBe(true);
+  });
+
+  it("keeps successful probes for the full hour in expiry check too", () => {
+    storeUpdateStatus(sample);
+    vi.setSystemTime(Date.now() + UPDATE_STATUS_ERROR_TTL_MS + 60 * 1000);
+    expect(isUpdateStatusCacheExpired()).toBe(false);
   });
 
   it("clear removes the entry", () => {

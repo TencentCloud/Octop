@@ -50,10 +50,10 @@ def _no_retry_delay(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_fetch_pypi_info_returns_official_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[str] = []
+    calls: list[tuple[str, int]] = []
 
     def fake_urlopen(req: urllib.request.Request, timeout: int = 0) -> _FakeResponse:
-        calls.append(req.full_url)
+        calls.append((req.full_url, timeout))
         return _FakeResponse(_json_body("1.2.3"))
 
     monkeypatch.setattr(self_update.urllib.request, "urlopen", fake_urlopen)
@@ -63,18 +63,20 @@ def test_fetch_pypi_info_returns_official_source(
     assert info is not None
     assert info.version == "1.2.3"
     assert info.source == "pypi.org"
-    assert calls[0].startswith("https://pypi.org/")
+    assert calls[0][0].startswith("https://pypi.org/")
+    # The official source must fail fast (dropped SYN, not RST) so mirrors
+    # get their turn within seconds, not half a minute.
+    assert calls[0][1] == 3
 
 
 def test_fetch_pypi_info_retries_pypi_then_falls_back_to_mirror(
     monkeypatch: pytest.MonkeyPatch, _no_retry_delay: None
 ) -> None:
-    calls: list[str] = []
+    calls: list[tuple[str, int]] = []
 
     def fake_urlopen(req: urllib.request.Request, timeout: int = 0) -> _FakeResponse:
-        url = req.full_url
-        calls.append(url)
-        if url.startswith("https://pypi.org/"):
+        calls.append((req.full_url, timeout))
+        if req.full_url.startswith("https://pypi.org/"):
             raise urllib.error.URLError("connection reset")
         return _FakeResponse(_json_body("1.2.4"))
 
@@ -85,7 +87,9 @@ def test_fetch_pypi_info_retries_pypi_then_falls_back_to_mirror(
     assert info is not None
     assert info.version == "1.2.4"
     assert info.source == "mirrors.cloud.tencent.com"
-    assert calls.count(self_update._PYPI_URL) == 2
+    assert [url for url, _ in calls].count(self_update._PYPI_URL) == 2
+    # Mirror requests use the relaxed timeout, not the official 3s one.
+    assert calls[-1][1] == 8
 
 
 def test_fetch_pypi_info_skips_malformed_payload(

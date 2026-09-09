@@ -259,7 +259,7 @@ async def test_upgrade_worker_advances_percent_while_installing(
 def test_build_status_failure_carries_error_code_and_short_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda timeout=8: None)
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: None)
 
     payload = update_router._build_status()
 
@@ -280,7 +280,7 @@ def test_build_status_failure_carries_error_code_and_short_ttl(
 
 def test_build_status_success_reports_source(monkeypatch: pytest.MonkeyPatch) -> None:
     info = self_update.PyPIInfo(version="1.2.3", description="desc", source="mirrors.aliyun.com")
-    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda timeout=8: info)
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
 
     payload = update_router._build_status()
 
@@ -295,7 +295,7 @@ def test_build_status_success_reports_source(monkeypatch: pytest.MonkeyPatch) ->
 async def test_check_endpoint_reports_error_code_when_pypi_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda timeout=8: None)
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: None)
 
     result = await update_router.check_for_updates(_=None)
 
@@ -308,7 +308,7 @@ async def test_check_endpoint_success_passes_mirror_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     info = self_update.PyPIInfo(version="1.2.3", source="pypi.org")
-    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda timeout=8: info)
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
 
     result = await update_router.check_for_updates(_=None)
 

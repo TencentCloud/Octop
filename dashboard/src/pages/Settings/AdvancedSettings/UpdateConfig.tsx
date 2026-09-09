@@ -19,6 +19,7 @@ import {
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import {
+  UPDATE_STATUS_POLL_MS,
   clearStoredUpdateStatus,
   storeUpdateStatus,
 } from "../../../utils/updateStatusCache";
@@ -169,6 +170,25 @@ export default function UpdateConfig() {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
+
+  // A failed probe must not sit on screen until the user clicks "check":
+  // re-probe gently while the error is showing. getUpdateStatus is cheap —
+  // the backend serves its short-lived failure cache, then re-probes PyPI
+  // (with mirror fallback) once that expires, and the success overwrites
+  // the error here.
+  useEffect(() => {
+    if (!status?.error_code || checking || upgrading) return;
+    const id = window.setInterval(() => {
+      updateApi
+        .getUpdateStatus()
+        .then((next) => {
+          storeUpdateStatus(next);
+          setStatus(next);
+        })
+        .catch(() => {});
+    }, UPDATE_STATUS_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [status?.error_code, checking, upgrading]);
 
   useEffect(() => {
     if (progress?.status !== "complete" || !status?.desktop) return;
