@@ -80,6 +80,8 @@ interface ChatInputProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
+  conversationMode?: "ask" | "plan" | "craft";
+  onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -137,6 +139,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       reasoningMode = "auto",
       reasoningEffort = null,
       onReasoningChange,
+      conversationMode = "craft",
+      onConversationModeChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -767,6 +771,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             reasoningMode={reasoningMode}
             reasoningEffort={reasoningEffort}
             onReasoningChange={onReasoningChange}
+            conversationMode={conversationMode}
+            onConversationModeChange={onConversationModeChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

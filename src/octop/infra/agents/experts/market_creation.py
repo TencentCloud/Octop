@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from octop.infra.agents.conversation_mode import apply_default_conversation_mode
 from octop.infra.agents.experts.catalog import (
     WORKSPACE_MANIFEST_PATH,
     build_create_spec_from_expert,
@@ -56,6 +57,7 @@ class SkillHubMarketAgentCreateOptions:
     top_p: float | None = None
     max_tokens: int | None = None
     enable_trajectory: bool = True
+    default_conversation_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -285,6 +287,7 @@ async def create_agent_from_skillhub_skillset(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    apply_default_conversation_mode(config_extra, options.default_conversation_mode)
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

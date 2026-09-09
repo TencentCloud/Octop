@@ -124,8 +124,10 @@ def _message_content_nonempty(content: Any) -> bool:
 
 
 def turn_has_content(turn: ChatTurnBody) -> bool:
-    """True when the turn has user text or structured message blocks."""
+    """True when the turn has user text, attachments, or a plan_brief handoff."""
     if _turn_plain_text(turn):
+        return True
+    if isinstance(turn.plan_brief, str) and turn.plan_brief.strip():
         return True
     for msg in reversed(turn.messages):
         if str(msg.get("role") or "").lower() != "user":
@@ -172,54 +174,58 @@ def content_parts_from_dashboard_turn(turn: ChatTurnBody) -> list[ContentPart]:
         user_content = msg.get("content")
         break
 
-    if not isinstance(user_content, list):
-        return parts
+    if isinstance(user_content, list):
+        seen_text = bool(text)
+        for block in user_content:
+            if not isinstance(block, dict):
+                continue
+            btype = str(block.get("type") or "")
+            if btype == "text":
+                t = str(block.get("text") or "").strip()
+                if t and not seen_text:
+                    parts.append(TextContent(text=t))
+                    seen_text = True
+                continue
 
-    seen_text = bool(text)
-    for block in user_content:
-        if not isinstance(block, dict):
-            continue
-        btype = str(block.get("type") or "")
-        if btype == "text":
-            t = str(block.get("text") or "").strip()
-            if t and not seen_text:
-                parts.append(TextContent(text=t))
-                seen_text = True
-            continue
+            if btype not in ("image", "file", "image_url"):
+                continue
 
-        if btype not in ("image", "file", "image_url"):
-            continue
+            path = _workspace_path_from_block(block)
+            if not path:
+                # Upload always returns workspace_path; ignore preview-only blocks.
+                continue
 
-        path = _workspace_path_from_block(block)
-        if not path:
-            # Upload always returns workspace_path; ignore preview-only blocks.
-            continue
-
-        media_type = _mime_from_block(block)
-        filename = str(
-            block.get("filename") or block.get("name") or Path(path).name or "attachment"
-        )
-        use_vision = is_vision_attachment(
-            kind="image" if btype in ("image", "image_url") else btype,
-            media_type=media_type,
-            path=path,
-        )
-        if use_vision:
-            parts.append(
-                ImageContent(
-                    local_path=path,
-                    mime_type=media_type if media_type.startswith("image/") else "image/png",
-                    alt_text=filename,
-                )
+            media_type = _mime_from_block(block)
+            filename = str(
+                block.get("filename") or block.get("name") or Path(path).name or "attachment"
             )
-        else:
-            parts.append(
-                FileContent(
-                    local_path=path,
-                    filename=filename,
-                    mime_type=media_type or "application/octet-stream",
-                )
+            use_vision = is_vision_attachment(
+                kind="image" if btype in ("image", "image_url") else btype,
+                media_type=media_type,
+                path=path,
             )
+            if use_vision:
+                parts.append(
+                    ImageContent(
+                        local_path=path,
+                        mime_type=media_type if media_type.startswith("image/") else "image/png",
+                        alt_text=filename,
+                    )
+                )
+            else:
+                parts.append(
+                    FileContent(
+                        local_path=path,
+                        filename=filename,
+                        mime_type=media_type or "application/octet-stream",
+                    )
+                )
+
+    # Silent Plan→Craft: plan lives in metadata / system hint; still need a HumanMessage.
+    if not parts and isinstance(turn.plan_brief, str) and turn.plan_brief.strip():
+        from octop.infra.agents.plan_artifact import PLAN_EXECUTE_USER_TRIGGER  # noqa: PLC0415
+
+        parts.append(TextContent(text=PLAN_EXECUTE_USER_TRIGGER))
     return parts
 
 
@@ -332,6 +338,10 @@ def build_dashboard_inbound(
         metadata["reasoning_mode"] = turn.reasoning_mode
     if turn.reasoning_effort:
         metadata["reasoning_effort"] = turn.reasoning_effort
+    if turn.conversation_mode is not None:
+        metadata["conversation_mode"] = turn.conversation_mode
+    if turn.plan_brief:
+        metadata["plan_brief"] = turn.plan_brief
     if prepared.composer_context:
         metadata[COMPOSER_CTX_KEY] = prepared.composer_context
     if prepared.inbound_attachments:

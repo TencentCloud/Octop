@@ -24,6 +24,7 @@ import {
   type ContentBlock,
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
+import { PLAN_EXECUTE_USER_TRIGGER } from "../utils/planArtifact";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
@@ -442,6 +443,12 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
                 ?.composer_context,
             )
           : undefined,
+      uiHidden:
+        entry.role === "user" &&
+        Boolean(
+          (entry.metadata as Record<string, unknown> | null | undefined)
+            ?.ui_hidden,
+        ),
       toolData: tool?.data,
       usage: normalizeTokenUsage(entry.usage ?? undefined) ?? undefined,
       metadata: normalizeMessageMetadata(entry.metadata ?? undefined),
@@ -627,6 +634,15 @@ function toHistoryContentBlocks(content: unknown): unknown[] {
 }
 
 function isDisplayableHistoryMessage(message: ChatMessage): boolean {
+  if (message.uiHidden) return false;
+  // Silent Plan→Craft trigger (in case older servers omitted ui_hidden).
+  if (
+    message.role === "user" &&
+    message.content.trim() === PLAN_EXECUTE_USER_TRIGGER &&
+    !(message.attachments && message.attachments.length > 0)
+  ) {
+    return false;
+  }
   if (message.hitlData) return true;
   if (message.toolData) return true;
   if (message.attachments && message.attachments.length > 0) return true;
@@ -643,6 +659,7 @@ export function convertHistoryMessages(
     timestamp?: number;
     composer_context?: unknown;
     inbound_attachments?: unknown;
+    ui_hidden?: unknown;
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -653,6 +670,9 @@ export function convertHistoryMessages(
     }
     if (message.inbound_attachments) {
       meta.inbound_attachments = message.inbound_attachments;
+    }
+    if (message.ui_hidden) {
+      meta.ui_hidden = true;
     }
     return {
       message_id: message.id,
@@ -818,20 +838,25 @@ export function useChat(
       composerContext?: UserComposerContext,
       reasoningMode?: "auto" | "enabled" | "disabled",
       reasoningEffort?: string | null,
+      conversationMode?: "ask" | "plan" | "craft",
+      planBrief?: string,
+      hideUserMessage?: boolean,
     ) => {
       const key = storeKey || stableSessionId;
 
-      const userMsg: ChatMessage = {
-        id: generateId(),
-        role: "user",
-        content: text,
-        attachments:
-          attachments && attachments.length > 0 ? attachments : undefined,
-        composerContext,
-        status: "done",
-        timestamp: Date.now(),
-      };
-      chatStore.appendUserMessage(key, userMsg);
+      if (!hideUserMessage) {
+        const userMsg: ChatMessage = {
+          id: generateId(),
+          role: "user",
+          content: text,
+          attachments:
+            attachments && attachments.length > 0 ? attachments : undefined,
+          composerContext,
+          status: "done",
+          timestamp: Date.now(),
+        };
+        chatStore.appendUserMessage(key, userMsg);
+      }
 
       const threadIdForApi =
         storeKey ||
@@ -851,6 +876,8 @@ export function useChat(
         targetAgentIds,
         reasoningMode,
         reasoningEffort,
+        conversationMode,
+        planBrief,
       );
     },
     [stableSessionId],

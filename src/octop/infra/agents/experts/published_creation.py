@@ -13,6 +13,7 @@ from typing import Any, cast
 from psycopg import IntegrityError as PsycopgIntegrityError
 
 from octop.infra.agents.avatar import bind_workspace_avatar_icon_url
+from octop.infra.agents.conversation_mode import apply_default_conversation_mode
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     read_workspace_manifest_welcome,
@@ -46,6 +47,7 @@ class PublishedExpertInstallOptions:
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
     enable_trajectory: bool = True
+    default_conversation_mode: str | None = None
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -308,6 +310,7 @@ async def install_published_expert(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    apply_default_conversation_mode(config_extra, options.default_conversation_mode)
 
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)

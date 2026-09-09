@@ -79,6 +79,12 @@ import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
+import PlanReadyCard from "./components/PlanReadyCard";
+import {
+  buildPlanBriefFromMessages,
+  planContinueHandoff,
+  planExecuteHandoff,
+} from "./utils/planArtifact";
 import { extractAskQuestions, isAskHitl } from "../../api/types/hitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
@@ -439,6 +445,8 @@ function ChatPageInner() {
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
     handleConnectorsChange,
     handleSkillsChange,
     handleKnowledgeBaseIdsChange,
@@ -449,6 +457,7 @@ function ChatPageInner() {
     composerSession?.modelRef,
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
+    activeAgent?.default_conversation_mode,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -548,6 +557,7 @@ function ChatPageInner() {
     selectedTargetAgents,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
@@ -586,6 +596,52 @@ function ChatPageInner() {
     },
     [interceptUserMessage, handleSend],
   );
+
+  const [planReadyBrief, setPlanReadyBrief] = useState<string | null>(null);
+  const wasStreamingRef = useRef(false);
+  const planModeTurnRef = useRef(false);
+
+  useEffect(() => {
+    if (conversationMode === "plan" && isStreaming) {
+      planModeTurnRef.current = true;
+    }
+  }, [conversationMode, isStreaming]);
+
+  useEffect(() => {
+    const wasStreaming = wasStreamingRef.current;
+    wasStreamingRef.current = isStreaming;
+    if (!wasStreaming || isStreaming) return;
+    if (!planModeTurnRef.current) return;
+    planModeTurnRef.current = false;
+    if (conversationMode !== "plan") return;
+    const brief = buildPlanBriefFromMessages(messages);
+    if (brief) setPlanReadyBrief(brief);
+  }, [isStreaming, conversationMode, messages]);
+
+  useEffect(() => {
+    setPlanReadyBrief(null);
+  }, [activeThreadId, resolvedAgentId]);
+
+  const handlePlanExecute = useCallback(() => {
+    if (!planReadyBrief) return;
+    const brief = planReadyBrief;
+    setPlanReadyBrief(null);
+    const handoff = planExecuteHandoff(brief);
+    handleConversationModeChange(handoff.conversationMode);
+    wrappedHandleSend(handoff.text, undefined, {
+      conversationMode: handoff.conversationMode,
+      planBrief: handoff.planBrief,
+      hideUserMessage: handoff.hideUserMessage,
+      composerContext: {
+        conversationMode: handoff.conversationMode,
+      },
+    });
+  }, [planReadyBrief, handleConversationModeChange, wrappedHandleSend]);
+
+  const handlePlanContinue = useCallback(() => {
+    setPlanReadyBrief(null);
+    handleConversationModeChange(planContinueHandoff().conversationMode);
+  }, [handleConversationModeChange]);
 
   const flushQueuedItem = useCallback(
     (item: QueuedChatItem, ctx: ChatQueueFlushContext): boolean => {
@@ -1345,6 +1401,13 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {planReadyBrief && !pendingAsk && !isStreaming ? (
+              <PlanReadyCard
+                brief={planReadyBrief}
+                onExecute={handlePlanExecute}
+                onContinue={handlePlanContinue}
+              />
+            ) : null}
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}
@@ -1366,6 +1429,8 @@ function ChatPageInner() {
               reasoningMode={reasoningMode}
               reasoningEffort={reasoningEffort}
               onReasoningChange={handleReasoningChange}
+              conversationMode={conversationMode}
+              onConversationModeChange={handleConversationModeChange}
               availableConnectors={chatConnectors}
               selectedConnectors={selectedConnectors}
               onConnectorsChange={handleConnectorsChange}

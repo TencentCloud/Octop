@@ -80,9 +80,9 @@ routes until the wizard finishes.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, ...}]` |
-| `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201` |
-| `GET`    | `/agents/{id}` | owner | full agent row |
+| `GET`    | `/agents` | user | `[{id, agent_id, name, …, default_conversation_mode}]` (`ask` / `plan` / `craft`) |
+| `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201`; optional `config.default_conversation_mode` |
+| `GET`    | `/agents/{id}` | owner | full agent row (includes top-level `default_conversation_mode`) |
 | `PATCH`  | `/agents/{id}` | owner | body subset of create body |
 | `DELETE` | `/agents/{id}` | owner | `204` |
 | `POST`   | `/agents/{id}/start` | owner | `204` |
@@ -90,7 +90,7 @@ routes until the wizard finishes.
 | `POST`   | `/agents/{id}/reload` | owner | `204` (rebuild harness runtime) |
 | `POST`   | `/agents/{id}/read` | owner | `204` (mark unread badge cleared) |
 | `GET`    | `/agents/{id}/status` | owner | `{state, last_error?, ...}` |
-| `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, ...}` → `201` (creates from bundled expert template) |
+| `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, …, default_conversation_mode?, enable_trajectory?}` → `201` (creates from bundled expert template) |
 | `GET`    | `/agents/{id}/tool-settings` | owner | built-in + installed plugin tools with enable / disableable / available flags |
 | `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
 | `PATCH`  | `/agents/{id}/tool-settings/{tool_name}` | owner | body `{enabled, source, plugin_id?}` — toggle one tool (hot-sync) |
@@ -110,7 +110,7 @@ destination synchronized after the request completes.
 
 | Path | Auth | Notes |
 |------|------|-------|
-| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames; server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
+| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", …, "conversation_mode"?: "ask"|"plan"|"craft", "plan_brief"?: string}` frames; server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. Omit `conversation_mode` → craft. `plan_brief` is injected into the turn system prompt (Craft handoff) and is not required in chat text. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...]}` → SSE chunk stream; finishes with `{"type":"done"}` |
 

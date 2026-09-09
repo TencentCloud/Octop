@@ -46,6 +46,20 @@ class ChatTurnBody(BaseModel):
     )
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description=(
+            "Turn permission mode: ask (read-only), plan (plan then confirm), "
+            "craft (full tools). Omit to default to craft."
+        ),
+    )
+    plan_brief: str | None = Field(
+        default=None,
+        description=(
+            "Optional approved plan text for a Craft handoff turn. "
+            "Injected into the system prompt by the gateway — not required in chat text."
+        ),
+    )
     target_agent_ids: list[str] | None = Field(
         default=None,
         description="Optional agent ids to involve via @mention (same user only).",
@@ -87,6 +101,14 @@ class ChatTurnBody(BaseModel):
             if isinstance(payload.get("reasoning_effort"), str)
             and str(payload["reasoning_effort"]).strip()
             else None,
+            conversation_mode=payload.get("conversation_mode")
+            if payload.get("conversation_mode") in ("ask", "plan", "craft")
+            else None,
+            plan_brief=(
+                str(payload["plan_brief"]).strip()
+                if isinstance(payload.get("plan_brief"), str) and str(payload["plan_brief"]).strip()
+                else None
+            ),
             target_agent_ids=(
                 [str(x) for x in payload["target_agent_ids"]]
                 if isinstance(payload.get("target_agent_ids"), list)
@@ -107,6 +129,8 @@ class UserTurnWsFrame(BaseModel):
     default_model: str | None = None
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
+    conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    plan_brief: str | None = None
     mcp_servers: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     skills: list[str] | None = None

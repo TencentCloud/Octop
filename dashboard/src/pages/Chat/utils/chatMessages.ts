@@ -88,6 +88,7 @@ export function buildComposerContext(params: {
   selectedModel?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
+  conversationMode?: "ask" | "plan" | "craft";
 }): UserComposerContext | undefined {
   const ctx: UserComposerContext = {};
   let has = false;
@@ -120,6 +121,10 @@ export function buildComposerContext(params: {
   }
   if (params.reasoningEffort) {
     ctx.reasoningEffort = params.reasoningEffort;
+    has = true;
+  }
+  if (params.conversationMode) {
+    ctx.conversationMode = params.conversationMode;
     has = true;
   }
 
