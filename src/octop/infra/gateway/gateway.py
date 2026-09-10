@@ -459,30 +459,6 @@ class Gateway:
             metadata=metadata,
         )
 
-    async def notify_thread_activity(
-        self,
-        session: SessionRow,
-        agent_id: str,
-        *,
-        reason: str,
-    ) -> None:
-        """Tell the owner's dashboard sockets that a thread list entry changed.
-
-        Proactive runs (cron) create or reuse a thread outside the chat socket, so
-        without this frame the sidebar only learns about it on a full page reload.
-        """
-        if session.channel_type != ThreadRegistry.CHANNEL_DASHBOARD:
-            return
-        await self._ws_hub.push_to_user(
-            session.user_id,
-            {
-                "type": "thread_activity",
-                "agent_id": agent_id,
-                "thread_id": session.thread_id,
-                "reason": reason,
-            },
-        )
-
     async def notify_dashboard_push(
         self,
         session: SessionRow,

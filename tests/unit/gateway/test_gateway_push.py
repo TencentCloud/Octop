@@ -250,64 +250,6 @@ async def test_push_text_from_session_dashboard_notifies_user(gateway: Gateway) 
 
 
 @pytest.mark.asyncio
-async def test_notify_thread_activity_reaches_dashboard_sockets(gateway: Gateway) -> None:
-    sk = _insert_dashboard_session(gateway)
-    session = gateway.thread_registry.get_session(sk)
-    assert session is not None
-    frames: list[dict[str, object]] = []
-
-    async def capture(frame: dict[str, object]) -> None:
-        frames.append(frame)
-
-    gateway.ws_hub.register("n1", capture, user_id=1)
-
-    await gateway.notify_thread_activity(session, "a1", reason="cron_started")
-
-    assert frames == [
-        {
-            "type": "thread_activity",
-            "agent_id": "a1",
-            "thread_id": "thr_dash",
-            "reason": "cron_started",
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_notify_thread_activity_skips_im_sessions(gateway: Gateway) -> None:
-    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")
-    gateway.thread_registry._threads.insert(
-        thread_id="thr_im_activity",
-        agent_id="a1",
-        user_id=1,
-        channel_type="feishu",
-        session_key=sk,
-    )
-    gateway.thread_registry._sessions.upsert(
-        session_key=sk,
-        agent_id="a1",
-        user_id=1,
-        channel_type="feishu",
-        chat_type="dm",
-        thread_id="thr_im_activity",
-        channel_subject_id="ou_1",
-        channel_id="ch-1",
-    )
-    session = gateway.thread_registry.get_session(sk)
-    assert session is not None
-    frames: list[dict[str, object]] = []
-
-    async def capture(frame: dict[str, object]) -> None:
-        frames.append(frame)
-
-    gateway.ws_hub.register("n1", capture, user_id=1)
-
-    await gateway.notify_thread_activity(session, "a1", reason="cron_started")
-
-    assert frames == []
-
-
-@pytest.mark.asyncio
 async def test_push_text_from_session_does_not_project_history(gateway: Gateway) -> None:
     sk = _insert_dashboard_session(gateway, thread_id="thr_text")
     await gateway.push_text_from_session("a1", sk, "记得喝水")
