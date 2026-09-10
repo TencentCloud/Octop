@@ -1,14 +1,28 @@
-.wrap {
-  /* Neutralize layout.css "[class*=-modal] { margin: 12px auto !important }"
-     stacking on top of max-height math. */
-  margin: 0 !important;
-}
+/* Match Knowledge Bases TextDocumentEditorModal drawer shell. */
+.drawer {
+  :global(.ant-drawer-header) {
+    border-bottom: 1px solid var(--fn-border-primary);
+    padding: 14px 20px;
+  }
 
-.content {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 48px);
-  margin: 0 !important;
+  :global(.ant-drawer-footer) {
+    border-top: 1px solid var(--fn-border-primary);
+  }
+
+  :global(.ant-drawer-content),
+  :global(.ant-drawer-wrapper-body) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  :global(.ant-drawer-body) {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
 }
 
 .titleBlock {
@@ -16,14 +30,17 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding-right: 24px;
+  padding-right: 8px;
 }
 
 .titleMain {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 16px;
   font-weight: 600;
+  line-height: 1.3;
+  color: var(--fn-text-primary);
 }
 
 .titleSub {
@@ -31,6 +48,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+  font-weight: 400;
+  color: var(--fn-text-tertiary);
 }
 
 .footer {

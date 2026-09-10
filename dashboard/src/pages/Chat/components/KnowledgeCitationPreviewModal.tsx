@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Modal, Tooltip, Typography } from "antd";
+import { App, Button, Drawer, Tooltip, Typography } from "antd";
 import {
   ArrowUpToLine,
   ChevronLeft,
@@ -39,6 +39,11 @@ const docListCache = new Map<
   string,
   { at: number; docs: KnowledgeDocument[] }
 >();
+
+function citationDrawerWidth(): number {
+  if (typeof window === "undefined") return 880;
+  return Math.min(880, window.innerWidth - 16);
+}
 
 async function resolveCitationDocument(
   kbId: string,
@@ -100,7 +105,6 @@ export function KnowledgeCitationPreviewModal({
   }, [citation, resolvedPath]);
 
   const isRich = mode === "rich" && kind != null && !richMissing;
-  const wideLayout = isRich || mode === "markdown";
 
   const goRelative = useCallback(
     (delta: number) => {
@@ -229,7 +233,7 @@ export function KnowledgeCitationPreviewModal({
     };
   }, [citation, loadTextPreview, message, onClose, open, richMissing, t]);
 
-  // Esc is handled by Modal; also support ←/→ when multiple citations.
+  // Esc is handled by Drawer; also support ←/→ when multiple citations.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -313,8 +317,9 @@ export function KnowledgeCitationPreviewModal({
   };
 
   return (
-    <Modal
+    <Drawer
       open={open}
+      placement="right"
       title={
         <div className={styles.titleBlock}>
           <div className={styles.titleMain}>
@@ -327,9 +332,19 @@ export function KnowledgeCitationPreviewModal({
           ) : null}
         </div>
       }
-      onCancel={onClose}
-      keyboard
-      focusTriggerAfterClose
+      onClose={onClose}
+      destroyOnHidden
+      width={citationDrawerWidth()}
+      className={styles.drawer}
+      styles={{
+        body: {
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        },
+        footer: { padding: "12px 20px" },
+      }}
       footer={
         <div className={styles.footer}>
           {citations.length > 1 ? (
@@ -372,23 +387,6 @@ export function KnowledgeCitationPreviewModal({
           </div>
         </div>
       }
-      width={wideLayout ? "min(1200px, 92vw)" : 720}
-      centered
-      destroyOnHidden
-      wrapClassName={styles.wrap}
-      classNames={{ content: styles.content }}
-      style={{ maxHeight: "calc(100vh - 48px)" }}
-      styles={{
-        body: {
-          height: "78vh",
-          flex: "0 1 auto",
-          minHeight: 0,
-          padding: 12,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        },
-      }}
     >
       {loading ? (
         <div className={styles.centered}>
@@ -426,6 +424,6 @@ export function KnowledgeCitationPreviewModal({
           <pre className={styles.pre}>{text}</pre>
         </div>
       )}
-    </Modal>
+    </Drawer>
   );
 }
