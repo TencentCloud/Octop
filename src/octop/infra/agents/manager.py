@@ -26,9 +26,11 @@ from octop.infra.agents.media_generation import (
 )
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.profile import (
+    dump_id_list,
     dump_skill_package_ids,
     dumps_config,
     extract_profile_from_config,
+    id_list_from_row,
     overlay_skill_package_ids,
     parse_config_json,
     strip_profile_config,
@@ -287,6 +289,8 @@ class AgentCreateSpec:
     skill_package_ids: list[str] | None = None
     published_expert_id: str | None = None
     welcome_message: str | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -551,6 +555,16 @@ class AgentManager:
                 if spec.skill_package_ids is not None
                 else profile.get("skill_package_ids")
             )
+            knowledge_ids_json = (
+                dump_id_list(spec.knowledge_base_ids)
+                if spec.knowledge_base_ids is not None
+                else profile.get("knowledge_base_ids")
+            )
+            mcp_servers_json = (
+                dump_id_list(spec.mcp_servers)
+                if spec.mcp_servers is not None
+                else profile.get("mcp_servers")
+            )
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -572,6 +586,8 @@ class AgentManager:
                     if spec.welcome_message is not None
                     else profile.get("welcome_message")
                 ),
+                knowledge_base_ids=knowledge_ids_json,
+                mcp_servers=mcp_servers_json,
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
@@ -1310,11 +1326,29 @@ class AgentManager:
         explicit: list[str] | None,
         *,
         apply_defaults: bool | None = None,
+        extra_defaults: list[str] | None = None,
     ) -> list[str] | None:
-        """Resolve turn MCP servers vs the user's default_open connectors."""
+        """Resolve turn MCP servers vs default_open plus optional expert defaults."""
         return self._connector_svc.merge_turn_mcp_servers(
-            user_id, explicit, apply_defaults=apply_defaults
+            user_id,
+            explicit,
+            apply_defaults=apply_defaults,
+            extra_defaults=extra_defaults,
         )
+
+    def default_mcp_servers(self, agent_id: str) -> list[str]:
+        """Composer MCP servers selected on the expert for new sessions."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return []
+        return id_list_from_row(row, "mcp_servers")
+
+    def default_knowledge_base_ids(self, agent_id: str) -> list[str]:
+        """Composer knowledge bases selected on the expert for new sessions."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return []
+        return id_list_from_row(row, "knowledge_base_ids")
 
     async def prepare_chat_mcp(
         self,
@@ -1789,6 +1823,60 @@ class AgentManager:
                     f"skill package {package_id!r} not found",
                 )
         return normalized_ids
+
+    def persist_knowledge_base_ids(self, agent_id: str, knowledge_base_ids: list[str]) -> None:
+        """Persist composer knowledge-base defaults without reloading harness."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        normalized = (
+            self.validate_knowledge_base_ids(row.user_id, knowledge_base_ids)
+            if row.user_id is not None
+            else skill_package_ids_list({"skill_package_ids": knowledge_base_ids})
+        )
+        self._repos.agent_repo.update_config(
+            agent_id,
+            knowledge_base_ids=dump_id_list(normalized),
+        )
+
+    def persist_mcp_servers(self, agent_id: str, mcp_servers: list[str]) -> None:
+        """Persist composer connector defaults without reloading harness."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        normalized = (
+            self.validate_mcp_servers(row.user_id, mcp_servers)
+            if row.user_id is not None
+            else skill_package_ids_list({"skill_package_ids": mcp_servers})
+        )
+        self._repos.agent_repo.update_config(
+            agent_id,
+            mcp_servers=dump_id_list(normalized),
+        )
+
+    def validate_knowledge_base_ids(self, user_id: int, knowledge_base_ids: list[str]) -> list[str]:
+        """Normalize ids and ensure each knowledge base is visible to *user_id*."""
+        normalized = skill_package_ids_list({"skill_package_ids": knowledge_base_ids})
+        if not normalized:
+            return []
+        visible = {base.id for base in self._repos.knowledge_repo.list_visible(user_id)}
+        unknown = [kb_id for kb_id in normalized if kb_id not in visible]
+        if unknown:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_NOT_FOUND,
+                f"knowledge base(s) not found: {', '.join(unknown)}",
+            )
+        return normalized
+
+    def validate_mcp_servers(self, user_id: int, mcp_servers: list[str]) -> list[str]:
+        """Normalize MCP server names and ensure they are available to *user_id*."""
+        normalized = skill_package_ids_list({"skill_package_ids": mcp_servers})
+        if not normalized:
+            return []
+        try:
+            return list(self._connector_svc.validate_mcp_servers_for_user(user_id, normalized))
+        except ValueError as exc:
+            raise OctopError(ErrorCode.CONNECTOR_NOT_BOUND, str(exc)) from exc
 
     def assert_backend_supports_skill_packages(
         self,

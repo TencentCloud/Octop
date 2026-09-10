@@ -323,3 +323,117 @@ async def test_create_from_expert_stores_backend(env: Any) -> None:
     rows = (await c.get("/api/agents", headers=auth)).json()
     agent = next(a for a in rows if a["id"] == agent_id)
     assert agent["config"].get("backend") == backend_spec
+
+
+async def test_create_agent_from_expert_stores_composer_defaults(env: Any) -> None:
+    c, server, auth = env
+    kb = server.services.knowledge_repo.create_base(owner_user_id=1, name="Policies")
+    connector = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "Docs",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert connector.status_code == 201, connector.text
+    mcp_name = connector.json()["mcp_server_name"]
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "composer-defaults-expert",
+            "knowledge_base_ids": [kb.id],
+            "mcp_servers": [mcp_name],
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    detail = (await c.get(f"/api/agents/{body['agent_id']}", headers=auth)).json()
+    assert detail["knowledge_base_ids"] == [kb.id]
+    assert detail["mcp_servers"] == [mcp_name]
+    assert "knowledge_base_ids" not in (detail.get("config") or {})
+    assert "mcp_servers" not in (detail.get("config") or {})
+
+
+async def test_create_agent_from_expert_rejects_unknown_knowledge_base(env: Any) -> None:
+    c, _server, auth = env
+    agents_before = (await c.get("/api/agents", headers=auth)).json()
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "missing-kb-expert", "knowledge_base_ids": ["MISSING"]},
+    )
+
+    assert created.status_code == 404, created.text
+    assert created.json()["error"]["code"] == "KNOWLEDGE_NOT_FOUND"
+    agents_after = (await c.get("/api/agents", headers=auth)).json()
+    assert {agent["agent_id"] for agent in agents_after} == {
+        agent["agent_id"] for agent in agents_before
+    }
+
+
+async def test_create_agent_from_expert_rejects_unknown_connector(env: Any) -> None:
+    c, _server, auth = env
+    agents_before = (await c.get("/api/agents", headers=auth)).json()
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "missing-connector-expert", "mcp_servers": ["unknown__instance"]},
+    )
+
+    assert created.status_code == 400, created.text
+    assert created.json()["error"]["code"] == "CONNECTOR_NOT_BOUND"
+    agents_after = (await c.get("/api/agents", headers=auth)).json()
+    assert {agent["agent_id"] for agent in agents_after} == {
+        agent["agent_id"] for agent in agents_before
+    }
+
+
+async def test_patch_agent_composer_defaults(env: Any) -> None:
+    c, server, auth = env
+    kb = server.services.knowledge_repo.create_base(owner_user_id=1, name="Handbook")
+    connector = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "Wiki",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert connector.status_code == 201, connector.text
+    mcp_name = connector.json()["mcp_server_name"]
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "patch-composer-defaults"},
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    detail = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert detail["knowledge_base_ids"] == []
+    assert detail["mcp_servers"] == []
+
+    patched = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"knowledge_base_ids": [kb.id], "mcp_servers": [mcp_name]},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["knowledge_base_ids"] == [kb.id]
+    assert patched.json()["mcp_servers"] == [mcp_name]
+
+    cleared = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"knowledge_base_ids": [], "mcp_servers": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["knowledge_base_ids"] == []
+    assert cleared.json()["mcp_servers"] == []

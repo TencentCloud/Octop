@@ -98,9 +98,12 @@ const SKILL_URL_PREFIXES = [
 ];
 
 function canMutatePackage(
-  item: Pick<SkillPackage, "created_by">,
+  item: Pick<SkillPackage, "created_by" | "can_write">,
   user: OctopUser | null,
 ): boolean {
+  if (typeof item.can_write === "boolean") {
+    return item.can_write;
+  }
   return Boolean(
     user && (user.role === "admin" || item.created_by === String(user.id)),
   );
@@ -1057,6 +1060,7 @@ export default function SkillPackagesPage() {
         form={skillForm}
         onClose={() => setDrawerOpen(false)}
         onSubmit={(values) => void saveSkill(values)}
+        readOnly={!canMutate}
       />
 
       <Drawer

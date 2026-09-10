@@ -18,6 +18,8 @@ PROFILE_CONFIG_KEYS = frozenset(
         "skill_package_ids",
         "published_expert_id",
         "welcome_message",
+        "knowledge_base_ids",
+        "mcp_servers",
     }
 )
 
@@ -39,11 +41,11 @@ def dumps_config(cfg: dict[str, Any]) -> str:
     return json.dumps(strip_profile_config(cfg), ensure_ascii=False)
 
 
-def parse_skill_package_ids_json(raw: str | None) -> list[str] | None:
-    """Parse the ``skill_package_ids`` column. ``None`` means the column is unset."""
-    if raw is None:
+def parse_id_list_json(raw: str | None) -> list[str] | None:
+    """Parse a JSON string-list column. ``None`` means the column is unset."""
+    if raw is None or not isinstance(raw, str):
         return None
-    text = str(raw).strip()
+    text = raw.strip()
     if not text:
         return None
     try:
@@ -55,8 +57,23 @@ def parse_skill_package_ids_json(raw: str | None) -> list[str] | None:
     return [str(item) for item in parsed if str(item).strip()]
 
 
-def dump_skill_package_ids(ids: list[str]) -> str:
+def dump_id_list(ids: list[str]) -> str:
     return json.dumps(list(ids), ensure_ascii=False)
+
+
+def parse_skill_package_ids_json(raw: str | None) -> list[str] | None:
+    """Parse the ``skill_package_ids`` column. ``None`` means the column is unset."""
+    return parse_id_list_json(raw)
+
+
+def dump_skill_package_ids(ids: list[str]) -> str:
+    return dump_id_list(ids)
+
+
+def id_list_from_row(row: Any, attr: str) -> list[str]:
+    """Return a stored JSON id list, or ``[]`` when the column is unset."""
+    parsed = parse_id_list_json(getattr(row, attr, None))
+    return list(parsed) if parsed is not None else []
 
 
 def _nonempty_str(value: Any) -> str | None:
@@ -99,9 +116,17 @@ def extract_profile_from_config(cfg: dict[str, Any]) -> dict[str, Any]:
         out["template_name"] = expert_id
     packages = cfg.get("skill_package_ids")
     if isinstance(packages, list):
-        out["skill_package_ids"] = dump_skill_package_ids(
+        out["skill_package_ids"] = dump_id_list(
             [str(item) for item in packages if str(item).strip()]
         )
+    knowledge_ids = cfg.get("knowledge_base_ids")
+    if isinstance(knowledge_ids, list):
+        out["knowledge_base_ids"] = dump_id_list(
+            [str(item) for item in knowledge_ids if str(item).strip()]
+        )
+    mcp_servers = cfg.get("mcp_servers")
+    if isinstance(mcp_servers, list):
+        out["mcp_servers"] = dump_id_list([str(item) for item in mcp_servers if str(item).strip()])
     welcome = _localized_text(cfg.get("welcome_message"))
     if welcome is not None:
         out["welcome_message"] = welcome
@@ -125,11 +150,14 @@ def overlay_skill_package_ids(cfg: dict[str, Any], row: Any) -> dict[str, Any]:
 
 __all__ = [
     "PROFILE_CONFIG_KEYS",
+    "dump_id_list",
     "dump_skill_package_ids",
     "dumps_config",
     "extract_profile_from_config",
+    "id_list_from_row",
     "overlay_skill_package_ids",
     "parse_config_json",
+    "parse_id_list_json",
     "parse_skill_package_ids_json",
     "strip_profile_config",
     "welcome_from_row",

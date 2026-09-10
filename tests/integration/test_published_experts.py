@@ -113,6 +113,97 @@ async def test_install_published_expert_accepts_create_options(
     assert (config.get("backend") or {}).get("type") == "local_shell"
 
 
+async def test_install_published_expert_does_not_copy_source_composer_defaults(
+    env: tuple[Any, Any, dict[str, str]],
+) -> None:
+    client, server, owner_auth, peer_auth, source_agent_id = await _owner_and_peer(env)
+    source = (await client.get(f"/api/agents/{source_agent_id}", headers=owner_auth)).json()
+    owner_kb = server.services.knowledge_repo.create_base(
+        owner_user_id=source["user_id"], name="Publisher KB"
+    )
+    owner_connector = await client.post(
+        "/api/connector-instances",
+        headers=owner_auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "Publisher docs",
+            "credentials": {"token": "owner-token"},
+        },
+    )
+    assert owner_connector.status_code == 201, owner_connector.text
+    patched = await client.patch(
+        f"/api/agents/{source_agent_id}",
+        headers=owner_auth,
+        json={
+            "knowledge_base_ids": [owner_kb.id],
+            "mcp_servers": [owner_connector.json()["mcp_server_name"]],
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["knowledge_base_ids"] == [owner_kb.id]
+
+    published = await client.post(
+        f"/api/agents/{source_agent_id}/publish-expert",
+        headers=owner_auth,
+        json={"name": "Published without composer defaults"},
+    )
+    assert published.status_code == 201, published.text
+    expert_id = published.json()["id"]
+    listed = await client.get("/api/experts/published", headers=peer_auth)
+    assert listed.status_code == 200, listed.text
+    card = next(row for row in listed.json() if row["id"] == expert_id)
+    assert "knowledge_base_ids" not in card
+    assert "mcp_servers" not in card
+    detail = await client.get(f"/api/experts/published/{expert_id}", headers=peer_auth)
+    assert detail.status_code == 200, detail.text
+    assert "knowledge_base_ids" not in detail.json()
+    assert "mcp_servers" not in detail.json()
+
+    installed = await client.post(
+        f"/api/experts/published/{expert_id}/install",
+        headers=peer_auth,
+        json={"name": "Fork without inherited defaults"},
+    )
+    assert installed.status_code == 201, installed.text
+    fork = (
+        await client.get(f"/api/agents/{installed.json()['agent_id']}", headers=peer_auth)
+    ).json()
+    assert fork["knowledge_base_ids"] == []
+    assert fork["mcp_servers"] == []
+
+    peer_kb = server.services.knowledge_repo.create_base(
+        owner_user_id=fork["user_id"], name="Installer KB"
+    )
+    peer_connector = await client.post(
+        "/api/connector-instances",
+        headers=peer_auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "Installer docs",
+            "credentials": {"token": "peer-token"},
+        },
+    )
+    assert peer_connector.status_code == 201, peer_connector.text
+    mcp_name = peer_connector.json()["mcp_server_name"]
+    picked = await client.post(
+        f"/api/experts/published/{expert_id}/install",
+        headers=peer_auth,
+        json={
+            "name": "Fork with installer picks",
+            "knowledge_base_ids": [peer_kb.id],
+            "mcp_servers": [mcp_name],
+        },
+    )
+    assert picked.status_code == 201, picked.text
+    chosen = (
+        await client.get(f"/api/agents/{picked.json()['agent_id']}", headers=peer_auth)
+    ).json()
+    assert chosen["knowledge_base_ids"] == [peer_kb.id]
+    assert chosen["mcp_servers"] == [mcp_name]
+    assert owner_kb.id not in chosen["knowledge_base_ids"]
+    assert owner_connector.json()["mcp_server_name"] not in chosen["mcp_servers"]
+
+
 @posix_only
 async def test_install_keeps_source_quick_prompts_when_publish_body_omits_them(
     env: tuple[Any, Any, dict[str, str]],
