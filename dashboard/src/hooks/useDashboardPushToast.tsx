@@ -7,7 +7,10 @@ import { buildDashboardNotifyWsUrl } from "../api/modules/wsNotifications";
 import { getAuthToken } from "../api/request";
 import { useAgent } from "../context/AgentContext";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
-import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
+import {
+  emitSessionEvent,
+  invalidateHistory,
+} from "../pages/Chat/hooks/chatStore";
 import {
   parseDashboardPushFrame,
   truncatePushText,
@@ -117,8 +120,11 @@ export function useDashboardPushToast(): void {
         const parsed = parseDashboardPushFrame(raw);
         if (!parsed) return;
         void refreshRef.current({ silent: true });
-        // A proactive run wrote to this thread: refresh the sidebar and the
-        // open thread's history without a page reload.
+        // A proactive run wrote to this thread outside the chat socket. Stale it
+        // here (not in the chat page listener) so the cached page is dropped
+        // even when the push lands while another route is open.
+        invalidateHistory(parsed.thread_id);
+        // Refresh the sidebar and the open thread's history without a reload.
         emitSessionEvent({
           kind: "sessionsChanged",
           sessionId: parsed.thread_id,

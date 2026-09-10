@@ -872,8 +872,12 @@ export function useChat(
 
       // Already have local history: only re-probe when we still expect a stream.
       // A server push (cron, IM) marks history stale and forces a refetch.
+      // An empty cached page is never trusted: a background turn (cron, IM,
+      // another tab) may have written the first messages since we hydrated,
+      // and nothing would refetch them before a page reload.
+      const liveTurn = snap.isStreaming || chatStore.hasLiveSocket(key);
       if (
-        (snap.messages.length > 0 || snap.historyHydrated) &&
+        (snap.messages.length > 0 || liveTurn) &&
         !chatStore.isHistoryStale(key)
       ) {
         if (shouldProbeActiveTurn({ isStreaming: snap.isStreaming })) {
