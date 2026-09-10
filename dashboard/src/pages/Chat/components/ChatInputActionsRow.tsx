@@ -470,6 +470,7 @@ export default function ChatInputActionsRow({
               );
             })}
           </div>
+          <div className={styles.modelMenuDivider} />
           <button
             type="button"
             className={styles.modelMenuFooter}

@@ -92,7 +92,11 @@
   pointer-events: auto;
 
   &:hover {
-    background: var(--fn-bg-hover);
+    background: color-mix(
+      in srgb,
+      var(--fn-color-brand) 8%,
+      var(--fn-bg-elevated, var(--fn-bg-primary))
+    );
     color: var(--fn-text-brand);
     border-color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
     box-shadow:

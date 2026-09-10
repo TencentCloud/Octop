@@ -23,16 +23,22 @@
   gap: 2px;
 }
 
+.modelMenuDivider {
+  width: 100%;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
 .modelMenuFooter {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   width: 100%;
-  margin-top: 4px;
-  padding: 10px 12px;
+  padding: 6px 12px;
   border: none;
-  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  border-radius: 8px;
   background: transparent;
   color: var(--fn-text-secondary);
   font-size: 13px;
@@ -42,7 +48,7 @@
     color 0.15s ease;
 
   &:hover {
-    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+    background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
     color: var(--fn-text-primary);
   }
 }
