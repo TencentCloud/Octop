@@ -343,7 +343,8 @@
   :global(.ant-popover-inner),
   :global(.octop-popover-inner) {
     padding: 0;
-    background: transparent;
+    border-radius: 12px;
+    background: var(--fn-bg-elevated, #1f1f1f);
   }
 
   :global(.ant-popover-arrow)::before,
@@ -355,16 +356,10 @@
 .contextUsagePanel {
   width: 280px;
   padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--fn-bg-elevated, #1f1f1f);
-  border: 1px solid var(--fn-border-secondary, rgba(255, 255, 255, 0.08));
 
   @media (max-width: 767px) {
     width: 100%;
     padding: 0;
-    border: none;
-    box-shadow: none;
-    background: transparent;
   }
 }
 
