@@ -41,3 +41,13 @@ export function knowledgeCitationTooltip(citation: KnowledgeCitation): string {
   }
   return fileLabel;
 }
+
+/**
+ * True when tooltip adds info beyond the chip (nested path / directory).
+ * Truncation is detected in the chip UI separately.
+ */
+export function knowledgeCitationHasNestedPath(
+  citation: KnowledgeCitation,
+): boolean {
+  return Boolean(knowledgeCitationDirectory(citation.path));
+}

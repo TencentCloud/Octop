@@ -37,7 +37,28 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.navGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.navIndex {
+  min-width: 3em;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .centered {
@@ -60,6 +81,20 @@
   background: var(--fn-bg-container, #fff);
 }
 
+.mdWrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.mdToolbar {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding: 0 0 6px;
+}
+
 .textBody {
   flex: 1;
   min-height: 0;
@@ -73,4 +108,9 @@
   font-family: var(--fn-font-mono, ui-monospace, monospace);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.chipHit {
+  display: inline-flex;
+  max-width: 100%;
 }

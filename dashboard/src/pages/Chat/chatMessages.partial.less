@@ -852,12 +852,17 @@
 }
 
 .knowledgeCitationName {
+  min-width: 0;
+  max-width: 14rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .knowledgeCitationKb {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 8rem;
   color: var(--fn-text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;

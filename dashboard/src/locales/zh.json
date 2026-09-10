@@ -1338,6 +1338,7 @@
     "citationViewInKnowledgeBase": "在知识库中查看",
     "citationPreviewFailed": "打开文档预览失败",
     "citationDeepLinkFailed": "未找到该知识库文档",
+    "citationScrollTop": "回到顶部",
     "dockFileList": "文件变更",
     "expertSharedBadge": "共享",
     "dockFileListEmpty": "暂无工具生成或发送的文件",

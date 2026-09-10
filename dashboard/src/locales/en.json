@@ -1338,6 +1338,7 @@
     "citationViewInKnowledgeBase": "View in knowledge base",
     "citationPreviewFailed": "Failed to open document preview",
     "citationDeepLinkFailed": "Could not find that knowledge document",
+    "citationScrollTop": "Back to top",
     "dockFileList": "File changes",
     "expertSharedBadge": "Shared",
     "dockFileListEmpty": "No files from tools yet",
