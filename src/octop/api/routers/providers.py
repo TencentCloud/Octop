@@ -13,6 +13,9 @@ from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+
+# 2026-09-07 修复：后台任务强引用集合（asyncio 要求保存引用防 GC 回收）。
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
     fetch_openai_compatible_models,

@@ -345,6 +345,9 @@ class AgentManager:
         self._history_backfills: dict[str, asyncio.Event] = {}
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
+        # 2026-09-07 修复：后台任务强引用集合（asyncio 要求保存引用防 GC 回收——
+        # 原 create_task 返回值只存 bool 标记，任务对象可能被回收导致 reload 静默失败）。
+        self._background_tasks: set[asyncio.Task] = set()
         self._bootstrap_graph_refresh_pending: set[str] = set()
         # Chat user id used to resolve connectors when agent.user_id is NULL (shared agents).
         self._connector_user_override: dict[str, int] = {}
@@ -590,10 +593,12 @@ class AgentManager:
                 self._repos.agent_repo.set_state(agent_id, "starting")
                 row = self._repos.agent_repo.get(agent_id)
                 assert row is not None
-                asyncio.create_task(
+                task = asyncio.create_task(
                     self._complete_create_bootstrap(row),
                     name=f"bootstrap-agent-{agent_id}",
                 )
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
             else:
                 agent = await self._start_agent(row, init_workspace=True)
                 if agent is not None and spec.template_name:
@@ -2358,7 +2363,9 @@ class AgentManager:
         if self._reload_worker_running.get(agent_id):
             return
         self._reload_worker_running[agent_id] = True
-        asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
+        task = asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _reload_worker(self, agent_id: str) -> None:
         try:
