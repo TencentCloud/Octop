@@ -215,7 +215,7 @@ describe("PdfDocumentPreview windowed rendering", () => {
     });
   });
 
-  it("unmounts a page once it leaves the padded viewport", async () => {
+  it("keeps a nearby page mounted after it leaves the viewport", async () => {
     const { container } = await renderPdf(
       <PdfDocumentPreview fileUrl="blob:test" filename="test.pdf" />,
     );
@@ -231,7 +231,37 @@ describe("PdfDocumentPreview windowed rendering", () => {
       ]);
     });
 
+    // Still within MOUNT_KEEP_RADIUS of current page 1 — keep canvas mounted.
     emitSlot(slot(container, 3), false);
+    await waitFor(() => {
+      expect(mountedPages(container).sort()).toEqual([
+        "pdf-page-1",
+        "pdf-page-3",
+      ]);
+    });
+  });
+
+  it("unmounts a page once it is far from the current page", async () => {
+    const { container } = await renderPdf(
+      <PdfDocumentPreview fileUrl="blob:test" filename="test.pdf" />,
+    );
+    await waitFor(() => {
+      expect(slot(container, 4)).toBeTruthy();
+    });
+
+    emitSlot(slot(container, 4), true);
+    await waitFor(() => {
+      expect(mountedPages(container).sort()).toEqual([
+        "pdf-page-1",
+        "pdf-page-4",
+      ]);
+    });
+
+    // Leaving page 4 alone can leave currentPage stuck on 4 (no other
+    // intersecting ratios). Re-assert page 1 as the reading position so the
+    // keep-radius prune can drop the far sticky mount.
+    emitSlot(slot(container, 4), false);
+    emitSlot(slot(container, 1), true, 1);
     await waitFor(() => {
       expect(mountedPages(container)).toEqual(["pdf-page-1"]);
     });

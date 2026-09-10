@@ -4,9 +4,10 @@
  *
  * Pages render windowed: only pages near the scroll viewport mount
  * ``<Page>`` (canvas + text + annotation layers); the rest stay as
- * size-accurate placeholders. Mounting every page of a large PDF at once
- * floods the DOM (one canvas + two layers per page) and makes scrolling
- * repaint constantly.
+ * size-accurate placeholders. Once mounted, pages stay mounted while
+ * near the current page so scroll remounts do not leave blank canvases.
+ * Mounting every page of a large PDF at once floods the DOM (one canvas
+ * + two layers per page) and makes scrolling repaint constantly.
  */
 
 import {
@@ -53,6 +54,12 @@ const RATIO_EAGER_PAGES = 32;
 const RATIO_WINDOW = 4;
 /** Pages within this band of the viewport get mounted; outside, placeholder. */
 const VISIBLE_ROOT_MARGIN = "600px 0px";
+/**
+ * Keep ``<Page>`` mounted within this many pages of ``currentPage`` even after
+ * the slot leaves the IO root. Remounting react-pdf canvases on every scroll
+ * often paints blank until a full remount/reload.
+ */
+const MOUNT_KEEP_RADIUS = 2;
 /** Boot overlay fade-out before unmount (ms). */
 const BOOT_FADE_MS = 180;
 
@@ -180,6 +187,30 @@ function PdfPageSkeletonBlock() {
   return <div className={styles.pdfPageSkeleton} aria-hidden />;
 }
 
+/** Merge intersecting slots with pages kept near the reading position. */
+function stickyMountedPages(
+  intersecting: ReadonlySet<number>,
+  previouslyMounted: ReadonlySet<number>,
+  currentPage: number,
+  keepRadius: number,
+): Set<number> {
+  const next = new Set<number>();
+  for (const pageNo of intersecting) next.add(pageNo);
+  for (const pageNo of previouslyMounted) {
+    if (Math.abs(pageNo - currentPage) <= keepRadius) next.add(pageNo);
+  }
+  if (currentPage > 0) next.add(currentPage);
+  return next;
+}
+
+function samePageSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const pageNo of a) {
+    if (!b.has(pageNo)) return false;
+  }
+  return true;
+}
+
 /** Full viewer skeleton + real download percent, shown while the blob loads. */
 export function PdfViewerSkeleton({ percent }: { percent?: number | null }) {
   return (
@@ -216,11 +247,16 @@ export default function PdfDocumentPreview({
   const [pageRatios, setPageRatios] = useState<number[]>([]);
   /** Pages whose ratios were measured from pdf.js (vs default placeholder). */
   const measuredRatioPagesRef = useRef(new Set<number>());
-  const visibleRef = useRef<Set<number>>(new Set());
+  /** Slots currently intersecting the padded scroll root. */
+  const intersectingRef = useRef<Set<number>>(new Set());
+  /** Pages with a mounted ``<Page>`` (sticky around current page). */
+  const mountedRef = useRef<Set<number>>(new Set());
   const [visiblePages, setVisiblePages] = useState<ReadonlySet<number>>(
     () => new Set<number>(),
   );
   const [currentPage, setCurrentPage] = useState(1);
+  const currentPageRef = useRef(1);
+  currentPageRef.current = currentPage;
   const [pageInput, setPageInput] = useState("1");
   const pageInputFocusedRef = useRef(false);
   /** Loaded PDF instance — kept for lazy bookmark destination resolution. */
@@ -264,7 +300,8 @@ export default function PdfDocumentPreview({
     setCurrentPage(1);
     setPageInput("1");
     setReloadKey(0);
-    visibleRef.current = new Set();
+    intersectingRef.current = new Set();
+    mountedRef.current = new Set();
     setVisiblePages(new Set());
     pdfRef.current = null;
     setOutline(null);
@@ -277,31 +314,39 @@ export default function PdfDocumentPreview({
     if (el) el.scrollTop = 0;
   }, [fileUrl]);
 
-  // Track which page slots intersect the (padded) scroll viewport.
+  // Track intersecting slots; keep ``<Page>`` sticky near the current page so
+  // scroll remounts do not leave blank react-pdf canvases.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || numPages === 0 || !supportsIntersectionObserver) return;
     const io = new IntersectionObserver(
       (entries) => {
-        let changed = false;
-        const next = new Set(visibleRef.current);
+        const intersecting = new Set(intersectingRef.current);
+        let intersectingChanged = false;
         for (const entry of entries) {
           const pageNo = Number((entry.target as HTMLElement).dataset.pdfPage);
           if (!Number.isFinite(pageNo) || pageNo <= 0) continue;
           if (entry.isIntersecting) {
-            if (!next.has(pageNo)) {
-              next.add(pageNo);
-              changed = true;
+            if (!intersecting.has(pageNo)) {
+              intersecting.add(pageNo);
+              intersectingChanged = true;
             }
-          } else if (next.has(pageNo)) {
-            next.delete(pageNo);
-            changed = true;
+          } else if (intersecting.has(pageNo)) {
+            intersecting.delete(pageNo);
+            intersectingChanged = true;
           }
         }
-        if (changed) {
-          visibleRef.current = next;
-          setVisiblePages(next);
-        }
+        if (!intersectingChanged) return;
+        intersectingRef.current = intersecting;
+        const next = stickyMountedPages(
+          intersecting,
+          mountedRef.current,
+          currentPageRef.current,
+          MOUNT_KEEP_RADIUS,
+        );
+        if (samePageSet(next, mountedRef.current)) return;
+        mountedRef.current = next;
+        setVisiblePages(next);
       },
       { root: el, rootMargin: VISIBLE_ROOT_MARGIN },
     );
@@ -310,6 +355,20 @@ export default function PdfDocumentPreview({
     }
     return () => io.disconnect();
   }, [numPages]);
+
+  // When the reading page moves, drop far sticky mounts outside the keep band.
+  useEffect(() => {
+    if (numPages === 0) return;
+    const next = stickyMountedPages(
+      intersectingRef.current,
+      mountedRef.current,
+      currentPage,
+      MOUNT_KEEP_RADIUS,
+    );
+    if (samePageSet(next, mountedRef.current)) return;
+    mountedRef.current = next;
+    setVisiblePages(next);
+  }, [currentPage, numPages]);
 
   // Current page = most visible slot (highest intersection ratio, else closest to top).
   useEffect(() => {
@@ -381,7 +440,8 @@ export default function PdfDocumentPreview({
     // Mount page 1 immediately so the first canvas can paint under the
     // boot overlay (windowed IO otherwise leaves every slot empty).
     if (pdf.numPages > 0) {
-      visibleRef.current = new Set([1]);
+      intersectingRef.current = new Set([1]);
+      mountedRef.current = new Set([1]);
       setVisiblePages(new Set([1]));
       setCurrentPage(1);
       setPageInput("1");
@@ -504,9 +564,6 @@ export default function PdfDocumentPreview({
     return () => window.clearTimeout(timer);
   }, [bootLoading]);
 
-  const currentPageRef = useRef(currentPage);
-  currentPageRef.current = currentPage;
-
   const applyFitZoom = useCallback(
     (mode: Exclude<FitMode, "manual">) => {
       const el = scrollRef.current;
@@ -581,7 +638,8 @@ export default function PdfDocumentPreview({
     pdfRef.current = null;
     destPageCacheRef.current = new Map();
     setOutlineDestVersion(0);
-    visibleRef.current = new Set();
+    intersectingRef.current = new Set();
+    mountedRef.current = new Set();
     setVisiblePages(new Set());
     setBootOverlayMounted(true);
     setBootOverlayFading(false);
