@@ -96,12 +96,16 @@ export function KnowledgeCitationPreviewModal({
   const hasPrev = citationIndex > 0;
   const hasNext = citationIndex >= 0 && citationIndex < citations.length - 1;
 
+  const titleFilename =
+    filename || citation?.filename || t("chat.citationPreview");
+  const titleKbName = citation?.kbName?.trim() || "";
+  const titleFull = titleKbName
+    ? `${titleFilename} · ${titleKbName}`
+    : titleFilename;
   const subtitle = useMemo(() => {
     if (!citation) return "";
     const path = resolvedPath || citation.path;
-    const dir = knowledgeCitationDirectory(path);
-    const parts = [citation.kbName, dir].filter(Boolean);
-    return parts.join(" · ");
+    return knowledgeCitationDirectory(path);
   }, [citation, resolvedPath]);
 
   const isRich = mode === "rich" && kind != null && !richMissing;
@@ -322,8 +326,11 @@ export function KnowledgeCitationPreviewModal({
       placement="right"
       title={
         <div className={styles.titleBlock}>
-          <div className={styles.titleMain}>
-            {filename || citation?.filename || t("chat.citationPreview")}
+          <div className={styles.titleMain} title={titleFull}>
+            <span className={styles.titleFilename}>{titleFilename}</span>
+            {titleKbName ? (
+              <span className={styles.titleKb}> · {titleKbName}</span>
+            ) : null}
           </div>
           {subtitle ? (
             <Typography.Text type="secondary" className={styles.titleSub}>
